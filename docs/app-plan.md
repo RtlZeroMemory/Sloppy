@@ -44,6 +44,14 @@ dispatches supported requests through V8 in the V8 lane. Dynamic route registrat
 middleware, modules, automatic validation, arbitrary imports, and full TypeScript semantics
 remain outside the current source subset.
 
+## Server Config Metadata
+
+The runtime consumes Slop-owned server metadata emitted by the current compiler/config
+pipeline for `sloppy run`: host, port, max connections, max request body bytes, request
+timeout, keep-alive enablement, keep-alive idle timeout, and max requests per connection.
+Malformed, zero, unsupported, or range-overflowing values fail closed before serving work.
+Route-level limits and trusted proxy policy are not Plan metadata yet.
+
 ## Required Features
 
 `requiredFeatures[]` records runtime features that must be active before execution. The

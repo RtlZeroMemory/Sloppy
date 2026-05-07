@@ -332,6 +332,24 @@ static int test_headers_and_json_body_reach_v8_handler(void)
     return 0;
 }
 
+static int test_context_metadata_and_bytes_body_reach_v8_handler(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /bytes?x=1 HTTP/1.1\r\nHost: example\r\n"
+            "Content-Type: application/octet-stream\r\nContent-Length: 3\r\n\r\nABC",
+            SL_HTTP_METHOD_POST, "/bytes", 6U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"id\":\"0\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\",\"queryString\":\"x=1\","
+            "\"contentType\":\"application/octet-stream\",\"contentLength\":3,"
+            "\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\",\"consumed\":true,"
+            "\"bytes\":[65,66,67],\"secondReadRejected\":true}",
+            SL_DIAG_NONE) != 0)
+    {
+        return 50;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_get_hello_dispatches_to_handler_id();
@@ -354,5 +372,10 @@ int main(void)
         return result;
     }
 
-    return test_headers_and_json_body_reach_v8_handler();
+    result = test_headers_and_json_body_reach_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_context_metadata_and_bytes_body_reach_v8_handler();
 }

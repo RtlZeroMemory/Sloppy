@@ -5,6 +5,7 @@
 #include "sloppy/diagnostics.h"
 #include "sloppy/engine.h"
 #include "sloppy/http.h"
+#include "sloppy/http_backend.h"
 #include "sloppy/plan.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
@@ -72,9 +73,11 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
  * Failure behavior:
  * - methods outside GET/POST/PUT/PATCH/DELETE fail with SL_STATUS_UNSUPPORTED;
  * - matching path with the wrong method fails with SL_STATUS_UNSUPPORTED;
- * - transfer-encoded bodies fail with SL_STATUS_UNSUPPORTED;
+ * - unsupported transfer codings fail with SL_STATUS_UNSUPPORTED; bounded
+ *   Transfer-Encoding: chunked bodies may reach dispatch after transport decoding;
  * - unsupported body content types fail with SL_STATUS_UNSUPPORTED;
- * - bodies over SL_HTTP_DEFAULT_MAX_BODY_LENGTH fail with SL_STATUS_CAPACITY_EXCEEDED;
+ * - synthetic bodies over SL_HTTP_DEFAULT_MAX_BODY_LENGTH fail with
+ *   SL_STATUS_CAPACITY_EXCEEDED; lifecycle dispatch uses the backend body limit;
  * - malformed JSON bodies fail with SL_STATUS_INVALID_ARGUMENT;
  * - no matching route path fails with SL_STATUS_OUT_OF_RANGE;
  * - a matched route with a missing plan handler fails before entering the engine;
@@ -89,6 +92,18 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
                                        const SlHttpDispatchTable* dispatch_table,
                                        const SlHttpRequestHead* request, SlEngineResult* out_result,
                                        SlDiag* out_diag);
+
+/*
+ * Dispatches a request lifecycle from the platform transport. This preserves the same route,
+ * body, and result contract as `sl_http_dispatch_request_head`, while adding safe request and
+ * connection identifiers plus the borrowed cancellation token to the handler context. The
+ * lifecycle remains opaque to JavaScript; no native handles or transport internals cross the
+ * engine boundary.
+ */
+SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, const SlPlan* plan,
+                                            const SlHttpDispatchTable* dispatch_table,
+                                            const SlHttpRequestLifecycle* request,
+                                            SlEngineResult* out_result, SlDiag* out_diag);
 
 #ifdef __cplusplus
 }

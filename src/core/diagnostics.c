@@ -219,6 +219,9 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT",
                                sizeof("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT") - 1U);
+    case SL_DIAG_HTTP_REQUEST_LINE_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_REQUEST_LINE_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_REQUEST_LINE_LIMIT") - 1U);
     case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
         return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_METHOD",
                                sizeof("SLOPPY_E_HTTP_UNSUPPORTED_METHOD") - 1U);
@@ -322,6 +325,7 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
     case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
     case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
+    case SL_DIAG_HTTP_REQUEST_LINE_LIMIT:
     case SL_DIAG_HTTP_CONNECTION_CLOSED:
     case SL_DIAG_HTTP_REQUEST_TIMEOUT:
     case SL_DIAG_HTTP_OVERLOAD:

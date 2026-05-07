@@ -8,7 +8,9 @@
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,7 +22,8 @@ typedef enum SlHttpRequestBodyKind
 {
     SL_HTTP_REQUEST_BODY_NONE = 0,
     SL_HTTP_REQUEST_BODY_JSON = 1,
-    SL_HTTP_REQUEST_BODY_TEXT = 2
+    SL_HTTP_REQUEST_BODY_TEXT = 2,
+    SL_HTTP_REQUEST_BODY_BYTES = 3
 } SlHttpRequestBodyKind;
 
 typedef struct SlHttpQueryParam
@@ -38,6 +41,14 @@ typedef struct SlHttpQuery
 typedef struct SlHttpRequestContext
 {
     const SlHttpRequestHead* request;
+    uint64_t request_id;
+    uint64_t connection_id;
+    SlStr scheme;
+    SlStr protocol;
+    SlStr query_string;
+    SlStr content_type;
+    uint64_t content_length;
+    bool has_content_length;
     const SlRouteParam* route_params;
     size_t route_param_count;
     const SlHttpQueryParam* query_params;

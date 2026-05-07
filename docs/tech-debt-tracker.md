@@ -479,6 +479,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Reconcile stale GitHub issue labels on closed issues if label hygiene becomes useful for
   reporting.
+- Track HTTP-SERVER-01 deferred server maturity work under the open child issues when it
+  remains out of the current alpha contract: route-level limits/timeouts, trusted proxy and
+  forwarded header policy, request ID adoption from trusted headers, access events/counters,
+  public response lifecycle callbacks, public request/response streaming helpers, and
+  production graceful-drain behavior.
 - Keep any remaining async diagnostic CLI-format or async stack-remapping work tied to
   Roadmap-2 diagnostics/observability issues instead of reopening the completed
   ENGINE-08.B cleanup.

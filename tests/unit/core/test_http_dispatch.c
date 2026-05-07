@@ -509,8 +509,8 @@ static int test_invalid_json_body_fails_before_handler_call(void)
         init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         create_noop_engine(&engine_arena, &engine) != 0 ||
         parse_request(&arena,
-                      "POST /hello HTTP/1.1\r\nContent-Type: application/json\r\n"
-                      "Content-Length: 6\r\n\r\n{\"ok\":",
+                      "POST /hello HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 6\r\n\r\n{\"ok\":",
                       &request) != 0 ||
         parse_pattern(&arena, "/hello", &pattern) != 0)
     {
@@ -564,7 +564,7 @@ static int test_unsupported_body_content_type_fails_before_handler_call(void)
     }
 
     headers[0].name = sl_str_from_cstr("Content-Type");
-    headers[0].value = sl_str_from_cstr("application/octet-stream");
+    headers[0].value = sl_str_from_cstr("application/x-unsupported");
     headers[1].name = sl_str_from_cstr("Content-Length");
     headers[1].value = sl_str_from_cstr("3");
     request.method = SL_HTTP_METHOD_POST;
@@ -703,6 +703,73 @@ static int test_body_too_large_fails_before_handler_call(void)
     {
         sl_engine_destroy(engine);
         return 97;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_lifecycle_dispatch_uses_backend_body_limit(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    static const unsigned char body_byte = 'x';
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpHeader headers[2];
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.parse.max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 8U;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_backend_init(&backend, &options, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 103;
+    }
+
+    headers[0].name = sl_str_from_cstr("Content-Type");
+    headers[0].value = sl_str_from_cstr("text/plain");
+    headers[1].name = sl_str_from_cstr("Content-Length");
+    headers[1].value = sl_str_from_cstr("65537");
+    request.head.method = SL_HTTP_METHOD_POST;
+    request.head.path = sl_str_from_cstr("/hello");
+    request.head.raw_target = sl_str_from_cstr("/hello");
+    request.head.headers = headers;
+    request.head.header_count = 2U;
+    request.head.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(sl_http_dispatch_request_lifecycle(&arena, engine, &plan, &table, &request,
+                                                         &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 104;
     }
 
     sl_engine_destroy(engine);
@@ -891,6 +958,9 @@ static int test_conformance_smoke_default_http_cases(void)
          SL_HTTP_METHOD_POST, "/ok", SL_STATUS_INVALID_ARGUMENT, SL_DIAG_MALFORMED_JSON},
         {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/octet-stream\r\n"
          "Content-Length: 3\r\n\r\nabc",
+         SL_HTTP_METHOD_POST, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/x-unsupported\r\n"
+         "Content-Length: 3\r\n\r\nabc",
          SL_HTTP_METHOD_POST, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE},
         {"GET /ok?q=%zz HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
          SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST},
@@ -931,6 +1001,7 @@ int main(void)
         {test_unsupported_body_content_type_fails_before_handler_call},
         {test_non_empty_body_without_content_length_fails_before_handler_call},
         {test_body_too_large_fails_before_handler_call},
+        {test_lifecycle_dispatch_uses_backend_body_limit},
         {test_missing_plan_handler_fails_before_engine_call},
         {test_route_params_may_match_but_are_not_required_by_dispatch},
         {test_conformance_smoke_default_http_cases},

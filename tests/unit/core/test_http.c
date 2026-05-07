@@ -59,7 +59,8 @@ static int test_parse_valid_targets(void)
         return 1;
     }
 
-    status = parse_request(&arena, "GET / HTTP/1.1\r\n\r\n", NULL, &request, NULL);
+    status =
+        parse_request(&arena, "GET / HTTP/1.1\r\nHost: example.test\r\n\r\n", NULL, &request, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 || request.method != SL_HTTP_METHOD_GET ||
         expect_str_equal(request.raw_target, "/") != 0 || expect_str_equal(request.path, "/") != 0)
     {
@@ -67,7 +68,8 @@ static int test_parse_valid_targets(void)
     }
 
     sl_arena_reset(&arena);
-    status = parse_request(&arena, "GET /users/123 HTTP/1.1\r\n\r\n", NULL, &request, NULL);
+    status = parse_request(&arena, "GET /users/123 HTTP/1.1\r\nHost: example.test\r\n\r\n", NULL,
+                           &request, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 ||
         expect_str_equal(request.raw_target, "/users/123") != 0 ||
         expect_str_equal(request.path, "/users/123") != 0)
@@ -76,7 +78,8 @@ static int test_parse_valid_targets(void)
     }
 
     sl_arena_reset(&arena);
-    status = parse_request(&arena, "GET /users/123?x=1 HTTP/1.1\r\n\r\n", NULL, &request, NULL);
+    status = parse_request(&arena, "GET /users/123?x=1 HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                           NULL, &request, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 ||
         expect_str_equal(request.raw_target, "/users/123?x=1") != 0 ||
         expect_str_equal(request.path, "/users/123") != 0)
@@ -130,7 +133,8 @@ static int test_parse_body_bytes(void)
     }
 
     status = parse_request(&arena,
-                           "POST /items HTTP/1.1\r\nContent-Type: application/json\r\n"
+                           "POST /items HTTP/1.1\r\nHost: example.test\r\n"
+                           "Content-Type: application/json\r\n"
                            "Content-Length: 11\r\n\r\n{\"ok\":true}",
                            NULL, &request, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 || request.method != SL_HTTP_METHOD_POST ||
@@ -175,7 +179,7 @@ static int test_parse_binary_body_bytes(void)
 {
     static const unsigned char input[] = {
         'P', 'O', 'S', 'T',  ' ',  '/', 'b', 'i',  'n',  ' ',  'H',  'T', 'T',  'P', '/',
-        '1', '.', '1', '\r', '\n', 'C', 'o', 'n',  't',  'e',  'n',  't', '-',  'L', 'e',
+        '1', '.', '0', '\r', '\n', 'C', 'o', 'n',  't',  'e',  'n',  't', '-',  'L', 'e',
         'n', 'g', 't', 'h',  ':',  ' ', '4', '\r', '\n', '\r', '\n', 'A', '\0', 'B', 0xffU};
     static const unsigned char expected[] = {'A', '\0', 'B', 0xffU};
     unsigned char storage[TEST_ARENA_SIZE];
@@ -218,16 +222,20 @@ static int test_failed_parse_rolls_back_transient_builder_memory(void)
     options.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     options.max_body_length = 2U;
 
-    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc", &options,
-                           &request_no_diag, NULL);
+    status = parse_request(&arena,
+                           "POST / HTTP/1.1\r\nHost: example.test\r\n"
+                           "Content-Length: 3\r\n\r\nabc",
+                           &options, &request_no_diag, NULL);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         sl_arena_used(&arena) != used_before || request_no_diag.body.ptr != NULL)
     {
         return 20;
     }
 
-    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc", &options,
-                           &request, &diag);
+    status = parse_request(&arena,
+                           "POST / HTTP/1.1\r\nHost: example.test\r\n"
+                           "Content-Length: 3\r\n\r\nabc",
+                           &options, &request, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_BODY_LIMIT || sl_arena_used(&arena) <= used_before ||
         request.body.ptr != NULL)
@@ -246,13 +254,14 @@ static int test_supported_method_mapping(void)
         SlHttpMethod method;
     } MethodCase;
 
-    static const MethodCase cases[] = {{"GET / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_GET},
-                                       {"POST / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_POST},
-                                       {"PUT / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_PUT},
-                                       {"DELETE / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_DELETE},
-                                       {"PATCH / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_PATCH},
-                                       {"OPTIONS / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_OPTIONS},
-                                       {"HEAD / HTTP/1.1\r\n\r\n", SL_HTTP_METHOD_HEAD}};
+    static const MethodCase cases[] = {
+        {"GET / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_GET},
+        {"POST / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_POST},
+        {"PUT / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_PUT},
+        {"DELETE / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_DELETE},
+        {"PATCH / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_PATCH},
+        {"OPTIONS / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_OPTIONS},
+        {"HEAD / HTTP/1.1\r\nHost: example.test\r\n\r\n", SL_HTTP_METHOD_HEAD}};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -276,9 +285,10 @@ static int test_supported_method_mapping(void)
 
 static int test_rejects_invalid_requests(void)
 {
-    static const char* cases[] = {
-        "GET /\r\n\r\n", "GET / HTTP/1.1", "BAD METHOD / HTTP/1.1\r\n\r\n",
-        "GET / HTTP/1.1\r\nHeader without colon\r\n\r\n", "GET  HTTP/1.1\r\n\r\n"};
+    static const char* cases[] = {"GET /\r\n\r\n", "GET / HTTP/1.1",
+                                  "BAD METHOD / HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                                  "GET / HTTP/1.1\r\nHeader without colon\r\n\r\n",
+                                  "GET  HTTP/1.1\r\nHost: example.test\r\n\r\n"};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -315,7 +325,8 @@ static int test_rejects_unsupported_method(void)
         return 40;
     }
 
-    status = parse_request(&arena, "CONNECT / HTTP/1.1\r\n\r\n", NULL, &request, &diag);
+    status = parse_request(&arena, "CONNECT / HTTP/1.1\r\nHost: example.test\r\n\r\n", NULL,
+                           &request, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
         diag.code != SL_DIAG_INVALID_HTTP_REQUEST)
     {
@@ -327,8 +338,9 @@ static int test_rejects_unsupported_method(void)
 
 static int test_rejects_non_path_targets(void)
 {
-    static const char* cases[] = {"OPTIONS * HTTP/1.1\r\n\r\n",
-                                  "GET http://example.test/users HTTP/1.1\r\n\r\n"};
+    static const char* cases[] = {
+        "OPTIONS * HTTP/1.1\r\nHost: example.test\r\n\r\n",
+        "GET http://example.test/users HTTP/1.1\r\nHost: example.test\r\n\r\n"};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -366,8 +378,10 @@ static int test_callback_allocation_failure_preserved(void)
         return 48;
     }
 
-    status = parse_request(&arena, "GET /this-target-does-not-fit HTTP/1.1\r\n\r\n", &options,
-                           &request, &diag);
+    status = parse_request(&arena,
+                           "GET /this-target-does-not-fit HTTP/1.1\r\n"
+                           "Host: example.test\r\n\r\n",
+                           &options, &request, &diag);
     if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 || diag.code != SL_DIAG_NONE ||
         request.raw_target.ptr != NULL)
     {
@@ -392,7 +406,8 @@ static int test_max_target_length_enforced(void)
 
     options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     options.max_target_length = 4U;
-    status = parse_request(&arena, "GET /toolong HTTP/1.1\r\n\r\n", &options, &request, &diag);
+    status = parse_request(&arena, "GET /toolong HTTP/1.1\r\nHost: example.test\r\n\r\n", &options,
+                           &request, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_TARGET_LIMIT || request.raw_target.ptr != NULL)
     {
@@ -493,8 +508,10 @@ static int test_max_body_length_enforced(void)
     options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     options.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     options.max_body_length = 4U;
-    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n12345", &options,
-                           &request, &diag);
+    status = parse_request(&arena,
+                           "POST / HTTP/1.1\r\nHost: example.test\r\n"
+                           "Content-Length: 5\r\n\r\n12345",
+                           &options, &request, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_BODY_LIMIT || request.body.length != 0U)
     {
@@ -504,8 +521,10 @@ static int test_max_body_length_enforced(void)
     sl_arena_reset(&arena);
     request = (SlHttpRequestHead){0};
     diag = (SlDiag){0};
-    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\n1234", &options,
-                           &request, &diag);
+    status = parse_request(&arena,
+                           "POST / HTTP/1.1\r\nHost: example.test\r\n"
+                           "Content-Length: 4\r\n\r\n1234",
+                           &options, &request, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0 || diag.code == SL_DIAG_HTTP_BODY_LIMIT ||
         request.body.length != 4U)
     {
@@ -528,7 +547,7 @@ static int test_zero_header_limit_allows_no_headers(void)
         return 60;
     }
 
-    status = parse_request(&arena, "GET / HTTP/1.1\r\n\r\n", &options, &request, &diag);
+    status = parse_request(&arena, "GET / HTTP/1.0\r\n\r\n", &options, &request, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0 || request.headers != NULL ||
         request.header_count != 0U)
     {
@@ -547,6 +566,81 @@ static int test_zero_header_limit_allows_no_headers(void)
     return 0;
 }
 
+static int test_request_line_host_and_singleton_policy(void)
+{
+    static const char* invalid_cases[] = {
+        "GET / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\nHost:\r\n\r\n",
+        "GET / HTTP/1.1\r\nHost: one\r\nHost: two\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: example.test\r\nContent-Length: 1\r\nContent-Length: "
+        "1\r\n\r\nx",
+        "POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n"
+        "Content-Length: 1\r\n\r\n0\r\n\r\n"};
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(invalid_cases) / sizeof(invalid_cases[0]); index += 1U) {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+        if (!sl_status_is_ok(status)) {
+            return 90;
+        }
+
+        status = parse_request(&arena, invalid_cases[index], NULL, &request, &diag);
+        if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL)
+        {
+            return 91 + (int)index;
+        }
+    }
+
+    {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+        if (!sl_status_is_ok(status)) {
+            return 100;
+        }
+
+        status = parse_request(&arena, "GET /legacy HTTP/1.0\r\n\r\n", NULL, &request, &diag);
+        if (expect_status(status, SL_STATUS_OK) != 0 || request.version_major != 1U ||
+            request.version_minor != 0U || diag.code != SL_DIAG_NONE)
+        {
+            return 101;
+        }
+    }
+
+    {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        SlHttpParseOptions options = {0};
+        SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+        if (!sl_status_is_ok(status)) {
+            return 102;
+        }
+
+        options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+        options.max_request_line_length = 8U;
+        status = parse_request(&arena, "GET /toolong HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                               &options, &request, &diag);
+        if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_REQUEST_LINE_LIMIT || request.raw_target.ptr != NULL)
+        {
+            return 103;
+        }
+    }
+
+    return 0;
+}
+
 static int test_invalid_arguments(void)
 {
     unsigned char storage[1024];
@@ -558,14 +652,18 @@ static int test_invalid_arguments(void)
         return 70;
     }
 
-    if (expect_status(sl_http_parse_request_head(NULL, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"),
+    if (expect_status(sl_http_parse_request_head(NULL,
+                                                 bytes_from_cstr("GET / HTTP/1.1\r\n"
+                                                                 "Host: example.test\r\n\r\n"),
                                                  NULL, &request, NULL),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 71;
     }
 
-    if (expect_status(sl_http_parse_request_head(&arena, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"),
+    if (expect_status(sl_http_parse_request_head(&arena,
+                                                 bytes_from_cstr("GET / HTTP/1.1\r\n"
+                                                                 "Host: example.test\r\n\r\n"),
                                                  NULL, NULL, NULL),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
@@ -609,7 +707,8 @@ static int test_parsed_path_can_feed_route_matcher(void)
     }
 
     status =
-        parse_request(&request_arena, "GET /users/123?x=1 HTTP/1.1\r\n\r\n", NULL, &request, NULL);
+        parse_request(&request_arena, "GET /users/123?x=1 HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                      NULL, &request, NULL);
     if (!sl_status_is_ok(status)) {
         return 83;
     }
@@ -634,10 +733,13 @@ static int test_stress_repeated_valid_requests_remain_bounded(void)
 {
     static const char* requests[] = {
         "GET /hello HTTP/1.1\r\nHost: example\r\n\r\n",
-        ("POST /items HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n"
+        ("POST /items HTTP/1.1\r\nHost: example\r\n"
+         "Content-Type: application/json\r\nContent-Length: 11\r\n\r\n"
          "{\"ok\":true}"),
-        "PUT /items/1 HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello",
-        "PATCH /items/1 HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n",
+        "PUT /items/1 HTTP/1.1\r\nHost: example\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 5\r\n\r\nhello",
+        "PATCH /items/1 HTTP/1.1\r\nHost: example\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 0\r\n\r\n",
         "DELETE /items/1 HTTP/1.1\r\nHost: example\r\n\r\n"};
     enum
     {
@@ -670,9 +772,9 @@ static int test_stress_repeated_valid_requests_remain_bounded(void)
 
 static int test_stress_repeated_malformed_requests_fail_deterministically(void)
 {
-    static const char* requests[] = {"GET / HTTP/1.1", "GET /\r\n\r\n",
-                                     "BAD METHOD / HTTP/1.1\r\n\r\n",
-                                     "GET http://example.test/ HTTP/1.1\r\n\r\n"};
+    static const char* requests[] = {
+        "GET / HTTP/1.1", "GET /\r\n\r\n", "BAD METHOD / HTTP/1.1\r\nHost: example.test\r\n\r\n",
+        "GET http://example.test/ HTTP/1.1\r\nHost: example.test\r\n\r\n"};
     enum
     {
         ITERATIONS = 64
@@ -732,7 +834,8 @@ static int test_stress_repeated_parser_limits_remain_enforced(void)
         SlDiag diag = {0};
 
         sl_arena_reset(&arena);
-        status = parse_request(&arena, "GET /toolong HTTP/1.1\r\n\r\n", &options, &request, &diag);
+        status = parse_request(&arena, "GET /toolong HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                               &options, &request, &diag);
         if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
             diag.code != SL_DIAG_HTTP_TARGET_LIMIT || request.raw_target.ptr != NULL)
         {
@@ -756,7 +859,10 @@ static int test_stress_repeated_parser_limits_remain_enforced(void)
         body_options.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
         body_options.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
         body_options.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
-        status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n12345",
+        body_options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+        status = parse_request(&arena,
+                               "POST / HTTP/1.1\r\nHost: example.test\r\n"
+                               "Content-Length: 5\r\n\r\n12345",
                                &body_options, &request, &diag);
         if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
             diag.code != SL_DIAG_HTTP_BODY_LIMIT || request.body.ptr != NULL)
@@ -794,6 +900,7 @@ int main(void)
         {test_header_name_value_and_total_limits_enforced},
         {test_max_body_length_enforced},
         {test_zero_header_limit_allows_no_headers},
+        {test_request_line_host_and_singleton_policy},
         {test_invalid_arguments},
         {test_parsed_path_can_feed_route_matcher},
         {test_stress_repeated_valid_requests_remain_bounded},

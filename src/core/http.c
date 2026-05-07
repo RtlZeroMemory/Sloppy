@@ -29,6 +29,7 @@ typedef struct SlHttpParseContext
     SlArena* arena;
     SlHttpHeader* headers;
     size_t max_headers;
+    size_t max_request_line_length;
     size_t max_target_length;
     size_t max_header_name_length;
     size_t max_header_value_length;
@@ -66,6 +67,7 @@ static SlStatusCode sl_http_status_code_for_diag(SlDiagCode code)
     case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
     case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
     case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
+    case SL_DIAG_HTTP_REQUEST_LINE_LIMIT:
     case SL_DIAG_HTTP_BODY_LIMIT:
         return SL_STATUS_CAPACITY_EXCEEDED;
     default:
@@ -76,6 +78,30 @@ static SlStatusCode sl_http_status_code_for_diag(SlDiagCode code)
 static bool sl_http_str_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
+}
+
+static SlStr sl_http_trim_ows(SlStr value)
+{
+    size_t start = 0U;
+    size_t end = value.length;
+
+    if (value.ptr == NULL && value.length != 0U) {
+        return sl_str_empty();
+    }
+
+    while (start < end && (value.ptr[start] == ' ' || value.ptr[start] == '\t')) {
+        start += 1U;
+    }
+    while (end > start && (value.ptr[end - 1U] == ' ' || value.ptr[end - 1U] == '\t')) {
+        end -= 1U;
+    }
+
+    return sl_str_from_parts(value.ptr == NULL ? NULL : value.ptr + start, end - start);
+}
+
+static bool sl_http_header_name_equal(SlStr name, const char* expected)
+{
+    return sl_str_equal_ci_ascii(name, sl_str_from_cstr(expected));
 }
 
 static SlStatus sl_http_set_error(SlHttpParseContext* ctx, SlDiagCode code, SlStr message,
@@ -584,10 +610,42 @@ static void sl_http_settings_prepare(llhttp_settings_t* settings)
     settings->on_message_complete = sl_http_on_message_complete;
 }
 
+static SlStatus sl_http_check_request_line_length(SlHttpParseContext* ctx, SlBytes bytes)
+{
+    size_t index = 0U;
+    size_t request_line_length = bytes.length;
+
+    if (ctx == NULL || (bytes.ptr == NULL && bytes.length != 0U)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < bytes.length; index += 1U) {
+        if (bytes.ptr[index] == '\r' && index + 1U < bytes.length && bytes.ptr[index + 1U] == '\n')
+        {
+            request_line_length = index;
+            break;
+        }
+    }
+
+    if (request_line_length > ctx->max_request_line_length) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_HTTP_REQUEST_LINE_LIMIT,
+            sl_http_literal("HTTP request line is too long",
+                            sizeof("HTTP request line is too long") - 1U),
+            sl_http_literal("the HTTP backend bounds method, target, and version line bytes",
+                            sizeof("the HTTP backend bounds method, target, and version line "
+                                   "bytes") -
+                                1U));
+    }
+
+    return sl_status_ok();
+}
+
 static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
                                        const SlHttpParseOptions* options)
 {
     size_t max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    size_t max_request_line_length = SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH;
     size_t max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     size_t max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
     size_t max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
@@ -600,6 +658,9 @@ static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
          * documented defaults so old callers keep the bounded alpha behavior.
          */
         max_headers = options->max_headers;
+        max_request_line_length = options->max_request_line_length == 0U
+                                      ? SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH
+                                      : options->max_request_line_length;
         max_target_length = options->max_target_length == 0U ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
                                                              : options->max_target_length;
         max_header_name_length = options->max_header_name_length == 0U
@@ -618,6 +679,7 @@ static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
     *ctx = (SlHttpParseContext){0};
     ctx->arena = arena;
     ctx->max_headers = max_headers;
+    ctx->max_request_line_length = max_request_line_length;
     ctx->max_target_length = max_target_length;
     ctx->max_header_name_length = max_header_name_length;
     ctx->max_header_value_length = max_header_value_length;
@@ -632,9 +694,16 @@ static SlStatus sl_http_parse_with_llhttp(SlHttpParseContext* ctx, SlBytes bytes
 {
     llhttp_settings_t settings;
     llhttp_errno_t parse_error = HPE_OK;
+    SlStatus status;
 
     if (ctx == NULL || out_parser == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_parser = (llhttp_t){0};
+
+    status = sl_http_check_request_line_length(ctx, bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     sl_http_settings_prepare(&settings);
@@ -671,6 +740,92 @@ static SlStatus sl_http_parse_with_llhttp(SlHttpParseContext* ctx, SlBytes bytes
     return sl_status_ok();
 }
 
+static SlStatus sl_http_validate_singleton_headers(SlHttpParseContext* ctx, const llhttp_t* parser)
+{
+    size_t index = 0U;
+    size_t host_count = 0U;
+    size_t content_length_count = 0U;
+    size_t transfer_encoding_count = 0U;
+    SlStr host_value = sl_str_empty();
+    bool has_content_length = false;
+    bool has_transfer_encoding = false;
+
+    if (ctx == NULL || parser == NULL || (ctx->header_count != 0U && ctx->headers == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < ctx->header_count; index += 1U) {
+        SlHttpHeader* header = &ctx->headers[index];
+        if (sl_http_header_name_equal(header->name, "Host")) {
+            host_count += 1U;
+            host_value = header->value;
+        }
+        else if (sl_http_header_name_equal(header->name, "Content-Length")) {
+            content_length_count += 1U;
+            has_content_length = true;
+        }
+        else if (sl_http_header_name_equal(header->name, "Transfer-Encoding")) {
+            transfer_encoding_count += 1U;
+            has_transfer_encoding = true;
+        }
+    }
+
+    if (parser->http_major == 1U && parser->http_minor == 1U) {
+        if (host_count != 1U || sl_str_is_empty(sl_http_trim_ows(host_value))) {
+            return sl_http_set_error(
+                ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+                sl_http_literal("HTTP/1.1 request Host header is invalid",
+                                sizeof("HTTP/1.1 request Host header is invalid") - 1U),
+                sl_http_literal("HTTP/1.1 requests must include exactly one non-empty Host "
+                                "header",
+                                sizeof("HTTP/1.1 requests must include exactly one non-empty Host "
+                                       "header") -
+                                    1U));
+        }
+    }
+    else if (host_count > 1U || (host_count == 1U && sl_str_is_empty(sl_http_trim_ows(host_value))))
+    {
+        return sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP Host header is invalid",
+                            sizeof("HTTP Host header is invalid") - 1U),
+            sl_http_literal("requests may include at most one non-empty Host header",
+                            sizeof("requests may include at most one non-empty Host header") - 1U));
+    }
+
+    if (content_length_count > 1U) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP Content-Length header is duplicated",
+                            sizeof("HTTP Content-Length header is duplicated") - 1U),
+            sl_http_literal("Content-Length is a singleton framing header",
+                            sizeof("Content-Length is a singleton framing header") - 1U));
+    }
+    if (transfer_encoding_count > 1U) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP Transfer-Encoding header is duplicated",
+                            sizeof("HTTP Transfer-Encoding header is duplicated") - 1U),
+            sl_http_literal("Transfer-Encoding is a singleton framing header in Sloppy's "
+                            "HTTP/1.1 alpha",
+                            sizeof("Transfer-Encoding is a singleton framing header in Sloppy's "
+                                   "HTTP/1.1 alpha") -
+                                1U));
+    }
+    if (has_content_length && has_transfer_encoding) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP Content-Length conflicts with Transfer-Encoding",
+                            sizeof("HTTP Content-Length conflicts with Transfer-Encoding") - 1U),
+            sl_http_literal("send either Content-Length or Transfer-Encoding: chunked, not both",
+                            sizeof("send either Content-Length or Transfer-Encoding: chunked, not "
+                                   "both") -
+                                1U));
+    }
+
+    return sl_status_ok();
+}
+
 static SlStatus sl_http_validate_parsed_request(SlHttpParseContext* ctx, const llhttp_t* parser,
                                                 SlHttpMethod* out_method)
 {
@@ -680,13 +835,13 @@ static SlStatus sl_http_validate_parsed_request(SlHttpParseContext* ctx, const l
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (parser->http_major != 1U) {
+    if (parser->http_major != 1U || parser->http_minor > 1U) {
         return sl_http_set_error(
             ctx, SL_DIAG_INVALID_HTTP_REQUEST,
             sl_http_literal("unsupported or missing HTTP version",
                             sizeof("unsupported or missing HTTP version") - 1U),
-            sl_http_literal("request heads must include an HTTP/1.x request line",
-                            sizeof("request heads must include an HTTP/1.x request line") - 1U));
+            sl_http_literal("request heads must use HTTP/1.0 or HTTP/1.1",
+                            sizeof("request heads must use HTTP/1.0 or HTTP/1.1") - 1U));
     }
 
     if (ctx->raw_target.length == 0U) {
@@ -706,6 +861,13 @@ static SlStatus sl_http_validate_parsed_request(SlHttpParseContext* ctx, const l
                             sizeof("HTTP request target must be an absolute path") - 1U),
             sl_http_literal("origin-form request targets must start with /",
                             sizeof("origin-form request targets must start with /") - 1U));
+    }
+
+    {
+        SlStatus header_status = sl_http_validate_singleton_headers(ctx, parser);
+        if (!sl_status_is_ok(header_status)) {
+            return header_status;
+        }
     }
 
     method = sl_http_method_from_llhttp((llhttp_method_t)parser->method);

@@ -44,7 +44,8 @@ Current implementation supports a narrow compiler/runtime subset:
 - deterministic Plan/artifact/source-map emission;
 - artifact validation and V8-gated artifact execution;
 - bounded route dispatch and supported result descriptors;
-- minimal route/query/request context in scoped runtime lanes;
+- route/query/request/connection context in scoped runtime lanes;
+- bounded HTTP/1.1 server config controls for the development runtime;
 - feature-gated core API facades where bridge support exists;
 - metadata CLI commands such as routes, doctor, audit, and OpenAPI skeleton output.
 

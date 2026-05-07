@@ -110,6 +110,7 @@ typedef struct SlHttpBackend
     size_t active_connections;
     size_t active_requests;
     uint64_t next_connection_id;
+    uint64_t next_request_id;
 } SlHttpBackend;
 
 typedef struct SlHttpConnection
@@ -128,6 +129,7 @@ typedef struct SlHttpRequestLifecycle
     /* Borrowed connection and arena; both must outlive this request lifecycle. */
     SlHttpConnection* connection;
     SlArena* arena;
+    uint64_t id;
     SlHttpRequestState state;
     /* Arena-owned parsed request head, cleared by sl_http_request_close. */
     SlHttpRequestHead head;
@@ -195,8 +197,9 @@ SlStatus sl_http_request_parse_head(SlHttpRequestLifecycle* request, SlBytes byt
  * This is backend/platform plumbing, not a JavaScript streaming body API. The caller supplies
  * the declared content type and content length before appending chunks. Empty bodies require no
  * content type. Non-empty bodies currently support application/json, application subtypes ending
- * in +json, and text/plain only. On success, `request->head.body` borrows arena storage owned by
- * the request lifecycle until `sl_http_request_close` or arena reset. Cancellation, timeout,
+ * in +json, text/plain, and application/octet-stream only. On success, `request->head.body`
+ * borrows arena storage owned by the request lifecycle until `sl_http_request_close` or arena
+ * reset. Cancellation, timeout,
  * shutdown, body limit, content-length mismatch, and unsupported media failures reset body
  * allocations and transition the request to a terminal cleanup path exactly once.
  */

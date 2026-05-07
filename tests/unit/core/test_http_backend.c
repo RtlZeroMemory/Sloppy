@@ -226,7 +226,9 @@ static int test_parser_limits_flow_through_backend_options(void)
         return 41;
     }
     if (expect_status(sl_http_request_parse_head(
-                          &request, bytes_from_cstr("GET /toolong HTTP/1.1\r\n\r\n"), &diag),
+                          &request,
+                          bytes_from_cstr("GET /toolong HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_TARGET_LIMIT)
     {
@@ -345,8 +347,9 @@ static int test_keep_alive_disabled_rejects_second_request(void)
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin(&connection, &first_arena, &first_request, NULL),
                       SL_STATUS_OK) != 0 ||
-        expect_status(sl_http_request_parse_head(&first_request,
-                                                 bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+        expect_status(sl_http_request_parse_head(
+                          &first_request,
+                          bytes_from_cstr("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin_dispatch(&first_request, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin_write(&first_request, NULL), SL_STATUS_OK) != 0 ||
@@ -488,10 +491,12 @@ static int test_request_lifecycle_rejects_skipped_and_repeated_phases(void)
     if (expect_status(sl_http_request_begin_dispatch(&request, NULL), SL_STATUS_INVALID_STATE) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_INVALID_STATE) != 0 ||
         expect_status(sl_http_request_begin_dispatch(&request, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_complete(&request, NULL), SL_STATUS_INVALID_STATE) != 0 ||
@@ -522,7 +527,8 @@ static int test_body_reader_success_empty_and_dispatch_transition(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0)
     {
         return 69;
@@ -560,7 +566,8 @@ static int test_body_reader_success_owns_bounded_json_body(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0)
     {
         return 71;
@@ -616,7 +623,8 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0)
     {
         return 73;
@@ -638,25 +646,8 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
     if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
-            SL_STATUS_OK) != 0 ||
-        expect_status(
-            sl_http_request_body_reader_begin(
-                &request, sl_str_from_cstr("application/octet-stream"), 3U, &reader, &diag),
-            SL_STATUS_UNSUPPORTED) != 0 ||
-        diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE || backend.active_requests != 0U)
-    {
-        return 75;
-    }
-
-    connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
-    sl_arena_reset(&arena);
-    request = (SlHttpRequestLifecycle){0};
-    diag = (SlDiag){0};
-    if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
-            0 ||
-        expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(
                           &request, sl_str_from_cstr("application/+json"), 3U, &reader, &diag),
@@ -673,7 +664,8 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
     if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
                                                         3U, &reader, NULL),
@@ -694,7 +686,8 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
     if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
                                                         3U, &reader, NULL),
@@ -704,6 +697,47 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
         diag.code != SL_DIAG_INVALID_HTTP_REQUEST || backend.active_requests != 0U)
     {
         return 88;
+    }
+
+    return 0;
+}
+
+static int test_body_reader_accepts_octet_stream_media_type(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpBodyReader reader = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, NULL) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_request_body_reader_begin(
+                &request, sl_str_from_cstr("application/octet-stream"), 3U, &reader, &diag),
+            SL_STATUS_OK) != 0 ||
+        reader.body_kind != SL_HTTP_REQUEST_BODY_BYTES || diag.code != SL_DIAG_NONE ||
+        backend.active_requests != 1U)
+    {
+        return 75;
+    }
+
+    if (expect_status(sl_http_request_body_reader_close(&reader, &diag), SL_STATUS_OK) != 0 ||
+        backend.active_requests != 1U ||
+        expect_status(sl_http_request_fail(&request, NULL), SL_STATUS_OK) != 0 ||
+        backend.active_requests != 0U)
+    {
+        return 76;
     }
 
     return 0;
@@ -726,7 +760,8 @@ static int test_body_reader_accepts_mixed_case_json_media_type(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0)
     {
         return 90;
@@ -768,7 +803,8 @@ static int test_body_reader_cancellation_timeout_and_shutdown(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0)
     {
         return 76;
@@ -794,7 +830,8 @@ static int test_body_reader_cancellation_timeout_and_shutdown(void)
     if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
                                                         3U, &reader, NULL),
@@ -817,7 +854,8 @@ static int test_body_reader_cancellation_timeout_and_shutdown(void)
     if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
                                                         3U, &reader, NULL),
@@ -849,7 +887,8 @@ static int test_dispatch_rejects_backend_shutdown_after_body_read(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_backend_stop(&backend, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin_dispatch(&request, &diag), SL_STATUS_CANCELLED) != 0)
@@ -925,7 +964,8 @@ static int test_shutdown_during_response_write_and_diagnostic_name(void)
         expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(
-            sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("GET / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin_dispatch(&request, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_begin_write(&request, NULL), SL_STATUS_OK) != 0 ||
@@ -1092,13 +1132,19 @@ static int test_stress_repeated_body_policy_failures_are_deterministic(void)
         if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
                           SL_STATUS_OK) != 0 ||
             expect_status(sl_http_request_parse_head(
-                              &request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+                              &request,
+                              bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                              NULL),
                           SL_STATUS_OK) != 0 ||
             expect_status(
                 sl_http_request_body_reader_begin(
                     &request, sl_str_from_cstr("application/octet-stream"), 3U, &reader, &diag),
-                SL_STATUS_UNSUPPORTED) != 0 ||
-            diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE || backend.active_requests != 0U)
+                SL_STATUS_OK) != 0 ||
+            reader.body_kind != SL_HTTP_REQUEST_BODY_BYTES || diag.code != SL_DIAG_NONE ||
+            backend.active_requests != 1U ||
+            expect_status(sl_http_request_body_reader_close(&reader, &diag), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_fail(&request, NULL), SL_STATUS_OK) != 0 ||
+            backend.active_requests != 0U)
         {
             return 121;
         }
@@ -1113,7 +1159,9 @@ static int test_stress_repeated_body_policy_failures_are_deterministic(void)
         if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
                           SL_STATUS_OK) != 0 ||
             expect_status(sl_http_request_parse_head(
-                              &request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+                              &request,
+                              bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                              NULL),
                           SL_STATUS_OK) != 0 ||
             expect_status(sl_http_request_body_reader_begin(
                               &request, sl_str_from_cstr("text/plain"), 5U, &reader, &diag),
@@ -1255,6 +1303,7 @@ int main(void)
         {test_body_reader_success_empty_and_dispatch_transition},
         {test_body_reader_success_owns_bounded_json_body},
         {test_body_reader_rejects_limits_and_unsupported_media},
+        {test_body_reader_accepts_octet_stream_media_type},
         {test_body_reader_accepts_mixed_case_json_media_type},
         {test_body_reader_cancellation_timeout_and_shutdown},
         {test_dispatch_rejects_backend_shutdown_after_body_read},
