@@ -1,6 +1,7 @@
 # Validation Errors Example
 
-Status: Plan/OpenAPI metadata example for schema-backed body bindings.
+Status: Plan/OpenAPI metadata example plus native Plan-backed validation fixture for
+schema-backed body bindings.
 
 Build artifacts from this directory:
 
@@ -21,10 +22,11 @@ Route:
 - `POST /users`
 
 The example proves schema declaration extraction, `ctx.body.json(UserCreate)` request body
-metadata, validation problem OpenAPI components, and explicit partial/known metadata
-reporting. `invalid-user.http` is a documentation fixture for the intended invalid
-request shape.
+metadata, validation problem OpenAPI components, explicit partial/known metadata reporting,
+and the request shape consumed by the native Plan-backed validation foundation.
+`invalid-user.http` is a documentation fixture for the intended invalid request shape.
 
-Runtime schema validation is not implemented in this slice; do not treat this directory as
-a production request-validation runtime. It does not prove native JSON fast paths,
-semantic validation responses, public alpha readiness, or production HTTP behavior.
+The native runtime now has a bounded Plan-backed validation path for route/query/header
+scalars and schema-backed JSON request bodies. This directory still does not prove typed
+handler execution, provider/DI integration, custom validators, native JSON fast paths,
+public alpha readiness, or production HTTP behavior.

@@ -17,6 +17,7 @@
 #include "sloppy/http_dispatch.h"
 
 #include "sloppy/http_context.h"
+#include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
 
 #include "sloppy/checked_math.h"
@@ -627,6 +628,7 @@ static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* p
         }
         entries[entry_count].binding.pattern = &entries[entry_count].pattern;
         entries[entry_count].binding.handler_id = route->handler_id;
+        entries[entry_count].binding.route_index = index;
         entries[entry_count].source_order = index;
         entries[entry_count].has_params = entries[entry_count].binding.pattern->param_count != 0U;
         entry_count += 1U;
@@ -865,6 +867,14 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.route_param_count = route_match.param_count;
     request_context.query_params = query.params;
     request_context.query_param_count = query.param_count;
+
+    if (binding->route_index < plan->route_count) {
+        status = sl_request_validation_validate(arena, plan, &plan->routes[binding->route_index],
+                                                &request_context, out_result, out_diag);
+        if (!sl_status_is_ok(status) || out_result->kind != SL_ENGINE_RESULT_NONE) {
+            return status;
+        }
+    }
 
     return sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
                                                          &request_context, out_result, out_diag);

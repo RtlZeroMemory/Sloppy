@@ -490,6 +490,9 @@ static int test_http_code_names(void)
         {SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, "SLOPPY_E_HTTP_TLS_BACKEND_UNAVAILABLE"},
         {SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, "SLOPPY_E_HTTP_TLS_HANDSHAKE_FAILED"},
         {SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, "SLOPPY_E_HTTP_TLS_SHUTDOWN_FAILED"},
+        {SL_DIAG_REQUEST_BINDING_FAILED, "SLOPPY_E_REQUEST_BINDING_FAILED"},
+        {SL_DIAG_REQUEST_VALIDATION_FAILED, "SLOPPY_E_REQUEST_VALIDATION_FAILED"},
+        {SL_DIAG_UNSUPPORTED_MODEL_SCHEMA, "SLOPPY_E_UNSUPPORTED_MODEL_SCHEMA"},
         {SL_DIAG_UNKNOWN_RUNTIME_FEATURE, "SLOPPY_E_UNKNOWN_RUNTIME_FEATURE"},
         {SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE, "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE"},
         {SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING,
@@ -1514,7 +1517,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1523,7 +1526,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;

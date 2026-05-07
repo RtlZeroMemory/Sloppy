@@ -39,8 +39,8 @@ typedef uint32_t SlHandlerId;
  * bytes available.
  *
  * All SlStr fields below are borrowed views. They do not require NUL termination and remain
- * valid only for the caller-documented plan lifetime. The handler, route, provider,
- * capability, and SlPlanRequiredFeature arrays exposed through SlPlan.required_features are
+ * valid only for the caller-documented plan lifetime. The handler, route, route-binding,
+ * schema, provider, capability, and SlPlanRequiredFeature arrays exposed through SlPlan are
  * borrowed and caller-owned; SlPlan never allocates, copies, or frees them.
  */
 typedef struct SlPlanTarget
@@ -76,7 +76,87 @@ typedef struct SlPlanRoute
     SlStr pattern;
     SlHandlerId handler_id;
     SlStr name;
+    const struct SlPlanRequestBinding* bindings;
+    size_t binding_count;
 } SlPlanRoute;
+
+typedef enum SlPlanRequestBindingKind
+{
+    SL_PLAN_REQUEST_BINDING_UNKNOWN = 0,
+    SL_PLAN_REQUEST_BINDING_ROUTE = 1,
+    SL_PLAN_REQUEST_BINDING_QUERY = 2,
+    SL_PLAN_REQUEST_BINDING_BODY_JSON = 3,
+    SL_PLAN_REQUEST_BINDING_HEADER = 4,
+    SL_PLAN_REQUEST_BINDING_CONTEXT = 5,
+    SL_PLAN_REQUEST_BINDING_INJECTION = 6
+} SlPlanRequestBindingKind;
+
+typedef struct SlPlanRequestBinding
+{
+    SlPlanRequestBindingKind kind;
+    SlStr parameter;
+    SlStr name;
+    SlStr schema;
+    SlStr type;
+    bool redacted;
+} SlPlanRequestBinding;
+
+typedef enum SlPlanSchemaKind
+{
+    SL_PLAN_SCHEMA_UNKNOWN = 0,
+    SL_PLAN_SCHEMA_OBJECT = 1,
+    SL_PLAN_SCHEMA_STRING = 2,
+    SL_PLAN_SCHEMA_NUMBER = 3,
+    SL_PLAN_SCHEMA_BOOLEAN = 4,
+    SL_PLAN_SCHEMA_INT = 5,
+    SL_PLAN_SCHEMA_ARRAY = 6,
+    SL_PLAN_SCHEMA_LITERAL_UNION = 7,
+    SL_PLAN_SCHEMA_LITERAL = 8,
+    SL_PLAN_SCHEMA_NULL = 9
+} SlPlanSchemaKind;
+
+typedef enum SlPlanSchemaLiteralKind
+{
+    SL_PLAN_SCHEMA_LITERAL_NONE = 0,
+    SL_PLAN_SCHEMA_LITERAL_STRING = 1,
+    SL_PLAN_SCHEMA_LITERAL_NUMBER = 2,
+    SL_PLAN_SCHEMA_LITERAL_BOOLEAN = 3
+} SlPlanSchemaLiteralKind;
+
+typedef struct SlPlanSchemaNode SlPlanSchemaNode;
+
+typedef struct SlPlanSchemaProperty
+{
+    SlStr name;
+    SlPlanSchemaNode* schema;
+} SlPlanSchemaProperty;
+
+typedef struct SlPlanSchemaNode
+{
+    SlPlanSchemaKind kind;
+    bool optional;
+    bool nullable;
+    bool secret;
+    bool has_min;
+    int64_t min_value;
+    SlStr semantic;
+    SlStr validation;
+    const SlPlanSchemaProperty* properties;
+    size_t property_count;
+    const SlPlanSchemaNode* items;
+    const SlPlanSchemaNode* variants;
+    size_t variant_count;
+    SlPlanSchemaLiteralKind literal_kind;
+    SlStr literal_string;
+    double literal_number;
+    bool literal_boolean;
+} SlPlanSchemaNode;
+
+typedef struct SlPlanSchema
+{
+    SlStr name;
+    SlPlanSchemaNode definition;
+} SlPlanSchema;
 
 typedef struct SlPlanDataProvider
 {
@@ -113,6 +193,8 @@ typedef struct SlPlan
     size_t handler_count;
     const SlPlanRoute* routes;
     size_t route_count;
+    const SlPlanSchema* schemas;
+    size_t schema_count;
     const SlPlanDataProvider* data_providers;
     size_t data_provider_count;
     const SlPlanCapability* capabilities;
@@ -172,12 +254,13 @@ bool sl_plan_has_duplicate_capability_tokens(const SlPlan* plan);
  * bytes. It remains valid until `arena` is reset or its caller-owned backing storage ends.
  *
  * The helper interns only stable metadata: version/target strings, artifact identifiers,
- * handler names, route methods/patterns/names, provider/capability tokens, provider names,
- * service names, capability kind/access/provider metadata, and required runtime feature
- * identifiers. It intentionally does not intern artifact paths, hashes, source-map paths,
- * provider database names, request data, secrets, connection strings, or transient diagnostics.
- * Byte equality remains the
- * correctness rule; intern symbols are only a lookup/ownership aid.
+ * handler names, route methods/patterns/names, route binding names/types/schema references,
+ * schema names/property names/semantic markers/literal values, provider/capability tokens,
+ * provider names, service names, capability kind/access/provider metadata, and required
+ * runtime feature identifiers. It intentionally does not intern artifact paths, hashes,
+ * source-map paths, provider database names, request data, secrets, connection strings, or
+ * transient diagnostics. Byte equality remains the correctness rule; intern symbols are only
+ * a lookup/ownership aid.
  *
  * On failure, `out_plan` and `out_table` are left unchanged and allocations made by this
  * helper are rolled back to the entry arena mark. The input `plan` is never mutated unless
@@ -194,10 +277,10 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
  * may be NULL. The parser performs no file I/O, no platform calls, and no runtime
  * compatibility checks beyond the documented minimal shape.
  *
- * On success, all strings and the handler array stored in `*out_plan` are arena-owned and
- * remain valid until `arena` is reset or its caller-owned backing buffer ends. On failure,
- * `*out_plan` is cleared where practical. If `out_diag` is provided, it receives an
- * arena-owned diagnostic describing the failure.
+ * On success, parsed strings, arrays, and schema graphs stored in `*out_plan` are
+ * arena-owned and remain valid until `arena` is reset or its caller-owned backing buffer
+ * ends. On failure, `*out_plan` is cleared where practical. If `out_diag` is provided, it
+ * receives an arena-owned diagnostic describing the failure.
  */
 SlStatus sl_plan_parse_json(SlArena* arena, SlBytes json, const SlPlanParseOptions* options,
                             SlPlan* out_plan, SlDiag* out_diag);

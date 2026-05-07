@@ -285,7 +285,7 @@ Backpressure/rejection:
 | Route precedence | literal before parameter, stable source order for ties, ambiguity diagnostics | optimized trie/catch-all/optional/regex |
 | Query | decoded scalar strings, last-wins repeated keys, bounded pairs | arrays and typed binding |
 | Headers | case-insensitive `get`, deterministic entries, bounds | cookie helpers/structured headers |
-| JSON body | `application/json` and `application/*+json`, bounded, malformed JSON -> 400 | schema validation/coercion |
+| JSON body | `application/json` and `application/*+json`, bounded, malformed JSON -> 400, Plan-backed schema validation for supported metadata | broader coercion/custom validation |
 | Text body | bounded UTF-8 text reads | form parsing, streaming bodies |
 | Multipart/upload | unsupported with clear 415/501-style response | file uploads/streaming |
 | Result serialization | text, JSON, empty, problem, status, custom headers | files, streams, redirects, cookies |

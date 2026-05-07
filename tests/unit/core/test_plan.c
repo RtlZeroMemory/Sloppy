@@ -244,12 +244,21 @@ static void init_interning_test_plan(SlPlan* plan, SlPlanHandler* handlers, SlPl
 
 static int test_plan_metadata_interns_stable_strings(void)
 {
-    unsigned char arena_storage[4096];
+    unsigned char arena_storage[8192];
     SlArena arena = {0};
     SlPlanHandler handlers[1] = {
         {1U, sl_str_from_cstr("__sloppy_handler_1"), sl_str_from_cstr("home")}};
-    SlPlanRoute routes[1] = {
-        {sl_str_from_cstr("GET"), sl_str_from_cstr("/"), 1U, sl_str_from_cstr("home")}};
+    SlPlanRequestBinding bindings[1] = {
+        {SL_PLAN_REQUEST_BINDING_BODY_JSON, sl_str_from_cstr("input"), sl_str_from_cstr("input"),
+         sl_str_from_cstr("UserCreate"), sl_str_from_cstr("Body<UserCreate>"), false}};
+    SlPlanRoute routes[1] = {{sl_str_from_cstr("GET"), sl_str_from_cstr("/"), 1U,
+                              sl_str_from_cstr("home"), bindings, 1U}};
+    SlPlanSchemaNode property_node = {.kind = SL_PLAN_SCHEMA_STRING,
+                                      .validation = sl_str_from_cstr("email")};
+    SlPlanSchemaProperty properties[1] = {{sl_str_from_cstr("email"), &property_node}};
+    SlPlanSchema schemas[1] = {
+        {sl_str_from_cstr("UserCreate"),
+         {.kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 1U}}};
     SlPlanDataProvider providers[1] = {
         {sl_str_from_cstr("main.db"), sl_str_from_cstr("sqlite"), sl_str_from_cstr("main.db.read"),
          sl_str_from_cstr("db.service"), sl_str_from_cstr("sensitive-ish-database-name")}};
@@ -263,13 +272,15 @@ static int test_plan_metadata_interns_stable_strings(void)
     SlStatus status;
 
     init_interning_test_plan(&plan, handlers, routes, providers, capabilities, required_features);
+    plan.schemas = schemas;
+    plan.schema_count = 1U;
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
         return 70;
     }
 
-    status = sl_plan_intern_metadata(&arena, &plan, 32U, 16U, &interned_plan, &table);
+    status = sl_plan_intern_metadata(&arena, &plan, 64U, 32U, &interned_plan, &table);
     if (expect_status(status, SL_STATUS_OK) != 0) {
         return 71;
     }
@@ -294,6 +305,21 @@ static int test_plan_metadata_interns_stable_strings(void)
     }
     if (interned_plan.required_features[0].id.ptr == plan.required_features[0].id.ptr) {
         return 78;
+    }
+    if (interned_plan.routes[0].bindings == plan.routes[0].bindings ||
+        interned_plan.schemas == plan.schemas ||
+        interned_plan.schemas[0].definition.properties == plan.schemas[0].definition.properties)
+    {
+        return 80;
+    }
+    if (interned_plan.routes[0].bindings[0].schema.ptr != interned_plan.schemas[0].name.ptr) {
+        return 81;
+    }
+    if (interned_plan.schemas[0].definition.properties[0].schema == &property_node ||
+        interned_plan.schemas[0].definition.properties[0].schema->validation.ptr ==
+            property_node.validation.ptr)
+    {
+        return 82;
     }
     if (interned_plan.bundle.path.ptr != plan.bundle.path.ptr ||
         interned_plan.bundle.hash.ptr != plan.bundle.hash.ptr ||

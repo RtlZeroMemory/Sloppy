@@ -2,8 +2,8 @@
 
 #include <stdio.h>
 
-#define TEST_ARENA_SIZE 8192U
-#define TEST_JSON_SIZE 8192U
+#define TEST_ARENA_SIZE 65536U
+#define TEST_JSON_SIZE 65536U
 
 typedef struct ValidFixtureCase
 {
@@ -445,6 +445,105 @@ static int test_valid_os_capability_accesses_fixture(void)
     return expect_valid_os_capability_accesses(&plan);
 }
 
+static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status =
+        parse_fixture("compiler/tests/fixtures/framework-v2-metadata/expected/app.plan.json", &plan,
+                      &diag, arena_storage, sizeof(arena_storage));
+    const SlPlanRoute* post_route = NULL;
+    const SlPlanRoute* get_route = NULL;
+    const SlPlanSchema* user_create = NULL;
+    size_t index = 0U;
+
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 2;
+    }
+    if (plan.route_count != 2U || plan.schema_count != 2U) {
+        return 3;
+    }
+
+    post_route = &plan.routes[0];
+    get_route = &plan.routes[1];
+    if (!sl_str_equal(post_route->method, sl_str_from_cstr("POST")) ||
+        !sl_str_equal(post_route->pattern, sl_str_from_cstr("/users")) ||
+        post_route->binding_count != 6U)
+    {
+        return 4;
+    }
+    if (post_route->bindings[0].kind != SL_PLAN_REQUEST_BINDING_BODY_JSON ||
+        !sl_str_equal(post_route->bindings[0].parameter, sl_str_from_cstr("input")) ||
+        !sl_str_equal(post_route->bindings[0].schema, sl_str_from_cstr("UserCreate")) ||
+        post_route->bindings[1].kind != SL_PLAN_REQUEST_BINDING_INJECTION ||
+        !sl_str_equal(post_route->bindings[1].name, sl_str_from_cstr("main")) ||
+        post_route->bindings[5].kind != SL_PLAN_REQUEST_BINDING_CONTEXT)
+    {
+        return 5;
+    }
+    if (!sl_str_equal(get_route->method, sl_str_from_cstr("GET")) ||
+        !sl_str_equal(get_route->pattern, sl_str_from_cstr("/users/{id}")) ||
+        get_route->binding_count != 6U)
+    {
+        return 6;
+    }
+    if (get_route->bindings[0].kind != SL_PLAN_REQUEST_BINDING_ROUTE ||
+        !sl_str_equal(get_route->bindings[0].name, sl_str_from_cstr("id")) ||
+        get_route->bindings[1].kind != SL_PLAN_REQUEST_BINDING_HEADER ||
+        !sl_str_equal(get_route->bindings[1].name, sl_str_from_cstr("x-trace-id")) ||
+        get_route->bindings[2].kind != SL_PLAN_REQUEST_BINDING_QUERY ||
+        !sl_str_equal(get_route->bindings[2].name, sl_str_from_cstr("includeDeleted")) ||
+        get_route->bindings[3].kind != SL_PLAN_REQUEST_BINDING_BODY_JSON)
+    {
+        return 7;
+    }
+
+    for (index = 0U; index < plan.schema_count; index += 1U) {
+        if (sl_str_equal(plan.schemas[index].name, sl_str_from_cstr("UserCreate"))) {
+            user_create = &plan.schemas[index];
+        }
+    }
+    if (user_create == NULL || user_create->definition.kind != SL_PLAN_SCHEMA_OBJECT ||
+        user_create->definition.property_count != 10U)
+    {
+        return 8;
+    }
+    for (index = 0U; index < user_create->definition.property_count; index += 1U) {
+        const SlPlanSchemaProperty* property = &user_create->definition.properties[index];
+
+        if (sl_str_equal(property->name, sl_str_from_cstr("email")) &&
+            (property->schema->kind != SL_PLAN_SCHEMA_STRING ||
+             !sl_str_equal(property->schema->validation, sl_str_from_cstr("email"))))
+        {
+            return 9;
+        }
+        if (sl_str_equal(property->name, sl_str_from_cstr("password")) &&
+            (property->schema->kind != SL_PLAN_SCHEMA_STRING || !property->schema->secret ||
+             !property->schema->has_min || property->schema->min_value != 8))
+        {
+            return 10;
+        }
+        if (sl_str_equal(property->name, sl_str_from_cstr("profile")) &&
+            (property->schema->kind != SL_PLAN_SCHEMA_OBJECT || !property->schema->optional ||
+             property->schema->property_count != 2U))
+        {
+            return 11;
+        }
+        if (sl_str_equal(property->name, sl_str_from_cstr("role")) &&
+            (property->schema->kind != SL_PLAN_SCHEMA_LITERAL_UNION ||
+             property->schema->variant_count != 2U))
+        {
+            return 12;
+        }
+    }
+
+    return 0;
+}
+
 static int test_invalid_fixture_matrix(void)
 {
     static const InvalidFixtureCase cases[] = {
@@ -689,6 +788,11 @@ int main(void)
     }
 
     result = test_valid_os_capability_accesses_fixture();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_framework_v2_metadata_bindings_and_schemas_fixture();
     if (result != 0) {
         return result;
     }
