@@ -25,6 +25,9 @@ integration. This test is not a Node compatibility claim.
 CTest also registers `data.sqlite.provider`, which executes the native SQLite provider
 against `:memory:` databases and covers open/close, exec/query/queryOne, parameter binding,
 transactions, and diagnostics.
+The `bootstrap.stdlib.codec_properties` CTest check runs deterministic property coverage
+for Base64/Base64Url/Hex/UTF-8/Binary roundtrips, invalid input diagnostics, and embedded
+NUL preservation. This is default-safe fuzz/property evidence, not long fuzzing.
 The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
 `examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`,
 `examples.sqlite_basic.api_shape`, `examples.time.api_shape`, `examples.crypto.api_shape`,
@@ -32,7 +35,10 @@ The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
 documented API shape without requiring Node, npm, compiler extraction, app-plan emission,
 JavaScript provider connections, external network access, or unrelated runtime behavior.
 
-Future suites:
-
-- fuzz tests for parsers and untrusted input boundaries;
-- sanitizer configurations in CI.
+TEST-PLATFORM-01 adds `tools/windows/check-test-governance.ps1`, source-input fixture
+metadata executed by `tools/windows/test-source-input-fixtures.ps1`, package
+outside-checkout fixture metadata with prebuilt artifact evidence, cross-API conformance
+indexing, V8 bridge test templates, resource/lifecycle conformance aliases, and
+deterministic fuzz seed replay under `tests/fuzz`. libFuzzer, sanitizer, long fuzz,
+stress/torture, live-provider, package, V8-gated, and benchmark lanes remain separately
+reported.

@@ -13,6 +13,7 @@ option(SLOPPY_ENABLE_WERROR "Treat compiler warnings as errors." OFF)
 option(SLOPPY_ENABLE_ASAN "Enable AddressSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_TSAN "Enable ThreadSanitizer where supported." OFF)
+option(SLOPPY_ENABLE_LIBFUZZER "Build opt-in libFuzzer targets for fuzz/property lanes." OFF)
 option(SLOPPY_BUILD_COMPILER "Add the sloppyc Rust compiler target when Cargo is available." ON)
 option(SLOPPY_ENABLE_V8 "Enable the phase-gated V8 bridge SDK integration." OFF)
 if(WIN32)
@@ -28,6 +29,26 @@ option(
 set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.")
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
+set(SLOPPY_PACKAGE_ARCHIVE "" CACHE FILEPATH "Optional Sloppy package archive for package lane smoke tests.")
+if(SLOPPY_ENABLE_LIBFUZZER AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "SLOPPY_ENABLE_LIBFUZZER requires a Clang-family C compiler.")
+endif()
+set(SLOPPY_CLANG_FUZZER_LIB "")
+if(SLOPPY_ENABLE_LIBFUZZER AND MSVC)
+    execute_process(
+        COMMAND "${CMAKE_C_COMPILER}" -print-resource-dir
+        OUTPUT_VARIABLE SLOPPY_CLANG_RESOURCE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE SLOPPY_CLANG_RESOURCE_RESULT)
+    if(NOT SLOPPY_CLANG_RESOURCE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Could not locate the Clang resource directory for libFuzzer.")
+    endif()
+    set(SLOPPY_CLANG_FUZZER_LIB
+        "${SLOPPY_CLANG_RESOURCE_DIR}/lib/windows/clang_rt.fuzzer-x86_64.lib")
+    if(NOT EXISTS "${SLOPPY_CLANG_FUZZER_LIB}")
+        message(FATAL_ERROR "Clang libFuzzer runtime was not found: ${SLOPPY_CLANG_FUZZER_LIB}")
+    endif()
+endif()
 set(SLOPPY_V8_EXPECTED_REVISION "7221f49fdb6c89cce6be08005732ebcab3c45b38")
 set(SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION "af4386908c3762433d412689038de6e6333f5921")
 set(SLOPPY_BOOTSTRAP_SOURCE_DIR "${PROJECT_SOURCE_DIR}/stdlib/sloppy")
@@ -660,6 +681,14 @@ endif()
 
 if(SLOPPY_ENABLE_TESTS)
     include(CTest)
+    find_program(SLOPPY_POWERSHELL_EXECUTABLE NAMES pwsh powershell powershell.exe)
+    if(SLOPPY_POWERSHELL_EXECUTABLE)
+        set(SLOPPY_POWERSHELL_ARGS -NoProfile)
+        if(WIN32)
+            list(APPEND SLOPPY_POWERSHELL_ARGS -ExecutionPolicy Bypass)
+        endif()
+        list(APPEND SLOPPY_POWERSHELL_ARGS -File)
+    endif()
 
     function(sloppy_add_c_unit_test target_name test_name source_file)
         add_executable(${target_name} ${source_file})
@@ -680,6 +709,59 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_apply_sanitizers(${target_name})
         add_test(NAME ${test_name} COMMAND ${target_name})
     endfunction()
+
+    function(sloppy_add_fuzz_seed_replay target_name test_name source_file corpus_name)
+        file(
+            GLOB
+            seed_files
+            CONFIGURE_DEPENDS
+            "${PROJECT_SOURCE_DIR}/tests/fuzz/corpus/${corpus_name}/*")
+        if(NOT seed_files)
+            message(FATAL_ERROR "fuzz seed corpus '${corpus_name}' has no committed seeds")
+        endif()
+
+        add_executable(${target_name} ${source_file})
+        target_link_libraries(${target_name} PRIVATE sloppy_core)
+        target_include_directories(
+            ${target_name} PRIVATE "${PROJECT_SOURCE_DIR}/include"
+                                   "${PROJECT_SOURCE_DIR}/tests/fuzz")
+        target_compile_features(${target_name} PRIVATE c_std_17)
+        target_compile_definitions(${target_name} PRIVATE SLOPPY_FUZZ_STANDALONE=1)
+        sloppy_apply_warnings(${target_name})
+        sloppy_apply_sanitizers(${target_name})
+        add_test(NAME ${test_name} COMMAND ${target_name} ${seed_files})
+        set_tests_properties(
+            ${test_name}
+            PROPERTIES LABELS "fuzz;property;seed-replay"
+                       WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endfunction()
+
+    function(sloppy_add_libfuzzer_target target_name source_file)
+        if(NOT SLOPPY_ENABLE_LIBFUZZER)
+            return()
+        endif()
+
+        add_executable(${target_name} ${source_file})
+        target_link_libraries(${target_name} PRIVATE sloppy_core)
+        target_include_directories(
+            ${target_name} PRIVATE "${PROJECT_SOURCE_DIR}/include"
+                                   "${PROJECT_SOURCE_DIR}/tests/fuzz")
+        target_compile_features(${target_name} PRIVATE c_std_17)
+        target_compile_options(${target_name} PRIVATE -fsanitize=fuzzer)
+        if(MSVC)
+            target_link_libraries(${target_name} PRIVATE "${SLOPPY_CLANG_FUZZER_LIB}")
+        else()
+            target_link_options(${target_name} PRIVATE -fsanitize=fuzzer)
+        endif()
+        sloppy_apply_warnings(${target_name})
+        sloppy_apply_sanitizers(${target_name})
+    endfunction()
+
+    add_test(
+        NAME docs.test_platform_contract
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_test_platform_contract.cmake")
+    set_tests_properties(docs.test_platform_contract PROPERTIES LABELS "docs;test-platform")
 
     sloppy_add_c_unit_test(core_status_basic core.status.basic tests/unit/core/test_status.c)
     sloppy_add_c_unit_test(
@@ -867,6 +949,34 @@ if(SLOPPY_ENABLE_TESTS)
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    add_test(
+        NAME conformance.foundation.resource_lifecycle
+        COMMAND $<TARGET_FILE:core_resource_lifecycle>)
+    set_tests_properties(
+        conformance.foundation.resource_lifecycle
+        PROPERTIES LABELS "conformance;resource-lifecycle;shutdown")
+    add_test(
+        NAME conformance.foundation.app_host_lifecycle
+        COMMAND $<TARGET_FILE:core_app_host_hardening>)
+    set_tests_properties(
+        conformance.foundation.app_host_lifecycle
+        PROPERTIES LABELS "conformance;resource-lifecycle;shutdown")
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_plan_parse fuzz.plan_parse.seed_replay tests/fuzz/fuzz_plan_parse.c plan)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_route_pattern fuzz.route_pattern.seed_replay tests/fuzz/fuzz_route_pattern.c
+        route-pattern)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
+        http-request)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
+        tests/fuzz/fuzz_diagnostics_render.c diagnostics-render)
+    sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
+    sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
+    sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
+    sloppy_add_libfuzzer_target(
+        fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
     add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)
@@ -1434,6 +1544,35 @@ if(SLOPPY_ENABLE_TESTS)
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         set(SLOPPYC_BUILT_EXECUTABLE
             "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
+        if(SLOPPY_POWERSHELL_EXECUTABLE)
+            if(SLOPPY_ENABLE_V8)
+                add_test(
+                    NAME conformance.source_input.fixture_harness
+                    COMMAND
+                        "${SLOPPY_POWERSHELL_EXECUTABLE}" ${SLOPPY_POWERSHELL_ARGS}
+                        "${PROJECT_SOURCE_DIR}/tools/windows/test-source-input-fixtures.ps1"
+                        -SloppyExe "$<TARGET_FILE:sloppy>" -SloppycExe
+                        "${SLOPPYC_BUILT_EXECUTABLE}" -FixtureRoot
+                        "${PROJECT_SOURCE_DIR}/tests/fixtures/source-input" -WorkRoot
+                        "${CMAKE_BINARY_DIR}/source-input-fixtures" -RequireV8Runtime)
+                set_tests_properties(conformance.source_input.fixture_harness
+                                     PROPERTIES LABELS "conformance;source-input;v8")
+            else()
+                add_test(
+                    NAME conformance.source_input.fixture_harness
+                    COMMAND
+                        "${SLOPPY_POWERSHELL_EXECUTABLE}" ${SLOPPY_POWERSHELL_ARGS}
+                        "${PROJECT_SOURCE_DIR}/tools/windows/test-source-input-fixtures.ps1"
+                        -SloppyExe "$<TARGET_FILE:sloppy>" -SloppycExe
+                        "${SLOPPYC_BUILT_EXECUTABLE}" -FixtureRoot
+                        "${PROJECT_SOURCE_DIR}/tests/fixtures/source-input" -WorkRoot
+                        "${CMAKE_BINARY_DIR}/source-input-fixtures")
+                set_tests_properties(conformance.source_input.fixture_harness
+                                     PROPERTIES LABELS "conformance;source-input")
+            endif()
+        else()
+            message(WARNING "PowerShell host not found; source-input fixture harness is unavailable")
+        endif()
 
         if(NOT SLOPPY_ENABLE_V8)
             add_test(
@@ -1925,6 +2064,10 @@ if(SLOPPY_ENABLE_TESTS)
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         add_test(
+            NAME bootstrap.stdlib.codec_properties
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec_properties.mjs")
+        add_test(
             NAME bootstrap.stdlib.os
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
         add_test(
@@ -1941,11 +2084,24 @@ if(SLOPPY_ENABLE_TESTS)
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers
+            bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(
             bootstrap.stdlib.core_integration PROPERTIES LABELS
                                                        "CORE-INTEGRATION-01;bootstrap;conformance")
+    endif()
+
+    if(WIN32 AND SLOPPY_PACKAGE_ARCHIVE)
+        add_test(
+            NAME conformance.package.windows_outside_checkout
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+                    "${PROJECT_SOURCE_DIR}/tools/windows/test-package.ps1" -PackagePath
+                    "${SLOPPY_PACKAGE_ARCHIVE}" -MetadataPath
+                    "${PROJECT_SOURCE_DIR}/tests/fixtures/package/windows-default/case.json")
+        set_tests_properties(
+            conformance.package.windows_outside_checkout
+            PROPERTIES LABELS "conformance;package;outside-checkout")
     endif()
 
     if(CARGO_EXECUTABLE)

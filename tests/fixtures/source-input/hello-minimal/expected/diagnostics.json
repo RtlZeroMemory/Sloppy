@@ -1,0 +1,9 @@
+{
+  "contract": "A valid source-input fixture does not produce diagnostic errors.",
+  "diagnosticCodes": [],
+  "redaction": {
+    "mustNotContain": [
+      "SECRET_SHOULD_NOT_APPEAR"
+    ]
+  }
+}

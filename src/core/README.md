@@ -26,7 +26,12 @@ Implemented TASK 02.A primitives:
 - TASK 06.A minimal Plan v1 structs/helpers for version support, handler ID rules, handler
   lookup, and duplicate ID detection.
 - TASK 04.A diagnostic severity/code model, source spans, bounded related spans/hints,
-  arena-copying builder, and deterministic text renderer.
+  arena-copying builder, deterministic text/JSON renderers, redaction helpers, and stable
+  diagnostic code-name coverage.
+- app-host lifecycle, runtime feature, capability, filesystem, OS, crypto, network, HTTP,
+  provider-executor, async backend, worker-pool, and resource/leak foundations where their
+  ownership is documented under `docs/modules/` or `docs/project/`.
 
-No app-host runtime feature code exists here yet. Add modules only after their ownership,
-tests, diagnostics, and public headers are specified.
+Keep new core modules bounded: ownership, tests, diagnostics, and public headers must be
+specified before adding production behavior. Test-only hooks must stay narrow and must not
+be presented as public API.

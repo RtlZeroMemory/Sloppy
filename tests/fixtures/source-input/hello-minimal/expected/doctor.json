@@ -1,0 +1,5 @@
+{
+  "contract": "Doctor output for a valid source-input app reports no blocking diagnostics.",
+  "status": "ok",
+  "diagnostics": []
+}

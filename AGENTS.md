@@ -36,6 +36,20 @@ Clean/safe C is non-negotiable. The name is a joke; the standards are not.
   or ADRs need updates.
 - Tests must verify documented intent, not current accidental behavior.
 
+## Future PR test evidence
+
+Every future implementation PR must include an evidence report that names the expected
+behavior under test, the source-of-truth contract, negative paths, evidence lanes run,
+lanes skipped or unavailable, golden updates and why they are intended, secret/redaction
+checks, and deferred coverage. Skipped optional gates are not pass claims.
+
+Tests must fail for a contract violation, not mirror the current output. New behavior needs
+contract or source-of-truth coverage, and large PRs must include an "Implementation
+Contract for Reviewers" section so reviewers can compare the code and tests against the
+task contract. CodeRabbit and human reviewers should reject shallow happy-path-only tests,
+current-output snapshots, unredacted goldens, V8/package/live/fuzz/stress evidence
+reported as default evidence, and optional lanes reported as success.
+
 ## Source-of-truth map
 
 Project management:

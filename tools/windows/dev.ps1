@@ -400,6 +400,18 @@ function Invoke-CoreApiIntegrationCheck {
     }
 }
 
+function Invoke-TestGovernanceCheck {
+    $script = Join-Path $PSScriptRoot "check-test-governance.ps1"
+    & $script
+    if (-not $?) {
+        throw "test governance check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "test governance check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-CComplexityWarningCheck {
     $script = Join-Path $PSScriptRoot "check-c-complexity.ps1"
     & $script
@@ -417,6 +429,7 @@ function Invoke-Lint {
     Invoke-RustStandardsCheck
     Invoke-DocsFreshnessCheck
     Invoke-CoreApiIntegrationCheck
+    Invoke-TestGovernanceCheck
     Invoke-CComplexityWarningCheck
 
     $clangTidy = Resolve-GateTool "clang-tidy" "C/C++ lint"

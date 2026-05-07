@@ -1,0 +1,19 @@
+{
+  "runtime": "sloppy",
+  "version": 1,
+  "handlers": [
+    {
+      "id": "Hello.Get",
+      "module": "./app.js",
+      "export": "getHello"
+    }
+  ],
+  "routes": [
+    {
+      "name": "hello",
+      "method": "GET",
+      "path": "/hello/:name",
+      "handler": "Hello.Get"
+    }
+  ]
+}

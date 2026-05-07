@@ -42,6 +42,34 @@ ENGINE-27 adds default-lane feature registry and missing-feature diagnostic test
 them proves deterministic Plan-driven feature activation, unknown/unavailable/dependency
 runtime-feature diagnostics, and renderer-pinned missing-feature output only; it does not
 prove package trimming, provider expansion, or dynamic feature loading.
+
+TEST-PLATFORM-01 adds a required evidence taxonomy and mechanical test-governance gate.
+PRs must report PASS, FAIL, SKIPPED, UNAVAILABLE, DEFERRED, or NOT RUN for each applicable
+lane. The standard lanes are default non-V8, compiler/Plan, V8-gated, source-input,
+package outside-checkout, platform-specific, dependency-backed, live-network/live-provider,
+fuzz/property, stress/torture, sanitizer/memory-safety, and benchmark. Skipped optional
+gates are not pass claims.
+
+The default non-V8 lane must stay deterministic and useful without V8 SDKs, package
+archives, live providers, external network access, long fuzzing, stress/torture, or
+benchmarks. Deterministic fuzz seed replay can run in default when stable. libFuzzer,
+sanitizer, long fuzz, live-provider, stress/torture, and benchmark lanes are opt-in unless
+a task explicitly promotes a bounded target to default.
+
+New mechanical gates:
+
+- `tools/windows/check-test-governance.ps1` scans focused tests, skipped tests without
+  reasons, untracked TODO/FIXME markers in test-governed surfaces, high-confidence secret
+  patterns, unnormalized golden paths, unsupported readiness/performance claims in
+  goldens, fixture metadata, and required TEST-PLATFORM-01 governance text.
+- `docs.test_platform_contract` is a CTest docs contract that fails when required
+  governance files drift.
+- `conformance.source_input.fixture_harness` executes the source-input metadata fixtures
+  and compares semantic Plan/doctor/diagnostic contracts.
+- Fuzz seed replay tests carry `fuzz;property;seed-replay` labels.
+- Optional package evidence can be registered with `-DSLOPPY_PACKAGE_ARCHIVE=<zip>` and
+  runs the package outside-checkout fixture metadata, including the prebuilt artifact
+  fixture when source compilation is forbidden.
 CORE-FS-01 gates must report filesystem evidence by lane. PRs that only add the `stdlib.fs`
 contract and Plan metadata do not prove filesystem I/O, V8 bridge execution, OS-native watch
 behavior, stream behavior, package readiness, or performance.
@@ -242,6 +270,23 @@ cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
 cargo test --manifest-path compiler/Cargo.toml
 ```
 
+TEST-PLATFORM-01 governance and optional lane commands:
+
+```powershell
+.\tools\windows\check-test-governance.ps1
+ctest --test-dir build\windows-dev -L fuzz --output-on-failure
+ctest --test-dir build\windows-dev -R docs.test_platform_contract --output-on-failure
+.\tools\windows\dev.ps1 configure -Preset windows-libfuzzer
+.\tools\windows\dev.ps1 build -Preset windows-libfuzzer
+.\build\windows-libfuzzer\fuzz_plan_parse_libfuzzer.exe tests\fuzz\corpus\plan -runs=0
+.\tools\windows\dev.ps1 configure -CMakeArgs "-DSLOPPY_PACKAGE_ARCHIVE=C:\path\to\sloppy.zip"
+ctest --test-dir build\windows-dev -R conformance.package.windows_outside_checkout --output-on-failure
+```
+
+If a local toolchain does not support a listed optional lane, report UNAVAILABLE with the
+exact reason. If a lane is not relevant to the PR, report SKIPPED or NOT RUN with the
+reason. Do not convert unavailable optional evidence into a pass.
+
 Example hardening gates include CTest compile-artifact coverage for the current example
 set and `examples.*.tooling` checks that build artifacts and run Plan-driven
 routes/doctor/audit/capabilities/OpenAPI commands over representative examples. V8-gated
@@ -295,7 +340,7 @@ Packaging workflow for EPIC-25 and later package changes:
 
 ```powershell
 .\tools\windows\package.ps1 -Configuration Release
-.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip -MetadataPath tests\fixtures\package\windows-default\case.json
 ```
 
 Unix local package smoke:
@@ -316,10 +361,11 @@ The package command may also run smoke directly:
 ```
 
 That smoke proves the local Windows archive layout starts basic packaged CLI commands
-outside the checkout, verifies required package files/stdlib assets, and builds a tiny
-supported app with the packaged `sloppyc`. For non-V8 packages, `sloppy run --artifacts`
-is expected to report V8 skipped/not configured rather than execute the handler. It does
-not prove V8 runtime packaging, live providers, installers, signing/notarization,
+outside the checkout, verifies required package files/stdlib assets, and, when metadata is
+provided, runs a prebuilt artifact fixture without invoking `sloppyc`. Compiler smoke from
+the package is separate evidence. For non-V8 packages, `sloppy run --artifacts` is expected
+to report V8 skipped/not configured rather than execute the handler. It does not prove V8
+runtime packaging, live providers, installers, signing/notarization,
 package-manager distribution, or public alpha release readiness.
 
 V8 runtime package validation is optional and separate:

@@ -1,0 +1,25 @@
+{
+  "runtime": "sloppy",
+  "version": 1,
+  "handlers": [
+    {
+      "id": "H",
+      "module": "./app.js",
+      "export": "handler"
+    }
+  ],
+  "routes": [
+    {
+      "name": "a",
+      "method": "GET",
+      "path": "/dup",
+      "handler": "H"
+    },
+    {
+      "name": "b",
+      "method": "GET",
+      "path": "/dup",
+      "handler": "H"
+    }
+  ]
+}

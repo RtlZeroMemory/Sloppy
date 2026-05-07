@@ -1,0 +1,11 @@
+{
+  "contract": "Unsupported dynamic routes fail with a stable diagnostic instead of a runtime snapshot.",
+  "diagnosticCodes": [
+    "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
+  ],
+  "redaction": {
+    "mustNotContain": [
+      "SECRET_SHOULD_NOT_APPEAR"
+    ]
+  }
+}

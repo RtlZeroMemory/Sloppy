@@ -18,3 +18,22 @@ environment values, secret process args, captured process output, raw PIDs, nati
 handles, public alpha claims, or benchmark claims.
 
 Golden files should be reviewed like public API changes.
+
+## TEST-PLATFORM-01 Golden Policy
+
+Every golden is a semantic contract. Structured JSON goldens should assert stable semantic
+fields; text goldens are reserved for deliberate UX surfaces. Do not update a golden only
+because current output changed.
+
+Goldens must normalize:
+
+- repository, workspace, temp, and user paths;
+- source locations when the exact local path is not the behavior under test;
+- line endings;
+- timestamps, process IDs, nondeterministic IDs, ports, and platform-specific values;
+- secret-looking values, tokens, connection strings, passwords, private keys, and
+  passphrases.
+
+Golden updates must explain the intended behavior change in the PR. Redaction checks must
+assert that real or marker secrets such as `SECRET_SHOULD_NOT_APPEAR` do not appear in
+diagnostic, Plan, doctor, or CLI goldens.
