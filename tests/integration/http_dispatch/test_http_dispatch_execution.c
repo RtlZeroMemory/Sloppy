@@ -340,13 +340,89 @@ static int test_context_metadata_and_bytes_body_reach_v8_handler(void)
             SL_HTTP_METHOD_POST, "/bytes", 6U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
             "{\"id\":\"0\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\",\"queryString\":\"x=1\","
             "\"contentType\":\"application/octet-stream\",\"contentLength\":3,"
-            "\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\",\"consumed\":true,"
-            "\"bytes\":[65,66,67],\"secondReadRejected\":true}",
+            "\"connectionId\":\"0\",\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\","
+            "\"consumed\":true,\"bytes\":[65,66,67],\"secondReadRejected\":true}",
             SL_DIAG_NONE) != 0)
     {
         return 50;
     }
 
+    return 0;
+}
+
+static int test_lifecycle_context_metadata_reaches_v8_handler(void)
+{
+    unsigned char engine_storage[TEST_ARENA_SIZE];
+    unsigned char plan_storage[TEST_ARENA_SIZE];
+    unsigned char request_storage[TEST_ARENA_SIZE];
+    unsigned char dispatch_storage[TEST_ARENA_SIZE];
+    SlArena engine_arena = {0};
+    SlArena plan_arena = {0};
+    SlArena request_arena = {0};
+    SlArena dispatch_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlan plan = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&plan_arena, plan_storage, sizeof(plan_storage)) != 0 ||
+        init_arena(&request_arena, request_storage, sizeof(request_storage)) != 0 ||
+        init_arena(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage)) != 0 ||
+        load_plan(&plan_arena, &plan, &diag) != 0 ||
+        create_v8_engine(&engine_arena, &engine) != 0 || eval_app(engine, &diag) != 0 ||
+        expect_status(sl_http_backend_init(&backend, NULL, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &request_arena, &request, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_parse_head(
+                          &request,
+                          bytes_from_cstr("POST /bytes?x=1 HTTP/1.1\r\nHost: example\r\n"
+                                          "Content-Type: application/octet-stream\r\n"
+                                          "Content-Length: 3\r\n\r\nABC"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        parse_pattern(&dispatch_arena, "/bytes", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 60;
+    }
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 6U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    status = sl_http_dispatch_request_lifecycle(&dispatch_arena, engine, &plan, &table, &request,
+                                                &result, &diag);
+    if (sl_status_code(status) != SL_STATUS_OK || result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"id\":\"1\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\","
+                           "\"queryString\":\"x=1\",\"contentType\":\"application/octet-stream\","
+                           "\"contentLength\":3,\"connectionId\":\"1\","
+                           "\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\","
+                           "\"consumed\":true,\"bytes\":[65,66,67],"
+                           "\"secondReadRejected\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 61;
+    }
+
+    (void)sl_http_request_close(&request, &diag);
+    (void)sl_http_connection_close(&connection, &diag);
+    (void)sl_http_backend_stop(&backend, &diag);
+    (void)sl_http_backend_dispose(&backend, &diag);
+    sl_engine_destroy(engine);
     return 0;
 }
 
@@ -377,5 +453,10 @@ int main(void)
         return result;
     }
 
-    return test_context_metadata_and_bytes_body_reach_v8_handler();
+    result = test_context_metadata_and_bytes_body_reach_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_lifecycle_context_metadata_reaches_v8_handler();
 }

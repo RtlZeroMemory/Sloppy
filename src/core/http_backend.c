@@ -62,6 +62,19 @@ static SlStatus sl_http_backend_overload(SlDiag* out_diag)
         SL_STATUS_CAPACITY_EXCEEDED);
 }
 
+static SlStatus sl_http_backend_overflow(SlDiag* out_diag)
+{
+    return sl_http_backend_diag(
+        out_diag, SL_DIAG_OVERFLOW,
+        sl_http_backend_literal("HTTP backend identifier space was exhausted",
+                                sizeof("HTTP backend identifier space was exhausted") - 1U),
+        sl_http_backend_literal("restart the backend before native request or connection IDs wrap",
+                                sizeof("restart the backend before native request or connection "
+                                       "IDs wrap") -
+                                    1U),
+        SL_STATUS_OVERFLOW);
+}
+
 static SlStatus sl_http_backend_connection_closed(SlDiag* out_diag)
 {
     return sl_http_backend_diag(
@@ -522,7 +535,7 @@ SlStatus sl_http_backend_accept_connection(SlHttpBackend* backend, SlHttpConnect
         return sl_http_backend_overload(out_diag);
     }
     if (backend->next_connection_id == UINT64_MAX) {
-        return sl_status_from_code(SL_STATUS_OVERFLOW);
+        return sl_http_backend_overflow(out_diag);
     }
 
     out_connection->backend = backend;
@@ -610,7 +623,7 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
         return sl_http_backend_overload(out_diag);
     }
     if (backend->next_request_id == UINT64_MAX) {
-        return sl_status_from_code(SL_STATUS_OVERFLOW);
+        return sl_http_backend_overflow(out_diag);
     }
 
     backend->active_requests += 1U;

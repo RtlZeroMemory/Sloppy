@@ -667,6 +667,19 @@ static int test_config_validation_and_lifecycle(void)
         return 8;
     }
 
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
+    config.request_arena_bytes = 16U;
+    config.parse.max_body_length = 32U;
+    server = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TRANSPORT_CONFIG)
+    {
+        return 9;
+    }
+
     return 0;
 }
 
@@ -1394,6 +1407,55 @@ static int test_streaming_response_writes_chunked_frames(void)
     {
         return 810;
     }
+    return 0;
+}
+
+static int test_streaming_response_rejects_control_header_values(void)
+{
+    static const char value_with_nul[] = {'o', 'k', '\0', 'b', 'a', 'd'};
+    SlHttpResponseStreamChunk chunks[1] = {};
+    SlHttpHeader headers[1] = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    chunks[0].bytes = bytes_from_cstr("hello");
+    headers[0].name = sl_str_from_cstr("X-Test");
+    headers[0].value = sl_str_from_parts(value_with_nul, sizeof(value_with_nul));
+    dispatch.response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain; charset=utf-8"), chunks, 1U);
+    dispatch.response.headers = headers;
+    dispatch.response.header_count = 1U;
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    {
+        unsigned char storage[65536];
+        SlArena arena = {};
+        ClientConnect client = {};
+
+        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+            connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+            start_client_read(&client) != 0 ||
+            expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_connection_feed_test(
+                              &server.connections[0],
+                              bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: local\r\n\r\n"),
+                              &diag),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED)
+        {
+            stop_one_connection(&server, &client);
+            return 821;
+        }
+        stop_one_connection(&server, &client);
+    }
+
     return 0;
 }
 
@@ -2524,6 +2586,7 @@ static int run_named_transport_case(const char* name)
     }
     if (strcmp(name, "streaming_response") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_streaming_response_writes_chunked_frames,
+                                       test_streaming_response_rejects_control_header_values,
                                        test_streaming_response_multiple_empty_and_keep_alive);
     }
     if (strcmp(name, "backpressure") == 0) {
@@ -2614,6 +2677,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_streaming_response_writes_chunked_frames();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_rejects_control_header_values();
     if (result != 0) {
         return result;
     }

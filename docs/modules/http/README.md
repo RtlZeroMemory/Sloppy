@@ -51,8 +51,8 @@ length, and a string request ID when a transport lifecycle provides one.
 
 `ctx.request.body.bytes()`, `text()`, and `json()` are consumed-once helpers for the
 bounded buffered body. The existing top-level `ctx.request.bytes()`, `text()`, and
-`json()` remain repeatable compatibility helpers for current handlers. There is no public
-request streaming API yet.
+`json()` remain repeatable helpers for current handlers. There is no public request
+streaming API yet.
 
 ## Error And Diagnostic Contract
 
@@ -81,8 +81,8 @@ handles, or socket details.
 - Response headers and status are immutable after headers start. Streaming descriptors
   validate headers before the first write and then use chunked framing only through the
   native transport writer.
-- Buffered request body helpers are consumed once on `ctx.request.body`; compatibility
-  top-level helpers remain repeatable until the public request-body contract is widened.
+- Buffered request body helpers are consumed once on `ctx.request.body`; top-level
+  helpers remain repeatable until the public request-body contract is widened.
 
 ## Deferred Behavior
 
@@ -97,7 +97,7 @@ Deferred HTTP server behavior remains internal follow-up scope:
   stream helpers, and public streaming examples;
 - production graceful drain, half-close handling, production edge tuning, and benchmark or
   performance claims;
-- broad Framework v2 binding/middleware/DI behavior.
+- broad framework binding, middleware, or DI behavior.
 
 ## Evidence Lanes
 

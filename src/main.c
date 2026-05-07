@@ -3,7 +3,7 @@
  *
  * Provides plan introspection commands and the bounded development `sloppy run` path.
  * Runtime execution requires V8-enabled artifacts and intentionally avoids production
- * HTTP, package-manager behavior, Node compatibility, middleware, streaming, and hot
+ * HTTP, package-manager behavior, Node behavior, middleware, streaming, and hot
  * reload claims.
  */
 #include "sloppy/arena.h"

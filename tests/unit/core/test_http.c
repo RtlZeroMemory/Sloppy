@@ -607,7 +607,7 @@ static int test_request_line_host_and_singleton_policy(void)
             return 100;
         }
 
-        status = parse_request(&arena, "GET /legacy HTTP/1.0\r\n\r\n", NULL, &request, &diag);
+        status = parse_request(&arena, "GET /http10 HTTP/1.0\r\n\r\n", NULL, &request, &diag);
         if (expect_status(status, SL_STATUS_OK) != 0 || request.version_major != 1U ||
             request.version_minor != 0U || diag.code != SL_DIAG_NONE)
         {

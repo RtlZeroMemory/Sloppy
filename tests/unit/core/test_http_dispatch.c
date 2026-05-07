@@ -713,7 +713,7 @@ static int test_lifecycle_dispatch_uses_backend_body_limit(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
-    static const unsigned char body_byte = 'x';
+    static unsigned char body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U];
     SlArena arena = {0};
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
@@ -755,7 +755,10 @@ static int test_lifecycle_dispatch_uses_backend_body_limit(void)
     request.head.raw_target = sl_str_from_cstr("/hello");
     request.head.headers = headers;
     request.head.header_count = 2U;
-    request.head.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
+    for (size_t body_index = 0U; body_index < sizeof(body); body_index += 1U) {
+        body[body_index] = 'x';
+    }
+    request.head.body = sl_bytes_from_parts(body, sizeof(body));
 
     route.method = SL_HTTP_METHOD_POST;
     route.pattern = &pattern;

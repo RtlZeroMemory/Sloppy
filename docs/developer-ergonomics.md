@@ -53,10 +53,10 @@ Current implementation supports a narrow compiler/runtime subset:
 
 - No public alpha docs launch.
 - No production server claim.
-- No Node/Bun/Deno/npm compatibility.
+- No Node/Bun/Deno/npm behavior.
 - No package-manager behavior.
 - No full TypeScript type checking or arbitrary import graph resolution.
-- No Framework v2 tutorial until Framework v2 lands.
+- No broad framework tutorial until that surface lands.
 - No benchmark or performance claim from smoke evidence.
 - No provider readiness claim beyond the lanes that actually ran.
 

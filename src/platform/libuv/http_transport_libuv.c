@@ -261,6 +261,12 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                           "HTTP transport request buffer capacity is invalid",
                           sizeof("HTTP transport request buffer capacity is invalid") - 1U));
     }
+    if (config.parse.max_body_length > config.request_arena_bytes) {
+        return sl_http_transport_invalid_config(
+            out_diag, sl_http_transport_literal(
+                          "HTTP transport request body limit exceeds request arena",
+                          sizeof("HTTP transport request body limit exceeds request arena") - 1U));
+    }
 
     *out = config;
     return sl_status_ok();
@@ -459,7 +465,8 @@ static bool sl_http_transport_response_header_value_valid(SlStr value)
         return false;
     }
     for (index = 0U; index < value.length; index += 1U) {
-        if (value.ptr[index] == '\r' || value.ptr[index] == '\n') {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if ((ch < 0x20U && ch != '\t') || ch == 0x7FU) {
             return false;
         }
     }
@@ -963,9 +970,9 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
             SL_STATUS_INVALID_ARGUMENT,
             sl_http_transport_literal("HTTP streaming response header is invalid",
                                       sizeof("HTTP streaming response header is invalid") - 1U),
-            sl_http_transport_literal("stream response content type must not contain CR or LF",
-                                      sizeof("stream response content type must not contain CR or "
-                                             "LF") -
+            sl_http_transport_literal("stream response content type must not contain control bytes",
+                                      sizeof("stream response content type must not contain "
+                                             "control bytes") -
                                           1U));
     }
     for (size_t header_index = 0U; header_index < response->header_count; header_index += 1U) {

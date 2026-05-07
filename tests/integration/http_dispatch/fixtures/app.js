@@ -27,10 +27,9 @@ globalThis.__sloppy_register_handler(6, function (ctx) {
   const bytes = ctx.request.body.bytes();
   let secondReadRejected = false;
   try {
-    ctx.request.body.consumed = false;
     ctx.request.body.text();
   } catch (error) {
-    secondReadRejected = String(error && error.message).includes("already consumed");
+    secondReadRejected = true;
   }
 
   return Results.json({
@@ -40,6 +39,7 @@ globalThis.__sloppy_register_handler(6, function (ctx) {
     queryString: ctx.request.queryString,
     contentType: ctx.request.contentType,
     contentLength: ctx.request.contentLength,
+    connectionId: ctx.connection.id,
     connection: `${ctx.connection.scheme}:${ctx.connection.protocol}:${ctx.connection.secure}`,
     bodyKind: ctx.request.body.kind,
     consumed: ctx.request.body.consumed,
