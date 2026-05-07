@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("configure", "build", "test", "clean", "format-check", "lint", "analyze", "all")]
+    [ValidateSet("doctor", "configure", "build", "test", "clean", "format-check", "lint", "analyze", "all")]
     [string]$Command = "all",
 
     [string]$Preset = "windows-dev",
@@ -7,6 +7,9 @@ param(
     [string[]]$CMakeArgs = @(),
 
     [switch]$EnableV8,
+
+    [ValidateSet("OFF", "AUTO", "REQUIRED")]
+    [string]$V8Mode = "AUTO",
 
     [string]$V8Root,
 
@@ -178,13 +181,31 @@ function Resolve-GateTool {
     return $null
 }
 
+function Invoke-Doctor {
+    $doctorScript = Join-Path $PSScriptRoot "deps-doctor.ps1"
+    Invoke-Native "powershell" @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $doctorScript,
+        "-V8Mode",
+        $V8Mode
+    )
+}
+
 function Invoke-Configure {
     if ([string]::IsNullOrWhiteSpace($Preset)) {
         throw "Preset must not be empty."
     }
 
-    if ($EnableV8 -and $Preset -eq "windows-dev") {
-        throw "The current V8 SDK is release/RelWithDebInfo. Use -Preset windows-relwithdebinfo with -EnableV8."
+    if ($EnableV8 -and $V8Mode -eq "OFF") {
+        throw "-EnableV8 cannot be combined with -V8Mode OFF."
+    }
+
+    $enableV8ForConfigure = $EnableV8 -or $V8Mode -eq "REQUIRED"
+    if ($enableV8ForConfigure -and $Preset -eq "windows-dev") {
+        throw "The current V8 SDK is release/RelWithDebInfo. Use -Preset windows-relwithdebinfo with -EnableV8 or -V8Mode REQUIRED."
     }
 
     Import-SlVisualStudioEnvironment
@@ -202,7 +223,7 @@ function Invoke-Configure {
     if (-not (Test-Path -LiteralPath $cachePath)) {
         $cmakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
     }
-    $hasV8Selection = $EnableV8 -or @($CMakeArgs | Where-Object {
+    $hasV8Selection = $enableV8ForConfigure -or @($CMakeArgs | Where-Object {
         $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
     }).Count -gt 0
     if (-not $hasV8Selection) {
@@ -211,7 +232,7 @@ function Invoke-Configure {
     if ($CMakeArgs.Count -gt 0) {
         $cmakeConfigureArgs += $CMakeArgs
     }
-    if ($EnableV8) {
+    if ($enableV8ForConfigure) {
         $resolvedV8Root = Resolve-V8Root
         $cmakeConfigureArgs += @("-DSLOPPY_ENABLE_V8=ON", "-DSLOPPY_V8_ROOT=$resolvedV8Root")
     }
@@ -430,6 +451,27 @@ function Invoke-TestGovernanceCheck {
     }
 }
 
+function Invoke-AlphaInfraCheck {
+    $script = Join-Path $PSScriptRoot "check-alpha-infra.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "alpha infra self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "alpha infra self-test failed with exit code $LASTEXITCODE"
+    }
+
+    & $script
+    if (-not $?) {
+        throw "alpha infra check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "alpha infra check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-CComplexityWarningCheck {
     $script = Join-Path $PSScriptRoot "check-c-complexity.ps1"
     & $script
@@ -448,6 +490,7 @@ function Invoke-Lint {
     Invoke-DocsFreshnessCheck
     Invoke-CoreApiIntegrationCheck
     Invoke-TestGovernanceCheck
+    Invoke-AlphaInfraCheck
     Invoke-CComplexityWarningCheck
 
     $clangTidy = Resolve-GateTool "clang-tidy" "C/C++ lint"
@@ -511,6 +554,7 @@ function Invoke-Analyze {
 }
 
 switch ($Command) {
+    "doctor" { Invoke-Doctor }
     "configure" { Invoke-Configure }
     "build" { Invoke-Build }
     "test" { Invoke-Test }

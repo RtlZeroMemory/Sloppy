@@ -16,7 +16,7 @@ boundaries, and tests.
 
 ## Build/Tooling Reviewer
 
-Checks CMake, scripts, CI, test integration, Windows-first/cross-platform assumptions, and
+Checks CMake, scripts, CI, test integration, current Windows-lane/cross-platform assumptions, and
 generated artifact hygiene.
 
 Reject required jobs that are made green by silently skipping their purpose. Optional V8,

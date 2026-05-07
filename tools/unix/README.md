@@ -11,7 +11,8 @@ tools/unix/check-c-standards.sh
 ```
 
 They mirror the boundary intent of the Windows PowerShell scanners for hosted POSIX
-runners. Windows remains the complete local developer workflow through `tools/windows`.
+runners. The full Unix `bootstrap.sh` and `dev.sh` command contract is tracked for the
+next alpha-infra wave; current Unix tooling is package/scanner focused.
 
 `package.sh` is the first experimental TAR packaging path:
 

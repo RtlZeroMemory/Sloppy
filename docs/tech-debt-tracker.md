@@ -476,7 +476,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   bounded blocking pools now have generic terminal/capability semantics plus bounded stress
   smoke; remaining research is nonblocking libpq/socket integration and provider-specific
   native cancellation/interruption semantics.
-- Cross-platform SQL Server support versus Windows-first ODBC-only policy.
+- Cross-platform SQL Server support versus the currently Windows-validated ODBC-only policy.
 - Filesystem implementation after CORE-FS-01.I/J: OS-native recursive watch semantics
   remain deferred beyond the first filesystem API layer. Network capability semantics still need path-like
   normalization equivalents, config/env access policy, and honest non-sandboxing language.

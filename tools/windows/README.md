@@ -1,6 +1,6 @@
 # Windows Tools
 
-This directory contains the first-class Windows developer scripts.
+This directory contains the most complete validated local Windows developer scripts.
 
 Run from a Visual Studio Developer PowerShell/Command Prompt or a normal PowerShell with
 Visual Studio C++ tools installed. The scripts import the MSVC/Windows SDK environment when
@@ -8,6 +8,7 @@ needed:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
@@ -40,11 +41,14 @@ shared resolver instead of hard-coding one local path:
 .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 ```
 
-The resolver checks, in order, an explicit `-V8Root`, `SLOPPY_V8_ROOT`,
-`SLOPPY_V8_SDK_HINTS`, this worktree's `.sdeps/v8/windows-x64`, and the same `.sdeps`
-location in registered git worktrees. `SLOPPY_V8_SDK_HINTS` is a path-list environment
-variable separated by the platform path separator, so agents can point at portable cache
-roots without baking machine-local paths into docs or PRs.
+Dependency and platform policy is tracked in `tools/deps/sloppy-deps.json`. The V8
+resolver supports `OFF`, `AUTO`, and `REQUIRED` modes. It checks, in order, an explicit
+`-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this worktree's
+`.sdeps/v8/windows-x64`, and the same `.sdeps` location in registered git worktrees.
+`SLOPPY_V8_ROOT` is an advanced override, not the default contributor path.
+`SLOPPY_V8_SDK_HINTS` is a path-list environment variable separated by the platform path
+separator, so agents can point at portable cache roots without baking machine-local paths
+into docs or PRs.
 
 Validation uses the same helper:
 

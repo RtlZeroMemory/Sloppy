@@ -8,9 +8,9 @@ tools/
   unix/
 ```
 
-PowerShell scripts under `tools/windows/` are the first-class Windows developer workflow.
-Root `tools/*.ps1` scripts are compatibility forwarders. Unix shell scripts belong under
-`tools/unix/`.
+PowerShell scripts under `tools/windows/` are the most complete validated local developer
+workflow today. Root `tools/*.ps1` scripts are compatibility forwarders. Unix shell scripts
+belong under `tools/unix/`.
 
 Packaging scripts create experimental local artifacts under ignored `artifacts/packages/`:
 

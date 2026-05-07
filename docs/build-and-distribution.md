@@ -24,6 +24,7 @@ Canonical local workflow:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
@@ -36,8 +37,16 @@ local resolver succeeds.
 
 ## Dependencies
 
-C/C++ dependencies are managed through the repository's CMake/vcpkg workflow. V8 SDK
-resolution is explicit and optional. Rust dependencies are owned by the `compiler/`
+C/C++ dependencies are managed through the repository's CMake/vcpkg workflow. The
+dependency, platform, feature, and V8 SDK policy source of truth is
+`tools/deps/sloppy-deps.json`. `tools/windows/dev.ps1 doctor` reports required and optional
+dependencies with stable statuses: `found`, `missing`, `wrong version`,
+`unsupported platform`, `optional unavailable`, and `corrupt dependency`.
+
+V8 SDK resolution is explicit and mode-aware: `OFF` disables SDK validation, `AUTO`
+reports a compatible SDK when present without counting absence as V8 evidence, and
+`REQUIRED` fails when the SDK is missing, wrong, or corrupt. `SLOPPY_V8_ROOT` is an
+advanced override, not the happy path. Rust dependencies are owned by the `compiler/`
 project. JavaScript dependencies are not a package-manager surface for Sloppy apps.
 
 ## Packages

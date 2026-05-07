@@ -4,7 +4,7 @@
 0.1 Native Core
 
 ## Summary
-Harden the platform boundary so Windows-first development does not leak OS APIs into portable runtime core.
+Harden the platform boundary so current Windows development does not leak OS APIs into portable runtime core.
 
 ## Source Docs
 - AGENTS.md

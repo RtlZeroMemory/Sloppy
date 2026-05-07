@@ -1,6 +1,16 @@
 $SlV8ExpectedRevision = "7221f49fdb6c89cce6be08005732ebcab3c45b38"
 $SlV8ExpectedCrLibcxxRevision = "af4386908c3762433d412689038de6e6333f5921"
 $SlV8DefaultPlatform = "windows-x64"
+$SlDepsManifestPath = Join-Path $PSScriptRoot "../deps/sloppy-deps.json"
+if (Test-Path -LiteralPath $SlDepsManifestPath -PathType Leaf) {
+    $SlDepsManifest = Get-Content -LiteralPath $SlDepsManifestPath -Raw | ConvertFrom-Json
+    if ($SlDepsManifest.v8Sdk.v8Revision) {
+        $SlV8ExpectedRevision = [string]$SlDepsManifest.v8Sdk.v8Revision
+    }
+    if ($SlDepsManifest.v8Sdk.crLibcxxRevision) {
+        $SlV8ExpectedCrLibcxxRevision = [string]$SlDepsManifest.v8Sdk.crLibcxxRevision
+    }
+}
 
 function Write-SlV8ExpectedLayout {
     Write-Host "Expected SLOPPY_V8_ROOT layout:"
@@ -294,4 +304,58 @@ function Resolve-SlV8SdkRoot {
     }
 
     return $null
+}
+
+function Resolve-SlV8SdkRootForMode {
+    param(
+        [string]$RepoRoot,
+        [string]$V8Root,
+        [string[]]$SearchRoots = @(),
+        [ValidateSet("OFF", "AUTO", "REQUIRED")]
+        [string]$Mode = "AUTO"
+    )
+
+    if ($Mode -eq "OFF") {
+        return [pscustomobject]@{
+            Mode = $Mode
+            Status = "optional unavailable"
+            Root = $null
+            Platform = $SlV8DefaultPlatform
+            V8Revision = $SlV8ExpectedRevision
+            Detail = "V8 mode is OFF; SDK validation was intentionally disabled."
+        }
+    }
+
+    try {
+        $resolved = Resolve-SlV8SdkRoot `
+            -RepoRoot $RepoRoot `
+            -V8Root $V8Root `
+            -SearchRoots $SearchRoots `
+            -Require:($Mode -eq "REQUIRED")
+    } catch {
+        if ($Mode -eq "REQUIRED") {
+            throw
+        }
+        $resolved = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        return [pscustomobject]@{
+            Mode = $Mode
+            Status = if ($Mode -eq "REQUIRED") { "missing" } else { "optional unavailable" }
+            Root = $null
+            Platform = $SlV8DefaultPlatform
+            V8Revision = $SlV8ExpectedRevision
+            Detail = "No compatible Sloppy V8 SDK was found. AUTO does not enable V8 or count as V8 evidence."
+        }
+    }
+
+    return [pscustomobject]@{
+        Mode = $Mode
+        Status = "found"
+        Root = $resolved
+        Platform = $SlV8DefaultPlatform
+        V8Revision = $SlV8ExpectedRevision
+        Detail = "Compatible Sloppy V8 SDK resolved."
+    }
 }

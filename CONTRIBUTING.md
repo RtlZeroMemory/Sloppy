@@ -6,10 +6,10 @@ serious engineering project even while major product tracks remain unfinished.
 Do not commit build outputs, generated local artifacts, V8 SDKs, Rust `target`
 directories, local dependency caches, release archives, or local binaries.
 
-Windows x64 with `clang-cl`, `lld-link`, CMake, and Ninja is the first-class runtime
-developer path. Sloppy remains cross-platform by design. No WinAPI, POSIX, Linux, or macOS
-API calls may be added outside `src/platform/*`; core modules must not include
-OS-specific headers.
+Windows x64 with `clang-cl`, `lld-link`, CMake, and Ninja is the most complete validated
+local runtime developer path today. Sloppy remains cross-platform by design. No WinAPI,
+POSIX, Linux, or macOS API calls may be added outside `src/platform/*`; core modules must
+not include OS-specific headers.
 
 ## Local Commands
 
@@ -18,6 +18,7 @@ environment:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
