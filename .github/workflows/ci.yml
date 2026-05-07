@@ -527,7 +527,7 @@ jobs:
 
       - name: Package
         shell: pwsh
-        run: .\tools\windows\dev.ps1 package -Preset windows-release
+        run: .\tools\windows\dev.ps1 package -Preset windows-dev
 
       - name: Save vcpkg cache after package
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
