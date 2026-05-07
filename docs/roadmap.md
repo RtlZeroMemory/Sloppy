@@ -12,7 +12,7 @@ evidence boundaries that must hold before public alpha.
 | Compiler/artifacts | `sloppyc` can emit artifacts for the supported source subset and the runtime can execute artifact bundles. Full TypeScript semantics are not claimed. |
 | V8 | V8 is isolated behind `src/engine/v8/*` and remains an explicit optional lane. Default evidence does not prove V8 behavior. |
 | HTTP | Bounded HTTP/1.1 runtime behavior and opt-in inbound OpenSSL TLS wrapping exist for development evidence. Production HTTP/TLS hardening, public streaming APIs, middleware, WebSockets, and HTTP/2 or HTTP/3 are not claimed. |
-| Providers | SQLite has scoped native/runtime support. PostgreSQL and SQL Server remain provider-boundary and metadata work without complete JS runtime bridges. |
+| Providers | SQLite has scoped native/runtime support. PostgreSQL has a V8-gated true-async libpq bridge with bounded pooling. SQL Server remains provider-boundary/native work until ODBC async bridge evidence is complete. |
 | Capabilities/security | Runtime capability checks are policy enforcement points, not an OS sandbox. |
 | Packaging | Package smoke proves source/package layout mechanics only. It is not release readiness. |
 | Public docs | Public docs remain pre-alpha skeletons until the alpha gate explicitly promotes them. |
@@ -46,8 +46,8 @@ The following remain deferred unless a scoped source doc and issue promote them:
   validation, and production-edge HTTP/TLS behavior.
 - Package-manager behavior, npm compatibility, and Node/Bun/Deno compatibility.
 - Production hardening, operational support claims, and performance claims.
-- Broad provider bridges, ORM/migration layers, and live database support beyond
-  scoped provider lanes.
+- SQL Server JavaScript bridge completion, ORM/migration layers, and live database support
+  beyond scoped provider lanes.
 - Public tutorials or broad public user documentation before Framework v2 and
   the public alpha gate are complete.
 

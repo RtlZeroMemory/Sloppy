@@ -394,3 +394,52 @@ bool sl_async_loop_is_disposed(const SlAsyncLoop* loop)
 {
     return loop != NULL && loop->disposed;
 }
+
+SlStatus sl_async_io_watch_start(SlAsyncLoop* loop, SlArena* arena, int socket, unsigned events,
+                                 SlAsyncIoWatchFn callback, void* user, SlAsyncIoWatch** out_watch)
+{
+    if (out_watch != NULL) {
+        *out_watch = NULL;
+    }
+    if (loop == NULL || arena == NULL || callback == NULL || out_watch == NULL || socket < 0 ||
+        events == 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (loop->disposed) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    if (loop->kind != SL_ASYNC_BACKEND_LIBUV) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+    return sl_async_loop_libuv_io_watch_start(loop, arena, socket, events, callback, user,
+                                              out_watch);
+}
+
+SlStatus sl_async_io_watch_update(SlAsyncIoWatch* watch, unsigned events)
+{
+    if (watch == NULL || events == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (watch->closed || watch->loop == NULL || watch->loop->disposed) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    if (watch->loop->kind != SL_ASYNC_BACKEND_LIBUV) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+    return sl_async_loop_libuv_io_watch_update(watch, events);
+}
+
+void sl_async_io_watch_stop(SlAsyncIoWatch* watch)
+{
+    if (watch == NULL || watch->closed || watch->loop == NULL) {
+        return;
+    }
+    if (watch->loop->kind == SL_ASYNC_BACKEND_LIBUV) {
+        sl_async_loop_libuv_io_watch_stop(watch);
+    }
+    else {
+        watch->active = false;
+        watch->closed = true;
+    }
+}

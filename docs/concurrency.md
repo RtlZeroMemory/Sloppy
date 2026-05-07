@@ -34,9 +34,11 @@ report partial/default validation as success.
 Provider work is separated from generic async completion. Provider descriptors, admission,
 capability checks, executor mode, bounded queues, cancellation, deadline behavior, and late
 completion must remain provider-owned runtime contracts. SQLite-class blocking work may use
-serialized/offloaded provider execution where the scoped lane supports it. PostgreSQL and
-SQL Server JavaScript bridges remain deferred unless their own source docs and evidence
-lanes prove the bridge.
+serialized/offloaded provider execution where the scoped lane supports it. PostgreSQL
+JavaScript provider work uses a provider-owned nonblocking libpq state machine with
+Slop-owned socket readiness watches and owner-thread Promise settlement. SQL Server
+JavaScript provider work remains separate until its ODBC async evidence proves a true async
+driver lane.
 
 ## HTTP Transport
 

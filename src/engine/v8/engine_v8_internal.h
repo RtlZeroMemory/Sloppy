@@ -194,6 +194,8 @@ void sl_v8_workers_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);
+bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                       v8::Local<v8::Object> data);
 
 bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     const SlHttpRequestContext* request_context,

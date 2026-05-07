@@ -42,8 +42,8 @@ What does not work yet:
 - the current bounded `sloppy run` path does not load this source-stdlib SQLite example directly;
 - the executable SQLite proof is the internal V8-gated artifact fixture, not this public
   source-stdlib example source yet;
-- PostgreSQL and SQL Server providers are covered by their own examples and native C tests;
-- PostgreSQL and SQL Server do not have JS-to-native provider bridges yet;
-- no ORM, migrations, connection pooling, async worker offload, cancellation, deadline, or
-  public prepared statement handle support is implemented;
+- PostgreSQL and SQL Server providers are covered by their own examples and tests;
+- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL lane;
+- SQLite has no ORM, migrations, connection pooling expansion, public prepared statement
+  handle, or mid-operation interruption support implemented;
 - the future bare `"sloppy"` import is planned only.

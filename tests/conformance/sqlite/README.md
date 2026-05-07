@@ -67,7 +67,8 @@ query, `queryOne`, primitive parameters, explicit SQLite encoding policy, transa
 provider executor configuration, and diagnostics. The default suite does not prove the V8
 JavaScript bridge or localhost transport executed.
 
-Gated/deferred requirements: PostgreSQL and SQL Server JavaScript bridges are not part of
-this conformance suite. The users API fixture is localhost transport evidence, not
-production-edge HTTP evidence. Filesystem and network capability checks remain Sloppy
-policy/metadata evidence and do not prove OS-level containment.
+Gated/deferred requirements: PostgreSQL has separate native/live V8 lanes, and SQL Server
+JavaScript bridge behavior is not part of this SQLite conformance suite. The users API
+fixture is localhost transport evidence, not production-edge HTTP evidence. Filesystem and
+network capability checks remain Sloppy policy/metadata evidence and do not prove OS-level
+containment.

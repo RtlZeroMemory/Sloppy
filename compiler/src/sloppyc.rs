@@ -1710,15 +1710,11 @@ fn collect_schema_declaration_names(statements: &[Statement<'_>]) -> BTreeSet<St
                     }
                 }
             }
-            Statement::TSTypeAliasDeclaration(alias) => {
-                if alias.type_parameters.is_none() {
-                    names.insert(alias.id.name.as_str().to_string());
-                }
+            Statement::TSTypeAliasDeclaration(alias) if alias.type_parameters.is_none() => {
+                names.insert(alias.id.name.as_str().to_string());
             }
-            Statement::TSInterfaceDeclaration(interface) => {
-                if interface.type_parameters.is_none() {
-                    names.insert(interface.id.name.as_str().to_string());
-                }
+            Statement::TSInterfaceDeclaration(interface) if interface.type_parameters.is_none() => {
+                names.insert(interface.id.name.as_str().to_string());
             }
             _ => {}
         }

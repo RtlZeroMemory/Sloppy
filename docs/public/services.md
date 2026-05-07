@@ -62,10 +62,10 @@ This source-stdlib example is still not a `sloppy run` executable tutorial; nati
 execution is covered by C tests and the bridge is covered by V8-gated fixtures.
 
 `examples/postgres-basic/app.js` shows the intended PostgreSQL service registration through
-`data.postgres.open({ connectionString, maxConnections })`. That factory currently fails
-with an honest bridge-unavailable error if resolved from JavaScript. Native PostgreSQL
-execution is covered by C tests, with live database coverage gated by
-`SLOPPY_POSTGRES_TEST_URL`.
+`data.postgres.open({ connectionString, maxConnections })`. In a V8-enabled runtime that
+installs the PostgreSQL bridge and passes Plan/capability metadata into the engine, that
+factory returns a safe wrapper around a true-async nonblocking libpq connection pool.
+Native and V8 PostgreSQL live coverage are gated by `SLOPPY_POSTGRES_TEST_URL`.
 
 `examples/sqlserver-basic/app.js` shows the intended SQL Server service registration
 through `data.sqlserver.open({ connectionString, maxConnections })`. That factory

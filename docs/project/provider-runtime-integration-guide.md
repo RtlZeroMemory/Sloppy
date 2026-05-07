@@ -78,7 +78,7 @@ default.
 
 ## PostgreSQL Integration
 
-PostgreSQL final provider work must use `TRUE_ASYNC` through nonblocking libpq-style state
+PostgreSQL provider bridge work uses `TRUE_ASYNC` through nonblocking libpq-style state
 machines. A blocking-pool fallback can be used only as explicit temporary evidence or
 local scaffolding and must never be reported as true async provider completion.
 
@@ -88,13 +88,13 @@ and cleanup semantics:
 - capability checks happen before enqueue;
 - connection strings and credentials stay redacted;
 - operation descriptors own query text, parameter data, and result-conversion state;
-- nonblocking mode owns provider async state without occupying a blocking worker while
-  waiting;
+- nonblocking mode owns provider async state and socket-readiness watches without
+  occupying a blocking worker while waiting;
 - provider cancellation, such as libpq cancellation, must be explicit and tested before it
   is documented as implemented.
 
-PostgreSQL must not bypass the capability/provider executor model through a direct bridge
-call into native provider code.
+PostgreSQL must not bypass capability checks or provider-owned admission/cleanup through a
+direct bridge call into native provider code.
 
 ## SQL Server Integration
 
@@ -112,8 +112,9 @@ Rules:
 - provider-specific cancellation, such as ODBC statement cancellation, must be explicit,
   documented, and tested before docs claim mid-call interruption.
 
-SQL Server bridge work remains deferred. The current native provider boundary and non-live
-tests do not prove JS-to-native SQL Server execution.
+SQL Server bridge work remains separate until the ODBC async lane proves real async driver
+behavior. The current native provider boundary and non-live tests do not prove
+JS-to-native SQL Server execution.
 
 ## Diagnostics And Counters
 
@@ -146,8 +147,8 @@ Do not report:
 - latency;
 - live database scalability;
 - SQLite async/offload completion;
-- PostgreSQL or SQL Server bridge readiness;
+- SQL Server bridge readiness;
 - public alpha provider readiness.
 
-The remaining provider bridge work belongs to ENGINE-17 for SQLite runtime completion and
-future PostgreSQL/SQL Server bridge tasks.
+The remaining provider bridge work belongs to SQL Server async-provider completion and
+provider consolidation tasks.

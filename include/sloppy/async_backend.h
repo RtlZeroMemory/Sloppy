@@ -14,6 +14,7 @@ extern "C" {
 
 typedef struct SlAsyncLoop SlAsyncLoop;
 typedef struct SlAsyncCompletion SlAsyncCompletion;
+typedef struct SlAsyncIoWatch SlAsyncIoWatch;
 
 typedef enum SlAsyncBackendKind
 {
@@ -39,8 +40,17 @@ typedef enum SlAsyncOperationKind
     SL_ASYNC_OPERATION_PROVIDER = 4
 } SlAsyncOperationKind;
 
+typedef enum SlAsyncIoEvent
+{
+    SL_ASYNC_IO_EVENT_READABLE = 1U << 0U,
+    SL_ASYNC_IO_EVENT_WRITABLE = 1U << 1U,
+    SL_ASYNC_IO_EVENT_DISCONNECT = 1U << 2U
+} SlAsyncIoEvent;
+
 typedef SlStatus (*SlAsyncCompletionDispatchFn)(SlAsyncLoop* loop,
                                                 const SlAsyncCompletion* completion, void* user);
+typedef void (*SlAsyncIoWatchFn)(SlAsyncLoop* loop, SlAsyncIoWatch* watch, unsigned events,
+                                 SlStatus status, void* user);
 typedef void (*SlAsyncCompletionCleanupFn)(const SlAsyncCompletion* completion, void* user);
 typedef bool (*SlAsyncCompletionTerminalCheckFn)(const SlAsyncCompletion* completion, void* user);
 typedef void (*SlAsyncCompletionLateFn)(const SlAsyncCompletion* completion, void* user);
@@ -122,6 +132,21 @@ size_t sl_async_loop_pending_count(const SlAsyncLoop* loop);
 size_t sl_async_loop_capacity(const SlAsyncLoop* loop);
 bool sl_async_loop_is_owner_thread(const SlAsyncLoop* loop);
 bool sl_async_loop_is_disposed(const SlAsyncLoop* loop);
+
+/*
+ * Registers a Slop-owned readiness watch for a native dependency socket.
+ *
+ * This is intentionally narrower than exposing libuv: callers pass the integer socket
+ * descriptor returned by their dependency boundary, receive Slop event bits, and keep all
+ * libuv handles inside the platform backend. The callback runs on the loop owner thread.
+ * The deterministic test backend returns unsupported; production socket readiness requires
+ * the libuv backend. `watch` is arena-owned and must be stopped before the owning resource
+ * is discarded.
+ */
+SlStatus sl_async_io_watch_start(SlAsyncLoop* loop, SlArena* arena, int socket, unsigned events,
+                                 SlAsyncIoWatchFn callback, void* user, SlAsyncIoWatch** out_watch);
+SlStatus sl_async_io_watch_update(SlAsyncIoWatch* watch, unsigned events);
+void sl_async_io_watch_stop(SlAsyncIoWatch* watch);
 
 #ifdef __cplusplus
 }

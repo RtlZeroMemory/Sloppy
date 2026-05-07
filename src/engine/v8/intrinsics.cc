@@ -24,7 +24,14 @@ bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Contex
         return sl_v8_install_sqlite_intrinsics(backend->isolate, context, data);
     }
     if (sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_SQLITE)) {
-        return sl_v8_install_sqlite_intrinsics(backend->isolate, context, data);
+        if (!sl_v8_install_sqlite_intrinsics(backend->isolate, context, data)) {
+            return false;
+        }
+    }
+    if (sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_POSTGRES)) {
+        if (!sl_v8_install_postgres_intrinsics(backend->isolate, context, data)) {
+            return false;
+        }
     }
     return true;
 }

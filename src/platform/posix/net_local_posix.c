@@ -419,6 +419,9 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         connection->state = SL_LOCAL_CONNECTION_FAILED;
@@ -508,7 +511,7 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     SlLocalServer* server = NULL;
     struct sockaddr_un addr;
     socklen_t addr_len = 0;
-    char path[sizeof(((struct sockaddr_un*)0)->sun_path)];
+    char path[sizeof(((struct sockaddr_un*)0)->sun_path)] = {0};
     size_t path_length = 0U;
     struct stat st;
     SlStatus status;
@@ -564,6 +567,9 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     status = sl_local_alloc_server(arena, options->read_buffer_capacity, &server);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (server == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -654,6 +660,9 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
     status = sl_local_alloc_connection(arena, server->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     do {
         fd = accept(server->fd, NULL, NULL);
