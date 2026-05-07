@@ -227,8 +227,8 @@ function Test-LocalPathHygiene {
             continue
         }
         $localPathNeedles = @("C:" + "\Users\", "V:" + "\")
-        $matches = Select-String -LiteralPath $path -SimpleMatch -Pattern $localPathNeedles -AllMatches
-        foreach ($match in $matches) {
+        $foundMatches = Select-String -LiteralPath $path -SimpleMatch -Pattern $localPathNeedles -AllMatches
+        foreach ($match in $foundMatches) {
             $bad.Add("${relative}:$($match.LineNumber): $($match.Line.Trim())")
         }
     }

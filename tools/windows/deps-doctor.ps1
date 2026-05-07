@@ -91,11 +91,11 @@ function Invoke-SlCommandVersion {
         [string[]]$Arguments
     )
 
-    $args = if ($Arguments.Count -gt 0) { $Arguments } else { @("--version") }
+    $versionArgs = if ($Arguments.Count -gt 0) { $Arguments } else { @("--version") }
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $CommandPath
-    $startInfo.Arguments = ($args | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join " "
+    $startInfo.Arguments = ($versionArgs | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join " "
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.UseShellExecute = $false
