@@ -52,6 +52,22 @@ V8-gated, source-input, package outside-checkout, platform-specific, dependency-
 live-network/live-provider, advanced static analysis, fuzz/property, stress/torture,
 sanitizer/memory-safety, and benchmark.
 
+Provider PRs must name the provider-specific lanes they touched:
+
+- default non-V8: common Db contract, provider native diagnostics/redaction, and SQLite
+  embedded conformance when applicable;
+- V8-gated: stdlib provider bridge behavior and Promise settlement when V8 is enabled;
+- live-network/live-provider: Docker-backed PostgreSQL and SQL Server scripts;
+- stress/torture: lifecycle pressure tests such as queue overflow, cancellation races,
+  pool drain, and repeated open/close;
+- benchmark: measurement only, never correctness.
+
+`live-postgres`, `live-sqlserver`, `live-providers`, and `full-ci` labels can request the
+Docker-backed provider workflow. `workflow_dispatch` can also select `postgres`,
+`sqlserver`, or `all`. Missing Docker, a missing ODBC driver, missing live connection
+configuration, or SQL Server async-driver unavailability is `UNAVAILABLE`/`SKIPPED`
+evidence and must not be folded into default success.
+
 ## Required CI Rules
 
 - Do not merge with skipped, stale, cancelled, or failing required CI.

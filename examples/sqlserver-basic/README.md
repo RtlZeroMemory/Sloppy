@@ -9,22 +9,23 @@ SQL Server doctor helper shape.
 Current limitations:
 
 - requires SQL Server and Microsoft ODBC Driver 18 for SQL Server;
-- uses ODBC through the native provider;
+- uses true-async ODBC connection/statement mode through the V8 provider bridge when the
+  configured driver supports async completion;
 - set `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` or equivalent config for live use;
 - not part of default CI live database execution;
 - no migrations;
 - no ORM;
-- pool behavior is a small bounded skeleton, not production pooling;
-- async ODBC, worker-pool offload, cancellation, deadlines, TLS/auth hardening,
-  table-valued parameters, bulk copy, blobs, and date/time mapping are deferred;
-- JavaScript-to-native data intrinsics are not wired yet, so this example is not runnable
-  through `sloppy run` today.
+- pooling is bounded and provider-owned, not an ORM/session abstraction;
+- unsupported drivers report SQL Server async-driver unavailability instead of falling
+  back to a blocking pool and calling it true async;
+- TLS/auth hardening, table-valued parameters, bulk copy, richer date/time mapping, and
+  production pooling policy remain separate provider-hardening work.
 
 Native live provider tests are opt-in:
 
 ```powershell
 $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;"
-.\tools\windows\dev.ps1 test
+.\tools\windows\test-live-sqlserver.ps1
 ```
 
 Do not paste credentials into PR bodies or diagnostics. Connection strings must be redacted

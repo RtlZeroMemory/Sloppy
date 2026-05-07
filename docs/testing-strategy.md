@@ -46,6 +46,13 @@ Default non-V8 evidence does not prove V8, sanitizer, or libFuzzer seed-replay
 evidence. Package smoke does not prove release readiness. Benchmark smoke proves harness
 execution only.
 
+Database provider evidence uses the same lane vocabulary. SQLite embedded conformance may
+run in the default lane; PostgreSQL and SQL Server service behavior belongs to
+live-network/live-provider; JS bridge behavior belongs to V8-gated; provider lifecycle
+pressure belongs to stress/torture; and provider benchmark output remains benchmark
+evidence only. A skipped or unavailable Docker/driver/service lane is not a passing
+provider claim.
+
 ## Golden Policy
 
 Goldens are semantic contracts. Structured goldens should assert normalized

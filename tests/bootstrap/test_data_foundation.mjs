@@ -171,6 +171,14 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlite.supports.transactionsMode, "callback");
     assert.equal(data.sqlite.supports.preparedStatements, false);
     assert.equal(data.sqlite.supports.pooling, false);
+    assert.deepEqual(data.sqlite.supports.parameters, [
+        "null",
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "bytes",
+    ]);
     assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
     assertThrowsMessage(() => data.sqlite.open(":memory:"), /options must be a plain object/);
@@ -278,6 +286,10 @@ function createForgedLoweredQuery() {
         assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
             affectedRows: 1,
         });
+        assert.deepEqual(
+            db.exec("insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]),
+            { affectedRows: 1 },
+        );
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
         let capturedTx;
@@ -318,6 +330,7 @@ function createForgedLoweredQuery() {
             ["open", ":memory:", "data.main", "write", "sqlite"],
             ["close", 1],
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
+            ["exec", 1, "insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]],
             ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
             ["begin", 1],

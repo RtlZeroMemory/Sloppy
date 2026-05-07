@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -549,7 +548,8 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
             return false;
         }
         if (!cell.bytes.empty()) {
-            std::memcpy(backing->Data(), cell.bytes.data(), cell.bytes.size());
+            std::copy(cell.bytes.begin(), cell.bytes.end(),
+                      static_cast<unsigned char*>(backing->Data()));
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         *out = v8::Uint8Array::New(buffer, 0, cell.bytes.size());

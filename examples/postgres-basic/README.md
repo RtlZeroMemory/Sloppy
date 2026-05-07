@@ -21,7 +21,7 @@ Native live provider tests are opt-in:
 
 ```powershell
 $env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
-.\tools\windows\dev.ps1 test
+.\tools\windows\test-live-postgres.ps1
 ```
 
 Do not paste credentials into PR bodies or diagnostics. Connection strings must be redacted

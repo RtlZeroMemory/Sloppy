@@ -17,6 +17,9 @@ readiness watches, bounded pooling, parameterized exec/query/queryOne, and callb
 transactions. SQL Server has a V8-gated true-async bridge that requires ODBC asynchronous
 connection and statement support, bounded pooling, parameterized exec/query/queryOne, and
 callback transactions.
+Common provider conformance is tracked under `tests/conformance/providers/`, with SQLite
+running by default and PostgreSQL/SQL Server live behavior gated behind Docker/service
+dependencies.
 
 ## Invariants
 
@@ -29,8 +32,10 @@ callback transactions.
   not a fake native SQLite type system.
 - Live-provider evidence is separate from default non-V8 evidence.
 - Provider diagnostics must redact secrets and connection strings.
+- Skipped or unavailable provider lanes are reported as skipped or unavailable, not as
+  passing evidence.
 
 ## Deferred Work
 
-Deferred work includes broader live-provider CI scheduling, richer audit behavior,
-migrations/schema tooling, and production hardening.
+Deferred work includes richer audit behavior, migrations/schema tooling, and production
+hardening.

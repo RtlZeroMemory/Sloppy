@@ -42,9 +42,20 @@ handler diagnostics.
 `conformance.async_handler.run_once` continue to prove compiled artifact execution through
 `sloppy run --artifacts --once` when V8 is configured.
 
+Provider bridge cases are separate from native provider correctness:
+
+- `conformance.sqlite.bridge` proves SQLite JS bridge open/exec/query/queryOne,
+  transaction callback settlement, capability-gated resource use, and typed value
+  materialization including blob result/`Uint8Array` parameter conversion.
+- `conformance.postgres.bridge_live` proves PostgreSQL JS bridge behavior only when the
+  Docker-backed live-provider lane and `SLOPPY_POSTGRES_TEST_URL` are configured.
+- `conformance.sqlserver.bridge_live` proves SQL Server JS bridge behavior only when the
+  Docker-backed live-provider lane, ODBC driver, and async driver support are configured.
+
 ## Boundaries
 
 This lane is not default non-V8 evidence, arbitrary bundler source-map support, async stack
 remapping evidence, package evidence, live-provider evidence, production-edge HTTP
 evidence, benchmark evidence, Node/npm compatibility, or public alpha readiness. Missing
-SDK means skipped/not configured, not passed.
+SDK, Docker, service configuration, ODBC driver support, or SQL Server async-driver support
+means skipped/not configured/unavailable, not passed.
