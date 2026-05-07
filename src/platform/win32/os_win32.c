@@ -81,7 +81,7 @@ SlStatus sl_os_platform_environment_get(SlArena* arena, SlStr key, SlOwnedStr* o
     }
     *out_value = (SlOwnedStr){0};
     *out_found = false;
-    status = sl_str_copy_to_arena_nul(arena, key, &key_cstr);
+    status = sl_str_copy_to_arena_cstr(arena, key, &key_cstr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -118,7 +118,7 @@ SlStatus sl_os_platform_environment_has(SlStr key, bool* out_found, SlDiag* out_
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_str_copy_to_arena_nul(&arena, key, &key_cstr);
+    status = sl_str_copy_to_arena_cstr(&arena, key, &key_cstr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -157,7 +157,7 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
         cursor += entry.length + 1U;
     }
     if (count != 0U) {
-        status = sl_checked_mul_size(count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+        status = sl_checked_array_size(count, sizeof(SlOsEnvironmentEntry), &alloc_size);
         if (!sl_status_is_ok(status)) {
             FreeEnvironmentStringsA(block);
             return status;
@@ -577,7 +577,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_str_is_empty(options->cwd)) {
         SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_nul(arena, options->cwd, &owned);
+        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -668,7 +668,8 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         return status;
     }
     startup.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)memory;
-    status = sl_checked_mul_size((size_t)inherited_handle_count, sizeof(HANDLE), &handle_list_size);
+    status =
+        sl_checked_array_size((size_t)inherited_handle_count, sizeof(HANDLE), &handle_list_size);
     if (!sl_status_is_ok(status)) {
         sl_os_win32_close_handle(&stdout_read);
         sl_os_win32_close_handle(&stdout_write);
@@ -846,7 +847,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     if (!sl_str_is_empty(options->cwd)) {
         SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_nul(arena, options->cwd, &owned);
+        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -948,7 +949,8 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         goto cleanup_fail;
     }
     attribute_initialized = true;
-    status = sl_checked_mul_size((size_t)inherited_handle_count, sizeof(HANDLE), &handle_list_size);
+    status =
+        sl_checked_array_size((size_t)inherited_handle_count, sizeof(HANDLE), &handle_list_size);
     if (!sl_status_is_ok(status)) {
         goto cleanup_fail;
     }

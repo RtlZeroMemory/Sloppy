@@ -171,8 +171,10 @@ bodies, and route/module extraction beyond the compiler shape above.
 `sloppy routes --plan <path>` can print route metadata from a plan-compatible metadata
 fixture or artifact, including the route metadata emitted by the compiler. This
 is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
-production native route table. `sloppy run --artifacts <dir>` also reads the documented
-Plan v1 alpha `routes` section for dev-only local dispatch.
+production native route table. Route/capability/OpenAPI inspection output is sorted with
+full-length method and pattern comparisons, not C-string truncation. `sloppy run
+--artifacts <dir>` also reads the documented Plan v1 alpha `routes` section for dev-only
+local dispatch.
 
 `sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
 skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI

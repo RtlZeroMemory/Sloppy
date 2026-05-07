@@ -157,6 +157,7 @@ $warnings = @()
 
 $includePattern = '^\s*#\s*include\s*[<"]([^>"]+)[>"]'
 $unsafeFunctionPattern = '\b(gets|strcpy|strcat|sprintf|vsprintf)\s*\('
+$cstringTerminatorPattern = '\bsl_str_copy_to_arena_nul\s*\('
 $memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove)\s*\('
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
 
@@ -192,6 +193,12 @@ function Test-AllowedMemoryPrimitiveBoundary {
     }
 
     return $false
+}
+
+function Test-AllowedCStringTerminatorBoundary {
+    param([string]$RelativePath)
+
+    return $RelativePath -eq "src/core/string.c" -or $RelativePath -eq "include/sloppy/string.h"
 }
 
 foreach ($file in $files) {
@@ -241,6 +248,18 @@ foreach ($file in $files) {
                 -Pattern $Matches[1] `
                 -Rule "Unsafe C string/format functions are forbidden." `
                 -Fix "Use bounded helpers and follow docs/c-standards.md." `
+                    -Severity "error"
+        }
+
+        if (($line -match $cstringTerminatorPattern) -and
+            -not (Test-AllowedCStringTerminatorBoundary -RelativePath $relativePath))
+        {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "sl_str_copy_to_arena_nul" `
+                -Rule "Raw NUL-append copies are not C-string boundary validation." `
+                -Fix "Use sl_str_copy_to_arena_cstr for OS/env/config/app-host boundaries, or add a documented core exception." `
                 -Severity "error"
         }
 

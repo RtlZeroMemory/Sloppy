@@ -89,7 +89,9 @@ static SlStatus sl_fs_win32_path_to_wide(SlArena* arena, SlStr path, wchar_t** o
     wchar_t* wide = NULL;
     SlStatus status;
 
-    if (arena == NULL || out == NULL || path.length == 0U || path.length > INT_MAX) {
+    if (arena == NULL || out == NULL || path.length == 0U || path.length > INT_MAX ||
+        !sl_status_is_ok(sl_str_validate_no_nul(path)))
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = NULL;
@@ -671,7 +673,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     FindClose(find);
     if (count != 0U) {
         size_t bytes = 0U;
-        status = sl_checked_mul_size(count, sizeof(SlFsDirectoryEntry), &bytes);
+        status = sl_checked_array_size(count, sizeof(SlFsDirectoryEntry), &bytes);
         if (sl_status_is_ok(status)) {
             status = sl_arena_alloc(arena, bytes, _Alignof(SlFsDirectoryEntry), &memory);
         }
@@ -883,7 +885,7 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
     if (sl_status_is_ok(status)) {
         lock = (SlFsFileLock*)memory;
         *lock = (SlFsFileLock){.handle = INVALID_HANDLE_VALUE, .path = {0}, .closed = true};
-        status = sl_str_copy_to_arena_nul(arena, path, &lock->path);
+        status = sl_str_copy_to_arena_cstr(arena, path, &lock->path);
     }
     if (sl_status_is_ok(status)) {
         status = sl_fs_win32_path_to_wide(arena, path, &wide);

@@ -14,12 +14,38 @@
 #include "sloppy/checked_math.h"
 
 #include <limits.h>
+#include <stdint.h>
 
 #define SL_BUILDER_MIN_GROW_CAPACITY 8U
 
 static void sl_byte_builder_copy(unsigned char* dst, const unsigned char* src, size_t length)
 {
     size_t index = 0U;
+    uintptr_t dst_start = (uintptr_t)dst;
+    uintptr_t src_start = (uintptr_t)src;
+    uintptr_t dst_end = 0U;
+    uintptr_t src_end = 0U;
+
+    if (length == 0U || dst == src) {
+        return;
+    }
+
+    if (dst_start <= UINTPTR_MAX - length && src_start <= UINTPTR_MAX - length) {
+        dst_end = dst_start + length;
+        src_end = src_start + length;
+        if (dst_start > src_start && dst_start < src_end) {
+            for (index = length; index > 0U; index -= 1U) {
+                dst[index - 1U] = src[index - 1U];
+            }
+            return;
+        }
+        if (src_start > dst_start && src_start < dst_end) {
+            for (index = 0U; index < length; index += 1U) {
+                dst[index] = src[index];
+            }
+            return;
+        }
+    }
 
     for (index = 0U; index < length; index += 1U) {
         dst[index] = src[index];

@@ -1175,13 +1175,11 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
     iter = yyjson_obj_iter_with(properties);
     while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
         const char* property_name = yyjson_get_str(key);
-        yyjson_val* property_value = NULL;
 
         if (property_name == NULL) {
             continue;
         }
-        property_value = yyjson_obj_get(properties, property_name);
-        sl_cli_parse_schema_property(property_value,
+        sl_cli_parse_schema_property(yyjson_obj_iter_get_val(key),
                                      (SlCliSpan){property_name, yyjson_get_len(key)}, schema);
     }
 }
@@ -1676,6 +1674,20 @@ static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expect
 
     return text != NULL && text_length == expected_length &&
            memcmp(text, expected, expected_length) == 0;
+}
+
+static bool sl_run_json_string_equals_literal(yyjson_val* value, SlStr expected)
+{
+    const char* text = NULL;
+    size_t text_length = 0U;
+
+    if (value == NULL || !yyjson_is_str(value)) {
+        return false;
+    }
+
+    text = yyjson_get_str(value);
+    text_length = yyjson_get_len(value);
+    return sl_str_equal(sl_str_from_parts(text, text_length), expected);
 }
 
 static bool sl_run_manifest_array_contains_asset(yyjson_val* array, const char* required_asset)
@@ -3052,6 +3064,9 @@ static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* v
     }
 
     text = sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value));
+    if (!sl_status_is_ok(sl_str_validate_no_nul(text))) {
+        return false;
+    }
     for (index = 0U; index < text.length; index += 1U) {
         status = sl_string_builder_append_char(&builder, text.ptr[index]);
         if (!sl_status_is_ok(status)) {
@@ -3070,9 +3085,9 @@ static int sl_run_reject_unknown_project_config_fields(yyjson_val* root)
 
     iter = yyjson_obj_iter_with(root);
     while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
-        const char* field = yyjson_get_str(key);
-        if (field == NULL || (strcmp(field, "entry") != 0 && strcmp(field, "outDir") != 0 &&
-                              strcmp(field, "environment") != 0))
+        if (!sl_run_json_string_equals_literal(key, SL_STR_LITERAL("entry")) &&
+            !sl_run_json_string_equals_literal(key, SL_STR_LITERAL("outDir")) &&
+            !sl_run_json_string_equals_literal(key, SL_STR_LITERAL("environment")))
         {
             sl_cli_write_cstr(stderr,
                               "sloppy run: invalid sloppy.json: unsupported field; supported "
@@ -3484,19 +3499,39 @@ static bool sl_cli_capability_allows(SlCliSpan access, SlCliSpan operation)
     return false;
 }
 
+static int sl_cli_span_compare(SlCliSpan left, SlCliSpan right)
+{
+    size_t common = left.length < right.length ? left.length : right.length;
+    int result = 0;
+
+    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U)) {
+        if (left.ptr == right.ptr) {
+            return 0;
+        }
+        return left.ptr == NULL ? -1 : 1;
+    }
+
+    if (common != 0U) {
+        result = memcmp(left.ptr, right.ptr, common);
+        if (result != 0) {
+            return result < 0 ? -1 : 1;
+        }
+    }
+    if (left.length == right.length) {
+        return 0;
+    }
+    return left.length < right.length ? -1 : 1;
+}
+
 static int sl_cli_route_compare(const SlCliRoute* left, const SlCliRoute* right)
 {
-    int result = strncmp(left->method.ptr, right->method.ptr,
-                         left->method.length < right->method.length ? left->method.length
-                                                                    : right->method.length);
-    if (result == 0 && left->method.length != right->method.length) {
-        return left->method.length < right->method.length ? -1 : 1;
+    int result = sl_cli_span_compare(left->method, right->method);
+    if (result != 0) {
+        return result;
     }
-    result = strncmp(left->pattern.ptr, right->pattern.ptr,
-                     left->pattern.length < right->pattern.length ? left->pattern.length
-                                                                  : right->pattern.length);
-    if (result == 0 && left->pattern.length != right->pattern.length) {
-        return left->pattern.length < right->pattern.length ? -1 : 1;
+    result = sl_cli_span_compare(left->pattern, right->pattern);
+    if (result != 0) {
+        return result;
     }
     if (left->handler_id == right->handler_id) {
         return 0;

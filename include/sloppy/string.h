@@ -36,6 +36,8 @@ typedef struct SlOwnedStr
     size_t length;
 } SlOwnedStr;
 
+#define SL_STR_LITERAL(value) sl_str_from_parts((value), sizeof(value) - 1U)
+
 SlStr sl_str_from_parts(const char* ptr, size_t length);
 
 /*
@@ -57,6 +59,7 @@ bool sl_str_ends_with(SlStr str, SlStr suffix);
 bool sl_str_equal_ci_ascii(SlStr left, SlStr right);
 bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix);
 bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix);
+bool sl_str_contains_nul(SlStr str);
 
 SlStr sl_owned_str_as_view(SlOwnedStr str);
 
@@ -77,14 +80,32 @@ SlStatus sl_str_hash(SlStr str, uint64_t* out_hash);
 SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out);
 
 /*
- * Copies `src` into `arena`, appends a boundary-adapter NUL byte, and writes the
- * arena-owned string to `out`.
+ * Validates that `str` can safely cross a C-string boundary.
  *
- * The returned length excludes the NUL terminator. This is only for APIs that require a C
- * string boundary; ordinary SlStr logic must continue to use explicit lengths. On failure,
- * `out` is left unchanged.
+ * Empty strings are valid. Non-empty strings require non-NULL storage and must not contain
+ * embedded NUL bytes. Binary-preserving SlStr users must not call this helper.
+ */
+SlStatus sl_str_validate_no_nul(SlStr str);
+
+/*
+ * Copies `src` into `arena`, appends a NUL byte, and writes the arena-owned string to
+ * `out`.
+ *
+ * The returned length excludes the NUL terminator. This helper preserves embedded NUL bytes;
+ * C-string boundaries should call `sl_str_copy_to_arena_cstr` instead. On failure, `out` is
+ * left unchanged.
  */
 SlStatus sl_str_copy_to_arena_nul(SlArena* arena, SlStr src, SlOwnedStr* out);
+
+/*
+ * Validates `src` for a C-string boundary, copies it into `arena`, appends the boundary NUL
+ * byte, and writes the arena-owned string to `out`.
+ *
+ * The returned length excludes the NUL terminator. Embedded NUL bytes are rejected so C
+ * APIs cannot silently truncate length-based SlStr values. On failure, `out` is left
+ * unchanged.
+ */
+SlStatus sl_str_copy_to_arena_cstr(SlArena* arena, SlStr src, SlOwnedStr* out);
 
 #ifdef __cplusplus
 }

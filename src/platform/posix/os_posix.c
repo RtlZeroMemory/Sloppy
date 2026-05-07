@@ -109,7 +109,7 @@ SlStatus sl_os_platform_environment_get(SlArena* arena, SlStr key, SlOwnedStr* o
     }
     *out_value = (SlOwnedStr){0};
     *out_found = false;
-    status = sl_str_copy_to_arena_nul(arena, key, &key_cstr);
+    status = sl_str_copy_to_arena_cstr(arena, key, &key_cstr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -137,7 +137,7 @@ SlStatus sl_os_platform_environment_has(SlStr key, bool* out_found, SlDiag* out_
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_str_copy_to_arena_nul(&arena, key, &key_cstr);
+    status = sl_str_copy_to_arena_cstr(&arena, key, &key_cstr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -173,7 +173,7 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     if (out->count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_mul_size(out->count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+    status = sl_checked_array_size(out->count, sizeof(SlOsEnvironmentEntry), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -241,7 +241,7 @@ static void sl_os_posix_sleep_poll(void)
 static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
 {
     SlOwnedStr owned = {0};
-    SlStatus status = sl_str_copy_to_arena_nul(arena, value, &owned);
+    SlStatus status = sl_str_copy_to_arena_cstr(arena, value, &owned);
 
     if (!sl_status_is_ok(status)) {
         return status;
@@ -403,7 +403,7 @@ static SlStatus sl_os_posix_environment_block(SlArena* arena,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_mul_size(pointer_count, sizeof(char*), &alloc_size);
+    status = sl_checked_array_size(pointer_count, sizeof(char*), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -635,7 +635,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_mul_size(alloc_count, sizeof(char*), &alloc_size);
+    status = sl_checked_array_size(alloc_count, sizeof(char*), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -900,7 +900,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_mul_size(alloc_count, sizeof(char*), &alloc_size);
+    status = sl_checked_array_size(alloc_count, sizeof(char*), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

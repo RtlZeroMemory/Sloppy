@@ -17,6 +17,8 @@ extern "C" {
  */
 SlStatus sl_checked_add_size(size_t a, size_t b, size_t* out);
 SlStatus sl_checked_mul_size(size_t a, size_t b, size_t* out);
+SlStatus sl_checked_add3_size(size_t a, size_t b, size_t c, size_t* out);
+SlStatus sl_checked_array_size(size_t count, size_t elem_size, size_t* out);
 
 #ifdef __cplusplus
 }

@@ -33,6 +33,10 @@ is_allowed_memory_boundary() {
     return 1
 }
 
+is_allowed_cstring_terminator_boundary() {
+    [[ "$1" == "src/core/string.c" || "$1" == "include/sloppy/string.h" ]]
+}
+
 add_finding() {
     local target_array="$1"
     local file="$2"
@@ -78,6 +82,10 @@ while IFS= read -r file; do
 
         if [[ "$line" =~ (^|[^[:alnum:]_])(gets|strcpy|strcat|sprintf|vsprintf)[[:space:]]*\( ]]; then
             add_finding violations "$file" "$line_number" "Unsafe C string/format functions are forbidden." "${BASH_REMATCH[2]}"
+        fi
+
+        if [[ "$line" =~ (^|[^[:alnum:]_])sl_str_copy_to_arena_nul[[:space:]]*\( ]] && ! is_allowed_cstring_terminator_boundary "$file"; then
+            add_finding violations "$file" "$line_number" "Raw NUL-append copies are not C-string boundary validation." "sl_str_copy_to_arena_nul"
         fi
 
         if [[ "$line" =~ (^|[^[:alnum:]_])(snprintf|strlen|memcpy|memmove)[[:space:]]*\( ]] && ! is_allowed_memory_boundary "$file" "${BASH_REMATCH[2]}" "$line"; then

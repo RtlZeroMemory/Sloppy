@@ -22,6 +22,18 @@
         }
       }
     },
+    "/users/create": {
+      "get": {
+        "operationId": "Users.Create",
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
+        }
+      }
+    },
     "/users/{id}": {
       "get": {
         "operationId": "Users.Get",
@@ -34,18 +46,6 @@
         "responses": {
           "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
           "400": { "$ref": "#/components/responses/SlopValidationProblem" }
-        }
-      }
-    },
-    "/users/create": {
-      "get": {
-        "operationId": "Users.Create",
-        "x-slop-completeness": "",
-        "x-slop-capabilities": [],
-        "x-slop-optimization-candidates": [],
-        "parameters": [],
-        "responses": {
-          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
         }
       }
     }

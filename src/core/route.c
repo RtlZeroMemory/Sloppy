@@ -357,7 +357,7 @@ static SlStatus sl_route_finalize_pattern(SlRouteParseContext* ctx, SlStr patter
     }
 
     if (segment_count != 0U) {
-        status = sl_checked_mul_size(segment_count, sizeof(SlRouteSegment), &alloc_size);
+        status = sl_checked_array_size(segment_count, sizeof(SlRouteSegment), &alloc_size);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -675,7 +675,7 @@ static SlStatus sl_route_copy_match_params(SlArena* arena, const SlRouteParam* c
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(capture_count, sizeof(SlRouteParam), &alloc_size);
+    status = sl_checked_array_size(capture_count, sizeof(SlRouteParam), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

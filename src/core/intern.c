@@ -79,12 +79,12 @@ SlStatus sl_intern_table_init(SlInternTable* table, SlArena* arena, size_t capac
         }
     }
 
-    status = sl_checked_mul_size(capacity, sizeof(SlInternEntry), &entry_bytes);
+    status = sl_checked_array_size(capacity, sizeof(SlInternEntry), &entry_bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_checked_mul_size(bucket_count, sizeof(size_t), &bucket_bytes);
+    status = sl_checked_array_size(bucket_count, sizeof(size_t), &bucket_bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }

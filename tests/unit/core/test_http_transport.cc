@@ -667,6 +667,21 @@ static int test_config_validation_and_lifecycle(void)
         return 8;
     }
 
+    {
+        static const char host_with_nul[] = {'1', '2', '7', '.',  '0', '.',
+                                             '0', '.', '1', '\0', 'x'};
+        sl_arena_reset(&arena);
+        config = small_config(nullptr);
+        config.host = sl_str_from_parts(host_with_nul, sizeof(host_with_nul));
+        server = {};
+        diag = {};
+        if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return 10;
+        }
+    }
+
     sl_arena_reset(&arena);
     config = small_config(nullptr);
     config.request_arena_bytes = 16U;

@@ -85,6 +85,68 @@ static int test_hashing(void)
     return 0;
 }
 
+static int test_find_helpers(void)
+{
+    const unsigned char bytes[] = {'a', 0U, 'b', 0xffU, 'c'};
+    const unsigned char needles[] = {0xffU, 'z'};
+    unsigned char full_range[256];
+    SlBytesFindResult result = {.found = true, .index = 999U, .value = 77U};
+    size_t index = 0U;
+
+    if (expect_status(sl_bytes_find(sl_bytes_from_parts(bytes, sizeof(bytes)), 0U, &result),
+                      SL_STATUS_OK) != 0 ||
+        !result.found || result.index != 1U || result.value != 0U)
+    {
+        return 13;
+    }
+
+    if (expect_status(sl_bytes_find(sl_bytes_from_parts(bytes, sizeof(bytes)), 'q', &result),
+                      SL_STATUS_OK) != 0 ||
+        result.found || result.index != sizeof(bytes) || result.value != 0U)
+    {
+        return 14;
+    }
+
+    if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(bytes, sizeof(bytes)),
+                                        sl_bytes_from_parts(needles, sizeof(needles)), &result),
+                      SL_STATUS_OK) != 0 ||
+        !result.found || result.index != 3U || result.value != 0xffU)
+    {
+        return 15;
+    }
+
+    if (expect_status(
+            sl_bytes_find_any(sl_bytes_from_parts(bytes, sizeof(bytes)), sl_bytes_empty(), &result),
+            SL_STATUS_OK) != 0 ||
+        result.found || result.index != sizeof(bytes))
+    {
+        return 16;
+    }
+
+    result = (SlBytesFindResult){.found = true, .index = 99U, .value = 7U};
+    if (expect_status(sl_bytes_find(sl_bytes_from_parts(NULL, 1U), 1U, &result),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !result.found || result.index != 99U || result.value != 7U ||
+        expect_status(sl_bytes_find(sl_bytes_from_parts(bytes, sizeof(bytes)), 1U, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 17;
+    }
+
+    for (index = 0U; index < sizeof(full_range); index += 1U) {
+        full_range[index] = (unsigned char)index;
+    }
+    if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(full_range, sizeof(full_range)),
+                                        sl_bytes_from_parts(bytes + 3U, 1U), &result),
+                      SL_STATUS_OK) != 0 ||
+        !result.found || result.index != 255U || result.value != 0xffU)
+    {
+        return 18;
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const unsigned char bytes[] = {0U, 1U, 2U, 0U};
@@ -152,6 +214,11 @@ int main(void)
     }
 
     result = test_hashing();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_find_helpers();
     if (result != 0) {
         return result;
     }

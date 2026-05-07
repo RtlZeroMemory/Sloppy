@@ -18,9 +18,14 @@ provider-specific implementations.
 ## Invariants
 
 - Borrowed views are not NUL-terminated contracts.
+- NUL-terminated API boundaries must use the canonical no-NUL validation/copy helper rather
+  than treating `SlStr` storage as a C string.
 - Arena-owned outputs must state the arena lifetime.
-- Checked arithmetic is required for potentially overflowing sizes or offsets.
+- Checked arithmetic is required for potentially overflowing sizes or offsets. Array
+  allocation counts should use the canonical checked array-size helper.
 - Failure paths should leave outputs unchanged or document the exception.
+- Builder self-overlap is a supported append case and must preserve the original source
+  bytes.
 - Diagnostics should use stable codes and avoid leaking secrets.
 
 ## Tests

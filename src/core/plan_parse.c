@@ -380,7 +380,7 @@ static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(count, sizeof(SlPlanRequiredFeature), &alloc_size);
+    status = sl_checked_array_size(count, sizeof(SlPlanRequiredFeature), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -603,7 +603,7 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
                                   sizeof("minimal Plan v1 requires at least one handler") - 1U));
     }
 
-    status = sl_checked_mul_size(handler_count, sizeof(SlPlanHandler), &alloc_size);
+    status = sl_checked_array_size(handler_count, sizeof(SlPlanHandler), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -777,7 +777,7 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(route_count, sizeof(SlPlanRoute), &alloc_size);
+    status = sl_checked_array_size(route_count, sizeof(SlPlanRoute), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -908,7 +908,7 @@ static SlStatus sl_plan_parse_data_providers(SlPlanParseContext* ctx, yyjson_val
     if (count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_mul_size(count, sizeof(SlPlanDataProvider), &alloc_size);
+    status = sl_checked_array_size(count, sizeof(SlPlanDataProvider), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1084,7 +1084,7 @@ static SlStatus sl_plan_parse_capabilities(SlPlanParseContext* ctx, yyjson_val* 
     if (count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_mul_size(count, sizeof(SlPlanCapability), &alloc_size);
+    status = sl_checked_array_size(count, sizeof(SlPlanCapability), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

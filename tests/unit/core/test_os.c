@@ -433,6 +433,87 @@ static int test_environment_get_has_and_missing(void)
     return 0;
 }
 
+static int test_embedded_nul_cstring_boundaries_reject(void)
+{
+    static const char bad_key[] = {'S', 'L', 'O', 'P',  'P', 'Y', '_', 'O', 'S', '_',
+                                   'B', 'A', 'D', '\0', 'S', 'U', 'F', 'F', 'I', 'X'};
+    static const char bad_command[] = {'s', 'l', 'o', 'p', 'p', 'y', '\0', 'x'};
+    static const char bad_arg[] = {'e', 'c', 'h', 'o', '\0', 'x'};
+    static const char bad_cwd[] = {'Z', ':', '/', 's', 'l', 'o', 'p', 'p', 'y', '\0', 'x'};
+    unsigned char storage[4096];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    SlOwnedStr value = {.ptr = (char*)bad_key, .length = sizeof(bad_key)};
+    bool found = true;
+    SlStr args[1] = {sl_str_from_parts(bad_arg, sizeof(bad_arg))};
+    SlOsProcessRunOptions run_options = {.capture = SL_OS_PROCESS_CAPTURE_TEXT};
+    SlOsProcessRunResult run_result = {.exit_code = 99};
+    SlOsProcessStartOptions start_options = {0};
+    SlOsProcessHandle* handle = (SlOsProcessHandle*)bad_key;
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 26;
+    }
+
+    if (expect_status(sl_os_environment_get(&arena, &policy,
+                                            sl_str_from_parts(bad_key, sizeof(bad_key)), &value,
+                                            &found, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        value.ptr != bad_key || value.length != sizeof(bad_key) || !found)
+    {
+        return 27;
+    }
+
+    if (expect_status(sl_os_environment_has(&policy, sl_str_from_parts(bad_key, sizeof(bad_key)),
+                                            &found, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !found)
+    {
+        return 28;
+    }
+
+    if (expect_status(sl_os_process_run(&arena, &policy,
+                                        sl_str_from_parts(bad_command, sizeof(bad_command)), NULL,
+                                        0U, &run_options, &run_result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        run_result.exit_code != 99)
+    {
+        return 29;
+    }
+
+    run_result.exit_code = 99;
+    if (expect_status(sl_os_process_run(&arena, &policy, sl_str_from_cstr("echo"), args, 1U,
+                                        &run_options, &run_result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        run_result.exit_code != 0)
+    {
+        return 34;
+    }
+
+    run_options.cwd = sl_str_from_parts(bad_cwd, sizeof(bad_cwd));
+    run_result.exit_code = 99;
+    if (expect_status(sl_os_process_run(&arena, &policy, sl_str_from_cstr("echo"), NULL, 0U,
+                                        &run_options, &run_result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_OS_INVALID_CWD)
+    {
+        return 35;
+    }
+
+    diag = (SlDiag){0};
+    if (expect_status(sl_os_process_start(&arena, &policy,
+                                          sl_str_from_parts(bad_command, sizeof(bad_command)), NULL,
+                                          0U, &start_options, &handle, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        handle != NULL)
+    {
+        return 36;
+    }
+
+    return 0;
+}
+
 static int test_strict_environment_denies_ungranted_key(void)
 {
     unsigned char storage[4096];
@@ -850,11 +931,8 @@ static int test_process_start_timeout_kill_cancel_and_stale(const char* self_pat
     return 0;
 }
 
-int main(int argc, char** argv)
+static int test_system_and_environment_suite(void)
 {
-    if (argc >= 2 && strcmp(argv[1], "--sloppy-os-child") == 0) {
-        return process_child_main(argc, argv);
-    }
     int result = test_system_info_is_normalized();
     if (result != 0) {
         return result;
@@ -864,6 +942,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_environment_get_has_and_missing();
+    if (result != 0) {
+        return result;
+    }
+    result = test_embedded_nul_cstring_boundaries_reject();
     if (result != 0) {
         return result;
     }
@@ -879,37 +961,66 @@ int main(int argc, char** argv)
     if (result != 0) {
         return result;
     }
-    result = test_process_run_captures_explicit_argv(argv[0]);
+
+    return test_secret_redaction_helper_never_returns_value();
+}
+
+static int test_process_run_suite(const char* self_path)
+{
+    int result = test_process_run_captures_explicit_argv(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_windows_path_lookup(argv[0]);
+    result = test_process_windows_path_lookup(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_run_timeout_is_distinct(argv[0]);
+    result = test_process_run_timeout_is_distinct(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_run_negative_paths(argv[0]);
+    result = test_process_run_negative_paths(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_run_env_override_and_strict_grant(argv[0]);
+    result = test_process_run_env_override_and_strict_grant(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_run_capture_bound(argv[0]);
+    return test_process_run_capture_bound(self_path);
+}
+
+static int test_process_start_suite(const char* self_path)
+{
+    int result = test_process_start_streams_and_wait(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_start_streams_and_wait(argv[0]);
+    result = test_process_start_stdin_pipe(self_path);
     if (result != 0) {
         return result;
     }
-    result = test_process_start_stdin_pipe(argv[0]);
+
+    return test_process_start_timeout_kill_cancel_and_stale(self_path);
+}
+
+int main(int argc, char** argv)
+{
+    int result = 0;
+
+    if (argc >= 2 && strcmp(argv[1], "--sloppy-os-child") == 0) {
+        return process_child_main(argc, argv);
+    }
+
+    result = test_system_and_environment_suite();
     if (result != 0) {
         return result;
     }
-    return test_process_start_timeout_kill_cancel_and_stale(argv[0]);
+
+    result = test_process_run_suite(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+
+    return test_process_start_suite(argv[0]);
 }

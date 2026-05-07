@@ -175,6 +175,22 @@ bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix)
     return true;
 }
 
+bool sl_str_contains_nul(SlStr str)
+{
+    size_t index = 0U;
+
+    if (!sl_str_has_valid_storage(str)) {
+        return false;
+    }
+
+    for (index = 0U; index < str.length; index += 1U) {
+        if (str.ptr[index] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
 SlStr sl_owned_str_as_view(SlOwnedStr str)
 {
     return sl_str_from_parts(str.ptr, str.length);
@@ -228,6 +244,16 @@ SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out)
     return sl_status_ok();
 }
 
+SlStatus sl_str_validate_no_nul(SlStr str)
+{
+    if (!sl_str_has_valid_storage(str)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_str_contains_nul(str) ? sl_status_from_code(SL_STATUS_INVALID_ARGUMENT)
+                                    : sl_status_ok();
+}
+
 SlStatus sl_str_copy_to_arena_nul(SlArena* arena, SlStr src, SlOwnedStr* out)
 {
     size_t alloc_size = 0U;
@@ -259,4 +285,16 @@ SlStatus sl_str_copy_to_arena_nul(SlArena* arena, SlStr src, SlOwnedStr* out)
     result.length = src.length;
     *out = result;
     return sl_status_ok();
+}
+
+SlStatus sl_str_copy_to_arena_cstr(SlArena* arena, SlStr src, SlOwnedStr* out)
+{
+    SlStatus status;
+
+    status = sl_str_validate_no_nul(src);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_str_copy_to_arena_nul(arena, src, out);
 }
