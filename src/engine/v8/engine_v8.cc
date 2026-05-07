@@ -62,6 +62,26 @@ thread_local SlV8MicrotaskDrainGuard* g_sl_v8_microtask_guard = nullptr;
 
 SlV8Engine* sl_v8_backend(SlEngine* engine);
 
+void sl_v8_reset_http_bridge_caches(SlV8Engine* backend)
+{
+    if (backend == nullptr) {
+        return;
+    }
+
+    for (v8::Global<v8::String>& value : backend->http_strings) {
+        value.Reset();
+    }
+    for (v8::Global<v8::Private>& value : backend->http_private_keys) {
+        value.Reset();
+    }
+    for (v8::Global<v8::Function>& value : backend->http_functions) {
+        value.Reset();
+    }
+    for (v8::Global<v8::Object>& value : backend->http_prototypes) {
+        value.Reset();
+    }
+}
+
 SlStr sl_v8_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -1272,6 +1292,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 
         if (backend->isolate != nullptr) {
             backend->handlers.clear();
+            sl_v8_reset_http_bridge_caches(backend);
             backend->context.Reset();
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();

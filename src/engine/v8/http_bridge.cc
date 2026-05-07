@@ -23,6 +23,113 @@ struct HttpV8HeaderEntry
     std::string value;
 };
 
+void http_v8_headers_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_headers_entries_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_body_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_body_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_body_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_request_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+
+const char* http_v8_string_key_name(SlV8HttpStringKey key)
+{
+    switch (key) {
+    case SL_V8_HTTP_STRING_ABORTED:
+        return "aborted";
+    case SL_V8_HTTP_STRING_BODY:
+    case SL_V8_HTTP_STRING_BODY_RESULT:
+        return "body";
+    case SL_V8_HTTP_STRING_BYTES:
+        return "bytes";
+    case SL_V8_HTTP_STRING_CONNECTION:
+        return "connection";
+    case SL_V8_HTTP_STRING_CONSUMED:
+        return "consumed";
+    case SL_V8_HTTP_STRING_CONTENT_LENGTH:
+        return "contentLength";
+    case SL_V8_HTTP_STRING_CONTENT_TYPE:
+        return "contentType";
+    case SL_V8_HTTP_STRING_DEADLINE:
+        return "deadline";
+    case SL_V8_HTTP_STRING_ENTRIES:
+        return "entries";
+    case SL_V8_HTTP_STRING_EXPIRED:
+        return "expired";
+    case SL_V8_HTTP_STRING_GET:
+        return "get";
+    case SL_V8_HTTP_STRING_HEADERS:
+        return "headers";
+    case SL_V8_HTTP_STRING_ID:
+        return "id";
+    case SL_V8_HTTP_STRING_JSON:
+        return "json";
+    case SL_V8_HTTP_STRING_KIND:
+        return "kind";
+    case SL_V8_HTTP_STRING_LOCATION:
+        return "location";
+    case SL_V8_HTTP_STRING_METHOD:
+        return "method";
+    case SL_V8_HTTP_STRING_PATH:
+        return "path";
+    case SL_V8_HTTP_STRING_PROTOCOL:
+        return "protocol";
+    case SL_V8_HTTP_STRING_QUERY:
+        return "query";
+    case SL_V8_HTTP_STRING_QUERY_STRING:
+        return "queryString";
+    case SL_V8_HTTP_STRING_RAW_TARGET:
+        return "rawTarget";
+    case SL_V8_HTTP_STRING_REASON:
+        return "reason";
+    case SL_V8_HTTP_STRING_REQUEST:
+        return "request";
+    case SL_V8_HTTP_STRING_ROUTE:
+        return "route";
+    case SL_V8_HTTP_STRING_SCHEME:
+        return "scheme";
+    case SL_V8_HTTP_STRING_SECURE:
+        return "secure";
+    case SL_V8_HTTP_STRING_SIGNAL:
+        return "signal";
+    case SL_V8_HTTP_STRING_SLOPPY_RESULT:
+        return "__sloppyResult";
+    case SL_V8_HTTP_STRING_STATUS:
+        return "status";
+    case SL_V8_HTTP_STRING_TEXT:
+        return "text";
+    case SL_V8_HTTP_STRING_THROW_IF_ABORTED:
+        return "throwIfAborted";
+    case SL_V8_HTTP_STRING_COUNT:
+    default:
+        return nullptr;
+    }
+}
+
+const char* http_v8_private_key_name(SlV8HttpPrivateKey key)
+{
+    switch (key) {
+    case SL_V8_HTTP_PRIVATE_ABORTED:
+        return "aborted";
+    case SL_V8_HTTP_PRIVATE_BODY:
+        return "__sloppyBody";
+    case SL_V8_HTTP_PRIVATE_BODY_BYTES:
+        return "__sloppyBodyBytes";
+    case SL_V8_HTTP_PRIVATE_BODY_CONSUMED:
+        return "__sloppyBodyConsumed";
+    case SL_V8_HTTP_PRIVATE_BODY_KIND:
+        return "__sloppyBodyKind";
+    case SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT:
+        return "__sloppyHeaderSnapshot";
+    case SL_V8_HTTP_PRIVATE_REASON:
+        return "reason";
+    case SL_V8_HTTP_PRIVATE_COUNT:
+    default:
+        return nullptr;
+    }
+}
+
 SlStr http_v8_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -38,6 +145,200 @@ SlStatus http_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::
     SlV8Engine* backend =
         isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
     return sl_v8_string_from_native_view(backend, str, out);
+}
+
+SlStatus http_v8_cached_string(v8::Isolate* isolate, SlV8HttpStringKey name,
+                               v8::Local<v8::String>* out)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    const char* text = http_v8_string_key_name(name);
+    size_t index = static_cast<size_t>(name);
+    v8::Local<v8::String> value;
+    SlStatus status;
+
+    if (backend == nullptr || out == nullptr || text == nullptr ||
+        index >= backend->http_strings.size())
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!backend->http_strings[index].IsEmpty()) {
+        *out = backend->http_strings[index].Get(isolate);
+        return sl_status_ok();
+    }
+
+    status = sl_v8_string_from_native_view(backend, sl_str_from_cstr(text), &value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    backend->http_strings[index].Reset(isolate, value);
+    *out = value;
+    return sl_status_ok();
+}
+
+bool http_v8_cached_private(v8::Isolate* isolate, SlV8HttpPrivateKey name,
+                            v8::Local<v8::Private>* out)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    const char* text = http_v8_private_key_name(name);
+    size_t index = static_cast<size_t>(name);
+    v8::Local<v8::String> key;
+    v8::Local<v8::Private> private_key;
+
+    if (backend == nullptr || out == nullptr || text == nullptr ||
+        index >= backend->http_private_keys.size())
+    {
+        return false;
+    }
+
+    if (!backend->http_private_keys[index].IsEmpty()) {
+        *out = backend->http_private_keys[index].Get(isolate);
+        return true;
+    }
+
+    if (!sl_status_is_ok(sl_v8_string_from_native_view(backend, sl_str_from_cstr(text), &key))) {
+        return false;
+    }
+
+    private_key = v8::Private::ForApi(isolate, key);
+    backend->http_private_keys[index].Reset(isolate, private_key);
+    *out = private_key;
+    return true;
+}
+
+bool http_v8_cached_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             SlV8HttpFunctionKey key, v8::FunctionCallback callback,
+                             v8::Local<v8::Function>* out)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    size_t index = static_cast<size_t>(key);
+    v8::Local<v8::FunctionTemplate> function_template;
+    v8::Local<v8::Function> function;
+
+    if (backend == nullptr || out == nullptr || callback == nullptr ||
+        index >= backend->http_functions.size())
+    {
+        return false;
+    }
+
+    if (!backend->http_functions[index].IsEmpty()) {
+        *out = backend->http_functions[index].Get(isolate);
+        return true;
+    }
+
+    function_template = v8::FunctionTemplate::New(isolate, callback);
+    function_template->RemovePrototype();
+    if (!function_template->GetFunction(context).ToLocal(&function)) {
+        return false;
+    }
+    if (!function->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
+        return false;
+    }
+
+    backend->http_functions[index].Reset(isolate, function);
+    *out = function;
+    return true;
+}
+
+bool http_v8_prototype_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Object> prototype, SlV8HttpStringKey name,
+                                    SlV8HttpFunctionKey function_key, v8::FunctionCallback callback)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::Function> function;
+
+    if (!sl_status_is_ok(http_v8_cached_string(isolate, name, &key)) ||
+        !http_v8_cached_function(isolate, context, function_key, callback, &function))
+    {
+        return false;
+    }
+
+    return prototype->Set(context, key, function).FromMaybe(false);
+}
+
+bool http_v8_cached_prototype(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              SlV8HttpPrototypeKey key, v8::Local<v8::Object>* out)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    size_t index = static_cast<size_t>(key);
+    v8::Local<v8::Object> prototype;
+
+    if (backend == nullptr || out == nullptr || index >= backend->http_prototypes.size()) {
+        return false;
+    }
+
+    if (!backend->http_prototypes[index].IsEmpty()) {
+        *out = backend->http_prototypes[index].Get(isolate);
+        return true;
+    }
+
+    prototype = v8::Object::New(isolate);
+    switch (key) {
+    case SL_V8_HTTP_PROTOTYPE_BODY:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_BYTES,
+                                            SL_V8_HTTP_FUNCTION_BODY_BYTES,
+                                            http_v8_body_bytes_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_TEXT,
+                                            SL_V8_HTTP_FUNCTION_BODY_TEXT,
+                                            http_v8_body_text_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_JSON,
+                                            SL_V8_HTTP_FUNCTION_BODY_JSON,
+                                            http_v8_body_json_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_HEADERS:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_GET,
+                                            SL_V8_HTTP_FUNCTION_HEADERS_GET,
+                                            http_v8_headers_get_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_ENTRIES,
+                                            SL_V8_HTTP_FUNCTION_HEADERS_ENTRIES,
+                                            http_v8_headers_entries_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_REQUEST:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_BYTES,
+                                            SL_V8_HTTP_FUNCTION_REQUEST_BYTES,
+                                            http_v8_request_bytes_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_TEXT,
+                                            SL_V8_HTTP_FUNCTION_REQUEST_TEXT,
+                                            http_v8_request_text_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_JSON,
+                                            SL_V8_HTTP_FUNCTION_REQUEST_JSON,
+                                            http_v8_request_json_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_SIGNAL:
+        if (!http_v8_prototype_set_function(isolate, context, prototype,
+                                            SL_V8_HTTP_STRING_THROW_IF_ABORTED,
+                                            SL_V8_HTTP_FUNCTION_SIGNAL_THROW_IF_ABORTED,
+                                            http_v8_signal_throw_if_aborted_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_COUNT:
+    default:
+        return false;
+    }
+
+    if (!prototype->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
+        return false;
+    }
+
+    backend->http_prototypes[index].Reset(isolate, prototype);
+    *out = prototype;
+    return true;
 }
 
 std::string http_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
@@ -135,13 +436,14 @@ SlStatus http_v8_write_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode code,
     return sl_status_from_code(failure_code);
 }
 
-bool http_v8_set_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                 v8::Local<v8::Object> object, const char* name, SlStr value)
+bool http_v8_set_string_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                     v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                     SlStr value)
 {
     v8::Local<v8::String> key;
     v8::Local<v8::String> local_value;
 
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+    if (!sl_status_is_ok(http_v8_cached_string(isolate, name, &key)) ||
         !sl_status_is_ok(http_v8_to_local_string(isolate, value, &local_value)))
     {
         return false;
@@ -150,88 +452,73 @@ bool http_v8_set_string_property(v8::Isolate* isolate, v8::Local<v8::Context> co
     return object->Set(context, key, local_value).FromMaybe(false);
 }
 
-bool http_v8_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                 v8::Local<v8::Object> object, const char* name,
-                                 v8::Local<v8::Object> value)
+bool http_v8_set_object_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                     v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                     v8::Local<v8::Object> value)
 {
     v8::Local<v8::String> key;
 
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key))) {
+    if (!sl_status_is_ok(http_v8_cached_string(isolate, name, &key))) {
         return false;
     }
 
     return object->Set(context, key, value).FromMaybe(false);
 }
 
-bool http_v8_set_value_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                v8::Local<v8::Object> object, const char* name,
-                                v8::Local<v8::Value> value)
+bool http_v8_set_value_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                    v8::Local<v8::Value> value)
 {
     v8::Local<v8::String> key;
 
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key))) {
+    if (!sl_status_is_ok(http_v8_cached_string(isolate, name, &key))) {
         return false;
     }
 
     return object->Set(context, key, value).FromMaybe(false);
 }
 
-bool http_v8_set_bool_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* name, bool value)
-{
-    return http_v8_set_value_property(isolate, context, object, name,
-                                      v8::Boolean::New(isolate, value));
-}
-
-bool http_v8_set_uint64_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                 v8::Local<v8::Object> object, const char* name, uint64_t value)
-{
-    return http_v8_set_value_property(isolate, context, object, name,
-                                      v8::Number::New(isolate, static_cast<double>(value)));
-}
-
-bool http_v8_set_null_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* name)
-{
-    return http_v8_set_value_property(isolate, context, object, name, v8::Null(isolate));
-}
-
-bool http_v8_set_function_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                   v8::Local<v8::Object> object, const char* name,
-                                   v8::FunctionCallback callback)
-{
-    v8::Local<v8::FunctionTemplate> function_template =
-        v8::FunctionTemplate::New(isolate, callback);
-    v8::Local<v8::Function> function;
-
-    if (!function_template->GetFunction(context).ToLocal(&function)) {
-        return false;
-    }
-
-    return http_v8_set_value_property(isolate, context, object, name, function);
-}
-
-bool http_v8_private_key(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
+bool http_v8_get_value_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                    v8::Local<v8::Value>* out)
 {
     v8::Local<v8::String> key;
 
-    if (out == nullptr ||
-        !sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)))
-    {
+    if (out == nullptr || !sl_status_is_ok(http_v8_cached_string(isolate, name, &key))) {
         return false;
     }
 
-    *out = v8::Private::ForApi(isolate, key);
-    return true;
+    return object->Get(context, key).ToLocal(out);
+}
+
+bool http_v8_set_bool_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   v8::Local<v8::Object> object, SlV8HttpStringKey name, bool value)
+{
+    return http_v8_set_value_property_key(isolate, context, object, name,
+                                          v8::Boolean::New(isolate, value));
+}
+
+bool http_v8_set_uint64_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                     v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                     uint64_t value)
+{
+    return http_v8_set_value_property_key(isolate, context, object, name,
+                                          v8::Number::New(isolate, static_cast<double>(value)));
+}
+
+bool http_v8_set_null_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   v8::Local<v8::Object> object, SlV8HttpStringKey name)
+{
+    return http_v8_set_value_property_key(isolate, context, object, name, v8::Null(isolate));
 }
 
 bool http_v8_set_private_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* name,
+                               v8::Local<v8::Object> object, SlV8HttpPrivateKey name,
                                v8::Local<v8::Value> value)
 {
     v8::Local<v8::Private> key;
 
-    if (!http_v8_private_key(isolate, name, &key)) {
+    if (!http_v8_cached_private(isolate, name, &key)) {
         return false;
     }
 
@@ -239,12 +526,12 @@ bool http_v8_set_private_value(v8::Isolate* isolate, v8::Local<v8::Context> cont
 }
 
 bool http_v8_get_private_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* name,
+                               v8::Local<v8::Object> object, SlV8HttpPrivateKey name,
                                v8::Local<v8::Value>* out)
 {
     v8::Local<v8::Private> key;
 
-    if (out == nullptr || !http_v8_private_key(isolate, name, &key) ||
+    if (out == nullptr || !http_v8_cached_private(isolate, name, &key) ||
         !object->GetPrivate(context, key).ToLocal(out))
     {
         return false;
@@ -261,8 +548,9 @@ bool http_v8_make_uint8_array(v8::Isolate* isolate, SlBytes bytes, v8::Local<v8:
         return false;
     }
 
-    std::unique_ptr<v8::BackingStore> backing =
-        v8::ArrayBuffer::NewBackingStore(isolate, bytes.length);
+    std::unique_ptr<v8::BackingStore> backing = v8::ArrayBuffer::NewBackingStore(
+        isolate, bytes.length, v8::BackingStoreInitializationMode::kUninitialized,
+        v8::BackingStoreOnFailureMode::kReturnNull);
     if (backing == nullptr) {
         return false;
     }
@@ -315,46 +603,190 @@ bool http_v8_collect_headers(const SlHttpRequestHead* request, std::vector<HttpV
     return true;
 }
 
+bool http_v8_push_u32(std::vector<unsigned char>* bytes, uint32_t value)
+{
+    if (bytes == nullptr) {
+        return false;
+    }
+
+    bytes->push_back(static_cast<unsigned char>(value & 0xffU));
+    bytes->push_back(static_cast<unsigned char>((value >> 8U) & 0xffU));
+    bytes->push_back(static_cast<unsigned char>((value >> 16U) & 0xffU));
+    bytes->push_back(static_cast<unsigned char>((value >> 24U) & 0xffU));
+    return true;
+}
+
+bool http_v8_read_u32(const unsigned char* bytes, size_t length, size_t* offset, uint32_t* out)
+{
+    size_t cursor;
+
+    if (bytes == nullptr || offset == nullptr || out == nullptr || *offset > length ||
+        length - *offset < 4U)
+    {
+        return false;
+    }
+
+    cursor = *offset;
+    *out = static_cast<uint32_t>(bytes[cursor]) |
+           (static_cast<uint32_t>(bytes[cursor + 1U]) << 8U) |
+           (static_cast<uint32_t>(bytes[cursor + 2U]) << 16U) |
+           (static_cast<uint32_t>(bytes[cursor + 3U]) << 24U);
+    *offset = cursor + 4U;
+    return true;
+}
+
+bool http_v8_make_header_snapshot(v8::Isolate* isolate,
+                                  const std::vector<HttpV8HeaderEntry>& header_entries,
+                                  v8::Local<v8::ArrayBuffer>* out)
+{
+    std::vector<unsigned char> snapshot;
+    std::unique_ptr<v8::BackingStore> backing;
+
+    if (isolate == nullptr || out == nullptr ||
+        header_entries.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+    {
+        return false;
+    }
+
+    snapshot.reserve(4U + (header_entries.size() * 16U));
+    if (!http_v8_push_u32(&snapshot, static_cast<uint32_t>(header_entries.size()))) {
+        return false;
+    }
+
+    for (const HttpV8HeaderEntry& entry : header_entries) {
+        if (entry.name.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()) ||
+            entry.value.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+        {
+            return false;
+        }
+        if (!http_v8_push_u32(&snapshot, static_cast<uint32_t>(entry.name.size())) ||
+            !http_v8_push_u32(&snapshot, static_cast<uint32_t>(entry.value.size())))
+        {
+            return false;
+        }
+        snapshot.insert(snapshot.end(), entry.name.begin(), entry.name.end());
+        snapshot.insert(snapshot.end(), entry.value.begin(), entry.value.end());
+    }
+
+    backing = v8::ArrayBuffer::NewBackingStore(isolate, snapshot.size(),
+                                               v8::BackingStoreInitializationMode::kUninitialized,
+                                               v8::BackingStoreOnFailureMode::kReturnNull);
+    if (backing == nullptr) {
+        return false;
+    }
+    if (!snapshot.empty()) {
+        unsigned char* output = static_cast<unsigned char*>(backing->Data());
+        std::copy(snapshot.begin(), snapshot.end(), output);
+    }
+
+    *out = v8::ArrayBuffer::New(isolate, std::move(backing));
+    return true;
+}
+
+bool http_v8_snapshot_bytes(v8::Local<v8::Value> value, const unsigned char** out_bytes,
+                            size_t* out_length)
+{
+    std::shared_ptr<v8::BackingStore> backing;
+
+    if (out_bytes == nullptr || out_length == nullptr || !value->IsArrayBuffer()) {
+        return false;
+    }
+
+    backing = value.As<v8::ArrayBuffer>()->GetBackingStore();
+    if (backing == nullptr) {
+        return false;
+    }
+
+    *out_bytes = static_cast<const unsigned char*>(backing->Data());
+    *out_length = backing->ByteLength();
+    return *out_bytes != nullptr || *out_length == 0U;
+}
+
+bool http_v8_header_snapshot_find(const unsigned char* bytes, size_t length,
+                                  const std::string& wanted, SlStr* out_value, bool* out_found)
+{
+    size_t offset = 0U;
+    uint32_t count = 0U;
+
+    if (bytes == nullptr || out_value == nullptr || out_found == nullptr ||
+        !http_v8_read_u32(bytes, length, &offset, &count))
+    {
+        return false;
+    }
+
+    *out_found = false;
+    for (uint32_t index = 0U; index < count; index += 1U) {
+        uint32_t name_length = 0U;
+        uint32_t value_length = 0U;
+        const unsigned char* name = nullptr;
+        const unsigned char* value = nullptr;
+
+        if (!http_v8_read_u32(bytes, length, &offset, &name_length) ||
+            !http_v8_read_u32(bytes, length, &offset, &value_length) || offset > length ||
+            length - offset < static_cast<size_t>(name_length) ||
+            length - offset - static_cast<size_t>(name_length) < static_cast<size_t>(value_length))
+        {
+            return false;
+        }
+
+        name = bytes + offset;
+        offset += static_cast<size_t>(name_length);
+        value = bytes + offset;
+        offset += static_cast<size_t>(value_length);
+
+        SlStr name_view = sl_str_from_parts(reinterpret_cast<const char*>(name),
+                                            static_cast<size_t>(name_length));
+        SlStr wanted_view = sl_str_from_parts(wanted.data(), wanted.size());
+        if (sl_str_equal(name_view, wanted_view)) {
+            *out_value = sl_str_from_parts(reinterpret_cast<const char*>(value),
+                                           static_cast<size_t>(value_length));
+            *out_found = true;
+            return true;
+        }
+    }
+
+    *out_value = sl_str_empty();
+    return true;
+}
+
 void http_v8_headers_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
-    v8::Local<v8::Value> entries_value;
+    v8::Local<v8::Value> snapshot_value;
+    const unsigned char* snapshot = nullptr;
+    size_t snapshot_length = 0U;
+    SlStr value = sl_str_empty();
+    bool found = false;
+    v8::Local<v8::String> local_value;
 
     if (args.Length() < 1 || !args[0]->IsString() ||
-        !http_v8_get_private_value(isolate, context, args.This(), "__sloppyHeaderEntries",
-                                   &entries_value) ||
-        !entries_value->IsArray())
+        !http_v8_get_private_value(isolate, context, args.This(),
+                                   SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT, &snapshot_value) ||
+        !http_v8_snapshot_bytes(snapshot_value, &snapshot, &snapshot_length))
     {
         args.GetReturnValue().Set(v8::Null(isolate));
         return;
     }
 
     std::string wanted = http_v8_ascii_lower_value(isolate, args[0]);
-    v8::Local<v8::Array> entries = entries_value.As<v8::Array>();
-    for (uint32_t index = 0U; index < entries->Length(); index += 1U) {
-        v8::Local<v8::Value> pair_value;
-        if (!entries->Get(context, index).ToLocal(&pair_value) || !pair_value->IsArray()) {
-            continue;
-        }
-
-        v8::Local<v8::Array> pair = pair_value.As<v8::Array>();
-        v8::Local<v8::Value> name_value;
-        v8::Local<v8::Value> value;
-        if (!pair->Get(context, 0U).ToLocal(&name_value) || !name_value->IsString() ||
-            !pair->Get(context, 1U).ToLocal(&value))
-        {
-            continue;
-        }
-
-        if (http_v8_value_to_string(isolate, name_value) == wanted) {
-            args.GetReturnValue().Set(value);
-            return;
-        }
+    if (!http_v8_header_snapshot_find(snapshot, snapshot_length, wanted, &value, &found)) {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
     }
 
-    args.GetReturnValue().Set(v8::Null(isolate));
+    if (!found) {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
+    }
+
+    if (!sl_status_is_ok(http_v8_to_local_string(isolate, value, &local_value))) {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
+    }
+
+    args.GetReturnValue().Set(local_value);
 }
 
 void http_v8_headers_entries_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -362,29 +794,67 @@ void http_v8_headers_entries_callback(const v8::FunctionCallbackInfo<v8::Value>&
     v8::Isolate* isolate = args.GetIsolate();
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
-    v8::Local<v8::Value> entries_value;
+    v8::Local<v8::Value> snapshot_value;
+    const unsigned char* snapshot = nullptr;
+    size_t snapshot_length = 0U;
+    size_t offset = 0U;
+    uint32_t count = 0U;
 
-    if (!http_v8_get_private_value(isolate, context, args.This(), "__sloppyHeaderEntries",
-                                   &entries_value) ||
-        !entries_value->IsArray())
+    if (!http_v8_get_private_value(isolate, context, args.This(),
+                                   SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT, &snapshot_value) ||
+        !http_v8_snapshot_bytes(snapshot_value, &snapshot, &snapshot_length) ||
+        !http_v8_read_u32(snapshot, snapshot_length, &offset, &count))
     {
         args.GetReturnValue().Set(v8::Array::New(isolate, 0));
         return;
     }
 
-    v8::Local<v8::Array> entries = entries_value.As<v8::Array>();
-    v8::Local<v8::Array> copy = v8::Array::New(isolate, static_cast<int>(entries->Length()));
-    for (uint32_t index = 0U; index < entries->Length(); index += 1U) {
-        v8::Local<v8::Value> pair_value;
-        if (!entries->Get(context, index).ToLocal(&pair_value) || !pair_value->IsArray() ||
-            !copy->Set(context, index, pair_value).FromMaybe(false))
+    v8::Local<v8::Array> entries = v8::Array::New(isolate, static_cast<int>(count));
+    for (uint32_t index = 0U; index < count; index += 1U) {
+        uint32_t name_length = 0U;
+        uint32_t value_length = 0U;
+        const unsigned char* name = nullptr;
+        const unsigned char* value = nullptr;
+        v8::Local<v8::String> local_name;
+        v8::Local<v8::String> local_value;
+        v8::Local<v8::Array> pair = v8::Array::New(isolate, 2);
+
+        if (!http_v8_read_u32(snapshot, snapshot_length, &offset, &name_length) ||
+            !http_v8_read_u32(snapshot, snapshot_length, &offset, &value_length) ||
+            offset > snapshot_length ||
+            snapshot_length - offset < static_cast<size_t>(name_length) ||
+            snapshot_length - offset - static_cast<size_t>(name_length) <
+                static_cast<size_t>(value_length))
+        {
+            args.GetReturnValue().Set(v8::Array::New(isolate, 0));
+            return;
+        }
+
+        name = snapshot + offset;
+        offset += static_cast<size_t>(name_length);
+        value = snapshot + offset;
+        offset += static_cast<size_t>(value_length);
+
+        if (!sl_status_is_ok(
+                http_v8_to_local_string(isolate,
+                                        sl_str_from_parts(reinterpret_cast<const char*>(name),
+                                                          static_cast<size_t>(name_length)),
+                                        &local_name)) ||
+            !sl_status_is_ok(
+                http_v8_to_local_string(isolate,
+                                        sl_str_from_parts(reinterpret_cast<const char*>(value),
+                                                          static_cast<size_t>(value_length)),
+                                        &local_value)) ||
+            !pair->Set(context, 0U, local_name).FromMaybe(false) ||
+            !pair->Set(context, 1U, local_value).FromMaybe(false) ||
+            !entries->Set(context, index, pair).FromMaybe(false))
         {
             args.GetReturnValue().Set(v8::Array::New(isolate, 0));
             return;
         }
     }
 
-    args.GetReturnValue().Set(copy);
+    args.GetReturnValue().Set(entries);
 }
 
 bool http_v8_body_mark_consumed(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -392,12 +862,15 @@ bool http_v8_body_mark_consumed(v8::Isolate* isolate, v8::Local<v8::Context> con
 {
     v8::Local<v8::Value> consumed;
 
-    if (!http_v8_get_private_value(isolate, context, body, "__sloppyBodyConsumed", &consumed)) {
+    if (!http_v8_get_private_value(isolate, context, body, SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
+                                   &consumed))
+    {
         return false;
     }
     if (consumed->BooleanValue(isolate)) {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-        (void)http_v8_set_bool_property(isolate, context, body, "consumed", true);
+        (void)http_v8_set_bool_property_key(isolate, context, body, SL_V8_HTTP_STRING_CONSUMED,
+                                            true);
         if (!sl_v8_throw_type_error_from_native_view(
                 backend, http_v8_literal("Request body is already consumed.",
                                          sizeof("Request body is already consumed.") - 1U)))
@@ -408,9 +881,91 @@ bool http_v8_body_mark_consumed(v8::Isolate* isolate, v8::Local<v8::Context> con
         return false;
     }
 
-    return http_v8_set_private_value(isolate, context, body, "__sloppyBodyConsumed",
+    return http_v8_set_private_value(isolate, context, body, SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
                                      v8::Boolean::New(isolate, true)) &&
-           http_v8_set_bool_property(isolate, context, body, "consumed", true);
+           http_v8_set_bool_property_key(isolate, context, body, SL_V8_HTTP_STRING_CONSUMED, true);
+}
+
+bool http_v8_uint8_array_bytes(v8::Local<v8::Value> value, const unsigned char** out_bytes,
+                               size_t* out_length)
+{
+    v8::Local<v8::Uint8Array> view;
+    std::shared_ptr<v8::BackingStore> backing;
+    size_t offset;
+    size_t length;
+    size_t backing_length;
+
+    if (out_bytes == nullptr || out_length == nullptr || !value->IsUint8Array()) {
+        return false;
+    }
+
+    view = value.As<v8::Uint8Array>();
+    backing = view->Buffer()->GetBackingStore();
+    if (backing == nullptr) {
+        return false;
+    }
+
+    offset = view->ByteOffset();
+    length = view->ByteLength();
+    backing_length = backing->ByteLength();
+    if (offset > backing_length || length > backing_length - offset) {
+        return false;
+    }
+
+    const unsigned char* data = static_cast<const unsigned char*>(backing->Data());
+    if (data == nullptr) {
+        if (length != 0U) {
+            return false;
+        }
+        *out_bytes = nullptr;
+        *out_length = 0U;
+        return true;
+    }
+
+    *out_bytes = data + offset;
+    *out_length = length;
+    return true;
+}
+
+bool http_v8_body_text_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, v8::Local<v8::Value>* out)
+{
+    v8::Local<v8::Value> body;
+    v8::Local<v8::Value> body_bytes_value;
+    const unsigned char* body_bytes = nullptr;
+    size_t body_length = 0U;
+    v8::Local<v8::String> body_text;
+
+    if (out == nullptr) {
+        return false;
+    }
+
+    if (http_v8_get_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY, &body) &&
+        body->IsString())
+    {
+        *out = body;
+        return true;
+    }
+
+    if (!http_v8_get_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   &body_bytes_value) ||
+        !http_v8_uint8_array_bytes(body_bytes_value, &body_bytes, &body_length))
+    {
+        body_text = v8::String::Empty(isolate);
+    }
+    else if (!sl_status_is_ok(http_v8_to_local_string(
+                 isolate, sl_str_from_parts(reinterpret_cast<const char*>(body_bytes), body_length),
+                 &body_text)))
+    {
+        return false;
+    }
+
+    if (!http_v8_set_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY, body_text)) {
+        return false;
+    }
+
+    *out = body_text;
+    return true;
 }
 
 void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -420,7 +975,7 @@ void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     v8::Local<v8::Value> body;
 
-    if (!http_v8_get_private_value(isolate, context, args.This(), "__sloppyBody", &body)) {
+    if (!http_v8_body_text_value(isolate, context, args.This(), &body)) {
         args.GetReturnValue().Set(v8::String::Empty(isolate));
         return;
     }
@@ -435,7 +990,7 @@ void http_v8_request_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& a
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     v8::Local<v8::Value> body_bytes;
 
-    if (!http_v8_get_private_value(isolate, context, args.This(), "__sloppyBodyBytes",
+    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_BYTES,
                                    &body_bytes) ||
         !body_bytes->IsUint8Array())
     {
@@ -458,10 +1013,10 @@ void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
     v8::Local<v8::Value> kind;
     v8::Local<v8::Value> body;
 
-    if (!http_v8_get_private_value(isolate, context, args.This(), "__sloppyBodyKind", &kind) ||
+    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                   &kind) ||
         !kind->IsString() || http_v8_value_to_string(isolate, kind) != "json" ||
-        !http_v8_get_private_value(isolate, context, args.This(), "__sloppyBody", &body) ||
-        !body->IsString())
+        !http_v8_body_text_value(isolate, context, args.This(), &body) || !body->IsString())
     {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
         if (!sl_v8_throw_type_error_from_native_view(
@@ -491,7 +1046,7 @@ void http_v8_body_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Local<v8::Value> body;
 
     if (!http_v8_body_mark_consumed(isolate, context, body_object) ||
-        !http_v8_get_private_value(isolate, context, body_object, "__sloppyBody", &body))
+        !http_v8_body_text_value(isolate, context, body_object, &body))
     {
         return;
     }
@@ -508,8 +1063,15 @@ void http_v8_body_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args
     v8::Local<v8::Value> body_bytes;
 
     if (!http_v8_body_mark_consumed(isolate, context, body_object) ||
-        !http_v8_get_private_value(isolate, context, body_object, "__sloppyBodyBytes", &body_bytes))
+        !http_v8_get_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   &body_bytes) ||
+        !body_bytes->IsUint8Array())
     {
+        v8::Local<v8::Uint8Array> empty;
+        if (!http_v8_make_uint8_array(isolate, sl_bytes_from_parts(nullptr, 0U), &empty)) {
+            return;
+        }
+        args.GetReturnValue().Set(empty);
         return;
     }
 
@@ -529,10 +1091,10 @@ void http_v8_body_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    if (!http_v8_get_private_value(isolate, context, body_object, "__sloppyBodyKind", &kind) ||
+    if (!http_v8_get_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                   &kind) ||
         !kind->IsString() || http_v8_value_to_string(isolate, kind) != "json" ||
-        !http_v8_get_private_value(isolate, context, body_object, "__sloppyBody", &body) ||
-        !body->IsString())
+        !http_v8_body_text_value(isolate, context, body_object, &body) || !body->IsString())
     {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
         if (!sl_v8_throw_type_error_from_native_view(
@@ -563,14 +1125,16 @@ void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8:
     v8::Local<v8::Value> reason_value;
     std::string message = "Sloppy request was cancelled";
 
-    if (!http_v8_get_private_value(isolate, context, self, "aborted", &aborted_value) ||
+    if (!http_v8_get_private_value(isolate, context, self, SL_V8_HTTP_PRIVATE_ABORTED,
+                                   &aborted_value) ||
         !aborted_value->BooleanValue(isolate))
     {
         args.GetReturnValue().Set(v8::Undefined(isolate));
         return;
     }
 
-    if (http_v8_get_private_value(isolate, context, self, "reason", &reason_value) &&
+    if (http_v8_get_private_value(isolate, context, self, SL_V8_HTTP_PRIVATE_REASON,
+                                  &reason_value) &&
         reason_value->IsString())
     {
         std::string reason = http_v8_value_to_string(isolate, reason_value);
@@ -597,6 +1161,7 @@ bool http_v8_make_signal_object(v8::Isolate* isolate, v8::Local<v8::Context> con
                                 const SlCancellationToken* cancellation, v8::Local<v8::Object>* out)
 {
     v8::Local<v8::Object> signal = v8::Object::New(isolate);
+    v8::Local<v8::Object> signal_prototype;
     bool aborted = sl_cancellation_token_is_cancelled(cancellation);
     SlStr reason = sl_str_empty();
 
@@ -610,8 +1175,12 @@ bool http_v8_make_signal_object(v8::Isolate* isolate, v8::Local<v8::Context> con
                      : sl_cancellation_reason_name(cancellation->reason);
     }
 
-    if (!http_v8_set_bool_property(isolate, context, signal, "aborted", aborted) ||
-        !http_v8_set_private_value(isolate, context, signal, "aborted",
+    if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_SIGNAL,
+                                  &signal_prototype) ||
+        !signal->SetPrototype(context, signal_prototype).FromMaybe(false) ||
+        !http_v8_set_bool_property_key(isolate, context, signal, SL_V8_HTTP_STRING_ABORTED,
+                                       aborted) ||
+        !http_v8_set_private_value(isolate, context, signal, SL_V8_HTTP_PRIVATE_ABORTED,
                                    v8::Boolean::New(isolate, aborted)))
     {
         return false;
@@ -619,23 +1188,20 @@ bool http_v8_make_signal_object(v8::Isolate* isolate, v8::Local<v8::Context> con
     if (aborted) {
         v8::Local<v8::String> reason_value;
         if (!sl_status_is_ok(http_v8_to_local_string(isolate, reason, &reason_value)) ||
-            !http_v8_set_string_property(isolate, context, signal, "reason", reason) ||
-            !http_v8_set_private_value(isolate, context, signal, "reason", reason_value))
+            !http_v8_set_string_property_key(isolate, context, signal, SL_V8_HTTP_STRING_REASON,
+                                             reason) ||
+            !http_v8_set_private_value(isolate, context, signal, SL_V8_HTTP_PRIVATE_REASON,
+                                       reason_value))
         {
             return false;
         }
     }
-    else if (!http_v8_set_null_property(isolate, context, signal, "reason") ||
-             !http_v8_set_private_value(isolate, context, signal, "reason", v8::Null(isolate)))
+    else if (!http_v8_set_null_property_key(isolate, context, signal, SL_V8_HTTP_STRING_REASON) ||
+             !http_v8_set_private_value(isolate, context, signal, SL_V8_HTTP_PRIVATE_REASON,
+                                        v8::Null(isolate)))
     {
         return false;
     }
-    if (!http_v8_set_function_property(isolate, context, signal, "throwIfAborted",
-                                       http_v8_signal_throw_if_aborted_callback))
-    {
-        return false;
-    }
-
     *out = signal;
     return true;
 }
@@ -644,7 +1210,8 @@ bool http_v8_make_header_bag(v8::Isolate* isolate, v8::Local<v8::Context> contex
                              const SlHttpRequestHead* request, v8::Local<v8::Object>* out)
 {
     v8::Local<v8::Object> headers = v8::Object::New(isolate);
-    v8::Local<v8::Array> entries;
+    v8::Local<v8::Object> headers_prototype;
+    v8::Local<v8::Value> snapshot = v8::Undefined(isolate);
     std::vector<HttpV8HeaderEntry> header_entries;
 
     if (out == nullptr || !http_v8_collect_headers(request, &header_entries) ||
@@ -653,28 +1220,19 @@ bool http_v8_make_header_bag(v8::Isolate* isolate, v8::Local<v8::Context> contex
         return false;
     }
 
-    entries = v8::Array::New(isolate, static_cast<int>(header_entries.size()));
-    for (size_t index = 0U; index < header_entries.size(); index += 1U) {
-        v8::Local<v8::Array> pair = v8::Array::New(isolate, 2);
-        v8::Local<v8::String> name;
-        v8::Local<v8::String> value;
-        if (!sl_status_is_ok(http_v8_to_local_string(
-                isolate, http_v8_str_from_string(header_entries[index].name), &name)) ||
-            !sl_status_is_ok(http_v8_to_local_string(
-                isolate, http_v8_str_from_string(header_entries[index].value), &value)) ||
-            !pair->Set(context, 0U, name).FromMaybe(false) ||
-            !pair->Set(context, 1U, value).FromMaybe(false) ||
-            !entries->Set(context, static_cast<uint32_t>(index), pair).FromMaybe(false))
-        {
+    if (!header_entries.empty()) {
+        v8::Local<v8::ArrayBuffer> snapshot_buffer;
+        if (!http_v8_make_header_snapshot(isolate, header_entries, &snapshot_buffer)) {
             return false;
         }
+        snapshot = snapshot_buffer;
     }
 
-    if (!http_v8_set_private_value(isolate, context, headers, "__sloppyHeaderEntries", entries) ||
-        !http_v8_set_function_property(isolate, context, headers, "get",
-                                       http_v8_headers_get_callback) ||
-        !http_v8_set_function_property(isolate, context, headers, "entries",
-                                       http_v8_headers_entries_callback))
+    if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_HEADERS,
+                                  &headers_prototype) ||
+        !headers->SetPrototype(context, headers_prototype).FromMaybe(false) ||
+        !http_v8_set_private_value(isolate, context, headers, SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT,
+                                   snapshot))
     {
         return false;
     }
@@ -723,13 +1281,13 @@ SlStr http_v8_request_body_kind_name(SlHttpRequestBodyKind body_kind)
 bool http_v8_get_object_status(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Object> object, uint16_t* out)
 {
-    v8::Local<v8::String> key;
     v8::Local<v8::Value> value;
     int32_t status = 0;
 
     if (out == nullptr ||
-        !sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr("status"), &key)) ||
-        !object->Get(context, key).ToLocal(&value) || !value->IsInt32())
+        !http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_STATUS,
+                                        &value) ||
+        !value->IsInt32())
     {
         return false;
     }
@@ -746,12 +1304,10 @@ bool http_v8_get_object_status(v8::Isolate* isolate, v8::Local<v8::Context> cont
 bool http_v8_has_result_marker(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Object> object)
 {
-    v8::Local<v8::String> key;
     v8::Local<v8::Value> value;
 
-    if (!sl_status_is_ok(
-            http_v8_to_local_string(isolate, sl_str_from_cstr("__sloppyResult"), &key)) ||
-        !object->Get(context, key).ToLocal(&value))
+    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_SLOPPY_RESULT,
+                                        &value))
     {
         return false;
     }
@@ -868,10 +1424,9 @@ SlStatus http_v8_copy_response_header(SlArena* arena, const std::string& name,
 }
 
 SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                              v8::Local<v8::Object> object, const char* name,
+                                              v8::Local<v8::Object> object, SlV8HttpStringKey name,
                                               bool* out_present, std::string* out)
 {
-    v8::Local<v8::String> key;
     v8::Local<v8::Value> value;
 
     if (out_present == nullptr || out == nullptr) {
@@ -880,9 +1435,7 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
 
     *out_present = false;
     *out = std::string();
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
-        !object->Get(context, key).ToLocal(&value))
-    {
+    if (!http_v8_get_value_property_key(isolate, context, object, name, &value)) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
@@ -900,18 +1453,15 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
 
 SlStatus http_v8_get_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                         SlArena* arena, v8::Local<v8::Object> object,
-                                        const char* name, SlStr* out)
+                                        SlV8HttpStringKey name, SlStr* out)
 {
-    v8::Local<v8::String> key;
     v8::Local<v8::Value> value;
 
     if (out == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
-        !object->Get(context, key).ToLocal(&value))
-    {
+    if (!http_v8_get_value_property_key(isolate, context, object, name, &value)) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
@@ -927,7 +1477,6 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
                                      v8::Local<v8::Object> descriptor, SlHttpHeader** out_headers,
                                      size_t* out_header_count, SlDiag* out_diag)
 {
-    v8::Local<v8::String> headers_key;
     v8::Local<v8::Value> headers_value;
     v8::Local<v8::Object> headers_object;
     v8::Local<v8::Array> names;
@@ -949,8 +1498,8 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     *out_headers = nullptr;
     *out_header_count = 0U;
 
-    status = http_v8_get_optional_string_property(isolate, context, descriptor, "location",
-                                                  &has_location, &location);
+    status = http_v8_get_optional_string_property(
+        isolate, context, descriptor, SL_V8_HTTP_STRING_LOCATION, &has_location, &location);
     if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_invalid_headers_diag(engine, out_diag);
     }
@@ -961,9 +1510,8 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
         return http_v8_write_invalid_headers_diag(engine, out_diag);
     }
 
-    if (!sl_status_is_ok(
-            http_v8_to_local_string(isolate, sl_str_from_cstr("headers"), &headers_key)) ||
-        !descriptor->Get(context, headers_key).ToLocal(&headers_value))
+    if (!http_v8_get_value_property_key(isolate, context, descriptor, SL_V8_HTTP_STRING_HEADERS,
+                                        &headers_value))
     {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
@@ -1062,14 +1610,14 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     v8::Local<v8::Object> request = v8::Object::New(isolate);
     v8::Local<v8::Object> body_object = v8::Object::New(isolate);
     v8::Local<v8::Object> connection = v8::Object::New(isolate);
-    v8::Local<v8::Uint8Array> body_bytes;
-    v8::Local<v8::String> body_value;
+    v8::Local<v8::Object> body_prototype;
+    v8::Local<v8::Object> request_prototype;
+    v8::Local<v8::Value> body_bytes_value = v8::Undefined(isolate);
     v8::Local<v8::String> body_kind_value;
     v8::Local<v8::Object> headers;
     v8::Local<v8::Object> signal;
     size_t index = 0U;
     SlStr method = sl_str_empty();
-    SlStr body = sl_str_empty();
     std::string request_id;
     std::string connection_id;
 
@@ -1111,103 +1659,114 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         return false;
     }
 
-    body = sl_str_from_parts(reinterpret_cast<const char*>(request_context->request->body.ptr),
-                             request_context->request->body.length);
     request_id = std::to_string(request_context->request_id);
     connection_id = std::to_string(request_context->connection_id);
-    if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
-        return false;
+    if (request_context->request->body.length != 0U) {
+        v8::Local<v8::Uint8Array> body_bytes;
+        if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
+            return false;
+        }
+        body_bytes_value = body_bytes;
     }
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, body, &body_value)) ||
-        !sl_status_is_ok(http_v8_to_local_string(
+    if (!sl_status_is_ok(http_v8_to_local_string(
             isolate, http_v8_request_body_kind_name(request_context->body_kind), &body_kind_value)))
     {
         return false;
     }
 
-    if (!http_v8_set_bool_property(isolate, context, body_object, "consumed", false) ||
-        !http_v8_set_private_value(isolate, context, body_object, "__sloppyBodyConsumed",
+    if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_BODY, &body_prototype) ||
+        !body_object->SetPrototype(context, body_prototype).FromMaybe(false) ||
+        !http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_REQUEST,
+                                  &request_prototype) ||
+        !request->SetPrototype(context, request_prototype).FromMaybe(false) ||
+        !http_v8_set_bool_property_key(isolate, context, body_object, SL_V8_HTTP_STRING_CONSUMED,
+                                       false) ||
+        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
                                    v8::Boolean::New(isolate, false)) ||
-        !http_v8_set_string_property(isolate, context, body_object, "kind",
-                                     http_v8_request_body_kind_name(request_context->body_kind)) ||
-        !http_v8_set_private_value(isolate, context, body_object, "__sloppyBody", body_value) ||
-        !http_v8_set_private_value(isolate, context, body_object, "__sloppyBodyKind",
+        !http_v8_set_string_property_key(
+            isolate, context, body_object, SL_V8_HTTP_STRING_KIND,
+            http_v8_request_body_kind_name(request_context->body_kind)) ||
+        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY,
+                                   v8::Undefined(isolate)) ||
+        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
                                    body_kind_value) ||
-        !http_v8_set_private_value(isolate, context, body_object, "__sloppyBodyBytes",
-                                   body_bytes) ||
-        !http_v8_set_function_property(isolate, context, body_object, "bytes",
-                                       http_v8_body_bytes_callback) ||
-        !http_v8_set_function_property(isolate, context, body_object, "text",
-                                       http_v8_body_text_callback) ||
-        !http_v8_set_function_property(isolate, context, body_object, "json",
-                                       http_v8_body_json_callback))
+        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   body_bytes_value))
     {
         return false;
     }
 
-    if (!http_v8_set_string_property(isolate, context, connection, "id",
-                                     http_v8_str_from_string(connection_id)) ||
-        !http_v8_set_string_property(isolate, context, connection, "protocol",
-                                     sl_str_from_cstr("http")) ||
-        !http_v8_set_string_property(isolate, context, connection, "scheme",
-                                     request_context->scheme) ||
-        !http_v8_set_bool_property(isolate, context, connection, "secure", false))
+    if (!http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_ID,
+                                         http_v8_str_from_string(connection_id)) ||
+        !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_PROTOCOL,
+                                         sl_str_from_cstr("http")) ||
+        !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SCHEME,
+                                         request_context->scheme) ||
+        !http_v8_set_bool_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
+                                       false))
     {
         return false;
     }
 
-    if (!http_v8_set_string_property(isolate, context, request, "id",
-                                     http_v8_str_from_string(request_id)) ||
-        !http_v8_set_string_property(isolate, context, request, "method", method) ||
-        !http_v8_set_string_property(isolate, context, request, "scheme",
-                                     request_context->scheme) ||
-        !http_v8_set_string_property(isolate, context, request, "protocol",
-                                     request_context->protocol) ||
-        !http_v8_set_string_property(isolate, context, request, "path",
-                                     request_context->request->path) ||
-        !http_v8_set_string_property(isolate, context, request, "queryString",
-                                     request_context->query_string) ||
-        !http_v8_set_string_property(isolate, context, request, "rawTarget",
-                                     request_context->request->raw_target) ||
-        !http_v8_set_object_property(isolate, context, request, "headers", headers) ||
-        !http_v8_set_object_property(isolate, context, request, "body", body_object) ||
-        !http_v8_set_private_value(isolate, context, request, "__sloppyBodyBytes", body_bytes) ||
-        !http_v8_set_private_value(isolate, context, request, "__sloppyBody", body_value) ||
-        !http_v8_set_private_value(isolate, context, request, "__sloppyBodyKind",
+    if (!http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
+                                         http_v8_str_from_string(request_id)) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_METHOD,
+                                         method) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_SCHEME,
+                                         request_context->scheme) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PROTOCOL,
+                                         request_context->protocol) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PATH,
+                                         request_context->request->path) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_QUERY_STRING,
+                                         request_context->query_string) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_RAW_TARGET,
+                                         request_context->request->raw_target) ||
+        !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_HEADERS,
+                                         headers) ||
+        !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_BODY,
+                                         body_object) ||
+        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   body_bytes_value) ||
+        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,
+                                   v8::Undefined(isolate)) ||
+        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_KIND,
                                    body_kind_value) ||
-        !http_v8_set_function_property(isolate, context, request, "bytes",
-                                       http_v8_request_bytes_callback) ||
-        !http_v8_set_function_property(isolate, context, request, "text",
-                                       http_v8_request_text_callback) ||
-        !http_v8_set_function_property(isolate, context, request, "json",
-                                       http_v8_request_json_callback) ||
-        !http_v8_set_object_property(isolate, context, ctx, "route", route) ||
-        !http_v8_set_object_property(isolate, context, ctx, "query", query) ||
-        !http_v8_set_object_property(isolate, context, ctx, "request", request) ||
-        !http_v8_set_object_property(isolate, context, ctx, "connection", connection) ||
-        !http_v8_set_object_property(isolate, context, ctx, "signal", signal))
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE, route) ||
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_QUERY, query) ||
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST,
+                                         request) ||
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_CONNECTION,
+                                         connection) ||
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_SIGNAL, signal))
     {
         return false;
     }
 
     if (!sl_str_is_empty(request_context->content_type)) {
-        if (!http_v8_set_string_property(isolate, context, request, "contentType",
-                                         request_context->content_type))
+        if (!http_v8_set_string_property_key(isolate, context, request,
+                                             SL_V8_HTTP_STRING_CONTENT_TYPE,
+                                             request_context->content_type))
         {
             return false;
         }
     }
-    else if (!http_v8_set_null_property(isolate, context, request, "contentType")) {
+    else if (!http_v8_set_null_property_key(isolate, context, request,
+                                            SL_V8_HTTP_STRING_CONTENT_TYPE))
+    {
         return false;
     }
     if (request_context->has_content_length) {
-        if (!http_v8_set_uint64_property(isolate, context, request, "contentLength",
-                                         request_context->content_length))
+        if (!http_v8_set_uint64_property_key(isolate, context, request,
+                                             SL_V8_HTTP_STRING_CONTENT_LENGTH,
+                                             request_context->content_length))
         {
             return false;
         }
     }
-    else if (!http_v8_set_null_property(isolate, context, request, "contentLength")) {
+    else if (!http_v8_set_null_property_key(isolate, context, request,
+                                            SL_V8_HTTP_STRING_CONTENT_LENGTH))
+    {
         return false;
     }
 
@@ -1215,13 +1774,15 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         SL_CANCELLATION_REASON_DEADLINE_EXCEEDED)
     {
         v8::Local<v8::Object> deadline = v8::Object::New(isolate);
-        if (!http_v8_set_bool_property(isolate, context, deadline, "expired", true) ||
-            !http_v8_set_object_property(isolate, context, ctx, "deadline", deadline))
+        if (!http_v8_set_bool_property_key(isolate, context, deadline, SL_V8_HTTP_STRING_EXPIRED,
+                                           true) ||
+            !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_DEADLINE,
+                                             deadline))
         {
             return false;
         }
     }
-    else if (!http_v8_set_null_property(isolate, context, ctx, "deadline")) {
+    else if (!http_v8_set_null_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_DEADLINE)) {
         return false;
     }
 
@@ -1267,8 +1828,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     SlStr kind = sl_str_empty();
     SlStr content_type = sl_str_empty();
     uint16_t status_code = 0U;
-    SlStatus kind_status =
-        http_v8_get_object_string_copy(isolate, context, arena, object, "kind", &kind);
+    SlStatus kind_status = http_v8_get_object_string_copy(isolate, context, arena, object,
+                                                          SL_V8_HTTP_STRING_KIND, &kind);
     if (sl_status_code(kind_status) == SL_STATUS_INVALID_ARGUMENT ||
         !http_v8_get_object_status(isolate, context, object, &status_code))
     {
@@ -1314,8 +1875,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
-    SlStatus content_type_status = http_v8_get_object_string_copy(isolate, context, arena, object,
-                                                                  "contentType", &content_type);
+    SlStatus content_type_status = http_v8_get_object_string_copy(
+        isolate, context, arena, object, SL_V8_HTTP_STRING_CONTENT_TYPE, &content_type);
     if (sl_status_code(content_type_status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
@@ -1335,10 +1896,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                             sizeof("Content-Type must not contain CR or LF characters.") - 1U));
     }
 
-    v8::Local<v8::String> body_key;
     v8::Local<v8::Value> body;
-    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr("body"), &body_key)) ||
-        !object->Get(context, body_key).ToLocal(&body))
+    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_BODY_RESULT,
+                                        &body))
     {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }

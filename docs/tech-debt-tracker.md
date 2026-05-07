@@ -31,6 +31,34 @@ ENGINE-01 locks the framework contract in
 `docs/project/engine-framework-contract.md`; future implementation debt should be tracked
 against that contract rather than reopening ambiguous "minimum alpha" scope.
 
+- PERF-BRIDGE-01 deferred V8 bridge optimizations:
+  <a id="perf-bridge-fast-api-probe"></a>V8 Fast API Calls are present in the resolved
+  V8 14.9 SDK, but the current bridge measurements show the meaningful request hot path is
+  HTTP context/result materialization, not a simple scalar native callback. A future
+  bounded probe may target `time.monotonicMs` or another proven scalar hot path if it can
+  satisfy Fast API restrictions without weakening diagnostics or owner-thread rules.
+  <a id="perf-bridge-plan-context-bypass"></a>Plan-guided context-free handler dispatch is
+  promising, but native `SlPlanRoute`/`SlPlanHandler` do not yet retain the compiler's
+  binding/use metadata. Do not infer context needs from JS function arity or bypass handler
+  IDs; future work should first promote trustworthy Plan metadata, then add a measured
+  handler-ID path that preserves cancellation, microtask drain, result conversion, and
+  diagnostics.
+  <a id="perf-bridge-byte-ownership"></a>External zero-copy `ArrayBuffer` ownership over
+  request/provider buffers is deferred until the owner can be transferred or retained
+  without borrowed views crossing async/thread boundaries. Current safe bridge behavior is
+  copied bytes into V8-owned storage or copied internal snapshots.
+  <a id="perf-bridge-header-body-native-laziness"></a>Deeper native laziness for
+  header/body snapshots is deferred because the current request context carries borrowed
+  native views while JS handlers may retain facades across async boundaries. This PR avoids
+  eager JS header entries, body text, and empty body buffers, but non-empty bodies and
+  header snapshots still copy into V8-owned/internal storage until request ownership can be
+  transferred safely.
+  <a id="perf-bridge-intrinsic-registration-cache"></a>Broader stdlib intrinsic
+  registration/template caching remains separate from the per-request HTTP cache work.
+  Startup benchmarks should prove it matters before replacing every namespace helper.
+  <a id="perf-bridge-response-stream-batching"></a>Response write batching at the JS bridge
+  is deferred because the current app-host path converts bounded result descriptors; there
+  is no public per-chunk JS response writer hot path to batch yet.
 - Post-core primitive adoption follow-up:
   `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
   outside the completed consolidation/audit work.

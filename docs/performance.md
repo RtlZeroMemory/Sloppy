@@ -41,6 +41,12 @@ not make benchmark smoke a performance claim; measured reports must still identi
 preset, compiler, platform, configured `SLOPPY_ENABLE_SIMD` mode, and configured
 `SLOPPY_SIMD_LEVEL`.
 
+The V8 bridge has an internal benchmark group behind `sloppy_bench --include-v8`. It exists
+to answer engineering questions about JS-to-native calls, native-to-JS Promise settlement,
+HTTP result conversion, request-context materialization, header lookup/materialization, and
+body byte/text transfer. It is not an HTTP server throughput benchmark and must not be
+reported as public runtime performance.
+
 ## Future Phase
 
 Measured benchmark lanes should become meaningful only when a scoped task defines the path,
@@ -66,12 +72,19 @@ Planned choices:
 - native route trie or equivalent static route table;
 - numeric handler IDs in dispatch;
 - app graph freeze before app run;
-- lazy JavaScript request context materialization;
+- lazy JavaScript request context materialization, especially headers and request body
+  views that may never be accessed by a handler;
 - request-scoped arenas for transient native state;
 - native response fast paths for text, JSON, status-only, and no-content results;
 - prevalidated service, permission, and schema metadata;
 - no string handler lookups in hot paths;
 - no dynamic graph mutation in static plan mode.
+
+Current V8 bridge optimizations may cache fixed property keys, private keys, and helper
+functions per isolate/context, and may use copied byte snapshots or V8-owned
+`ArrayBuffer` storage where that avoids repeated JS materialization. They must not keep
+borrowed request, arena, platform, resource, or V8 handles alive outside their documented
+lifetime.
 
 ## Concurrency Performance Model
 
@@ -145,6 +158,10 @@ Initial candidates:
 - SQLite route later;
 - idle memory;
 - memory under load.
+
+Current V8 bridge benchmark names use `v8.bridge.*` and `v8.startup.*`. The benchmark
+group is internal evidence for bridge optimization PRs; benchmark smoke in CI only proves
+the V8 benchmark can be selected and run with tiny iteration counts.
 
 Benchmark names should use `bench_<path_or_claim>`, for example
 `bench_route_match_static`.

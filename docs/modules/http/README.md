@@ -54,6 +54,11 @@ bounded buffered body. The existing top-level `ctx.request.bytes()`, `text()`, a
 `json()` remain repeatable helpers for current handlers. There is no public request
 streaming API yet.
 
+The V8 bridge may back request, header, body, and signal helpers with cached prototypes or
+lazy internal snapshots. Handlers must rely on the documented methods and values, not on
+whether helper functions are own properties, when header entries are materialized, or when
+body text is decoded.
+
 ## Error And Diagnostic Contract
 
 Malformed heads, unsupported versions, Host policy failures, singleton framing conflicts,

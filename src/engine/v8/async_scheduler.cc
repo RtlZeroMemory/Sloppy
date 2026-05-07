@@ -6,7 +6,9 @@
  * only place where that completion is allowed to touch V8 Promise state.
  */
 #include "async_scheduler.h"
+#include "string_interop.h"
 
+#include <mutex>
 #include <new>
 #include <thread>
 
@@ -31,7 +33,7 @@ SlStatus sl_v8_native_continuation_dispatch(SlAsyncLoop* loop, const SlAsyncComp
 
     (void)loop;
     if (completion == nullptr || continuation == nullptr || backend == nullptr ||
-        backend->isolate == nullptr || !continuation->queued)
+        backend->isolate == nullptr)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -41,28 +43,44 @@ SlStatus sl_v8_native_continuation_dispatch(SlAsyncLoop* loop, const SlAsyncComp
     }
 
     v8::Isolate* isolate = backend->isolate;
+    std::string text;
+    bool reject = false;
+    {
+        std::lock_guard<std::mutex> lock(continuation->mutex);
+        if (!continuation->queued) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        text = continuation->text;
+        reject = continuation->reject;
+    }
+
     v8::Isolate::Scope isolate_scope(isolate);
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = backend->context.Get(isolate);
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver = continuation->resolver.Get(isolate);
-    v8::Local<v8::String> text =
-        v8::String::NewFromUtf8(isolate, continuation->text.c_str(), v8::NewStringType::kNormal,
-                                static_cast<int>(continuation->text.size()))
-            .ToLocalChecked();
+    v8::Local<v8::String> local_text;
+    SlStatus string_status = sl_v8_string_from_native_view(
+        backend, sl_str_from_parts(text.data(), text.size()), &local_text);
+    if (!sl_status_is_ok(string_status)) {
+        return string_status;
+    }
 
-    if (!sl_status_is_ok(completion->status) || continuation->reject) {
-        v8::Local<v8::Value> error = v8::Exception::Error(text);
+    if (!sl_status_is_ok(completion->status) || reject) {
+        v8::Local<v8::Value> error = v8::Exception::Error(local_text);
         if (!resolver->Reject(context, error).FromMaybe(false)) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
     }
-    else if (!resolver->Resolve(context, text).FromMaybe(false)) {
+    else if (!resolver->Resolve(context, local_text).FromMaybe(false)) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     isolate->PerformMicrotaskCheckpoint();
-    continuation->settled = true;
+    {
+        std::lock_guard<std::mutex> lock(continuation->mutex);
+        continuation->settled = true;
+    }
     return sl_status_ok();
 }
 
@@ -75,8 +93,10 @@ void sl_v8_native_continuation_cleanup(const SlAsyncCompletion* completion, void
         return;
     }
 
+    std::lock_guard<std::mutex> lock(continuation->mutex);
     continuation->cleanup_ran = true;
     continuation->queued = false;
+    continuation->resolver_ready = false;
     continuation->resolver.Reset();
 }
 
@@ -106,12 +126,16 @@ SlStatus sl_v8_native_continuation_prepare(SlEngine* engine, SlV8NativeContinuat
     }
 
     continuation->engine = engine;
-    continuation->resolver.Reset(isolate, resolver);
-    continuation->text.clear();
-    continuation->reject = false;
-    continuation->queued = false;
-    continuation->settled = false;
-    continuation->cleanup_ran = false;
+    {
+        std::lock_guard<std::mutex> lock(continuation->mutex);
+        continuation->resolver.Reset(isolate, resolver);
+        continuation->text.clear();
+        continuation->reject = false;
+        continuation->queued = false;
+        continuation->settled = false;
+        continuation->cleanup_ran = false;
+        continuation->resolver_ready = true;
+    }
     *out_promise = resolver->GetPromise();
     return sl_status_ok();
 }
@@ -123,12 +147,14 @@ SlStatus sl_v8_native_continuation_post(SlAsyncLoop* loop, SlV8NativeContinuatio
     SlAsyncCompletion completion;
     SlStatus post_status;
 
-    if (loop == nullptr || continuation == nullptr || text == nullptr ||
-        continuation->resolver.IsEmpty())
-    {
+    if (loop == nullptr || continuation == nullptr || text == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    std::lock_guard<std::mutex> lock(continuation->mutex);
+    if (!continuation->resolver_ready) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
     if (continuation->queued || continuation->settled || continuation->cleanup_ran) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }

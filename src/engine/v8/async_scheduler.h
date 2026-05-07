@@ -7,10 +7,12 @@
 
 #include <v8.h>
 
+#include <mutex>
 #include <string>
 
 typedef struct SlV8NativeContinuation
 {
+    std::mutex mutex;
     SlEngine* engine;
     v8::Global<v8::Promise::Resolver> resolver;
     std::string text;
@@ -18,6 +20,7 @@ typedef struct SlV8NativeContinuation
     bool queued;
     bool settled;
     bool cleanup_ran;
+    bool resolver_ready;
 } SlV8NativeContinuation;
 
 SlStatus sl_v8_native_continuation_prepare(SlEngine* engine, SlV8NativeContinuation* continuation,
