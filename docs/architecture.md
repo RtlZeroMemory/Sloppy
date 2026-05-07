@@ -123,9 +123,10 @@ Provider metadata and capability checks are Plan-visible. Native provider work s
 provider contracts and executor boundaries. JavaScript receives capability-checked bridge
 functions, not native pointers or provider-owned resources.
 
-SQLite has the narrowest executable bridge today. PostgreSQL and SQL Server provider
-metadata/native boundaries exist as scoped foundations, but broad JavaScript bridge behavior
-and live-provider evidence remain separate lanes.
+SQLite has the serialized executable bridge. PostgreSQL has a V8-gated true-async bridge
+over nonblocking libpq plus bounded pooling. SQL Server provider metadata/native
+boundaries exist as scoped foundations until the ODBC async bridge lane proves real async
+driver behavior. Live-provider evidence remains separate from default evidence.
 
 ## Compiler Boundary
 

@@ -1,9 +1,10 @@
 # Data
 
 Status: Bootstrap data/capabilities foundation, native SQLite/PostgreSQL/SQL Server
-providers, and a Plan/capability-wired V8-gated SQLite JavaScript bridge implemented.
-The V8-gated, source-built SQLite users API example runs over
-`sloppy run --artifacts` and real localhost TCP in the conformance lane.
+providers, a Plan/capability-wired V8-gated SQLite JavaScript bridge, and a
+Plan/capability-wired V8-gated true-async PostgreSQL JavaScript bridge implemented.
+V8-gated SQLite and PostgreSQL artifact fixtures run through separate conformance lanes;
+PostgreSQL additionally requires a live database connection string.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
@@ -21,10 +22,10 @@ Current target contract:
 - cancellation must be plumbed through request-context SQLite calls; sync-backed calls
   check cancellation before work and before result conversion until real interruption
   exists.
-- public prepared statement handles, ORM, migrations, query builders, PostgreSQL JavaScript
-  bridge, and SQL Server JavaScript bridge remain deferred.
+- public prepared statement handles, ORM, migrations, query builders, and SQL Server
+  JavaScript bridge completion remain deferred.
 - the users API proof is not a public alpha, production HTTP edge, benchmark, ORM,
-  migration, PostgreSQL bridge, or SQL Server bridge claim.
+  migration, or SQL Server bridge claim.
 
 Implemented bootstrap API example:
 
@@ -134,7 +135,10 @@ Implemented behavior:
   capabilities. In bootstrap-only or non-V8 contexts, it fails with a bridge-unavailable
   error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
-  string redaction, and `open(options)` as the future stdlib entry point.
+  string redaction, and `open(options)`. In a V8-enabled runtime that installs PostgreSQL
+  intrinsics and has Plan/capability metadata, it returns a safe wrapper around a
+  nonblocking libpq-backed connection pool. In bootstrap-only or non-V8 contexts, it fails
+  with a bridge-unavailable error.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
   connection string redaction, a doctor helper shape, and `open(options)` as the future
   stdlib entry point.
@@ -156,6 +160,10 @@ Implemented behavior:
   in-memory databases. The success fixture creates/inserts/selects rows, returns JSON from
   a handler, and closes the resource; the denied fixture verifies capability denial returns
   a 500 response without claiming a broader security sandbox.
+- V8-gated PostgreSQL live conformance executes a checked-in artifact fixture against a
+  configured live PostgreSQL database through `data.postgres.open`, parameterized exec,
+  query, callback transactions, bounded pooling, and owner-thread Promise settlement. It
+  is skipped unless `SLOPPY_POSTGRES_TEST_URL` is configured.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
   is set; otherwise the separate live CTest is reported as skipped.
 - native C SQL Server tests execute live ODBC coverage only when
@@ -164,7 +172,8 @@ Implemented behavior:
 - native SQLite supports `exec`, `query`, `queryOne`, primitive parameter binding, and
   transactions.
 - native PostgreSQL supports connection-string open/close, `exec`, `query`, `queryOne`,
-  primitive parameter binding, a tiny bounded pool skeleton, diagnostics, and transactions.
+  primitive parameter binding, bounded pool lifecycle behavior, diagnostics, and
+  transactions.
 - native SQL Server supports ODBC connection-string open/close, `exec`, `query`,
   `queryOne`, primitive parameter binding through ODBC, a tiny bounded pool skeleton,
   missing-driver diagnostics, redaction, and transactions.
@@ -206,20 +215,49 @@ runs. A `read` handle can query/queryOne only, a `write` handle can exec/write o
 statement handles are absent by design; internal
 prepare/bind/step/finalize remains per operation until a later resource-lifetime task.
 
+PostgreSQL JS bridge support:
+
+```ts
+const db = data.postgres.open({
+  connectionString: Environment.get("SLOPPY_POSTGRES_TEST_URL"),
+  capability: "data.main",
+  maxConnections: 2,
+});
+
+await db.exec("insert into users (name) values ($1)", ["Ada"]);
+
+const rows = await db.query("select id, name from users where name = $1", ["Ada"]);
+
+await db.transaction(async tx => {
+  await tx.exec("insert into users (name) values ($1)", ["Grace"]);
+});
+
+db.close();
+```
+
+The PostgreSQL bridge uses libpq nonblocking connect/query state machines and
+Slop-owned socket readiness watches. It does not occupy a blocking worker while waiting for
+database I/O. JavaScript sees only a stdlib connection wrapper and opaque Sloppy resource
+ID. Supported parameters include `null`, booleans, numbers, int64 `bigint`, strings,
+`Uint8Array` bytea values, and scalar arrays encoded for PostgreSQL. Result mapping returns
+booleans and numeric primitives as JavaScript primitives, bytea as `Uint8Array`, nulls as
+`null`, and PostgreSQL textual/domain values such as numeric, uuid, JSON, date/time, and
+timestamps as strings unless a later typed-value policy promotes them. Callback
+transactions pin one pooled connection until commit or rollback; nested transactions are
+rejected.
+
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
 resource table is engine-owned, and provider-specific V8 conversion code lives in
-`src/engine/v8/intrinsics_<provider>.cc`. SQLite uses `intrinsics_sqlite.cc`; later
-PostgreSQL or SQL Server bridges should not add provider logic directly to `engine_v8.cc`.
+`src/engine/v8/intrinsics_<provider>.cc`. SQLite uses `intrinsics_sqlite.cc`, PostgreSQL
+uses `intrinsics_postgres.cc`, and SQL Server should follow the same provider-owned bridge
+shape rather than adding provider logic directly to `engine_v8.cc`.
 
 Not implemented yet:
 
-- no JavaScript-to-native PostgreSQL intrinsic bridge yet, so `data.postgres.open(...)`
-  validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
-- no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels,
-  public prepared statement handles, or PostgreSQL/SQL Server native SQL execution from
-  JavaScript;
+- no SQL parser, ORM, migrations, production operational pooling policy, public prepared
+  statement handles, or SQL Server native SQL execution from JavaScript;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 
@@ -228,10 +266,11 @@ CLI status:
 - `sloppy doctor` can report deterministic provider readiness metadata supplied through
   `doctorChecks` and reports whether provider/capability metadata is present in a
   native-validated plan;
-- live PostgreSQL and SQL Server checks are not run by default and remain opt-in future CLI
-  work;
+- live PostgreSQL and SQL Server checks are not run by default; PostgreSQL live bridge
+  evidence is available through the opt-in CTest/tooling lane when
+  `SLOPPY_POSTGRES_TEST_URL` is configured;
 - default CI and package smoke do not prove live database availability, SQL Server driver
-  installation, or V8-gated SQLite JS-to-native provider execution;
+  installation, or V8-gated provider execution;
 - doctor output redacts connection-string-like secrets before printing;
 - `sloppy audit` can flag incomplete provider metadata, missing capability references,
   statically-known insufficient access, and filesystem/network skeleton notes. It remains

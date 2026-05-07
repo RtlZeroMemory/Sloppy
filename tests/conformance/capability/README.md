@@ -39,7 +39,8 @@ The V8-gated suite covers allowed SQLite bridge use, read-only/write denial, wri
 denial, missing capability registry failure, missing provider failure, provider-kind
 mismatch, stale handle failure, and denied users API transport behavior.
 
-Gated/deferred requirements: SQLite bridge enforcement executes only in V8-enabled builds.
-PostgreSQL and SQL Server JavaScript provider bridges remain deferred and must not be
-reported as capability-enforced from JavaScript. Filesystem/network checks are Sloppy
-runtime policy/metadata evidence only and do not prove OS-level containment.
+Gated requirements: SQLite bridge enforcement executes only in V8-enabled builds.
+PostgreSQL bridge capability enforcement is covered by the live PostgreSQL V8 lane when a
+database is configured. SQL Server JavaScript bridge enforcement remains separate until the
+async ODBC bridge lane lands. Filesystem/network checks are Sloppy runtime policy/metadata
+evidence only and do not prove OS-level containment.

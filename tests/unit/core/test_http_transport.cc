@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <type_traits>
 
 #include <openssl/bio.h>
 #include <openssl/err.h>
@@ -25,6 +26,17 @@ static int expect_true(bool condition)
 static int expect_status(SlStatus status, SlStatusCode code)
 {
     return expect_true(sl_status_code(status) == code);
+}
+
+static SlHttpTransportTlsBackend invalid_tls_backend_value()
+{
+#if defined(__GNUC__) && !defined(__clang__)
+    using TlsBackendValue = std::underlying_type_t<SlHttpTransportTlsBackend>;
+    volatile TlsBackendValue value = static_cast<TlsBackendValue>(999);
+    return static_cast<SlHttpTransportTlsBackend>(value);
+#else
+    return static_cast<SlHttpTransportTlsBackend>(999);
+#endif
 }
 
 static SlBytes bytes_from_cstr(const char* text)
@@ -724,7 +736,7 @@ static int test_config_validation_and_lifecycle(void)
     sl_arena_reset(&arena);
     config = small_config(nullptr);
     config.tls.enabled = true;
-    config.tls.backend = static_cast<SlHttpTransportTlsBackend>(999);
+    config.tls.backend = invalid_tls_backend_value();
     config.tls.certificate_path = sl_str_from_cstr("cert.pem");
     config.tls.private_key_path = sl_str_from_cstr("key.pem");
     server = {};
@@ -1235,6 +1247,12 @@ static int test_https_handshake_failure_and_active_shutdown_cleanup(void)
         goto cleanup;
     }
     close_client(&client);
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        result = 926;
+        goto cleanup;
+    }
 
     sl_arena_reset(&arena);
     server = {};

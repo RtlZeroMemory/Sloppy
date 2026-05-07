@@ -491,7 +491,8 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_workers.cc
-        src/engine/v8/intrinsics_sqlite.cc)
+        src/engine/v8/intrinsics_sqlite.cc
+        src/engine/v8/intrinsics_postgres.cc)
 endif()
 
 set(
@@ -2070,6 +2071,17 @@ if(SLOPPY_ENABLE_TESTS)
         set_tests_properties(
             conformance.sqlite.denied_capability
             PROPERTIES LABELS "conformance;v8;sqlite;capability")
+        add_test(
+            NAME conformance.postgres.bridge_live
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_postgres_bridge_live.cmake")
+        set_tests_properties(
+            conformance.postgres.bridge_live
+            PROPERTIES
+                LABELS "conformance;v8;postgres;live-provider"
+                SKIP_REGULAR_EXPRESSION "SKIP: live PostgreSQL V8 bridge tests are not configured")
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

@@ -1,0 +1,62 @@
+{
+  "bundle": {
+    "hash": "sha256:22a034b206d47f75dfcb0d8f445629d861e0c586608e41b7a1c0f91b90072b4a",
+    "id": "postgres-bridge-app-js",
+    "path": "app.js"
+  },
+  "compilerVersion": "handwritten-data-wave-3-postgres-bridge",
+  "requiredFeatures": [
+    "provider.postgres",
+    "stdlib.os"
+  ],
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "database": "config:SLOPPY_POSTGRES_TEST_URL",
+      "provider": "postgres",
+      "service": null,
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "displayName": "GET /postgres",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/postgres"
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:78eceba4b50824b02a5eed039fd37707bb36319e914b59aeaebfbfe1008f94e7",
+    "id": "postgres-bridge-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

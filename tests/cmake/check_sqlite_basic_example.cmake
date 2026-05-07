@@ -58,8 +58,8 @@ foreach(required_pattern IN ITEMS
         "does not emit `app.plan.json`"
         "executable SQLite proof is the internal V8-gated artifact fixture"
         "PostgreSQL and SQL Server providers are covered"
-        "PostgreSQL and SQL Server do not have JS-to-native provider bridges yet"
-        "no ORM, migrations, connection pooling")
+        "PostgreSQL has its own V8-gated true-async bridge"
+        "SQLite has no ORM, migrations, connection pooling expansion")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
         "examples/sqlite-basic/README.md is missing required status text")

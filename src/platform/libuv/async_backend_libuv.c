@@ -18,7 +18,15 @@ typedef struct SlLibuvAsyncBackend
     bool loop_initialized;
     bool async_initialized;
     bool closing;
+    size_t callback_count;
 } SlLibuvAsyncBackend;
+
+typedef struct SlLibuvIoWatch
+{
+    SlAsyncIoWatch base;
+    uv_poll_t poll;
+    bool poll_initialized;
+} SlLibuvIoWatch;
 
 static SlStatus sl_libuv_status_from_error(int error)
 {
@@ -54,6 +62,63 @@ static const SlLibuvAsyncBackend* sl_libuv_backend_const(const SlAsyncLoop* loop
 static void sl_libuv_async_wakeup(uv_async_t* handle)
 {
     (void)handle;
+}
+
+static unsigned sl_libuv_events_from_uv(int events)
+{
+    unsigned mapped = 0U;
+
+    if ((events & UV_READABLE) != 0) {
+        mapped |= SL_ASYNC_IO_EVENT_READABLE;
+    }
+    if ((events & UV_WRITABLE) != 0) {
+        mapped |= SL_ASYNC_IO_EVENT_WRITABLE;
+    }
+    if ((events & UV_DISCONNECT) != 0) {
+        mapped |= SL_ASYNC_IO_EVENT_DISCONNECT;
+    }
+    return mapped;
+}
+
+static int sl_libuv_events_to_uv(unsigned events)
+{
+    int mapped = 0;
+
+    if ((events & SL_ASYNC_IO_EVENT_READABLE) != 0U) {
+        mapped |= UV_READABLE;
+    }
+    if ((events & SL_ASYNC_IO_EVENT_WRITABLE) != 0U) {
+        mapped |= UV_WRITABLE;
+    }
+    if ((events & SL_ASYNC_IO_EVENT_DISCONNECT) != 0U) {
+        mapped |= UV_DISCONNECT;
+    }
+    return mapped;
+}
+
+static void sl_libuv_io_poll(uv_poll_t* poll, int status, int events)
+{
+    SlLibuvIoWatch* watch = poll == NULL ? NULL : (SlLibuvIoWatch*)poll->data;
+
+    if (watch == NULL || watch->base.closed || watch->base.callback == NULL) {
+        return;
+    }
+    if (watch->base.loop != NULL) {
+        SlLibuvAsyncBackend* backend = sl_libuv_backend(watch->base.loop);
+        if (backend != NULL) {
+            backend->callback_count += 1U;
+        }
+    }
+    watch->base.callback(watch->base.loop, &watch->base, sl_libuv_events_from_uv(events),
+                         sl_libuv_status_from_error(status), watch->base.user);
+}
+
+static void sl_libuv_close_walk_handle(uv_handle_t* handle, void* arg)
+{
+    (void)arg;
+    if (handle != NULL && !uv_is_closing(handle)) {
+        uv_close(handle, NULL);
+    }
 }
 
 SlStatus sl_async_loop_libuv_init(SlAsyncLoop* loop, SlArena* arena)
@@ -176,6 +241,7 @@ SlStatus sl_async_loop_libuv_run_once(SlAsyncLoop* loop, size_t* out_ran)
     SlLibuvAsyncBackend* backend = sl_libuv_backend(loop);
     SlAsyncCompletion completion;
     SlStatus status;
+    size_t callback_count_before = 0U;
 
     if (out_ran != NULL) {
         *out_ran = 0U;
@@ -193,10 +259,14 @@ SlStatus sl_async_loop_libuv_run_once(SlAsyncLoop* loop, size_t* out_ran)
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
+    callback_count_before = backend->callback_count;
     (void)uv_run(&backend->loop, UV_RUN_NOWAIT);
 
     status = sl_async_loop_libuv_pop_one(loop, &completion);
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+        if (backend->callback_count != callback_count_before && out_ran != NULL) {
+            *out_ran = 1U;
+        }
         return sl_status_ok();
     }
     if (!sl_status_is_ok(status)) {
@@ -278,8 +348,8 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
         loop->disposed = true;
     }
 
-    if (backend->async_initialized && !uv_is_closing((uv_handle_t*)&backend->async)) {
-        uv_close((uv_handle_t*)&backend->async, NULL);
+    if (backend->loop_initialized) {
+        uv_walk(&backend->loop, sl_libuv_close_walk_handle, NULL);
     }
 
     if (backend->loop_initialized) {
@@ -292,4 +362,91 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
         uv_mutex_destroy(&backend->mutex);
         backend->mutex_initialized = false;
     }
+}
+
+SlStatus sl_async_loop_libuv_io_watch_start(SlAsyncLoop* loop, SlArena* arena, int socket,
+                                            unsigned events, SlAsyncIoWatchFn callback, void* user,
+                                            SlAsyncIoWatch** out_watch)
+{
+    SlLibuvAsyncBackend* backend = sl_libuv_backend(loop);
+    SlLibuvIoWatch* watch = NULL;
+    void* memory = NULL;
+    SlStatus status;
+    int uv_status = 0;
+
+    if (out_watch != NULL) {
+        *out_watch = NULL;
+    }
+    if (loop == NULL || arena == NULL || backend == NULL || callback == NULL || out_watch == NULL ||
+        socket < 0 || events == 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (backend->closing || loop->disposed) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    status = sl_arena_alloc(arena, sizeof(SlLibuvIoWatch), _Alignof(SlLibuvIoWatch), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    watch = (SlLibuvIoWatch*)memory;
+    *watch = (SlLibuvIoWatch){0};
+    watch->base.loop = loop;
+    watch->base.callback = callback;
+    watch->base.user = user;
+
+    uv_status = uv_poll_init_socket(&backend->loop, &watch->poll, (uv_os_sock_t)socket);
+    if (uv_status != 0) {
+        watch->base.closed = true;
+        return sl_libuv_status_from_error(uv_status);
+    }
+    watch->poll_initialized = true;
+    watch->poll.data = watch;
+
+    uv_status = uv_poll_start(&watch->poll, sl_libuv_events_to_uv(events), sl_libuv_io_poll);
+    if (uv_status != 0) {
+        watch->base.closed = true;
+        if (!uv_is_closing((uv_handle_t*)&watch->poll)) {
+            uv_close((uv_handle_t*)&watch->poll, NULL);
+        }
+        return sl_libuv_status_from_error(uv_status);
+    }
+    watch->base.active = true;
+    *out_watch = &watch->base;
+    return sl_status_ok();
+}
+
+SlStatus sl_async_loop_libuv_io_watch_update(SlAsyncIoWatch* base, unsigned events)
+{
+    SlLibuvIoWatch* watch = (SlLibuvIoWatch*)base;
+    int uv_status = 0;
+
+    if (watch == NULL || !watch->poll_initialized || watch->base.closed || events == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    uv_status = uv_poll_start(&watch->poll, sl_libuv_events_to_uv(events), sl_libuv_io_poll);
+    if (uv_status != 0) {
+        return sl_libuv_status_from_error(uv_status);
+    }
+    watch->base.active = true;
+    return sl_status_ok();
+}
+
+void sl_async_loop_libuv_io_watch_stop(SlAsyncIoWatch* base)
+{
+    SlLibuvIoWatch* watch = (SlLibuvIoWatch*)base;
+
+    if (watch == NULL || watch->base.closed) {
+        return;
+    }
+    if (watch->poll_initialized) {
+        (void)uv_poll_stop(&watch->poll);
+        if (!uv_is_closing((uv_handle_t*)&watch->poll)) {
+            uv_close((uv_handle_t*)&watch->poll, NULL);
+        }
+    }
+    watch->base.active = false;
+    watch->base.closed = true;
 }

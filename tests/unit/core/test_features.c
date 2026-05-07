@@ -112,7 +112,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.http = true;
     availability.transport_libuv = true;
     availability.provider_sqlite = true;
-    availability.provider_postgres = false;
+    availability.provider_postgres = true;
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
@@ -287,8 +287,11 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 64;
     }
-    if (postgres->available || postgres->requires_v8_intrinsics ||
-        !sl_str_equal(postgres->stdlib_import, sl_str_from_cstr("sloppy/providers/postgres")))
+    if (!postgres->available || !postgres->requires_v8_intrinsics ||
+        !sl_str_equal(postgres->stdlib_import, sl_str_from_cstr("sloppy/providers/postgres")) ||
+        !sl_str_equal(postgres->v8_intrinsic_namespace,
+                      sl_str_from_cstr("__sloppy.data.postgres")) ||
+        (postgres->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_DATA)) == 0U)
     {
         return 65;
     }
@@ -845,6 +848,7 @@ static int test_unavailable_postgres_required_feature_fails(void)
     SlRuntimeFeatureSet set = {0};
     SlDiag diag = {0};
 
+    availability.provider_postgres = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
     (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
@@ -972,6 +976,7 @@ static int test_missing_feature_diagnostic_goldens(void)
         return 70;
     }
 
+    availability.provider_postgres = false;
     required[0].id = sl_str_from_cstr("provider.postgres");
     if (expect_activation_diagnostic_snapshot(
             &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
@@ -980,6 +985,7 @@ static int test_missing_feature_diagnostic_goldens(void)
         return 71;
     }
 
+    availability.provider_postgres = true;
     required[0].id = sl_str_from_cstr("provider.sqlserver");
     if (expect_activation_diagnostic_snapshot(
             &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,

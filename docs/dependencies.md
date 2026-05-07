@@ -367,12 +367,15 @@ Build wiring:
 
 Ownership and lifetime:
 
-- `src/data/postgres.c` is the only Sloppy source file that includes `libpq-fe.h`;
+- `src/data/postgres.c` and `src/engine/v8/intrinsics_postgres.cc` are the Sloppy source
+  files that include `libpq-fe.h`; generic data headers and JavaScript surfaces do not
+  expose libpq types;
 - `SlPostgresConnection` is caller-owned and closes deterministically through
   `sl_postgres_close`;
 - `PGresult` values are cleared on every path;
 - rows, column names, text values, and diagnostics are copied into caller-provided arenas;
-- JavaScript sees only the stdlib `data.postgres` shape today, never a native pointer.
+- JavaScript sees only the stdlib `data.postgres` shape and opaque Sloppy resource IDs,
+  never a native pointer, `PGconn`, `PGresult`, socket, or libuv handle.
 
 License/update/security:
 
@@ -385,6 +388,9 @@ Tests:
 - `tests/unit/data/test_postgres.c` covers redaction, invalid options, use after close,
   doctor diagnostics, tiny pool lifecycle behavior, and separately registered env-gated
   live connection/query/transaction/pool behavior.
+- V8-enabled PostgreSQL bridge evidence lives in
+  `conformance.postgres.bridge_live`, which requires `SLOPPY_POSTGRES_TEST_URL` and proves
+  the JavaScript stdlib bridge against a live PostgreSQL service.
 
 ### ODBC / SQL Server
 

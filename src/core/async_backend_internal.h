@@ -17,6 +17,15 @@ struct SlAsyncLoop
     void* backend;
 };
 
+struct SlAsyncIoWatch
+{
+    SlAsyncLoop* loop;
+    SlAsyncIoWatchFn callback;
+    void* user;
+    bool active;
+    bool closed;
+};
+
 SlStatus sl_async_loop_common_init(SlAsyncLoop* loop, SlAsyncBackendKind kind, SlArena* arena,
                                    SlAsyncCompletion* storage, size_t capacity);
 SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion* completion);
@@ -33,5 +42,10 @@ SlStatus sl_async_loop_libuv_post(SlAsyncLoop* loop, const SlAsyncCompletion* co
 SlStatus sl_async_loop_libuv_run_once(SlAsyncLoop* loop, size_t* out_ran);
 SlStatus sl_async_loop_libuv_drain(SlAsyncLoop* loop, size_t max_count, size_t* out_ran);
 bool sl_async_loop_libuv_is_owner_thread(const SlAsyncLoop* loop);
+SlStatus sl_async_loop_libuv_io_watch_start(SlAsyncLoop* loop, SlArena* arena, int socket,
+                                            unsigned events, SlAsyncIoWatchFn callback, void* user,
+                                            SlAsyncIoWatch** out_watch);
+SlStatus sl_async_loop_libuv_io_watch_update(SlAsyncIoWatch* watch, unsigned events);
+void sl_async_loop_libuv_io_watch_stop(SlAsyncIoWatch* watch);
 
 #endif

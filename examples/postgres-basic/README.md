@@ -1,6 +1,6 @@
 # PostgreSQL Basic Example
 
-This is a static API-shape example for the PostgreSQL provider.
+This is an API-shape example for the PostgreSQL provider.
 
 It shows the intended module/capability/service registration shape, PostgreSQL `$1`
 query-template lowering, a simple bounded pool option, and transaction usage.
@@ -9,13 +9,13 @@ Current limitations:
 
 - requires PostgreSQL and a connection string such as `SLOPPY_POSTGRES_TEST_URL`;
 - not part of default CI live database execution;
+- the V8 bridge uses nonblocking libpq socket readiness and a bounded connection pool;
+- parameterized exec/query/queryOne and callback transactions are supported through the
+  stdlib bridge when the Plan enables `provider.postgres`;
 - no migrations;
 - no ORM;
-- pool behavior is a small bounded skeleton, not production pooling;
-- async libpq socket integration, worker-pool offload, cancellation, deadlines, TLS option
-  hardening, arrays, JSON, and blobs are deferred;
-- JavaScript-to-native data intrinsics are not wired yet, so this example is not runnable
-  through `sloppy run` today.
+- TLS option hardening and production operational pooling policy remain separate provider
+  hardening work.
 
 Native live provider tests are opt-in:
 

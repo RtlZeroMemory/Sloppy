@@ -577,6 +577,11 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
             return status;
         }
         out->entries = (SlFsDirectoryEntry*)memory;
+        if (out->entries == NULL) {
+            closedir(dir);
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
     }
     errno = 0;
     while ((entry = readdir(dir)) != NULL) {
@@ -587,6 +592,11 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
 
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
+        }
+        if (out->entries == NULL || out->count >= count) {
+            closedir(dir);
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         item = &out->entries[out->count];
         *item = (SlFsDirectoryEntry){0};
@@ -706,6 +716,9 @@ SlStatus sl_fs_platform_create_temp_file(SlArena* arena, SlStr directory, SlStr 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (template_path.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     fd = mkstemp(template_path.ptr);
     if (fd < 0) {
         return sl_fs_posix_status(errno);
@@ -725,6 +738,9 @@ SlStatus sl_fs_platform_create_temp_directory(SlArena* arena, SlStr directory, S
     status = sl_fs_posix_temp_template(arena, directory, prefix, &template_path);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (template_path.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (mkdtemp(template_path.ptr) == NULL) {
         return sl_fs_posix_status(errno);
@@ -809,6 +825,9 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (lock == NULL || native.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     lock->fd = open(native.ptr, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (lock->fd < 0) {
         return sl_fs_posix_status(errno);
@@ -851,6 +870,9 @@ SlStatus sl_fs_platform_open_file(SlArena* arena, SlStr path, SlFsFileAccess acc
         !sl_status_is_ok((status = sl_fs_posix_alloc_handle(arena, &handle))))
     {
         return status;
+    }
+    if (handle == NULL || native.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (access == SL_FS_FILE_ACCESS_WRITE) {
         flags = O_WRONLY;

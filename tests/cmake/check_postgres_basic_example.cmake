@@ -35,7 +35,8 @@ foreach(required_pattern IN ITEMS
     "not part of default CI live database execution"
     "no migrations"
     "no ORM"
-    "pool behavior is a small bounded skeleton"
+    "nonblocking libpq socket readiness"
+    "bounded connection pool"
     "Connection strings must be redacted")
     string(FIND "${readme_text}" "${required_pattern}" match_index)
     if(match_index EQUAL -1)

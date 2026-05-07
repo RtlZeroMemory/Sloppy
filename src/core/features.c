@@ -191,9 +191,10 @@ sl_feature_provider_descriptor_with_availability(SlRuntimeFeatureId id,
             sl_feature_literal("PostgreSQL provider", sizeof("PostgreSQL provider") - 1U),
             sl_feature_literal("sloppy/providers/postgres",
                                sizeof("sloppy/providers/postgres") - 1U),
-            sl_str_empty(),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            postgres, false, true);
+            sl_feature_literal("__sloppy.data.postgres", sizeof("__sloppy.data.postgres") - 1U),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+            postgres, true, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
@@ -325,7 +326,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.http = true;
     availability.transport_libuv = true;
     availability.provider_sqlite = true;
-    availability.provider_postgres = false;
+    availability.provider_postgres = true;
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
@@ -384,9 +385,10 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          true, true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_POSTGRES, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.postgres"), SL_FEATURE_STR("PostgreSQL provider"),
-         SL_FEATURE_STR("sloppy/providers/postgres"), SL_FEATURE_EMPTY,
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         false, true},
+         SL_FEATURE_STR("sloppy/providers/postgres"), SL_FEATURE_STR("__sloppy.data.postgres"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+         true, true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlserver"), SL_FEATURE_STR("SQL Server provider"),
          SL_FEATURE_STR("sloppy/providers/sqlserver"), SL_FEATURE_EMPTY,

@@ -345,7 +345,8 @@ function createForgedLoweredQuery() {
     assert.equal(data.postgres.placeholderStyle, "postgres");
     assert.equal(data.postgres.supports.connectionString, true);
     assert.equal(data.postgres.supports.transactions, true);
-    assert.equal(data.postgres.supports.pooling, "skeleton");
+    assert.equal(data.postgres.supports.pooling, true);
+    assert.equal(data.postgres.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.postgres.supports.nativeStdlibBridge, false);
     assert.equal(data.postgres.__debug().nativeStdlibBridge, false);
     assert.equal(sql.lower(["a ", " b ", " c"], ["x", "y"], {

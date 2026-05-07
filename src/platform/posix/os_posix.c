@@ -484,6 +484,9 @@ static SlStatus sl_os_posix_join_path(SlArena* arena, const char* directory, siz
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     *out = (char*)memory;
     for (size_t index = 0U; index < directory_len; index += 1U) {
         (*out)[offset++] = directory[index];
@@ -521,6 +524,9 @@ static SlStatus sl_os_posix_join_segment(SlArena* arena, const char* left, size_
     status = sl_arena_alloc(arena, length, _Alignof(char), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (char*)memory;
     for (size_t index = 0U; index < left_len; index += 1U) {
@@ -595,6 +601,9 @@ static SlStatus sl_os_posix_resolve_command(SlArena* arena, const char* command,
                 }
             }
         }
+        if (candidate == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         if (access(candidate, X_OK) == 0) {
             *out = candidate;
             return sl_status_ok();
@@ -640,6 +649,9 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (command_cstr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     status = sl_checked_add_size(arg_count, 2U, &alloc_count);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -666,6 +678,9 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         status = sl_os_posix_copy_nul(arena, options->cwd, &cwd_cstr);
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        if (cwd_cstr == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         if (stat(cwd_cstr, &cwd_stat) != 0 || !S_ISDIR(cwd_stat.st_mode)) {
             return sl_os_posix_process_fail(
@@ -905,6 +920,9 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (command_cstr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     status = sl_checked_add_size(arg_count, 2U, &alloc_count);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -931,6 +949,9 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         status = sl_os_posix_copy_nul(arena, options->cwd, &cwd_cstr);
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        if (cwd_cstr == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         if (stat(cwd_cstr, &cwd_stat) != 0 || !S_ISDIR(cwd_stat.st_mode)) {
             return sl_os_posix_process_fail(

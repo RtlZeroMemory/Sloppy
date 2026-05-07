@@ -1006,6 +1006,12 @@ bool sl_v8_sqlite_feature_enabled(const SlV8Engine* backend)
             sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_SQLITE));
 }
 
+bool sl_v8_postgres_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_POSTGRES);
+}
+
 bool sl_v8_time_feature_enabled(const SlV8Engine* backend)
 {
     return backend != nullptr && backend->has_runtime_features &&
@@ -1041,9 +1047,9 @@ bool sl_v8_needs_async_loop(const SlV8Engine* backend)
 {
     return backend != nullptr &&
            (sl_v8_sqlite_feature_enabled(backend) || sl_v8_fs_feature_enabled(backend) ||
-            sl_v8_time_feature_enabled(backend) || sl_v8_crypto_feature_enabled(backend) ||
-            sl_v8_net_feature_enabled(backend) || sl_v8_os_feature_enabled(backend) ||
-            sl_v8_workers_feature_enabled(backend));
+            sl_v8_postgres_feature_enabled(backend) || sl_v8_time_feature_enabled(backend) ||
+            sl_v8_crypto_feature_enabled(backend) || sl_v8_net_feature_enabled(backend) ||
+            sl_v8_os_feature_enabled(backend) || sl_v8_workers_feature_enabled(backend));
 }
 
 SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)

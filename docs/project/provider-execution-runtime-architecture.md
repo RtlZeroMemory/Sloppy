@@ -354,8 +354,9 @@ Provider-specific examples:
 
 - SQLite may later use `sqlite3_interrupt` for a connection if the owning executor can
   prove it is safe for the active operation.
-- PostgreSQL may use libpq cancellation or a nonblocking libpq state machine when that
-  bridge is scoped.
+- PostgreSQL uses a nonblocking libpq state machine in the V8 bridge. Driver-specific
+  mid-query cancellation remains explicit provider policy when a caller-facing
+  cancellation API is wired to the bridge.
 - SQL Server may use ODBC cancellation if driver behavior is documented and tested.
 
 DATA-RUNTIME-01 preserves generic terminal-state correctness for pre-cancelled admission,
@@ -480,5 +481,5 @@ Work after ENGINE-23:
   not implement provider runtime;
 - SQLite runtime completion should route SQLite operations through the provider
   executor before claiming scalable provider behavior;
-- PostgreSQL and SQL Server JS bridges remain deferred until the provider runtime and
-  SQLite path are solid.
+- SQL Server JS bridge work remains separate until ODBC async behavior and the
+  provider-owned bridge shape are solid.
