@@ -22,22 +22,24 @@ This document covers:
 
 ## Non-Goals
 
-The foundation phase does not:
+The current pre-alpha docs do not:
 
-- implement benchmarks;
 - make public performance claims;
-- optimize nonexistent runtime paths;
+- define release-blocking performance regression gates;
+- optimize unsupported runtime paths;
 - trade away diagnostics, resource safety, or portability for early microbenchmarks.
 
 ## Current Phase
 
-Only performance strategy exists. There is no benchmark harness and no runtime feature path
-to measure yet.
+Performance strategy and benchmark harness scaffolding exist. Benchmark list or smoke
+checks prove that the harness runs; they do not prove runtime performance or support public
+performance claims. Measured Release benchmark evidence must name the command, build,
+hardware/context, workload, and output.
 
 ## Future Phase
 
-The first benchmark harness should appear when there is a real measured path, likely after
-plan loading, handler dispatch, or route matching exists.
+Measured benchmark lanes should become meaningful only when a scoped task defines the path,
+methodology, and release-build evidence to collect.
 
 ## Product Positioning
 

@@ -1,6 +1,6 @@
 # Core Process Time Codec Example
 
-Status: CORE-INTEGRATION-01 conformance source example. This example reads process output
+Status: conformance source example. This example reads process output
 as owned bytes or text, applies a shared Deadline, and decodes bytes with Codec UTF-8.
 
 The example documents implemented API shape only. It has no public alpha claim, no

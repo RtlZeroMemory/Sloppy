@@ -1,123 +1,25 @@
 # Diagnostics Module
 
-## Status
-
-Partially implemented for TASK 04.A.
-
 ## Purpose
 
-Provide stable, deterministic diagnostics for humans and tools.
+The diagnostics module owns stable failure reporting for core/runtime code. It provides
+diagnostic builders, stable codes, text rendering, JSON rendering, source-frame support,
+related locations, hints, and redaction-oriented conventions.
 
-## Scope
+## Current Status
 
-Implemented now:
-
-- severity enum;
-- small enum-backed diagnostic code model;
-- user/app source span model;
-- bounded related spans and hints;
-- plain diagnostic object;
-- arena-copying diagnostic builder;
-- deterministic plain-text renderer;
-- initial golden/snapshot fixtures.
-- engine exception, compile, and call diagnostic codes used by the V8 bridge skeleton.
-
-## Non-goals
-
-No source map parser, source-frame renderer, JSON diagnostics, localization, IDE protocol,
-terminal colors, diagnostic registry, global sink, plan loader, service container, or
-runtime integration in this foundation pass.
-
-## Public/Internal API
-
-Implemented public header:
-
-- `include/sloppy/diagnostics.h`
-
-Implemented API:
-
-- `SlDiagSeverity` and `sl_diag_severity_name`;
-- `SlDiagCode` and `sl_diag_code_name`;
-- `SlSourceSpan`, `sl_source_span_unknown`, and `sl_source_span_make`;
-- `SlDiagRelated` and `SlDiag`;
-- `SlDiagBuilder`, `sl_diag_builder_init`, `sl_diag_builder_set_primary_span`,
-  `sl_diag_builder_add_related`, `sl_diag_builder_add_hint`, and
-  `sl_diag_builder_finish`;
-- `sl_diag_render_text`;
-- `sl_diag_redacted`.
-
-## Ownership/Lifetime Rules
-
-Standalone `SlStr` values and `SlSourceSpan.path` are borrowed views.
-
-Builder APIs copy diagnostic message text, hint text, related messages, and span paths into
-the provided `SlArena`. Finished diagnostics produced by the builder remain valid until
-that arena is reset or the caller-owned arena backing buffer lifetime ends.
-
-The renderer returns an arena-owned `SlStr` that is not NUL-terminated and remains valid
-until the render arena is reset.
-
-V8 bridge diagnostics copy JavaScript exception strings and generated source names into the
-engine arena through the same builder APIs. They do not point into transient V8 handles or
-temporary UTF-8 adapters after the bridge call returns.
+Diagnostics are used by Plan parsing, HTTP, route matching, capability checks, providers,
+app-host startup, compiler fixtures, V8-gated exception mapping, and CLI output paths.
 
 ## Invariants
 
-Diagnostic codes are stable public contracts once released. TASK 04.A keeps the initial code
-set intentionally small.
-
-Source span line and column are 1-based when present. `SlSourceSpan` represents user/app
-source and is distinct from `SlSourceLoc`, which represents C call-site source.
-
-Related spans and hints are bounded by `SL_DIAG_MAX_RELATED` and `SL_DIAG_MAX_HINTS`.
-
-The current text renderer is deterministic, colorless, and does not normalize paths. Its
-format is a foundation test contract, not a released CLI output contract.
-
-The current diagnostic shape has no dedicated stack field. TASK 07.D stores a bounded V8
-stack summary as a related note when V8 can provide one; full async stacks and code frames
-remain future diagnostics work.
-
-## Diagnostics
-
-This module defines diagnostic output and tests placeholder redaction behavior. It does not
-scan arbitrary strings for secrets; callers must pass `sl_diag_redacted()` or otherwise
-avoid including secret values.
+- Stable codes are contracts.
+- Messages explain the violated contract.
+- Hints describe safe next actions without claiming unsupported behavior.
+- Secrets and raw native pointers must not appear in diagnostics.
+- JSON output must remain deterministic where covered by goldens.
 
 ## Tests
 
-CTest registers `tests/unit/core/test_diagnostics.c`, covering:
-
-- severity name mapping;
-- diagnostic code name mapping;
-- unknown/default source spans;
-- builder success and invalid arguments;
-- failed related-span insertion rolls back arena usage;
-- uninitialized builder finish is rejected;
-- related span and hint bounds;
-- basic renderer output;
-- primary span, related span, and hint rendering through snapshots;
-- redacted placeholder rendering.
-
-Initial snapshot fixtures live under `tests/golden/diagnostics/` and are read by the CTest
-diagnostics test:
-
-- `missing_service.snap`;
-- `invalid_plan_version.snap`.
-
-## Source Docs
-
-- `docs/diagnostics.md`;
-- `docs/testing-strategy.md`;
-- `docs/testing.md`;
-- `docs/memory.md`;
-- `docs/c-standards.md`.
-
-## Open Questions
-
-- Exact JSON output shape.
-- Source-frame rendering.
-- Source-map integration.
-- Localization.
-- Diagnostic metadata and structured fixes.
-- Redaction policy engine.
+Golden diagnostics are semantic contracts. Updates must explain the behavior change and
+preserve redaction, source-span, related-location, and hint intent where applicable.

@@ -1,6 +1,6 @@
 # Time Deadline and Cancellation Example
 
-Status: CORE-TIME-01.I source example. This example shows the app-facing shape for shared
+Status: source example. This example shows the app-facing shape for shared
 deadlines and caller cancellation.
 
 `Deadline.after` carries a reusable time budget into filesystem work. `Time.timeout`

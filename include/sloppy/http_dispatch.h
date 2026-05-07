@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 /*
- * Manual route binding for the bounded Plan-backed HTTP dispatch slice.
+ * Manual route binding for bounded Plan-backed HTTP dispatch.
  *
  * The binding borrows a parsed route pattern. The caller must keep the pattern arena alive
  * for the duration of dispatch. GET, POST, PUT, PATCH, and DELETE bindings are runnable

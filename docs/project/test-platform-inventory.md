@@ -19,7 +19,10 @@ replacement for the executable gates.
 | Package | Windows package smoke, metadata fixture, outside-checkout compile/artifact execution, and archive hygiene checks. |
 | Static governance | `AGENTS.md`, `CONTRIBUTING.md`, PR template, `tools/windows/check-test-governance.ps1`, CI static job, and `docs.test_platform_contract`. |
 
-## Audit Findings Fixed In TEST-PLATFORM-01
+## Historical Audit Findings
+
+These findings record what the TEST-PLATFORM-01 audit changed. They are historical
+evidence, not a current to-do list.
 
 - `tests/fuzz/README.md` was placeholder-only; it now documents seed replay and libFuzzer
   targets.

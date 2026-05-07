@@ -5,6 +5,10 @@
 Checks that the change matches the prompt, docs/ADRs, and acceptance criteria. Also checks
 for scope creep and required doc updates.
 
+For large PRs, compare the diff against the `Implementation Contract for Reviewers`.
+Reject missing source docs, unclear non-goals, or evidence that does not prove the stated
+contract.
+
 ## C Safety Reviewer
 
 Checks ownership, bounds, overflow, cleanup, error paths, resource lifetime, platform
@@ -14,6 +18,10 @@ boundaries, and tests.
 
 Checks CMake, scripts, CI, test integration, Windows-first/cross-platform assumptions, and
 generated artifact hygiene.
+
+Reject required jobs that are made green by silently skipping their purpose. Optional V8,
+package, live-provider, fuzz/property, stress/torture, sanitizer, and benchmark lanes must
+be reported separately from default evidence.
 
 ## Simplicity / Overengineering Reviewer
 
@@ -83,6 +91,9 @@ JS/TS checklist:
 - errors are deterministic and redact secrets;
 - compiler-extractable examples avoid dynamic patterns;
 - `tools/windows/check-js-ts-standards.ps1` passes.
+- no public alpha, production-readiness, performance, package-readiness,
+  provider-readiness, or Node/Bun/Deno compatibility claims unless a source doc and
+  evidence lane prove the exact claim.
 
 Rust compiler/tooling checklist:
 
@@ -99,6 +110,10 @@ Rust compiler/tooling checklist:
 
 Checks only the original acceptance criteria, confirmed blocking feedback, and no new scope
 creep.
+
+The final verifier should reject optional lanes reported as pass, benchmark smoke reported
+as correctness or performance evidence, goldens updated only to match current output, stale
+docs, unsupported public/product claims, and unreviewed generated artifacts.
 
 ## Blocking vs Non-blocking
 

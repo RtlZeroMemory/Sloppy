@@ -440,8 +440,8 @@ SlStatus sl_engine_call_handler(SlEngine* engine, const SlEngineHandlerCall* cal
         engine->arena, out_diag,
         sl_engine_literal("engine handler execution is not implemented",
                           sizeof("engine handler execution is not implemented") - 1U),
-        sl_engine_literal("TASK 08/09 will map Sloppy Plan handlers to JavaScript functions.",
-                          sizeof("TASK 08/09 will map Sloppy Plan handlers to JavaScript "
-                                 "functions.") -
+        sl_engine_literal("Use registered handler dispatch for executable V8 handler calls.",
+                          sizeof("Use registered handler dispatch for executable V8 handler "
+                                 "calls.") -
                               1U));
 }

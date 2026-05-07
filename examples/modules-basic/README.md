@@ -22,7 +22,7 @@ What does not work yet:
 - this source-stdlib example is not a `sloppy run --artifacts` app;
 - `sloppyc` does not compile this example;
 - this example does not emit `app.plan.json`;
-- the current `sloppy run` MVP does not load this source-stdlib module example;
+- the current bounded `sloppy run` path does not load this source-stdlib module example;
 - the `data` module is not a real data provider;
 - module package loading and native plugins are future work;
 - the future bare `"sloppy"` import is planned only.

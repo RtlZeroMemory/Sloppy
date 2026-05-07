@@ -1,6 +1,6 @@
 # Crypto Hash And HMAC Example
 
-Status: CORE-CRYPTO-01.I source example. This example documents SHA-256 digest helpers,
+Status: source example. This example documents SHA-256 digest helpers,
 incremental hashing, HMAC signing, HMAC verification, and `Secret` ownership around a
 configuration-supplied key.
 

@@ -10,7 +10,7 @@ HTTP-25 and before Engine Roadmap-2.
   current HTTP tests and transport conformance registrations.
 - Docs: `docs/modules/http/README.md`, `docs/execution-model.md`,
   `docs/concurrency.md`, `docs/diagnostics.md`,
-  `docs/project/http-post-mvp-transport-plan.md`, and `docs/testing-strategy.md`.
+  `docs/project/archive/http/http-post-mvp-transport-plan.md`, and `docs/testing-strategy.md`.
 
 ## Current Maturity Table
 

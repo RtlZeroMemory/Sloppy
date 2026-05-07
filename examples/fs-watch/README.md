@@ -1,6 +1,6 @@
 # Filesystem Watch Example
 
-Status: CORE-FS-01.J watch example.
+Status: filesystem watch example.
 
 The current watch API is resource-backed, bounded, and non-recursive. It reports
 create/modify/delete/overflow events without claiming Node `fs.watch` semantics:

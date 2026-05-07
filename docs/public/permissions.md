@@ -6,7 +6,7 @@ network checks are metadata-only skeletons.
 Purpose: document future capabilities, permissions, audit output, and denied-operation
 diagnostics.
 
-ENGINE-01 target contract:
+Current target contract:
 
 - SQLite open/use must check a database capability before provider work.
 - Denied SQLite access must return a stable diagnostic and must not reach provider

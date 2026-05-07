@@ -80,13 +80,14 @@ typedef struct SlHttpBackendOptions
      */
     SlHttpParseOptions parse;
     /*
-     * Deadline configuration hooks in milliseconds. ENGINE-13.A/B/C stores policy and
-     * exposes timeout terminal behavior; real timer/read/disconnect integration is later.
+     * Deadline configuration in milliseconds. The backend owns bounded read/header/request
+     * timeout behavior and reports terminal timeout diagnostics through the connection
+     * lifecycle.
      */
     uint64_t read_timeout_ms;
     uint64_t header_timeout_ms;
     uint64_t request_timeout_ms;
-    /* Current dev runtime still sends Connection: close; production keep-alive is deferred. */
+    /* Enables bounded sequential keep-alive; production-edge HTTP remains out of scope. */
     bool keep_alive_enabled;
 } SlHttpBackendOptions;
 

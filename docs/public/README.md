@@ -1,16 +1,16 @@
 # Public Documentation
 
-Status (MVP): Bootstrap app-host, module, data facade, metadata CLI, native provider
-foundations, compiler extraction, and dev-only artifact execution implemented.
+Status: pre-alpha skeleton, not published user documentation.
 
-This directory is for user/developer-facing documentation: how people will use Sloppy to
-build applications. It is distinct from internal architecture/spec docs under `docs/`.
+This directory is reserved for developer/user-facing documentation. It should explain the
+implemented pre-alpha surface, name current limits clearly, and avoid implying public alpha
+readiness before the release gate is complete.
 
 Current files:
 
-- `getting-started.md`: first app workflow;
+- `getting-started.md`: current runnable path and pre-alpha limits;
 - `app-model.md`: builder/app model;
-- `routing.md`: routes and route groups;
+- `routing.md`: route declarations and request context;
 - `results.md`: result helpers;
 - `modules.md`: app modules;
 - `config.md`: configuration;
@@ -21,26 +21,24 @@ Current files:
 - `diagnostics.md`: user-facing diagnostics;
 - `cli.md`: CLI commands.
 
-Examples in this directory are planned API examples unless the page explicitly says the
-feature is implemented.
+Pages in this directory may describe implemented subsets, intended API shape, and explicit
+limitations. They are not public launch docs. Public alpha remains blocked by framework,
+HTTP, packaging, example, release-note, and final verification work.
 
-ENGINE-01 locks the foundation contract in
-`docs/project/engine-framework-contract.md`. These public docs are still pre-alpha status
-docs, not launch docs; public alpha remains blocked until the contract has executable
-compiler/runtime evidence.
+Checked-in examples are split into two groups:
 
-Checked-in examples:
+- compiler/runtime examples, such as `examples/compiler-hello/`,
+  `examples/request-context/`, and `examples/users-api-sqlite/`, which have scoped
+  artifact or V8-gated evidence;
+- API-shape examples, such as `examples/hello/`, `examples/ergonomics/`,
+  `examples/modules-basic/`, and provider examples, which document current or intended
+  source shape without claiming full runtime execution.
 
-- `examples/hello/`: current bootstrap API-shape example using the source stdlib through a
-  relative import. It is not a `sloppy run --artifacts` app.
-- `examples/ergonomics/`: current route group, result helper, schema, and app-host
-  API-shape example. It is not a `sloppy run --artifacts` app.
-- `examples/modules-basic/`: current module API-shape example with fake in-memory
-  services. It is not a `sloppy run --artifacts` app.
-- `examples/data-foundation/`: current data/capabilities API-shape example with fake
-  JavaScript provider behavior. It is not a `sloppy run --artifacts` app.
-- `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`:
-  provider-shape examples that document the native-provider/stdlib-bridge split. They are
-  not `sloppy run --artifacts` apps.
-- `examples/compiler-hello/`: compiler MVP input that can emit `.sloppy` artifacts for the
-  current dev-only `sloppy run --artifacts` path when V8 is enabled.
+Every public page must preserve these boundaries:
+
+- no production-readiness claim;
+- no benchmark or performance claim;
+- no Node/Bun/Deno compatibility claim;
+- no package-manager claim;
+- no public alpha release claim;
+- no tutorial that depends on Framework v2 or packaging work that has not landed.

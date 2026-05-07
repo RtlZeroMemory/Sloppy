@@ -1,12 +1,13 @@
 # V8 Bridge
 
-This directory owns the isolated C++ V8 bridge.
+This directory owns the isolated C++ V8 bridge. The bridge is optional, V8-gated, and
+private to this directory.
 
-The V8 bridge has grown beyond the initial TASK 07 smoke. It still remains opt-in and
-isolated under this directory. Current V8-gated evidence covers SDK detection, the
-engine-neutral C ABI, isolate/context lifecycle, classic-script evaluation, owner-thread
-checks, Promise scheduling, runtime bridge smoke, selected stdlib intrinsic registration,
-HTTP dispatch execution, and guarded provider/feature activation.
+Current V8-gated behavior includes SDK validation, the engine-neutral C ABI,
+isolate/context lifecycle, classic generated-script evaluation, owner-thread checks,
+registered handler dispatch, bounded Promise scheduling, selected stdlib intrinsic
+registration, HTTP request/result conversion, source-map exception remapping, and guarded
+provider/feature activation.
 
 Rules:
 
@@ -25,15 +26,15 @@ Rules:
   `Results.*` conversion lives in dedicated sibling modules such as `http_bridge.cc`; do
   not add it directly to `engine_v8.cc`.
 - Provider-specific JS-to-native bridges live in `intrinsics_<provider>.cc` files and are
-  reached through `intrinsics.cc`; do not add SQLite/PostgreSQL/SQL Server bridge logic
-  directly to `engine_v8.cc`.
+  reached through `intrinsics.cc`; do not add provider bridge logic directly to
+  `engine_v8.cc`.
 - `engine_v8_internal.h` is private to this directory. It exposes the V8 backend shape and
   resource table to sibling intrinsic modules without making V8 a public runtime type.
 - No Node compatibility, package-manager behavior, inspector, snapshots, or raw native
-  handle exposure belongs in this directory. Missing feature paths must report stable
-  diagnostics instead of fake-success placeholders.
+  handle exposure belongs in this directory.
+- Missing feature paths must report stable diagnostics instead of fake-success placeholders.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the
-  process lifetime until a future explicit runtime shutdown task decides disposal policy.
+  process lifetime because runtime shutdown semantics are not yet defined.
 - `sl_engine_destroy` releases per-engine isolate/context state only.
 
 Expected SDK layout:

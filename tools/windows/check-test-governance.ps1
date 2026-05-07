@@ -1,4 +1,5 @@
 param(
+    [switch]$SelfTest,
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 )
 
@@ -83,7 +84,7 @@ function Test-CodePatterns {
             continue
         }
 
-        $lines = Read-Lines -RelativePath $file
+        $lines = @(Read-Lines -RelativePath $file)
         for ($i = 0; $i -lt $lines.Count; $i += 1) {
             $line = $lines[$i]
             $lineNumber = $i + 1
@@ -121,7 +122,7 @@ function Test-SecretPatterns {
     )
 
     foreach ($file in $files) {
-        $lines = Read-Lines -RelativePath $file
+        $lines = @(Read-Lines -RelativePath $file)
         for ($i = 0; $i -lt $lines.Count; $i += 1) {
             $line = $lines[$i]
             foreach ($pattern in $secretPatterns) {
@@ -141,7 +142,7 @@ function Test-GoldenNormalization {
         "tests/fixtures/package"
     )
     foreach ($file in $files) {
-        $lines = Read-Lines -RelativePath $file
+        $lines = @(Read-Lines -RelativePath $file)
         for ($i = 0; $i -lt $lines.Count; $i += 1) {
             $line = $lines[$i]
             if ($line -cmatch '([A-Za-z]:\\Users\\|[A-Za-z]:/Users/|/Users/|/home/)' -and
@@ -153,6 +154,96 @@ function Test-GoldenNormalization {
     }
 }
 
+function Test-CurrentClaimDocPath {
+    param([string]$Path)
+
+    if ($Path -match '^(docs/project|docs/exec-plans|docs/skills|tests|compiler/tests)/') {
+        return $false
+    }
+
+    return (
+        $Path -eq "README.md" -or
+        $Path -eq "CONTRIBUTING.md" -or
+        $Path -eq "AGENTS.md" -or
+        $Path -eq ".github/PULL_REQUEST_TEMPLATE.md" -or
+        $Path -match '^docs/[^/]+\.md$' -or
+        $Path -match '^docs/public/' -or
+        $Path -match '^docs/modules/' -or
+        $Path -match '^examples/.+/README\.md$' -or
+        $Path -eq "stdlib/sloppy/README.md" -or
+        $Path -match '^src/.+/README\.md$'
+    )
+}
+
+function Test-PublicProductDocPath {
+    param([string]$Path)
+
+    return (
+        $Path -eq "README.md" -or
+        $Path -match '^docs/public/' -or
+        $Path -match '^examples/.+/README\.md$' -or
+        $Path -eq "stdlib/sloppy/README.md"
+    )
+}
+
+function Test-NegatedClaimContext {
+    param([string]$Context)
+
+    return $Context -match '(?i)(\b(not|no|never|without|unsupported|avoid|against|deferred|blocked|before|unless|required|requires)\b|\b(does|do|must|is|are)\s+not\b|\bdoesn''t\b|\bdon''t\b|\bnon[- ]?(goal|goals|claim|claims)\b)'
+}
+
+function Get-UnsupportedClaimViolations {
+    param([object[]]$Files)
+
+    $found = New-Object System.Collections.Generic.List[object]
+
+    foreach ($fileObject in $Files) {
+        $file = [string]$fileObject.Path
+        if (-not (Test-CurrentClaimDocPath -Path $file)) {
+            continue
+        }
+
+        $lines = @($fileObject.Lines)
+        for ($i = 0; $i -lt $lines.Count; $i += 1) {
+            $line = $lines[$i]
+            $lineNumber = $i + 1
+            $context = @(
+                for ($j = [Math]::Max(0, $i - 8); $j -lt $i; $j += 1) { $lines[$j] }
+                $line
+                if ($i + 1 -lt $lines.Count) { $lines[$i + 1] }
+            ) -join " "
+
+            if ($line -match '(?i)(production[- ]ready|production readiness|ready for production|production use|release ready|GA ready|public alpha ready|alpha launch|launch ready)' -and
+                -not (Test-NegatedClaimContext -Context $context)) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "current/public docs contain an unsupported readiness claim" }) | Out-Null
+            }
+
+            if ($line -match '(?i)(benchmark proves|performance proves|outperforms|faster than|lower latency than|higher throughput than)' -and
+                -not (Test-NegatedClaimContext -Context $context)) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "current/public docs contain an unsupported benchmark or performance claim" }) | Out-Null
+            }
+
+            if ($line -match '(?i)\b(Node|Bun|Deno|npm)\b.*\b(compatible|compatibility|drop-in|supported)\b' -and
+                -not (Test-NegatedClaimContext -Context $context)) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "current/public docs contain an unsupported compatibility claim" }) | Out-Null
+            }
+
+            if ($line -match '(?i)\b(fully supported .*\b(runtime|provider|HTTP|V8|package|release|TLS)\b|complete (runtime|provider|HTTP|V8|package|release|TLS) (support|implementation|behavior|coverage)|complete support for (runtime|provider|HTTP|V8|package|release|TLS))\b' -and
+                -not (Test-NegatedClaimContext -Context $context)) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "current/public docs contain an unsupported completeness claim" }) | Out-Null
+            }
+
+            if ((Test-PublicProductDocPath -Path $file) -and (
+                $line -cmatch '\b(CODEX|Codex|EPIC|TASK|ENGINE-[0-9][0-9A-Z.-]*|CORE-[A-Z0-9][A-Z0-9.-]*)\b' -or
+                $line -match '(?i)\b(AI slop|slop vibes|vibe[- ]coded|vibe coding)\b')) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "public/product docs contain construction-phase or agent-choreography wording" }) | Out-Null
+            }
+        }
+    }
+
+    return $found
+}
+
 function Test-UnsupportedClaims {
     $files = Get-TrackedFiles -Paths @(
         "tests/golden",
@@ -161,22 +252,22 @@ function Test-UnsupportedClaims {
         "tests/fixtures/package",
         "examples",
         "docs",
-        ".github"
+        ".github",
+        "README.md",
+        "CONTRIBUTING.md",
+        "AGENTS.md",
+        "stdlib/sloppy/README.md",
+        "src"
     )
-    foreach ($file in $files) {
-        $lines = Read-Lines -RelativePath $file
-        for ($i = 0; $i -lt $lines.Count; $i += 1) {
-            $line = $lines[$i]
-            $context = @(
-                if ($i -gt 0) { $lines[$i - 1] }
-                $line
-                if ($i + 1 -lt $lines.Count) { $lines[$i + 1] }
-            ) -join " "
-            if ($line -match '(?i)(production[- ]ready|public alpha ready|benchmark proves|performance proves|outperforms|faster than)' -and
-                $context -notmatch '(?i)(not|no|never|without|deferred|blocked|does not|must not|is not|are not|before|unless|required|claim|claims)') {
-                Add-Violation -Path $file -Line ($i + 1) -Message "docs/examples/goldens contain an unsupported readiness/performance claim"
-            }
+    $fileObjects = @($files | ForEach-Object {
+        [pscustomobject]@{
+            Path = $_.Replace("\", "/")
+            Lines = @(Read-Lines -RelativePath $_)
         }
+    })
+
+    foreach ($claim in (Get-UnsupportedClaimViolations -Files $fileObjects)) {
+        Add-Violation -Path $claim.Path -Line $claim.Line -Message $claim.Message
     }
 }
 
@@ -294,11 +385,56 @@ function Test-RequiredGovernanceText {
         Require-Text -RelativePath ".github/PULL_REQUEST_TEMPLATE.md" -Needle $required
     }
 
-    Require-Text -RelativePath "AGENTS.md" -Needle "Future PR test evidence"
+    Require-Text -RelativePath "AGENTS.md" -Needle "Implementation Contract for Reviewers"
     Require-Text -RelativePath "CONTRIBUTING.md" -Needle "Evidence Lane Report"
     Require-Text -RelativePath "tests/conformance/cross-api/README.md" -Needle "#652"
     Require-Text -RelativePath "tests/conformance/v8/bridge-test-template.md" -Needle "no raw native handle"
     Require-Text -RelativePath "tests/fuzz/README.md" -Needle "seed replay"
+}
+
+function Invoke-SelfTest {
+    $fixtures = @(
+        [pscustomobject]@{
+            Path = "README.md"
+            Lines = @("Sloppy is production ready.")
+        },
+        [pscustomobject]@{
+            Path = "docs/public/getting-started.md"
+            Lines = @("This public page references EPIC-01.")
+        },
+        [pscustomobject]@{
+            Path = "docs/project/archive/example.md"
+            Lines = @("Historical EPIC-01 planning record.")
+        },
+        [pscustomobject]@{
+            Path = "examples/hello/README.md"
+            Lines = @("This is not production ready and makes no Node compatibility claim.")
+        },
+        [pscustomobject]@{
+            Path = "README.md"
+            Lines = @("Sloppy claims production readiness.")
+        },
+        [pscustomobject]@{
+            Path = "README.md"
+            Lines = @("Sloppy claims Node compatibility.")
+        }
+    )
+
+    $claims = @(Get-UnsupportedClaimViolations -Files $fixtures)
+    if ($claims.Count -ne 4) {
+        Write-Host "test governance self-test failed: expected 4 claim violations, got $($claims.Count)." -ForegroundColor Red
+        foreach ($claim in $claims) {
+            Write-Host "  $($claim.Path):$($claim.Line): $($claim.Message)" -ForegroundColor Red
+        }
+        exit 1
+    }
+
+    Write-Host "test governance self-test passed."
+}
+
+if ($SelfTest) {
+    Invoke-SelfTest
+    exit 0
 }
 
 Test-CodePatterns

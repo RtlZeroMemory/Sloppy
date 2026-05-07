@@ -1,6 +1,6 @@
 # App Model
 
-Status: Bootstrap app-host skeleton, ENGINE-02 compiler metadata, and dev-only artifact run
+Status: bootstrap app-host skeleton, compiler metadata, and bounded artifact run
 implemented.
 
 Bootstrap status: `stdlib/sloppy/app.js` exports a frozen `Sloppy` object with
@@ -19,7 +19,7 @@ serve non-GET requests, or open native providers while compiling.
 See `docs/compiler-supported-syntax.md` for the exact supported and rejected compiler
 source matrix.
 
-Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21/24 artifacts in a
+Runtime status: `sloppy run --artifacts <dir>` can load compiler artifacts in a
 V8-enabled build, load the classic bootstrap runtime asset, evaluate the generated
 classic-script `app.js`, validate registered handler IDs, route GET request paths using the
 compiler-emitted route metadata, build a deterministic native route table, call handlers by
@@ -30,11 +30,12 @@ minimal SQLite runtime bridge through `data.sqlite("main")`.
 Source input build handoff, full native app-host validation for complete framework graphs,
 true bootstrap ESM loading, services, middleware, and `app.run` remain deferred.
 
-ENGINE-01 target contract: the foundation app model is `Sloppy.create()`, supported route
+Current target contract: the foundation app model is `Sloppy.create()`, supported route
 declarations, supported `Results.*` returns, an optional request context parameter, and a
 default-exported app compiled by `sloppyc build`. The supported run workflow is
-`sloppy run --artifacts`; `sloppy run app.js`, `app.run`, `app.listen`, Node/npm
-compatibility, broad DI/modules, middleware, and package-manager behavior remain deferred.
+`sloppy run --artifacts` or the source-input shortcut through `sloppy run <source.js>`;
+`app.run`, `app.listen`, Node/npm compatibility, broad DI/modules, middleware, and
+package-manager behavior remain deferred.
 See `docs/project/engine-framework-contract.md`.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
@@ -123,7 +124,7 @@ validation responses.
 
 Not implemented yet: `app.run`, `app.listen`, native startup validation for the full app
 host, true bootstrap ESM loading, nested route groups, middleware, filters, automatic
-validation, typed request binding beyond the EPIC-23 route/query/request context,
+validation, typed request binding beyond the current route/query/request context,
 config file/env providers, console/file/native logging, service disposal, async factories,
 real request-scoped lifetimes, module packages, PostgreSQL/SQL Server JavaScript data
 providers, native plugins, broad bundling, Node/npm package resolution, arbitrary import

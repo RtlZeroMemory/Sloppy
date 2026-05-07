@@ -39,7 +39,7 @@ What does not work yet:
 - this source-stdlib example is not a `sloppy run --artifacts` app;
 - `sloppyc` does not compile this example;
 - this example does not emit `app.plan.json`;
-- the current `sloppy run` MVP does not load this source-stdlib SQLite example directly;
+- the current bounded `sloppy run` path does not load this source-stdlib SQLite example directly;
 - the executable SQLite proof is the internal V8-gated artifact fixture, not this public
   source-stdlib example source yet;
 - PostgreSQL and SQL Server providers are covered by their own examples and native C tests;

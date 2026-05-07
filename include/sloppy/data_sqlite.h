@@ -161,9 +161,9 @@ SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlByt
 /*
  * Copies text/blob parameters into `arena` and writes an operation-owned parameter view.
  *
- * Synchronous SQLite calls may bind borrowed text/blob with SQLITE_TRANSIENT, but future
- * async/offloaded provider work must copy parameters before submission. These helpers
- * encode that rule for ENGINE-22 adoption. On failure, `out_param` is left unchanged.
+ * Synchronous SQLite calls may bind borrowed text/blob with SQLITE_TRANSIENT, but
+ * async/offloaded provider submission requires operation-owned parameter bytes. These
+ * helpers encode that ownership rule. On failure, `out_param` is left unchanged.
  * Zero-length text/blob inputs may use NULL storage; nonzero length requires non-NULL
  * storage.
  */

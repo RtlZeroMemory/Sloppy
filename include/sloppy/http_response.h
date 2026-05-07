@@ -39,7 +39,7 @@ typedef struct SlHttpResponseStreamChunk
 } SlHttpResponseStreamChunk;
 
 /*
- * Native HTTP response descriptor for the EPIC-23 dev response writer.
+ * Native HTTP response descriptor for the bounded development response writer.
  *
  * The descriptor borrows `content_type`, `headers`, and `body` bytes from caller-owned or
  * arena-owned storage. The writer copies those bytes into the caller-provided output buffer

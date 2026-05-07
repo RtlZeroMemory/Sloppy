@@ -28,7 +28,7 @@
       "token": "data.reporting"
     }
   ],
-  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "compilerVersion": "sloppyc-0.8.0",
   "completeness": {
     "reasons": [],
     "status": "complete"

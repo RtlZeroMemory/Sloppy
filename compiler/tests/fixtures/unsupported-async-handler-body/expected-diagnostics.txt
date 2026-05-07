@@ -3,4 +3,4 @@
    |
 5 | app.mapGet("/async", async () => {
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement.
+hint: Keep async handlers to direct Results.* returns for the current Promise settlement contract.

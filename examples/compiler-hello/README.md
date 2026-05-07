@@ -22,7 +22,7 @@ The command emits:
 - `.sloppy/app.js`;
 - `.sloppy/app.js.map`.
 
-With a V8-enabled Sloppy build, run the artifacts through the dev-only MVP:
+With a V8-enabled Sloppy build, run the artifacts through the bounded development runtime:
 
 From repository root:
 

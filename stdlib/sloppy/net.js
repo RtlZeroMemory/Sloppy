@@ -1425,14 +1425,14 @@ function parseAbsoluteHttpUrl(url, operation) {
         throw httpClientError(
             "HttpClientTlsUnavailableError",
             "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-            "HTTPS requires the later TLS backend slice; no custom TLS fallback is available.",
+            "HTTPS requires a configured TLS backend; no custom TLS fallback is available.",
         );
     }
     if (scheme !== "http") {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} supports http:// URLs in this slice.`,
+            `${operation} supports http:// URLs only.`,
         );
     }
 
@@ -2101,7 +2101,7 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
         throw httpClientError(
             "HttpClientMalformedResponseError",
             "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
-            "HTTP response Transfer-Encoding is not supported in this slice.",
+            "HTTP response Transfer-Encoding is not supported by this HTTP client.",
         );
     } else if (contentLength !== undefined) {
         if (contentLength > maxResponseBytes) {

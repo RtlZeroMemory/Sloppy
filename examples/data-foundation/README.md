@@ -21,7 +21,7 @@ What does not work yet:
 - this source-stdlib example is not a `sloppy run --artifacts` app;
 - `sloppyc` does not compile this example;
 - this example does not emit `app.plan.json`;
-- the current `sloppy run` MVP does not load this source-stdlib data example;
+- the current bounded `sloppy run` path does not load this source-stdlib data example;
 - the real SQLite provider is covered by native C tests, but this example still uses a fake
   JavaScript provider;
 - PostgreSQL and SQL Server have separate provider examples, but this example deliberately

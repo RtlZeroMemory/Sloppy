@@ -1,6 +1,6 @@
 # Core Config Secrets Example
 
-Status: CORE-INTEGRATION-01 conformance source example. This example shows Config secret
+Status: conformance source example. This example shows Config secret
 values moving into response metadata only through the shared redacted string shape.
 
 The example documents implemented API shape only. It has no public alpha claim, no

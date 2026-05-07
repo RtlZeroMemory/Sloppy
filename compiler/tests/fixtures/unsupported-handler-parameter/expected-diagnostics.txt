@@ -1,4 +1,4 @@
-<compiler>/tests/fixtures/unsupported-handler-parameter/input.js:5:17: SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS: route handlers compiled by this MVP may declare zero parameters or one simple context parameter
+<compiler>/tests/fixtures/unsupported-handler-parameter/input.js:5:17: SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS: compiled route handlers may declare zero parameters or one simple context parameter
   --> <compiler>/tests/fixtures/unsupported-handler-parameter/input.js:5:17
    |
 5 | app.mapGet("/", (ctx, extra) => Results.text("ok"));

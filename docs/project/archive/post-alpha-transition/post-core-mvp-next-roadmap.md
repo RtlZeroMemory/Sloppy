@@ -1,7 +1,7 @@
 # Post-Core MVP Next Roadmap Proposal
 
-Status: owner-approved planning wave created on 2026-05-01. The issue mapping source of
-truth is `docs/project/post-core-next-wave-issue-map.md`.
+Status: archived planning wave created on 2026-05-01. The archived issue mapping record is
+`docs/project/archive/post-alpha-transition/post-core-next-wave-issue-map.md`.
 
 ## 1. Core MVP Status
 
@@ -85,4 +85,5 @@ Possible EPICs:
 5. HTTP keep-alive/streaming.
 6. Provider expansion later.
 
-The concrete issue map is `docs/project/post-core-next-wave-issue-map.md`.
+The concrete issue map is archived at
+`docs/project/archive/post-alpha-transition/post-core-next-wave-issue-map.md`.

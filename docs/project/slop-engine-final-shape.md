@@ -87,7 +87,8 @@ builders, formatting helpers, bounded app/static string interning and symbol tab
 V8/SQLite conversion policy. ENGINE-22 adopts those primitives in hot paths: HTTP
 parse/write/body, V8 conversions, SQLite rows/parameters, diagnostics/source frames/JSON,
 Plan/artifact loading, stable metadata lookup, CLI output, and allocation-aware
-conformance. The issue map is `docs/project/post-core-mvp-memory-string-audit.md`. Public alpha docs
+conformance. The historical issue map is
+`docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md`. Public alpha docs
 remain blocked until this layer is complete or explicitly scoped down with honest
 exclusions.
 

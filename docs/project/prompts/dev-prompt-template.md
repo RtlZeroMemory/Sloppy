@@ -38,6 +38,17 @@ Documentation updates:
 - architecture docs: `<docs path or none, with reason>`;
 - ADRs: `<adr path or none, with reason>`.
 
+Implementation Contract for Reviewers:
+
+- source docs/issues read: `<list>`;
+- intended behavior: `<behavior>`;
+- explicit non-goals: `<non-goals>`;
+- files/surfaces expected to change: `<list>`;
+- docs/tests/code coupling: `<what must move together>`;
+- negative paths/diagnostics: `<list>`;
+- evidence lanes required/skipped/deferred: `<list>`;
+- known residual risk or follow-up: `<list or none>`.
+
 Test intent:
 
 - source doc/spec: `<doc section>`;
@@ -67,8 +78,10 @@ Report format:
 2. Behavior implemented.
 3. Documentation updated or why not needed.
 4. Tests added/updated and intended behavior covered.
-5. Commands run and results.
-6. Commands not run and why.
-7. Remaining risks or follow-ups.
+5. Implementation Contract for Reviewers.
+6. Evidence lanes with PASS/FAIL/SKIPPED/UNAVAILABLE/DEFERRED/NOT RUN.
+7. Commands run and results.
+8. Commands not run and why.
+9. Remaining risks or follow-ups.
 
 Do not claim commands passed if you did not run them. Do not expand scope beyond this task. Do not implement future-phase runtime features unless explicitly listed above.

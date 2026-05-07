@@ -1,6 +1,6 @@
 # Codec Base64 And Hex Example
 
-Status: CORE-CODEC-01.J source example. This example documents the `sloppy/codec`
+Status: source example. This example documents the `sloppy/codec`
 Base64, Base64Url, and Hex byte transform shape.
 
 ```js

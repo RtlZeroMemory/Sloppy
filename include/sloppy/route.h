@@ -84,9 +84,10 @@ typedef struct SlRouteMatch
  * - string parameters, such as `/users/{id}` and `/users/{name:str}`
  * - integer parameters, such as `/users/{id:int}`
  *
- * Unsupported in this slice: query strings, catch-all, optional segments, regex
- * constraints, route groups, method matching, route tables, percent decoding, and public
- * TypeScript APIs. Empty segments are invalid except for the root pattern `/`.
+ * The current route-pattern contract does not support query strings, catch-all, optional
+ * segments, regex constraints, route groups, method matching, route tables, percent
+ * decoding, or public TypeScript APIs. Empty segments are invalid except for the root
+ * pattern `/`.
  *
  * `arena` and `out_pattern` are required. `pattern_text` must be a non-empty borrowed view
  * that starts with `/`. On success, `out_pattern` contains arena-owned data. On parse

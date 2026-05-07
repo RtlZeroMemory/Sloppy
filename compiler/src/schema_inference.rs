@@ -1,3 +1,3 @@
 //! Schema DSL and request binding inference.
 //!
-//! Schema inference is a later COMPILER-30 task.
+//! Schema inference is not part of the current compiler contract.

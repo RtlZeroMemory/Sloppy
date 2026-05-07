@@ -4,6 +4,6 @@ This source example shows `TcpListener.listen`, loopback binding, backlog metada
 async iterable `accept`, accepted connection ownership, line reads, text writes, and
 listener cleanup.
 
-It is not CORE-NET-02 local IPC, TLS, HTTP server/client behavior, UDP, WebSocket,
+It is not local IPC, TLS, HTTP server/client behavior, UDP, WebSocket,
 Node/Bun/Deno compatibility, package-manager behavior, public alpha documentation,
 benchmark evidence, or external live-network evidence.

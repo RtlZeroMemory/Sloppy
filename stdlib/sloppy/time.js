@@ -51,7 +51,7 @@ Operation:
   ${operation}
 
 Reason:
-  CORE-TIME-01.C/D/G requires the V8 native time bridge for runtime scheduling.`);
+  Runtime scheduling requires the native time bridge to be registered in the active V8 lane.`);
 }
 
 function nativeTime(operation) {

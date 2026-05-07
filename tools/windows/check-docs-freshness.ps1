@@ -10,21 +10,22 @@ $RequiredFiles = @(
     "docs/modules/README.md"
 )
 
-$RequiredModuleHeadings = @(
-    "Status",
-    "Purpose",
-    "Scope",
-    "Non-goals",
-    "Public/Internal API",
-    "Ownership/Lifetime Rules",
-    "Invariants",
-    "Diagnostics",
-    "Tests",
-    "Source Docs",
-    "Open Questions"
-)
-
 $errors = New-Object System.Collections.Generic.List[string]
+
+function Test-HasHeading {
+    param(
+        [string]$Content,
+        [string[]]$Headings
+    )
+
+    foreach ($heading in $Headings) {
+        if ($Content -match "(?m)^##\s+$([regex]::Escape($heading))\s*$") {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 foreach ($file in $RequiredFiles) {
     $path = Join-Path $Root $file
@@ -46,11 +47,15 @@ if (Test-Path -LiteralPath $modulesRoot -PathType Container) {
         }
 
         $content = Get-Content -Raw -LiteralPath $readme
-        foreach ($heading in $RequiredModuleHeadings) {
-            if ($content -notmatch "(?m)^##\s+$([regex]::Escape($heading))\s*$") {
-                $relative = Resolve-Path -LiteralPath $readme -Relative
-                $errors.Add("Module doc $relative is missing heading: ## $heading") | Out-Null
-            }
+        $relative = Resolve-Path -LiteralPath $readme -Relative
+        if (-not (Test-HasHeading -Content $content -Headings @("Purpose"))) {
+            $errors.Add("Module doc $relative is missing a purpose heading") | Out-Null
+        }
+        if (-not (Test-HasHeading -Content $content -Headings @("Current Status", "Status"))) {
+            $errors.Add("Module doc $relative is missing a current status heading") | Out-Null
+        }
+        if (-not (Test-HasHeading -Content $content -Headings @("Invariants", "Ownership/Lifetime Rules"))) {
+            $errors.Add("Module doc $relative is missing invariants or ownership/lifetime rules") | Out-Null
         }
     }
 }

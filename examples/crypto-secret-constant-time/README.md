@@ -1,6 +1,6 @@
 # Crypto Secret And Constant-Time Example
 
-Status: CORE-CRYPTO-01.I source example. This example documents `Secret` ownership,
+Status: source example. This example documents `Secret` ownership,
 cleanup-once disposal, HMAC verification, and constant-time byte comparison.
 
 ```js

@@ -1,8 +1,8 @@
 /*
  * src/core/http_context.c
  *
- * Implements EPIC-23's small query parsing helper for request context materialization.
- * This is not a full URL parser: it reads only the query component after `?`, splits on
+ * Implements the query parsing helper for request context materialization. This is not a
+ * full URL parser: it reads only the query component after `?`, splits on
  * `&`, supports `+` and `%XX` decoding, and stores arena-owned string views.
  *
  * Tests: tests/unit/core/test_http_context.c.

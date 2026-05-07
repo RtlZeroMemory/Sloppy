@@ -1,6 +1,6 @@
 # Codec Compression Example
 
-Status: CORE-CODEC-01.J source example. This example documents zlib-backed gzip/gunzip
+Status: source example. This example documents zlib-backed gzip/gunzip
 helpers and the explicit decompression output limit.
 
 ```js

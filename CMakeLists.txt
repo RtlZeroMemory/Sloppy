@@ -1021,7 +1021,7 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.cli.version PROPERTIES PASS_REGULAR_EXPRESSION "Sloppy")
 
     add_test(NAME sloppy.cli.help COMMAND sloppy --help)
-    set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Foundation build")
+    set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Pre-alpha runtime")
 
     add_test(NAME benchmarks.sloppy_bench.list COMMAND sloppy_bench --list)
     set_tests_properties(

@@ -1,6 +1,6 @@
 # Routing
 
-Status: Bootstrap route declaration, route group shape, ENGINE-02 compiler route metadata,
+Status: bootstrap route declaration, route group shape, compiler route metadata,
 dev-only artifact routing, and minimal route/query/header/body request context implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
@@ -14,7 +14,7 @@ module-contributed routes remain JavaScript-only until later compiler/runtime wo
 Purpose: document current route declaration, route snapshots, handler context, and future
 route features.
 
-ENGINE-01 target contract:
+Current target contract:
 
 - core route declaration methods are `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and
   `mapDelete`;
@@ -68,7 +68,7 @@ without an explicit context:
 }
 ```
 
-Native dev dispatch passes this implemented ENGINE-04 runtime context to compiled handlers:
+Native dev dispatch passes this implemented runtime context to compiled handlers:
 
 ```js
 {
@@ -100,7 +100,7 @@ execution. Supported body media types are `application/json`, `application/*+jso
 `text/plain`. `ctx.request.headers.get(name)` is case-insensitive and duplicate header
 values are comma-joined deterministically.
 
-MAIN1-13 conformance compiles `examples/request-context/app.js` and, when V8 is enabled,
+Conformance coverage compiles `examples/request-context/app.js` and, when V8 is enabled,
 runs `GET /users/123?q=abc&q=last` through `sloppy run --artifacts --once` to verify
 route params, last-wins query behavior, method, path, and raw target through the real
 artifact boundary.
@@ -143,7 +143,7 @@ Compiler extraction:
 `docs/compiler-supported-syntax.md` is the source of truth for the supported
 syntax matrix and fixture expectations.
 
-Dev-only run behavior:
+Bounded run behavior:
 
 - reads the compiler-emitted `routes` metadata section from `app.plan.json`;
 - supports GET/POST/PUT/PATCH/DELETE route bindings;

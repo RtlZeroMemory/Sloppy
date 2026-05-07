@@ -1,136 +1,85 @@
 # Sloppy
 
-AI-slop branding, zero-slop architecture.
+Sloppy is a pre-alpha TypeScript backend app-host with a C runtime kernel, an
+isolated V8 bridge, and a Rust compiler toolchain. It is built around
+compiler-emitted artifacts, a validated Sloppy Plan, runtime diagnostics, and
+explicit platform boundaries.
 
-Sloppy is an experimental TypeScript backend application runtime/app-host. It has a C
-runtime kernel, an isolated C++ V8 bridge, a source-controlled JavaScript bootstrap stdlib,
-and a Rust compiler/build tool named `sloppyc` for the currently supported source subset.
+The project is not a public alpha release. It is not production ready, not a
+Node/Bun/Deno compatibility target, and not a package-manager ecosystem. The
+current repository is a runtime foundation and pre-alpha consolidation line.
 
-Sloppy is not production ready. The repo is still pre-alpha foundation work. It is also not
-a Node, Bun, Deno, or Express compatibility project. The intended product shape is a
-compiler-planned app host: Sloppy APIs describe routes, modules, services, permissions,
-diagnostics, and data providers; `sloppyc` will emit artifacts; the native host will load
-the Sloppy Plan and execute handlers through V8.
+## What Sloppy Is
 
-Windows x64 is the first-class development path. Sloppy is cross-platform by design:
-platform-specific API calls belong under `src/platform/*`, and portable runtime modules
-must not include OS-specific headers.
+Sloppy is intended to host backend applications from compiler-known inputs
+rather than discover application structure at runtime. The compiler emits a
+Sloppy Plan and JavaScript artifacts; the native app-host validates those
+artifacts, initializes runtime services, and dispatches into V8 through the
+engine bridge when V8 is enabled.
 
-## What Works Today
+The developer loop is Windows-first and kept cross-platform by design. Runtime
+behavior is documented through source-of-truth architecture docs, tests, golden
+fixtures, and explicit evidence lanes.
 
-- Windows CMake/Ninja/Cargo developer workflow through `tools/windows`.
-- Default hosted CI for Windows clang-cl, Linux clang/gcc, and macOS clang non-V8 builds.
-- Portable C core primitives: status, source locations, strings, bytes, checked math,
-  assertions, `SlArena`, diagnostics, plan parsing, scope cleanup, loop/async/worker-pool
-  skeletons, route parsing, HTTP request-head parsing, and synthetic dispatch helpers.
-- Optional V8 runtime execution when a valid V8 SDK is configured; default builds do not
-  require or validate V8.
-- Narrow compiler artifact path: `sloppyc build` emits deterministic `app.plan.json`,
-  `app.js`, and source-map artifacts for the current supported source shape, and
-  `sloppy run --artifacts` executes selected V8-gated conformance fixtures.
-- Bootstrap ESM stdlib with `Sloppy`, `Results`, `schema`, `data`, builder/app skeletons,
-  route groups, modules, config/logging/services, fake data providers, and examples.
-- Dev-only HTTP path for current compiler artifacts: route/query/request context, result
-  descriptor conversion, response writing, and libuv-backed localhost transport for the
-  one-request-per-connection MVP.
-- Native SQLite, PostgreSQL, and SQL Server provider boundaries with C tests. PostgreSQL and
-  SQL Server live tests are opt-in through environment variables.
-- V8-gated SQLite JavaScript bridge through resource IDs with capability checks before
-  open/use. SQLite still needs async/offload conversion through the provider executor
-  before scalable provider execution can be claimed.
-- Metadata-only CLI introspection: `sloppy routes`, `sloppy doctor`, `sloppy audit`, and
-  `sloppy openapi`.
-- Benchmark harness for current foundations. Smoke/list checks are not performance claims.
+## Current Executable Path
 
-## What Does Not Work Yet
+The supported development path is narrow but real:
 
-- No broad `sloppyc` extraction from application TypeScript beyond the current tiny
-  compiler MVP shape.
-- No `app.plan.json` emission from the full public API surface.
-- No source-input `sloppy run`; the dev-only run path currently loads prebuilt artifacts.
-- No production HTTP server or full framework HTTP runtime. Keep-alive, pipelining,
-  chunked/streaming bodies, multipart/file upload, middleware, TLS, and production
-  hardening remain unimplemented.
-- No final V8 ESM module graph or async Promise/microtask handler support.
-- No JavaScript-to-native PostgreSQL or SQL Server bridge. SQLite is the only current
-  V8-gated JS/native bridge.
-- No package-manager behavior and no Node compatibility goal.
-- No OS sandbox. Native capability metadata/check hooks exist and SQLite bridge calls are
-  capability-checked, but filesystem/network permissions are metadata/check skeletons only.
-- No public alpha distribution, installers, signing/notarization, package-manager
-  integration, or auto-update. Experimental local ZIP/TAR package tooling exists only to
-  validate the current artifact layout.
-- No public performance comparison claims.
-
-## Example Shape
-
-The intended user-facing API still looks like this:
-
-```ts
-import { Sloppy, Results } from "sloppy";
-
-const builder = Sloppy.createBuilder();
-const app = builder.build();
-
-app.mapGet("/", () => Results.text("Sloppy is alive"));
-
-await app.run();
+```powershell
+.\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 build
+.\tools\windows\dev.ps1 test
 ```
 
-Today, `app.run()` and the bare `"sloppy"` import are future behavior. Checked-in examples
-under `examples/` use relative imports from `stdlib/sloppy/` and are static/bootstrap
-API-shape examples unless a page explicitly says otherwise.
+Compiler/source-input work flows through `sloppyc` and the artifact runtime:
 
-## Current Roadmap State
+```powershell
+sloppyc build examples/compiler-hello/app.js --out .sloppy
+sloppy run --artifacts .sloppy
+sloppy run examples/compiler-hello/app.js
+```
 
-The initial EPIC-00 through EPIC-20 roadmap produced a broad foundation: native core,
-minimal plan loader, V8 smoke, handwritten execution, concurrency skeletons, HTTP/router
-foundation, bootstrap stdlib/app-host ergonomics, modules, data/provider foundations,
-metadata CLI tools, and benchmarks.
+The V8 runtime path requires a resolved V8 SDK and a V8-enabled build. Default
+non-V8 evidence does not prove V8 execution.
 
-The EPIC-21 through EPIC-26 batch produced the compiler MVP, dev-only artifact run path,
-HTTP response/request-context MVP, classic bootstrap runtime handoff, experimental local
-packaging, and default non-V8 hosted CI. MAIN and MAIN.1 then hardened the narrow path
-through PRs #240-#255.
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
 
-The post-core reset is Slop Engine foundation completion, not public alpha docs and not
-benchmark marketing. The current blockers are framework/app-layer ergonomics, source-input
-run, stronger Plan strategy, HTTP keep-alive/streaming decisions, SQLite provider-executor
-integration, lifecycle/resource cleanup, and continued conformance evidence. PostgreSQL and
-SQL Server JS bridges are deferred until SQLite and the engine foundation are solid.
+## Current Status
 
-Current planning starts from:
+| Area | Current status |
+| --- | --- |
+| Compiler and artifacts | `sloppyc` can emit source-input artifacts for the supported subset and the runtime can execute artifact bundles. Full TypeScript checking/lowering is not implemented. |
+| Runtime kernel | Core C primitives, diagnostics, memory ownership rules, platform boundaries, and app-host validation are established and covered by tests. |
+| V8 bridge | V8 remains isolated behind the engine bridge. Direct handlers and bounded owner-thread microtask drainage are supported only in the scoped V8 lane. |
+| HTTP | HTTP/1.1 runtime support is bounded development evidence. Sequential keep-alive and bounded chunked handling exist, but production-edge HTTP, pipelining, streaming public APIs, middleware, and TLS are not claimed. |
+| Data providers | SQLite has native/runtime support in scoped lanes. PostgreSQL and SQL Server remain metadata/provider-boundary work without complete JS runtime bridges. |
+| Capabilities and security | Capability checks are runtime policy checks. They are not an operating-system sandbox. |
+| Packaging | Package smoke checks prove layout and source packaging mechanics only. They are not release-readiness evidence. |
+| Benchmarks | Benchmark harnesses may compile or smoke-run, but no performance claim is made from this repository state. |
 
-- [Post-core next roadmap](docs/project/post-core-mvp-next-roadmap.md): compact proposal for
-  the next development wave.
-- [Slop Engine final shape](docs/project/slop-engine-final-shape.md): intended engine and
-  framework foundation before higher-level framework perks.
-- [Slop Engine layered roadmap](docs/project/slop-engine-layered-roadmap.md): historical
-  layer plan retained as compact source context.
+## Limits That Matter
 
-Public alpha docs remain blocked until the Slop Engine foundation examples and evidence
-gates pass or are explicitly deferred with honest exclusions. Benchmarks remain non-claim
-evidence only.
-
-See [docs/roadmap.md](docs/roadmap.md),
-[docs/project/post-core-mvp-issue-reconciliation.md](docs/project/post-core-mvp-issue-reconciliation.md),
-[docs/project/archive/post-core-mvp/strategic-current-state-audit.md](docs/project/archive/post-core-mvp/strategic-current-state-audit.md),
-and [docs/project/post-core-mvp-next-roadmap.md](docs/project/post-core-mvp-next-roadmap.md).
-
-## Core Specs
-
-- [Architecture](docs/architecture.md)
-- [Compiler and execution model](docs/execution-model.md)
-- [Developer ergonomics](docs/developer-ergonomics.md)
-- [Platform abstraction](docs/platform-abstraction.md)
-- [App Plan](docs/app-plan.md)
-- [Data providers](docs/data-providers.md)
-- [Quality gates](docs/quality-gates.md)
-- [Roadmap](docs/roadmap.md)
+- Public alpha remains blocked by documentation, packaging/distribution,
+  realistic examples, HTTP maturity, final release checks, and issue-level gate
+  work.
+- Sloppy is not production ready and does not claim operational hardening.
+- Sloppy is not Node, Bun, Deno, Express, or npm compatible.
+- Node/npm package-manager behavior is not a goal unless a scoped source doc and
+  issue explicitly add it.
+- Full TypeScript semantics, dependency resolution, watch mode, hot reload, and
+  a public tutorial workflow remain outside the current executable subset.
+- Optional lanes such as V8, package smoke, live providers, fuzz/torture,
+  sanitizer, and benchmark evidence must be reported separately.
 
 ## Developer Workflow
 
-Canonical Windows workflow:
+Use the canonical Windows scripts for local work:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
@@ -141,46 +90,40 @@ Canonical Windows workflow:
 .\tools\windows\dev.ps1 lint
 ```
 
-Rust compiler-tool gates:
+Relevant checks must be reported honestly. A skipped, unavailable, or optional
+lane is not pass evidence. When behavior changes, the source doc, tests, and
+implementation should move together.
 
-```powershell
-cargo fmt --manifest-path compiler/Cargo.toml -- --check
-cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
-cargo test --manifest-path compiler/Cargo.toml
-```
+## Source Documents
 
-Run these from a shell with the MSVC and Windows SDK developer environment initialized.
-The in-repo Windows wrapper attempts to import/supplement that environment where possible.
+Start with these current source-of-truth documents:
 
-Experimental local package smoke:
+- [Roadmap](docs/roadmap.md)
+- [Architecture](docs/architecture.md)
+- [Execution model](docs/execution-model.md)
+- [Concurrency and async model](docs/concurrency.md)
+- [Developer ergonomics](docs/developer-ergonomics.md)
+- [Application plan model](docs/app-plan.md)
+- [Compiler](docs/compiler.md)
+- [Supported compiler syntax](docs/compiler-supported-syntax.md)
+- [Testing strategy](docs/testing-strategy.md)
+- [Quality gates](docs/quality-gates.md)
+- [Project documentation map](docs/project/README.md)
 
-```powershell
-.\tools\windows\package.ps1 -Configuration Release -Smoke
-```
+Contributor process lives in [CONTRIBUTING.md](CONTRIBUTING.md). Agent-specific
+rules live in [AGENTS.md](AGENTS.md).
 
-This creates an ignored archive under `artifacts/packages/`, writes `SHA256SUMS.txt`, and
-extracts the ZIP outside the checkout to run basic `sloppy` and `sloppyc` CLI smoke checks.
-It is not a public release workflow and does not prove V8 execution or live provider
-availability. Linux/macOS TAR package smoke has local tooling under `tools/unix/`, but it
-is not a required CI gate on hosted runners yet.
+## Before Public Alpha
 
-## V8 And Providers
+The next work is tracked in the current roadmap:
 
-Default builds leave V8 disabled. Passing default CTest does not prove the V8 bridge or
-handwritten V8 execution path passed. V8 work must be validated with an approved SDK and
-reported separately. The GitHub Actions V8 job is manual and reports skipped/not configured
-unless a runner-local SDK path is supplied.
+- HTTP server maturation.
+- Inbound TLS after the HTTP server contract is ready.
+- Framework v2 ergonomics and compiler-inferred application shape.
+- Packaging, build, and distribution readiness.
+- Realistic dogfood applications and examples.
+- Final public alpha verification, release notes, and versioning.
 
-PostgreSQL and SQL Server live tests are also gated. Default tests cover non-live/provider
-diagnostic behavior; they do not prove a live database server path unless the relevant
-environment variables were configured and reported. Linux/macOS default CI does not make
-SQL Server ODBC live execution mandatory.
-
-## Agent-First Development
-
-Sloppy is intentionally built with Codex, but not casually. Repo-local docs are the system
-of record, `AGENTS.md` is the map, and quality gates enforce standards that should not
-depend on chat memory. Repeated review feedback should become docs, checks, or tools.
-
-MVP means narrow, not bad. Runtime features should land only with the supporting standards,
-tests, diagnostics, docs, and tooling.
+Until those tracks land and pass their required evidence lanes, this repository
+should be read as a serious pre-alpha runtime project, not as a public product
+launch.

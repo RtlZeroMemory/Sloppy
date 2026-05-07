@@ -1,9 +1,8 @@
 /*
  * src/core/route.c
  *
- * Implements Sloppy's first native route pattern parser and matcher. This module exists as
- * a pure-C foundation slice for later HTTP dispatch: it parses one path pattern, matches
- * one path against that pattern, and captures route parameters.
+ * Implements Sloppy's native route pattern parser and matcher. It parses one path pattern,
+ * matches one path against that pattern, and captures route parameters for dispatch.
  *
  * Safety invariants:
  * - parsing is iterative and bounded by SL_ROUTE_MAX_SEGMENTS / SL_ROUTE_MAX_PARAMS;

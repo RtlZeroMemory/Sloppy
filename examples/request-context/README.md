@@ -2,7 +2,7 @@
 
 Status: compiler-input example for the dev-only V8 `sloppy run --artifacts` path.
 
-This example demonstrates the EPIC-23 request context shape:
+This example demonstrates the current request context shape:
 
 - `route.id` comes from `/users/{id:int}`;
 - `query.q` comes from the query string;

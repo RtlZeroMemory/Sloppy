@@ -47,7 +47,7 @@ foreach(example_name IN LISTS example_names)
                      "Core integration examples must keep runtime boundaries clear")
     endforeach()
     foreach(required_pattern IN ITEMS
-            "Status: CORE-INTEGRATION-01"
+            "Status: conformance source example"
             "no public alpha claim"
             "no benchmark")
         require_token("${readme_source}" "${required_pattern}"

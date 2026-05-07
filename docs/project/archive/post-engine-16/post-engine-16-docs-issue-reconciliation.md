@@ -17,13 +17,13 @@ HTTP-25 slices. Active PRs were not assumed merged.
 
 ## Docs Created In This PR
 
-- `docs/project/post-engine-16-execution-model-audit.md`
-- `docs/project/post-engine-16-runtime-modularity-audit.md`
-- `docs/project/post-engine-16-provider-runtime-audit.md`
-- `docs/project/post-engine-16-http-runtime-audit.md`
-- `docs/project/post-engine-16-lifecycle-memory-audit.md`
-- `docs/project/post-engine-16-diagnostics-observability-audit.md`
-- `docs/project/post-engine-16-docs-issue-reconciliation.md`
+- `docs/project/archive/post-engine-16/post-engine-16-execution-model-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-runtime-modularity-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-provider-runtime-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-http-runtime-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-lifecycle-memory-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-diagnostics-observability-audit.md`
+- `docs/project/archive/post-engine-16/post-engine-16-docs-issue-reconciliation.md`
 - `docs/project/engine-roadmap-2.md`
 - `docs/project/engine-roadmap-2-issue-index.md`
 
@@ -57,16 +57,16 @@ Roadmap-2 issue index for new runtime maturation work.
 
 Historical source records retained for evidence:
 
-- `docs/project/post-core-mvp-code-reality-audit.md`
-- `docs/project/post-core-mvp-boundary-audit.md`
-- `docs/project/post-core-mvp-memory-string-audit.md`
-- `docs/project/post-core-mvp-next-roadmap.md`
-- `docs/project/post-core-next-wave-issue-map.md`
+- `docs/project/archive/post-alpha-transition/post-core-mvp-code-reality-audit.md`
+- `docs/project/archive/post-alpha-transition/post-core-mvp-boundary-audit.md`
+- `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md`
+- `docs/project/archive/post-alpha-transition/post-core-mvp-next-roadmap.md`
+- `docs/project/archive/post-alpha-transition/post-core-next-wave-issue-map.md`
 - `docs/project/framework-api-shape.md`
 - `docs/project/strong-plan-strategic-layer-plan.md`
 - `docs/project/compiler-inference-engine-architecture.md`
 - `docs/project/compiler-inference-issue-index.md`
-- `docs/project/http-post-mvp-transport-plan.md`
+- `docs/project/archive/http/http-post-mvp-transport-plan.md`
 - `docs/project/engine-framework-contract.md`
 
 No public alpha docs are created. No benchmark/performance claims are added.

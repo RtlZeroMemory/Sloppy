@@ -3,7 +3,7 @@ if(NOT DEFINED PROJECT_SOURCE_DIR)
 endif()
 
 set(required_pairs
-    "AGENTS.md|Future PR test evidence"
+    "AGENTS.md|Implementation Contract for Reviewers"
     "CONTRIBUTING.md|Evidence Lane Report"
     ".github/PULL_REQUEST_TEMPLATE.md|Implementation Contract for Reviewers"
     ".github/PULL_REQUEST_TEMPLATE.md|Skipped optional gates are not pass claims."

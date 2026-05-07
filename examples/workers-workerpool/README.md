@@ -1,5 +1,7 @@
 # Workers WorkerPool
 
+Status: worker API-shape example. It is not benchmark or production scheduling evidence.
+
 Shows the `WorkerPool` API and bounded admission shape for CPU/native offload style work.
 
 Current bootstrap examples demonstrate API shape and lifecycle policy. Native CPU-parallel
