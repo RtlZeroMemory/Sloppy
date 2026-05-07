@@ -190,6 +190,14 @@ static int test_invalid_options_and_use_after_close(void)
     SlArena arena = {0};
     SlPostgresConnection connection = {0};
     SlPostgresExecResult result = {0};
+    SlPostgresResult query_result = {.column_count = 7U,
+                                     .column_names = (SlStr*)storage,
+                                     .row_count = 3U,
+                                     .rows = (SlPostgresRow*)storage};
+    SlPostgresQueryOneResult one = {.found = true,
+                                    .column_count = 5U,
+                                    .column_names = (SlStr*)storage,
+                                    .values = (SlPostgresValue*)storage};
     SlDiag diag = {0};
     SlPostgresOpenOptions options = sl_postgres_open_options_connection_string(sl_str_empty());
     SlPostgresPool pool = {0};
@@ -215,6 +223,21 @@ static int test_invalid_options_and_use_after_close(void)
         diag.code != SL_DIAG_POSTGRES_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: exec"))
     {
         return 22;
+    }
+    status = sl_postgres_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
+                               &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 || query_result.column_count != 0U ||
+        query_result.column_names != NULL || query_result.row_count != 0U ||
+        query_result.rows != NULL)
+    {
+        return 25;
+    }
+    status = sl_postgres_query_one(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U,
+                                   &one, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 || one.found ||
+        one.column_count != 0U || one.column_names != NULL || one.values != NULL)
+    {
+        return 26;
     }
 
     diag = (SlDiag){0};

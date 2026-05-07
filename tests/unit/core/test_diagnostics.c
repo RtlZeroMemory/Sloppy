@@ -1709,6 +1709,102 @@ static int test_renderer_outputs(void)
     return 0;
 }
 
+static int expect_rejected_renderers_leave_output_unchanged(SlArena* arena, const SlDiag* diag,
+                                                            const SlDiagSource* source)
+{
+    SlStr rendered = sl_str_from_cstr("unchanged");
+
+    if (expect_status(sl_diag_render_text(arena, diag, &rendered), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        !sl_str_equal(rendered, sl_str_from_cstr("unchanged")))
+    {
+        return 1;
+    }
+    rendered = sl_str_from_cstr("unchanged");
+    if (expect_status(sl_diag_render_json(arena, diag, &rendered), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        !sl_str_equal(rendered, sl_str_from_cstr("unchanged")))
+    {
+        return 2;
+    }
+    rendered = sl_str_from_cstr("unchanged");
+    if (expect_status(sl_diag_render_text_with_source(arena, diag, source, &rendered),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(rendered, sl_str_from_cstr("unchanged")))
+    {
+        return 3;
+    }
+    rendered = sl_str_from_cstr("unchanged");
+    if (expect_status(sl_diag_render_json_with_source(arena, diag, source, &rendered),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(rendered, sl_str_from_cstr("unchanged")))
+    {
+        return 4;
+    }
+
+    return 0;
+}
+
+static int test_renderer_rejects_malformed_public_diag_inputs(void)
+{
+    unsigned char buffer[1024];
+    SlArena arena;
+    SlDiag diag = {.severity = SL_DIAG_SEVERITY_ERROR,
+                   .code = SL_DIAG_INTERNAL_ERROR,
+                   .message = sl_str_from_cstr("valid")};
+    SlDiagSource source = {.path = sl_str_from_cstr("app.js"), .text = sl_str_from_cstr("one\n")};
+    SlStr rendered = sl_str_from_cstr("unchanged");
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 110;
+    }
+
+    diag.message = sl_str_from_parts(NULL, 1U);
+    if (expect_rejected_renderers_leave_output_unchanged(&arena, &diag, &source) != 0) {
+        return 111;
+    }
+
+    diag.message = sl_str_from_cstr("valid");
+    diag.primary_span = sl_source_span_make(sl_str_from_parts(NULL, 3U), 1U, 1U, 0U);
+    if (expect_rejected_renderers_leave_output_unchanged(&arena, &diag, &source) != 0) {
+        return 112;
+    }
+
+    diag.primary_span = sl_source_span_make(sl_str_from_cstr("app.js"), 1U, 1U, 0U);
+    diag.primary_span.line = 0U;
+    diag.primary_span.has_location = true;
+    if (expect_rejected_renderers_leave_output_unchanged(&arena, &diag, &source) != 0) {
+        return 113;
+    }
+
+    diag.primary_span = sl_source_span_make(sl_str_from_cstr("app.js"), 1U, 1U, 0U);
+    diag.related[0].span = sl_source_span_unknown();
+    diag.related[0].message = sl_str_from_parts(NULL, 1U);
+    diag.related_count = 1U;
+    if (expect_rejected_renderers_leave_output_unchanged(&arena, &diag, &source) != 0) {
+        return 114;
+    }
+
+    diag.related_count = 0U;
+    diag.hints[0] = sl_str_from_parts(NULL, 1U);
+    diag.hint_count = 1U;
+    if (expect_rejected_renderers_leave_output_unchanged(&arena, &diag, &source) != 0) {
+        return 115;
+    }
+
+    diag.hint_count = 0U;
+    source.text = sl_str_from_parts(NULL, 4U);
+    if (expect_status(sl_diag_render_text_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0 ||
+        expect_str_equal(rendered, sl_str_from_cstr("error SLOPPY_E_INTERNAL: valid\n\n  at "
+                                                    "app.js:1:1\n")) != 0)
+    {
+        return 116;
+    }
+
+    return 0;
+}
+
 static int test_renderer_exact_preflight_capacity(void)
 {
     unsigned char build_buffer[1024];
@@ -2244,6 +2340,11 @@ int main(void)
     }
 
     result = test_renderer_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_renderer_rejects_malformed_public_diag_inputs();
     if (result != 0) {
         return result;
     }

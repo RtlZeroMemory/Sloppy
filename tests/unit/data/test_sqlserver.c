@@ -206,6 +206,14 @@ static int test_invalid_options_and_use_after_close(void)
     SlSqlServerConnection read_only = {.open = true, .access = SL_SQLSERVER_ACCESS_READ};
 #endif
     SlSqlServerExecResult result = {0};
+    SlSqlServerResult query_result = {.column_count = 7U,
+                                      .column_names = (SlStr*)storage,
+                                      .row_count = 3U,
+                                      .rows = (SlSqlServerRow*)storage};
+    SlSqlServerQueryOneResult one = {.found = true,
+                                     .column_count = 5U,
+                                     .column_names = (SlStr*)storage,
+                                     .values = (SlSqlServerValue*)storage};
     SlSqlServerOpenOptions options = sl_sqlserver_open_options_connection_string(sl_str_empty());
     SlSqlServerPool pool = {0};
     SlSqlServerPoolOptions pool_options =
@@ -232,6 +240,21 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 22;
     }
+    status = sl_sqlserver_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
+                                &query_result, &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || query_result.column_count != 0U ||
+        query_result.column_names != NULL || query_result.row_count != 0U ||
+        query_result.rows != NULL)
+    {
+        return 25;
+    }
+    status = sl_sqlserver_query_one(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U,
+                                    &one, &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || one.found || one.column_count != 0U ||
+        one.column_names != NULL || one.values != NULL)
+    {
+        return 26;
+    }
     pool_options.access = (SlSqlServerAccess)99;
     status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
     if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
@@ -255,6 +278,28 @@ static int test_invalid_options_and_use_after_close(void)
         sl_status_code(status) != SL_STATUS_UNSUPPORTED)
     {
         return 22;
+    }
+    status = sl_sqlserver_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
+                                &query_result, &diag);
+    if (sl_status_code(status) != SL_STATUS_INVALID_STATE &&
+        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
+    {
+        return 26;
+    }
+    if (query_result.column_count != 0U || query_result.column_names != NULL ||
+        query_result.row_count != 0U || query_result.rows != NULL)
+    {
+        return 27;
+    }
+    status = sl_sqlserver_query_one(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U,
+                                    &one, &diag);
+    if (sl_status_code(status) != SL_STATUS_INVALID_STATE &&
+        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
+    {
+        return 28;
+    }
+    if (one.found || one.column_count != 0U || one.column_names != NULL || one.values != NULL) {
+        return 29;
     }
     status = sl_sqlserver_exec(&arena, &read_only, sl_str_from_cstr("insert into t values (1)"),
                                NULL, 0U, &result, &diag);

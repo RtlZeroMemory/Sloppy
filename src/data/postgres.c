@@ -90,13 +90,18 @@ static SlStatus sl_pg_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
     void* ptr = NULL;
     char* dst = NULL;
+    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_pg_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_alloc(arena, src.length + 1U, 1U, &ptr);
+    status = sl_checked_add_size(src.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -235,13 +240,18 @@ SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_s
 {
     void* ptr = NULL;
     char* dst = NULL;
+    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_pg_str_valid(connection_string)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_alloc(arena, connection_string.length + 1U, 1U, &ptr);
+    status = sl_checked_add_size(connection_string.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -727,12 +737,15 @@ SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlS
                            SlDiag* out_diag)
 {
     PGresult* result = NULL;
+    SlArenaMark mark = {0};
+    SlPostgresResult temp = {0};
     size_t max_rows = SL_POSTGRES_DEFAULT_MAX_ROWS;
     SlStatus status;
 
     if (out_result == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out_result = (SlPostgresResult){0};
     if (options != NULL && options->max_rows > 0U) {
         max_rows = options->max_rows;
     }
@@ -742,8 +755,15 @@ SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlS
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_pg_materialize_rows(arena, result, max_rows, out_result);
+    mark = sl_arena_mark(arena);
+    status = sl_pg_materialize_rows(arena, result, max_rows, &temp);
     PQclear(result);
+    if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(arena, mark);
+        *out_result = (SlPostgresResult){0};
+        return status;
+    }
+    *out_result = temp;
     return status;
 }
 
@@ -796,11 +816,14 @@ SlStatus sl_postgres_query_one(SlArena* arena, SlPostgresConnection* connection,
                                SlPostgresQueryOneResult* out_result, SlDiag* out_diag)
 {
     PGresult* result = NULL;
+    SlArenaMark mark = {0};
+    SlPostgresQueryOneResult temp = {0};
     SlStatus status;
 
     if (out_result == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out_result = (SlPostgresQueryOneResult){0};
     status =
         sl_pg_exec_params(arena, connection, sql, params, param_count,
                           sl_pg_literal("operation: queryOne", sizeof("operation: queryOne") - 1U),
@@ -808,8 +831,15 @@ SlStatus sl_postgres_query_one(SlArena* arena, SlPostgresConnection* connection,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_pg_materialize_first_row(arena, result, out_result);
+    mark = sl_arena_mark(arena);
+    status = sl_pg_materialize_first_row(arena, result, &temp);
     PQclear(result);
+    if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(arena, mark);
+        *out_result = (SlPostgresQueryOneResult){0};
+        return status;
+    }
+    *out_result = temp;
     return status;
 }
 

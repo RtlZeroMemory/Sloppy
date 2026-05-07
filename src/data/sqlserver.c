@@ -1552,10 +1552,18 @@ SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, S
     SQLHSTMT stmt = SQL_NULL_HSTMT;
     size_t max_rows = SL_SQLSERVER_DEFAULT_MAX_ROWS;
     SlArenaMark mark;
+    SlSqlServerResult temp = {0};
     SlStatus status;
     SlStr operation = sl_sqlsrv_literal("operation: query", sizeof("operation: query") - 1U);
 
-    if (arena == NULL || out_result == NULL) {
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlSqlServerResult){0};
+    if (arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     mark = sl_arena_mark(arena);
@@ -1567,12 +1575,16 @@ SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, S
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status =
-        sl_sqlsrv_materialize_rows(arena, stmt, max_rows, out_result, out_diag, operation, sql);
+    status = sl_sqlsrv_materialize_rows(arena, stmt, max_rows, &temp, out_diag, operation, sql);
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        if (out_diag == NULL || out_diag->code == SL_DIAG_NONE) {
+            (void)sl_arena_reset_to(arena, mark);
+        }
+        *out_result = (SlSqlServerResult){0};
+        return status;
     }
+    *out_result = temp;
     return status;
 }
 
@@ -1582,10 +1594,18 @@ SlStatus sl_sqlserver_query_one(SlArena* arena, SlSqlServerConnection* connectio
 {
     SQLHSTMT stmt = SQL_NULL_HSTMT;
     SlArenaMark mark;
+    SlSqlServerQueryOneResult temp = {0};
     SlStatus status;
     SlStr operation = sl_sqlsrv_literal("operation: queryOne", sizeof("operation: queryOne") - 1U);
 
-    if (arena == NULL || out_result == NULL) {
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlSqlServerQueryOneResult){0};
+    if (arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     mark = sl_arena_mark(arena);
@@ -1594,11 +1614,16 @@ SlStatus sl_sqlserver_query_one(SlArena* arena, SlSqlServerConnection* connectio
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_sqlsrv_materialize_first_row(arena, stmt, out_result, out_diag, operation, sql);
+    status = sl_sqlsrv_materialize_first_row(arena, stmt, &temp, out_diag, operation, sql);
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        if (out_diag == NULL || out_diag->code == SL_DIAG_NONE) {
+            (void)sl_arena_reset_to(arena, mark);
+        }
+        *out_result = (SlSqlServerQueryOneResult){0};
+        return status;
     }
+    *out_result = temp;
     return status;
 }
 

@@ -332,6 +332,44 @@ bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cu
     return false;
 }
 
+static bool sl_v8_checked_add_i64(int64_t left, int64_t right, int64_t* out)
+{
+    if (out == nullptr) {
+        return false;
+    }
+    if ((right > 0 && left > std::numeric_limits<int64_t>::max() - right) ||
+        (right < 0 && left < std::numeric_limits<int64_t>::min() - right))
+    {
+        return false;
+    }
+    *out = left + right;
+    return true;
+}
+
+static constexpr int64_t kSlV8MaxTrustedSourceMapPosition = 1LL << 30;
+
+static bool sl_v8_i64_to_zero_based_size(int64_t value, size_t* out)
+{
+    if (out == nullptr || value < 0 || value > kSlV8MaxTrustedSourceMapPosition ||
+        static_cast<uint64_t>(value) > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+    {
+        return false;
+    }
+    *out = static_cast<size_t>(value);
+    return true;
+}
+
+static bool sl_v8_i64_to_one_based_size(int64_t value, size_t* out)
+{
+    if (out == nullptr || value < 0 || value > kSlV8MaxTrustedSourceMapPosition ||
+        static_cast<uint64_t>(value) >= static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+    {
+        return false;
+    }
+    *out = static_cast<size_t>(value) + 1U;
+    return true;
+}
+
 bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* sources)
 {
     yyjson_val* source_array = yyjson_obj_get(root, "sources");
@@ -387,6 +425,7 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
             int64_t original_line_delta = 0;
             int64_t original_column_delta = 0;
             int64_t current_generated_column = 0;
+            size_t current_generated_column_size = 0U;
 
             if (mappings[cursor] == ',') {
                 cursor += 1U;
@@ -397,13 +436,18 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
                 out->malformed = true;
                 return false;
             }
-            current_generated_column = previous_generated_column + generated_delta;
+            if (!sl_v8_checked_add_i64(previous_generated_column, generated_delta,
+                                       &current_generated_column) ||
+                !sl_v8_i64_to_zero_based_size(current_generated_column,
+                                              &current_generated_column_size))
+            {
+                out->malformed = true;
+                return false;
+            }
             previous_generated_column = current_generated_column;
 
             if (cursor >= mappings_length || mappings[cursor] == ',' || mappings[cursor] == ';') {
-                if (matched_line &&
-                    static_cast<size_t>(current_generated_column) <= generated_column - 1U)
-                {
+                if (matched_line && current_generated_column_size <= generated_column - 1U) {
                     *out = SlV8SourceMapLocation{};
                 }
                 continue;
@@ -419,9 +463,15 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
                 return false;
             }
 
-            previous_source += source_delta;
-            previous_original_line += original_line_delta;
-            previous_original_column += original_column_delta;
+            if (!sl_v8_checked_add_i64(previous_source, source_delta, &previous_source) ||
+                !sl_v8_checked_add_i64(previous_original_line, original_line_delta,
+                                       &previous_original_line) ||
+                !sl_v8_checked_add_i64(previous_original_column, original_column_delta,
+                                       &previous_original_column))
+            {
+                out->malformed = true;
+                return false;
+            }
             if (previous_source < 0 || static_cast<size_t>(previous_source) >= sources.size() ||
                 previous_original_line < 0 || previous_original_column < 0)
             {
@@ -429,13 +479,20 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
                 return false;
             }
 
-            if (matched_line &&
-                static_cast<size_t>(current_generated_column) <= generated_column - 1U)
-            {
+            if (matched_line && current_generated_column_size <= generated_column - 1U) {
+                size_t original_line = 0U;
+                size_t original_column = 0U;
+
+                if (!sl_v8_i64_to_one_based_size(previous_original_line, &original_line) ||
+                    !sl_v8_i64_to_one_based_size(previous_original_column, &original_column))
+                {
+                    out->malformed = true;
+                    return false;
+                }
                 out->mapped = true;
                 out->path = sources[static_cast<size_t>(previous_source)];
-                out->line = static_cast<size_t>(previous_original_line) + 1U;
-                out->column = static_cast<size_t>(previous_original_column) + 1U;
+                out->line = original_line;
+                out->column = original_column;
             }
         }
 
@@ -468,7 +525,7 @@ bool sl_v8_source_map_applies(const SlV8Engine* backend, const std::string& sour
 SlV8SourceMapLocation sl_v8_remap_generated_span(const SlV8Engine* backend,
                                                  const SlSourceSpan& generated_span)
 {
-    SlV8SourceMapLocation result;
+    SlV8SourceMapLocation result = {};
     yyjson_read_err error = {};
     yyjson_doc* doc = nullptr;
     yyjson_val* root = nullptr;

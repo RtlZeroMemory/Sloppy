@@ -895,6 +895,63 @@ static int test_invalid_open_options(void)
     return 0;
 }
 
+static int test_query_failure_clears_rolled_back_outputs(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char query_storage[80];
+    unsigned char one_storage[72];
+    SlArena arena = {0};
+    SlArena query_arena = {0};
+    SlArena one_arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteResult result = {.column_count = 7U,
+                             .column_names = (SlStr*)storage,
+                             .row_count = 3U,
+                             .rows = (SlSqliteRow*)storage};
+    SlSqliteQueryOneResult one = {.found = true,
+                                  .column_count = 5U,
+                                  .column_names = (SlStr*)storage,
+                                  .values = (SlSqliteValue*)storage};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 140;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 141;
+    }
+    if (expect_status(sl_arena_init(&query_arena, query_storage, sizeof(query_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&one_arena, one_storage, sizeof(one_storage)), SL_STATUS_OK) !=
+            0)
+    {
+        return close_and_return(&connection, 142);
+    }
+
+    status = sl_sqlite_query(&query_arena, &connection,
+                             sl_str_from_cstr("select 1 as a, 2 as b, 3 as c"), NULL, 0U, NULL,
+                             &result, NULL);
+    if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 || result.column_count != 0U ||
+        result.column_names != NULL || result.row_count != 0U || result.rows != NULL ||
+        sl_arena_used(&query_arena) != 0U)
+    {
+        return close_and_return(&connection, 143);
+    }
+
+    status = sl_sqlite_query_one(
+        &one_arena, &connection,
+        sl_str_from_cstr("select 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz' as value"),
+        NULL, 0U, &one, NULL);
+    if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 || one.found ||
+        one.column_count != 0U || one.column_names != NULL || one.values != NULL ||
+        sl_arena_used(&one_arena) != 0U)
+    {
+        return close_and_return(&connection, 144);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 145;
+}
+
 int main(void)
 {
     int result = test_open_close_and_use_after_close();
@@ -958,6 +1015,11 @@ int main(void)
     }
 
     result = test_sqlite_text_blob_interop_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_query_failure_clears_rolled_back_outputs();
     if (result != 0) {
         return result;
     }
