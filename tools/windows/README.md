@@ -74,3 +74,15 @@ checks packaged CLI startup, `sloppy doctor`, required package docs, stdlib asse
 examples, manifest fields, prebuilt artifact execution without compiling source, and
 honest non-V8 `sloppy run --artifacts` skip reporting. It does not install anything,
 mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a public release.
+
+Manual release artifact dry-runs add release skeleton and no-claims checks around the same
+package/test-package path:
+
+```powershell
+.\tools\windows\check-alpha-claims.ps1
+.\tools\windows\check-release-artifacts.ps1
+.\tools\windows\release-dry-run.ps1 -Preset windows-release
+```
+
+The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies
+`SHA256SUMS.txt`, and does not require secrets or create a public GitHub release.

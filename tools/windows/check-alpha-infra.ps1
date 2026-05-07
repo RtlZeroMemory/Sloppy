@@ -239,6 +239,7 @@ function Get-LocalPathHygieneMatches {
     )
     $allowlistPaths = @(
         '//[^/\s"<>|]+/[^/\s"<>|]+',
+        '~[\\/]\.ccache',
         'vcpkg[\\/]+scripts[\\/]buildsystems[\\/]vcpkg\.cmake'
     )
     $bad = New-Object System.Collections.Generic.List[string]
@@ -258,7 +259,7 @@ function Get-LocalPathHygieneMatches {
             $allowed = $true
         }
         foreach ($allowlistPath in $allowlistPaths) {
-            if ($line.Contains($allowlistPath)) {
+            if ($line.Contains($allowlistPath) -or $line -match $allowlistPath) {
                 $allowed = $true
                 break
             }
@@ -281,12 +282,23 @@ function Test-LocalPathHygiene {
         "tools/windows/dev.ps1",
         "tools/windows/package.ps1",
         "tools/windows/test-package.ps1",
+        "tools/windows/check-alpha-claims.ps1",
+        "tools/windows/check-release-artifacts.ps1",
+        "tools/windows/release-dry-run.ps1",
         "tools/unix/bootstrap.sh",
         "tools/unix/dev.sh",
         "tools/unix/package.sh",
         "tools/unix/test-package.sh",
+        "tools/unix/release-dry-run.sh",
         "docs/dependencies.md",
-        "docs/build-and-distribution.md"
+        "docs/build-and-distribution.md",
+        "docs/release/README.md",
+        "docs/release/KNOWN_LIMITATIONS.md",
+        "docs/release/LICENSES.md",
+        "docs/release/NOTICE.md",
+        "RELEASE_NOTES.md",
+        "CHANGELOG.md",
+        ".github/workflows/release-artifacts.yml"
     )
 
     $bad = New-Object System.Collections.Generic.List[string]

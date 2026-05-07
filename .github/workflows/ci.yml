@@ -176,15 +176,19 @@ jobs:
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|tools/deps/**|tools/windows/**|tools/unix/**)
+              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|tools/deps/**|tools/windows/**|tools/unix/**)
                 windows_tooling_relevant=true
                 ;;
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|tools/windows/package.ps1|tools/windows/test-package.ps1|\
+              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|\
+              tools/windows/package.ps1|tools/windows/test-package.ps1|\
+              tools/windows/check-alpha-claims.ps1|tools/windows/check-release-artifacts.ps1|\
+              tools/windows/release-dry-run.ps1|tools/unix/release-dry-run.sh|\
               tools/windows/dev.ps1|tools/unix/package.sh|tools/unix/test-package.sh|\
               tools/unix/dev.sh|src/main.c|tests/fixtures/package/**|docs/build-and-distribution.md|\
+              docs/release/**|RELEASE_NOTES.md|CHANGELOG.md|\
               docs/project/main-evidence.md|docs/public/cli.md)
                 package_relevant=true
                 ;;
@@ -256,6 +260,10 @@ jobs:
           .\tools\windows\check-test-governance.ps1
           .\tools\windows\check-alpha-infra.ps1 -SelfTest
           .\tools\windows\check-alpha-infra.ps1
+          .\tools\windows\check-alpha-claims.ps1 -SelfTest
+          .\tools\windows\check-alpha-claims.ps1
+          .\tools\windows\check-release-artifacts.ps1 -SelfTest
+          .\tools\windows\check-release-artifacts.ps1
 
   rust:
     name: rust

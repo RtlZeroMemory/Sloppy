@@ -126,6 +126,13 @@ contain historical or fake marker text when that text is clearly scoped.
 - Package or release tooling changes: package smoke outside the checkout, plus
   artifact hygiene. Package-smoke CI must stay path-gated so ordinary tooling/docs PRs do
   not pull a full package build into the fast path.
+- Release artifact dry-runs must verify checksums, no-claims policy, release skeletons,
+  and outside-checkout package smoke for the package lane under test.
+- The release artifact workflow is manual and read-only; it must not require secrets or
+  create a public release.
+- No-claims scanning rejects unguarded production, performance, Node/Bun/Deno,
+  provider-readiness, V8-readiness, package-readiness, release-readiness, or unsupported
+  platform claims.
 
 ## Mandatory Sanitizer And Fuzz Evidence
 

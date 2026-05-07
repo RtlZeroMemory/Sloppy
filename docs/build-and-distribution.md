@@ -81,6 +81,19 @@ CI separates default non-V8, static, Rust, package, optional V8, and heavier lan
 or unavailable optional lanes are not pass evidence. Required checks must be green and
 current before merge.
 
+Manual artifact dry-runs use the `release-artifacts` GitHub Actions workflow or the local
+`tools/<platform>/release-dry-run` scripts. The workflow is `workflow_dispatch` only,
+uses read-only repository permissions, restores the same Rust/vcpkg caches as CI, uploads
+package archives with `SHA256SUMS.txt`, and does not create a public GitHub release.
+
+Default pull-request CI stays focused on static checks and path-gated build/package lanes.
+Release dry-run package builds are manual or package-path gated so routine docs/tooling
+changes do not add always-on cross-platform package cost.
+
+Release notes and limitation templates live in `RELEASE_NOTES.md`, `CHANGELOG.md`, and
+`docs/release/`. They must keep unsupported platforms, V8 status, provider status, and
+package smoke evidence separate. Skipped or unavailable lanes are not pass evidence.
+
 ## Non-Claims
 
 Sloppy does not currently claim production-ready builds, public alpha release artifacts,

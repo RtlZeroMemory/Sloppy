@@ -506,6 +506,48 @@ function Invoke-AlphaInfraCheck {
     }
 }
 
+function Invoke-AlphaClaimsCheck {
+    $script = Join-Path $PSScriptRoot "check-alpha-claims.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "alpha claims scanner self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "alpha claims scanner self-test failed with exit code $LASTEXITCODE"
+    }
+
+    & $script
+    if (-not $?) {
+        throw "alpha claims check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "alpha claims check failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-ReleaseArtifactCheck {
+    $script = Join-Path $PSScriptRoot "check-release-artifacts.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "release artifact checker self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "release artifact checker self-test failed with exit code $LASTEXITCODE"
+    }
+
+    & $script
+    if (-not $?) {
+        throw "release artifact check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "release artifact check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-CComplexityWarningCheck {
     $script = Join-Path $PSScriptRoot "check-c-complexity.ps1"
     & $script
@@ -525,6 +567,8 @@ function Invoke-Lint {
     Invoke-CoreApiIntegrationCheck
     Invoke-TestGovernanceCheck
     Invoke-AlphaInfraCheck
+    Invoke-AlphaClaimsCheck
+    Invoke-ReleaseArtifactCheck
     Invoke-CComplexityWarningCheck
 
     $clangTidy = Resolve-GateTool "clang-tidy" "C/C++ lint"

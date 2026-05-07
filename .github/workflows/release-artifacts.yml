@@ -1,0 +1,489 @@
+name: release-artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_windows:
+        description: "Build the Windows x64 dry-run package."
+        required: true
+        default: true
+        type: boolean
+      include_linux:
+        description: "Build the Linux x64 dry-run package."
+        required: true
+        default: true
+        type: boolean
+      include_macos_arm64:
+        description: "Build the macOS arm64 dry-run package."
+        required: true
+        default: true
+        type: boolean
+      include_macos_x64:
+        description: "Build the optional macOS x64 dry-run package."
+        required: true
+        default: false
+        type: boolean
+      run_package_smoke:
+        description: "Run outside-checkout package smoke after packaging."
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+
+jobs:
+  release-static:
+    name: release dry-run / static policy
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release templates and no-claims policy
+        shell: pwsh
+        run: |
+          .\tools\windows\check-alpha-claims.ps1 -SelfTest
+          .\tools\windows\check-alpha-claims.ps1
+          .\tools\windows\check-release-artifacts.ps1 -SelfTest
+          .\tools\windows\check-release-artifacts.ps1
+
+      - name: Upload release skeletons
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-skeletons
+          if-no-files-found: error
+          path: |
+            RELEASE_NOTES.md
+            CHANGELOG.md
+            docs/release/**
+
+  package-windows:
+    name: release dry-run / windows-x64
+    runs-on: windows-latest
+    if: inputs.include_windows
+    needs: release-static
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Release artifact dry-run
+        shell: pwsh
+        run: |
+          $args = @("-Preset", "windows-release")
+          if ("${{ inputs.run_package_smoke }}" -ne "true") {
+            $args += "-SkipSmoke"
+          }
+          .\tools\windows\release-dry-run.ps1 @args
+
+      - name: Save vcpkg cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Upload Windows dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-windows-x64-dry-run
+          if-no-files-found: error
+          path: |
+            artifacts/packages/sloppy-*.zip
+            artifacts/packages/SHA256SUMS.txt
+            artifacts/release-dry-run/**
+
+  package-linux:
+    name: release dry-run / linux-x64
+    needs: release-static
+    if: inputs.include_linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Install Linux host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang)
+          missing=()
+
+          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++; do
+            if ! command -v "$command" >/dev/null 2>&1; then
+              missing=("${packages[@]}")
+              break
+            fi
+          done
+          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: Linux-linux-clang-release-ccache-${{ github.sha }}
+          restore-keys: |
+            Linux-linux-clang-release-ccache-
+            Linux-linux-clang-ccache-
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
+            Linux-linux-clang-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Release artifact dry-run
+        shell: bash
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          args=(--preset linux-clang)
+          if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
+            args+=(--skip-smoke)
+          fi
+          tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: Save vcpkg cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Upload Linux dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-linux-x64-dry-run
+          if-no-files-found: error
+          path: |
+            artifacts/packages/sloppy-*.tar.gz
+            artifacts/packages/SHA256SUMS.txt
+            artifacts/release-dry-run/**
+
+  package-macos-arm64:
+    name: release dry-run / macos-arm64
+    needs: release-static
+    if: inputs.include_macos_arm64
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Install macOS host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for package in cmake ninja pkg-config autoconf autoconf-archive automake libtool ccache; do
+            if ! brew list --formula "$package" >/dev/null 2>&1; then
+              missing+=("$package")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            brew install "${missing[@]}"
+          fi
+          echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: macOS-macos-clang-arm64-release-ccache-${{ github.sha }}
+          restore-keys: |
+            macOS-macos-clang-arm64-release-ccache-
+            macOS-macos-clang-ccache-
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: macOS-macos-clang-arm64-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            macOS-macos-clang-arm64-vcpkg-${{ env.VCPKG_COMMIT }}-
+            macOS-macos-clang-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Release artifact dry-run
+        shell: bash
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          args=(--preset macos-clang)
+          if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
+            args+=(--skip-smoke)
+          fi
+          tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: Save vcpkg cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: macOS-macos-clang-arm64-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Upload macOS arm64 dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-macos-arm64-dry-run
+          if-no-files-found: error
+          path: |
+            artifacts/packages/sloppy-*.tar.gz
+            artifacts/packages/SHA256SUMS.txt
+            artifacts/release-dry-run/**
+
+  package-macos-x64:
+    name: release dry-run / macos-x64
+    needs: release-static
+    if: inputs.include_macos_x64
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Install macOS host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for package in cmake ninja pkg-config autoconf autoconf-archive automake libtool ccache; do
+            if ! brew list --formula "$package" >/dev/null 2>&1; then
+              missing+=("$package")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            brew install "${missing[@]}"
+          fi
+          echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: macOS-macos-clang-x64-release-ccache-${{ github.sha }}
+          restore-keys: |
+            macOS-macos-clang-x64-release-ccache-
+            macOS-macos-clang-ccache-
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: macOS-macos-clang-x64-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            macOS-macos-clang-x64-vcpkg-${{ env.VCPKG_COMMIT }}-
+            macOS-macos-clang-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Release artifact dry-run
+        shell: bash
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          args=(--preset macos-clang)
+          if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
+            args+=(--skip-smoke)
+          fi
+          tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: Save vcpkg cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: macOS-macos-clang-x64-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Upload macOS x64 dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-macos-x64-dry-run
+          if-no-files-found: error
+          path: |
+            artifacts/packages/sloppy-*.tar.gz
+            artifacts/packages/SHA256SUMS.txt
+            artifacts/release-dry-run/**
