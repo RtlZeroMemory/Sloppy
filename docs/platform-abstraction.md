@@ -1,24 +1,24 @@
 # Platform Abstraction
 
-Windows-first is a workflow priority, not permission to write Windows-only core runtime
-code.
+Windows x64 is the most complete validated local workflow today, not permission to write
+Windows-only core runtime code.
 
-Sloppy's primary development loop is Windows x64 today, but the runtime architecture must
-remain portable to Linux and macOS without rewriting core modules. Platform behavior belongs
-behind Sloppy-owned abstraction boundaries.
+Sloppy is cross-platform by design: the runtime architecture must remain portable to Linux
+and macOS without rewriting core modules. Platform behavior belongs behind Sloppy-owned
+abstraction boundaries.
 
 ## Purpose
 
 This document defines the platform boundary that all runtime implementation stories must
 respect. It lets Sloppy use Windows x64, `clang-cl`, `lld-link`, CMake, Ninja, and
-PowerShell as the first developer loop without letting WinAPI assumptions leak into core
-runtime code.
+PowerShell as the current most complete local developer loop without letting WinAPI
+assumptions leak into core runtime code.
 
 ## Scope
 
 This document covers:
 
-- definitions for Windows-first and cross-platform by design;
+- definitions for the current Windows x64 developer lane and cross-platform by design;
 - directory layout;
 - forbidden OS headers and direct OS calls;
 - future platform abstraction categories;
@@ -52,8 +52,8 @@ likely first APIs are page allocation, clocks, environment reads, and file/path 
 
 ## Definitions
 
-Windows-first means the primary developer path uses Windows x64, `clang-cl`, `lld-link`,
-CMake, Ninja, and PowerShell.
+The current Windows x64 developer lane uses `clang-cl`, `lld-link`, CMake, Ninja, and
+PowerShell.
 
 Cross-platform by design means the runtime architecture must be portable to Linux and macOS.
 Core runtime modules use portable C and Sloppy-owned platform abstractions instead of

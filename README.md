@@ -17,9 +17,11 @@ Sloppy Plan and JavaScript artifacts; the native app-host validates those
 artifacts, initializes runtime services, and dispatches into V8 through the
 engine bridge when V8 is enabled.
 
-The developer loop is Windows-first and kept cross-platform by design. Runtime
-behavior is documented through source-of-truth architecture docs, tests, golden
-fixtures, and explicit evidence lanes.
+Sloppy is cross-platform by design. Windows x64 is currently the most complete
+validated local development lane, while Linux and macOS are represented by
+default non-V8 CI presets and explicit evidence lanes. Runtime behavior is
+documented through source-of-truth architecture docs, tests, golden fixtures,
+and explicit evidence lanes.
 
 ## Current Executable Path
 
@@ -27,6 +29,7 @@ The supported development path is narrow but real:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
@@ -83,6 +86,7 @@ Use the canonical Windows scripts for local work:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test

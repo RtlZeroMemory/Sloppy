@@ -163,6 +163,8 @@ jobs:
           .\tools\windows\check-core-api-integration.ps1
           .\tools\windows\check-test-governance.ps1 -SelfTest
           .\tools\windows\check-test-governance.ps1
+          .\tools\windows\check-alpha-infra.ps1 -SelfTest
+          .\tools\windows\check-alpha-infra.ps1
 
   rust:
     name: rust

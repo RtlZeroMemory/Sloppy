@@ -10,6 +10,7 @@ Canonical Windows commands:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
@@ -20,7 +21,8 @@ git diff --check
 
 `tools/windows/dev.ps1 lint` runs language standards checks, docs freshness and
 claim checks, core API integration checks, test-governance checks, C complexity
-warnings, optional local `clang-tidy` where configured, and artifact hygiene.
+warnings, alpha-infra dependency manifest checks, optional local `clang-tidy` where
+configured, and artifact hygiene.
 
 Run narrower checks only when the task scope justifies them, and report that
 scope honestly.

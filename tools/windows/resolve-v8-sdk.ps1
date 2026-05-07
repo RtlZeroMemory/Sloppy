@@ -1,6 +1,8 @@
 param(
     [string]$V8Root = "",
     [string[]]$SearchRoot = @(),
+    [ValidateSet("OFF", "AUTO", "REQUIRED")]
+    [string]$Mode = "REQUIRED",
     [switch]$Quiet
 )
 
@@ -9,10 +11,34 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "v8-sdk.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
-$resolved = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -SearchRoots $SearchRoot -Require
+try {
+    $resolution = Resolve-SlV8SdkRootForMode -RepoRoot $Root -V8Root $V8Root -SearchRoots $SearchRoot -Mode $Mode
+} catch {
+    Write-Host "No compatible Sloppy V8 SDK was resolved."
+    Write-Host ([string]$_)
+    exit 1
+}
+$resolved = $resolution.Root
 
 if ($Quiet) {
     Write-Output $resolved
+    if ($Mode -eq "REQUIRED" -and [string]::IsNullOrWhiteSpace($resolved)) {
+        exit 1
+    }
+    exit 0
+}
+
+if ($Mode -eq "OFF") {
+    Write-Host "V8 SDK resolution is disabled because -Mode OFF was selected."
+    exit 0
+}
+
+if ([string]::IsNullOrWhiteSpace($resolved)) {
+    Write-Host "No compatible Sloppy V8 SDK was resolved."
+    Write-Host $resolution.Detail
+    if ($Mode -eq "REQUIRED") {
+        exit 1
+    }
     exit 0
 }
 

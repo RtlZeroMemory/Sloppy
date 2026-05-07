@@ -171,6 +171,32 @@ the job reports skipped/not configured and does not claim V8 validation. Require
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
 
+## Alpha Dependency Manifest And Doctor
+
+`tools/deps/sloppy-deps.json` is the alpha infrastructure source of truth for required and
+optional toolchain dependencies, platform status, feature status, and the pinned V8 SDK
+policy. It represents Windows x64, Linux x64, macOS arm64, macOS x64, and planned Windows
+arm64 without turning unverified lanes into support claims.
+
+`tools/windows/dev.ps1 doctor` reads that manifest and reports stable dependency statuses:
+`found`, `missing`, `wrong version`, `unsupported platform`, `optional unavailable`, and
+`corrupt dependency`. Required failures are blocking. Optional unavailable dependencies
+such as Docker or V8 in `AUTO` mode are reported separately and do not count as pass
+evidence.
+
+V8 resolver modes are explicit:
+
+- `OFF`: do not validate or enable V8.
+- `AUTO`: resolve and report a compatible SDK when one is present; missing SDK is
+  `optional unavailable` and is not V8 evidence.
+- `REQUIRED`: fail when the SDK is missing, wrong-platform, wrong-architecture, corrupt,
+  or incomplete.
+
+The manifest keeps `SLOPPY_V8_ROOT` as an advanced override. The default cache layout is
+`.sdeps/v8/<platform-arch>`, and SDK validation still requires a compatible
+`share/sloppy-v8-sdk.json` manifest plus headers, libraries, and runtime-data layout for
+the selected platform.
+
 ## Current Dependencies
 
 ### yyjson

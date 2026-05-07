@@ -7,8 +7,9 @@ Sloppy is a pre-alpha TypeScript backend application runtime/app-host.
 It has a C runtime kernel, an isolated C++ V8 bridge, and a Rust `sloppyc` compiler
 toolchain built around Oxc parsing and Sloppy artifact emission.
 
-The developer loop is Windows-first and cross-platform by design. Developer ergonomics is
-the product wedge: Sloppy should feel designed, not assembled from runtime primitives and
+Sloppy is cross-platform by design. Windows x64 is currently the most complete validated
+local development lane, but it is not the product boundary. Developer ergonomics is the
+product wedge: Sloppy should feel designed, not assembled from runtime primitives and
 framework soup.
 
 Clean/safe C and honest evidence are non-negotiable.
@@ -193,6 +194,7 @@ Canonical Windows workflow:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 doctor
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test

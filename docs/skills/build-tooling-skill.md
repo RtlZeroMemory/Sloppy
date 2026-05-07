@@ -2,8 +2,8 @@
 
 Use this for CMake, scripts, CI, static checks, and gates.
 
-- Keep the Windows-first workflow working.
-- Keep cross-platform design visible.
+- Keep the currently validated Windows workflow working.
+- Keep cross-platform design visible and honest.
 - Treat root wrappers as convenience and platform scripts as canonical.
 - Avoid hardcoded local paths.
 - Do not silently skip CI gates or mark a required job green while skipping its purpose.
