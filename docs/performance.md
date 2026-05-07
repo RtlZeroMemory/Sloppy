@@ -44,8 +44,10 @@ preset, compiler, platform, configured `SLOPPY_ENABLE_SIMD` mode, and configured
 The V8 bridge has an internal benchmark group behind `sloppy_bench --include-v8`. It exists
 to answer engineering questions about JS-to-native calls, native-to-JS Promise settlement,
 HTTP result conversion, request-context materialization, header lookup/materialization, and
-body byte/text transfer. It is not an HTTP server throughput benchmark and must not be
-reported as public runtime performance.
+body byte/text transfer. The group also includes an in-process HTTP flow benchmark for
+complete request parsing, route dispatch, registered V8 handler entry, and JSON result
+conversion. It is not an HTTP server throughput benchmark and must not be reported as
+public runtime performance.
 
 ## Future Phase
 

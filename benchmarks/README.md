@@ -56,12 +56,15 @@ V8 bridge benchmarks currently measure internal evidence for:
 - native timer Promise settlement posted back to the V8 owner thread;
 - HTTP result descriptor conversion and invalid option/header diagnostics;
 - request-context base materialization, route/query access, header lookup, full header
-  entries, body text/JSON, and body byte transfer.
+  entries, body text/JSON, and body byte transfer;
+- current in-process Sloppy HTTP flow: complete request parse, route match, Plan handler
+  resolution, registered V8 handler entry with context, and JSON result conversion.
 
 These benchmarks intentionally use the public engine ABI and existing intrinsics instead
 of benchmark-only V8 hooks. They answer bridge-cost questions well enough to guide
-internal optimization, but they are not pure CPU microbenchmarks for V8 itself and must
-not be used as request-throughput or public performance claims.
+internal optimization, but they are not pure CPU microbenchmarks for V8 itself. The
+in-process HTTP flow benchmark still excludes sockets, TLS, kernel scheduling, and network
+IO, so it must not be used as request-throughput or public performance claims.
 
 Memory primitive benchmarks currently include canonical byte find-any scans, ASCII
 case-insensitive string comparison, checked array-size arithmetic, and arena-backed builder

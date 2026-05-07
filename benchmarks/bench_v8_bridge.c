@@ -4,6 +4,8 @@
 #include "sloppy/engine.h"
 #include "sloppy/features.h"
 #include "sloppy/http.h"
+#include "sloppy/http_dispatch.h"
+#include "sloppy/plan.h"
 #include "sloppy/route.h"
 #include "sloppy/string.h"
 
@@ -11,6 +13,23 @@
 
 #define SL_BENCH_V8_ENGINE_ARENA_SIZE (64U * 1024U)
 #define SL_BENCH_V8_RESULT_ARENA_SIZE (128U * 1024U)
+
+static SlPlan sl_bench_v8_plan(const SlPlanHandler* handlers, size_t handler_count)
+{
+    SlPlan plan = {0};
+
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.compiler_version = sl_str_from_cstr("bench");
+    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.bundle.path = sl_str_from_cstr("benchmarks/fixtures/v8-flow.plan.json");
+    plan.source_map.path = sl_str_from_cstr("benchmarks/fixtures/v8-flow.map.json");
+    plan.handlers = handlers;
+    plan.handler_count = handler_count;
+    return plan;
+}
 
 static void sl_bench_v8_feature_activate(SlRuntimeFeatureSet* features, SlRuntimeFeatureId id)
 {
@@ -580,6 +599,103 @@ static SlStatus sl_bench_v8_context_body_bytes(const SlBenchContext* context, ui
         "bridge_body_bytes", &request_context);
 }
 
+static SlStatus sl_bench_v8_flow_http_dispatch_json(const SlBenchContext* context,
+                                                    uint64_t iterations, uint64_t* out_checksum)
+{
+    static const char request_text[] = "POST /bench?q=abc HTTP/1.1\r\n"
+                                       "Host: localhost\r\n"
+                                       "Content-Type: application/json\r\n"
+                                       "X-Trace: abcdefgh\r\n"
+                                       "Content-Length: 27\r\n"
+                                       "\r\n"
+                                       "{\"name\":\"sloppy\",\"count\":3}";
+    unsigned char engine_storage[SL_BENCH_V8_ENGINE_ARENA_SIZE];
+    unsigned char route_storage[4096];
+    unsigned char dispatch_storage[SL_BENCH_V8_RESULT_ARENA_SIZE];
+    SlRuntimeFeatureSet features = sl_bench_v8_app_http_features();
+    SlArena engine_arena = {0};
+    SlArena route_arena = {0};
+    SlArena dispatch_arena = {0};
+    SlEngine* engine = NULL;
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding binding = {SL_HTTP_METHOD_POST, &pattern, 1U};
+    SlHttpDispatchTable table = {&binding, 1U};
+    SlPlanHandler handlers[] = {
+        {1U, sl_str_from_cstr("benchHttp"), sl_str_from_cstr("POST /bench")},
+    };
+    SlPlan plan = sl_bench_v8_plan(handlers, sizeof(handlers) / sizeof(handlers[0]));
+    uint64_t checksum = 0U;
+    uint64_t index;
+    SlStatus status;
+
+    if (context == NULL || !context->include_v8) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+
+    status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_route_pattern_parse(&route_arena, sl_str_from_cstr("/bench"), &pattern, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_bench_v8_create(&engine_arena, &engine, &features);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_bench_v8_eval(engine, "bench-flow-http-dispatch.js",
+                              "__sloppy_register_handler(1, function(ctx) {"
+                              "  const body = ctx.request.body.json();"
+                              "  const trace = ctx.request.headers.get('x-trace');"
+                              "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                              "    contentType: 'application/json; charset=utf-8',"
+                              "    body: { method: ctx.request.method, path: ctx.request.path,"
+                              "      query: ctx.request.queryString, traceLength: trace.length,"
+                              "      name: body.name, count: body.count } };"
+                              "});");
+    if (!sl_status_is_ok(status)) {
+        sl_engine_destroy(engine);
+        return status;
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlHttpRequestHead request = {0};
+        SlEngineResult result = {0};
+
+        sl_arena_reset(&dispatch_arena);
+        status = sl_http_parse_request_head(
+            &dispatch_arena,
+            sl_bytes_from_parts((const unsigned char*)request_text, sizeof(request_text) - 1U),
+            NULL, &request, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_engine_destroy(engine);
+            return status;
+        }
+        status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table, &request,
+                                               &result, NULL);
+        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_JSON) {
+            sl_engine_destroy(engine);
+            return sl_status_is_ok(status) ? sl_status_from_code(SL_STATUS_INVALID_STATE) : status;
+        }
+        checksum += (uint64_t)result.kind;
+        checksum += (uint64_t)result.response.status;
+        checksum += (uint64_t)result.response.body.length;
+    }
+
+    sl_engine_destroy(engine);
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
 static const SlBenchDefinition v8_bridge_definitions[] = {
     {"v8.startup.create.core_only", "v8-bridge",
      "create and destroy a V8 engine with the minimal explicit feature set", 5U, 50U,
@@ -661,6 +777,12 @@ static const SlBenchDefinition v8_bridge_definitions[] = {
      "transfer request body bytes and expose them as a Uint8Array through the body facade", 1000U,
      10000U, sl_bench_v8_context_body_bytes,
      "covers zero, embedded NUL, and high-byte request body data", true},
+    {"v8.flow.http_dispatch.json", "v8-bridge",
+     "parse a complete HTTP request, route it, enter a registered V8 handler, and convert a JSON "
+     "result",
+     100U, 1000U, sl_bench_v8_flow_http_dispatch_json,
+     "current in-process Sloppy flow evidence; no socket, TLS, kernel, or public throughput claim",
+     true},
 };
 
 const SlBenchDefinition* sl_bench_v8_bridge_definitions(size_t* out_count)
