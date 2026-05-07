@@ -96,7 +96,7 @@ jobs:
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|CMakeLists.txt|CMakePresets.json|\
+              CMakeLists.txt|CMakePresets.json|\
               include/sloppy/bytes.h|include/sloppy/string.h|include/sloppy/builder.h|\
               src/core/bytes*|src/core/string*|src/core/builder*|\
               tests/unit/core/test_bytes.c|tests/unit/core/test_string.c|tests/unit/core/test_builder.c|\
@@ -106,8 +106,8 @@ jobs:
             esac
 
             case "$file" in
-              .clang-tidy|.github/workflows/*|CMakeLists.txt|CMakePresets.json|vcpkg.json|vcpkg-configuration.json|\
-              include/**|src/**|tests/**|benchmarks/**|compiler/**|stdlib/**|examples/**|tools/**|third_party/**)
+              .clang-tidy|CMakeLists.txt|CMakePresets.json|vcpkg.json|vcpkg-configuration.json|\
+              include/**|src/**|tests/**|benchmarks/**|third_party/**)
                 analysis_relevant=true
                 ;;
             esac
