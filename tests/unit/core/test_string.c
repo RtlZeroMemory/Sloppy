@@ -336,6 +336,21 @@ static int test_arena_copies(void)
         return 32;
     }
 
+    if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 33;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_concat_to_arena(&tiny_arena, sl_str_from_cstr("ab"),
+                                             sl_str_from_cstr("cd"), &owned),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        owned.ptr != sentinel.ptr || owned.length != sentinel.length)
+    {
+        return 34;
+    }
+
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena(&arena, sl_str_empty(), &owned), SL_STATUS_OK) != 0 ||
         owned.ptr != NULL || owned.length != 0U)

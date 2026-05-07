@@ -1413,6 +1413,9 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (row_ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     rows = (SlSqlServerRow*)row_ptr;
     status = sl_checked_mul_size(max_rows, column_count, &cell_count);
     if (!sl_status_is_ok(status)) {
@@ -1426,6 +1429,9 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
         status = sl_arena_alloc(arena, alloc_size, _Alignof(SlSqlServerValue), &cell_ptr);
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        if (cell_ptr == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         cells = (SlSqlServerValue*)cell_ptr;
     }

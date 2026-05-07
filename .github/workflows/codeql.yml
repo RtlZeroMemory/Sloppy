@@ -155,6 +155,16 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:c-cpp"
+          output: codeql-results/c-cpp
+          upload: never
+
+      - name: Upload CodeQL SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-c-cpp-sarif
+          path: codeql-results/c-cpp
+          if-no-files-found: ignore
 
   analyze-javascript-typescript:
     name: CodeQL / javascript-typescript
@@ -169,12 +179,23 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
+          build-mode: none
           queries: security-extended,security-and-quality
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:javascript-typescript"
+          output: codeql-results/javascript-typescript
+          upload: never
+
+      - name: Upload CodeQL SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-javascript-typescript-sarif
+          path: codeql-results/javascript-typescript
+          if-no-files-found: ignore
 
   analyze-rust:
     name: CodeQL / rust
@@ -196,3 +217,13 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:rust"
+          output: codeql-results/rust
+          upload: never
+
+      - name: Upload CodeQL SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-rust-sarif
+          path: codeql-results/rust
+          if-no-files-found: ignore

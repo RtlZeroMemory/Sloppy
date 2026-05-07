@@ -111,10 +111,14 @@ static SlStatus sl_local_copy_pipe_path(SlStr path, char out[SL_LOCAL_MAX_PIPE_P
     if (out == NULL || !sl_local_path_has_pipe_prefix(path) ||
         path.length >= SL_LOCAL_MAX_PIPE_PATH)
     {
+        if (out != NULL) {
+            out[0] = '\0';
+        }
         return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_INVALID_PATH,
                              SL_STATUS_INVALID_ARGUMENT,
                              sl_local_literal("local IPC endpoint path is invalid"));
     }
+    out[0] = '\0';
     if ((path.length == prefix_length + 1U && path.ptr[prefix_length] == '.') ||
         (path.length == prefix_length + 2U && path.ptr[prefix_length] == '.' &&
          path.ptr[prefix_length + 1U] == '.'))
@@ -165,13 +169,20 @@ static SlStatus sl_local_alloc_connection(SlArena* arena, size_t read_capacity,
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlLocalConnection), _Alignof(SlLocalConnection), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     status = sl_arena_alloc(arena, capacity, _Alignof(unsigned char), &read_memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (read_memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlLocalConnection*)memory;
     **out = (SlLocalConnection){0};
@@ -190,9 +201,13 @@ static SlStatus sl_local_alloc_server(SlArena* arena, size_t read_capacity, SlLo
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlLocalServer), _Alignof(SlLocalServer), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlLocalServer*)memory;
     **out = (SlLocalServer){0};
@@ -351,7 +366,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
                                    SlLocalConnection** out_connection, SlDiag* out_diag)
 {
     SlLocalConnection* connection = NULL;
-    char path[SL_LOCAL_MAX_PIPE_PATH];
+    char path[SL_LOCAL_MAX_PIPE_PATH] = {0};
     ULONGLONG start_ms = GetTickCount64();
     HANDLE handle = INVALID_HANDLE_VALUE;
     DWORD mode = PIPE_READMODE_BYTE;
@@ -423,6 +438,10 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
         (void)CloseHandle(handle);
         return status;
     }
+    if (connection == NULL) {
+        (void)CloseHandle(handle);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     if (!SetNamedPipeHandleState(handle, &mode, NULL, NULL)) {
         DWORD error = GetLastError();
         (void)CloseHandle(handle);
@@ -441,7 +460,7 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
                                   SlLocalServer** out_server, SlDiag* out_diag)
 {
     SlLocalServer* server = NULL;
-    char path[SL_LOCAL_MAX_PIPE_PATH];
+    char path[SL_LOCAL_MAX_PIPE_PATH] = {0};
     SlStatus status;
 
     if (out_server == NULL) {
@@ -473,6 +492,9 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     status = sl_local_alloc_server(arena, options->read_buffer_capacity, &server);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (server == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     for (size_t index = 0U; index < SL_LOCAL_MAX_PIPE_PATH; index += 1U) {
         server->path[index] = path[index];
@@ -564,6 +586,12 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
         server->pending = INVALID_HANDLE_VALUE;
         (void)sl_local_server_create_pending(server, NULL);
         return status;
+    }
+    if (connection == NULL) {
+        (void)CloseHandle(server->pending);
+        server->pending = INVALID_HANDLE_VALUE;
+        (void)sl_local_server_create_pending(server, NULL);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     accepted = server->pending;
     server->pending = INVALID_HANDLE_VALUE;

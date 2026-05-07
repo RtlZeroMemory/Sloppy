@@ -387,6 +387,9 @@ static SlStatus sl_sqlite_allocate_rows(SlArena* arena, size_t max_rows, size_t 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (row_ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
 
     if (column_count > 0U) {
         status = sl_checked_mul_size(max_rows, column_count, &cell_count);
@@ -400,6 +403,9 @@ static SlStatus sl_sqlite_allocate_rows(SlArena* arena, size_t max_rows, size_t 
         status = sl_arena_alloc(arena, cell_alloc_size, _Alignof(SlSqliteValue), &cell_ptr);
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        if (cell_ptr == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
     }
 
@@ -711,6 +717,12 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
         (void)sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return status;
+    }
+    if (rows == NULL || (column_count > 0U && cells == NULL)) {
+        sqlite3_finalize(stmt);
+        (void)sl_arena_reset_to(arena, mark);
+        *out_result = (SlSqliteResult){0};
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {

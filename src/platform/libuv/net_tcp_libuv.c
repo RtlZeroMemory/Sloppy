@@ -94,6 +94,7 @@ static void sl_tcp_zero_bytes(void* ptr, size_t length)
     unsigned char* bytes = (unsigned char*)ptr;
     size_t index = 0U;
 
+    /* sl_tcp_zero_bytes clears ephemeral init storage; ptr may be NULL. This is not a secure wipe. */
     if (bytes == NULL) {
         return;
     }
@@ -500,9 +501,13 @@ static SlStatus sl_tcp_alloc_connection(SlArena* arena, size_t read_capacity, Sl
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlTcpConnection), _Alignof(SlTcpConnection), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (read_capacity == 0U) {
         read_capacity = SL_TCP_DEFAULT_READ_BUFFER_CAPACITY;
@@ -510,6 +515,9 @@ static SlStatus sl_tcp_alloc_connection(SlArena* arena, size_t read_capacity, Sl
     status = sl_arena_alloc(arena, read_capacity, _Alignof(unsigned char), &read_memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (read_memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlTcpConnection*)memory;
     **out = (SlTcpConnection){0};
@@ -527,9 +535,13 @@ static SlStatus sl_tcp_alloc_listener(SlArena* arena, size_t read_capacity, SlTc
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlTcpListener), _Alignof(SlTcpListener), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlTcpListener*)memory;
     **out = (SlTcpListener){0};
@@ -588,6 +600,9 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
     status = sl_tcp_alloc_connection(arena, options->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     uv_status = uv_loop_init(&connection->owned_loop);
@@ -729,6 +744,9 @@ SlStatus sl_tcp_listener_listen(SlArena* arena, const SlTcpListenOptions* option
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (listener == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
 
     uv_status = uv_loop_init(&listener->loop);
     if (uv_status != 0) {
@@ -806,6 +824,9 @@ SlStatus sl_tcp_listener_accept(SlTcpListener* listener, SlArena* arena,
     status = sl_tcp_alloc_connection(arena, listener->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     listener->pending_connection = connection;

@@ -680,6 +680,8 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
             if (value->value.blob.ptr == nullptr) {
                 return false;
             }
+            // Keep this byte-wise copy at the V8 boundary so backing->Data(), destination,
+            // and value->value.blob.ptr never rely on raw memory primitives here.
             for (index = 0U; index < value->value.blob.length; index += 1U) {
                 destination[index] = value->value.blob.ptr[index];
             }

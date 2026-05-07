@@ -241,10 +241,19 @@ static void sl_os_posix_sleep_poll(void)
 static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
 {
     SlOwnedStr owned = {0};
-    SlStatus status = sl_str_copy_to_arena_cstr(arena, value, &owned);
+    SlStatus status;
 
+    if (out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+
+    status = sl_str_copy_to_arena_cstr(arena, value, &owned);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (owned.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = owned.ptr;
     return sl_status_ok();

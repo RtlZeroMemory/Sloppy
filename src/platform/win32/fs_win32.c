@@ -156,6 +156,9 @@ static SlStatus sl_fs_win32_alloc_handle(SlArena* arena, SlFsFileHandle** out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     *out = (SlFsFileHandle*)memory;
     **out = (SlFsFileHandle){.handle = INVALID_HANDLE_VALUE, .closed = true};
     return sl_status_ok();
@@ -681,6 +684,10 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
             (void)sl_arena_reset_to(arena, mark);
             return status;
         }
+        if (memory == NULL) {
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         out->entries = (SlFsDirectoryEntry*)memory;
     }
     find = FindFirstFileW(pattern, &data);
@@ -693,6 +700,11 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         SlFsDirectoryEntry* item = NULL;
         if (wcscmp(data.cFileName, L".") == 0 || wcscmp(data.cFileName, L"..") == 0) {
             continue;
+        }
+        if (out->entries == NULL) {
+            FindClose(find);
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         item = &out->entries[out->count];
         *item = (SlFsDirectoryEntry){0};
@@ -772,7 +784,7 @@ SlStatus sl_fs_platform_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, S
 static SlStatus sl_fs_win32_temp_path(SlArena* arena, SlStr directory, SlStr prefix,
                                       SlOwnedStr* out)
 {
-    char suffix[12];
+    char suffix[12] = {0};
     SlOwnedStr name = {0};
     size_t total = 0U;
     void* memory = NULL;
@@ -787,6 +799,9 @@ static SlStatus sl_fs_win32_temp_path(SlArena* arena, SlStr directory, SlStr pre
         !sl_status_is_ok((status = sl_arena_alloc(arena, total + 1U, _Alignof(char), &memory))))
     {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     name.ptr = (char*)memory;
     sl_fs_win32_copy_chars(name.ptr, prefix.ptr, prefix.length);
@@ -884,6 +899,9 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
     status = sl_arena_alloc(arena, sizeof(SlFsFileLock), _Alignof(SlFsFileLock), &memory);
     if (sl_status_is_ok(status)) {
         lock = (SlFsFileLock*)memory;
+        if (lock == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         *lock = (SlFsFileLock){.handle = INVALID_HANDLE_VALUE, .path = {0}, .closed = true};
         status = sl_str_copy_to_arena_cstr(arena, path, &lock->path);
     }
@@ -892,6 +910,9 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
     }
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (lock == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     lock->handle =
         CreateFileW(wide, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -934,6 +955,9 @@ SlStatus sl_fs_platform_open_file(SlArena* arena, SlStr path, SlFsFileAccess acc
         !sl_status_is_ok((status = sl_fs_win32_alloc_handle(arena, &handle))))
     {
         return status;
+    }
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (access == SL_FS_FILE_ACCESS_WRITE) {
         desired = GENERIC_WRITE;

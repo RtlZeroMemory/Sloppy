@@ -1753,7 +1753,7 @@ static bool sl_http_transport_parse_chunk_size_line(SlStr line, size_t* out_size
         size_t next = 0U;
 
         if (ch >= '0' && ch <= '9') {
-            digit = (size_t)(ch - '0');
+            digit = (size_t)(ch - (unsigned char)'0');
         }
         else if (ch >= 'a' && ch <= 'f') {
             digit = (size_t)(ch - (unsigned char)'a') + 10U;
@@ -2320,6 +2320,9 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED)
         {
             SlHttpPlatformConnection* platform = connection->platform;
+            if (platform == NULL) {
+                return NULL;
+            }
             unsigned char* request_storage = connection->request_storage;
             size_t request_storage_size = connection->request_storage_size;
             unsigned char* accumulation = connection->accumulation;
