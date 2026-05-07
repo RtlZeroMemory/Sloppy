@@ -2,17 +2,18 @@
 
 Status: ENGINE-02 source of truth for the supported compiler input subset.
 
-`sloppyc build` is intentionally narrow. It parses one JavaScript source file, extracts a
-static Sloppy app shape, emits deterministic artifacts, and rejects unsupported dynamic
+`sloppyc build` is intentionally narrow. It parses the supported Slop-owned source subset,
+extracts a static app graph, emits deterministic artifacts, and rejects unsupported dynamic
 JavaScript instead of silently producing a partial plan.
 
-The compiler does not implement a full TypeScript compiler, package resolution, bundling,
-Node compatibility, middleware extraction, services/modules/data extraction, decorators,
-or arbitrary route registration.
+The supported subset now includes selected relative function modules plus metadata-only
+Framework v2 type syntax. That does not make Sloppy a full TypeScript compiler, package
+resolver, bundler, Node-compatible runtime, middleware engine, controller framework, or
+arbitrary route-registration system.
 
 ## Alpha Source Policy
 
-Supported input is a single `.js` or `.mjs` file with:
+Supported input starts from a `.js`, `.mjs`, or supported `.ts` entry file with:
 
 - `import { Sloppy, Results } from "sloppy";`, with optional unaliased `data`;
 - optional unaliased `Time`, `Deadline`, `CancellationController`, and Time error imports
@@ -26,6 +27,7 @@ Supported input is a single `.js` or `.mjs` file with:
   imports from `"sloppy/net"` for Plan-visible TCP networking feature activation;
 - optional unaliased `Base64`, `Base64Url`, `Hex`, `Text`, `Binary`, `Compression`, and
   `Checksums` imports from `"sloppy/codec"` for Plan-visible codec feature activation;
+- optional relative imports for the current function-module subset;
 - exactly one app from `Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`;
 - literal top-level `app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, or
   `app.mapDelete` calls, or a simple `app.mapGroup(...)` variable with literal grouped
@@ -246,13 +248,20 @@ graph into the classic generated artifact. Unsupported bare imports, Node/npm sp
 remote imports, dynamic `import(...)`, missing relative imports, circular relative imports,
 missing named exports, and unsupported module shapes fail at compile time with diagnostics.
 
-COMPILER-30.B/C makes the accepted import set explicit:
+COMPILER-30.B/C made the ENGINE-14 accepted import set explicit:
 
 - relative imports are resolved only as fixture/source-local `.js`, `.mjs`, or `.ts` files;
-- `"sloppy"` is the only supported stdlib bare import;
-- `"sloppy/providers/sqlite"` is the only supported provider bare import;
+- `"sloppy"` was the only supported stdlib bare import in that slice;
+- `"sloppy/providers/sqlite"` was the only supported provider bare import in that slice;
 - unknown bare, Node/npm, remote, and dynamic imports remain rejected with source-located
   diagnostics.
+
+Current Framework v2 metadata fixtures intentionally widen that Slop-owned import set for
+compiler metadata only: `sloppy/data`, `sloppy/providers/postgres`,
+`sloppy/providers/sqlserver`, uppercase `Sqlite` from `sloppy/providers/sqlite`, and
+`sloppy/workers` are accepted as described in the matrix above. These imports do not add
+provider runtime injection, PostgreSQL/SQL Server JavaScript bridges, queue execution, or a
+package-manager resolution story.
 
 Function modules may export one named function that receives the app, obtains providers
 through `app.provider("sqlite:<name>")`, creates route groups with `app.group(...)`, and

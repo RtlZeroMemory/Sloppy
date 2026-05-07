@@ -36,12 +36,14 @@ Use these documents when implementing or reviewing current behavior:
 - `docs/project/provider-execution-runtime-architecture.md`
 - `docs/project/http-transport-runtime-architecture.md`
 - `docs/project/framework-api-shape.md`
+- `docs/project/framework-v2-current-state.md`
 - `docs/project/engine-19-conformance-matrix.md`
 - `docs/project/main-evidence.md`
 - `docs/project/test-platform-inventory.md`
 
 `docs/project/framework-api-shape.md` remains the Framework-01 baseline.
-Framework v2 work is tracked through `FRAMEWORK-V2-01` until a current
+`docs/project/framework-v2-current-state.md` records the current metadata-only
+Framework v2 compiler state and the runtime/provider deferrals until a fuller
 Framework v2 contract replaces it.
 
 ## Current Planning

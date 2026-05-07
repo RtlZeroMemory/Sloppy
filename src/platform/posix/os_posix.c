@@ -587,6 +587,9 @@ static SlStatus sl_os_posix_resolve_command(SlArena* arena, const char* command,
                 if (!sl_status_is_ok(status)) {
                     return status;
                 }
+                if (cwd_segment == NULL) {
+                    return sl_status_from_code(SL_STATUS_INTERNAL);
+                }
                 status = sl_os_posix_join_path(
                     arena, cwd_segment, sl_str_from_cstr(cwd_segment).length, command, &candidate);
                 if (!sl_status_is_ok(status)) {
