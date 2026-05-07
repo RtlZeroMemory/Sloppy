@@ -1,7 +1,5 @@
 Checks: >
   clang-analyzer-*,
-  -clang-analyzer-core.NullDereference,
-  -clang-analyzer-core.uninitialized.*,
   -clang-analyzer-cplusplus.NewDeleteLeaks,
   -clang-analyzer-deadcode.DeadStores,
   -clang-analyzer-optin.core.EnumCastOutOfRange,

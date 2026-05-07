@@ -340,6 +340,8 @@ void f2s_buffered(float f, char* result) {
 
 char* f2s(float f) {
   char* const result = (char*) malloc(16);
-  f2s_buffered(f, result);
+  if (result != NULL) {
+    f2s_buffered(f, result);
+  }
   return result;
 }

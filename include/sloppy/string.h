@@ -49,6 +49,13 @@ SlStr sl_str_from_cstr(const char* cstr);
 SlStr sl_str_empty(void);
 bool sl_str_is_empty(SlStr str);
 bool sl_str_equal(SlStr left, SlStr right);
+/*
+ * Lexicographic byte ordering for SlStr views. Returns exactly -1 when `left` sorts
+ * before `right`, 0 when equal, and 1 when `left` sorts after `right`; use <0, ==0,
+ * or >0 checks at call sites. Embedded NUL and non-UTF-8 bytes compare by raw byte
+ * value. Malformed non-empty NULL views sort before valid non-empty views, and this
+ * borrowed-view helper does not take ownership or change either input lifetime.
+ */
 int sl_str_compare(SlStr left, SlStr right);
 bool sl_str_starts_with(SlStr str, SlStr prefix);
 bool sl_str_ends_with(SlStr str, SlStr suffix);

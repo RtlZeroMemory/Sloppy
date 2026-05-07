@@ -98,7 +98,7 @@ foreach ($file in Get-RustSourceFiles) {
                     -File $relativePath `
                     -Line $lineNumber `
                     -Rule "RS007" `
-                    -Message "println!/eprintln! are allowed only in the CLI entrypoint or with an explicit allow reason."
+                    -Message "println!/eprintln! are allowed only in the CLI entrypoint."
             }
 
             if ((Test-ArtifactOrderingSensitivePath $relativePath) -and
@@ -134,7 +134,7 @@ if (Test-Path -LiteralPath $goldenRoot) {
                     -File $relativePath `
                     -Line $lineNumber `
                     -Rule "RS009" `
-                    -Message "Golden compiler outputs must not contain absolute local paths unless explicitly normalized and allowed."
+                    -Message "Golden compiler outputs must not contain absolute local paths."
             }
         }
     }

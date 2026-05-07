@@ -153,13 +153,20 @@ static SlStatus sl_local_alloc_connection(SlArena* arena, size_t read_capacity,
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlLocalConnection), _Alignof(SlLocalConnection), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     status = sl_arena_alloc(arena, capacity, _Alignof(unsigned char), &read_memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (read_memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlLocalConnection*)memory;
     **out = (SlLocalConnection){0};
@@ -178,9 +185,13 @@ static SlStatus sl_local_alloc_server(SlArena* arena, size_t read_capacity, SlLo
     if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out = NULL;
     status = sl_arena_alloc(arena, sizeof(SlLocalServer), _Alignof(SlLocalServer), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     *out = (SlLocalServer*)memory;
     **out = (SlLocalServer){0};
