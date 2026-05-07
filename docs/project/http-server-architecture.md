@@ -4,9 +4,10 @@ Status: HTTP-SERVER-01 internal alpha contract.
 
 ## Scope
 
-This document covers inbound HTTP/1.1 server runtime behavior. It does not cover TLS,
-HTTP/2, HTTP/3, WebSockets, static files, reverse proxy behavior, outbound HTTP client
-behavior, public alpha documentation, or production-edge claims.
+This document covers inbound HTTP/1.1 server runtime behavior and the bounded HTTPS/TLS
+wrapper that feeds the same lifecycle. It does not cover HTTP/2, HTTP/3, WebSockets,
+static files, reverse proxy behavior, outbound HTTP client behavior, public alpha
+documentation, or production-edge claims.
 
 ## Layers
 
@@ -15,13 +16,14 @@ The server stack is layered so future protocols can bind the same app/framework 
 - parser: bounded HTTP/1 request-head and body validation;
 - backend: listener, connection, request, body-reader, cancellation, timeout, and shutdown
   lifecycle state;
-- transport: libuv-owned localhost TCP handles, bounded read/write buffers, timers, and
-  sequential keep-alive;
+- transport: libuv-owned localhost TCP handles, optional OpenSSL TLS wrapping, bounded
+  read/write buffers, timers, and sequential keep-alive;
 - dispatch: Plan route table, route/query/body policy, request-context materialization,
   and engine call boundary;
 - engine bridge: V8 request-context object creation and result descriptor conversion.
 
-Socket, libuv, V8, and native handle internals do not cross into app-facing objects.
+Socket, libuv, OpenSSL, V8, and native handle internals do not cross into app-facing
+objects.
 
 ## Parser And Header Policy
 
@@ -55,11 +57,25 @@ contract.
 Fixed native responses serialize status, safe headers, content type, content length, and
 body bytes. Scoped native/runtime streaming responses use chunked transfer encoding and
 validate caller-provided headers before headers are started. Managed headers such as
-`Connection`, `Content-Type`, `Content-Length`, and `Transfer-Encoding` remain
+`Connection`, `Keep-Alive`, `Content-Type`, `Content-Length`, and `Transfer-Encoding` remain
 transport-owned in the streaming path.
 
 Public mutable response writers, `onStarting`, `onCompleted`, public response streaming
 helpers, and public streaming examples are deferred.
+
+## HTTPS/TLS
+
+Inbound HTTPS is a transport wrapper over the same HTTP/1.1 parser, dispatch, response,
+keep-alive, timeout, and shutdown lifecycle. The current backend is OpenSSL. Sloppy owns
+configuration validation, buffer ownership, handshake cleanup, encrypted write plumbing,
+and scheme propagation; it does not implement TLS protocol logic, certificate validation,
+custom crypto, ALPN, HTTP/2, mTLS, or outbound client TLS.
+
+TLS config requires a certificate path and private-key path. A passphrase may be supplied
+as a bounded string. Diagnostics redact passphrase and key material and do not include
+OpenSSL objects, raw socket handles, or private key contents. After a handshake succeeds,
+the transport marks the connection scheme as `https`, and the V8 request context exposes
+`ctx.request.scheme === "https"` and `ctx.connection.secure === true`.
 
 ## Connection And Lifecycle
 
@@ -97,7 +113,19 @@ pipeline:
 - `Sloppy:Server:RequestTimeoutMs`;
 - `Sloppy:Server:KeepAliveEnabled`;
 - `Sloppy:Server:KeepAliveIdleTimeoutMs`;
-- `Sloppy:Server:MaxRequestsPerConnection`.
+- `Sloppy:Server:MaxRequestsPerConnection`;
+- `Sloppy:Server:Tls:Enabled`;
+- `Sloppy:Server:Tls:CertificatePath`;
+- `Sloppy:Server:Tls:PrivateKeyPath`.
+
+TLS is opt-in. Defaults remain cleartext HTTP. When TLS is enabled, certificate and
+private-key paths are required. Plan-backed `sloppy run` resolves relative TLS paths under the
+loaded artifact directory and preserves explicitly emitted absolute paths. The native transport
+config can supply an optional passphrase, but Plan-backed `sloppy run` does not consume passphrases
+until a non-redacted runtime secret retrieval lane exists. Diagnostics must identify the failed TLS
+stage
+without echoing private key material, passphrases, PEM contents, OpenSSL internals, native
+handles, or socket state.
 
 Malformed, zero, unsupported, or range-overflowing numeric values fail closed before the
 server starts.
@@ -111,4 +139,6 @@ The following remain explicit follow-up work rather than hidden behavior:
 - request ID adoption from trusted headers;
 - access-event and counter output;
 - public response lifecycle callbacks and stream helpers;
+- Plan-backed TLS passphrase retrieval through a non-redacted runtime secret source;
+- ALPN, mTLS/client certificate auth, and TLS backend selection beyond OpenSSL;
 - production graceful drain and edge tuning.

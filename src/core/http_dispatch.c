@@ -35,6 +35,7 @@ typedef struct SlHttpDispatchContextSeed
 {
     uint64_t request_id;
     uint64_t connection_id;
+    SlStr scheme;
     size_t max_body_length;
     const SlCancellationToken* cancellation;
 } SlHttpDispatchContextSeed;
@@ -402,7 +403,10 @@ static void sl_http_dispatch_apply_metadata(const SlHttpRequestHead* request,
         return;
     }
 
-    request_context->scheme = sl_str_from_cstr("http");
+    request_context->scheme =
+        seed == NULL || seed->scheme.ptr == NULL || sl_str_is_empty(seed->scheme)
+            ? sl_str_from_cstr("http")
+            : seed->scheme;
     request_context->protocol = sl_http_dispatch_protocol_name(request);
     request_context->query_string = sl_http_dispatch_extract_query_string(request->raw_target);
     if (seed != NULL) {
@@ -889,6 +893,9 @@ SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, co
 
     seed.request_id = request->id;
     seed.connection_id = request->connection == NULL ? 0U : request->connection->id;
+    seed.scheme = request->scheme.ptr == NULL || sl_str_is_empty(request->scheme)
+                      ? sl_str_from_cstr("http")
+                      : request->scheme;
     seed.max_body_length = request->connection == NULL || request->connection->backend == NULL
                                ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
                                : request->connection->backend->options.parse.max_body_length;

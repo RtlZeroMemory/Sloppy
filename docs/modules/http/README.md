@@ -3,16 +3,17 @@
 ## Purpose
 
 The HTTP module owns Sloppy's inbound HTTP/1.1 parser, route matching, dispatch,
-request-context materialization, response serialization, backend lifecycle, and localhost
-transport foundations. HTTP/1.1 is the first backend, not the app-facing abstraction.
+request-context materialization, response serialization, backend lifecycle, localhost
+transport foundations, and bounded HTTPS/TLS wrapping. HTTP/1.1 is the first backend, not
+the app-facing abstraction.
 
 ## Current Status
 
 HTTP-SERVER-01 establishes the current internal alpha server contract. The default native
 lane covers parser, backend, dispatch, response serialization, localhost transport,
-keep-alive, chunked request decoding, streaming response descriptors, shutdown/cancel
-paths, and fuzz seed replay. V8-gated evidence covers handler dispatch and request
-context materialization when the V8 lane is configured.
+keep-alive, chunked request decoding, streaming response descriptors, inbound OpenSSL TLS
+wrapping, shutdown/cancel paths, and fuzz seed replay. V8-gated evidence covers handler
+dispatch and request context materialization when the V8 lane is configured.
 
 ## HTTP/1.1 Alpha Contract
 
@@ -36,10 +37,14 @@ Implemented behavior includes:
 - libuv-backed localhost transport with bounded connection storage, sequential HTTP/1.1
   keep-alive, idle timeout, max requests per connection, close policy, and deterministic
   pipelining rejection;
+- optional inbound HTTPS wrapping through OpenSSL-owned TLS server state, strict certificate/key
+  config and key-material loading validation, generated local-cert loopback evidence, native
+  passphrase handling, and `https` request-context scheme propagation after handshake;
 - backend admission, lifecycle, cancellation, timeout, disconnect, shutdown, and
   diagnostic state;
 - `sloppy run` consumption of bounded server config metadata for host/port, max
-  connections, max request body bytes, request timeout, and keep-alive policy.
+  connections, max request body bytes, request timeout, keep-alive policy, and opt-in TLS
+  certificate/key listener settings.
 
 ## Request Context
 
@@ -48,6 +53,10 @@ request, route, query, connection, signal, and deadline data without exposing pa
 socket, libuv, or native handle internals. Current request fields include method, scheme,
 protocol, path, raw target, query string, headers, body helpers, content type, content
 length, and a string request ID when a transport lifecycle provides one.
+
+HTTP listeners set `scheme` to `http`. HTTPS listeners set `scheme` to `https` after the
+TLS handshake completes and expose `ctx.connection.secure === true` without exposing TLS
+or socket handles.
 
 `ctx.request.body.bytes()`, `text()`, and `json()` are consumed-once helpers for the
 bounded buffered body. The existing top-level `ctx.request.bytes()`, `text()`, and
@@ -70,8 +79,8 @@ objects.
 
 Sensitive values must stay out of diagnostics, doctor/audit output, tests, examples, and
 goldens. HTTP server diagnostics must not include `Authorization`, `Cookie`, `Set-Cookie`,
-`Proxy-Authorization`, API keys, bearer tokens, request bodies, native pointers, libuv
-handles, or socket details.
+`Proxy-Authorization`, API keys, bearer tokens, request bodies, TLS passphrases, private
+key material, native pointers, OpenSSL objects, libuv handles, or socket details.
 
 ## Invariants
 
@@ -86,6 +95,10 @@ handles, or socket details.
 - Response headers and status are immutable after headers start. Streaming descriptors
   validate headers before the first write and then use chunked framing only through the
   native transport writer.
+- TLS state stays inside the libuv/OpenSSL platform transport. Sloppy validates config,
+  drives handshake cleanup, and moves decrypted bytes into the same HTTP/1.1 lifecycle; it
+  does not implement TLS protocol logic, certificate validation, or cryptographic
+  primitives.
 - Buffered request body helpers are consumed once on `ctx.request.body`; top-level
   helpers remain repeatable until the public request-body contract is widened.
 
@@ -93,8 +106,10 @@ handles, or socket details.
 
 Deferred HTTP server behavior remains internal follow-up scope:
 
-- TLS/HTTPS, HTTP/2, HTTP/3, WebSockets, SSE, static files, reverse proxy behavior, and
-  outbound HTTP client changes;
+- HTTP/2, HTTP/3, WebSockets, SSE, static files, reverse proxy behavior, and outbound HTTP
+  client changes;
+- ALPN, mTLS/client certificate auth, custom certificate validation, TLS backend
+  abstraction beyond the current OpenSSL path, and production TLS hardening;
 - route-level body/header/timeout policy from Plan metadata;
 - trusted proxy configuration and `Forwarded`/`X-Forwarded-*` interpretation;
 - request ID adoption from trusted headers and a complete access-event/counter model;
@@ -106,10 +121,10 @@ Deferred HTTP server behavior remains internal follow-up scope:
 
 ## Evidence Lanes
 
-Default evidence covers parser, backend, dispatch, response, transport, diagnostics, fuzz
-seed replay, and bounded localhost transport smoke. V8-gated evidence is required when the
-JS request-context or result bridge changes. Optional live provider, torture/stress,
-benchmark, and future TLS lanes must be reported separately and must not be counted as
+Default evidence covers parser, backend, dispatch, response, transport, HTTPS loopback,
+diagnostics, fuzz seed replay, and bounded localhost transport smoke. V8-gated evidence is
+required when the JS request-context or result bridge changes. Optional live provider,
+torture/stress, and benchmark lanes must be reported separately and must not be counted as
 default pass evidence.
 
 ## Internal Examples

@@ -180,6 +180,13 @@ static int test_invalid_status_and_content_type_are_rejected(void)
 
     response = sl_http_response_text(200U, sl_str_from_cstr("bad"));
     response.content_type = sl_str_from_cstr("text/plain\r\nx-bad: yes");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 2;
+    }
+
+    response.content_type = sl_str_from_parts("text/plain\0html", sizeof("text/plain\0html") - 1U);
     return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
                          SL_STATUS_INVALID_ARGUMENT);
 }
@@ -219,6 +226,22 @@ static int test_invalid_custom_headers_are_rejected(void)
 
     header.name = sl_str_from_cstr("Content-Type");
     header.value = sl_str_from_cstr("text/html");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 4;
+    }
+
+    header.name = sl_str_from_cstr("Keep-Alive");
+    header.value = sl_str_from_cstr("timeout=5");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 5;
+    }
+
+    header.name = sl_str_from_cstr("X-Test");
+    header.value = sl_str_from_parts("bad\0value", sizeof("bad\0value") - 1U);
     return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
                          SL_STATUS_INVALID_ARGUMENT);
 }

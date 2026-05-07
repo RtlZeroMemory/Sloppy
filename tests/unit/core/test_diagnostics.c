@@ -486,6 +486,10 @@ static int test_http_code_names(void)
         {SL_DIAG_HTTP_CHUNK_FINAL_MISSING, "SLOPPY_E_HTTP_CHUNK_FINAL_MISSING"},
         {SL_DIAG_HTTP_TRAILERS_UNSUPPORTED, "SLOPPY_E_HTTP_TRAILERS_UNSUPPORTED"},
         {SL_DIAG_HTTP_RESPONSE_BACKPRESSURE, "SLOPPY_E_HTTP_RESPONSE_BACKPRESSURE"},
+        {SL_DIAG_HTTP_TLS_CONFIG, "SLOPPY_E_HTTP_TLS_CONFIG"},
+        {SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, "SLOPPY_E_HTTP_TLS_BACKEND_UNAVAILABLE"},
+        {SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, "SLOPPY_E_HTTP_TLS_HANDSHAKE_FAILED"},
+        {SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, "SLOPPY_E_HTTP_TLS_SHUTDOWN_FAILED"},
         {SL_DIAG_UNKNOWN_RUNTIME_FEATURE, "SLOPPY_E_UNKNOWN_RUNTIME_FEATURE"},
         {SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE, "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE"},
         {SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING,
@@ -1510,7 +1514,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_HTTP_REQUEST_LINE_LIMIT; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1519,7 +1523,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_HTTP_REQUEST_LINE_LIMIT + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;

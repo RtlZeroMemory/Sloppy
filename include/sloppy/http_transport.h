@@ -66,6 +66,26 @@ typedef enum SlHttpTransportConnectionState
     SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 10
 } SlHttpTransportConnectionState;
 
+typedef enum SlHttpTransportTlsBackend
+{
+    SL_HTTP_TRANSPORT_TLS_BACKEND_NONE = 0,
+    SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL = 1
+} SlHttpTransportTlsBackend;
+
+typedef struct SlHttpTransportTlsConfig
+{
+    bool enabled;
+    SlHttpTransportTlsBackend backend;
+    /*
+     * Borrowed path views copied during init as NUL-terminated platform boundary strings.
+     * The server validates certificate/key presence before listen and never exposes key
+     * material, passphrases, OpenSSL pointers, or socket handles through RequestContext.
+     */
+    SlStr certificate_path;
+    SlStr private_key_path;
+    SlStr passphrase;
+} SlHttpTransportTlsConfig;
+
 typedef struct SlHttpTransportConfig
 {
     /*
@@ -95,6 +115,7 @@ typedef struct SlHttpTransportConfig
     uint64_t keep_alive_idle_timeout_ms;
     size_t max_requests_per_connection;
     bool keep_alive_disabled;
+    SlHttpTransportTlsConfig tls;
     /* Caller/arena-backed table size for accepted connection slots. */
     size_t connection_capacity;
     int backlog;
@@ -144,6 +165,9 @@ typedef struct SlHttpTransportServer
     SlArena* arena;
     SlHttpTransportConfig config;
     SlOwnedStr host;
+    SlOwnedStr tls_certificate_path;
+    SlOwnedStr tls_private_key_path;
+    SlOwnedStr tls_passphrase;
     SlHttpBackend backend;
     SlHttpPlatformListener* platform;
     SlHttpPlatformConnection* platform_connections;

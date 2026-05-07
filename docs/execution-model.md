@@ -59,11 +59,12 @@ converted into the current request context shape before V8 handler dispatch.
 
 Current transport support includes bounded HTTP/1.1, configured request/connection limits,
 request timeout/disconnect/shutdown terminal paths, bounded sequential keep-alive, scoped
-chunked handling, supported result descriptor conversion, and safe framework error
-responses for invalid results or handler failures.
+chunked handling, opt-in inbound TLS wrapping, supported result descriptor conversion, and
+safe framework error responses for invalid results or handler failures.
 
-The current path does not claim TLS, HTTP/2, HTTP/3, WebSockets, public streaming APIs,
-middleware, production graceful drain, reverse proxy behavior, or benchmark performance.
+The current path does not claim production TLS hardening, HTTP/2, HTTP/3, WebSockets,
+public streaming APIs, middleware, production graceful drain, reverse proxy behavior, or
+benchmark performance.
 
 ## Request Context
 

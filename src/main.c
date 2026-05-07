@@ -1503,7 +1503,10 @@ typedef struct SlRunApp
     SlEngine* engine;
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
+    char artifacts_path[SL_RUN_PATH_MAX_BYTES];
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
+    char config_tls_certificate_path[SL_RUN_PATH_MAX_BYTES];
+    char config_tls_private_key_path[SL_RUN_PATH_MAX_BYTES];
     uint16_t config_port;
     uint64_t config_max_connections;
     uint64_t config_max_request_body_bytes;
@@ -1511,6 +1514,7 @@ typedef struct SlRunApp
     uint64_t config_max_requests_per_connection;
     uint64_t config_request_timeout_ms;
     uint64_t next_request_id;
+    bool config_tls_enabled;
     bool config_keep_alive_enabled;
     bool config_has_host;
     bool config_has_port;
@@ -1520,9 +1524,69 @@ typedef struct SlRunApp
     bool config_has_keep_alive_idle_timeout_ms;
     bool config_has_max_requests_per_connection;
     bool config_has_request_timeout_ms;
+    bool config_has_tls_enabled;
+    bool config_has_tls_certificate_path;
+    bool config_has_tls_private_key_path;
 } SlRunApp;
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
+
+static bool sl_run_copy_cstr(char* buffer, size_t capacity, const char* value)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (buffer == NULL || capacity == 0U || value == NULL || value[0] == '\0') {
+        return false;
+    }
+
+    return sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, value)) &&
+           sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
+}
+
+static bool sl_run_copy_span_cstr(char* buffer, size_t capacity, SlCliSpan value)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (buffer == NULL || capacity == 0U || value.ptr == NULL || value.length == 0U) {
+        return false;
+    }
+
+    status = sl_string_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        status = sl_string_builder_append_char(&builder, value.ptr[index]);
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
+    }
+
+    status = sl_string_builder_view_with_nul(&builder, &view);
+    return sl_status_is_ok(status) && view.ptr == buffer && view.length == value.length;
+}
+
+static bool sl_run_path_span_is_absolute(SlCliSpan path)
+{
+    char drive = '\0';
+
+    if (path.ptr == NULL || path.length == 0U) {
+        return false;
+    }
+    if (path.ptr[0] == '/' || path.ptr[0] == '\\') {
+        return true;
+    }
+    if (path.length < 3U || path.ptr[1] != ':' || (path.ptr[2] != '/' && path.ptr[2] != '\\')) {
+        return false;
+    }
+    drive = path.ptr[0];
+    return (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+}
 
 static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
 {
@@ -1775,8 +1839,66 @@ static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
     return true;
 }
 
+static int sl_run_apply_tls_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
+{
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:Enabled")) {
+        if (!sl_run_plan_config_parse_bool(value, &app->config_tls_enabled)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:Enabled must be a boolean\n");
+            return 1;
+        }
+        app->config_has_tls_enabled = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:CertificatePath")) {
+        SlStr path = value != NULL && yyjson_is_str(value)
+                         ? sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value))
+                         : sl_str_empty();
+        SlCliSpan path_span = {path.ptr, path.length};
+        if (!sl_status_is_ok(sl_str_validate_no_nul(path)) ||
+            !(sl_run_path_span_is_absolute(path_span)
+                  ? sl_run_copy_span_cstr(app->config_tls_certificate_path,
+                                          sizeof(app->config_tls_certificate_path), path_span)
+                  : sl_run_join_path(app->config_tls_certificate_path,
+                                     sizeof(app->config_tls_certificate_path), app->artifacts_path,
+                                     path_span)))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:CertificatePath must be a safe path "
+                                      "string\n");
+            return 1;
+        }
+        app->config_has_tls_certificate_path = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:PrivateKeyPath")) {
+        SlStr path = value != NULL && yyjson_is_str(value)
+                         ? sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value))
+                         : sl_str_empty();
+        SlCliSpan path_span = {path.ptr, path.length};
+        if (!sl_status_is_ok(sl_str_validate_no_nul(path)) ||
+            !(sl_run_path_span_is_absolute(path_span)
+                  ? sl_run_copy_span_cstr(app->config_tls_private_key_path,
+                                          sizeof(app->config_tls_private_key_path), path_span)
+                  : sl_run_join_path(app->config_tls_private_key_path,
+                                     sizeof(app->config_tls_private_key_path), app->artifacts_path,
+                                     path_span)))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:PrivateKeyPath must be a safe path "
+                                      "string\n");
+            return 1;
+        }
+        app->config_has_tls_private_key_path = true;
+        return 0;
+    }
+    return -1;
+}
+
 static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
 {
+    int tls_result = 0;
+
     if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
         if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
             app->config_host[0] == '\0')
@@ -1852,6 +1974,12 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
             return 1;
         }
         app->config_has_request_timeout_ms = true;
+    }
+    else {
+        tls_result = sl_run_apply_tls_config_metadata_entry(app, key, value);
+        if (tls_result >= 0) {
+            return tls_result;
+        }
     }
 
     return 0;
@@ -2505,6 +2633,10 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     }
 
     *app = (SlRunApp){0};
+    if (!sl_run_copy_cstr(app->artifacts_path, sizeof(app->artifacts_path), artifacts_path)) {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid artifacts directory\n");
+        return 1;
+    }
     if (!sl_status_is_ok(sl_arena_init(&app->plan_arena, app->plan_arena_storage,
                                        sizeof(app->plan_arena_storage))) ||
         !sl_status_is_ok(sl_arena_init(&app->route_arena, app->route_arena_storage,
@@ -2938,6 +3070,18 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     if (app != NULL && app->config_has_request_timeout_ms) {
         config.request_timeout_ms = app->config_request_timeout_ms;
     }
+    if (app != NULL && app->config_has_tls_enabled) {
+        config.tls.enabled = app->config_tls_enabled;
+        if (app->config_tls_enabled) {
+            config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+        }
+    }
+    if (app != NULL && app->config_has_tls_certificate_path) {
+        config.tls.certificate_path = sl_str_from_cstr(app->config_tls_certificate_path);
+    }
+    if (app != NULL && app->config_has_tls_private_key_path) {
+        config.tls.private_key_path = sl_str_from_cstr(app->config_tls_private_key_path);
+    }
     config.dispatch = sl_run_transport_dispatch;
     config.dispatch_user = app;
     return config;
@@ -2977,8 +3121,11 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         return 1;
     }
 
-    (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
-    (void)printf("Bounded development server: no TLS, no middleware, no production-edge claim.\n");
+    (void)printf("Sloppy dev server listening on %s://%s:%u\n",
+                 config.tls.enabled ? "https" : "http", host, (unsigned)port);
+    (void)printf(
+        "Bounded development server: HTTP/1.1%s, no middleware, no production-edge claim.\n",
+        config.tls.enabled ? " over TLS" : "");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {
         result = 1;

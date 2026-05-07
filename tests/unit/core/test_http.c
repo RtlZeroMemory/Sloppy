@@ -336,6 +336,34 @@ static int test_rejects_unsupported_method(void)
     return 0;
 }
 
+static int test_rejects_unsupported_versions(void)
+{
+    static const char* cases[] = {"GET / HTTP/1.2\r\nHost: example.test\r\n\r\n",
+                                  "GET / HTTP/2.0\r\nHost: example.test\r\n\r\n"};
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+        if (!sl_status_is_ok(status)) {
+            return 42;
+        }
+
+        status = parse_request(&arena, cases[index], NULL, &request, &diag);
+        if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL)
+        {
+            return 43 + (int)index;
+        }
+    }
+
+    return 0;
+}
+
 static int test_rejects_non_path_targets(void)
 {
     static const char* cases[] = {
@@ -360,6 +388,33 @@ static int test_rejects_non_path_targets(void)
         {
             return 46 + (int)index;
         }
+    }
+
+    return 0;
+}
+
+static int test_duplicate_non_singleton_headers_preserve_order(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 47;
+    }
+
+    status = parse_request(&arena,
+                           "GET / HTTP/1.1\r\nHost: example.test\r\nX-Trace: one\r\n"
+                           "x-trace: two\r\nAccept: text/plain\r\n\r\n",
+                           NULL, &request, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || request.header_count != 4U) {
+        return 48;
+    }
+    if (expect_str_equal(request.headers[1].value, "one") != 0 ||
+        expect_str_equal(request.headers[2].value, "two") != 0)
+    {
+        return 49;
     }
 
     return 0;
@@ -641,6 +696,35 @@ static int test_request_line_host_and_singleton_policy(void)
     return 0;
 }
 
+static int test_content_length_malformed_and_short_body_rejected(void)
+{
+    static const char* cases[] = {
+        "POST / HTTP/1.1\r\nHost: example.test\r\nContent-Length: abc\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: example.test\r\nContent-Length: 5\r\n\r\nhe"};
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+        if (!sl_status_is_ok(status)) {
+            return 104;
+        }
+
+        status = parse_request(&arena, cases[index], NULL, &request, &diag);
+        if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.body.ptr != NULL)
+        {
+            return 105 + (int)index;
+        }
+    }
+
+    return 0;
+}
+
 static int test_invalid_arguments(void)
 {
     unsigned char storage[1024];
@@ -893,7 +977,9 @@ int main(void)
         {test_supported_method_mapping},
         {test_rejects_invalid_requests},
         {test_rejects_unsupported_method},
+        {test_rejects_unsupported_versions},
         {test_rejects_non_path_targets},
+        {test_duplicate_non_singleton_headers_preserve_order},
         {test_callback_allocation_failure_preserved},
         {test_max_target_length_enforced},
         {test_max_headers_enforced},
@@ -901,6 +987,7 @@ int main(void)
         {test_max_body_length_enforced},
         {test_zero_header_limit_allows_no_headers},
         {test_request_line_host_and_singleton_policy},
+        {test_content_length_malformed_and_short_body_rejected},
         {test_invalid_arguments},
         {test_parsed_path_can_feed_route_matcher},
         {test_stress_repeated_valid_requests_remain_bounded},

@@ -145,6 +145,7 @@ static SlHttpRequestContext test_request_context(const SlHttpRequestHead* reques
     SlHttpRequestContext context = {0};
 
     context.request = request;
+    context.scheme = sl_str_from_cstr("http");
     return context;
 }
 
@@ -3103,6 +3104,159 @@ static int test_request_context_preserves_binary_body_bytes(void)
     return 0;
 }
 
+static int test_request_context_exposes_https_scheme_without_native_handles(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+
+    request.version_major = 1U;
+    request.version_minor = 1U;
+    context = test_request_context(&request);
+    context.scheme = sl_str_from_cstr("https");
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 416;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 417;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-context-https-scheme.js"),
+                          sl_str_from_cstr("globalThis.sloppy_https_scheme = function (ctx) {"
+                                           "  const keys = Object.keys(ctx.connection);"
+                                           "  return { __sloppyResult: true, kind: 'json',"
+                                           "    status: 200, contentType: 'application/json',"
+                                           "    body: { requestScheme: ctx.request.scheme,"
+                                           "      connectionScheme: ctx.connection.scheme,"
+                                           "      secure: ctx.connection.secure,"
+                                           "      unsafe: keys.some((key) =>"
+                                           "        /socket|libuv|tls|native|handle/i.test(key))"
+                                           "    } };"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 418;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_https_scheme"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 419;
+    }
+
+    {
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"requestScheme\":\"https\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"connectionScheme\":\"https\"")) !=
+                0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"secure\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"unsafe\":false")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 420;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_request_context_body_object_is_one_shot(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    static const unsigned char body[] = "{\"ok\":true}";
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
+    SlHttpRequestContext context = {0};
+
+    request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
+    context = test_request_context(&request);
+    context.body_kind = SL_HTTP_REQUEST_BODY_JSON;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 421;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 422;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-context-body-one-shot.js"),
+                sl_str_from_cstr("globalThis.sloppy_body_one_shot = function (ctx) {"
+                                 "  const first = ctx.request.body.text();"
+                                 "  let second = 'not-thrown';"
+                                 "  try { ctx.request.body.json(); }"
+                                 "  catch (error) { second = error instanceof TypeError"
+                                 "      && /already consumed/.test(String(error.message))"
+                                 "      ? 'consumed' : 'wrong'; }"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json', body: {"
+                                 "      first, second, consumed: ctx.request.body.consumed"
+                                 "    } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 423;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_body_one_shot"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 424;
+    }
+
+    {
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"first\":\"{\\\"ok\\\":true}\"")) !=
+                0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"second\":\"consumed\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"consumed\":true")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 425;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_request_context_helper_functions_are_frozen(void)
 {
     unsigned char engine_storage[8192];
@@ -3262,6 +3416,21 @@ static int test_invalid_result_headers_fail_safely(void)
                                            "    'text/plain; charset=utf-8',"
                                            "    headers: { 'Transfer-Encoding': 'chunked' },"
                                            "    body: 'bad' };"
+                                           "};"
+                                           "globalThis.sloppy_invalid_keep_alive_header = function "
+                                           "() {"
+                                           "  return { __sloppyResult: true, kind: 'text',"
+                                           "    status: 200, contentType: "
+                                           "    'text/plain; charset=utf-8',"
+                                           "    headers: { 'Keep-Alive': 'timeout=5' },"
+                                           "    body: 'bad' };"
+                                           "};"
+                                           "globalThis.sloppy_invalid_header_value = function () {"
+                                           "  return { __sloppyResult: true, kind: 'text',"
+                                           "    status: 200, contentType: "
+                                           "    'text/plain; charset=utf-8',"
+                                           "    headers: { 'x-result': 'bad\\u0000value' },"
+                                           "    body: 'bad' };"
                                            "};"),
                           &diag),
                       SL_STATUS_OK) != 0)
@@ -3299,6 +3468,40 @@ static int test_invalid_result_headers_fail_safely(void)
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
         sl_engine_destroy(engine);
         return 91;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_invalid_keep_alive_header"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 92;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
+        sl_engine_destroy(engine);
+        return 93;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_invalid_header_value"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 94;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
+        sl_engine_destroy(engine);
+        return 95;
     }
 
     sl_engine_destroy(engine);
@@ -5167,6 +5370,16 @@ int main(int argc, char** argv)
     }
 
     result = test_request_context_preserves_binary_body_bytes();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_exposes_https_scheme_without_native_handles();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_body_object_is_one_shot();
     if (result != 0) {
         return result;
     }

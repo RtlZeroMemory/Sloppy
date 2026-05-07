@@ -1282,6 +1282,7 @@ fn canonical_config_segment(segment: &str) -> String {
     match segment.to_ascii_uppercase().as_str() {
         "SLOPPY" => "Sloppy".to_string(),
         "SERVER" => "Server".to_string(),
+        "TLS" => "Tls".to_string(),
         "RUNTIME" => "Runtime".to_string(),
         "PROVIDERS" => "Providers".to_string(),
         "SQLITE" => "sqlite".to_string(),
@@ -1296,6 +1297,10 @@ fn canonical_config_segment(segment: &str) -> String {
         "KEEPALIVEIDLETIMEOUTMS" => "KeepAliveIdleTimeoutMs".to_string(),
         "MAXREQUESTSPERCONNECTION" => "MaxRequestsPerConnection".to_string(),
         "REQUESTTIMEOUTMS" => "RequestTimeoutMs".to_string(),
+        "ENABLED" => "Enabled".to_string(),
+        "CERTIFICATEPATH" => "CertificatePath".to_string(),
+        "PRIVATEKEYPATH" => "PrivateKeyPath".to_string(),
+        "PASSPHRASE" => "Passphrase".to_string(),
         "V8MICROTASKDRAINLIMIT" => "V8MicrotaskDrainLimit".to_string(),
         "DATABASE" => "database".to_string(),
         "QUEUECAPACITY" => "queueCapacity".to_string(),
@@ -1336,12 +1341,14 @@ fn config_key_is_sensitive(key: &str) -> bool {
                 | "token"
                 | "apikey"
                 | "api_key"
+                | "passphrase"
                 | "connectionstring"
                 | "connection_string"
         ) || segment.ends_with("secret")
             || segment.ends_with("password")
             || segment.ends_with("token")
             || segment.ends_with("apikey")
+            || segment.ends_with("passphrase")
             || segment.ends_with("connectionstring")
     })
 }
@@ -9142,6 +9149,18 @@ mod tests {
             canonical_config_key("SLOPPY:SERVER:MAXREQUESTSPERCONNECTION"),
             "Sloppy:Server:MaxRequestsPerConnection"
         );
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:TLS:PRIVATEKEYPATH"),
+            "Sloppy:Server:Tls:PrivateKeyPath"
+        );
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:TLS:CERTIFICATEPATH"),
+            "Sloppy:Server:Tls:CertificatePath"
+        );
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:TLS:PASSPHRASE"),
+            "Sloppy:Server:Tls:Passphrase"
+        );
     }
 
     #[test]
@@ -9489,6 +9508,55 @@ export default app;
         assert!(keys[0].sensitive);
         assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
         assert!(!keys[0].value.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
+        let mut config = super::ConfigurationModel {
+            environment: "Development".to_string(),
+            values: std::collections::BTreeMap::new(),
+        };
+        config.set(
+            "Sloppy:Server:Tls:CertificatePath",
+            serde_json::json!("certs/server.crt"),
+            "test",
+        );
+        config.set(
+            "Sloppy:Server:Tls:PrivateKeyPath",
+            serde_json::json!("C:/keys/server.key"),
+            "test",
+        );
+        config.set(
+            "Sloppy:Server:Tls:Passphrase",
+            serde_json::json!("secret"),
+            "test",
+        );
+        let keys = config.plan_keys();
+        assert_eq!(keys.len(), 3);
+        let certificate_path = keys
+            .iter()
+            .find(|key| key.key == "Sloppy:Server:Tls:CertificatePath")
+            .expect("certificate path should be present");
+        let key_path = keys
+            .iter()
+            .find(|key| key.key == "Sloppy:Server:Tls:PrivateKeyPath")
+            .expect("private key path should be present");
+        let passphrase = keys
+            .iter()
+            .find(|key| key.key == "Sloppy:Server:Tls:Passphrase")
+            .expect("passphrase should be present");
+        assert!(!certificate_path.sensitive);
+        assert_eq!(
+            certificate_path.value,
+            serde_json::json!("certs/server.crt")
+        );
+        assert!(!key_path.sensitive);
+        assert_eq!(key_path.value, serde_json::json!("C:/keys/server.key"));
+        assert!(passphrase.sensitive);
+        assert_eq!(passphrase.value, serde_json::json!("<redacted>"));
+        assert!(!keys
+            .iter()
+            .any(|key| key.value.to_string().contains("secret")));
     }
 
     #[test]

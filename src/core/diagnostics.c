@@ -193,6 +193,17 @@ static SlStr sl_diag_http_transport_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_CLOSE_FAILED:
         return sl_diag_literal("SLOPPY_E_HTTP_CLOSE_FAILED",
                                sizeof("SLOPPY_E_HTTP_CLOSE_FAILED") - 1U);
+    case SL_DIAG_HTTP_TLS_CONFIG:
+        return sl_diag_literal("SLOPPY_E_HTTP_TLS_CONFIG", sizeof("SLOPPY_E_HTTP_TLS_CONFIG") - 1U);
+    case SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_HTTP_TLS_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_HTTP_TLS_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_TLS_HANDSHAKE_FAILED",
+                               sizeof("SLOPPY_E_HTTP_TLS_HANDSHAKE_FAILED") - 1U);
+    case SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_TLS_SHUTDOWN_FAILED",
+                               sizeof("SLOPPY_E_HTTP_TLS_SHUTDOWN_FAILED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
@@ -276,6 +287,10 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
     case SL_DIAG_HTTP_WRITE_FAILED:
     case SL_DIAG_HTTP_CLOSE_FAILED:
+    case SL_DIAG_HTTP_TLS_CONFIG:
+    case SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE:
+    case SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED:
+    case SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED:
         return sl_diag_http_transport_code_name(code);
     case SL_DIAG_HTTP_BODY_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
@@ -348,6 +363,10 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
     case SL_DIAG_HTTP_WRITE_FAILED:
     case SL_DIAG_HTTP_CLOSE_FAILED:
+    case SL_DIAG_HTTP_TLS_CONFIG:
+    case SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE:
+    case SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED:
+    case SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED:
     case SL_DIAG_INVALID_HTTP_REQUEST:
     case SL_DIAG_HTTP_HEADER_LIMIT:
     case SL_DIAG_HTTP_UNSUPPORTED_METHOD:

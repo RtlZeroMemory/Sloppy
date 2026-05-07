@@ -48,6 +48,11 @@ suite under every alias. Together, those cases prove the localhost transport lan
   response, final zero-size chunk, omitted `Content-Length` with `Transfer-Encoding:
   chunked`, keep-alive after streaming completion, streaming backpressure rejection, and
   no-write-after-terminal cleanup paths;
+- HTTPS loopback with runtime-generated local certificate/key material, OpenSSL-backed
+  handshake, handler dispatch, and `https` connection scheme propagation;
+- TLS failure evidence for missing/invalid certificate and key paths, encrypted private
+  key passphrase missing/wrong/correct handling, plaintext handshake failure cleanup before
+  dispatch, and shutdown cleanup with an active TLS connection;
 - client disconnect, timeout, shutdown, response-capacity failure, and cleanup-once paths.
 
 HTTP-25.F also registers matrix-aligned targeted aliases over the same bounded executable:
@@ -59,6 +64,8 @@ HTTP-25.F also registers matrix-aligned targeted aliases over the same bounded e
 - `conformance.transport.chunked_request`;
 - `conformance.transport.streaming_response`;
 - `conformance.transport.backpressure`;
+- `conformance.transport.https_loopback`;
+- `conformance.transport.https_tls_negative`;
 - `conformance.transport.shutdown_cancel`;
 - `smoke.transport.keep_alive_streaming_bounded`.
 
@@ -68,9 +75,10 @@ responses, repeated malformed requests, and shutdown/cleanup counters. It is str
 evidence only: no throughput, latency, scalability, external-runtime comparison, or
 performance claim.
 
-This is bounded loopback transport evidence only. It is not TLS, HTTP/2, HTTP/3,
-WebSockets, SSE, multipart/file upload, compression, static files, reverse-proxy,
-production-edge, benchmark, public streaming API, or V8 evidence.
+This is bounded loopback transport evidence only. The HTTPS case proves the current
+OpenSSL server wrapper on localhost, not production TLS hardening. This is not HTTP/2,
+HTTP/3, ALPN, mTLS, WebSockets, SSE, multipart/file upload, compression, static files,
+reverse-proxy, production-edge, benchmark, public streaming API, or V8 evidence.
 
 ## V8-Gated HTTP Cases
 

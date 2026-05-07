@@ -1337,7 +1337,13 @@ bool http_v8_status_supported(uint16_t status)
 
 bool http_v8_header_value_safe(const std::string& value)
 {
-    return value.find('\r') == std::string::npos && value.find('\n') == std::string::npos;
+    for (char raw_ch : value) {
+        unsigned char ch = static_cast<unsigned char>(raw_ch);
+        if ((ch < 0x20U && ch != '\t') || ch == 0x7FU) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool http_v8_header_value_view_safe(SlStr value)
@@ -1347,7 +1353,8 @@ bool http_v8_header_value_view_safe(SlStr value)
     }
 
     for (size_t index = 0U; index < value.length; index += 1U) {
-        if (value.ptr[index] == '\r' || value.ptr[index] == '\n') {
+        unsigned char ch = static_cast<unsigned char>(value.ptr[index]);
+        if ((ch < 0x20U && ch != '\t') || ch == 0x7FU) {
             return false;
         }
     }
@@ -1390,7 +1397,7 @@ bool http_v8_response_header_managed(const std::string& name)
     }
 
     return lowered == "connection" || lowered == "content-type" || lowered == "content-length" ||
-           lowered == "transfer-encoding";
+           lowered == "transfer-encoding" || lowered == "keep-alive";
 }
 
 SlStatus http_v8_write_invalid_headers_diag(SlEngine* engine, SlDiag* out_diag)
@@ -1702,8 +1709,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                          sl_str_from_cstr("http")) ||
         !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SCHEME,
                                          request_context->scheme) ||
-        !http_v8_set_bool_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
-                                       false))
+        !http_v8_set_bool_property_key(
+            isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
+            sl_str_equal(request_context->scheme, sl_str_from_cstr("https"))))
     {
         return false;
     }
@@ -1892,8 +1900,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor has an invalid contentType",
                             sizeof("JavaScript result descriptor has an invalid contentType") - 1U),
-            http_v8_literal("Content-Type must not contain CR or LF characters.",
-                            sizeof("Content-Type must not contain CR or LF characters.") - 1U));
+            http_v8_literal("Content-Type must not contain control characters.",
+                            sizeof("Content-Type must not contain control characters.") - 1U));
     }
 
     v8::Local<v8::Value> body;
