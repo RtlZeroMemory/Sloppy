@@ -173,8 +173,8 @@ static int test_small_builder_sso_contract(void)
     if (expect_status(sl_byte_builder_append_byte(&copied_byte_builder, (unsigned char)'!'),
                       SL_STATUS_OK) != 0 ||
         expect_bytes(sl_byte_builder_view(&byte_builder), prefix, sizeof(prefix)) != 0 ||
-        expect_bytes(sl_byte_builder_view(&copied_byte_builder), (const unsigned char*)"sso!", 4U) !=
-            0)
+        expect_bytes(sl_byte_builder_view(&copied_byte_builder), (const unsigned char*)"sso!",
+                     4U) != 0)
     {
         return 77;
     }
@@ -357,9 +357,11 @@ static int test_string_builder_formatting_and_nul(void)
 {
     char storage[64];
     char exact[3];
+    char format_storage[SL_STRING_FORMAT_F64_CAPACITY];
     SlStringBuilder builder;
     SlStringBuilder exact_builder;
     SlStr view;
+    SlStr formatted;
     SlStr sentinel = sl_str_from_cstr("sentinel");
 
     /* --- Arrange. --- */
@@ -377,21 +379,69 @@ static int test_string_builder_formatting_and_nul(void)
         expect_status(sl_string_builder_append_char(&builder, ':'), SL_STATUS_OK) != 0 ||
         expect_status(sl_string_builder_append_i64(&builder, -17), SL_STATUS_OK) != 0 ||
         expect_status(sl_string_builder_append_char(&builder, ':'), SL_STATUS_OK) != 0 ||
-        expect_status(sl_string_builder_append_size(&builder, 5U), SL_STATUS_OK) != 0)
+        expect_status(sl_string_builder_append_size(&builder, 5U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_char(&builder, ':'), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_f64(&builder, 3.5), SL_STATUS_OK) != 0)
     {
         return 21;
     }
 
-    if (expect_str(sl_string_builder_view(&builder), "ab:42:-17:5", 11U) != 0) {
+    if (expect_str(sl_string_builder_view(&builder), "ab:42:-17:5:3.5", 15U) != 0) {
         return 22;
     }
 
     /* --- Assert boundary NUL behavior. --- */
     view = sentinel;
     if (expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0 ||
-        view.ptr[view.length] != '\0' || expect_str(view, "ab:42:-17:5", 11U) != 0)
+        view.ptr[view.length] != '\0' || expect_str(view, "ab:42:-17:5:3.5", 15U) != 0)
     {
         return 23;
+    }
+
+    formatted = sentinel;
+    if (expect_status(
+            sl_string_format_u64(format_storage, sizeof(format_storage), UINT64_MAX, &formatted),
+            SL_STATUS_OK) != 0 ||
+        expect_str(formatted, "18446744073709551615", 20U) != 0 ||
+        format_storage[formatted.length] != '\0')
+    {
+        return 24;
+    }
+
+    formatted = sentinel;
+    if (expect_status(sl_string_format_i64(format_storage, sizeof(format_storage),
+                                           -9223372036854775807LL - 1LL, &formatted),
+                      SL_STATUS_OK) != 0 ||
+        expect_str(formatted, "-9223372036854775808", 20U) != 0 ||
+        format_storage[formatted.length] != '\0')
+    {
+        return 25;
+    }
+
+    formatted = sentinel;
+    if (expect_status(
+            sl_string_format_f32(format_storage, sizeof(format_storage), 0.25F, &formatted),
+            SL_STATUS_OK) != 0 ||
+        expect_str(formatted, "0.25", 4U) != 0 || format_storage[formatted.length] != '\0')
+    {
+        return 26;
+    }
+
+    formatted = sentinel;
+    if (expect_status(sl_string_format_f64(format_storage, sizeof(format_storage), 3.5, &formatted),
+                      SL_STATUS_OK) != 0 ||
+        expect_str(formatted, "3.5", 3U) != 0 || format_storage[formatted.length] != '\0')
+    {
+        return 27;
+    }
+
+    formatted = sentinel;
+    if (expect_status(sl_string_format_f64(format_storage, SL_STRING_FORMAT_F64_CAPACITY - 1U, 3.5,
+                                           &formatted),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        formatted.ptr != sentinel.ptr || formatted.length != sentinel.length)
+    {
+        return 28;
     }
 
     if (expect_status(sl_string_builder_init_fixed(&exact_builder, exact, sizeof(exact)),
@@ -399,7 +449,7 @@ static int test_string_builder_formatting_and_nul(void)
         expect_status(sl_string_builder_append_str(&exact_builder, sl_str_from_parts("abc", 3U)),
                       SL_STATUS_OK) != 0)
     {
-        return 24;
+        return 29;
     }
 
     view = sentinel;
@@ -408,7 +458,7 @@ static int test_string_builder_formatting_and_nul(void)
         view.ptr != sentinel.ptr || view.length != sentinel.length ||
         expect_str(sl_string_builder_view(&exact_builder), "abc", 3U) != 0)
     {
-        return 25;
+        return 30;
     }
 
     return 0;

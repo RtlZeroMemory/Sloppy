@@ -512,6 +512,7 @@ set(
     tests/unit/core/test_execution_domain.c
     tests/unit/core/test_features.c
     tests/unit/core/test_crypto.c
+    tests/unit/core/test_fs.c
     tests/unit/core/test_os.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
@@ -536,55 +537,29 @@ set(
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c
     tests/unit/data/test_sqlite.c
+    tests/fuzz/fuzz_plan_parse.c
+    tests/fuzz/fuzz_route_pattern.c
+    tests/fuzz/fuzz_http_request.c
+    tests/fuzz/fuzz_diagnostics_render.c
+    tests/fuzz/fuzz_memory_primitives.c
     benchmarks/bench_main.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_memory.c)
 
-set(SLOPPY_MEMORY_ANALYSIS_SOURCES src/main.c)
-foreach(sloppy_core_source IN LISTS SLOPPY_CORE_SOURCES)
-    if(sloppy_core_source MATCHES "^src/core/")
-        list(APPEND SLOPPY_MEMORY_ANALYSIS_SOURCES "${sloppy_core_source}")
+if(CMAKE_CXX_COMPILER)
+    list(
+        APPEND
+        SLOPPY_C_LINT_SOURCES
+        tests/unit/core/test_net_tcp_client.cc
+        tests/unit/core/test_async_backend_libuv.cc
+        tests/unit/core/test_source_loc_cpp.cpp)
+    if(WIN32)
+        list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/core/test_net_local_win32.cc)
+    else()
+        list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/core/test_net_local_posix.cc)
     endif()
-endforeach()
-list(
-    APPEND
-    SLOPPY_MEMORY_ANALYSIS_SOURCES
-    tests/unit/core/test_status.c
-    tests/unit/core/test_source_loc.c
-    tests/unit/core/test_string.c
-    tests/unit/core/test_bytes.c
-    tests/unit/core/test_cancellation.c
-    tests/unit/core/test_checked_math.c
-    tests/unit/core/test_arena.c
-    tests/unit/core/test_builder.c
-    tests/unit/core/test_intern.c
-    tests/unit/core/test_scope.c
-    tests/unit/core/test_resource.c
-    tests/unit/core/test_capability.c
-    tests/unit/core/test_execution_domain.c
-    tests/unit/core/test_features.c
-    tests/unit/core/test_crypto.c
-    tests/unit/core/test_os.c
-    tests/unit/core/test_app_host.c
-    tests/unit/core/test_loop.c
-    tests/unit/core/test_async.c
-    tests/unit/core/test_async_backend.c
-    tests/unit/core/test_provider_executor.c
-    tests/unit/core/test_worker_pool.c
-    tests/unit/core/test_http.c
-    tests/unit/core/test_http_backend.c
-    tests/unit/core/test_http_context.c
-    tests/unit/core/test_http_dispatch.c
-    tests/unit/core/test_http_response.c
-    tests/unit/core/test_route.c
-    tests/unit/core/test_plan.c
-    tests/unit/core/test_plan_parse.c
-    tests/unit/core/test_runtime_contract.c
-    tests/unit/core/test_engine.c
-    tests/unit/core/test_diagnostics.c
-    tests/unit/core/test_assert.c
-    tests/unit/core/test_assert_enabled_under_ndebug.c)
+endif()
 
 if(SLOPPY_ENABLE_V8)
     list(
@@ -595,12 +570,19 @@ if(SLOPPY_ENABLE_V8)
         tests/integration/http_dispatch/test_http_dispatch_execution.c)
 endif()
 
+set(SLOPPY_MEMORY_ANALYSIS_SOURCES ${SLOPPY_C_LINT_SOURCES})
+
+add_library(sloppy_ryu STATIC third_party/ryu/ryu/d2s.c third_party/ryu/ryu/f2s.c)
+target_include_directories(sloppy_ryu PUBLIC "${PROJECT_SOURCE_DIR}/third_party/ryu")
+target_compile_features(sloppy_ryu PUBLIC c_std_17)
+
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy_core PUBLIC c_std_17)
 target_link_libraries(
     sloppy_core
-    PRIVATE yyjson::yyjson
+    PRIVATE sloppy_ryu
+            yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
             ${SLOPPY_LIBUV_TARGET}
             ${SLOPPY_XXHASH_TARGET}
@@ -798,6 +780,7 @@ sloppy_apply_warnings(sloppy_core)
 sloppy_apply_sanitizers(sloppy)
 sloppy_apply_sanitizers(sloppy_bench)
 sloppy_apply_sanitizers(sloppy_core)
+sloppy_apply_sanitizers(sloppy_ryu)
 
 file(
     GLOB_RECURSE

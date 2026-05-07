@@ -43,6 +43,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.changed.outputs.docs_only }}
       simd_relevant: ${{ steps.changed.outputs.simd_relevant }}
+      analysis_relevant: ${{ steps.changed.outputs.analysis_relevant }}
 
     steps:
       - name: Checkout
@@ -59,6 +60,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
             echo "simd_relevant=false" >> "$GITHUB_OUTPUT"
+            echo "analysis_relevant=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -78,8 +80,10 @@ jobs:
 
           docs_only=true
           simd_relevant=false
+          analysis_relevant=false
           if [ "${#files[@]}" -eq 0 ]; then
             docs_only=false
+            analysis_relevant=true
           fi
 
           for file in "${files[@]}"; do
@@ -100,10 +104,18 @@ jobs:
                 simd_relevant=true
                 ;;
             esac
+
+            case "$file" in
+              .clang-tidy|.github/workflows/*|CMakeLists.txt|CMakePresets.json|vcpkg.json|vcpkg-configuration.json|\
+              include/**|src/**|tests/**|benchmarks/**|compiler/**|stdlib/**|examples/**|tools/**|third_party/**)
+                analysis_relevant=true
+                ;;
+            esac
           done
 
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           echo "simd_relevant=$simd_relevant" >> "$GITHUB_OUTPUT"
+          echo "analysis_relevant=$analysis_relevant" >> "$GITHUB_OUTPUT"
 
   ci-fast:
     name: ci-fast / static
@@ -897,7 +909,8 @@ jobs:
     needs: changes
     if: |
       (github.event_name == 'workflow_dispatch' && inputs.advanced_analysis == 'true') ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'memory-analysis'))
+      (github.event_name == 'pull_request' && (needs.changes.outputs.analysis_relevant == 'true' || contains(github.event.pull_request.labels.*.name, 'full-ci') || contains(github.event.pull_request.labels.*.name, 'memory-analysis'))) ||
+      (github.event_name == 'push' && needs.changes.outputs.analysis_relevant == 'true')
 
     steps:
       - name: Checkout
@@ -984,7 +997,7 @@ jobs:
             vcpkg_installed
           key: advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
-      - name: Run clang-tidy analyzer profile
+      - name: Run repo-wide clang-tidy analyzer profile
         shell: bash
         run: cmake --build --preset linux-clang --target sloppy_memory_analysis
 

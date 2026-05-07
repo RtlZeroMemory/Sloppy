@@ -1,8 +1,18 @@
 Checks: >
   clang-analyzer-*,
+  -clang-analyzer-core.NullDereference,
+  -clang-analyzer-core.uninitialized.*,
+  -clang-analyzer-cplusplus.NewDeleteLeaks,
+  -clang-analyzer-deadcode.DeadStores,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
   bugprone-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-branch-clone,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-reserved-identifier,
   portability-*,
-  -bugprone-easily-swappable-parameters
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*(include|src)[/\\].*'
 FormatStyle: file

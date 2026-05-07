@@ -77,6 +77,34 @@ bool sl_str_equal(SlStr left, SlStr right)
     return memcmp(left.ptr, right.ptr, left.length) == 0;
 }
 
+int sl_str_compare(SlStr left, SlStr right)
+{
+    size_t common = left.length < right.length ? left.length : right.length;
+    int result = 0;
+
+    if (!sl_str_has_valid_storage(left) || !sl_str_has_valid_storage(right)) {
+        if (!sl_str_has_valid_storage(left) && !sl_str_has_valid_storage(right)) {
+            if (left.length == right.length) {
+                return 0;
+            }
+            return left.length < right.length ? -1 : 1;
+        }
+        return !sl_str_has_valid_storage(left) ? -1 : 1;
+    }
+
+    if (common != 0U) {
+        result = memcmp(left.ptr, right.ptr, common);
+        if (result != 0) {
+            return result < 0 ? -1 : 1;
+        }
+    }
+
+    if (left.length == right.length) {
+        return 0;
+    }
+    return left.length < right.length ? -1 : 1;
+}
+
 bool sl_str_starts_with(SlStr str, SlStr prefix)
 {
     if (prefix.length == 0U) {
@@ -251,6 +279,48 @@ SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out)
     }
     result.ptr = (char*)copied;
     result.length = src.length;
+    *out = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_str_concat_to_arena(SlArena* arena, SlStr left, SlStr right, SlOwnedStr* out)
+{
+    size_t length = 0U;
+    size_t index = 0U;
+    void* copied = NULL;
+    SlOwnedStr result = {NULL, 0U};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || !sl_str_has_valid_storage(left) ||
+        !sl_str_has_valid_storage(right))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(left.length, right.length, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (length == 0U) {
+        *out = result;
+        return sl_status_ok();
+    }
+
+    status = sl_arena_alloc(arena, length, _Alignof(char), &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < left.length; index += 1U) {
+        ((char*)copied)[index] = left.ptr[index];
+    }
+    for (index = 0U; index < right.length; index += 1U) {
+        ((char*)copied)[left.length + index] = right.ptr[index];
+    }
+
+    result.ptr = (char*)copied;
+    result.length = length;
     *out = result;
     return sl_status_ok();
 }

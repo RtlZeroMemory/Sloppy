@@ -16,7 +16,6 @@ if [ "${1:-}" = "--self-test" ]; then
 #include <string.h>
 size_t ok_strlen(const char* text) { return strlen(text); }
 int ok_memcmp(const char* a, const char* b, size_t n) { return memcmp(a, b, n); }
-void ok_boundary(char* dst, const char* src, size_t n) { memcpy(dst, src, n); } /* sloppy-allow: c-memory-boundary #760 fixture boundary copy; remove when fixture is replaced */
 EOF
     cat > "$valid/tests/unit/core/test_ok.c" <<'EOF'
 /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): sloppy-analysis-suppress: #805 fixture suppression; remove when fixture is replaced */
@@ -67,9 +66,7 @@ is_allowed_alloc_path() {
 is_allowed_memory_boundary() {
     local file="$1"
     local function_name="$2"
-    local line="$3"
 
-    [[ "$line" =~ sloppy-allow:[[:space:]]c-memory-boundary[[:space:]]#[0-9]+[[:space:]].*\;[[:space:]]remove[[:space:]]when[[:space:]].+ ]] && return 0
     [[ "$file" == "src/core/string.c" && "$function_name" == "strlen" ]] && return 0
     [[ "$function_name" == "memcmp" && ( "$file" == "src/core/string.c" || "$file" == "src/core/bytes.c" ) ]] && return 0
     return 1
@@ -175,7 +172,7 @@ while IFS= read -r file; do
 
         if is_implementation_path "$file" &&
             [[ "$line" =~ (^|[^[:alnum:]_])(snprintf|strlen|memcpy|memmove|memcmp|memset)[[:space:]]*\( ]] &&
-            ! is_allowed_memory_boundary "$file" "${BASH_REMATCH[2]}" "$allowance_context"; then
+            ! is_allowed_memory_boundary "$file" "${BASH_REMATCH[2]}"; then
             add_finding violations "$file" "$line_number" "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." "${BASH_REMATCH[2]}"
         fi
 

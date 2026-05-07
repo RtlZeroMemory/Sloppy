@@ -28,21 +28,6 @@ function New-Finding {
     }
 }
 
-function Test-AllowComment {
-    param(
-        [string]$Line,
-        [string]$Rule
-    )
-
-    if ($Line -notmatch 'sloppy-allow:\s*([a-z0-9_-]+)\s+(.+)$') {
-        return $false
-    }
-
-    $allowedRule = $Matches[1]
-    $reason = $Matches[2].Trim()
-    return ($allowedRule -eq $Rule -or $allowedRule -eq "any") -and $reason.Length -gt 0
-}
-
 function Get-RustSourceFiles {
     if (-not (Test-Path -LiteralPath $CompilerSrc)) {
         return @()
@@ -102,14 +87,13 @@ foreach ($file in Get-RustSourceFiles) {
 
         if (-not $insideTestModule) {
             foreach ($rule in $rules) {
-                if (($line -match $rule.Pattern) -and -not (Test-AllowComment -Line $line -Rule $rule.Rule)) {
+                if ($line -match $rule.Pattern) {
                     $violations += New-Finding -File $relativePath -Line $lineNumber -Rule $rule.Rule -Message $rule.Message
                 }
             }
 
             if (($line -match '\bprintln!\s*\(' -or $line -match '\beprintln!\s*\(') -and
-                -not (Test-CliOutputAllowed $relativePath) -and
-                -not (Test-AllowComment -Line $line -Rule "RS007")) {
+                -not (Test-CliOutputAllowed $relativePath)) {
                 $violations += New-Finding `
                     -File $relativePath `
                     -Line $lineNumber `
@@ -118,8 +102,7 @@ foreach ($file in Get-RustSourceFiles) {
             }
 
             if ((Test-ArtifactOrderingSensitivePath $relativePath) -and
-                ($line -match '\bHashMap\b' -or $line -match '\bHashSet\b') -and
-                -not (Test-AllowComment -Line $line -Rule "RS008")) {
+                ($line -match '\bHashMap\b' -or $line -match '\bHashSet\b')) {
                 $violations += New-Finding `
                     -File $relativePath `
                     -Line $lineNumber `
@@ -146,7 +129,7 @@ if (Test-Path -LiteralPath $goldenRoot) {
         $lineNumber = 0
         foreach ($line in Get-Content -LiteralPath $file.FullName) {
             $lineNumber += 1
-            if (($line -match $absolutePathPattern) -and -not (Test-AllowComment -Line $line -Rule "RS009")) {
+            if ($line -match $absolutePathPattern) {
                 $violations += New-Finding `
                     -File $relativePath `
                     -Line $lineNumber `

@@ -37,10 +37,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   <a id="postgresql-provider-copy-helpers"></a>PostgreSQL cleanup should move
   `src/data/postgres.c` local copy helpers `sl_pg_copy_str`, `sl_pg_copy_cstr`,
   `sl_pg_safe_config_hint`, `sl_pg_copy_columns`, and pool connection-string copies toward
-  shared arena copy/C-string boundary helpers. `sl_pg_param_text` integer/float formatting
-  still uses `snprintf` into local fixed buffers; add a shared bounded numeric formatting
-  helper before rewriting that path. Leave direct libpq C-string adapters in provider
-  boundary code until the shared helper exists.
+  shared arena copy/C-string boundary helpers. Direct libpq C-string adapters should stay
+  local to provider boundary code unless a shared dependency-boundary adapter is scoped.
   <a id="sqlserver-odbc-redaction"></a>SQL Server cleanup should move
   `src/data/sqlserver.c` local copy helpers `sl_sqlsrv_copy_str`, `sl_sqlsrv_copy_cstr`,
   `sl_sqlsrv_safe_config_hint`, doctor-result copies in `sl_sqlsrv_set_doctor`, pool

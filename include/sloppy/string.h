@@ -49,6 +49,7 @@ SlStr sl_str_from_cstr(const char* cstr);
 SlStr sl_str_empty(void);
 bool sl_str_is_empty(SlStr str);
 bool sl_str_equal(SlStr left, SlStr right);
+int sl_str_compare(SlStr left, SlStr right);
 bool sl_str_starts_with(SlStr str, SlStr prefix);
 bool sl_str_ends_with(SlStr str, SlStr suffix);
 
@@ -84,6 +85,14 @@ SlStatus sl_str_hash(SlStr str, uint64_t* out_hash);
  * allocate. On failure, `out` is left unchanged.
  */
 SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out);
+
+/*
+ * Concatenates two valid string views into arena-owned storage.
+ *
+ * Empty output does not allocate. Non-empty inputs require non-NULL storage. On failure,
+ * `out` is left unchanged.
+ */
+SlStatus sl_str_concat_to_arena(SlArena* arena, SlStr left, SlStr right, SlOwnedStr* out);
 
 /*
  * Validates that `str` can safely cross a C-string boundary.

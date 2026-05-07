@@ -681,7 +681,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     }
     if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1U, 0U, &attribute_size) ||
         !UpdateProcThreadAttribute(startup.lpAttributeList, 0U, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                   inherited_handles, handle_list_size, NULL, NULL))
+                                   (void*)inherited_handles, handle_list_size, NULL, NULL))
     {
         sl_os_win32_close_handle(&stdout_read);
         sl_os_win32_close_handle(&stdout_write);
@@ -955,7 +955,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         goto cleanup_fail;
     }
     if (!UpdateProcThreadAttribute(startup.lpAttributeList, 0U, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                   inherited_handles, handle_list_size, NULL, NULL))
+                                   (void*)inherited_handles, handle_list_size, NULL, NULL))
     {
         status = sl_status_from_code(SL_STATUS_INTERNAL);
         goto cleanup_fail;

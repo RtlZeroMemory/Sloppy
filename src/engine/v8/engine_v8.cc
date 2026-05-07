@@ -29,7 +29,6 @@
 
 #include <cstdint>
 #include <chrono>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -257,10 +256,7 @@ std::string sl_v8_stack_summary(v8::Isolate* isolate, v8::Local<v8::Context> con
 
 bool sl_v8_str_equals_string(SlStr left, const std::string& right)
 {
-    return left.length == right.size() &&
-           (left.length == 0U ||
-            /* sloppy-allow: c-memory-boundary #760 V8 compare; remove when helper lands */
-            (left.ptr != nullptr && memcmp(left.ptr, right.data(), left.length) == 0));
+    return sl_str_equal(left, sl_str_from_parts(right.data(), right.size()));
 }
 
 int sl_v8_source_map_base64_value(char ch)

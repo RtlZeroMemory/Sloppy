@@ -87,9 +87,9 @@ for SIMD backend PRs and report scalar/SIMD parity plus seed replay, not perform
 stress/torture, live-provider checks, package checks, V8 checks, and benchmarks remain
 separate opt-in evidence unless a scoped task promotes a bounded target.
 
-Advanced static analysis is separate from default script lint. A clean clang-tidy/analyzer
-run is useful evidence for memory-sensitive PRs, but skipped or unavailable advanced
-analysis must not be described as default pass evidence.
+Advanced static analysis is separate from default script lint. The repo-wide
+clang-tidy/analyzer and CodeQL lanes are mandatory for non-doc analysis-relevant PRs, but
+skipped or unavailable advanced analysis must not be described as default pass evidence.
 
 Benchmark evidence must include the command, build configuration,
 hardware/context, workload, and output. It must not be used to imply production

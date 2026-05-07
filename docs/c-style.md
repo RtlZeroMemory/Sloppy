@@ -169,9 +169,9 @@ Prefer capability and platform abstraction APIs over platform macros in core mod
 
 `.clang-tidy` is part of the project contract. It starts with analyzer, bugprone,
 portability, and high-signal bug checks. The enforceable advanced-analysis baseline is the
-memory/core `sloppy_memory_analysis` target; the broader full-repo target remains
-exploratory until its findings are triaged. Generic style-noise checks stay out of the
-first baseline unless a scoped task proves they catch a Sloppy invariant.
+repo-wide `sloppy_memory_analysis` target over configured native sources, unit tests, fuzz
+seed-replay targets, and benchmark harnesses in the current compile database. Generic
+style-noise checks stay out unless a scoped task proves they catch a Sloppy invariant.
 
 New warnings should be fixed or explicitly documented. CI treats warnings as failures for
 configured gates. `NOLINT` suppressions require `sloppy-analysis-suppress: #issue reason;
@@ -205,7 +205,7 @@ Every new C module needs:
 
 - `clang-format`;
 - `clang-tidy`;
-- clang-tidy/Clang Static Analyzer evidence for memory-sensitive changes when practical;
+- clang-tidy/Clang Static Analyzer evidence for non-doc analysis-relevant changes;
 - CMake build;
 - CTest;
 - warnings-as-errors in CI;
@@ -229,4 +229,3 @@ C code is acceptable when:
 
 - Exact comment template for public headers.
 - Whether to require include-what-you-use later.
-- How strict clang-tidy should become after Phase 1.

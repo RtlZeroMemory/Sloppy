@@ -1756,10 +1756,10 @@ static bool sl_http_transport_parse_chunk_size_line(SlStr line, size_t* out_size
             digit = (size_t)(ch - '0');
         }
         else if (ch >= 'a' && ch <= 'f') {
-            digit = (size_t)(ch - 'a' + 10U);
+            digit = (size_t)(ch - (unsigned char)'a') + 10U;
         }
         else if (ch >= 'A' && ch <= 'F') {
-            digit = (size_t)(ch - 'A' + 10U);
+            digit = (size_t)(ch - (unsigned char)'A') + 10U;
         }
         else {
             return false;

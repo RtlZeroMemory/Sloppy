@@ -32,7 +32,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 128U
@@ -247,12 +246,8 @@ typedef struct SlCliOptions
 
 static SlCliSpan sl_cli_span_cstr(const char* text)
 {
-    SlCliSpan span = {text, 0U};
-    if (text != NULL) {
-        /* sloppy-allow: c-memory-boundary #760 CLI argv; remove when CLI uses SlStr */
-        span.length = strlen(text);
-    }
-    return span;
+    SlStr str = sl_str_from_cstr(text);
+    return (SlCliSpan){str.ptr, str.length};
 }
 
 static SlStr sl_cli_span_str(SlCliSpan span)
@@ -1531,15 +1526,7 @@ static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* v
 
 static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
 {
-    /* sloppy-allow: c-memory-boundary #760 static suffix; remove when suffix is SlStr */
-    size_t suffix_length = strlen(suffix);
-
-    if (span.length < suffix_length) {
-        return false;
-    }
-
-    /* sloppy-allow: c-memory-boundary #760 checked suffix compare; remove when suffix is SlStr */
-    return memcmp(span.ptr + span.length - suffix_length, suffix, suffix_length) == 0;
+    return sl_str_ends_with(sl_cli_span_str(span), sl_str_from_cstr(suffix));
 }
 
 static bool sl_run_path_component_is_safe(SlCliSpan component)
@@ -1583,8 +1570,8 @@ static bool sl_run_relative_artifact_path_is_safe(SlCliSpan leaf)
 static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlCliSpan leaf)
 {
     SlStringBuilder builder = {0};
+    SlStr dir_str = sl_str_from_cstr(dir);
     SlStr joined = {0};
-    size_t dir_length = 0U;
     size_t index = 0U;
     bool needs_separator = true;
     SlStatus status;
@@ -1597,19 +1584,18 @@ static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlC
         return false;
     }
 
-    /* sloppy-allow: c-memory-boundary #760 process CWD path; remove when roots are SlStr */
-    dir_length = strlen(dir);
-    if (dir_length == 0U) {
+    if (dir_str.length == 0U) {
         return false;
     }
 
-    needs_separator = dir[dir_length - 1U] != '/' && dir[dir_length - 1U] != '\\';
+    needs_separator =
+        dir_str.ptr[dir_str.length - 1U] != '/' && dir_str.ptr[dir_str.length - 1U] != '\\';
 
     status = sl_string_builder_init_fixed(&builder, buffer, capacity);
     if (!sl_status_is_ok(status)) {
         return false;
     }
-    status = sl_string_builder_append_cstr(&builder, dir);
+    status = sl_string_builder_append_str(&builder, dir_str);
     if (!sl_status_is_ok(status)) {
         return false;
     }
@@ -1665,7 +1651,6 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
 static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expected)
 {
     const char* text = NULL;
-    size_t expected_length = 0U;
     size_t text_length = 0U;
 
     if (value == NULL || expected == NULL || !yyjson_is_str(value)) {
@@ -1674,12 +1659,9 @@ static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expect
 
     text = yyjson_get_str(value);
     text_length = yyjson_get_len(value);
-    /* sloppy-allow: c-memory-boundary #760 JSON literal; remove when callers pass SlStr */
-    expected_length = strlen(expected);
 
-    return text != NULL && text_length == expected_length &&
-           /* sloppy-allow: c-memory-boundary #760 yyjson compare; remove when literal is SlStr */
-           memcmp(text, expected, expected_length) == 0;
+    return text != NULL &&
+           sl_str_equal(sl_str_from_parts(text, text_length), sl_str_from_cstr(expected));
 }
 
 static bool sl_run_json_string_equals_literal(yyjson_val* value, SlStr expected)
@@ -2092,10 +2074,7 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
     SlRunSha256 ctx;
     size_t index = 0U;
 
-    if (expected.length != 71U || expected.ptr == NULL ||
-        /* sloppy-allow: c-memory-boundary #760 digest prefix; remove when parser is factored */
-        memcmp(expected.ptr, "sha256:", sizeof("sha256:") - 1U) != 0)
-    {
+    if (expected.length != 71U || !sl_str_starts_with(expected, SL_STR_LITERAL("sha256:"))) {
         return false;
     }
 
@@ -2115,8 +2094,7 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
         actual[7U + (index * 2U) + 1U] = hex[digest[index] & 0x0FU];
     }
 
-    /* sloppy-allow: c-memory-boundary #760 fixed digest compare; remove when parser is factored */
-    return memcmp(expected.ptr, actual, sizeof(actual)) == 0;
+    return sl_str_equal(expected, sl_str_from_parts(actual, sizeof(actual)));
 }
 
 static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* diag)
@@ -3509,27 +3487,7 @@ static bool sl_cli_capability_allows(SlCliSpan access, SlCliSpan operation)
 
 static int sl_cli_span_compare(SlCliSpan left, SlCliSpan right)
 {
-    size_t common = left.length < right.length ? left.length : right.length;
-    int result = 0;
-
-    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U)) {
-        if (left.ptr == right.ptr) {
-            return 0;
-        }
-        return left.ptr == NULL ? -1 : 1;
-    }
-
-    if (common != 0U) {
-        /* sloppy-allow: c-memory-boundary #760 route ordering; remove when SlStr compare exists */
-        result = memcmp(left.ptr, right.ptr, common);
-        if (result != 0) {
-            return result < 0 ? -1 : 1;
-        }
-    }
-    if (left.length == right.length) {
-        return 0;
-    }
-    return left.length < right.length ? -1 : 1;
+    return sl_str_compare(sl_cli_span_str(left), sl_cli_span_str(right));
 }
 
 static int sl_cli_route_compare(const SlCliRoute* left, const SlCliRoute* right)
