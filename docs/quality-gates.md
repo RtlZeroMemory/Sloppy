@@ -124,7 +124,8 @@ contain historical or fake marker text when that text is clearly scoped.
 - C/runtime changes: configure, build, test, format-check, lint, and applicable
   V8, advanced static analysis, or sanitizer lanes.
 - Package or release tooling changes: package smoke outside the checkout, plus
-  artifact hygiene.
+  artifact hygiene. Package-smoke CI must stay path-gated so ordinary tooling/docs PRs do
+  not pull a full package build into the fast path.
 
 ## Mandatory Sanitizer And Fuzz Evidence
 

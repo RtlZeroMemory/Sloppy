@@ -1,6 +1,5 @@
 param(
-    [ValidateSet("doctor", "configure", "build", "test", "clean", "format-check", "lint", "analyze", "all")]
-    [string]$Command = "all",
+    [string]$Command = "help",
 
     [string]$Preset = "windows-dev",
 
@@ -12,6 +11,10 @@ param(
     [string]$V8Mode = "AUTO",
 
     [string]$V8Root,
+
+    [string]$PackagePath = "",
+
+    [string]$PackageMetadataPath = "",
 
     [switch]$FreshConfigure
 )
@@ -38,6 +41,37 @@ function Invoke-Native {
     if ($LASTEXITCODE -ne 0) {
         throw "$File failed with exit code $LASTEXITCODE"
     }
+}
+
+function Write-DevHelp {
+    Write-Host "Usage: .\tools\windows\dev.ps1 <command> [options]"
+    Write-Host ""
+    Write-Host "Commands:"
+    Write-Host "  doctor        Validate required and optional dependencies."
+    Write-Host "  configure     Configure the selected CMake preset."
+    Write-Host "  build         Build the selected CMake preset."
+    Write-Host "  test          Run CTest and compiler tests."
+    Write-Host "  lint          Run repository standards and hygiene checks."
+    Write-Host "  format-check  Run C/C++ and Rust format checks."
+    Write-Host "  package       Build an experimental local package archive."
+    Write-Host "  test-package  Extract a package outside the checkout and run smoke checks."
+    Write-Host "  analyze       Run the advanced static-analysis target."
+    Write-Host "  clean         Remove the selected build directory."
+    Write-Host "  all           Configure, build, and test."
+    Write-Host ""
+    Write-Host "Common options:"
+    Write-Host "  -Preset <name>             CMake preset, default windows-dev."
+    Write-Host "  -V8Mode OFF|AUTO|REQUIRED  Bootstrap/doctor/configure V8 mode."
+    Write-Host "  -EnableV8                  Configure a V8-enabled preset."
+    Write-Host "  -PackagePath <path>        Package archive for test-package."
+    Write-Host "  -PackageMetadataPath <path> Fixture metadata for test-package."
+}
+
+function Stop-UnknownCommand {
+    param([string]$Name)
+
+    [Console]::Error.WriteLine("sloppy dev: unknown command '$Name'. Run .\tools\windows\dev.ps1 help for the command contract.")
+    exit 2
 }
 
 function Resolve-VcpkgRoot {
@@ -553,7 +587,74 @@ function Invoke-Analyze {
     Write-Host "advanced memory/core static analysis completed."
 }
 
+function Get-PackageConfiguration {
+    switch ($Preset) {
+        "windows-dev" { return "Debug" }
+        "windows-release" { return "Release" }
+        "windows-relwithdebinfo" { return "RelWithDebInfo" }
+        default {
+            throw "Preset '$Preset' is not supported by the package lane. Use windows-dev, windows-release, or windows-relwithdebinfo."
+        }
+    }
+}
+
+function Invoke-Package {
+    $script = Join-Path $PSScriptRoot "package.ps1"
+    $nativeArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $script,
+        "-Configuration",
+        (Get-PackageConfiguration)
+    )
+    Invoke-Native "powershell" $nativeArgs
+}
+
+function Resolve-PackagePath {
+    if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
+        return (Resolve-Path -LiteralPath $PackagePath).Path
+    }
+
+    $packageRoot = Join-Path $Root "artifacts/packages"
+    $packages = @()
+    if (Test-Path -LiteralPath $packageRoot -PathType Container) {
+        $packages = @(Get-ChildItem -LiteralPath $packageRoot -Filter "sloppy-*.zip" -File |
+            Sort-Object LastWriteTimeUtc -Descending)
+    }
+
+    if ($packages.Count -eq 0) {
+        throw "No Windows package archive found under $packageRoot. Run .\tools\windows\dev.ps1 package first or pass -PackagePath."
+    }
+
+    return $packages[0].FullName
+}
+
+function Invoke-TestPackage {
+    $script = Join-Path $PSScriptRoot "test-package.ps1"
+    $resolvedPackage = Resolve-PackagePath
+    $metadata = if ([string]::IsNullOrWhiteSpace($PackageMetadataPath)) {
+        Join-Path $Root "tests/fixtures/package/windows-default/case.json"
+    } else {
+        (Resolve-Path -LiteralPath $PackageMetadataPath).Path
+    }
+
+    Invoke-Native "powershell" @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $script,
+        "-PackagePath",
+        $resolvedPackage,
+        "-MetadataPath",
+        $metadata
+    )
+}
+
 switch ($Command) {
+    "help" { Write-DevHelp }
     "doctor" { Invoke-Doctor }
     "configure" { Invoke-Configure }
     "build" { Invoke-Build }
@@ -561,10 +662,13 @@ switch ($Command) {
     "clean" { Invoke-Clean }
     "format-check" { Invoke-FormatCheck }
     "lint" { Invoke-Lint }
+    "package" { Invoke-Package }
+    "test-package" { Invoke-TestPackage }
     "analyze" { Invoke-Analyze }
     "all" {
         Invoke-Configure
         Invoke-Build
         Invoke-Test
     }
+    default { Stop-UnknownCommand -Name $Command }
 }

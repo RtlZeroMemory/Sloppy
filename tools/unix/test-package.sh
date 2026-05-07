@@ -56,6 +56,9 @@ invoke_cli_smoke() {
   [[ -x "$executable" ]] || { echo "Package smoke missing $name: $executable" >&2; exit 1; }
   "$executable" --version
   "$executable" --help
+  if [[ "$name" == "sloppy" ]]; then
+    "$executable" doctor
+  fi
 }
 
 invoke_outside_checkout_compiler_smoke() {
@@ -89,7 +92,7 @@ APP
   done
 
   set +e
-  run_output="$("$sloppy_executable" run --artifacts "$artifact_dir" --stdlib "$stdlib_root" --once GET / 2>&1)"
+  run_output="$("$sloppy_executable" run --artifacts "$artifact_dir" --once GET / 2>&1)"
   run_status=$?
   set -e
   printf '%s\n' "$run_output"
@@ -172,20 +175,20 @@ fi
 invoke_cli_smoke "$package_root/bin/sloppy" "sloppy"
 invoke_cli_smoke "$package_root/bin/sloppyc" "sloppyc"
 
-for required_file in README.md LICENSE THIRD_PARTY_NOTICES.md manifest.json; do
+for required_file in README.md LICENSE docs/KNOWN_LIMITATIONS.md docs/LICENSES.md docs/NOTICE.md manifest.json; do
   [[ -f "$package_root/$required_file" ]] || {
     echo "Package smoke missing required package file: $required_file" >&2
     exit 1
   }
 done
-for required_directory in share/sloppy/licenses share/sloppy/schemas; do
+for required_directory in bin stdlib stdlib/sloppy examples docs; do
   [[ -d "$package_root/$required_directory" ]] || {
     echo "Package smoke missing required package directory: $required_directory" >&2
     exit 1
   }
 done
 
-stdlib_root="$package_root/lib/sloppy/stdlib/sloppy"
+stdlib_root="$package_root/stdlib/sloppy"
 for asset in index.js app.js results.js schema.js data.js bootstrap.manifest.json internal/intrinsics.js; do
   [[ -f "$stdlib_root/$asset" ]] || { echo "Package smoke missing stdlib asset: $asset" >&2; exit 1; }
 done
@@ -199,14 +202,14 @@ invoke_outside_checkout_compiler_smoke \
 for excluded in .git .sdeps build compiler/target target vcpkg_installed; do
   assert_missing "$package_root" "$excluded"
 done
-for excluded_sdk_file in lib/sloppy/engines/v8/include/v8.h lib/sloppy/engines/v8/lib/v8_monolith.lib; do
+for excluded_sdk_file in engines/v8/include/v8.h engines/v8/lib/v8_monolith.lib; do
   assert_missing "$package_root" "$excluded_sdk_file"
 done
 
 if [[ "$require_v8_runtime" -eq 1 ]]; then
-  v8_runtime_root="$package_root/lib/sloppy/engines/v8"
+  v8_runtime_root="$package_root/engines/v8"
   [[ -d "$v8_runtime_root" ]] || {
-    echo "Package smoke required V8 runtime files, but lib/sloppy/engines/v8 is missing." >&2
+    echo "Package smoke required V8 runtime files, but engines/v8 is missing." >&2
     exit 1
   }
   runtime_count="$(find "$v8_runtime_root" -maxdepth 1 -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) | wc -l | tr -d ' ')"

@@ -244,6 +244,11 @@ function Get-SlV8GitWorktreeRoots {
     if ($null -eq $git) {
         return @()
     }
+    if ([string]::IsNullOrWhiteSpace($RepoRoot) -or
+        -not (Test-Path -LiteralPath (Join-Path $RepoRoot ".git")))
+    {
+        return @()
+    }
 
     $output = & $git.Source -C $RepoRoot worktree list --porcelain 2>$null
     if ($LASTEXITCODE -ne 0) {

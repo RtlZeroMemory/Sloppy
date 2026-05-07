@@ -14,9 +14,11 @@ needed:
 .\tools\windows\dev.ps1 test
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 test-package
 ```
 
-The root `tools/*.ps1` files forward here for compatibility.
+The root `tools/*.ps1` files forward here as convenience entrypoints.
 
 For memory-sensitive changes, `lint` remains the fast default gate and `analyze` is the
 controlled memory/core clang-tidy/Clang Static Analyzer lane:
@@ -62,13 +64,13 @@ Maintainers can build and package a local SDK with `build-v8.ps1`.
 Experimental local packaging lives here too:
 
 ```powershell
-.\tools\windows\package.ps1 -Configuration Release
-.\tools\windows\package.ps1 -Configuration Release -Smoke
-.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+.\tools\windows\dev.ps1 package -Preset windows-release
+.\tools\windows\dev.ps1 test-package
 ```
 
-The package script stages a ZIP under ignored `artifacts/packages/`, writes
+The package script stages the alpha ZIP layout under ignored `artifacts/packages/`, writes
 `SHA256SUMS.txt`, and can smoke-test the extracted archive outside the checkout. The smoke
-checks packaged CLI startup, required files and stdlib assets, packaged `sloppyc build`,
-and honest non-V8 `sloppy run --artifacts` skip reporting. It does not install anything,
+checks packaged CLI startup, `sloppy doctor`, required package docs, stdlib assets,
+examples, manifest fields, prebuilt artifact execution without compiling source, and
+honest non-V8 `sloppy run --artifacts` skip reporting. It does not install anything,
 mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a public release.

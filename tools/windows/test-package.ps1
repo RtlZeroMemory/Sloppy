@@ -30,6 +30,13 @@ function Invoke-CliSmoke {
     if ($LASTEXITCODE -ne 0) {
         throw "$Name --help failed with exit code $LASTEXITCODE"
     }
+
+    if ($Name -eq "sloppy") {
+        & $Executable doctor | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Name doctor failed with exit code $LASTEXITCODE"
+        }
+    }
 }
 
 function ConvertTo-ProcessArgumentString {
@@ -95,8 +102,6 @@ export default app;
         "run",
         "--artifacts",
         $artifactDir,
-        "--stdlib",
-        $StdlibRoot,
         "--once",
         "GET",
         "/"
@@ -204,8 +209,6 @@ function Invoke-OutsideCheckoutArtifactSmoke {
         "run",
         "--artifacts",
         $artifactDir,
-        "--stdlib",
-        $StdlibRoot,
         "--once",
         [string]$Fixture.once.method,
         [string]$Fixture.once.target
@@ -379,7 +382,14 @@ try {
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppy.exe") -Name "sloppy"
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppyc.exe") -Name "sloppyc"
 
-    $requiredFiles = @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "manifest.json")
+    $requiredFiles = @(
+        "README.md",
+        "LICENSE",
+        "docs/KNOWN_LIMITATIONS.md",
+        "docs/LICENSES.md",
+        "docs/NOTICE.md",
+        "manifest.json"
+    )
     if ($null -ne $metadata -and $null -ne $metadata.requiredFiles) {
         $requiredFiles = @($metadata.requiredFiles)
     }
@@ -389,7 +399,7 @@ try {
             throw "Package smoke missing required package file: $requiredFile"
         }
     }
-    $requiredDirectories = @("share/sloppy/licenses", "share/sloppy/schemas")
+    $requiredDirectories = @("bin", "stdlib", "stdlib/sloppy", "examples", "docs")
     if ($null -ne $metadata -and $null -ne $metadata.requiredDirectories) {
         $requiredDirectories = @($metadata.requiredDirectories)
     }
@@ -400,7 +410,7 @@ try {
         }
     }
 
-    $stdlibRoot = Join-Path $packageRoot "lib/sloppy/stdlib/sloppy"
+    $stdlibRoot = Join-Path $packageRoot "stdlib/sloppy"
     $stdlibAssets = @(
         "index.js",
         "app.js",
@@ -446,7 +456,7 @@ try {
     foreach ($excluded in $excludedPaths) {
         Assert-PackagePathMissing -Root $packageRoot -RelativePath $excluded
     }
-    $excludedFiles = @("lib/sloppy/engines/v8/include/v8.h", "lib/sloppy/engines/v8/lib/v8_monolith.lib")
+    $excludedFiles = @("engines/v8/include/v8.h", "engines/v8/lib/v8_monolith.lib")
     if ($null -ne $metadata -and $null -ne $metadata.excludedFiles) {
         $excludedFiles = @($metadata.excludedFiles)
     }
@@ -454,10 +464,10 @@ try {
         Assert-PackageFileMissing -Root $packageRoot -RelativePath $excludedSdkFile
     }
 
-    $v8RuntimeRoot = Join-Path $packageRoot "lib/sloppy/engines/v8"
+    $v8RuntimeRoot = Join-Path $packageRoot "engines/v8"
     if ($RequireV8Runtime) {
         if (-not (Test-Path -LiteralPath $v8RuntimeRoot -PathType Container)) {
-            throw "Package smoke required V8 runtime files, but lib/sloppy/engines/v8 is missing."
+            throw "Package smoke required V8 runtime files, but engines/v8 is missing."
         }
         $v8RuntimeFiles = @(
             Get-ChildItem -LiteralPath $v8RuntimeRoot -File -ErrorAction SilentlyContinue |

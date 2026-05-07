@@ -99,8 +99,9 @@ function Write-PackageReadme {
 This is an experimental development artifact, not a public release.
 
 The package contains the currently built `sloppy` runtime CLI, the `sloppyc` compiler CLI,
-and the source-controlled bootstrap stdlib assets. It does not install anything, mutate
-PATH, fetch dependencies, include a package manager, or claim production readiness.
+the source-controlled bootstrap stdlib assets, and example sources. It does not install
+anything, mutate PATH, fetch dependencies, include a package manager, or claim production
+readiness.
 
 Use `bin/sloppy --version`, `bin/sloppy --help`, `bin/sloppyc --version`, or
 `bin/sloppyc --help` for basic outside-checkout smoke checks.
@@ -108,6 +109,44 @@ Use `bin/sloppy --version`, `bin/sloppy --help`, `bin/sloppyc --version`, or
 V8 SDK headers and import libraries are intentionally excluded. Dynamic V8 runtime files
 are included only when the package was created with `-IncludeV8Runtime` and a compatible
 SDK `bin/` directory was available.
+"@
+
+    Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
+}
+
+function Write-KnownLimitations {
+    param([string]$Path)
+
+    $content = @"
+# Known Limitations
+
+This package is an experimental pre-alpha development artifact.
+
+- It is not a public alpha release.
+- It is not production ready.
+- It is not a Node, Bun, Deno, npm, or package-manager compatibility target.
+- Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
+  release readiness.
+- V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
+- PostgreSQL and SQL Server live-provider behavior requires separate opt-in evidence.
+- Signing, notarization, installers, auto-update, and package-manager distribution are not
+  included.
+"@
+
+    Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
+}
+
+function Write-LicensePolicy {
+    param([string]$Path)
+
+    $content = @"
+# Licenses
+
+This experimental package includes Sloppy source-license text in the repository root
+`LICENSE.md` file, copied into this package as `LICENSE`, and may include runtime
+dependency DLLs restored by vcpkg for local package smoke.
+
+Complete third-party license review remains required before any public release.
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
@@ -140,14 +179,14 @@ function Copy-NativeRuntimeDependencies {
     }
 }
 
-function Write-ThirdPartyNotices {
+function Write-Notice {
     param(
         [string]$Path,
         [string[]]$RuntimeFiles
     )
 
     $content = @"
-# Third Party Notices
+# Notice
 
 This experimental local package may include runtime DLLs restored by vcpkg for Sloppy's
 current native dependencies, such as yyjson, llhttp, libuv, sqlite3, libpq, OpenSSL, zlib,
@@ -220,26 +259,21 @@ $PackageRoot = Join-Path $StageRoot $PackageName
 Remove-Item -LiteralPath $PackageRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $PackageRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "bin") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "share/sloppy/licenses") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "share/sloppy/schemas") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "stdlib") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "examples") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "docs") | Out-Null
 
 Copy-RequiredFile -Source $SloppyExe -Destination (Join-Path $PackageRoot "bin/sloppy.exe")
 Copy-RequiredFile -Source $SloppycExe -Destination (Join-Path $PackageRoot "bin/sloppyc.exe")
 Copy-NativeRuntimeDependencies -BuildDirectory $BuildDir -Destination (Join-Path $PackageRoot "bin") -PackageConfiguration $Configuration
-Copy-DirectoryContents -Source (Join-Path $Root "stdlib/sloppy") -Destination (Join-Path $PackageRoot "lib/sloppy/stdlib/sloppy")
+Copy-DirectoryContents -Source (Join-Path $Root "stdlib/sloppy") -Destination (Join-Path $PackageRoot "stdlib/sloppy")
+Copy-DirectoryContents -Source (Join-Path $Root "examples") -Destination (Join-Path $PackageRoot "examples")
 Copy-RequiredFile -Source (Join-Path $Root "LICENSE.md") -Destination (Join-Path $PackageRoot "LICENSE")
 Write-PackageReadme -Path (Join-Path $PackageRoot "README.md")
-$nativeRuntimeFiles = @(
-    Get-ChildItem -LiteralPath (Join-Path $PackageRoot "bin") -Filter "*.dll" -File |
-        Select-Object -ExpandProperty Name
-)
-Write-ThirdPartyNotices -Path (Join-Path $PackageRoot "THIRD_PARTY_NOTICES.md") -RuntimeFiles $nativeRuntimeFiles
+Write-KnownLimitations -Path (Join-Path $PackageRoot "docs/KNOWN_LIMITATIONS.md")
+Write-LicensePolicy -Path (Join-Path $PackageRoot "docs/LICENSES.md")
 
-$containsExamples = $false
-if ($IncludeExamples) {
-    Copy-DirectoryContents -Source (Join-Path $Root "examples") -Destination (Join-Path $PackageRoot "share/sloppy/examples")
-    $containsExamples = $true
-}
+$containsExamples = $true
 
 $containsV8Runtime = $false
 if ($IncludeV8Runtime) {
@@ -258,13 +292,25 @@ if ($IncludeV8Runtime) {
         throw "-IncludeV8Runtime was requested, but no runtime DLL/shared library files were found under $v8Bin."
     }
 
-    $v8Destination = Join-Path $PackageRoot "lib/sloppy/engines/v8"
+    $v8Destination = Join-Path $PackageRoot "engines/v8"
     New-Item -ItemType Directory -Force -Path $v8Destination | Out-Null
     foreach ($file in $runtimeFiles) {
         Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $v8Destination $file.Name) -Force
     }
     $containsV8Runtime = $true
 }
+
+$nativeRuntimeFiles = @(
+    Get-ChildItem -LiteralPath (Join-Path $PackageRoot "bin") -Filter "*.dll" -File |
+        ForEach-Object { "bin/$($_.Name)" }
+)
+if ($containsV8Runtime) {
+    $nativeRuntimeFiles += @(
+        Get-ChildItem -LiteralPath (Join-Path $PackageRoot "engines/v8") -File |
+            ForEach-Object { "engines/v8/$($_.Name)" }
+    )
+}
+Write-Notice -Path (Join-Path $PackageRoot "docs/NOTICE.md") -RuntimeFiles $nativeRuntimeFiles
 
 $manifest = [ordered]@{
     name = "sloppy"
@@ -273,6 +319,28 @@ $manifest = [ordered]@{
     arch = $Arch
     configuration = $Configuration
     commit = $Commit
+    compiler = [ordered]@{
+        name = "sloppyc"
+        profile = $CargoProfile
+        included = $true
+    }
+    v8 = [ordered]@{
+        sdkIncluded = $false
+        runtimeIncluded = $containsV8Runtime
+        status = if ($containsV8Runtime) { "runtime files bundled" } else { "not bundled" }
+        version = "pinned by tools/deps/sloppy-deps.json"
+    }
+    enabledFeatures = @(
+        "native-runtime",
+        "stdlib",
+        "compiler"
+    )
+    dependencyStatuses = [ordered]@{
+        nativeRuntimeDependencies = "bundled"
+        v8Sdk = "excluded"
+        v8Runtime = if ($containsV8Runtime) { "bundled" } else { "not bundled" }
+        liveProviders = "not configured"
+    }
     containsV8Runtime = $containsV8Runtime
     containsV8Sdk = $false
     containsStdlib = $true
@@ -306,7 +374,12 @@ Write-Host "Checksum file: $ChecksumPath"
 
 if ($Smoke) {
     $smokeScript = Join-Path $PSScriptRoot "test-package.ps1"
-    $smokeArgs = @("-PackagePath", $ArchivePath)
+    $smokeArgs = @(
+        "-PackagePath",
+        $ArchivePath,
+        "-MetadataPath",
+        (Join-Path $Root "tests/fixtures/package/windows-default/case.json")
+    )
     if ($IncludeV8Runtime) {
         $smokeArgs += "-RequireV8Runtime"
     }

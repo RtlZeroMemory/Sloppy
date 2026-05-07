@@ -9,7 +9,7 @@ tools/
 ```
 
 PowerShell scripts under `tools/windows/` are the most complete validated local developer
-workflow today. Root `tools/*.ps1` scripts are compatibility forwarders. Unix shell scripts
+workflow today. Root `tools/*.ps1` scripts are convenience forwarders. Unix shell scripts
 belong under `tools/unix/`.
 
 Packaging scripts create experimental local artifacts under ignored `artifacts/packages/`:
@@ -17,7 +17,23 @@ Packaging scripts create experimental local artifacts under ignored `artifacts/p
 - `tools/windows/package.ps1` creates the Windows ZIP package and checksum.
 - `tools/windows/test-package.ps1` extracts a ZIP outside the checkout and runs smoke
   checks.
+- `tools/unix/bootstrap.sh` and `tools/unix/dev.sh` provide the Linux/macOS command
+  contract.
 - `tools/unix/package.sh` creates a Linux/macOS TAR package when run on those platforms.
+
+Canonical command vocabulary:
+
+```text
+bootstrap
+dev doctor
+dev configure
+dev build
+dev test
+dev lint
+dev format-check
+dev package
+dev test-package
+```
 
 Generated build outputs, dependency SDKs, release archives, and local binaries must not be
 committed.
