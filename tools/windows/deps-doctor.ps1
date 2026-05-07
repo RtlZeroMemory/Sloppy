@@ -158,8 +158,13 @@ function Test-SlTool {
     }
     $versionText = Invoke-SlCommandVersion -CommandPath $command.Source -Arguments $versionArguments
     $actualVersion = $null
+    $matchedFallbackVersion = $false
     if ($null -ne $versionText -and $versionText -match [string]$Policy.versionPattern) {
         $actualVersion = $matches[1]
+    }
+    if ([string]::IsNullOrWhiteSpace($actualVersion) -and $null -ne $versionText -and $versionText -match '([0-9]+(?:\.[0-9]+){1,2})') {
+        $actualVersion = $matches[1]
+        $matchedFallbackVersion = $true
     }
 
     if ([string]::IsNullOrWhiteSpace($actualVersion)) {
@@ -195,7 +200,7 @@ function Test-SlTool {
         status = "found"
         version = $actualVersion
         minimumVersion = $minimumVersion
-        detail = "$commandName resolved."
+        detail = if ($matchedFallbackVersion) { "$commandName resolved using generic semantic version fallback." } else { "$commandName resolved." }
         path = $command.Source
     }
 }
