@@ -53,11 +53,12 @@ explicit inbound TLS listener settings.
 
 TLS remains opt-in. Cleartext HTTP is the default. Enabling TLS requires
 `Sloppy:Server:Tls:Enabled`, `Sloppy:Server:Tls:CertificatePath`, and
-`Sloppy:Server:Tls:PrivateKeyPath`. Passphrase-protected private keys remain available
-only through the native transport config until Sloppy has a non-redacted runtime secret
-retrieval lane. Malformed, zero, unsupported, range-overflowing, missing certificate/key,
-or embedded-NUL values fail closed before serving work. Route-level limits and trusted
-proxy policy are not Plan metadata yet.
+`Sloppy:Server:Tls:PrivateKeyPath`. Relative certificate and private-key paths in Plan metadata
+are resolved under the loaded artifact directory; absolute paths are preserved when explicitly
+emitted by config. Passphrase-protected private keys remain available only through the native
+transport config until Sloppy has a non-redacted runtime secret retrieval lane. Malformed, zero,
+unsupported, range-overflowing, missing certificate/key, unsafe path, or embedded-NUL values fail
+closed before serving work. Route-level limits and trusted proxy policy are not Plan metadata yet.
 
 ## Required Features
 

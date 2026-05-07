@@ -119,9 +119,11 @@ pipeline:
 - `Sloppy:Server:Tls:PrivateKeyPath`.
 
 TLS is opt-in. Defaults remain cleartext HTTP. When TLS is enabled, certificate and
-private-key paths are required. The native transport config can supply an optional
-passphrase, but Plan-backed `sloppy run` does not consume passphrases until a non-redacted
-runtime secret retrieval lane exists. Diagnostics must identify the failed TLS stage
+private-key paths are required. Plan-backed `sloppy run` resolves relative TLS paths under the
+loaded artifact directory and preserves explicitly emitted absolute paths. The native transport
+config can supply an optional passphrase, but Plan-backed `sloppy run` does not consume passphrases
+until a non-redacted runtime secret retrieval lane exists. Diagnostics must identify the failed TLS
+stage
 without echoing private key material, passphrases, PEM contents, OpenSSL internals, native
 handles, or socket state.
 

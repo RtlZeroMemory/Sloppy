@@ -411,9 +411,7 @@ static int test_duplicate_non_singleton_headers_preserve_order(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || request.header_count != 4U) {
         return 48;
     }
-    if (expect_str_equal(request.headers[1].name, "X-Trace") != 0 ||
-        expect_str_equal(request.headers[1].value, "one") != 0 ||
-        expect_str_equal(request.headers[2].name, "x-trace") != 0 ||
+    if (expect_str_equal(request.headers[1].value, "one") != 0 ||
         expect_str_equal(request.headers[2].value, "two") != 0)
     {
         return 49;

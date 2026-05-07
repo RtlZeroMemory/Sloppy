@@ -73,6 +73,7 @@ typedef struct DispatchHook
     SlHttpResponse response;
     SlHttpMethod method;
     SlStr path;
+    SlStr scheme;
     SlBytes body;
 } DispatchHook;
 
@@ -105,6 +106,7 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
     hook->count += 1U;
     hook->method = request->head.method;
     hook->path = request->head.path;
+    hook->scheme = request->scheme;
     hook->body = request->head.body;
     if (hook->status_code != SL_STATUS_OK) {
         if (out_diag != nullptr) {
@@ -735,6 +737,23 @@ static int test_config_validation_and_lifecycle(void)
     }
 
     {
+        static const char cert_with_nul[] = {'c', 'e', 'r', 't', '.', 'p', 'e', 'm', '\0', 'x'};
+        sl_arena_reset(&arena);
+        config = small_config(nullptr);
+        config.tls.enabled = true;
+        config.tls.certificate_path = sl_str_from_parts(cert_with_nul, sizeof(cert_with_nul));
+        config.tls.private_key_path = sl_str_from_cstr("key.pem");
+        server = {};
+        diag = {};
+        if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+        {
+            return 13;
+        }
+    }
+
+    {
         static const char key_with_nul[] = {'k', 'e', 'y', '.', 'p', 'e', 'm', '\0', 'x'};
         sl_arena_reset(&arena);
         config = small_config(nullptr);
@@ -747,7 +766,7 @@ static int test_config_validation_and_lifecycle(void)
                           SL_STATUS_INVALID_ARGUMENT) != 0 ||
             diag.code != SL_DIAG_HTTP_TLS_CONFIG)
         {
-            return 13;
+            return 14;
         }
     }
 
@@ -765,7 +784,7 @@ static int test_config_validation_and_lifecycle(void)
                           SL_STATUS_INVALID_ARGUMENT) != 0 ||
             diag.code != SL_DIAG_HTTP_TLS_CONFIG)
         {
-            return 14;
+            return 15;
         }
     }
 
@@ -996,6 +1015,7 @@ static int test_https_loopback_reaches_handler_and_marks_scheme(void)
     }
     if (client_result.load() != 0 || dispatch.count != 1U ||
         !sl_str_equal(dispatch.path, sl_str_from_cstr("/secure")) ||
+        !sl_str_equal(dispatch.scheme, sl_str_from_cstr("https")) ||
         !sl_str_equal(server.connections[0].core.scheme, sl_str_from_cstr("https")) ||
         client_response.find("HTTP/1.1 200 OK") == std::string::npos ||
         client_response.find("secure") == std::string::npos)

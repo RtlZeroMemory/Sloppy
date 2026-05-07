@@ -7868,6 +7868,11 @@ export default app;
             values: std::collections::BTreeMap::new(),
         };
         config.set(
+            "Sloppy:Server:Tls:CertificatePath",
+            serde_json::json!("certs/server.crt"),
+            "test",
+        );
+        config.set(
             "Sloppy:Server:Tls:PrivateKeyPath",
             serde_json::json!("C:/keys/server.key"),
             "test",
@@ -7878,7 +7883,11 @@ export default app;
             "test",
         );
         let keys = config.plan_keys();
-        assert_eq!(keys.len(), 2);
+        assert_eq!(keys.len(), 3);
+        let certificate_path = keys
+            .iter()
+            .find(|key| key.key == "Sloppy:Server:Tls:CertificatePath")
+            .expect("certificate path should be present");
         let key_path = keys
             .iter()
             .find(|key| key.key == "Sloppy:Server:Tls:PrivateKeyPath")
@@ -7887,6 +7896,11 @@ export default app;
             .iter()
             .find(|key| key.key == "Sloppy:Server:Tls:Passphrase")
             .expect("passphrase should be present");
+        assert!(!certificate_path.sensitive);
+        assert_eq!(
+            certificate_path.value,
+            serde_json::json!("certs/server.crt")
+        );
         assert!(!key_path.sensitive);
         assert_eq!(key_path.value, serde_json::json!("C:/keys/server.key"));
         assert!(passphrase.sensitive);

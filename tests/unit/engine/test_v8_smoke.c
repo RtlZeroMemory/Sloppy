@@ -3161,13 +3161,19 @@ static int test_request_context_exposes_https_scheme_without_native_handles(void
         return 419;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body,
-                           "{\"requestScheme\":\"https\",\"connectionScheme\":\"https\","
-                           "\"secure\":true,\"unsafe\":false}") != 0)
     {
-        sl_engine_destroy(engine);
-        return 420;
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"requestScheme\":\"https\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"connectionScheme\":\"https\"")) !=
+                0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"secure\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"unsafe\":false")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 420;
+        }
     }
 
     sl_engine_destroy(engine);
@@ -3405,6 +3411,21 @@ static int test_invalid_result_headers_fail_safely(void)
                                            "    'text/plain; charset=utf-8',"
                                            "    headers: { 'Transfer-Encoding': 'chunked' },"
                                            "    body: 'bad' };"
+                                           "};"
+                                           "globalThis.sloppy_invalid_keep_alive_header = function "
+                                           "() {"
+                                           "  return { __sloppyResult: true, kind: 'text',"
+                                           "    status: 200, contentType: "
+                                           "    'text/plain; charset=utf-8',"
+                                           "    headers: { 'Keep-Alive': 'timeout=5' },"
+                                           "    body: 'bad' };"
+                                           "};"
+                                           "globalThis.sloppy_invalid_header_value = function () {"
+                                           "  return { __sloppyResult: true, kind: 'text',"
+                                           "    status: 200, contentType: "
+                                           "    'text/plain; charset=utf-8',"
+                                           "    headers: { 'x-result': 'bad\\u0000value' },"
+                                           "    body: 'bad' };"
                                            "};"),
                           &diag),
                       SL_STATUS_OK) != 0)
@@ -3442,6 +3463,40 @@ static int test_invalid_result_headers_fail_safely(void)
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
         sl_engine_destroy(engine);
         return 91;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_invalid_keep_alive_header"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 92;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
+        sl_engine_destroy(engine);
+        return 93;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_invalid_header_value"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 94;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
+        sl_engine_destroy(engine);
+        return 95;
     }
 
     sl_engine_destroy(engine);

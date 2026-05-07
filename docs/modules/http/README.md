@@ -37,9 +37,9 @@ Implemented behavior includes:
 - libuv-backed localhost transport with bounded connection storage, sequential HTTP/1.1
   keep-alive, idle timeout, max requests per connection, close policy, and deterministic
   pipelining rejection;
-- optional inbound HTTPS wrapping through OpenSSL-owned TLS server state, strict
-  certificate/key validation, generated local-cert loopback evidence, native passphrase
-  handling, and `https` request-context scheme propagation after handshake;
+- optional inbound HTTPS wrapping through OpenSSL-owned TLS server state, strict certificate/key
+  config and key-material loading validation, generated local-cert loopback evidence, native
+  passphrase handling, and `https` request-context scheme propagation after handshake;
 - backend admission, lifecycle, cancellation, timeout, disconnect, shutdown, and
   diagnostic state;
 - `sloppy run` consumption of bounded server config metadata for host/port, max

@@ -633,6 +633,28 @@ static int sl_http_transport_tls_passphrase_cb(char* buffer, int size, int rwfla
     return (int)passphrase.length;
 }
 
+static void sl_http_transport_secure_zero(char* ptr, size_t length)
+{
+    volatile char* cursor = ptr;
+    size_t index = 0U;
+
+    if (ptr == NULL) {
+        return;
+    }
+    for (index = 0U; index < length; index += 1U) {
+        cursor[index] = '\0';
+    }
+}
+
+static void sl_http_transport_clear_tls_passphrase(SlHttpTransportServer* server)
+{
+    if (server == NULL || server->tls_passphrase.ptr == NULL) {
+        return;
+    }
+    sl_http_transport_secure_zero(server->tls_passphrase.ptr, server->tls_passphrase.length);
+    server->tls_passphrase = (SlOwnedStr){0};
+}
+
 static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server, SlDiag* out_diag)
 {
     SSL_CTX* context = NULL;
@@ -658,6 +680,7 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
     if (SSL_CTX_use_certificate_chain_file(
             context, sl_owned_str_as_view(server->tls_certificate_path).ptr) != 1)
     {
+        sl_http_transport_clear_tls_passphrase(server);
         SSL_CTX_free(context);
         return sl_http_transport_diag(
             out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
@@ -671,6 +694,7 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
     if (SSL_CTX_use_PrivateKey_file(context, sl_owned_str_as_view(server->tls_private_key_path).ptr,
                                     SSL_FILETYPE_PEM) != 1)
     {
+        sl_http_transport_clear_tls_passphrase(server);
         SSL_CTX_free(context);
         return sl_http_transport_diag(
             out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
@@ -680,6 +704,7 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
                                       sizeof("private key material and passphrases are redacted") -
                                           1U));
     }
+    sl_http_transport_clear_tls_passphrase(server);
     if (SSL_CTX_check_private_key(context) != 1) {
         SSL_CTX_free(context);
         return sl_http_transport_diag(
@@ -2810,8 +2835,22 @@ static SlStatus sl_http_transport_tls_feed(SlHttpTransportConnection* connection
     }
 
     for (;;) {
-        int read_count = SSL_read(platform->tls_ssl, platform->tls_plain_read_buffer,
-                                  (int)platform->tls_plain_read_buffer_size);
+        int read_count = 0;
+        if (platform->tls_plain_read_buffer_size > (size_t)INT_MAX) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED,
+                SL_STATUS_CAPACITY_EXCEEDED,
+                sl_http_transport_literal("HTTP TLS plaintext buffer exceeds transport capacity",
+                                          sizeof("HTTP TLS plaintext buffer exceeds transport "
+                                                 "capacity") -
+                                              1U),
+                sl_http_transport_literal("TLS plaintext reads stay bounded by platform limits",
+                                          sizeof("TLS plaintext reads stay bounded by platform "
+                                                 "limits") -
+                                              1U));
+        }
+        read_count = SSL_read(platform->tls_ssl, platform->tls_plain_read_buffer,
+                              (int)platform->tls_plain_read_buffer_size);
         if (read_count > 0) {
             SlStatus status = sl_http_transport_connection_feed_test(
                 connection,
@@ -2921,6 +2960,7 @@ static SlStatus sl_http_transport_tls_start_shutdown(SlHttpTransportConnection* 
     {
         platform->tls_writing = false;
         platform->tls_shutdown_writing = false;
+        platform->closing = false;
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, SL_STATUS_INTERNAL,
             sl_http_transport_literal("HTTP TLS shutdown write failed",
