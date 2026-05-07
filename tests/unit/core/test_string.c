@@ -154,6 +154,60 @@ static int test_ascii_case_helpers(void)
     return 0;
 }
 
+static int test_deterministic_string_view_properties(void)
+{
+    char left[32];
+    char right[32];
+    size_t length = 0U;
+
+    for (length = 0U; length <= sizeof(left); length += 1U) {
+        size_t index = 0U;
+        SlStr left_view;
+        SlStr right_view;
+
+        for (index = 0U; index < sizeof(left); index += 1U) {
+            char ch = (char)('a' + (char)(index % 26U));
+            left[index] = ch;
+            if ((index % 2U) == 0U) {
+                right[index] = (char)('A' + (char)(index % 26U));
+            }
+            else {
+                right[index] = ch;
+            }
+        }
+        if (length > 3U) {
+            left[3] = '\0';
+            right[3] = '\0';
+        }
+
+        left_view = sl_str_from_parts(left, length);
+        right_view = sl_str_from_parts(right, length);
+        if (expect_true(sl_str_equal_ci_ascii(left_view, right_view)) != 0) {
+            return 40;
+        }
+
+        if (length > 3U && expect_true(sl_str_contains_nul(left_view)) != 0) {
+            return 41;
+        }
+
+        if (length <= 3U && expect_true(!sl_str_contains_nul(left_view)) != 0) {
+            return 42;
+        }
+
+        if (expect_true(sl_str_starts_with(left_view, sl_str_from_parts(left, length / 2U))) != 0) {
+            return 43;
+        }
+
+        if (expect_true(sl_str_ends_with(
+                left_view, sl_str_from_parts(left + (length / 2U), length - (length / 2U)))) != 0)
+        {
+            return 44;
+        }
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const char embedded[] = {'a', '\0', 'b'};
@@ -271,6 +325,11 @@ int main(void)
     }
 
     result = test_ascii_case_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_deterministic_string_view_properties();
     if (result != 0) {
         return result;
     }

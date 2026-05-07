@@ -30,23 +30,46 @@ set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 set(SLOPPY_PACKAGE_ARCHIVE "" CACHE FILEPATH "Optional Sloppy package archive for package lane smoke tests.")
-if(SLOPPY_ENABLE_LIBFUZZER AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
-    message(FATAL_ERROR "SLOPPY_ENABLE_LIBFUZZER requires a Clang-family C compiler.")
+if((SLOPPY_ENABLE_LIBFUZZER OR SLOPPY_ENABLE_ASAN) AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "SLOPPY_ENABLE_LIBFUZZER/SLOPPY_ENABLE_ASAN require a Clang-family C compiler.")
 endif()
-set(SLOPPY_CLANG_FUZZER_LIB "")
-if(SLOPPY_ENABLE_LIBFUZZER AND MSVC)
+set(SLOPPY_CLANG_RESOURCE_DIR "")
+if((SLOPPY_ENABLE_LIBFUZZER OR SLOPPY_ENABLE_ASAN) AND MSVC)
     execute_process(
         COMMAND "${CMAKE_C_COMPILER}" -print-resource-dir
         OUTPUT_VARIABLE SLOPPY_CLANG_RESOURCE_DIR
         OUTPUT_STRIP_TRAILING_WHITESPACE
         RESULT_VARIABLE SLOPPY_CLANG_RESOURCE_RESULT)
     if(NOT SLOPPY_CLANG_RESOURCE_RESULT EQUAL 0)
-        message(FATAL_ERROR "Could not locate the Clang resource directory for libFuzzer.")
+        message(FATAL_ERROR "Could not locate the Clang resource directory.")
     endif()
+endif()
+set(SLOPPY_CLANG_FUZZER_LIB "")
+if(SLOPPY_ENABLE_LIBFUZZER AND MSVC)
     set(SLOPPY_CLANG_FUZZER_LIB
         "${SLOPPY_CLANG_RESOURCE_DIR}/lib/windows/clang_rt.fuzzer-x86_64.lib")
     if(NOT EXISTS "${SLOPPY_CLANG_FUZZER_LIB}")
         message(FATAL_ERROR "Clang libFuzzer runtime was not found: ${SLOPPY_CLANG_FUZZER_LIB}")
+    endif()
+endif()
+set(SLOPPY_CLANG_ASAN_DYNAMIC_LIB "")
+set(SLOPPY_CLANG_ASAN_THUNK_LIB "")
+set(SLOPPY_CLANG_ASAN_DLL "")
+if(SLOPPY_ENABLE_ASAN AND MSVC)
+    set(SLOPPY_CLANG_ASAN_DYNAMIC_LIB
+        "${SLOPPY_CLANG_RESOURCE_DIR}/lib/windows/clang_rt.asan_dynamic-x86_64.lib")
+    set(SLOPPY_CLANG_ASAN_THUNK_LIB
+        "${SLOPPY_CLANG_RESOURCE_DIR}/lib/windows/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
+    set(SLOPPY_CLANG_ASAN_DLL
+        "${SLOPPY_CLANG_RESOURCE_DIR}/lib/windows/clang_rt.asan_dynamic-x86_64.dll")
+    if(NOT EXISTS "${SLOPPY_CLANG_ASAN_DYNAMIC_LIB}")
+        message(FATAL_ERROR "Clang ASan runtime was not found: ${SLOPPY_CLANG_ASAN_DYNAMIC_LIB}")
+    endif()
+    if(NOT EXISTS "${SLOPPY_CLANG_ASAN_THUNK_LIB}")
+        message(FATAL_ERROR "Clang ASan thunk runtime was not found: ${SLOPPY_CLANG_ASAN_THUNK_LIB}")
+    endif()
+    if(NOT EXISTS "${SLOPPY_CLANG_ASAN_DLL}")
+        message(FATAL_ERROR "Clang ASan DLL was not found: ${SLOPPY_CLANG_ASAN_DLL}")
     endif()
 endif()
 set(SLOPPY_V8_EXPECTED_REVISION "7221f49fdb6c89cce6be08005732ebcab3c45b38")
@@ -456,7 +479,8 @@ set(
     tests/unit/data/test_sqlite.c
     benchmarks/bench_main.c
     benchmarks/bench_route_matcher.c
-    benchmarks/bench_handler_dispatch.c)
+    benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_memory.c)
 
 set(SLOPPY_MEMORY_ANALYSIS_SOURCES src/main.c)
 foreach(sloppy_core_source IN LISTS SLOPPY_CORE_SOURCES)
@@ -581,7 +605,8 @@ add_executable(
     sloppy_bench
     benchmarks/bench_main.c
     benchmarks/bench_route_matcher.c
-    benchmarks/bench_handler_dispatch.c)
+    benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_memory.c)
 target_link_libraries(sloppy_bench PRIVATE sloppy_core)
 target_include_directories(
     sloppy_bench PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/benchmarks")
@@ -644,7 +669,21 @@ function(sloppy_apply_sanitizers target_name)
     set(sanitizer_flags "")
 
     if(SLOPPY_ENABLE_ASAN)
-        list(APPEND sanitizer_flags -fsanitize=address)
+        if(MSVC)
+            target_compile_options(${target_name} PRIVATE /fsanitize=address)
+            target_link_libraries(${target_name} PRIVATE "${SLOPPY_CLANG_ASAN_DYNAMIC_LIB}")
+            target_link_options(
+                ${target_name} PRIVATE "/wholearchive:${SLOPPY_CLANG_ASAN_THUNK_LIB}")
+            add_custom_command(
+                TARGET ${target_name}
+                POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${SLOPPY_CLANG_ASAN_DLL}"
+                        "$<TARGET_FILE_DIR:${target_name}>"
+                COMMENT "Copying Clang ASan runtime for ${target_name}"
+                VERBATIM)
+        else()
+            list(APPEND sanitizer_flags -fsanitize=address)
+        endif()
     endif()
 
     if(SLOPPY_ENABLE_UBSAN)
@@ -1030,11 +1069,16 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_fuzz_seed_replay(
         fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
         tests/fuzz/fuzz_diagnostics_render.c diagnostics-render)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_memory_primitives fuzz.memory_primitives.seed_replay
+        tests/fuzz/fuzz_memory_primitives.c memory-primitives)
     sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
     sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
+    sloppy_add_libfuzzer_target(
+        fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
     add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)
@@ -1083,7 +1127,7 @@ if(SLOPPY_ENABLE_TESTS)
 
     add_test(NAME benchmarks.sloppy_bench.list COMMAND sloppy_bench --list)
     set_tests_properties(
-        benchmarks.sloppy_bench.list PROPERTIES PASS_REGULAR_EXPRESSION "route.match.static")
+        benchmarks.sloppy_bench.list PROPERTIES PASS_REGULAR_EXPRESSION "memory.bytes.find_any")
 
     add_test(NAME benchmarks.sloppy_bench.smoke_json COMMAND sloppy_bench --smoke --format json)
     set_tests_properties(

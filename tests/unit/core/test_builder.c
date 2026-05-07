@@ -132,6 +132,91 @@ static int test_arena_byte_builder_growth_and_failures(void)
     return 0;
 }
 
+static int test_builder_stats_snapshot_contract(void)
+{
+    unsigned char fixed_storage[4];
+    unsigned char arena_storage[64];
+    const unsigned char first[] = {'a', 'b'};
+    const unsigned char second[] = {'c', 'd', 'e'};
+    SlArena arena;
+    SlByteBuilder fixed_builder;
+    SlByteBuilder arena_builder;
+    SlByteBuilderStats stats;
+
+    stats = sl_byte_builder_stats(NULL);
+    if (stats.length != 0U || stats.capacity != 0U || stats.storage != SL_BUILDER_STORAGE_INVALID) {
+        return 50;
+    }
+
+    if (expect_status(
+            sl_byte_builder_init_fixed(&fixed_builder, fixed_storage, sizeof(fixed_storage)),
+            SL_STATUS_OK) != 0)
+    {
+        return 51;
+    }
+
+    if (expect_status(
+            sl_byte_builder_append_bytes(&fixed_builder, sl_bytes_from_parts(first, sizeof(first))),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_bytes(&fixed_builder, sl_bytes_empty()),
+                      SL_STATUS_OK) != 0)
+    {
+        return 52;
+    }
+
+    stats = sl_byte_builder_stats(&fixed_builder);
+    if (stats.length != sizeof(first) || stats.capacity != sizeof(fixed_storage) ||
+        stats.max_capacity != sizeof(fixed_storage) || stats.appended_bytes != sizeof(first) ||
+        stats.copied_bytes != 0U || stats.grow_count != 0U || stats.failed_reserve_count != 0U ||
+        stats.storage != SL_BUILDER_STORAGE_FIXED)
+    {
+        return 53;
+    }
+
+    if (expect_status(sl_byte_builder_reserve(&fixed_builder, sizeof(fixed_storage)),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        return 54;
+    }
+
+    stats = sl_byte_builder_stats(&fixed_builder);
+    if (stats.failed_reserve_count != 1U || stats.length != sizeof(first)) {
+        return 55;
+    }
+
+    sl_byte_builder_reset(&fixed_builder);
+    stats = sl_byte_builder_stats(&fixed_builder);
+    if (stats.length != 0U || stats.appended_bytes != sizeof(first) ||
+        stats.failed_reserve_count != 1U)
+    {
+        return 56;
+    }
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_byte_builder_init_arena(&arena_builder, &arena, 2U, 16U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_byte_builder_append_bytes(&arena_builder, sl_bytes_from_parts(first, sizeof(first))),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_bytes(&arena_builder,
+                                                   sl_bytes_from_parts(second, sizeof(second))),
+                      SL_STATUS_OK) != 0)
+    {
+        return 57;
+    }
+
+    stats = sl_byte_builder_stats(&arena_builder);
+    if (stats.length != sizeof(first) + sizeof(second) || stats.capacity < stats.length ||
+        stats.appended_bytes != stats.length || stats.copied_bytes != sizeof(first) ||
+        stats.grow_count != 1U || stats.storage != SL_BUILDER_STORAGE_ARENA)
+    {
+        return 58;
+    }
+
+    return 0;
+}
+
 static int test_fixed_builder_self_overlap_append(void)
 {
     unsigned char byte_storage[8] = {'a', 'b', 'c', 'd', 'Z', 0U, 0U, 0U};
@@ -240,6 +325,36 @@ static int test_string_builder_formatting_and_nul(void)
     return 0;
 }
 
+static int test_string_builder_stats_forward_byte_builder_stats(void)
+{
+    char storage[16];
+    SlStringBuilder builder;
+    SlByteBuilderStats stats;
+
+    stats = sl_string_builder_stats(NULL);
+    if (stats.storage != SL_BUILDER_STORAGE_INVALID || stats.length != 0U) {
+        return 60;
+    }
+
+    if (expect_status(sl_string_builder_init_fixed(&builder, storage, sizeof(storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, "abc"), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_char(&builder, ':'), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_size(&builder, 12U), SL_STATUS_OK) != 0)
+    {
+        return 61;
+    }
+
+    stats = sl_string_builder_stats(&builder);
+    if (stats.length != 6U || stats.appended_bytes != 6U ||
+        stats.storage != SL_BUILDER_STORAGE_FIXED)
+    {
+        return 62;
+    }
+
+    return 0;
+}
+
 static int test_string_builder_arena_growth_preserves_failed_prefix(void)
 {
     unsigned char arena_storage[64];
@@ -338,12 +453,22 @@ int main(void)
         return result;
     }
 
+    result = test_builder_stats_snapshot_contract();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_fixed_builder_self_overlap_append();
     if (result != 0) {
         return result;
     }
 
     result = test_string_builder_formatting_and_nul();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_string_builder_stats_forward_byte_builder_stats();
     if (result != 0) {
         return result;
     }

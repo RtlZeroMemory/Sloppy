@@ -36,9 +36,25 @@ typedef struct SlByteBuilder
     size_t length;
     size_t capacity;
     size_t max_capacity;
+    size_t grow_count;
+    size_t copied_bytes;
+    size_t appended_bytes;
+    size_t failed_reserve_count;
     SlArena* arena;
     SlBuilderStorageKind storage;
 } SlByteBuilder;
+
+typedef struct SlByteBuilderStats
+{
+    size_t length;
+    size_t capacity;
+    size_t max_capacity;
+    size_t grow_count;
+    size_t copied_bytes;
+    size_t appended_bytes;
+    size_t failed_reserve_count;
+    SlBuilderStorageKind storage;
+} SlByteBuilderStats;
 
 /*
  * SlStringBuilder is a bounded text builder over SlByteBuilder storage.
@@ -57,6 +73,7 @@ SlStatus sl_byte_builder_init_arena(SlByteBuilder* builder, SlArena* arena, size
 void sl_byte_builder_reset(SlByteBuilder* builder);
 size_t sl_byte_builder_length(const SlByteBuilder* builder);
 size_t sl_byte_builder_capacity(const SlByteBuilder* builder);
+SlByteBuilderStats sl_byte_builder_stats(const SlByteBuilder* builder);
 SlBytes sl_byte_builder_view(const SlByteBuilder* builder);
 SlStatus sl_byte_builder_reserve(SlByteBuilder* builder, size_t additional);
 SlStatus sl_byte_builder_append_bytes(SlByteBuilder* builder, SlBytes bytes);
@@ -68,6 +85,7 @@ SlStatus sl_string_builder_init_arena(SlStringBuilder* builder, SlArena* arena,
 void sl_string_builder_reset(SlStringBuilder* builder);
 size_t sl_string_builder_length(const SlStringBuilder* builder);
 size_t sl_string_builder_capacity(const SlStringBuilder* builder);
+SlByteBuilderStats sl_string_builder_stats(const SlStringBuilder* builder);
 SlStr sl_string_builder_view(const SlStringBuilder* builder);
 /*
  * Produces a view whose storage has a trailing NUL byte after the returned length.

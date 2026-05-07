@@ -38,6 +38,15 @@ typedef struct SlArenaMark
     unsigned int generation;
 } SlArenaMark;
 
+typedef struct SlArenaStats
+{
+    size_t capacity;
+    size_t used;
+    size_t remaining;
+    size_t high_water;
+    unsigned int generation;
+} SlArenaStats;
+
 /*
  * Initializes `arena` over caller-owned `buffer`.
  *
@@ -91,6 +100,7 @@ size_t sl_arena_capacity(const SlArena* arena);
 size_t sl_arena_used(const SlArena* arena);
 size_t sl_arena_remaining(const SlArena* arena);
 size_t sl_arena_high_water(const SlArena* arena);
+SlArenaStats sl_arena_stats(const SlArena* arena);
 
 #ifdef __cplusplus
 }

@@ -40,9 +40,10 @@ but not executed.
 | `DEFERRED` | The source doc or issue explicitly keeps the lane out of scope. |
 | `NOT RUN` | The lane was applicable but was not run. |
 
-Optional lane results must not be folded into the default lane. A default pass
-does not imply V8, package, live-provider, advanced static analysis, sanitizer, stress,
-torture, or benchmark evidence.
+Separate lane results must not be folded into the default lane. A default pass
+does not imply V8, package, live-provider, advanced static analysis, stress,
+torture, or benchmark evidence. Mandatory memory-safety CI provides separate
+sanitizer and libFuzzer seed-replay evidence.
 
 Use the PR lane names from `docs/testing-strategy.md`: default non-V8, compiler/Plan,
 V8-gated, source-input, package outside-checkout, platform-specific, dependency-backed,
@@ -95,6 +96,37 @@ contain historical or fake marker text when that text is clearly scoped.
   V8, advanced static analysis, or sanitizer lanes.
 - Package or release tooling changes: package smoke outside the checkout, plus
   artifact hygiene.
+
+## Mandatory Sanitizer And Fuzz Evidence
+
+Windows ASan, Windows libFuzzer seed replay, and Linux ASan/UBSan are mandatory
+memory-safety CI evidence. They do not replace default correctness gates, and they must be
+reported with their exact preset, target, and result.
+
+Stable local Windows lanes mirror mandatory CI:
+
+```powershell
+.\tools\windows\dev.ps1 configure -Preset windows-asan
+.\tools\windows\dev.ps1 build -Preset windows-asan
+ctest --preset windows-asan --output-on-failure
+
+.\tools\windows\dev.ps1 configure -Preset windows-libfuzzer
+.\tools\windows\dev.ps1 build -Preset windows-libfuzzer
+ctest --preset windows-libfuzzer -L fuzz --output-on-failure
+```
+
+Mandatory CI also runs the `linux-sanitizers` preset with ASan and UBSan enabled. Local
+Linux validation should mirror CI:
+
+```bash
+cmake --preset linux-sanitizers
+cmake --build --preset linux-sanitizers
+ctest --preset linux-sanitizers --output-on-failure
+```
+
+libFuzzer mutation runs are separate optional evidence. They must name the target, corpus,
+toolchain, duration, and whether the run modified the corpus. Generated corpus files are
+not committed unless a scoped task deliberately promotes them to reviewed seeds.
 
 ## Advanced Static Analysis
 

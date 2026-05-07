@@ -42,5 +42,6 @@ typedef struct SlBenchDefinition
 
 const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count);
+const SlBenchDefinition* sl_bench_memory_definitions(size_t* out_count);
 
 #endif

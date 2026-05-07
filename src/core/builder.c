@@ -52,6 +52,16 @@ static void sl_byte_builder_copy(unsigned char* dst, const unsigned char* src, s
     }
 }
 
+static void sl_builder_counter_add(size_t* counter, size_t amount)
+{
+    if (*counter > SIZE_MAX - amount) {
+        *counter = SIZE_MAX;
+        return;
+    }
+
+    *counter += amount;
+}
+
 static bool sl_byte_builder_is_initialized(const SlByteBuilder* builder)
 {
     return builder != NULL && builder->storage != SL_BUILDER_STORAGE_INVALID;
@@ -129,10 +139,12 @@ static SlStatus sl_byte_builder_grow(SlByteBuilder* builder, size_t required)
 
     if (builder->length != 0U) {
         sl_byte_builder_copy((unsigned char*)next_data, builder->data, builder->length);
+        sl_builder_counter_add(&builder->copied_bytes, builder->length);
     }
 
     builder->data = (unsigned char*)next_data;
     builder->capacity = next_capacity;
+    sl_builder_counter_add(&builder->grow_count, 1U);
     return sl_status_ok();
 }
 
@@ -198,6 +210,25 @@ size_t sl_byte_builder_capacity(const SlByteBuilder* builder)
     return builder == NULL ? 0U : builder->capacity;
 }
 
+SlByteBuilderStats sl_byte_builder_stats(const SlByteBuilder* builder)
+{
+    SlByteBuilderStats stats = {0U};
+
+    if (builder == NULL) {
+        return stats;
+    }
+
+    stats.length = builder->length;
+    stats.capacity = builder->capacity;
+    stats.max_capacity = builder->max_capacity;
+    stats.grow_count = builder->grow_count;
+    stats.copied_bytes = builder->copied_bytes;
+    stats.appended_bytes = builder->appended_bytes;
+    stats.failed_reserve_count = builder->failed_reserve_count;
+    stats.storage = builder->storage;
+    return stats;
+}
+
 SlBytes sl_byte_builder_view(const SlByteBuilder* builder)
 {
     if (builder == NULL || builder->length == 0U) {
@@ -225,7 +256,11 @@ SlStatus sl_byte_builder_reserve(SlByteBuilder* builder, size_t additional)
         return sl_status_ok();
     }
 
-    return sl_byte_builder_grow(builder, required);
+    status = sl_byte_builder_grow(builder, required);
+    if (!sl_status_is_ok(status)) {
+        sl_builder_counter_add(&builder->failed_reserve_count, 1U);
+    }
+    return status;
 }
 
 SlStatus sl_byte_builder_append_bytes(SlByteBuilder* builder, SlBytes bytes)
@@ -248,6 +283,7 @@ SlStatus sl_byte_builder_append_bytes(SlByteBuilder* builder, SlBytes bytes)
 
     sl_byte_builder_copy(builder->data + builder->length, bytes.ptr, bytes.length);
     builder->length += bytes.length;
+    sl_builder_counter_add(&builder->appended_bytes, bytes.length);
     return sl_status_ok();
 }
 
@@ -266,6 +302,7 @@ SlStatus sl_byte_builder_append_byte(SlByteBuilder* builder, unsigned char byte)
 
     builder->data[builder->length] = byte;
     builder->length += 1U;
+    sl_builder_counter_add(&builder->appended_bytes, 1U);
     return sl_status_ok();
 }
 
@@ -305,6 +342,15 @@ size_t sl_string_builder_length(const SlStringBuilder* builder)
 size_t sl_string_builder_capacity(const SlStringBuilder* builder)
 {
     return builder == NULL ? 0U : sl_byte_builder_capacity(&builder->bytes);
+}
+
+SlByteBuilderStats sl_string_builder_stats(const SlStringBuilder* builder)
+{
+    if (builder == NULL) {
+        return sl_byte_builder_stats(NULL);
+    }
+
+    return sl_byte_builder_stats(&builder->bytes);
 }
 
 SlStr sl_string_builder_view(const SlStringBuilder* builder)
@@ -402,6 +448,7 @@ SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value)
     }
 
     builder->bytes.length += length;
+    sl_builder_counter_add(&builder->bytes.appended_bytes, length);
     return sl_status_ok();
 }
 
@@ -452,6 +499,7 @@ SlStatus sl_string_builder_append_i64(SlStringBuilder* builder, int64_t value)
     }
 
     builder->bytes.length += length;
+    sl_builder_counter_add(&builder->bytes.appended_bytes, length);
     return sl_status_ok();
 }
 

@@ -103,6 +103,9 @@ Request execution should then be:
 
 No performance claim without a benchmark.
 
+Benchmark list/smoke output only proves that the harness builds, starts, and exposes the
+expected benchmark names. It is never performance evidence.
+
 Each benchmark report must record:
 
 - Sloppy commit;
@@ -111,6 +114,7 @@ Each benchmark report must record:
 - hardware;
 - runtime configuration;
 - workload;
+- input corpus or fixture identity;
 - compared baseline;
 - warmup behavior;
 - repetition count/statistical method;

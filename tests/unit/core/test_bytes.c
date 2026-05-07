@@ -147,6 +147,58 @@ static int test_find_helpers(void)
     return 0;
 }
 
+static int test_deterministic_byte_scan_properties(void)
+{
+    unsigned char bytes[64];
+    unsigned char needles[3];
+    size_t length = 0U;
+
+    for (length = 0U; length <= sizeof(bytes); length += 1U) {
+        size_t index = 0U;
+        SlBytesFindResult result = {.found = true, .index = 777U, .value = 88U};
+        bool expected_found = false;
+        size_t expected_index = length;
+
+        for (index = 0U; index < sizeof(bytes); index += 1U) {
+            bytes[index] = (unsigned char)((index * 37U + length * 11U) & 0xffU);
+        }
+        if (length > 0U) {
+            bytes[length / 2U] = 0U;
+        }
+
+        for (index = 0U; index < length; index += 1U) {
+            if (bytes[index] == 0U) {
+                expected_found = true;
+                expected_index = index;
+                break;
+            }
+        }
+
+        if (expect_status(sl_bytes_find(sl_bytes_from_parts(bytes, length), 0U, &result),
+                          SL_STATUS_OK) != 0 ||
+            result.found != expected_found || result.index != expected_index ||
+            (result.found && result.value != 0U))
+        {
+            return 30;
+        }
+
+        needles[0] = 0xfeU;
+        needles[1] = 0xffU;
+        needles[2] = 0U;
+        if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(bytes, length),
+                                            sl_bytes_from_parts(needles, sizeof(needles)), &result),
+                          SL_STATUS_OK) != 0)
+        {
+            return 31;
+        }
+        if (result.found && result.index >= length) {
+            return 32;
+        }
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const unsigned char bytes[] = {0U, 1U, 2U, 0U};
@@ -219,6 +271,11 @@ int main(void)
     }
 
     result = test_find_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_deterministic_byte_scan_properties();
     if (result != 0) {
         return result;
     }

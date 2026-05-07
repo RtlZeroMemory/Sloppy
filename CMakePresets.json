@@ -91,6 +91,24 @@
       }
     },
     {
+      "name": "linux-sanitizers",
+      "displayName": "Linux ASan/UBSan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-sanitizers",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SQLSERVER": "OFF",
+        "SLOPPY_ENABLE_ASAN": "ON",
+        "SLOPPY_ENABLE_UBSAN": "ON",
+        "SLOPPY_ENABLE_ASSERTS": "ON",
+        "SLOPPY_ENABLE_WERROR": "OFF"
+      }
+    },
+    {
       "name": "linux-gcc",
       "displayName": "Linux gcc",
       "generator": "Ninja",
@@ -147,6 +165,10 @@
       "configurePreset": "linux-clang"
     },
     {
+      "name": "linux-sanitizers",
+      "configurePreset": "linux-sanitizers"
+    },
+    {
       "name": "linux-gcc",
       "configurePreset": "linux-gcc"
     },
@@ -194,6 +216,13 @@
     {
       "name": "linux-clang",
       "configurePreset": "linux-clang",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-sanitizers",
+      "configurePreset": "linux-sanitizers",
       "output": {
         "outputOnFailure": true
       }

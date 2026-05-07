@@ -12,7 +12,7 @@ because it exists.
 - Move docs, specs, tests, and code together when behavior changes.
 - Cover negative paths, malformed inputs, cleanup, and diagnostics for every
   contract that can fail.
-- Keep optional or expensive evidence lanes separate from default evidence.
+- Keep separate evidence lanes separate from default evidence.
 - Use goldens as semantic contracts, not as unreviewed output dumps.
 - Report skipped or unavailable lanes honestly; they are not pass evidence.
 
@@ -42,8 +42,9 @@ sanitizer/memory-safety, and benchmark.
 | Sanitizer/memory-safety | Address, undefined-behavior, thread, or memory-safety sanitizer evidence. |
 | Benchmark | Measured Release benchmark output only; never correctness evidence. |
 
-Default non-V8 evidence does not prove V8. Package smoke does not prove release
-readiness. Benchmark smoke proves harness execution only.
+Default non-V8 evidence does not prove V8, sanitizer, or libFuzzer seed-replay
+evidence. Package smoke does not prove release readiness. Benchmark smoke proves harness
+execution only.
 
 ## Golden Policy
 
@@ -78,9 +79,11 @@ contract.
 ## Fuzz, Torture, Sanitizers, and Benchmarks
 
 Default-safe fuzz/property seed replay may run in the default lane when it is
-deterministic and bounded. libFuzzer mutation, sanitizers, long fuzzing,
-stress/torture, live-provider checks, package checks, V8 checks, and benchmarks
-remain opt-in unless a scoped task promotes a bounded target.
+deterministic and bounded. Windows ASan, Windows libFuzzer seed replay, and Linux
+ASan/UBSan are mandatory memory-safety CI lanes and must be reported separately.
+libFuzzer mutation, long fuzzing, stress/torture, live-provider checks, package checks, V8
+checks, and benchmarks remain separate opt-in evidence unless a scoped task promotes a
+bounded target.
 
 Advanced static analysis is separate from default script lint. A clean clang-tidy/analyzer
 run is useful evidence for memory-sensitive PRs, but skipped or unavailable advanced
