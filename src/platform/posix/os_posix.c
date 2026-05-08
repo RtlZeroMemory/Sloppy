@@ -260,8 +260,8 @@ static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (value.length != 0U) {
-        memcpy(memory, value.ptr, value.length);
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        ((char*)memory)[index] = value.ptr[index];
     }
     ((char*)memory)[value.length] = '\0';
 
