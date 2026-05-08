@@ -164,6 +164,12 @@
     sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_json tests/golden/cli/audit-json.json audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format json)
+    sloppy_add_cli_nonzero_golden_test(
+        sloppy.cli.audit_config_text tests/golden/cli/audit-config-text.txt audit --plan
+        tests/fixtures/cli/config.plan.json --format text)
+    sloppy_add_cli_nonzero_golden_test(
+        sloppy.cli.audit_config_json tests/golden/cli/audit-config-json.json audit --plan
+        tests/fixtures/cli/config.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_partial_json tests/golden/cli/audit-partial-json.json audit --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)

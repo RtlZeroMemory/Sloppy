@@ -120,7 +120,10 @@ injection use the inferred config keys
 for an explicit policy override.
 
 Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
-config references, or secret-source references.
+config references, or secret-source references. Generated Framework provider wrappers carry
+the logical config key and the runtime environment variable name needed to resolve PostgreSQL
+or SQL Server connection strings; they must not embed the connection string value in generated
+JavaScript or Plan/package metadata.
 
 ## Source Input
 

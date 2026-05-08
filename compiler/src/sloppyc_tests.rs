@@ -5,8 +5,9 @@ use std::{
 };
 
 use super::{
-    canonical_config_key, checksum_security_context_visible, command_from_args, extract,
-    noncrypto_hash_security_context_visible, route_pattern_supported, CliCommand, CompileOptions,
+    canonical_config_key, checksum_security_context_visible, command_from_args,
+    config_key_is_sensitive, extract, noncrypto_hash_security_context_visible,
+    route_pattern_supported, CliCommand, CompileOptions,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -101,6 +102,15 @@ fn keep_alive_environment_override_keys_are_canonicalized() {
         canonical_config_key("SLOPPY:SERVER:TLS:PASSPHRASE"),
         "Sloppy:Server:Tls:Passphrase"
     );
+    assert_eq!(
+        canonical_config_key("SLOPPY:PROVIDERS:POSTGRES:MAIN:CONNECTIONSTRING"),
+        "Sloppy:Providers:postgres:MAIN:connectionString"
+    );
+    assert_eq!(
+        canonical_config_key("AUTH:CLIENTSECRET"),
+        "AUTH:clientSecret"
+    );
+    assert_eq!(canonical_config_key("AUTH:PRIVATEKEY"), "AUTH:privateKey");
 }
 
 #[test]
@@ -501,6 +511,17 @@ fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
     assert!(!keys
         .iter()
         .any(|key| key.value.to_string().contains("secret")));
+}
+
+#[test]
+fn configuration_key_sensitivity_covers_alpha_secret_aliases() {
+    assert!(config_key_is_sensitive("Auth:apiKey"));
+    assert!(config_key_is_sensitive("Auth:clientSecret"));
+    assert!(config_key_is_sensitive("Auth:privateKey"));
+    assert!(config_key_is_sensitive(
+        "Sloppy:Providers:postgres:main:connectionString"
+    ));
+    assert!(!config_key_is_sensitive("Sloppy:Server:Tls:PrivateKeyPath"));
 }
 
 #[test]
@@ -3349,8 +3370,14 @@ export default app;
             && capability.config_name.as_deref() == Some("search")
     }));
     let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("\"connectionStringKey\":\"Sloppy:Providers:postgres:main:connectionString\""));
     assert!(emitted_js.source.contains(
         "\"connectionStringEnv\":\"Sloppy__Providers__postgres__main__connectionString\""
+    ));
+    assert!(emitted_js.source.contains(
+        "\"connectionStringKey\":\"Sloppy:Providers:sqlserver:search:connectionString\""
     ));
     assert!(emitted_js.source.contains(
         "\"connectionStringEnv\":\"Sloppy__Providers__sqlserver__search__connectionString\""
@@ -3366,6 +3393,47 @@ export default app;
     assert!(!emitted_js
         .source
         .contains("data.sqlserver.open({ provider:"));
+}
+
+#[test]
+fn typed_framework_provider_injection_uses_placeholder_environment_source() {
+    let root = fixture_temp_dir("typed-provider-config-env-source");
+    let input = root.join("app.ts");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+const app = Sloppy.create();
+app.get("/users", async (pg: Postgres<"main">) => Results.ok({ ok: true }));
+export default app;
+"#;
+    fs::write(&input, source).expect("input should be written");
+    fs::write(
+        root.join("appsettings.json"),
+        r#"{"Sloppy":{"Providers":{"postgres":{"main":{"connectionString":"${SLOPPY_TEST_PG_URL}"}}}}}"#,
+    )
+    .expect("appsettings should be written");
+    std::env::set_var(
+        "SLOPPY_TEST_PG_URL",
+        "postgres://user:<PASSWORD>@example/db",
+    );
+
+    let mut app = extract(&input, source).expect("typed provider injection should extract");
+    let configuration = super::ConfigurationModel::load(&input, &super::CompileOptions::new(), &[])
+        .expect("configuration should load");
+    configuration
+        .apply_to_app(&mut app)
+        .expect("configuration should apply");
+    let emitted_js = super::emit_app_js(&app);
+    let plan = super::emit_plan(&app, "bundle-hash", "map-hash").expect("plan should emit");
+
+    std::env::remove_var("SLOPPY_TEST_PG_URL");
+    assert!(emitted_js
+        .source
+        .contains("\"connectionStringEnv\":\"SLOPPY_TEST_PG_URL\""));
+    assert!(!emitted_js
+        .source
+        .contains("postgres://user:<PASSWORD>@example/db"));
+    assert!(plan.contains("\"value\": \"<redacted>\""));
+    assert!(!plan.contains("postgres://user:<PASSWORD>@example/db"));
 }
 
 #[test]
