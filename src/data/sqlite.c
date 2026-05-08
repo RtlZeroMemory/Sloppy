@@ -22,6 +22,7 @@
 #include "sloppy/data_sqlite.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <limits.h>
 #include <sqlite3.h>
@@ -275,9 +276,8 @@ static SlStatus sl_sqlite_prepare(SlArena* arena, SlSqliteConnection* connection
 static SlStatus sl_sqlite_copy_columns(SlArena* arena, sqlite3_stmt* stmt, size_t column_count,
                                        SlStr** out_column_names)
 {
-    void* ptr = NULL;
+    SlSlice names_slice = {0};
     SlStr* names = NULL;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -290,17 +290,13 @@ static SlStatus sl_sqlite_copy_columns(SlArena* arena, sqlite3_stmt* stmt, size_
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(column_count, sizeof(SlStr), &alloc_size);
+    status =
+        sl_arena_array_alloc(arena, column_count, sizeof(SlStr), _Alignof(SlStr), &names_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlStr), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    names = (SlStr*)ptr;
+    names = (SlStr*)names_slice.ptr;
     for (index = 0U; index < column_count; index += 1U) {
         const char* name = sqlite3_column_name(stmt, (int)index);
         status = sl_sqlite_copy_result_text_to_arena(arena, sl_str_from_cstr(name), &names[index]);
@@ -365,11 +361,9 @@ static SlStatus sl_sqlite_copy_value(SlArena* arena, sqlite3_stmt* stmt, size_t 
 static SlStatus sl_sqlite_allocate_rows(SlArena* arena, size_t max_rows, size_t column_count,
                                         SlSqliteRow** out_rows, SlSqliteValue** out_cells)
 {
-    void* row_ptr = NULL;
-    void* cell_ptr = NULL;
-    size_t row_alloc_size = 0U;
+    SlSlice row_slice = {0};
+    SlSlice cell_slice = {0};
     size_t cell_count = 0U;
-    size_t cell_alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || out_rows == NULL || out_cells == NULL || max_rows == 0U) {
@@ -379,15 +373,12 @@ static SlStatus sl_sqlite_allocate_rows(SlArena* arena, size_t max_rows, size_t 
     *out_rows = NULL;
     *out_cells = NULL;
 
-    status = sl_checked_mul_size(max_rows, sizeof(SlSqliteRow), &row_alloc_size);
+    status = sl_arena_array_alloc(arena, max_rows, sizeof(SlSqliteRow), _Alignof(SlSqliteRow),
+                                  &row_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, row_alloc_size, _Alignof(SlSqliteRow), &row_ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    if (row_ptr == NULL) {
+    if (row_slice.ptr == NULL) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
@@ -396,21 +387,18 @@ static SlStatus sl_sqlite_allocate_rows(SlArena* arena, size_t max_rows, size_t 
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_checked_mul_size(cell_count, sizeof(SlSqliteValue), &cell_alloc_size);
+        status = sl_arena_array_alloc(arena, cell_count, sizeof(SlSqliteValue),
+                                      _Alignof(SlSqliteValue), &cell_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, cell_alloc_size, _Alignof(SlSqliteValue), &cell_ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        if (cell_ptr == NULL) {
+        if (cell_slice.ptr == NULL) {
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
     }
 
-    *out_rows = (SlSqliteRow*)row_ptr;
-    *out_cells = (SlSqliteValue*)cell_ptr;
+    *out_rows = (SlSqliteRow*)row_slice.ptr;
+    *out_cells = (SlSqliteValue*)cell_slice.ptr;
     return sl_status_ok();
 }
 
@@ -468,20 +456,11 @@ SlStatus sl_sqlite_provider_executor_config(const SlSqliteProviderConfig* config
 
 SlStatus sl_sqlite_copy_result_text_to_arena(SlArena* arena, SlStr text, SlStr* out)
 {
-    SlOwnedStr copied = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_sqlite_str_valid(text)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, text, &copied);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    *out = sl_owned_str_as_view(copied);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, text, out);
 }
 
 SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlBytes* out)
@@ -833,8 +812,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
     sqlite3* db = sl_sqlite_db(connection);
     SlArenaMark mark = {0};
     size_t column_count = 0U;
-    void* value_ptr = NULL;
-    size_t value_alloc_size = 0U;
+    SlSlice value_slice = {0};
     size_t column = 0U;
     int rc = SQLITE_OK;
     SlStatus status;
@@ -905,15 +883,8 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
     }
 
     if (column_count > 0U) {
-        status = sl_checked_mul_size(column_count, sizeof(SlSqliteValue), &value_alloc_size);
-        if (!sl_status_is_ok(status)) {
-            sqlite3_finalize(stmt);
-            (void)sl_arena_reset_to(arena, mark);
-            *out_result = (SlSqliteQueryOneResult){0};
-            return status;
-        }
-
-        status = sl_arena_alloc(arena, value_alloc_size, _Alignof(SlSqliteValue), &value_ptr);
+        status = sl_arena_array_alloc(arena, column_count, sizeof(SlSqliteValue),
+                                      _Alignof(SlSqliteValue), &value_slice);
         if (!sl_status_is_ok(status)) {
             sqlite3_finalize(stmt);
             (void)sl_arena_reset_to(arena, mark);
@@ -922,7 +893,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
         }
     }
 
-    out_result->values = (SlSqliteValue*)value_ptr;
+    out_result->values = (SlSqliteValue*)value_slice.ptr;
     for (column = 0U; column < column_count; column += 1U) {
         status = sl_sqlite_copy_value(arena, stmt, column, &out_result->values[column]);
         if (!sl_status_is_ok(status)) {

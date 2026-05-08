@@ -16,6 +16,7 @@
 #include "../../core/fs_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <errno.h>
 #include <dirent.h>
@@ -540,9 +541,9 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     SlOwnedStr native = {0};
     DIR* dir = NULL;
     struct dirent* entry = NULL;
+    SlSlice entries = {0};
     size_t count = 0U;
     SlStatus status;
-    void* memory = NULL;
 
     (void)out_diag;
     if (arena == NULL || out == NULL) {
@@ -566,17 +567,14 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     }
     rewinddir(dir);
     if (count != 0U) {
-        size_t bytes = 0U;
-        status = sl_checked_array_size(count, sizeof(SlFsDirectoryEntry), &bytes);
-        if (sl_status_is_ok(status)) {
-            status = sl_arena_alloc(arena, bytes, _Alignof(SlFsDirectoryEntry), &memory);
-        }
+        status = sl_arena_array_alloc(arena, count, sizeof(SlFsDirectoryEntry),
+                                      _Alignof(SlFsDirectoryEntry), &entries);
         if (!sl_status_is_ok(status)) {
             closedir(dir);
             (void)sl_arena_reset_to(arena, mark);
             return status;
         }
-        out->entries = (SlFsDirectoryEntry*)memory;
+        out->entries = (SlFsDirectoryEntry*)entries.ptr;
         if (out->entries == NULL) {
             closedir(dir);
             (void)sl_arena_reset_to(arena, mark);
@@ -833,6 +831,7 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
         return sl_fs_posix_status(errno);
     }
     lock->path = native;
+    sl_owned_str_rebind(&lock->path);
     lock->closed = false;
     *out_lock = lock;
     return sl_status_ok();
@@ -845,8 +844,9 @@ SlStatus sl_fs_platform_release_lock(SlFsFileLock* lock, SlDiag* out_diag)
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     close(lock->fd);
-    if (lock->path.ptr != NULL) {
-        (void)unlink(lock->path.ptr);
+    SlStr path = sl_owned_str_as_view(lock->path);
+    if (path.ptr != NULL) {
+        (void)unlink(path.ptr);
     }
     lock->closed = true;
     lock->fd = -1;

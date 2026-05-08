@@ -18,7 +18,7 @@
  */
 #include "sloppy/resource.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 static SlStr sl_resource_literal(const char* ptr, size_t length)
 {
@@ -232,9 +232,8 @@ SlStatus sl_resource_table_init(SlResourceTable* table, SlResourceEntry* storage
 
 SlStatus sl_resource_table_init_from_arena(SlResourceTable* table, SlArena* arena, size_t capacity)
 {
+    SlSlice entries = {0};
     SlStatus status;
-    size_t storage_size = 0U;
-    void* storage = NULL;
 
     if (table == NULL || arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -252,17 +251,13 @@ SlStatus sl_resource_table_init_from_arena(SlResourceTable* table, SlArena* aren
         return sl_resource_table_init(table, NULL, 0U);
     }
 
-    status = sl_checked_array_size(capacity, sizeof(SlResourceEntry), &storage_size);
+    status = sl_arena_array_alloc(arena, capacity, sizeof(SlResourceEntry),
+                                  _Alignof(SlResourceEntry), &entries);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, storage_size, _Alignof(SlResourceEntry), &storage);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    return sl_resource_table_init(table, (SlResourceEntry*)storage, capacity);
+    return sl_resource_table_init(table, (SlResourceEntry*)entries.ptr, capacity);
 }
 
 SlStatus sl_resource_table_insert(SlResourceTable* table, SlResourceKind kind, void* ptr,

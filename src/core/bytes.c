@@ -10,6 +10,8 @@
 
 #include "bytes_internal.h"
 
+#include "sloppy/container.h"
+
 #include <string.h>
 
 #define SL_BYTES_FNV1A_OFFSET 14695981039346656037ULL
@@ -195,8 +197,7 @@ SlStatus sl_bytes_hash(SlBytes bytes, uint64_t* out_hash)
 
 SlStatus sl_bytes_copy_to_arena(SlArena* arena, SlBytes src, SlOwnedBytes* out)
 {
-    void* copied = NULL;
-    size_t index = 0U;
+    SlSlice copied = {0};
     SlOwnedBytes result = {NULL, 0U};
     SlStatus status;
 
@@ -209,15 +210,13 @@ SlStatus sl_bytes_copy_to_arena(SlArena* arena, SlBytes src, SlOwnedBytes* out)
         return sl_status_ok();
     }
 
-    status = sl_arena_alloc(arena, src.length, _Alignof(unsigned char), &copied);
+    status = sl_arena_array_copy(arena, src.ptr, src.length, sizeof(unsigned char),
+                                 _Alignof(unsigned char), &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    for (index = 0U; index < src.length; index += 1U) {
-        ((unsigned char*)copied)[index] = src.ptr[index];
-    }
-    result.ptr = (unsigned char*)copied;
+    result.ptr = (unsigned char*)copied.ptr;
     result.length = src.length;
     *out = result;
     return sl_status_ok();

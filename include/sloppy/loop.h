@@ -1,6 +1,7 @@
 #ifndef SLOPPY_LOOP_H
 #define SLOPPY_LOOP_H
 
+#include "sloppy/container.h"
 #include "sloppy/status.h"
 
 #include <stdbool.h>
@@ -55,11 +56,7 @@ typedef struct SlCompletion
  */
 struct SlLoop
 {
-    SlCompletion* queue;
-    size_t capacity;
-    size_t head;
-    size_t tail;
-    size_t count;
+    SlRingQueue queue;
     bool stopped;
     bool draining;
 };

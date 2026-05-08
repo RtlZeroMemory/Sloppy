@@ -27,7 +27,7 @@ static int test_views_and_helpers(void)
     SlStr different_str = sl_str_from_parts(different, sizeof(different));
     SlStr prefix = sl_str_from_parts(embedded, 2U);
     SlStr suffix = sl_str_from_parts(embedded + 1U, 2U);
-    SlOwnedStr owned = {(char*)different, sizeof(different)};
+    SlOwnedStr owned = {.ptr = (char*)different, .length = sizeof(different)};
 
     if (expect_true(sl_str_is_empty(empty)) != 0 ||
         expect_true(sl_str_equal(empty, from_null_cstr)) != 0 ||
@@ -296,13 +296,16 @@ static int test_arena_copies(void)
 {
     const char embedded[] = {'a', '\0', 'b'};
     const char different[] = {'a', '\0', 'c'};
+    const char large[] = "0123456789abcdef0123456789abcdef";
     unsigned char arena_storage[64];
     unsigned char tiny_storage[2];
     SlArena arena;
     SlArena tiny_arena;
     SlStr embedded_str = sl_str_from_parts(embedded, sizeof(embedded));
-    SlOwnedStr owned = {(char*)different, sizeof(different)};
-    SlOwnedStr sentinel = {(char*)different, 99U};
+    SlStr large_str = sl_str_from_parts(large, sizeof(large) - 1U);
+    SlOwnedStr owned = {.ptr = (char*)different, .length = sizeof(different)};
+    SlOwnedStr sentinel = {.ptr = (char*)different, .length = 99U};
+    size_t used_before = 0U;
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
         0)
@@ -311,18 +314,22 @@ static int test_arena_copies(void)
     }
 
     owned = sentinel;
+    used_before = sl_arena_used(&arena);
     if (expect_status(sl_str_copy_to_arena(&arena, embedded_str, &owned), SL_STATUS_OK) != 0 ||
         owned.ptr == embedded || owned.length != embedded_str.length ||
+        sl_arena_used(&arena) != used_before ||
         !sl_str_equal(sl_owned_str_as_view(owned), embedded_str))
     {
         return 21;
     }
 
     owned = sentinel;
+    used_before = sl_arena_used(&arena);
     if (expect_status(
             sl_str_concat_to_arena(&arena, sl_str_from_cstr("ab"), sl_str_from_cstr("cd"), &owned),
             SL_STATUS_OK) != 0 ||
-        owned.length != 4U || !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")))
+        owned.length != 4U || sl_arena_used(&arena) != used_before ||
+        !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")))
     {
         return 31;
     }
@@ -345,8 +352,10 @@ static int test_arena_copies(void)
     owned = sentinel;
     if (expect_status(sl_str_concat_to_arena(&tiny_arena, sl_str_from_cstr("ab"),
                                              sl_str_from_cstr("cd"), &owned),
-                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
-        owned.ptr != sentinel.ptr || owned.length != sentinel.length)
+                      SL_STATUS_OK) != 0 ||
+        owned.length != 4U ||
+        !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")) ||
+        sl_arena_used(&tiny_arena) != 0U)
     {
         return 34;
     }
@@ -414,11 +423,55 @@ static int test_arena_copies(void)
     }
 
     owned = sentinel;
-    if (expect_status(sl_str_copy_to_arena_nul(&tiny_arena, embedded_str, &owned),
+    if (expect_status(sl_str_copy_to_arena_nul(&tiny_arena, embedded_str, &owned), SL_STATUS_OK) !=
+            0 ||
+        owned.length != embedded_str.length ||
+        !sl_str_equal(sl_owned_str_as_view(owned), embedded_str) ||
+        sl_arena_used(&tiny_arena) != 0U)
+    {
+        return 27;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena(&tiny_arena, large_str, &owned),
                       SL_STATUS_OUT_OF_MEMORY) != 0 ||
         owned.ptr != sentinel.ptr || owned.length != sentinel.length)
     {
-        return 27;
+        return 35;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena(&arena, large_str, &owned), SL_STATUS_OK) != 0 ||
+        owned.length != large_str.length ||
+        owned.arena_generation != sl_arena_stats(&arena).generation ||
+        !sl_arena_contains_str(&arena, sl_owned_str_as_view(owned)) ||
+        !sl_str_equal(sl_owned_str_as_view(owned), large_str))
+    {
+        return 36;
+    }
+
+    if (expect_true(sl_arena_contains_str(&arena, sl_str_empty())) != 0 ||
+        expect_true(!sl_arena_contains_str(NULL, sl_str_empty())) != 0 ||
+        expect_true(!sl_arena_contains_str(&arena, sl_str_from_cstr("external"))) != 0 ||
+        expect_true(!sl_arena_contains_str(&arena, sl_str_from_parts(NULL, 1U))) != 0)
+    {
+        return 37;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena(&arena, sl_str_from_cstr("copy-stable"), &owned),
+                      SL_STATUS_OK) != 0)
+    {
+        return 38;
+    }
+    {
+        SlOwnedStr copied_owned = owned;
+        sl_owned_str_rebind(&copied_owned);
+        if (expect_true(sl_str_equal(sl_owned_str_as_view(copied_owned),
+                                     sl_str_from_cstr("copy-stable"))) != 0)
+        {
+            return 39;
+        }
     }
 
     return 0;

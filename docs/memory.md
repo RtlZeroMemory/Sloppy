@@ -15,6 +15,9 @@ handles, request scopes, async completions, and native/JavaScript boundaries.
   contains no embedded NUL before copying it to a terminated arena string.
 - Arena-owned strings and bytes remain valid until the arena is reset or its backing storage
   ends.
+- Short `SlOwnedStr` results may be stored inline instead of in the arena. Callers should
+  read owned strings through `sl_owned_str_as_view` so copied SSO structs resolve to their
+  own inline buffer.
 - Callers must use checked arithmetic for sizes and offsets that can overflow.
 - Public/runtime contracts must state whether returned views are borrowed, arena-owned,
   heap-owned, or operation-owned.
@@ -31,11 +34,16 @@ The current runtime includes:
 - borrowed `SlStr` and `SlBytes`;
 - arena-owned string and byte copy helpers, including a C-string boundary helper that
   rejects embedded NUL before appending a terminator;
+- `SlOwnedStr` inline storage for short owned strings, with longer string copies carrying
+  the arena generation that produced their arena-backed storage;
 - deterministic string/byte equality, hashing, and canonical byte search helpers with a
   scalar reference path;
 - checked `size_t` arithmetic, including array-allocation and three-term-addition helpers;
 - assertion macros;
 - caller-backed `SlArena` with read-only stats snapshots;
+- standard C container primitives for Sloppy-owned memory contracts: `SlSlice`,
+  caller-backed fixed vectors, caller/arena-backed ring queues, arena array allocation/copy,
+  and arena-backed index hash buckets;
 - bounded fixed, small-inline, or arena-backed byte and string builders with deterministic
   internal growth/copy counters;
 - app/static-lifetime intern tables for stable metadata;
@@ -59,6 +67,10 @@ point into the reset range.
 Request-scoped arenas are for one request. App/static arenas are for validated metadata and
 startup-owned resources. Scratch arenas must not leak views to longer-lived owners.
 
+Arena-backed `SlOwnedStr` results record the arena generation that produced them for tests
+and diagnostics, but callers must still enforce arena lifetime from the owning scope; a
+borrowed `SlStr` view cannot prove generation freshness by itself.
+
 Public rendering boundaries must treat non-empty `SlStr`/`SlBytes` views with `NULL`
 storage as malformed input and fail or fall back deterministically instead of dereferencing
 the view.
@@ -66,6 +78,26 @@ the view.
 `sl_arena_stats` reports capacity, used bytes, remaining bytes, high-water bytes, and the
 current generation without mutating the arena. It is internal evidence for tests,
 benchmarks, and future optimization decisions; it is not an allocator abstraction.
+
+## Standard Containers
+
+The C kernel should use Sloppy-owned container primitives instead of repeating pointer,
+count, capacity, and bucket arithmetic at every call site. Containers remain compatible
+with the arena model:
+
+- fixed vectors and ring queues can use caller-owned storage or storage allocated from an
+  arena;
+- arena array allocation/copy centralizes checked multiplication, alignment, zero-count
+  behavior, and zero-initialized output storage;
+- the arena hash index owns only bucket and next-index arrays, while domain tables keep
+  their typed entry arrays, generation counters, and ownership contracts;
+- public API structs may still expose typed slices where that is the clearest contract, but
+  construction and validation should go through the standard primitives.
+
+These containers do not call `malloc`/`free`, do not own OS resources, and do not make
+arena-backed views valid after arena reset. They are allowed to copy trivially copyable C
+records byte-for-byte; resource ownership and cleanup semantics remain the responsibility
+of the typed owner module.
 
 ## Builders
 

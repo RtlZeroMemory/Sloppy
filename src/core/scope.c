@@ -13,10 +13,10 @@
  */
 #include "sloppy/scope.h"
 
-#include "sloppy/checked_math.h"
-
 SlStatus sl_scope_init(SlScope* scope, SlScopeCleanup* storage, size_t capacity)
 {
+    SlStatus status;
+
     if (scope == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -25,9 +25,10 @@ SlStatus sl_scope_init(SlScope* scope, SlScopeCleanup* storage, size_t capacity)
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    scope->cleanups = storage;
-    scope->capacity = capacity;
-    scope->count = 0U;
+    status = sl_fixed_vec_init(&scope->cleanups, storage, sizeof(SlScopeCleanup), capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     scope->closed = false;
 
     return sl_status_ok();
@@ -36,28 +37,18 @@ SlStatus sl_scope_init(SlScope* scope, SlScopeCleanup* storage, size_t capacity)
 SlStatus sl_scope_init_from_arena(SlScope* scope, SlArena* arena, size_t cleanup_capacity)
 {
     SlStatus status;
-    size_t storage_size = 0U;
-    void* storage = NULL;
 
     if (scope == NULL || arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (cleanup_capacity == 0U) {
-        return sl_scope_init(scope, NULL, 0U);
-    }
-
-    status = sl_checked_array_size(cleanup_capacity, sizeof(SlScopeCleanup), &storage_size);
+    status = sl_fixed_vec_init_from_arena(&scope->cleanups, arena, sizeof(SlScopeCleanup),
+                                          _Alignof(SlScopeCleanup), cleanup_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-
-    status = sl_arena_alloc(arena, storage_size, _Alignof(SlScopeCleanup), &storage);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    return sl_scope_init(scope, (SlScopeCleanup*)storage, cleanup_capacity);
+    scope->closed = false;
+    return sl_status_ok();
 }
 
 SlStatus sl_scope_add_cleanup(SlScope* scope, SlScopeCleanupFn fn, void* payload, void* user)
@@ -72,26 +63,17 @@ SlStatus sl_scope_add_cleanup(SlScope* scope, SlScopeCleanupFn fn, void* payload
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
-    if (scope->count >= scope->capacity) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-    }
-
-    if (scope->cleanups == NULL) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-
     cleanup.fn = fn;
     cleanup.payload = payload;
     cleanup.user = user;
 
-    scope->cleanups[scope->count] = cleanup;
-    scope->count += 1U;
-
-    return sl_status_ok();
+    return sl_fixed_vec_push(&scope->cleanups, &cleanup, NULL);
 }
 
 SlStatus sl_scope_close(SlScope* scope)
 {
+    SlScopeCleanup cleanup;
+
     if (scope == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -102,15 +84,7 @@ SlStatus sl_scope_close(SlScope* scope)
 
     scope->closed = true;
 
-    while (scope->count != 0U) {
-        SlScopeCleanup cleanup;
-
-        scope->count -= 1U;
-        cleanup = scope->cleanups[scope->count];
-        scope->cleanups[scope->count].fn = NULL;
-        scope->cleanups[scope->count].payload = NULL;
-        scope->cleanups[scope->count].user = NULL;
-
+    while (sl_fixed_vec_pop(&scope->cleanups, &cleanup)) {
         cleanup.fn(cleanup.payload, cleanup.user);
     }
 
@@ -123,24 +97,19 @@ void sl_scope_reset(SlScope* scope)
         return;
     }
 
-    while (scope->count != 0U) {
-        scope->count -= 1U;
-        scope->cleanups[scope->count].fn = NULL;
-        scope->cleanups[scope->count].payload = NULL;
-        scope->cleanups[scope->count].user = NULL;
-    }
+    sl_fixed_vec_clear(&scope->cleanups);
 
     scope->closed = false;
 }
 
 size_t sl_scope_cleanup_count(const SlScope* scope)
 {
-    return scope == NULL ? 0U : scope->count;
+    return sl_fixed_vec_count(scope == NULL ? NULL : &scope->cleanups);
 }
 
 size_t sl_scope_cleanup_capacity(const SlScope* scope)
 {
-    return scope == NULL ? 0U : scope->capacity;
+    return sl_fixed_vec_capacity(scope == NULL ? NULL : &scope->cleanups);
 }
 
 bool sl_scope_is_closed(const SlScope* scope)

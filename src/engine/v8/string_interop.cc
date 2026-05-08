@@ -98,20 +98,11 @@ SlStatus sl_v8_string_value_copy_bytes_to_arena(v8::Isolate* isolate, SlArena* a
 
 SlStatus sl_v8_std_string_copy_to_arena(SlArena* arena, const std::string& src, SlStr* out)
 {
-    SlOwnedStr copied = {};
-    SlStatus status;
-
     if (arena == nullptr || out == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, sl_str_from_parts(src.data(), src.size()), &copied);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    *out = sl_owned_str_as_view(copied);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, sl_str_from_parts(src.data(), src.size()), out);
 }
 
 SlStatus sl_v8_std_string_copy_bytes_to_arena(SlArena* arena, const std::string& src, SlBytes* out)

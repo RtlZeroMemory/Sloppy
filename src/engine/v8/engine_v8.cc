@@ -1156,7 +1156,6 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlV8Engine* backend = nullptr;
     SlStatus status;
     SlArenaMark mark = {};
-    SlOwnedStr copied_source_map_source_name = {};
 
     if (arena == nullptr || out_engine == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1186,8 +1185,8 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         backend->runtime_features = *options->runtime_features;
     }
     if (options != nullptr && options->source_map_source_name.length > 0U) {
-        status = sl_str_copy_to_arena(arena, options->source_map_source_name,
-                                      &copied_source_map_source_name);
+        status = sl_str_copy_view_to_arena(arena, options->source_map_source_name,
+                                           &backend->source_map_source_name);
         if (!sl_status_is_ok(status)) {
             delete backend;
             SlStatus reset_status = sl_arena_reset_to(arena, mark);
@@ -1196,7 +1195,6 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             }
             return status;
         }
-        backend->source_map_source_name = sl_owned_str_as_view(copied_source_map_source_name);
     }
     else {
         backend->source_map_source_name = sl_str_empty();

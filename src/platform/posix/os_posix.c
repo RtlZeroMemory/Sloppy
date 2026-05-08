@@ -5,6 +5,7 @@
 #include "../../core/os_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -151,8 +152,7 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     size_t count = 0U;
     size_t index = 0U;
     char** cursor = environ;
-    size_t alloc_size = 0U;
-    void* memory = NULL;
+    SlSlice entries = {0};
     SlStatus status;
 
     (void)out_diag;
@@ -173,15 +173,12 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     if (out->count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_array_size(out->count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+    status = sl_arena_array_alloc(arena, out->count, sizeof(SlOsEnvironmentEntry),
+                                  _Alignof(SlOsEnvironmentEntry), &entries);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlOsEnvironmentEntry), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    out->entries = (SlOsEnvironmentEntry*)memory;
+    out->entries = (SlOsEnvironmentEntry*)entries.ptr;
     for (size_t scan = 0U; scan < count; scan += 1U) {
         SlStr entry = sl_str_from_cstr(environ[scan]);
         const char* equals = strchr(environ[scan], '=');
@@ -240,22 +237,35 @@ static void sl_os_posix_sleep_poll(void)
 
 static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
 {
-    SlOwnedStr owned = {0};
+    size_t alloc_size = 0U;
+    void* memory = NULL;
     SlStatus status;
 
-    if (out == NULL) {
+    if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = NULL;
 
-    status = sl_str_copy_to_arena_cstr(arena, value, &owned);
+    status = sl_str_validate_no_nul(value);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (owned.ptr == NULL) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+
+    status = sl_checked_add_size(value.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    *out = owned.ptr;
+
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        ((char*)memory)[index] = value.ptr[index];
+    }
+    ((char*)memory)[value.length] = '\0';
+
+    *out = (char*)memory;
     return sl_status_ok();
 }
 
@@ -395,8 +405,7 @@ static SlStatus sl_os_posix_environment_block(SlArena* arena,
     size_t inherited_count = 0U;
     size_t offset = 0U;
     size_t pointer_count = 0U;
-    size_t alloc_size = 0U;
-    void* memory = NULL;
+    SlSlice pointers = {0};
     SlStatus status;
 
     for (char** cursor = environ; cursor != NULL && *cursor != NULL; cursor += 1) {
@@ -412,15 +421,11 @@ static SlStatus sl_os_posix_environment_block(SlArena* arena,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_array_size(pointer_count, sizeof(char*), &alloc_size);
+    status = sl_arena_array_alloc(arena, pointer_count, sizeof(char*), _Alignof(char*), &pointers);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = (char**)memory;
+    *out = (char**)pointers.ptr;
     for (char** cursor = environ; cursor != NULL && *cursor != NULL; cursor += 1) {
         if (!sl_os_posix_env_entry_overridden(*cursor, overrides, override_count)) {
             (*out)[offset++] = *cursor;
@@ -642,9 +647,9 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     uint64_t start_ms = 0U;
     bool capture = options->capture != SL_OS_PROCESS_CAPTURE_NONE;
     SlStatus status;
-    void* memory = NULL;
     size_t alloc_count = 0U;
     size_t alloc_size = 0U;
+    SlSlice argv_storage = {0};
 
     (void)out_diag;
     *out = (SlOsProcessRunResult){0};
@@ -659,15 +664,12 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_array_size(alloc_count, sizeof(char*), &alloc_size);
+    status =
+        sl_arena_array_alloc(arena, alloc_count, sizeof(char*), _Alignof(char*), &argv_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    argv = (char**)memory;
+    argv = (char**)argv_storage.ptr;
     argv[0] = command_cstr;
     for (size_t index = 0U; index < arg_count; index += 1U) {
         status = sl_os_posix_copy_nul(arena, args[index], &argv[index + 1U]);
@@ -713,20 +715,18 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), (void**)&stdout_buffer);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        stdout_buffer = (char*)memory;
         status = sl_checked_add_size(stderr_capacity, 1U, &alloc_size);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), (void**)&stderr_buffer);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        stderr_buffer = (char*)memory;
         if (pipe(stdout_pipe) != 0) {
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
@@ -913,9 +913,9 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     int error_pipe[2] = {-1, -1};
     pid_t child = -1;
     void* memory = NULL;
+    SlSlice argv_storage = {0};
     SlOsProcessHandle* handle = NULL;
     size_t alloc_count = 0U;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     *out = NULL;
@@ -930,15 +930,12 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_array_size(alloc_count, sizeof(char*), &alloc_size);
+    status =
+        sl_arena_array_alloc(arena, alloc_count, sizeof(char*), _Alignof(char*), &argv_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    argv = (char**)memory;
+    argv = (char**)argv_storage.ptr;
     argv[0] = command_cstr;
     for (size_t index = 0U; index < arg_count; index += 1U) {
         status = sl_os_posix_copy_nul(arena, args[index], &argv[index + 1U]);

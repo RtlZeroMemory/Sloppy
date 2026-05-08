@@ -1,6 +1,7 @@
 #include "../../core/os_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -13,6 +14,40 @@
 static SlStatus sl_os_win32_copy_cstr(SlArena* arena, const char* value, SlOwnedStr* out)
 {
     return sl_str_copy_to_arena(arena, sl_str_from_cstr(value == NULL ? "" : value), out);
+}
+
+static SlStatus sl_os_win32_copy_nul(SlArena* arena, SlStr value, char** out)
+{
+    size_t alloc_size = 0U;
+    void* memory = NULL;
+    SlStatus status;
+
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+
+    status = sl_str_validate_no_nul(value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_add_size(value.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        ((char*)memory)[index] = value.ptr[index];
+    }
+    ((char*)memory)[value.length] = '\0';
+
+    *out = (char*)memory;
+    return sl_status_ok();
 }
 
 static SlStr sl_os_win32_arch(void)
@@ -131,10 +166,9 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
 {
     LPCH block = NULL;
     const char* cursor = NULL;
+    SlSlice entries = {0};
     size_t count = 0U;
     size_t index = 0U;
-    size_t alloc_size = 0U;
-    void* memory = NULL;
     SlStatus status;
 
     (void)out_diag;
@@ -157,17 +191,13 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
         cursor += entry.length + 1U;
     }
     if (count != 0U) {
-        status = sl_checked_array_size(count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+        status = sl_arena_array_alloc(arena, count, sizeof(SlOsEnvironmentEntry),
+                                      _Alignof(SlOsEnvironmentEntry), &entries);
         if (!sl_status_is_ok(status)) {
             FreeEnvironmentStringsA(block);
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlOsEnvironmentEntry), &memory);
-        if (!sl_status_is_ok(status)) {
-            FreeEnvironmentStringsA(block);
-            return status;
-        }
-        out->entries = (SlOsEnvironmentEntry*)memory;
+        out->entries = (SlOsEnvironmentEntry*)entries.ptr;
         out->count = count;
         for (cursor = block; *cursor != '\0';) {
             SlStr entry = sl_str_from_cstr(cursor);
@@ -575,13 +605,11 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         return status;
     }
     if (!sl_str_is_empty(options->cwd)) {
-        SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
+        status = sl_os_win32_copy_nul(arena, options->cwd, &cwd);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        cwd = owned.ptr;
         attributes = GetFileAttributesA(cwd);
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0U)
         {
@@ -845,13 +873,11 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         return status;
     }
     if (!sl_str_is_empty(options->cwd)) {
-        SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
+        status = sl_os_win32_copy_nul(arena, options->cwd, &cwd);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        cwd = owned.ptr;
         attributes = GetFileAttributesA(cwd);
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0U)
         {

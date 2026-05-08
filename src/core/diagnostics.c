@@ -18,6 +18,7 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 static SlStr sl_diag_literal(const char* ptr, size_t length)
 {
@@ -907,9 +908,8 @@ static SlStatus sl_diag_validate_render_input(const SlDiag* diag)
 
 static SlStatus sl_diag_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
+    SlSlice copied = {0};
+    SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_diag_str_is_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -920,17 +920,12 @@ static SlStatus sl_diag_copy_str(SlArena* arena, SlStr src, SlStr* out)
         return sl_status_ok();
     }
 
-    SlStatus status = sl_arena_alloc(arena, src.length, 1U, &ptr);
+    status = sl_arena_array_copy(arena, src.ptr, src.length, sizeof(char), _Alignof(char), &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    dst = (char*)ptr;
-    for (index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.length);
+    *out = sl_str_from_parts((const char*)copied.ptr, src.length);
     return sl_status_ok();
 }
 

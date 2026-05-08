@@ -6,6 +6,7 @@
 #include "../../core/fs_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -85,7 +86,7 @@ static uint64_t sl_fs_win32_filetime_stamp(FILETIME value)
 static SlStatus sl_fs_win32_path_to_wide(SlArena* arena, SlStr path, wchar_t** out)
 {
     int required = 0;
-    void* memory = NULL;
+    SlSlice storage = {0};
     wchar_t* wide = NULL;
     SlStatus status;
 
@@ -100,12 +101,12 @@ static SlStatus sl_fs_win32_path_to_wide(SlArena* arena, SlStr path, wchar_t** o
     if (required <= 0) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_alloc(arena, ((size_t)required + 1U) * sizeof(wchar_t), _Alignof(wchar_t),
-                            &memory);
+    status = sl_arena_array_alloc(arena, (size_t)required + 1U, sizeof(wchar_t), _Alignof(wchar_t),
+                                  &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    wide = (wchar_t*)memory;
+    wide = (wchar_t*)storage.ptr;
     if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.ptr, (int)path.length, wide,
                             required) != required)
     {
@@ -219,7 +220,8 @@ static SlStatus sl_fs_win32_join_wide(SlArena* arena, const wchar_t* root, const
     size_t root_len = 0U;
     size_t name_len = 0U;
     size_t total = 0U;
-    void* memory = NULL;
+    size_t allocation_count = 0U;
+    SlSlice storage = {0};
     wchar_t* joined = NULL;
     bool needs_sep = false;
     SlStatus status;
@@ -231,12 +233,18 @@ static SlStatus sl_fs_win32_join_wide(SlArena* arena, const wchar_t* root, const
     root_len = wcslen(root);
     name_len = wcslen(name);
     needs_sep = root_len != 0U && root[root_len - 1U] != L'\\' && root[root_len - 1U] != L'/';
-    status = sl_arena_alloc(arena, (root_len + name_len + (needs_sep ? 2U : 1U)) * sizeof(wchar_t),
-                            _Alignof(wchar_t), &memory);
+    status = sl_checked_add_size(root_len, name_len, &allocation_count);
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size(allocation_count, needs_sep ? 2U : 1U, &allocation_count);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_arena_array_alloc(arena, allocation_count, sizeof(wchar_t), _Alignof(wchar_t),
+                                      &storage);
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    joined = (wchar_t*)memory;
+    joined = (wchar_t*)storage.ptr;
     if (root_len != 0U) {
         sl_fs_win32_copy_wchars(joined, root, root_len);
         total = root_len;
@@ -645,8 +653,8 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     wchar_t* pattern = NULL;
     WIN32_FIND_DATAW data;
     HANDLE find = INVALID_HANDLE_VALUE;
+    SlSlice entries = {0};
     size_t count = 0U;
-    void* memory = NULL;
     SlStatus status;
 
     if (arena == NULL || out == NULL) {
@@ -675,20 +683,17 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     } while (FindNextFileW(find, &data));
     FindClose(find);
     if (count != 0U) {
-        size_t bytes = 0U;
-        status = sl_checked_array_size(count, sizeof(SlFsDirectoryEntry), &bytes);
-        if (sl_status_is_ok(status)) {
-            status = sl_arena_alloc(arena, bytes, _Alignof(SlFsDirectoryEntry), &memory);
-        }
+        status = sl_arena_array_alloc(arena, count, sizeof(SlFsDirectoryEntry),
+                                      _Alignof(SlFsDirectoryEntry), &entries);
         if (!sl_status_is_ok(status)) {
             (void)sl_arena_reset_to(arena, mark);
             return status;
         }
-        if (memory == NULL) {
+        if (entries.ptr == NULL) {
             (void)sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        out->entries = (SlFsDirectoryEntry*)memory;
+        out->entries = (SlFsDirectoryEntry*)entries.ptr;
     }
     find = FindFirstFileW(pattern, &data);
     if (find == INVALID_HANDLE_VALUE) {

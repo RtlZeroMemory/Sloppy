@@ -2,16 +2,13 @@
 #define SLOPPY_ASYNC_BACKEND_INTERNAL_H
 
 #include "sloppy/async_backend.h"
+#include "sloppy/container.h"
 
 struct SlAsyncLoop
 {
     SlAsyncBackendKind kind;
     SlArena* arena;
-    SlAsyncCompletion* queue;
-    size_t capacity;
-    size_t head;
-    size_t tail;
-    size_t count;
+    SlRingQueue queue;
     bool disposed;
     bool draining;
     void* backend;

@@ -235,8 +235,13 @@ static int test_watch_directory_and_file_events(void)
 {
     unsigned char storage[131072];
     SlArena arena = {0};
+    SlArena tiny_arena = {0};
+    unsigned char tiny_storage[8];
     SlStr dir = sl_str_from_cstr("./sloppy-fs-watch");
     SlStr file = sl_str_from_cstr("./sloppy-fs-watch/item.txt");
+    SlStr long_file = sl_str_from_cstr(
+        "./sloppy-fs-watch/this-is-a-long-event-name-for-retry.txt");
+    SlStr sibling_file = sl_str_from_cstr("./sloppy-fs-watch/z.txt");
     SlStr missing_file = sl_str_from_cstr("./sloppy-fs-watch/missing.txt");
     SlFsWatchOptions directory_options = {.directory = true, .queue_capacity = 4U};
     SlFsWatchOptions file_options = {.directory = false, .queue_capacity = 4U};
@@ -259,6 +264,22 @@ static int test_watch_directory_and_file_events(void)
         return 30;
     }
 
+    if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_write_file(long_file,
+                                       sl_bytes_from_parts((const unsigned char*)"long", 4U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &tiny_arena, &event, NULL),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_CREATED ||
+        !sl_str_equal(sl_owned_str_as_view(event.path),
+                      sl_str_from_cstr("this-is-a-long-event-name-for-retry.txt")))
+    {
+        return 38;
+    }
+
     if (expect_status(
             sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"a", 1U), false, NULL),
             SL_STATUS_OK) != 0 ||
@@ -267,6 +288,17 @@ static int test_watch_directory_and_file_events(void)
         !sl_str_equal(sl_owned_str_as_view(event.path), sl_str_from_cstr("item.txt")))
     {
         return 31;
+    }
+
+    if (expect_status(sl_fs_write_file(sibling_file,
+                                       sl_bytes_from_parts((const unsigned char*)"s", 1U), false,
+                                       NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_CREATED ||
+        !sl_str_equal(sl_owned_str_as_view(event.path), sl_str_from_cstr("z.txt")))
+    {
+        return 37;
     }
 
     if (expect_status(sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"abcd", 4U),
@@ -296,6 +328,7 @@ static int test_watch_directory_and_file_events(void)
     if (expect_status(sl_fs_delete_file(file, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
         event.kind != SL_FS_WATCH_EVENT_DELETED ||
+        !sl_str_equal(sl_owned_str_as_view(event.path), sl_str_from_cstr("item.txt")) ||
         expect_status(sl_fs_watch_close(directory_watch, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_watch_close(directory_watch, NULL), SL_STATUS_STALE_RESOURCE) != 0)
     {

@@ -34,7 +34,7 @@ static SlStatus sl_async_completion_retain_scope(const SlAsyncCompletion* comple
 SlStatus sl_async_loop_common_init(SlAsyncLoop* loop, SlAsyncBackendKind kind, SlArena* arena,
                                    SlAsyncCompletion* storage, size_t capacity)
 {
-    size_t index = 0U;
+    SlStatus status;
 
     if (loop == NULL || arena == NULL || (storage == NULL && capacity != 0U)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -42,18 +42,13 @@ SlStatus sl_async_loop_common_init(SlAsyncLoop* loop, SlAsyncBackendKind kind, S
 
     loop->kind = kind;
     loop->arena = arena;
-    loop->queue = storage;
-    loop->capacity = capacity;
-    loop->head = 0U;
-    loop->tail = 0U;
-    loop->count = 0U;
+    status = sl_ring_queue_init(&loop->queue, storage, sizeof(SlAsyncCompletion), capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     loop->disposed = false;
     loop->draining = false;
     loop->backend = NULL;
-
-    for (index = 0U; index < capacity; index += 1U) {
-        sl_async_completion_clear(&storage[index]);
-    }
 
     return sl_status_ok();
 }
@@ -70,12 +65,8 @@ SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion*
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
-    if (loop->count >= loop->capacity) {
+    if (sl_ring_queue_is_full(&loop->queue)) {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-    }
-
-    if (loop->queue == NULL) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     retain_status = sl_async_completion_retain_scope(completion);
@@ -83,32 +74,25 @@ SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion*
         return retain_status;
     }
 
-    loop->queue[loop->tail] = *completion;
-    loop->tail = (loop->tail + 1U) % loop->capacity;
-    loop->count += 1U;
+    retain_status = sl_ring_queue_push(&loop->queue, completion);
+    if (!sl_status_is_ok(retain_status)) {
+        sl_async_loop_release_completion_scope(completion);
+        return retain_status;
+    }
     return sl_status_ok();
 }
 
 bool sl_async_loop_unenqueue_last_owned(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
 {
-    size_t tail = 0U;
-
     if (out_completion != NULL) {
         sl_async_completion_clear(out_completion);
     }
 
-    if (loop == NULL || out_completion == NULL || loop->count == 0U || loop->queue == NULL ||
-        loop->capacity == 0U)
-    {
+    if (loop == NULL || out_completion == NULL) {
         return false;
     }
 
-    tail = (loop->tail + loop->capacity - 1U) % loop->capacity;
-    *out_completion = loop->queue[tail];
-    sl_async_completion_clear(&loop->queue[tail]);
-    loop->tail = tail;
-    loop->count -= 1U;
-    return true;
+    return sl_ring_queue_pop_back(&loop->queue, out_completion);
 }
 
 bool sl_async_loop_pop(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
@@ -117,17 +101,11 @@ bool sl_async_loop_pop(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
         sl_async_completion_clear(out_completion);
     }
 
-    if (loop == NULL || out_completion == NULL || loop->count == 0U || loop->queue == NULL ||
-        loop->capacity == 0U)
-    {
+    if (loop == NULL || out_completion == NULL) {
         return false;
     }
 
-    *out_completion = loop->queue[loop->head];
-    sl_async_completion_clear(&loop->queue[loop->head]);
-    loop->head = (loop->head + 1U) % loop->capacity;
-    loop->count -= 1U;
-    return true;
+    return sl_ring_queue_pop_front(&loop->queue, out_completion);
 }
 
 void sl_async_loop_release_completion_scope(const SlAsyncCompletion* completion)
@@ -243,7 +221,7 @@ static SlStatus sl_async_loop_test_drain(SlAsyncLoop* loop, size_t max_count, si
     }
 
     loop->draining = true;
-    while (loop->count != 0U && (max_count == 0U || ran < max_count)) {
+    while (!sl_ring_queue_is_empty(&loop->queue) && (max_count == 0U || ran < max_count)) {
         size_t step_ran = 0U;
 
         status = sl_async_loop_test_run_once(loop, &step_ran);
@@ -369,12 +347,12 @@ SlAsyncBackendKind sl_async_loop_backend_kind(const SlAsyncLoop* loop)
 
 size_t sl_async_loop_pending_count(const SlAsyncLoop* loop)
 {
-    return loop == NULL ? 0U : loop->count;
+    return sl_ring_queue_count(loop == NULL ? NULL : &loop->queue);
 }
 
 size_t sl_async_loop_capacity(const SlAsyncLoop* loop)
 {
-    return loop == NULL ? 0U : loop->capacity;
+    return sl_ring_queue_capacity(loop == NULL ? NULL : &loop->queue);
 }
 
 bool sl_async_loop_is_owner_thread(const SlAsyncLoop* loop)
