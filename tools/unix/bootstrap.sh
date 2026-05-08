@@ -26,6 +26,12 @@ Usage: tools/unix/bootstrap.sh
 Validates the Unix host tools needed for Sloppy's non-V8 developer loop and bootstraps the
 repo-local vcpkg cache under .sdeps/. Linux and macOS remain cross-platform lanes; this
 script does not fetch V8 SDK artifacts or claim release readiness.
+
+On Debian/Ubuntu-style systems, the current Linux clang lane expects packages roughly
+equivalent to:
+
+  build-essential clang cmake ninja-build pkg-config curl zip unzip tar \
+  autoconf autoconf-archive automake libtool bison flex gawk cargo
 USAGE
     exit 0
     ;;
@@ -40,6 +46,24 @@ esac
 for command_name in git cmake ninja cargo; do
   require_command "$command_name"
 done
+for command_name in clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
+  require_command "$command_name"
+done
+
+require_autoconf_archive() {
+  local aclocal_dir
+  aclocal_dir="$(aclocal --print-ac-dir 2>/dev/null || true)"
+  if [[ -n "$aclocal_dir" && -f "$aclocal_dir/ax_check_compile_flag.m4" ]]; then
+    return
+  fi
+  if [[ -f /usr/share/aclocal/ax_check_compile_flag.m4 || -f /usr/local/share/aclocal/ax_check_compile_flag.m4 ]]; then
+    return
+  fi
+  echo "bootstrap: missing required autoconf-archive macros. Install autoconf-archive." >&2
+  exit 1
+}
+
+require_autoconf_archive
 
 mkdir -p "$vcpkg_binary_cache"
 if [[ ! -d "$vcpkg_root" ]]; then
@@ -54,7 +78,7 @@ if [[ ! -x "$vcpkg_root/vcpkg" ]]; then
 fi
 
 cat <<EOF
-bootstrap: found cmake, ninja, git, cargo
+bootstrap: found cmake, ninja, git, cargo, clang, clang++, and vcpkg host tools
 bootstrap: vcpkg root: $vcpkg_root
 bootstrap: vcpkg binary cache: $vcpkg_binary_cache
 bootstrap: V8 SDK fetch is unavailable in Unix bootstrap; use V8 OFF/AUTO reporting until a pinned artifact source lands.

@@ -184,8 +184,8 @@ cat > "$stage_root/manifest.json" <<JSON
   "publicReleaseCreated": false,
   "canonicalDistribution": "github-release-archive",
   "npmPackageSource": "platform packages must be generated from this tested archive content",
-  "platformStatus": "$([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'blocked' || printf 'experimental')",
-  "runtimeUserStatus": "$([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'blocked until Linux archive smoke and runtime app execution pass' || printf 'experimental pending hosted package smoke evidence')",
+  "platformStatus": "experimental",
+  "runtimeUserStatus": "$([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'experimental package smoke; V8 runtime app execution remains a separate blocked lane' || printf 'experimental pending hosted package smoke evidence')",
   "compiler": {
     "name": "sloppyc",
     "profile": "$cargo_profile",

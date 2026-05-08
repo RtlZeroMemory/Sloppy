@@ -11,9 +11,9 @@
     },
     {
       "id": "linux-archive",
-      "status": "UNAVAILABLE",
+      "status": "NOT RUN",
       "requiredEvidence": ["Linux source build", "Linux package", "outside-checkout smoke", "external app build", "runtime execution or explicit V8 blocker"],
-      "notes": "Linux x64 is required. Full runtime-user support remains blocked until Linux package/runtime evidence passes."
+      "notes": "Linux x64 is required. Fill package/source smoke evidence in the PR body. Full V8 runtime-user support remains blocked until Linux V8 runtime evidence passes."
     },
     {
       "id": "macos-arm64-archive",

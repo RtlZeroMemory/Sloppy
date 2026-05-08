@@ -24,6 +24,19 @@ The Unix `bootstrap.sh` and `dev.sh` command contract mirrors the Windows vocabu
 Linux and macOS. Unsupported optional lanes, including Unix V8 SDK artifact fetch, are
 reported as unavailable rather than pass evidence.
 
+On Debian/Ubuntu-style Linux containers or hosts, install the current non-V8 Linux clang
+lane prerequisites before running bootstrap:
+
+```sh
+apt-get install -y --no-install-recommends \
+  git cmake ninja-build curl zip unzip tar pkg-config build-essential clang \
+  ca-certificates perl bison flex autoconf autoconf-archive automake libtool \
+  m4 python3 gawk
+```
+
+Use a Rust toolchain new enough for the compiler dependencies. The current Oxc dependency
+set requires Rust 1.93.0 or newer.
+
 `package.sh` is the first experimental TAR packaging path:
 
 ```sh

@@ -50,7 +50,7 @@ package_configuration() {
 }
 
 if [[ "$skip_package" -eq 0 ]]; then
-  "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)" --output-dir "$output_dir"
+  bash "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)" --output-dir "$output_dir"
 fi
 
 case "$output_dir" in

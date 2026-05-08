@@ -13,7 +13,7 @@ apps.
 | Platform | Archive | Package root | Current status |
 | --- | --- | --- | --- |
 | Windows x64 | `sloppy-windows-x64.zip` | `sloppy-windows-x64` | Experimental dry-run package lane. |
-| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Required target, blocked for full runtime-user support until Linux archive smoke and V8/runtime app execution pass. |
+| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane when Linux source build and package smoke pass; full V8 runtime app execution remains a separate blocked lane. |
 | macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Experimental hosted dry-run lane. |
 | macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Source-build only unless the optional hosted x64 package lane is requested and smoked. |
 

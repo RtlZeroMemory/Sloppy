@@ -87,7 +87,7 @@ USAGE
 
 doctor() {
   local missing=0
-  for tool in git cmake ninja cargo; do
+  for tool in git cmake ninja cargo clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
     if command -v "$tool" >/dev/null 2>&1; then
       echo "doctor: found: $tool"
     else
@@ -95,6 +95,15 @@ doctor() {
       missing=1
     fi
   done
+  local aclocal_dir
+  aclocal_dir="$(aclocal --print-ac-dir 2>/dev/null || true)"
+  if [[ -n "$aclocal_dir" && -f "$aclocal_dir/ax_check_compile_flag.m4" ]] ||
+    [[ -f /usr/share/aclocal/ax_check_compile_flag.m4 || -f /usr/local/share/aclocal/ax_check_compile_flag.m4 ]]; then
+    echo "doctor: found: autoconf-archive"
+  else
+    echo "doctor: missing: autoconf-archive" >&2
+    missing=1
+  fi
   if command -v docker >/dev/null 2>&1; then
     echo "doctor: optional found: docker"
   else
@@ -149,7 +158,7 @@ clean() {
 }
 
 package_repo() {
-  "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)"
+  bash "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)"
 }
 
 test_package() {

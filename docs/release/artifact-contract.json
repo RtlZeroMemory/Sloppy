@@ -37,8 +37,8 @@
       "archiveName": "sloppy-linux-x64.tar.gz",
       "packageRoot": "sloppy-linux-x64",
       "packageFormat": "tar.gz",
-      "platformStatus": "blocked",
-      "runtimeUserStatus": "blocked until Linux archive smoke and runtime app execution pass",
+      "platformStatus": "experimental",
+      "runtimeUserStatus": "experimental package smoke when Linux source build and package smoke pass; V8 runtime app execution remains blocked until the Linux V8 runtime artifact lane exists",
       "v8RuntimeStatus": "Linux V8 SDK/runtime artifact lane is not available yet"
     },
     {
