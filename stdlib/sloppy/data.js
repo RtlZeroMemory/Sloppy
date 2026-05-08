@@ -394,11 +394,15 @@ function throwIfOperationCancelled(options, operation) {
         return;
     }
     if (options.signal !== undefined) {
-        if (typeof options.signal.throwIfAborted === "function") {
-            options.signal.throwIfAborted();
-        }
         if (options.signal.aborted === true) {
             throw createOperationCancelledError(operation, options.signal.reason);
+        }
+        if (typeof options.signal.throwIfAborted === "function") {
+            try {
+                options.signal.throwIfAborted();
+            } catch {
+                throw createOperationCancelledError(operation, options.signal.reason);
+            }
         }
     }
     if (options.timeoutMs === 0) {
@@ -425,6 +429,10 @@ function throwIfOperationCancelled(options, operation) {
 function invokeProviderOperation(operation, options, callback) {
     throwIfOperationCancelled(options, operation);
     return callback();
+}
+
+function hasInlineOperationOptions(args) {
+    return args.length === 2 && isPlainObject(args[1]);
 }
 
 function normalizeProviderCallArguments(operation, placeholderStyle, args) {
@@ -673,7 +681,12 @@ function normalizeSqliteOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy sqlite.${operation} accepts sql, optional params, and optional options.`);
         }
-        const options = normalizeOperationOptions(args[2], `sqlite.${operation}`);
+        const inlineOptions = hasInlineOperationOptions(args);
+        const params = inlineOptions ? undefined : args[1];
+        const options = normalizeOperationOptions(
+            inlineOptions ? args[1] : args[2],
+            `sqlite.${operation}`,
+        );
 
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
@@ -681,7 +694,7 @@ function normalizeSqliteOperation(operation, args) {
 
         return {
             text: args[0],
-            parameters: validateSqliteParams(args[1], operation),
+            parameters: validateSqliteParams(params, operation),
             options,
         };
     }
@@ -1124,16 +1137,21 @@ function normalizePostgresOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy postgres.${operation} accepts sql, optional params, and optional options.`);
         }
-        const options = normalizeOperationOptions(args[2], `postgres.${operation}`);
+        const inlineOptions = hasInlineOperationOptions(args);
+        const params = inlineOptions ? undefined : args[1];
+        const options = normalizeOperationOptions(
+            inlineOptions ? args[1] : args[2],
+            `postgres.${operation}`,
+        );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
         }
-        if (args[1] !== undefined && !Array.isArray(args[1])) {
+        if (params !== undefined && !Array.isArray(params)) {
             throw new TypeError(`Sloppy postgres.${operation} parameters must be an array.`);
         }
         return {
             text: args[0],
-            parameters: args[1] ?? [],
+            parameters: params ?? [],
             options,
         };
     }
@@ -1362,16 +1380,21 @@ function normalizeSqlServerOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy sqlserver.${operation} accepts sql, optional params, and optional options.`);
         }
-        const options = normalizeOperationOptions(args[2], `sqlserver.${operation}`);
+        const inlineOptions = hasInlineOperationOptions(args);
+        const params = inlineOptions ? undefined : args[1];
+        const options = normalizeOperationOptions(
+            inlineOptions ? args[1] : args[2],
+            `sqlserver.${operation}`,
+        );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
         }
-        if (args[1] !== undefined && !Array.isArray(args[1])) {
+        if (params !== undefined && !Array.isArray(params)) {
             throw new TypeError(`Sloppy sqlserver.${operation} parameters must be an array.`);
         }
         return {
             text: args[0],
-            parameters: args[1] ?? [],
+            parameters: params ?? [],
             options,
         };
     }

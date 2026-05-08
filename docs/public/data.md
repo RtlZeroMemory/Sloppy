@@ -143,7 +143,7 @@ Implemented behavior:
 - SQL operation methods accept an optional operation-options object with `signal`,
   `deadline`, and `timeoutMs`. The stdlib checks already-aborted signals and expired
   deadlines before provider dispatch and forwards the normalized option state to JS fake
-  providers. Current native SQL bridges treat this as Slop-side terminal admission
+  providers. Current native SQL bridges treat this as Sloppy-side terminal admission
   behavior; provider-specific active interruption, such as SQLite interruption, libpq
   cancel, or ODBC statement cancellation while a native call is already running, remains
   separately tested provider work before it can be claimed.
