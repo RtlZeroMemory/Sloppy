@@ -13,9 +13,12 @@ const modules = [
     "../../stdlib/sloppy/time.js",
     "../../stdlib/sloppy/workers.js",
     "../../stdlib/sloppy/providers/sqlite.js",
+    "../../stdlib/sloppy/internal/capabilities.js",
     "../../stdlib/sloppy/internal/config.js",
     "../../stdlib/sloppy/internal/logging.js",
     "../../stdlib/sloppy/internal/modules.js",
+    "../../stdlib/sloppy/internal/routes.js",
+    "../../stdlib/sloppy/internal/services.js",
     "../../stdlib/sloppy/internal/shared.js",
 ];
 

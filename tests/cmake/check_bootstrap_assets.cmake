@@ -14,10 +14,13 @@ set(required_bootstrap_assets
     providers/sqlite.js
     results.js
     schema.js
+    internal/capabilities.js
     internal/config.js
     internal/intrinsics.js
     internal/logging.js
     internal/modules.js
+    internal/routes.js
+    internal/services.js
     internal/shared.js
     internal/runtime-classic.js)
 

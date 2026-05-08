@@ -7,13 +7,16 @@ set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
+set(capabilities_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/capabilities.js")
 set(config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/config.js")
 set(logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/logging.js")
 set(modules_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/modules.js")
+set(routes_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/routes.js")
+set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${config_source}" "${logging_source}" "${modules_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -28,9 +31,12 @@ file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
+file(READ "${capabilities_source}" capabilities_js)
 file(READ "${config_source}" config_js)
 file(READ "${logging_source}" logging_js)
 file(READ "${modules_source}" modules_js)
+file(READ "${routes_source}" routes_js)
+file(READ "${services_source}" services_js)
 file(READ "${shared_source}" shared_js)
 file(READ "${runtime_classic_source}" runtime_classic_js)
 
@@ -226,6 +232,16 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "addDatabase(token, options)"
+        "capability token already declared"
+        "capability token is not declared"
+        "function createCapabilityRegistry(guard)"
+        "function createCapabilityProvider(capabilitySnapshot)"
+        "Object.freeze")
+    require_substring("${capabilities_js}" "${required_pattern}" "internal/capabilities.js is missing expected app-host capability pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "addObject(object)"
         "getSecret(key)"
         "bind(prefix, schema)"
@@ -260,6 +276,34 @@ foreach(required_pattern IN ITEMS
         "function createModuleDebugEntries(orderedModules, capabilitySnapshot, serviceSnapshot, routes)"
         "Object.freeze")
     require_substring("${modules_js}" "${required_pattern}" "internal/modules.js is missing expected app-host module pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "function registerRoute("
+        "function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix)"
+        "function createRouterGroup(prefix, configure)"
+        "mapGet: createMapMethod(\"GET\")"
+        "function createControllerMapper("
+        "withTags(...tags)"
+        "withName(name)"
+        "groupPrefix"
+        "groupName"
+        "handler must be a function"
+        "route: Object.freeze({})"
+        "Object.freeze")
+    require_substring("${routes_js}" "${required_pattern}" "internal/routes.js is missing expected app-host routing pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "addSingleton(token, factoryOrValue)"
+        "addTransient(token, factory)"
+        "addScoped(token, factory)"
+        "createScope()"
+        "function createServiceProvider(registrations, capabilities)"
+        "function finishWithCleanup(result, cleanup)"
+        "Sloppy service provider is disposed"
+        "Object.freeze")
+    require_substring("${services_js}" "${required_pattern}" "internal/services.js is missing expected app-host services pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -312,9 +356,6 @@ foreach(required_pattern IN ITEMS
         "createBuilder()"
         "module: createModule"
         "addModule(module)"
-        "addDatabase(token, options)"
-        "capability token already declared"
-        "capability token is not declared"
         "capabilities,"
         "config,"
         "logging,"
@@ -327,15 +368,8 @@ foreach(required_pattern IN ITEMS
         "mapPatch(pattern, optionsOrHandler, maybeHandler)"
         "mapDelete(pattern, optionsOrHandler, maybeHandler)"
         "mapGroup(prefix)"
-        "withTags(...tags)"
         "freeze()"
         "isFrozen()"
-        "method,"
-        "name: null"
-        "metadata:"
-        "groupPrefix"
-        "groupName"
-        "withName(name)"
         "__getRoutes()"
         "__debug()"
         "__getModuleGraph()"
@@ -343,13 +377,7 @@ foreach(required_pattern IN ITEMS
         "useModule(moduleOrFactory)"
         "mapController(prefix, Controller, configure)"
         "controller(prefix, Controller, configure)"
-        "group: createRouterGroup"
-        "addSingleton(token, factoryOrValue)"
-        "addTransient(token, factory)"
-        "createScope()"
-        "starting with '/'"
-        "handler must be a function"
-        "route: Object.freeze({})")
+        "group: createRouterGroup")
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
