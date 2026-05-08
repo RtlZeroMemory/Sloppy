@@ -293,7 +293,7 @@ function createServiceProvider(registrations, capabilities) {
 
     function createScope() {
         const scopedValues = new Map();
-        const transientValues = [];
+        const scopeOwnedValues = [];
         const resolving = [];
         const resolvingLifetimes = [];
         let disposed = false;
@@ -308,8 +308,7 @@ function createServiceProvider(registrations, capabilities) {
                     return undefined;
                 }
                 disposed = true;
-                const values = [...transientValues.reverse(), ...Array.from(scopedValues.values()).reverse()];
-                return disposeValues(values, "Sloppy service scope disposal failed.");
+                return disposeValues([...scopeOwnedValues].reverse(), "Sloppy service scope disposal failed.");
             },
             __disposed() {
                 return disposed;
@@ -322,9 +321,10 @@ function createServiceProvider(registrations, capabilities) {
             },
             __setScoped(token, value) {
                 scopedValues.set(token, value);
+                scopeOwnedValues.push(value);
             },
             __trackTransient(value) {
-                transientValues.push(value);
+                scopeOwnedValues.push(value);
             },
             __resolving() {
                 return resolving;

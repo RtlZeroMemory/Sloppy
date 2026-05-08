@@ -276,9 +276,9 @@ function createControllerHandler(host, Controller, action) {
             ownsServices = true;
         }
         const services = ctx.services;
-        const dependencies = inject.map((token) => services.get(token));
-        const instance = new Controller(...dependencies);
         try {
+            const dependencies = inject.map((token) => services.get(token));
+            const instance = new Controller(...dependencies);
             const result = instance[action](ctx);
             if (ownsServices) {
                 return finishWithCleanup(result, () => services.dispose());
@@ -301,7 +301,7 @@ function createControllerMapper(
     prefix,
     Controller,
 ) {
-    validateGroupPrefix(prefix);
+    const normalizedPrefix = normalizeGroupPrefix(prefix);
     validateController(Controller);
 
     function map(method, pattern, action, options) {
@@ -312,7 +312,7 @@ function createControllerMapper(
             assertAppMutable,
             currentModule,
             method,
-            composeRoutePattern(prefix, pattern),
+            composeRoutePattern(normalizedPrefix, pattern),
             {
                 ...(options ?? {}),
                 controller: Controller.name || "AnonymousController",
