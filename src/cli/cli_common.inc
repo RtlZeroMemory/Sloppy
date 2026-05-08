@@ -117,58 +117,67 @@ static void sl_cli_parse_source(yyjson_val* object, SlCliSpan* path, uint64_t* l
 
 static void sl_cli_print_version(void)
 {
-    (void)printf("Sloppy %s\n", SL_VERSION_STRING);
+    printf("Sloppy %s\n", SL_VERSION_STRING);
 }
 
 static void sl_cli_print_help(void)
 {
     sl_cli_print_version();
-    (void)printf(
-        "Pre-alpha runtime foundation with bounded run and metadata CLI introspection.\n\n");
-    (void)printf("Usage:\n");
-    (void)printf("  sloppy --help\n");
-    (void)printf("  sloppy --version\n");
-    (void)printf("  sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
-    (void)printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
-    (void)printf("             [--once METHOD TARGET]\n");
-    (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
-    (void)printf("  sloppy capabilities --plan <path> [--format text|json]\n");
-    (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
-    (void)printf("  sloppy audit --plan <path> [--format text|json]\n");
-    (void)printf("  sloppy openapi --plan <path> [--output <path>]\n");
+    printf("Pre-alpha runtime foundation with bounded run and metadata CLI introspection.\n\n");
+    printf("Usage:\n");
+    printf("  sloppy --help\n");
+    printf("  sloppy --version\n");
+    printf("  sloppy build [source.js|source.ts] [--out <dir>]\n");
+    printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("  sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
+    printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("             [--once METHOD TARGET]\n");
+    printf("  sloppy routes --plan <path> [--format text|json]\n");
+    printf("  sloppy capabilities --plan <path> [--format text|json]\n");
+    printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
+    printf("  sloppy audit --plan <path> [--format text|json]\n");
+    printf("  sloppy openapi --plan <path> [--output <path>]\n");
 }
 
 static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
-        (void)printf("Usage: sloppy routes --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy routes --plan <path> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "capabilities") == 0) {
-        (void)printf("Usage: sloppy capabilities --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy capabilities --plan <path> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "run") == 0) {
-        (void)printf(
-            "Usage: sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
-        (void)printf("                  [--environment Development] [--host 127.0.0.1]\n");
-        (void)printf("                  [--port 5173] [--once METHOD TARGET]\n");
-        (void)printf("\n");
-        (void)printf("Source input compiles through sloppyc, validates artifacts, then runs the "
-                     "artifact path.\n");
-        (void)printf("Bounded development runtime. Execution requires a V8-enabled build.\n");
+        printf("Usage: sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
+        printf("                  [--environment Development] [--host 127.0.0.1]\n");
+        printf("                  [--port 5173] [--once METHOD TARGET]\n");
+        printf("\n");
+        printf("Source input compiles through sloppyc, validates artifacts, then runs the "
+               "artifact path.\n");
+        printf("Bounded development runtime. Execution requires a V8-enabled build.\n");
+        return;
+    }
+    if (strcmp(command, "build") == 0) {
+        printf("Usage: sloppy build [source.js|source.ts] [--out <dir>]\n");
+        printf("                    [--environment Development] [--host 127.0.0.1]\n");
+        printf("                    [--port 5173]\n");
+        printf("\n");
+        printf("Source input compiles through sloppyc and validates Plan-backed artifacts.\n");
+        printf("--artifacts is not accepted for build; build never enters V8.\n");
         return;
     }
     if (strcmp(command, "doctor") == 0) {
-        (void)printf("Usage: sloppy doctor [--plan <path>] [--format text|json]\n");
+        printf("Usage: sloppy doctor [--plan <path>] [--format text|json]\n");
         return;
     }
     if (strcmp(command, "audit") == 0) {
-        (void)printf("Usage: sloppy audit --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy audit --plan <path> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "openapi") == 0) {
-        (void)printf("Usage: sloppy openapi --plan <path> [--output <path>]\n");
+        printf("Usage: sloppy openapi --plan <path> [--output <path>]\n");
         return;
     }
     sl_cli_print_help();
@@ -176,7 +185,7 @@ static void sl_cli_print_command_help(const char* command)
 
 static void sl_cli_write_cstr(FILE* file, const char* text)
 {
-    (void)fputs(text, file);
+    fputs(text, file);
 }
 
 static void sl_cli_write_error_with_value(const char* prefix, const char* value, const char* suffix)
@@ -318,6 +327,89 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
     return 0;
 }
 
+static int sl_cli_parse_build_path_option(char** argv, int* index, SlCliOptions* out)
+{
+    if (strcmp(argv[*index], "--artifacts") == 0) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy build: --artifacts is not supported; build compiles source "
+                          "input only\n");
+        return -1;
+    }
+
+    if (argv[*index][0] != '-') {
+        if (out->input_path != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy build: accepts at most one source input\n");
+            return -1;
+        }
+        out->input_path = argv[*index];
+        *index += 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    int path_result = 0;
+
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
+        strcmp(out->command, "build") != 0)
+    {
+        return 0;
+    }
+
+    if (strcmp(argv[*index], "--out") == 0) {
+        if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy build: --out requires a directory\n");
+            return -1;
+        }
+        out->out_dir = argv[*index + 1];
+        out->out_explicit = true;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--host") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy build: --host requires an IPv4 address\n");
+            return -1;
+        }
+        out->host = argv[*index + 1];
+        out->host_explicit = true;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--environment") == 0) {
+        if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy build: --environment requires a name\n");
+            return -1;
+        }
+        out->environment = argv[*index + 1];
+        out->environment_explicit = true;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--port") == 0) {
+        if (*index + 1 >= argc || !sl_cli_parse_port(argv[*index + 1], &out->port)) {
+            sl_cli_write_cstr(stderr, "sloppy build: --port requires a value from 1 to 65535\n");
+            return -1;
+        }
+        out->port_explicit = true;
+        *index += 2;
+        return 1;
+    }
+
+    path_result = sl_cli_parse_build_path_option(argv, index, out);
+    if (path_result != 0) {
+        return path_result;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL) {
@@ -424,6 +516,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         if (run_parse < 0) {
             return 1;
         }
+        if (run_parse > 0) {
+            continue;
+        }
+
+        run_parse = sl_cli_parse_build_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
         if (run_parse == 0) {
             sl_cli_write_error_with_value("sloppy: unknown option '", argv[index], "'\n");
             return 1;
@@ -513,38 +613,38 @@ static void sl_cli_json_escape(FILE* file, SlCliSpan span)
     static const char hex[] = "0123456789abcdef";
     size_t index = 0U;
 
-    (void)fputc('"', file);
+    fputc('"', file);
     for (index = 0U; index < span.length; index += 1U) {
         unsigned char ch = (unsigned char)span.ptr[index];
         if (ch == '"' || ch == '\\') {
-            (void)fputc('\\', file);
-            (void)fputc((int)ch, file);
+            fputc('\\', file);
+            fputc((int)ch, file);
         }
         else if (ch == '\n') {
-            (void)fputs("\\n", file);
+            fputs("\\n", file);
         }
         else if (ch == '\r') {
-            (void)fputs("\\r", file);
+            fputs("\\r", file);
         }
         else if (ch == '\t') {
-            (void)fputs("\\t", file);
+            fputs("\\t", file);
         }
         else if (ch == '\b') {
-            (void)fputs("\\b", file);
+            fputs("\\b", file);
         }
         else if (ch == '\f') {
-            (void)fputs("\\f", file);
+            fputs("\\f", file);
         }
         else if (ch < 0x20U) {
-            (void)fputs("\\u00", file);
-            (void)fputc(hex[(ch >> 4U) & 0x0FU], file);
-            (void)fputc(hex[ch & 0x0FU], file);
+            fputs("\\u00", file);
+            fputc(hex[(ch >> 4U) & 0x0FU], file);
+            fputc(hex[ch & 0x0FU], file);
         }
         else {
-            (void)fputc((int)ch, file);
+            fputc((int)ch, file);
         }
     }
-    (void)fputc('"', file);
+    fputc('"', file);
 }
 
 static SlStr sl_cli_redacted_span(SlArena* arena, SlCliSpan text)
@@ -598,18 +698,18 @@ static void sl_cli_json_escape_lower(FILE* file, SlCliSpan span)
 {
     size_t index = 0U;
 
-    (void)fputc('"', file);
+    fputc('"', file);
     for (index = 0U; index < span.length; index += 1U) {
         char ch = span.ptr[index];
         if (ch >= 'A' && ch <= 'Z') {
             ch = (char)(ch - 'A' + 'a');
         }
         if (ch == '"' || ch == '\\') {
-            (void)fputc('\\', file);
+            fputc('\\', file);
         }
-        (void)fputc(ch, file);
+        fputc(ch, file);
     }
-    (void)fputc('"', file);
+    fputc('"', file);
 }
 
 static void sl_cli_write_u64(FILE* file, uint64_t value)
@@ -625,6 +725,6 @@ static void sl_cli_write_u64(FILE* file, uint64_t value)
 
     while (count > 0U) {
         count -= 1U;
-        (void)fputc(digits[count], file);
+        fputc(digits[count], file);
     }
 }

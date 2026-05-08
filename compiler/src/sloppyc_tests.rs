@@ -70,6 +70,7 @@ fn build_args_accept_environment_and_runtime_overrides() {
                 environment: Some("Development".to_string()),
                 host: Some("127.0.0.1".to_string()),
                 port: Some(5173),
+                config_dir: None,
                 config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
             },
         }
@@ -137,6 +138,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         environment: Some("Development".to_string()),
         host: Some("0.0.0.0".to_string()),
         port: Some(6000),
+        config_dir: None,
         config_overrides: Vec::new(),
     };
     let config =
@@ -259,6 +261,7 @@ export default app;
         environment: Some("Development".to_string()),
         host: None,
         port: None,
+        config_dir: None,
         config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
     };
     let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)

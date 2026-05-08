@@ -23,7 +23,10 @@ impl ConfigurationModel {
             .environment
             .clone()
             .unwrap_or_else(|| "Development".to_string());
-        let config_dir = input.parent().unwrap_or_else(|| Path::new(""));
+        let config_dir = options
+            .config_dir
+            .as_deref()
+            .unwrap_or_else(|| input.parent().unwrap_or_else(|| Path::new("")));
         let mut model = Self {
             environment,
             values: BTreeMap::new(),

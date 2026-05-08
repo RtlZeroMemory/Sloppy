@@ -1,0 +1,15 @@
+{
+  "sourceMap": "present",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "handler": "Health.Get"
+    },
+    {
+      "method": "GET",
+      "path": "/users/{id}",
+      "handler": "Users.Get"
+    }
+  ]
+}

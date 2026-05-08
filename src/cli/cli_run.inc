@@ -1138,7 +1138,8 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     return 0;
 }
 
-static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, SlRunApp* app)
+static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
+                                 bool validate_runtime_features)
 {
     char plan_path[1024];
     char app_js_path[1024];
@@ -1221,7 +1222,24 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     app->app_js_bytes = app_js;
     app->source_map_bytes = source_map;
 
-    if (sl_run_validate_runtime_features(app) != 0) {
+    if (validate_runtime_features && sl_run_validate_runtime_features(app) != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, SlRunApp* app)
+{
+    char app_js_path[1024];
+
+    if (sl_run_load_artifacts(artifacts_path, app, true) != 0) {
+        return 1;
+    }
+    if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
+                          sl_run_str_span(app->plan.bundle.path)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid bundle path in app.plan.json\n");
         return 1;
     }
 
@@ -1640,11 +1658,10 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         return 1;
     }
 
-    (void)printf("Sloppy dev server listening on %s://%s:%u\n",
-                 config.tls.enabled ? "https" : "http", host, (unsigned)port);
-    (void)printf(
-        "Bounded development server: HTTP/1.1%s, no middleware, no production-edge claim.\n",
-        config.tls.enabled ? " over TLS" : "");
+    printf("Sloppy dev server listening on %s://%s:%u\n", config.tls.enabled ? "https" : "http",
+           host, (unsigned)port);
+    printf("Bounded development server: HTTP/1.1%s, no middleware, no production-edge claim.\n",
+           config.tls.enabled ? " over TLS" : "");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {
         result = 1;
@@ -1676,7 +1693,7 @@ static bool sl_run_source_input_extension_supported(const char* path)
     SlCliSpan input = sl_cli_span_cstr(path);
 
     return sl_run_span_ends_with(input, ".js") || sl_run_span_ends_with(input, ".mjs") ||
-           sl_run_span_ends_with(input, ".ts") || sl_run_span_ends_with(input, ".mts");
+           sl_run_span_ends_with(input, ".ts");
 }
 
 static bool sl_run_file_exists(const char* path)
@@ -1820,15 +1837,16 @@ static const char* sl_run_getenv(const char* name)
     return value;
 }
 
-static const char* sl_run_resolve_compiler_path(void)
+static const char* sl_run_resolve_compiler_path(const char* command_name)
 {
     const char* explicit_path = sl_run_getenv("SLOPPY_SLOPPYC");
     const char* built_path = SLOPPY_COMPILER_BUILD_PATH;
+    const char* prefix = command_name != NULL ? command_name : "sloppy run";
 
     if (explicit_path != NULL && explicit_path[0] != '\0') {
         if (!sl_run_file_exists(explicit_path)) {
-            sl_cli_write_error_with_value("sloppy run: compiler unavailable: ", explicit_path,
-                                          "\n");
+            sl_cli_write_cstr(stderr, prefix);
+            sl_cli_write_error_with_value(": compiler unavailable: ", explicit_path, "\n");
             return NULL;
         }
         return explicit_path;
@@ -1842,27 +1860,31 @@ static const char* sl_run_resolve_compiler_path(void)
 }
 
 static int sl_run_compile_source(const char* source_path, const char* out_dir,
-                                 const SlCliOptions* options, const char* environment)
+                                 const SlCliOptions* options, const char* environment,
+                                 const char* command_name, const char* config_dir)
 {
     const char* compiler_path = NULL;
-    char* compiler_argv[14];
+    char* compiler_argv[16];
     char port_text[6];
     size_t arg_count = 0U;
     SlPlatformProcessArgs process_args = {0};
     SlStatus status;
     int exit_code = 1;
+    const char* prefix = command_name != NULL ? command_name : "sloppy run";
 
     if (source_path == NULL || out_dir == NULL || source_path[0] == '\0' || out_dir[0] == '\0') {
-        sl_cli_write_cstr(stderr, "sloppy run: source-input handoff is missing source or outDir\n");
+        sl_cli_write_cstr(stderr, prefix);
+        sl_cli_write_cstr(stderr, ": source-input handoff is missing source or outDir\n");
         return 1;
     }
 
     if (!sl_run_file_exists(source_path)) {
-        sl_cli_write_error_with_value("sloppy run: missing source file: ", source_path, "\n");
+        sl_cli_write_cstr(stderr, prefix);
+        sl_cli_write_error_with_value(": missing source file: ", source_path, "\n");
         return 1;
     }
 
-    compiler_path = sl_run_resolve_compiler_path();
+    compiler_path = sl_run_resolve_compiler_path(prefix);
     if (compiler_path == NULL) {
         return 1;
     }
@@ -1876,6 +1898,10 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
         compiler_argv[arg_count++] = "--environment";
         compiler_argv[arg_count++] = (char*)environment;
     }
+    if (config_dir != NULL && config_dir[0] != '\0') {
+        compiler_argv[arg_count++] = "--config-dir";
+        compiler_argv[arg_count++] = (char*)config_dir;
+    }
     if (options != NULL && options->host_explicit) {
         compiler_argv[arg_count++] = "--host";
         compiler_argv[arg_count++] = (char*)options->host;
@@ -1888,7 +1914,8 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
             !sl_status_is_ok(sl_string_builder_append_u64(&port_builder, options->port)) ||
             !sl_status_is_ok(sl_string_builder_view_with_nul(&port_builder, &port_view)))
         {
-            sl_cli_write_cstr(stderr, "sloppy run: failed to format compiler port override\n");
+            sl_cli_write_cstr(stderr, prefix);
+            sl_cli_write_cstr(stderr, ": failed to format compiler port override\n");
             return 1;
         }
         (void)port_view;
@@ -1901,12 +1928,14 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
     process_args.argv = compiler_argv;
     status = sl_platform_process_run(&process_args, &exit_code);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy run: compiler unavailable: ", compiler_path, "\n");
+        sl_cli_write_cstr(stderr, prefix);
+        sl_cli_write_error_with_value(": compiler unavailable: ", compiler_path, "\n");
         return 1;
     }
     if (exit_code != 0) {
-        sl_cli_write_cstr(
-            stderr, "sloppy run: compiler handoff failed at the source-input command boundary\n");
+        sl_cli_write_cstr(stderr, prefix);
+        sl_cli_write_cstr(stderr,
+                          ": compiler handoff failed at the source-input command boundary\n");
         return 1;
     }
 
@@ -1920,6 +1949,7 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
     const char* source_path = NULL;
     const char* out_dir = NULL;
     const char* environment = NULL;
+    const char* config_dir = NULL;
 
     if (options == NULL || artifacts_path == NULL || artifacts_path_capacity == 0U) {
         return 1;
@@ -1938,6 +1968,7 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
         source_path = config.entry;
         out_dir = config.out_dir;
         environment = options->environment_explicit ? options->environment : config.environment;
+        config_dir = ".";
     }
 
     if (!sl_run_source_input_extension_supported(source_path)) {
@@ -1945,7 +1976,9 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
         return 1;
     }
 
-    if (sl_run_compile_source(source_path, out_dir, options, environment) != 0) {
+    if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy run",
+                              config_dir) != 0)
+    {
         return 1;
     }
 
@@ -1964,6 +1997,61 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
     }
 
     return 0;
+}
+
+static int sl_cli_command_build(const SlCliOptions* options)
+{
+    SlSloppyRunConfig config = {0};
+    SlRunApp app = {0};
+    const char* source_path = NULL;
+    const char* out_dir = NULL;
+    const char* environment = NULL;
+    const char* config_dir = NULL;
+    int result = 0;
+
+    if (options == NULL) {
+        return 1;
+    }
+
+    if (options->input_path == NULL) {
+        if (options->out_explicit) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy build: --out applies to positional source input; project "
+                              "build uses sloppy.json outDir\n");
+            return 1;
+        }
+        if (sl_sloppyrc_load_for_command(&config, "sloppy build") != 0) {
+            return 1;
+        }
+        source_path = config.entry;
+        out_dir = config.out_dir;
+        environment = options->environment_explicit ? options->environment : config.environment;
+        config_dir = ".";
+    }
+    else {
+        source_path = options->input_path;
+        out_dir = options->out_explicit ? options->out_dir : SL_RUN_DEFAULT_SOURCE_OUT_DIR;
+        environment =
+            options->environment_explicit ? options->environment : SL_RUN_DEFAULT_ENVIRONMENT;
+    }
+
+    if (!sl_run_source_input_extension_supported(source_path)) {
+        sl_cli_write_error_with_value("sloppy build: unsupported source input: ", source_path,
+                                      "\n");
+        return 1;
+    }
+
+    if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy build",
+                              config_dir) != 0)
+    {
+        return 1;
+    }
+
+    result = sl_run_load_artifacts(out_dir, &app, false);
+    if (sl_run_shutdown_app(&app) != 0 && result == 0) {
+        result = 1;
+    }
+    return result;
 }
 
 static int sl_cli_command_run(const SlCliOptions* options)
@@ -2002,7 +2090,9 @@ static int sl_cli_command_run(const SlCliOptions* options)
             artifacts_path = source_artifacts_path;
         }
         else {
-            artifacts_path = options->input_path;
+            sl_cli_write_error_with_value(
+                "sloppy run: unsupported source input: ", options->input_path, "\n");
+            return 1;
         }
     }
 

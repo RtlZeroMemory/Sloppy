@@ -310,10 +310,30 @@ function Test-FixtureMetadata {
             }
 
             $fixtureDir = $metadataFile.Directory.FullName
-            foreach ($requiredRelative in @("sloppy.json", "src/app.ts", "expected/plan-semantic.json", "expected/doctor.json", "expected/diagnostics.json")) {
+            foreach ($requiredRelative in @("sloppy.json", "expected/plan-semantic.json", "expected/doctor.json", "expected/diagnostics.json")) {
                 $candidate = Join-Path $fixtureDir $requiredRelative
                 if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
                     Add-Violation -Path $relative -Line 0 -Message "source-input fixture is missing $requiredRelative"
+                }
+            }
+            $sourceRelative = [string]$metadata.source
+            if ([string]::IsNullOrWhiteSpace($sourceRelative)) {
+                $sloppyJsonPath = Join-Path $fixtureDir "sloppy.json"
+                if (Test-Path -LiteralPath $sloppyJsonPath -PathType Leaf) {
+                    try {
+                        $sloppyJson = Get-Content -LiteralPath $sloppyJsonPath -Raw | ConvertFrom-Json
+                        $sourceRelative = [string]$sloppyJson.entry
+                    } catch {
+                        Add-Violation -Path $relative -Line 0 -Message "source-input fixture sloppy.json is not valid JSON"
+                    }
+                }
+            }
+            if ([string]::IsNullOrWhiteSpace($sourceRelative)) {
+                Add-Violation -Path $relative -Line 0 -Message "source-input fixture must declare a source input or sloppy.json entry"
+            } else {
+                $sourceCandidate = Join-Path $fixtureDir $sourceRelative
+                if (-not (Test-Path -LiteralPath $sourceCandidate -PathType Leaf)) {
+                    Add-Violation -Path $relative -Line 0 -Message "source-input fixture is missing $sourceRelative"
                 }
             }
 

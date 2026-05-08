@@ -31,19 +31,72 @@ static void sl_sloppyrc_write_cstr(FILE* file, const char* text)
     }
 }
 
-static void sl_sloppyrc_write_error_with_value(const char* prefix, const char* value,
-                                               const char* suffix)
+static const char* sl_sloppyrc_command_name(const char* command_name)
 {
-    sl_sloppyrc_write_cstr(stderr, prefix);
+    return command_name != NULL && command_name[0] != '\0' ? command_name : "sloppy run";
+}
+
+static void sl_sloppyrc_write_command_message(const char* command_name, const char* message)
+{
+    fprintf(stderr, "%s: %s", sl_sloppyrc_command_name(command_name), message);
+}
+
+static void sl_sloppyrc_write_command_error_with_value(const char* command_name,
+                                                       const char* message, const char* value)
+{
+    fprintf(stderr, "%s: %s", sl_sloppyrc_command_name(command_name), message);
     if (value != NULL) {
         sl_sloppyrc_write_cstr(stderr, value);
     }
-    sl_sloppyrc_write_cstr(stderr, suffix);
+    sl_sloppyrc_write_cstr(stderr, "\n");
+}
+
+static bool sl_sloppyrc_path_is_absolute(SlStr path)
+{
+    if (path.length == 0U) {
+        return false;
+    }
+    if (path.ptr[0] == '/' || path.ptr[0] == '\\') {
+        return true;
+    }
+    return path.length >= 3U &&
+           ((path.ptr[0] >= 'A' && path.ptr[0] <= 'Z') ||
+            (path.ptr[0] >= 'a' && path.ptr[0] <= 'z')) &&
+           path.ptr[1] == ':' && (path.ptr[2] == '/' || path.ptr[2] == '\\');
+}
+
+static bool sl_sloppyrc_entry_path_is_safe(const char* path)
+{
+    SlStr text = {0};
+    size_t start = 0U;
+    size_t index = 0U;
+
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+    text = sl_str_from_cstr(path);
+    if (sl_sloppyrc_path_is_absolute(text)) {
+        return false;
+    }
+
+    for (index = 0U; index <= text.length; index += 1U) {
+        if (index == text.length || text.ptr[index] == '/' || text.ptr[index] == '\\') {
+            size_t length = index - start;
+            if (length == 0U) {
+                return false;
+            }
+            if (length == 2U && text.ptr[start] == '.' && text.ptr[start + 1U] == '.') {
+                return false;
+            }
+            start = index + 1U;
+        }
+    }
+
+    return true;
 }
 
 static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t capacity,
-                                 SlBytes* out, const char* not_found_prefix,
-                                 const char* size_prefix, const char* failed_read_prefix)
+                                 SlBytes* out, const char* command_name)
 {
     unsigned char read_storage[SL_SLOPPYRC_FILE_READ_ARENA_BYTES];
     SlArena arena = {0};
@@ -52,9 +105,7 @@ static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t
     SlOwnedBytes copied = {0};
     SlStatus status;
 
-    if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
-        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_SLOPPYRC_MAX_BYTES)
-    {
+    if (path == NULL || buffer == NULL || out == NULL || capacity > SL_SLOPPYRC_MAX_BYTES) {
         return 1;
     }
     *out = sl_bytes_from_parts(NULL, 0U);
@@ -66,19 +117,23 @@ static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t
 
     status = sl_fs_read_file(&arena, sl_str_from_cstr(path), &bytes, NULL);
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
-        sl_sloppyrc_write_error_with_value(not_found_prefix, path, "\n");
+        sl_sloppyrc_write_command_error_with_value(command_name,
+                                                   "project config not found: ", path);
         return 1;
     }
     if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
-        sl_sloppyrc_write_error_with_value(size_prefix, path, "\n");
+        sl_sloppyrc_write_command_error_with_value(command_name,
+                                                   "project config is empty or too large: ", path);
         return 1;
     }
     if (!sl_status_is_ok(status)) {
-        sl_sloppyrc_write_error_with_value(failed_read_prefix, path, "\n");
+        sl_sloppyrc_write_command_error_with_value(command_name,
+                                                   "project config read failed: ", path);
         return 1;
     }
     if (bytes.length == 0U || bytes.length > capacity) {
-        sl_sloppyrc_write_error_with_value(size_prefix, path, "\n");
+        sl_sloppyrc_write_command_error_with_value(command_name,
+                                                   "project config is empty or too large: ", path);
         return 1;
     }
 
@@ -88,7 +143,8 @@ static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t
     }
     status = sl_bytes_copy_to_arena(&output_arena, sl_owned_bytes_as_view(bytes), &copied);
     if (!sl_status_is_ok(status)) {
-        sl_sloppyrc_write_error_with_value(size_prefix, path, "\n");
+        sl_sloppyrc_write_command_error_with_value(command_name,
+                                                   "project config is empty or too large: ", path);
         return 1;
     }
 
@@ -130,7 +186,7 @@ static bool sl_sloppyrc_json_string_equals_literal(yyjson_val* value, SlStr expe
     return sl_str_equal(sl_str_from_parts(text, text_length), expected);
 }
 
-static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root)
+static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* command_name)
 {
     yyjson_obj_iter iter;
     yyjson_val* key = NULL;
@@ -141,9 +197,10 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root)
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("outDir")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("environment")))
         {
-            sl_sloppyrc_write_cstr(stderr,
-                                   "sloppy run: invalid sloppy.json: unsupported field; supported "
-                                   "fields are entry, outDir, and environment\n");
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
+                "and environment\n");
             return 1;
         }
     }
@@ -151,23 +208,24 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root)
 }
 
 static int sl_sloppyrc_read_required_string(yyjson_val* root, const char* field, char* buffer,
-                                            size_t capacity, const char* missing_message,
+                                            size_t capacity, const char* command_name,
+                                            const char* missing_message,
                                             const char* invalid_message)
 {
     yyjson_val* value = yyjson_obj_get(root, field);
 
     if (value == NULL) {
-        sl_sloppyrc_write_cstr(stderr, missing_message);
+        sl_sloppyrc_write_command_message(command_name, missing_message);
         return 1;
     }
 
     if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U) {
-        sl_sloppyrc_write_cstr(stderr, invalid_message);
+        sl_sloppyrc_write_command_message(command_name, invalid_message);
         return 1;
     }
 
     if (!sl_sloppyrc_copy_json_string(buffer, capacity, value)) {
-        sl_sloppyrc_write_cstr(stderr, invalid_message);
+        sl_sloppyrc_write_command_message(command_name, invalid_message);
         return 1;
     }
     return 0;
@@ -175,7 +233,7 @@ static int sl_sloppyrc_read_required_string(yyjson_val* root, const char* field,
 
 static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field, char* buffer,
                                             size_t capacity, const char* default_value,
-                                            const char* invalid_message)
+                                            const char* command_name, const char* invalid_message)
 {
     yyjson_val* value = yyjson_obj_get(root, field);
 
@@ -183,7 +241,7 @@ static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field,
         SlStringBuilder builder = {0};
         SlStr view = {0};
         if (buffer == NULL || default_value == NULL) {
-            sl_sloppyrc_write_cstr(stderr, invalid_message);
+            sl_sloppyrc_write_command_message(command_name, invalid_message);
             return 1;
         }
         if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) ||
@@ -191,7 +249,7 @@ static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field,
             sl_string_builder_length(&builder) == 0U ||
             !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
         {
-            sl_sloppyrc_write_cstr(stderr, invalid_message);
+            sl_sloppyrc_write_command_message(command_name, invalid_message);
             return 1;
         }
         return 0;
@@ -200,13 +258,13 @@ static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field,
     if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U ||
         !sl_sloppyrc_copy_json_string(buffer, capacity, value))
     {
-        sl_sloppyrc_write_cstr(stderr, invalid_message);
+        sl_sloppyrc_write_command_message(command_name, invalid_message);
         return 1;
     }
     return 0;
 }
 
-int sl_sloppyrc_load(SlSloppyRunConfig* out)
+int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
     SlBytes json = {0};
@@ -221,42 +279,53 @@ int sl_sloppyrc_load(SlSloppyRunConfig* out)
     *out = (SlSloppyRunConfig){0};
 
     if (sl_sloppyrc_read_file(SL_SLOPPYRC_FILE, json_storage, sizeof(json_storage), &json,
-                              "sloppy run: project config not found: ",
-                              "sloppy run: project config is empty or too large: ",
-                              "sloppy run: project config read failed: ") != 0)
+                              command_name) != 0)
     {
         return 1;
     }
 
     doc = yyjson_read_opts((char*)json.ptr, json.length, 0U, NULL, &error);
     if (doc == NULL) {
-        sl_sloppyrc_write_cstr(stderr, "sloppy run: invalid sloppy.json: malformed JSON\n");
+        sl_sloppyrc_write_command_message(command_name, "invalid sloppy.json: malformed JSON\n");
         return 1;
     }
 
     root = yyjson_doc_get_root(doc);
     if (root == NULL || !yyjson_is_obj(root)) {
         yyjson_doc_free(doc);
-        sl_sloppyrc_write_cstr(stderr, "sloppy run: invalid sloppy.json: root must be an object\n");
+        sl_sloppyrc_write_command_message(command_name,
+                                          "invalid sloppy.json: root must be an object\n");
         return 1;
     }
 
-    if (sl_sloppyrc_reject_unknown_fields(root) == 0 &&
+    if (sl_sloppyrc_reject_unknown_fields(root, command_name) == 0 &&
         sl_sloppyrc_read_required_string(
-            root, "entry", out->entry, sizeof(out->entry),
-            "sloppy run: missing entry in sloppy.json\n",
-            "sloppy run: invalid sloppy.json: entry must be a non-empty string\n") == 0 &&
-        sl_sloppyrc_read_optional_string(
-            root, "outDir", out->out_dir, sizeof(out->out_dir), SL_SLOPPYRC_DEFAULT_OUT_DIR,
-            "sloppy run: invalid sloppy.json: outDir must be a string\n") == 0 &&
+            root, "entry", out->entry, sizeof(out->entry), command_name,
+            "missing entry in sloppy.json\n",
+            "invalid sloppy.json: entry must be a non-empty string\n") == 0 &&
+        sl_sloppyrc_read_optional_string(root, "outDir", out->out_dir, sizeof(out->out_dir),
+                                         SL_SLOPPYRC_DEFAULT_OUT_DIR, command_name,
+                                         "invalid sloppy.json: outDir must be a string\n") == 0 &&
         sl_sloppyrc_read_optional_string(
             root, "environment", out->environment, sizeof(out->environment),
-            SL_SLOPPYRC_DEFAULT_ENVIRONMENT,
-            "sloppy run: invalid sloppy.json: environment must be a string\n") == 0)
+            SL_SLOPPYRC_DEFAULT_ENVIRONMENT, command_name,
+            "invalid sloppy.json: environment must be a string\n") == 0)
     {
-        result = 0;
+        if (!sl_sloppyrc_entry_path_is_safe(out->entry)) {
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: entry must be a relative path inside the project root\n");
+        }
+        else {
+            result = 0;
+        }
     }
 
     yyjson_doc_free(doc);
     return result;
+}
+
+int sl_sloppyrc_load(SlSloppyRunConfig* out)
+{
+    return sl_sloppyrc_load_for_command(out, "sloppy run");
 }

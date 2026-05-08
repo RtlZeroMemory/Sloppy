@@ -79,6 +79,7 @@ pub struct CompileOptions {
     pub environment: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
+    pub config_dir: Option<PathBuf>,
     pub config_overrides: Vec<(String, String)>,
 }
 
@@ -88,6 +89,7 @@ impl CompileOptions {
             environment: None,
             host: None,
             port: None,
+            config_dir: None,
             config_overrides: Vec::new(),
         }
     }
@@ -597,6 +599,14 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
                 ));
             };
             options.port = Some(port);
+        } else if arg == "--config-dir" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires a directory after --config-dir".to_string(),
+                );
+            }
+            options.config_dir = Some(PathBuf::from(&values[index]));
         } else if arg == "--config" {
             index += 1;
             if index >= values.len() {
@@ -649,7 +659,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config <key=value>]\n",
+        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>]\n",
     );
     text
 }
@@ -3577,6 +3587,14 @@ fn extract_relative_module(
                         return Err(Diagnostic::new(
                             "SLOPPYC_E_CIRCULAR_IMPORT",
                             "circular relative imports are not supported",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(import.source.span));
+                    }
+                    if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
+                            "relative imports must stay within the source root",
                         )
                         .with_path(&imported.path)
                         .with_span(import.source.span));

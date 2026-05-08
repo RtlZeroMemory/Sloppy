@@ -123,6 +123,9 @@ int main(int argc, char** argv)
     if (strcmp(options.command, "run") == 0) {
         return sl_cli_command_run(&options);
     }
+    if (strcmp(options.command, "build") == 0) {
+        return sl_cli_command_build(&options);
+    }
     if (strcmp(options.command, "doctor") == 0) {
         return sl_cli_command_doctor(&options);
     }
