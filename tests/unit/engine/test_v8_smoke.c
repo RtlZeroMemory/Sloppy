@@ -63,6 +63,14 @@ static int expect_bytes_equal(SlBytes actual, const char* expected)
                        memcmp(actual.ptr, expected, expected_length) == 0);
 }
 
+static int expect_bytes_exact(SlBytes actual, const unsigned char* expected, size_t expected_length)
+{
+    return expect_true(actual.length == expected_length &&
+                       (actual.ptr != NULL || expected_length == 0U) &&
+                       (expected_length == 0U ||
+                        memcmp(actual.ptr, expected, expected_length) == 0));
+}
+
 static int set_test_env(const char* key, const char* value)
 {
 #ifdef _WIN32
@@ -3379,6 +3387,66 @@ static int test_result_descriptor_copies_headers_and_location(void)
     return 0;
 }
 
+static int test_result_descriptor_preserves_binary_body(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    static const unsigned char expected[] = {0U, 65U, 0U, 255U};
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 96;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 97;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-result-bytes.js"),
+                          sl_str_from_cstr("globalThis.sloppy_result_bytes = function () {"
+                                           "  return { __sloppyResult: true, kind: 'bytes',"
+                                           "    status: 200, contentType: "
+                                           "    'application/x-test',"
+                                           "    headers: { 'x-result': 'bytes' },"
+                                           "    body: new Uint8Array([0, 65, 0, 255]) };"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 98;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_result_bytes"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 99;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_BYTES || result.response.status != 200U ||
+        !sl_str_equal(result.response.content_type, sl_str_from_cstr("application/x-test")) ||
+        expect_response_header(&result.response, "x-result", "bytes") != 0 ||
+        expect_bytes_exact(result.response.body, expected, sizeof(expected)) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 100;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_invalid_result_headers_fail_safely(void)
 {
     unsigned char engine_storage[8192];
@@ -5438,6 +5506,11 @@ int main(int argc, char** argv)
     }
 
     result = test_result_descriptor_copies_headers_and_location();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_preserves_binary_body();
     if (result != 0) {
         return result;
     }

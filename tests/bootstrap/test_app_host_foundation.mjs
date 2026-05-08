@@ -1096,11 +1096,19 @@ async function flushMicrotasks(count = 6) {
     assert.equal(Results.problem("broken").kind, "problem");
     assert.equal(Results.problem("broken").body.status, 500);
     assert.equal(Results.html("<p>ok</p>").contentType, "text/html; charset=utf-8");
+    const bytesSource = new Uint8Array([0, 65, 255]);
+    const bytesResult = Results.bytes(bytesSource, { contentType: "application/x-test" });
+    bytesSource[1] = 66;
+    assert.equal(bytesResult.kind, "bytes");
+    assert.equal(bytesResult.contentType, "application/x-test");
+    assert.deepEqual(Array.from(bytesResult.body), [0, 65, 255]);
     assert.deepEqual(Results.json({ ok: true }, { headers: { "x-test": "1" } }).headers, {
         "x-test": "1",
     });
     assertThrowsMessage(() => Results.ok("bad", { status: 99 }), /status/);
     assertThrowsMessage(() => Results.ok("bad", { headers: new Map() }), /plain object/);
+    assertThrowsMessage(() => Results.bytes([1, 2, 3]), /ArrayBuffer/);
+    assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
 }
 
 {

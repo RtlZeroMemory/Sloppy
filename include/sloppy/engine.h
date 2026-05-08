@@ -30,7 +30,8 @@ typedef enum SlEngineResultKind
     SL_ENGINE_RESULT_NONE = 0,
     SL_ENGINE_RESULT_TEXT = 1,
     SL_ENGINE_RESULT_JSON = 2,
-    SL_ENGINE_RESULT_ERROR = 3
+    SL_ENGINE_RESULT_ERROR = 3,
+    SL_ENGINE_RESULT_BYTES = 4
 } SlEngineResultKind;
 
 /*

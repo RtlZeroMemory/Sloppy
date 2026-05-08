@@ -7162,7 +7162,7 @@ fn response_schema_from_type_arguments(
 fn response_body_argument<'a>(call: &'a CallExpression<'a>) -> Option<&'a Argument<'a>> {
     let (_, helper) = static_member_name(&call.callee)?;
     let index = match helper {
-        "ok" | "json" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
+        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
         "created" | "status" => 1,
         _ => return None,
     };
@@ -7252,6 +7252,7 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         "json" => (200, "json"),
         "text" => (200, "text"),
         "html" => (200, "html"),
+        "bytes" => (200, "bytes"),
         "created" => (201, "json"),
         "accepted" => (202, "json"),
         "noContent" => (204, "none"),
@@ -7924,6 +7925,7 @@ fn results_helper_is_supported(property: &str) -> bool {
         property,
         "text"
             | "html"
+            | "bytes"
             | "json"
             | "ok"
             | "created"
@@ -7949,7 +7951,7 @@ fn results_call_arguments_are_supported(
     }
 
     let argument_count_supported = match property {
-        "text" | "html" => matches!(call.arguments.len(), 1 | 2),
+        "text" | "html" | "bytes" => matches!(call.arguments.len(), 1 | 2),
         "json" | "ok" | "accepted" | "notFound" | "badRequest" => call.arguments.len() <= 2,
         "created" | "status" => (1..=3).contains(&call.arguments.len()),
         "noContent" => call.arguments.is_empty(),
@@ -7957,10 +7959,89 @@ fn results_call_arguments_are_supported(
         _ => false,
     };
 
+    if property == "bytes" {
+        return matches!(call.arguments.len(), 1 | 2)
+            && call
+                .arguments
+                .first()
+                .is_some_and(argument_is_inline_bytes_value)
+            && call.arguments.get(1).map_or(true, |argument| {
+                argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+            });
+    }
+
     argument_count_supported
         && call.arguments.iter().all(|argument| {
             argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
         })
+}
+
+fn argument_is_inline_bytes_value(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::NewExpression(expression) => {
+            matches!(&expression.callee, Expression::Identifier(identifier) if identifier.name == "Uint8Array")
+                && expression.arguments.len() == 1
+                && expression
+                    .arguments
+                    .first()
+                    .is_some_and(argument_is_inline_byte_array)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_bytes_value(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_inline_bytes_value(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::NewExpression(expression) => {
+            matches!(&expression.callee, Expression::Identifier(identifier) if identifier.name == "Uint8Array")
+                && expression.arguments.len() == 1
+                && expression
+                    .arguments
+                    .first()
+                    .is_some_and(argument_is_inline_byte_array)
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_bytes_value(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn argument_is_inline_byte_array(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::ArrayExpression(array) => {
+            array.elements.iter().all(array_element_is_byte_literal)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_byte_array(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_inline_byte_array(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::ArrayExpression(array) => {
+            array.elements.iter().all(array_element_is_byte_literal)
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_byte_array(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn array_element_is_byte_literal(element: &ArrayExpressionElement<'_>) -> bool {
+    let ArrayExpressionElement::NumericLiteral(literal) = element else {
+        return false;
+    };
+    literal.value.is_finite()
+        && literal.value.fract() == 0.0
+        && literal.value >= 0.0
+        && literal.value <= 255.0
 }
 
 fn argument_is_inline_json_safe_value(
@@ -11056,15 +11137,17 @@ app.mapGet("/bad", () => Results.badRequest({ error: "bad" }));
 app.mapGet("/status", () => Results.status(202, { accepted: true }));
 app.mapGet("/problem", () => Results.problem("broken"));
 app.mapGet("/html", () => Results.html("<p>ok</p>"));
+app.mapGet("/bytes", () => Results.bytes(new Uint8Array([0, 65, 255]), { contentType: "application/x-test" }));
 export default app;
 "#;
         let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
-        assert_eq!(app.routes.len(), 9);
+        assert_eq!(app.routes.len(), 10);
         assert_eq!(app.routes[0].pattern, "/ok");
         assert_eq!(app.routes[1].pattern, "/empty");
         assert_eq!(app.routes[2].pattern, "/created");
         assert_eq!(app.routes[7].pattern, "/problem");
         assert_eq!(app.routes[8].pattern, "/html");
+        assert_eq!(app.routes[9].pattern, "/bytes");
     }
 
     #[test]

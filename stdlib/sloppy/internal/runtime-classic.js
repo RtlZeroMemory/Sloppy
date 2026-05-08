@@ -2,6 +2,7 @@
     const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
     const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
     const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
+    const BYTES_CONTENT_TYPE = "application/octet-stream";
     const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 
     function resolveStatus(options, defaultStatus) {
@@ -174,6 +175,28 @@
         }
 
         return Object.freeze({ ...headers });
+    }
+
+    function copyBytes(value) {
+        if (value instanceof ArrayBuffer) {
+            return new Uint8Array(value.slice(0));
+        }
+
+        if (ArrayBuffer.isView(value)) {
+            return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+        }
+
+        throw new TypeError("Sloppy Results.bytes body must be an ArrayBuffer or ArrayBuffer view.");
+    }
+
+    function resolveContentType(options, defaultContentType) {
+        const contentType = options?.contentType ?? defaultContentType;
+
+        if (typeof contentType !== "string" || contentType.length === 0) {
+            throw new TypeError("Sloppy Results contentType must be a non-empty string.");
+        }
+
+        return contentType;
     }
 
     function createResult(kind, body, contentType, options, defaultStatus, extra) {
@@ -522,6 +545,15 @@ Operation:
         },
         html(body, options) {
             return createResult("html", String(body), HTML_CONTENT_TYPE, options, 200);
+        },
+        bytes(body, options) {
+            return createResult(
+                "bytes",
+                copyBytes(body),
+                resolveContentType(options, BYTES_CONTENT_TYPE),
+                options,
+                200,
+            );
         },
         ok(value, options) {
             return createResult("json", value, JSON_CONTENT_TYPE, options, 200);

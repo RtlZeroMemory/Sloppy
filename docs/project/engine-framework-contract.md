@@ -183,6 +183,7 @@ Core foundation helpers:
 
 - `Results.text(body, options?)`
 - `Results.json(value, options?)`
+- `Results.bytes(body, options?)`
 - `Results.ok(value?, options?)`
 - `Results.created(location, value?, options?)`
 - `Results.accepted(value?, options?)`
@@ -288,7 +289,7 @@ Backpressure/rejection:
 | JSON body | `application/json` and `application/*+json`, bounded, malformed JSON -> 400, Plan-backed schema validation for supported metadata | broader coercion/custom validation |
 | Text body | bounded UTF-8 text reads | form parsing, streaming bodies |
 | Multipart/upload | unsupported with clear 415/501-style response | file uploads/streaming |
-| Result serialization | text, JSON, empty, problem, status, custom headers | files, streams, redirects, cookies |
+| Result serialization | text, binary bytes, JSON, empty, problem, status, custom headers | files, streams, redirects, cookies |
 | Errors | safe framework problem/error responses with diagnostics | production error page customization |
 | Server lifecycle | localhost dev server plus deterministic `--once` conformance | Kestrel/Nginx replacement, TLS, HTTP/2 |
 

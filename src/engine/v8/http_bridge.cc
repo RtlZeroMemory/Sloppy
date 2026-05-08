@@ -369,6 +369,52 @@ SlStatus http_v8_copy_value_bytes(v8::Isolate* isolate, SlArena* arena, v8::Loca
     return sl_v8_string_value_copy_bytes_to_arena(isolate, arena, value, out);
 }
 
+SlStatus http_v8_copy_binary_value_bytes(SlArena* arena, v8::Local<v8::Value> value, SlBytes* out)
+{
+    const unsigned char* bytes = nullptr;
+    size_t length = 0U;
+    SlOwnedBytes copied = {};
+
+    if (arena == nullptr || out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (value->IsArrayBufferView()) {
+        v8::Local<v8::ArrayBufferView> view = value.As<v8::ArrayBufferView>();
+        std::shared_ptr<v8::BackingStore> backing = view->Buffer()->GetBackingStore();
+        size_t offset = view->ByteOffset();
+        length = view->ByteLength();
+        if (backing == nullptr || offset > backing->ByteLength() ||
+            length > backing->ByteLength() - offset)
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (length != 0U) {
+            bytes = static_cast<const unsigned char*>(backing->Data()) + offset;
+        }
+    } else if (value->IsArrayBuffer()) {
+        v8::Local<v8::ArrayBuffer> buffer = value.As<v8::ArrayBuffer>();
+        std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
+        length = buffer->ByteLength();
+        if (backing == nullptr || length > backing->ByteLength()) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (length != 0U) {
+            bytes = static_cast<const unsigned char*>(backing->Data());
+        }
+    } else {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    SlStatus status = sl_bytes_copy_to_arena(arena, sl_bytes_from_parts(bytes, length), &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = sl_owned_bytes_as_view(copied);
+    return sl_status_ok();
+}
+
 std::string http_v8_ascii_lower_string(SlStr str)
 {
     std::string lowered;
@@ -1935,6 +1981,30 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
+    if (sl_str_equal(kind, sl_str_from_cstr("bytes"))) {
+        SlBytes bytes = {nullptr, 0U};
+        SlStatus status = http_v8_copy_binary_value_bytes(arena, body, &bytes);
+        if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
+            return http_v8_write_diag(
+                engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                http_v8_literal("Results.bytes body must be binary data",
+                                sizeof("Results.bytes body must be binary data") - 1U),
+                http_v8_literal("Return an ArrayBuffer or ArrayBuffer view for Results.bytes.",
+                                sizeof("Return an ArrayBuffer or ArrayBuffer view for "
+                                       "Results.bytes.") -
+                                    1U));
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_BYTES;
+        out_result->response = sl_http_response_bytes(status_code, content_type, bytes);
+        out_result->response.headers = response_headers;
+        out_result->response.header_count = response_header_count;
+        return sl_status_ok();
+    }
+
     bool is_json = sl_str_equal(kind, sl_str_from_cstr("json"));
     bool is_problem = sl_str_equal(kind, sl_str_from_cstr("problem"));
     if (is_json || is_problem) {
@@ -1972,8 +2042,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
         http_v8_literal("JavaScript result descriptor kind is unsupported",
                         sizeof("JavaScript result descriptor kind is unsupported") - 1U),
-        http_v8_literal("Supported result kinds are text, html, json, empty, and problem.",
-                        sizeof("Supported result kinds are text, html, json, empty, and "
+        http_v8_literal("Supported result kinds are text, html, bytes, json, empty, and problem.",
+                        sizeof("Supported result kinds are text, html, bytes, json, empty, and "
                                "problem.") -
                             1U));
 }

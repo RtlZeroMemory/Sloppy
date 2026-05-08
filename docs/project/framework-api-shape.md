@@ -238,6 +238,7 @@ Explicit `Results.*` helpers are primary:
 - `Results.ok(value)`;
 - `Results.json(value, status?)`;
 - `Results.text(value, status?)`;
+- `Results.bytes(value, options?)`;
 - `Results.created(location, value?)`;
 - `Results.noContent()`;
 - `Results.badRequest(problem?)`;
