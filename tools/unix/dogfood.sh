@@ -47,15 +47,52 @@ done
 
 [[ -f "$manifest_path" ]] || { echo "dogfood: manifest missing: $manifest_path" >&2; exit 1; }
 
-for required in hello-artifact hello-source-input package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-v2-app; do
-  if ! grep -q "\"id\": \"$required\"" "$manifest_path"; then
-    echo "dogfood: manifest missing scenario '$required'" >&2
-    exit 1
-  fi
-done
+python_bin=""
+if command -v python3 >/dev/null 2>&1; then
+  python_bin="python3"
+elif command -v python >/dev/null 2>&1; then
+  python_bin="python"
+else
+  echo "dogfood: python3 or python is required for manifest validation" >&2
+  exit 1
+fi
+
+"$python_bin" - "$manifest_path" hello-artifact hello-source-input package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-v2-app <<'PY'
+import json
+import sys
+
+manifest_path = sys.argv[1]
+required_ids = sys.argv[2:]
+
+try:
+    with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+        manifest = json.load(manifest_file)
+except (OSError, json.JSONDecodeError) as exc:
+    print(f"dogfood: invalid dogfood manifest '{manifest_path}': {exc}", file=sys.stderr)
+    sys.exit(1)
+
+scenarios = manifest.get("scenarios")
+if not isinstance(scenarios, list):
+    print("dogfood: manifest field 'scenarios' must be an array", file=sys.stderr)
+    sys.exit(1)
+
+scenario_ids = {
+    scenario.get("id")
+    for scenario in scenarios
+    if isinstance(scenario, dict) and isinstance(scenario.get("id"), str)
+}
+for required_id in required_ids:
+    if required_id not in scenario_ids:
+        print(f"dogfood: manifest missing scenario '{required_id}'", file=sys.stderr)
+        sys.exit(1)
+PY
 
 if [[ -n "$package_path" ]]; then
-  "$repo_root/tools/unix/test-package.sh" --package-path "$package_path" $(if [[ "$require_v8_runtime" -eq 1 ]]; then printf '%s' '--require-v8-runtime'; fi)
+  package_args=(--package-path "$package_path")
+  if [[ "$require_v8_runtime" -eq 1 ]]; then
+    package_args+=(--require-v8-runtime)
+  fi
+  "$repo_root/tools/unix/test-package.sh" "${package_args[@]}"
   package_status="PASS"
   package_reason="package-mode dogfood ran against supplied archive"
 else
