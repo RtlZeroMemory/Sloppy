@@ -4,6 +4,8 @@ set -euo pipefail
 configuration="Release"
 output_dir="artifacts/packages"
 skip_build=0
+enable_v8=0
+v8_root=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,14 +21,23 @@ while [[ $# -gt 0 ]]; do
       skip_build=1
       shift
       ;;
+    --enable-v8)
+      enable_v8=1
+      shift
+      ;;
+    --v8-root)
+      v8_root="${2:?missing value for --v8-root}"
+      shift 2
+      ;;
     -h|--help)
       cat <<'USAGE'
-Usage: tools/unix/package.sh [--configuration Release|Debug] [--output-dir DIR] [--skip-build]
+Usage: tools/unix/package.sh [--configuration Release|Debug] [--output-dir DIR] [--skip-build] [--enable-v8] [--v8-root DIR]
 
 Creates an experimental local tar.gz package from already supported Unix build outputs.
-This script is intentionally small and does not install dependencies, fetch V8, or claim a
-validated Linux/macOS release path. Use tools/unix/test-package.sh for local package-layout
-smoke; hosted package CI remains a separate scoped task.
+When --enable-v8 is used on Linux x64, the package is built from a Sloppy-owned V8 SDK.
+Static SDKs link V8 into the runtime; shared-library SDKs bundle the V8 runtime libraries
+and a wrapper that runs the packaged runtime with the bundled library path.
+Use tools/unix/test-package.sh --require-v8-runtime for the extracted-package JS smoke.
 USAGE
       exit 0
       ;;
@@ -56,8 +67,12 @@ esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 configuration_lower="$(printf '%s' "$configuration" | tr '[:upper:]' '[:lower:]')"
-build_dir="$repo_root/build/unix-$configuration_lower"
-package_version="0.0.0-dev"
+build_suffix="$configuration_lower"
+if [[ "$enable_v8" -eq 1 ]]; then
+  build_suffix="$build_suffix-v8"
+fi
+build_dir="$repo_root/build/unix-$build_suffix"
+package_version="0.1.0-alpha.0"
 kernel_name="$(uname -s)"
 machine_name="$(uname -m)"
 
@@ -72,17 +87,95 @@ case "$machine_name" in
   arm64|aarch64) arch="arm64" ;;
   *) arch="$machine_name" ;;
 esac
+platform_triplet="$platform-$arch"
+resolved_v8_root=""
+resolved_v8_llvm_root=""
+
+if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" ]]; then
+  echo "package: --enable-v8 is currently supported only on linux-x64." >&2
+  exit 1
+fi
+
+resolve_v8_root() {
+  local args=(--mode REQUIRED --quiet)
+  if [[ -n "$v8_root" ]]; then
+    args+=(--v8-root "$v8_root")
+  fi
+  "$repo_root/tools/unix/resolve-v8-sdk.sh" "${args[@]}"
+}
+
+resolve_v8_llvm_root() {
+  local candidate
+  local candidates=()
+  if [[ -n "${SLOPPY_V8_LLVM_ROOT:-}" ]]; then
+    candidates+=("$SLOPPY_V8_LLVM_ROOT")
+  fi
+  candidates+=("$repo_root/.sdeps/v8-work/v8/third_party/llvm-build/Release+Asserts")
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    if [[ -x "$candidate/bin/clang" && -x "$candidate/bin/clang++" && -x "$candidate/bin/ld.lld" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "package: --enable-v8 on linux-x64 requires the V8 depot_tools LLVM toolchain." >&2
+  echo "package: run tools/unix/build-v8.sh with the default work root, or set SLOPPY_V8_LLVM_ROOT to V8's third_party/llvm-build/Release+Asserts directory." >&2
+  return 1
+}
+
+copy_runtime_library_with_symlink() {
+  local source_path="$1"
+  local destination_dir="$2"
+  local link_name
+  local real_path
+  local real_name
+
+  [[ -e "$source_path" ]] || return 0
+  link_name="$(basename "$source_path")"
+  real_path="$(readlink -f "$source_path")"
+  real_name="$(basename "$real_path")"
+  cp -f "$real_path" "$destination_dir/$real_name"
+  if [[ "$link_name" != "$real_name" ]]; then
+    ln -sfn "$real_name" "$destination_dir/$link_name"
+  fi
+}
 
 cd "$repo_root"
 
 if [[ "$skip_build" -eq 0 ]]; then
+  if [[ "$enable_v8" -eq 1 ]]; then
+    if [[ "$platform_triplet" == "linux-x64" ]]; then
+      resolved_v8_llvm_root="$(resolve_v8_llvm_root)"
+      export PATH="$resolved_v8_llvm_root/bin:$PATH"
+    fi
+    resolved_v8_root="$(resolve_v8_root)"
+  fi
   cmake_args=(
     -S "$repo_root"
     -B "$build_dir"
     -DCMAKE_BUILD_TYPE="$build_type"
-    -DSLOPPY_ENABLE_V8=OFF
-    -DSLOPPY_ENGINE=none
   )
+  if [[ "$enable_v8" -eq 1 ]]; then
+    cmake_args+=(
+      -DSLOPPY_ENABLE_V8=ON
+      -DSLOPPY_ENGINE=v8
+      "-DSLOPPY_V8_ROOT=$resolved_v8_root"
+    )
+    if [[ "$platform_triplet" == "linux-x64" ]]; then
+      cmake_args+=(
+        "-DCMAKE_C_COMPILER=$resolved_v8_llvm_root/bin/clang"
+        "-DCMAKE_CXX_COMPILER=$resolved_v8_llvm_root/bin/clang++"
+        "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem$resolved_v8_root/support/libcxx/buildtools -isystem$resolved_v8_root/support/libcxx/include -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE"
+      )
+    fi
+  else
+    cmake_args+=(
+      -DSLOPPY_ENABLE_V8=OFF
+      -DSLOPPY_ENGINE=none
+    )
+  fi
   vcpkg_root="${VCPKG_ROOT:-$repo_root/.sdeps/vcpkg}"
   vcpkg_toolchain="$vcpkg_root/scripts/buildsystems/vcpkg.cmake"
   if [[ -f "$vcpkg_toolchain" ]]; then
@@ -110,7 +203,7 @@ sloppyc_bin="$repo_root/compiler/target/$cargo_profile/sloppyc"
 [[ -x "$sloppy_bin" ]] || { echo "missing built sloppy executable: $sloppy_bin" >&2; exit 1; }
 [[ -x "$sloppyc_bin" ]] || { echo "missing built sloppyc executable: $sloppyc_bin" >&2; exit 1; }
 
-package_name="sloppy-$package_version-$platform-$arch"
+package_name="sloppy-$platform-$arch"
 case "$output_dir" in
   /*) output_root="$output_dir" ;;
   *) output_root="$repo_root/$output_dir" ;;
@@ -135,6 +228,8 @@ This package is an experimental pre-alpha development artifact.
 - Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
   release readiness.
 - V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
+- V8 runtime support is included only in packages built with a matching Sloppy-owned SDK
+  and proven by the V8 package smoke lane.
 - PostgreSQL and SQL Server live-provider behavior requires separate opt-in evidence.
 - Signing, notarization, installers, auto-update, and package-manager distribution are not
   included.
@@ -165,15 +260,75 @@ anything, fetch dependencies, bundle a V8 SDK, provide package-manager behavior,
 production readiness.
 README
 
+contains_v8_runtime=false
+contains_native_runtime_dependencies=false
+v8_status="not bundled"
+v8_runtime_status="not bundled"
+v8_notes="no V8 runtime"
+runtime_dependency_status="host-linked or system-provided"
+enabled_features='"native-runtime", "stdlib", "compiler"'
+runtime_dependency_dir=""
+if [[ "$enable_v8" -eq 1 ]]; then
+  if [[ -z "$resolved_v8_root" ]]; then
+    resolved_v8_root="$(resolve_v8_root)"
+  fi
+  contains_v8_runtime=true
+  v8_status="linked runtime"
+  v8_runtime_status="linked into packaged runtime"
+  v8_notes="Linux V8 runtime is provided by the Sloppy-owned SDK and linked into the packaged runtime"
+  runtime_dependency_status="V8 linked into packaged runtime; platform system libraries remain host-provided"
+  enabled_features='"native-runtime", "stdlib", "compiler", "v8"'
+  dynamic_v8_runtime_count=0
+  for lib in "$resolved_v8_root"/lib/*.so "$resolved_v8_root"/lib/*.so.* "$resolved_v8_root"/bin/*.so "$resolved_v8_root"/bin/*.so.*; do
+    [[ -e "$lib" ]] || continue
+    if [[ "$dynamic_v8_runtime_count" -eq 0 ]]; then
+      runtime_dependency_dir="engines/v8"
+      mkdir -p "$stage_root/engines/v8"
+    fi
+    copy_runtime_library_with_symlink "$lib" "$stage_root/engines/v8"
+    dynamic_v8_runtime_count=$((dynamic_v8_runtime_count + 1))
+  done
+  if [[ "$dynamic_v8_runtime_count" -gt 0 ]]; then
+    contains_native_runtime_dependencies=true
+    v8_status="bundled shared runtime"
+    v8_runtime_status="bundled shared libraries"
+    v8_notes="Linux V8 runtime shared libraries are bundled for extracted-package smoke"
+    runtime_dependency_status="bundled V8 shared libraries plus platform system libraries"
+    rm -f "$stage_root/bin/sloppy"
+    cp "$sloppy_bin" "$stage_root/bin/sloppy.bin"
+    cat > "$stage_root/bin/sloppy" <<'WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+bin_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+package_root="$(cd "$bin_dir/.." && pwd)"
+export PATH="$bin_dir:${PATH:-}"
+export LD_LIBRARY_PATH="$package_root/engines/v8:$bin_dir:${LD_LIBRARY_PATH:-}"
+exec "$bin_dir/sloppy.bin" "$@"
+WRAPPER
+    chmod +x "$stage_root/bin/sloppy"
+  fi
+fi
+
 commit="$(git rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
 cat > "$stage_root/manifest.json" <<JSON
 {
+  "manifestSchema": "sloppy.release-artifact.v1",
+  "manifestVersion": 1,
   "name": "sloppy",
   "version": "$package_version",
+  "archiveName": "$package_name.tar.gz",
+  "packageRoot": "$package_name",
   "platform": "$platform",
   "arch": "$arch",
+  "platformTriplet": "$platform_triplet",
   "configuration": "$configuration",
   "commit": "$commit",
+  "releaseKind": "dry-run",
+  "publicReleaseCreated": false,
+  "canonicalDistribution": "github-release-archive",
+  "npmPackageSource": "platform packages must be generated from this tested archive content",
+  "platformStatus": "experimental",
+  "runtimeUserStatus": "$([[ "$contains_v8_runtime" == true ]] && printf 'experimental V8 package smoke required' || ([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'experimental package smoke; V8 runtime app execution remains a separate lane' || printf 'experimental pending hosted package smoke evidence'))",
   "compiler": {
     "name": "sloppyc",
     "profile": "$cargo_profile",
@@ -181,25 +336,38 @@ cat > "$stage_root/manifest.json" <<JSON
   },
   "v8": {
     "sdkIncluded": false,
-    "runtimeIncluded": false,
-    "status": "not bundled",
-    "version": "pinned by tools/deps/sloppy-deps.json"
+    "runtimeIncluded": $contains_v8_runtime,
+    "status": "$v8_status",
+    "version": "pinned by tools/deps/sloppy-deps.json",
+    "runtimeDirectory": "$runtime_dependency_dir",
+    "notes": "$v8_notes"
   },
-  "enabledFeatures": ["native-runtime", "stdlib", "compiler"],
+  "enabledFeatures": [$enabled_features],
   "dependencyStatuses": {
-    "nativeRuntimeDependencies": "host-linked or system-provided",
+    "nativeRuntimeDependencies": "$runtime_dependency_status",
     "v8Sdk": "excluded",
-    "v8Runtime": "not bundled",
-    "liveProviders": "not configured"
+    "v8Runtime": "$v8_runtime_status",
+    "liveProviders": "not configured",
+    "runtimeDependencyAudit": "docs/release/runtime-dependency-audit.json"
   },
-  "containsV8Runtime": false,
+  "providers": {
+    "sqlite": "packaged runtime dependency status only; provider behavior evidence is separate",
+    "postgresql": "live-provider evidence is separate",
+    "sqlserver": "driver/runtime availability evidence is separate"
+  },
+  "containsV8Runtime": $contains_v8_runtime,
   "containsV8Sdk": false,
   "containsStdlib": true,
   "containsExamples": true,
-  "containsNativeRuntimeDependencies": false,
+  "containsNativeRuntimeDependencies": $contains_native_runtime_dependencies,
+  "knownLimitations": "docs/KNOWN_LIMITATIONS.md",
+  "checksums": {
+    "file": "SHA256SUMS.txt",
+    "algorithm": "SHA-256"
+  },
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
-  "notes": ["experimental", "not production ready", "no installer", "no package manager"]
+  "notes": ["experimental", "dry-run artifact", "not production ready", "not a public alpha release", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
 }
 JSON
 

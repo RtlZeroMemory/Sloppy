@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "contract": "sloppy.release-artifact",
+  "contractVersion": "1.0.0",
+  "releaseVersionPolicy": "0.1.0-alpha.N until the public alpha gate chooses a concrete N",
+  "dryRunDefault": true,
+  "canonicalDistribution": "github-release-archives",
+  "npmDistributionRole": "convenience launcher for installing Sloppy itself only",
+  "statusVocabulary": [
+    "supported",
+    "experimental",
+    "source-build only",
+    "planned",
+    "blocked",
+    "unavailable",
+    "untested"
+  ],
+  "evidenceStatusVocabulary": [
+    "PASS",
+    "FAIL",
+    "SKIPPED",
+    "UNAVAILABLE",
+    "NOT RUN"
+  ],
+  "archiveMatrix": [
+    {
+      "id": "windows-x64",
+      "archiveName": "sloppy-windows-x64.zip",
+      "packageRoot": "sloppy-windows-x64",
+      "packageFormat": "zip",
+      "platformStatus": "experimental",
+      "runtimeUserStatus": "experimental pending release dry-run evidence",
+      "v8RuntimeStatus": "windows V8 SDK source available; end-user V8 runtime package smoke remains a separate lane"
+    },
+    {
+      "id": "linux-x64",
+      "archiveName": "sloppy-linux-x64.tar.gz",
+      "packageRoot": "sloppy-linux-x64",
+      "packageFormat": "tar.gz",
+      "platformStatus": "experimental",
+      "runtimeUserStatus": "experimental package smoke when Linux source build and package smoke pass; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and require-v8 package smoke",
+      "v8RuntimeStatus": "Linux x64 V8 SDK can be built locally with tools/unix/build-v8.sh; hosted artifact URL and checksum remain pending until upload"
+    },
+    {
+      "id": "macos-arm64",
+      "archiveName": "sloppy-macos-arm64.tar.gz",
+      "packageRoot": "sloppy-macos-arm64",
+      "packageFormat": "tar.gz",
+      "platformStatus": "experimental",
+      "runtimeUserStatus": "experimental pending hosted package smoke",
+      "v8RuntimeStatus": "macOS arm64 V8 SDK/runtime artifact lane is not available yet"
+    },
+    {
+      "id": "macos-x64",
+      "archiveName": "sloppy-macos-x64.tar.gz",
+      "packageRoot": "sloppy-macos-x64",
+      "packageFormat": "tar.gz",
+      "platformStatus": "source-build only",
+      "runtimeUserStatus": "source-build only unless the optional hosted x64 lane is requested and smoked",
+      "v8RuntimeStatus": "macOS x64 V8 SDK/runtime artifact lane is not available yet"
+    }
+  ],
+  "requiredPackageLayout": [
+    "bin/sloppy",
+    "bin/sloppyc",
+    "stdlib/sloppy",
+    "examples",
+    "docs/KNOWN_LIMITATIONS.md",
+    "docs/LICENSES.md",
+    "docs/NOTICE.md",
+    "manifest.json"
+  ],
+  "forbiddenPackagePaths": [
+    ".git",
+    ".sdeps",
+    "build",
+    "compiler/target",
+    "target",
+    "vcpkg_installed",
+    "engines/v8/include",
+    "engines/v8/lib"
+  ],
+  "requiredManifestFields": [
+    "manifestSchema",
+    "manifestVersion",
+    "name",
+    "version",
+    "archiveName",
+    "packageRoot",
+    "platform",
+    "arch",
+    "platformTriplet",
+    "configuration",
+    "commit",
+    "releaseKind",
+    "publicReleaseCreated",
+    "canonicalDistribution",
+    "npmPackageSource",
+    "platformStatus",
+    "runtimeUserStatus",
+    "v8",
+    "dependencyStatuses",
+    "knownLimitations",
+    "checksums"
+  ],
+  "checksumFile": "SHA256SUMS.txt",
+  "npmPackages": {
+    "root": "@sloppy/runtime",
+    "platformPackages": [
+      "@sloppy/runtime-win32-x64",
+      "@sloppy/runtime-linux-x64-gnu",
+      "@sloppy/runtime-darwin-arm64",
+      "@sloppy/runtime-darwin-x64"
+    ],
+    "publishTag": "alpha",
+    "nativeInstallScriptsAllowed": false,
+    "nodeGypAllowed": false,
+    "postinstallDownloadAllowed": false,
+    "platformContentSource": "generated from already built and tested release archive contents"
+  },
+  "nonGoals": [
+    "no public alpha release",
+    "no npm publish",
+    "no latest dist-tag",
+    "no installer",
+    "no signing",
+    "no notarization",
+    "no Node/Bun/Deno compatibility",
+    "no npm app dependency support",
+    "no node_modules resolution for Sloppy apps",
+    "no production-readiness claim",
+    "no performance claim"
+  ]
+}

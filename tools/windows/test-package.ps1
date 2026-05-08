@@ -308,6 +308,44 @@ function Get-Sha256Hex {
     }
 }
 
+function Assert-NoMaintainerLocalPaths {
+    param([string]$Root)
+
+    function Convert-PackageRelativePath {
+        param(
+            [string]$Base,
+            [string]$Path
+        )
+
+        $baseUri = [Uri](([System.IO.Path]::GetFullPath($Base).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar))
+        $pathUri = [Uri]([System.IO.Path]::GetFullPath($Path))
+        return [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString()).Replace("/", [System.IO.Path]::DirectorySeparatorChar)
+    }
+
+    $localPathPatterns = @(
+        '[A-Z]:[\\/]',
+        '\\\\[^\\\s"<>|]+\\[^\\\s"<>|]+',
+        '(^|[\s"=:,(])/(Users|home|Volumes|mnt|workspace|workspaces)(/|$)'
+    )
+    $scanFiles = @(
+        Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @(".json", ".md", ".txt") }
+    )
+    foreach ($file in $scanFiles) {
+        $relative = (Convert-PackageRelativePath -Base $Root -Path $file.FullName) -replace "\\", "/"
+        $lineNumber = 0
+        foreach ($line in Get-Content -LiteralPath $file.FullName) {
+            $lineNumber += 1
+            $withoutUrls = $line -replace 'https?://\S+', ''
+            foreach ($pattern in $localPathPatterns) {
+                if ($withoutUrls -cmatch $pattern) {
+                    throw "Package smoke found maintainer-local absolute path text in ${relative}:$lineNumber"
+                }
+            }
+        }
+    }
+}
+
 $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "../..")).Path
 $metadata = $null
@@ -355,6 +393,20 @@ try {
     }
 
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    foreach ($requiredManifestField in @("manifestSchema", "manifestVersion", "archiveName", "packageRoot", "platformTriplet", "releaseKind", "publicReleaseCreated", "canonicalDistribution", "npmPackageSource", "platformStatus", "runtimeUserStatus", "dependencyStatuses", "knownLimitations", "checksums")) {
+        if ($null -eq $manifest.PSObject.Properties[$requiredManifestField]) {
+            throw "Package smoke manifest is missing required release field: $requiredManifestField"
+        }
+    }
+    if ($manifest.manifestSchema -ne "sloppy.release-artifact.v1") {
+        throw "Package smoke manifestSchema was '$($manifest.manifestSchema)', expected sloppy.release-artifact.v1."
+    }
+    if ($manifest.releaseKind -ne "dry-run" -or $manifest.publicReleaseCreated -ne $false) {
+        throw "Package smoke manifest must record dry-run releaseKind and publicReleaseCreated=false."
+    }
+    if ($manifest.packageRoot -ne (Split-Path -Leaf $packageRoot)) {
+        throw "Package smoke manifest packageRoot '$($manifest.packageRoot)' does not match archive root '$(Split-Path -Leaf $packageRoot)'."
+    }
     $expectedManifest = [ordered]@{
         name = "sloppy"
         containsStdlib = $true
@@ -463,6 +515,8 @@ try {
     foreach ($excludedSdkFile in $excludedFiles) {
         Assert-PackageFileMissing -Root $packageRoot -RelativePath $excludedSdkFile
     }
+
+    Assert-NoMaintainerLocalPaths -Root $packageRoot
 
     $v8RuntimeRoot = Join-Path $packageRoot "engines/v8"
     if ($RequireV8Runtime) {

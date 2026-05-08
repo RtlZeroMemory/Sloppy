@@ -57,7 +57,7 @@
     {
       "id": "v8",
       "status": "experimental",
-      "evidence": "Windows x64 resolver/cache/validation exists with a pinned GitHub release SDK artifact and checksum. Linux/macOS V8 SDK artifacts remain planned."
+      "evidence": "Windows x64 resolver/cache/validation exists with a pinned GitHub release SDK artifact and checksum. Linux x64 has a Sloppy-owned SDK builder/resolver and package lane; hosted Linux artifact URL/checksum and macOS SDK artifacts remain planned."
     },
     {
       "id": "package",
@@ -99,6 +99,6 @@
   },
   "consolidationRecommendation": {
     "status": "ready-for-consolidation-review",
-    "condition": "Review ALPHA-INFRA evidence with Linux/macOS V8 artifacts still planned and keep final public docs/release verification outside this loop."
+    "condition": "Review ALPHA-INFRA evidence with Linux hosted V8 artifact upload and macOS V8 artifacts still planned, and keep final public docs/release verification outside this loop."
   }
 }

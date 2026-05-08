@@ -217,7 +217,7 @@ function(sloppy_require_v8_manifest_string expected_value description)
             FATAL_ERROR
                 "V8 bridge: SDK manifest ${description} is incompatible.\n"
                 "Expected '${expected_value}', got '${actual_value}'.\n"
-                "Rebuild/package V8 with tools/windows/build-v8.ps1.")
+                "Rebuild/package V8 with the platform SDK builder.")
     endif()
 endfunction()
 
@@ -227,9 +227,38 @@ function(sloppy_require_v8_manifest_true description)
         message(
             FATAL_ERROR
                 "V8 bridge: SDK manifest ${description} must be true.\n"
-                "Rebuild/package V8 with tools/windows/build-v8.ps1.")
+                "Rebuild/package V8 with the platform SDK builder.")
     endif()
 endfunction()
+
+function(sloppy_get_v8_manifest_bool out_variable description)
+    string(JSON actual_value GET "${SLOPPY_V8_MANIFEST}" ${ARGN})
+    if(actual_value STREQUAL "true" OR actual_value STREQUAL "ON")
+        set(${out_variable}
+            TRUE
+            PARENT_SCOPE)
+    elseif(actual_value STREQUAL "false" OR actual_value STREQUAL "OFF")
+        set(${out_variable}
+            FALSE
+            PARENT_SCOPE)
+    else()
+        message(
+            FATAL_ERROR
+                "V8 bridge: SDK manifest ${description} must be a boolean, got '${actual_value}'.")
+    endif()
+endfunction()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+    set(SLOPPY_V8_EXPECTED_PLATFORM "windows-x64")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+    set(SLOPPY_V8_EXPECTED_PLATFORM "linux-x64")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    set(SLOPPY_V8_EXPECTED_PLATFORM "macos-arm64")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+    set(SLOPPY_V8_EXPECTED_PLATFORM "macos-x64")
+else()
+    set(SLOPPY_V8_EXPECTED_PLATFORM "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
 if(SLOPPY_ENABLE_V8)
     if(NOT SLOPPY_V8_ROOT)
@@ -252,53 +281,107 @@ if(SLOPPY_ENABLE_V8)
 
     file(READ "${SLOPPY_V8_ROOT}/share/sloppy-v8-sdk.json" SLOPPY_V8_MANIFEST)
     sloppy_require_v8_manifest_string("sloppy-v8-sdk" "name" name)
-    sloppy_require_v8_manifest_string("windows-x64" "platform" platform)
+    sloppy_require_v8_manifest_string("${SLOPPY_V8_EXPECTED_PLATFORM}" "platform" platform)
     sloppy_require_v8_manifest_string("${SLOPPY_V8_EXPECTED_REVISION}" "v8Revision" v8Revision)
     sloppy_require_v8_manifest_string("release" "buildType" buildType)
-    sloppy_require_v8_manifest_string(
-        "Release or RelWithDebInfo" "crtCompatibility" crtCompatibility)
-    sloppy_require_v8_manifest_string(
-        "${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}" "abi.crLibcxxRevision" abi
-        crLibcxxRevision)
+    if(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "windows-x64")
+        sloppy_require_v8_manifest_string(
+            "Release or RelWithDebInfo" "crtCompatibility" crtCompatibility)
+        sloppy_require_v8_manifest_string(
+            "${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}" "abi.crLibcxxRevision" abi
+            crLibcxxRevision)
+    elseif(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "linux-x64")
+        sloppy_require_v8_manifest_string("sloppy-built-v8" "source" source)
+        sloppy_require_v8_manifest_string("glibc clang-libc++ static-v8" "crtCompatibility"
+                                          crtCompatibility)
+        sloppy_require_v8_manifest_string(
+            "${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}" "abi.crLibcxxRevision" abi
+            crLibcxxRevision)
+    endif()
     sloppy_require_v8_manifest_string("x64" "abi.v8TargetArch" abi v8TargetArch)
-    sloppy_require_v8_manifest_true("abi.v8CompressPointers" abi v8CompressPointers)
-    sloppy_require_v8_manifest_true(
+    sloppy_get_v8_manifest_bool(
+        SLOPPY_V8_ABI_COMPRESS_POINTERS "abi.v8CompressPointers" abi v8CompressPointers)
+    sloppy_get_v8_manifest_bool(
+        SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE
         "abi.v8CompressPointersInSharedCage" abi v8CompressPointersInSharedCage)
-    sloppy_require_v8_manifest_true(
+    sloppy_get_v8_manifest_bool(
+        SLOPPY_V8_ABI_31BIT_SMIS_ON_64BIT_ARCH
         "abi.v8_31BitSmisOn64BitArch" abi v8_31BitSmisOn64BitArch)
-    sloppy_require_v8_manifest_true("abi.v8EnableSandbox" abi v8EnableSandbox)
+    sloppy_get_v8_manifest_bool(SLOPPY_V8_ABI_ENABLE_SANDBOX "abi.v8EnableSandbox" abi
+                                v8EnableSandbox)
+    if(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "windows-x64")
+        if(NOT SLOPPY_V8_ABI_COMPRESS_POINTERS
+           OR NOT SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE
+           OR NOT SLOPPY_V8_ABI_ENABLE_SANDBOX)
+            message(FATAL_ERROR "V8 bridge: SDK ABI flags must match the pinned SDK.")
+        endif()
+    elseif(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "linux-x64")
+        if(NOT SLOPPY_V8_ABI_COMPRESS_POINTERS
+           OR NOT SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE
+           OR NOT SLOPPY_V8_ABI_ENABLE_SANDBOX)
+            message(
+                FATAL_ERROR
+                    "V8 bridge: Linux SDK ABI flags must match the pinned clang-libc++ sandbox-enabled SDK.")
+        endif()
+    endif()
 
     file(
         GLOB
         SLOPPY_V8_MONOLITH_LIBS
         CONFIGURE_DEPENDS
-        "${SLOPPY_V8_ROOT}/lib/v8_monolith*.lib")
+        "${SLOPPY_V8_ROOT}/lib/v8_monolith*.lib"
+        "${SLOPPY_V8_ROOT}/lib/libv8_monolith*.a"
+        "${SLOPPY_V8_ROOT}/lib/libv8_monolith*.so")
     file(
         GLOB
         SLOPPY_V8_SPLIT_CORE_LIBS
         CONFIGURE_DEPENDS
-        "${SLOPPY_V8_ROOT}/lib/v8.lib")
+        "${SLOPPY_V8_ROOT}/lib/v8.lib"
+        "${SLOPPY_V8_ROOT}/lib/libv8.a"
+        "${SLOPPY_V8_ROOT}/lib/libv8.so")
     file(
         GLOB
         SLOPPY_V8_PLATFORM_LIBS
         CONFIGURE_DEPENDS
-        "${SLOPPY_V8_ROOT}/lib/v8_libplatform*.lib")
-    file(GLOB SLOPPY_V8_BASE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8_libbase*.lib")
-    file(GLOB SLOPPY_V8_LIBCXX_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/libc++*.lib")
+        "${SLOPPY_V8_ROOT}/lib/v8_libplatform*.lib"
+        "${SLOPPY_V8_ROOT}/lib/libv8_libplatform*.a"
+        "${SLOPPY_V8_ROOT}/lib/libv8_libplatform*.so")
+    file(
+        GLOB
+        SLOPPY_V8_BASE_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/v8_libbase*.lib"
+        "${SLOPPY_V8_ROOT}/lib/libv8_libbase*.a"
+        "${SLOPPY_V8_ROOT}/lib/libv8_libbase*.so")
+    file(
+        GLOB
+        SLOPPY_V8_SAMPLER_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/libv8_libsampler*.a"
+        "${SLOPPY_V8_ROOT}/lib/libv8_libsampler*.so")
+    file(
+        GLOB
+        SLOPPY_V8_LIBCXX_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/libc++.lib"
+        "${SLOPPY_V8_ROOT}/lib/libc++.a"
+        "${SLOPPY_V8_ROOT}/lib/libc++abi*.a"
+        "${SLOPPY_V8_ROOT}/lib/libunwind*.a")
 
     if(SLOPPY_V8_MONOLITH_LIBS)
         if(NOT SLOPPY_V8_PLATFORM_LIBS)
             message(
                 FATAL_ERROR
-                    "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+                    "V8 bridge: enabled but no v8_libplatform library was found under ${SLOPPY_V8_ROOT}/lib.")
         endif()
         if(NOT SLOPPY_V8_BASE_LIBS)
             message(
                 FATAL_ERROR
-                    "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+                    "V8 bridge: enabled but no v8_libbase library was found under ${SLOPPY_V8_ROOT}/lib.")
         endif()
         set(SLOPPY_V8_LIBS ${SLOPPY_V8_MONOLITH_LIBS} ${SLOPPY_V8_PLATFORM_LIBS}
-                           ${SLOPPY_V8_BASE_LIBS} ${SLOPPY_V8_LIBCXX_LIBS})
+                           ${SLOPPY_V8_BASE_LIBS} ${SLOPPY_V8_SAMPLER_LIBS}
+                           ${SLOPPY_V8_LIBCXX_LIBS})
         if(SLOPPY_V8_LIBCXX_LIBS)
             sloppy_require_v8_path("support/libcxx/include/memory" "libc++ support headers")
             sloppy_require_v8_path("support/libcxx/buildtools/__config_site"
@@ -316,21 +399,21 @@ if(SLOPPY_ENABLE_V8)
         if(NOT SLOPPY_V8_PLATFORM_LIBS)
             message(
                 FATAL_ERROR
-                    "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+                    "V8 bridge: enabled but no v8_libplatform library was found under ${SLOPPY_V8_ROOT}/lib.")
         endif()
         if(NOT SLOPPY_V8_BASE_LIBS)
             message(
                 FATAL_ERROR
-                    "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+                    "V8 bridge: enabled but no v8_libbase library was found under ${SLOPPY_V8_ROOT}/lib.")
         endif()
         set(SLOPPY_V8_LIBS ${SLOPPY_V8_SPLIT_CORE_LIBS} ${SLOPPY_V8_PLATFORM_LIBS}
-                           ${SLOPPY_V8_BASE_LIBS})
+                           ${SLOPPY_V8_BASE_LIBS} ${SLOPPY_V8_SAMPLER_LIBS})
         message(STATUS "V8 SDK library mode: split")
     else()
         message(
             FATAL_ERROR
                 "V8 bridge: enabled but no core V8 library was found under ${SLOPPY_V8_ROOT}/lib.\n"
-                "Expected v8_monolith*.lib, or v8.lib with v8_libplatform*.lib and v8_libbase*.lib.")
+                "Expected a monolithic V8 library, or split core V8 with v8_libplatform and v8_libbase libraries.")
     endif()
 
     add_library(Sloppy::V8 INTERFACE IMPORTED)
@@ -338,25 +421,54 @@ if(SLOPPY_ENABLE_V8)
     target_compile_definitions(
         Sloppy::V8
         INTERFACE
-            $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS>
-            $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS_IN_SHARED_CAGE>
-            $<$<COMPILE_LANGUAGE:CXX>:V8_31BIT_SMIS_ON_64BIT_ARCH>
-            $<$<COMPILE_LANGUAGE:CXX>:V8_ENABLE_SANDBOX>
             $<$<COMPILE_LANGUAGE:CXX>:V8_TARGET_ARCH_X64>)
-    if(SLOPPY_V8_LIBCXX_LIBS)
+    if(SLOPPY_V8_ABI_COMPRESS_POINTERS)
+        target_compile_definitions(Sloppy::V8 INTERFACE $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS>)
+    endif()
+    if(SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE)
         target_compile_definitions(
-            Sloppy::V8
-            INTERFACE
-                $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>
-                $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS>
-                $<$<COMPILE_LANGUAGE:CXX>:CR_LIBCXX_REVISION=${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}>)
-        target_compile_options(
-            Sloppy::V8
-            INTERFACE
-                $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/buildtools>
-                $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/include>)
+            Sloppy::V8 INTERFACE $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS_IN_SHARED_CAGE>)
+    endif()
+    if(SLOPPY_V8_ABI_31BIT_SMIS_ON_64BIT_ARCH)
+        target_compile_definitions(
+            Sloppy::V8 INTERFACE $<$<COMPILE_LANGUAGE:CXX>:V8_31BIT_SMIS_ON_64BIT_ARCH>)
+    endif()
+    if(SLOPPY_V8_ABI_ENABLE_SANDBOX)
+        target_compile_definitions(Sloppy::V8 INTERFACE $<$<COMPILE_LANGUAGE:CXX>:V8_ENABLE_SANDBOX>)
+    endif()
+    if(SLOPPY_V8_LIBCXX_LIBS)
+        if(MSVC)
+            target_compile_definitions(
+                Sloppy::V8
+                INTERFACE
+                    $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>
+                    $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS>
+                    $<$<COMPILE_LANGUAGE:CXX>:CR_LIBCXX_REVISION=${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}>)
+            target_compile_options(
+                Sloppy::V8
+                INTERFACE
+                    $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/buildtools>
+                    $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/include>)
+        elseif(UNIX AND NOT APPLE)
+            target_compile_definitions(
+                Sloppy::V8
+                INTERFACE
+                    $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>
+                    $<$<COMPILE_LANGUAGE:CXX>:CR_LIBCXX_REVISION=${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}>)
+            target_compile_options(
+                Sloppy::V8
+                INTERFACE
+                    $<$<COMPILE_LANGUAGE:CXX>:-nostdinc++>
+                    $<$<COMPILE_LANGUAGE:CXX>:-isystem${SLOPPY_V8_ROOT}/support/libcxx/buildtools>
+                    $<$<COMPILE_LANGUAGE:CXX>:-isystem${SLOPPY_V8_ROOT}/support/libcxx/include>)
+            target_link_options(Sloppy::V8 INTERFACE $<$<LINK_LANGUAGE:CXX>:-nostdlib++>)
+        endif()
     endif()
     target_link_libraries(Sloppy::V8 INTERFACE ${SLOPPY_V8_LIBS})
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(Sloppy::V8 INTERFACE pthread dl atomic)
+        target_link_options(Sloppy::V8 INTERFACE $<$<LINK_LANGUAGE:CXX>:-fuse-ld=lld>)
+    endif()
     if(WIN32 AND SLOPPY_V8_MONOLITH_LIBS)
         # Chromium's monolithic Windows V8 library carries allocator-shim overrides for
         # CRT allocation symbols. lld-link requires the override policy to be explicit.

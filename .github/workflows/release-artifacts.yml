@@ -28,6 +28,11 @@ on:
         required: true
         default: true
         type: boolean
+      dry_run:
+        description: "Keep this workflow in dry-run mode. Public release creation is not implemented here."
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -52,6 +57,9 @@ jobs:
       - name: Validate release templates and no-claims policy
         shell: pwsh
         run: |
+          if ("${{ inputs.dry_run }}" -ne "true") {
+            throw "release-artifacts only supports dry_run=true. This workflow must not create a public release."
+          }
           .\tools\windows\check-alpha-claims.ps1 -SelfTest
           .\tools\windows\check-alpha-claims.ps1
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
@@ -133,6 +141,10 @@ jobs:
           }
           .\tools\windows\release-dry-run.ps1 @args
 
+      - name: npm launcher dry-run from Windows archive
+        shell: pwsh
+        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip
+
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -153,6 +165,8 @@ jobs:
             artifacts/packages/sloppy-*.zip
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz
 
   package-linux:
     name: release dry-run / linux-x64

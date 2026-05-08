@@ -53,17 +53,25 @@ checksum-validated SDK artifact source; `tools/windows/fetch-v8.ps1` downloads i
 `.sdeps/v8/_downloads`, extracts `.sdeps/v8/windows-x64`, and validates the SDK layout
 before it can be used. `tools/windows/resolve-v8-sdk.ps1 -Fetch` and
 `tools/windows/dev.ps1 configure -EnableV8` use that source when no compatible local SDK
-is found. Linux and macOS SDK artifacts remain planned. `SLOPPY_V8_ROOT` is an advanced
-override, not the happy path. Rust dependencies are owned by the `compiler/` project.
-JavaScript dependencies are not a package-manager surface for Sloppy apps.
+is found. Linux x64 uses the same ownership model through `tools/unix/build-v8.sh`, which
+builds the pinned V8 revision, packages `.sdeps/v8/linux-x64`, and writes a reusable SDK
+archive under `artifacts/v8-sdk/`; it does not adapt distro Node/V8 development packages.
+The Linux SDK is built with V8's Chromium libc++ support and records ABI flags from V8's
+generated feature metadata. macOS SDK artifacts remain planned.
+`SLOPPY_V8_ROOT` is an advanced override, not the happy path. Rust dependencies are owned
+by the `compiler/` project. JavaScript dependencies are not a package-manager surface for
+Sloppy apps.
 
 ## Packages
 
 Current package artifacts are experimental evidence for layout and outside-checkout
-behavior. The alpha layout is:
+behavior. GitHub Release archives are the canonical distribution artifacts. The current
+local alpha archive name is `sloppy-windows-x64.zip`. Linux x64, macOS arm64, and macOS x64
+archive names are planned/optional lanes and must be reported only when that lane is
+requested and evidenced. The alpha layout is:
 
 ```text
-sloppy-<version>-<platform>-<arch>/
+sloppy-<platform>-<arch>/
   bin/
   stdlib/
     sloppy/
@@ -80,6 +88,10 @@ Package fixtures must not recompile source when the package contract says execut
 from packaged artifacts. Default package smoke proves packaged CLI startup, `sloppy doctor`,
 manifest/checksum layout, required docs, stdlib/examples presence, and no accidental source
 checkout dependency; V8 package execution remains a separate V8-gated lane.
+Linux V8 package smoke must use `tools/unix/dev.sh package --enable-v8` followed by
+`tools/unix/dev.sh test-package --require-v8-runtime` and prove extracted-package JS app
+execution from both compiled artifacts and source input before it is reported as runtime
+user evidence.
 
 ## CI
 
@@ -101,6 +113,13 @@ provide local package evidence when package behavior changes.
 Release notes and limitation templates live in `RELEASE_NOTES.md`, `CHANGELOG.md`, and
 `docs/release/`. They must keep unsupported platforms, V8 status, provider status, and
 package smoke evidence separate. Skipped or unavailable lanes are not pass evidence.
+
+The npm package track is a dry-run convenience installer for Sloppy itself. `@sloppy/runtime`
+is a launcher that resolves a generated platform package such as
+`@sloppy/runtime-win32-x64` or `@sloppy/runtime-linux-x64-gnu`. Platform package contents
+must be generated from already-built archive contents. npm install must not compile native
+code, run `node-gyp`, build V8, or download V8. This does not add npm dependency support to
+Sloppy apps.
 
 ## Dogfood And Readiness
 
@@ -129,5 +148,5 @@ final public documentation or a public release claim.
 ## Non-Claims
 
 Sloppy does not currently claim production-ready builds, public alpha release artifacts,
-TLS distribution, package-manager integration, Node/Bun/Deno compatibility, or benchmarked
-performance.
+TLS distribution, npm app dependency support, package-manager integration, or Node/Bun/Deno
+compatibility. It makes no benchmarked performance result claim.

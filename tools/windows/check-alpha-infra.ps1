@@ -102,7 +102,7 @@ function Write-FakeV8Manifest {
             v8TargetArch = "x64"
             v8CompressPointers = $true
             v8CompressPointersInSharedCage = $true
-            v8_31BitSmisOn64BitArch = $true
+            v8_31BitSmisOn64BitArch = $false
             v8EnableSandbox = $true
         }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root "share/sloppy-v8-sdk.json") -Encoding ASCII
@@ -386,9 +386,16 @@ function Test-LocalPathHygiene {
         "docs/project/alpha-infra-readiness.md",
         "docs/project/alpha-infra-readiness.json",
         "docs/release/README.md",
+        "docs/release/artifact-contract.md",
+        "docs/release/artifact-contract.json",
+        "docs/release/runtime-dependency-audit.json",
+        "docs/release/install-verification-matrix.json",
+        "docs/release/alpha-gate-handoff.md",
+        "docs/release/post-merge-verifier.md",
         "docs/release/KNOWN_LIMITATIONS.md",
         "docs/release/LICENSES.md",
         "docs/release/NOTICE.md",
+        "tools/windows/npm-dry-run.ps1",
         "RELEASE_NOTES.md",
         "CHANGELOG.md",
         ".github/workflows/release-artifacts.yml"

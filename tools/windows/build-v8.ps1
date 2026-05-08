@@ -261,10 +261,30 @@ try {
 Copy-DirectoryContents -Source (Join-Path $V8Checkout "third_party/libc++/src/include") -Destination (Join-Path $SdkRoot "support/libcxx/include")
 Copy-Item -LiteralPath (Join-Path $V8Checkout "buildtools/third_party/libc++/__config_site") -Destination (Join-Path $SdkRoot "support/libcxx/buildtools/__config_site") -Force
 Copy-Item -LiteralPath (Join-Path $V8Checkout "buildtools/third_party/libc++/__assertion_handler") -Destination (Join-Path $SdkRoot "support/libcxx/buildtools/__assertion_handler") -Force
+Copy-Item -LiteralPath (Join-Path $V8BuildDir "v8_features.json") -Destination (Join-Path $SdkRoot "share/v8_features.json") -Force
+Copy-Item -LiteralPath (Join-Path $V8BuildDir "v8_build_config.json") -Destination (Join-Path $SdkRoot "share/v8_build_config.json") -Force
 
 $Revision = (& git -C $V8Checkout rev-parse HEAD).Trim()
 if ($Revision -ne $V8Revision) {
     throw "V8 checkout revision $Revision does not match pinned revision $V8Revision."
+}
+
+$Features = Get-Content -LiteralPath (Join-Path $V8BuildDir "v8_features.json") -Raw | ConvertFrom-Json
+$requiredFeatureKeys = @(
+    "v8_enable_pointer_compression",
+    "v8_enable_pointer_compression_shared_cage",
+    "v8_enable_31bit_smis_on_64bit_arch",
+    "v8_enable_sandbox",
+    "v8_enable_i18n_support"
+)
+foreach ($key in $requiredFeatureKeys) {
+    $property = $Features.PSObject.Properties[$key]
+    if ($null -eq $property) {
+        throw "v8_features.json is missing required key '$key'."
+    }
+    if ($property.Value -isnot [bool]) {
+        throw "v8_features.json key '$key' must be boolean."
+    }
 }
 
 $manifest = [ordered]@{
@@ -277,11 +297,14 @@ $manifest = [ordered]@{
     abi = [ordered]@{
         crLibcxxRevision = $CrLibcxxRevision
         v8TargetArch = "x64"
-        v8CompressPointers = $true
-        v8CompressPointersInSharedCage = $true
-        v8_31BitSmisOn64BitArch = $true
-        v8EnableSandbox = $true
+        v8CompressPointers = [bool]$Features.v8_enable_pointer_compression
+        v8CompressPointersInSharedCage = [bool]$Features.v8_enable_pointer_compression_shared_cage
+        v8_31BitSmisOn64BitArch = [bool]$Features.v8_enable_31bit_smis_on_64bit_arch
+        v8EnableSandbox = [bool]$Features.v8_enable_sandbox
+        v8EnableI18nSupport = [bool]$Features.v8_enable_i18n_support
     }
+    publicFeatureMetadata = "share/v8_features.json"
+    buildConfigMetadata = "share/v8_build_config.json"
     gnArgs = @(
         "is_debug=false",
         "target_cpu=x64",

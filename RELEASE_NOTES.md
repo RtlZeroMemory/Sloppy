@@ -21,6 +21,7 @@ reason`.
 - V8:
 - Package:
 - Outside-checkout package:
+- npm root/platform package dry-run:
 - CI workflow:
 - Optional/live-provider:
 
@@ -30,12 +31,14 @@ reason`.
 - Runtime manifest.
 - Package checksums.
 - Known limitations, license policy, and notice policy files.
+- npm launcher/platform package dry-run skeletons generated from tested archive contents.
 
 ## Deferred
 
 - Public GitHub release.
 - Hosted V8 SDK artifact publication.
 - Signing, notarization, installers, and package-manager wrappers.
+- npm publish and public registry metadata.
 - Final public alpha documentation.
 - Final alpha verification.
 
@@ -49,4 +52,5 @@ See `docs/release/KNOWN_LIMITATIONS.md`.
 - No production-readiness claim.
 - No benchmark or performance claim.
 - No Node, Bun, or Deno compatibility claim.
+- No npm app dependency support or `node_modules` resolution claim.
 - No fake V8, package, provider, or platform readiness claim.

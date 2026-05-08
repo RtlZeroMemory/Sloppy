@@ -71,7 +71,7 @@ non-V8 evidence does not prove V8 execution.
 | HTTP | HTTP/1.1 runtime support is bounded development evidence. Sequential keep-alive and bounded chunked handling exist, but production-edge HTTP, pipelining, streaming public APIs, middleware, and TLS are not claimed. |
 | Data providers | SQLite, PostgreSQL, and SQL Server have scoped native/provider and V8-gated bridge lanes. PostgreSQL and SQL Server live evidence remains opt-in and must not be reported as default evidence. |
 | Capabilities and security | Capability checks are runtime policy checks. They are not an operating-system sandbox. |
-| Packaging | Package smoke checks prove local archive layout and outside-checkout behavior only. They are not release-readiness evidence. |
+| Packaging | Package smoke checks prove local archive layout and outside-checkout behavior only. GitHub archives are the canonical future artifact shape; npm is a launcher dry-run for Sloppy itself, not npm app dependency support. |
 | Benchmarks | Benchmark harnesses may compile or smoke-run, but no performance claim is made from this repository state. |
 
 ## Limits That Matter
@@ -83,6 +83,8 @@ non-V8 evidence does not prove V8 execution.
 - Sloppy is not Node, Bun, Deno, Express, or npm compatible.
 - Node/npm package-manager behavior is not a goal unless a scoped source doc and
   issue explicitly add it.
+- npm launcher packages may distribute Sloppy itself, but Sloppy apps do not gain arbitrary
+  npm package imports or `node_modules` resolution from that installer path.
 - Full TypeScript semantics, dependency resolution, watch mode, hot reload, and
   a public tutorial workflow remain outside the current executable subset.
 - Optional lanes such as V8, package smoke, live providers, fuzz/torture,

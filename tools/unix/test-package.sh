@@ -28,10 +28,9 @@ sloppy/sloppyc --version and --help smoke checks, verifies stdlib assets, valida
 manifest fields, checks excluded build/dependency directories, and verifies SHA256SUMS.txt
 when present.
 
-This is package-layout smoke. It is not a public release, package-manager, live provider,
-or V8 execution gate. --require-v8-runtime only validates packaged runtime files and the
-manifest bit; V8 execution still requires a separately configured V8-enabled package
-smoke.
+This is package-layout smoke. It is not a public release, package-manager, or live
+provider gate. --require-v8-runtime requires the manifest to record V8 runtime support
+and proves JS app execution from the extracted package, including source-input execution.
 USAGE
       exit 0
       ;;
@@ -102,7 +101,30 @@ APP
       exit 1
     }
     echo "Package smoke V8 artifact execution passed from extracted package layout."
+    if [[ "$require_v8_runtime" -eq 1 ]]; then
+      local source_run_output
+      local source_run_status=0
+      set +e
+      source_run_output="$(cd "$source_dir" && "$sloppy_executable" run "$source_dir/app.js" --once GET / 2>&1)"
+      source_run_status=$?
+      set -e
+      printf '%s\n' "$source_run_output"
+      if [[ "$source_run_status" -ne 0 ]]; then
+        echo "packaged sloppy source-input run failed: $source_run_output" >&2
+        exit 1
+      fi
+      grep -q "Hello from packaged Sloppy" <<<"$source_run_output" || {
+        echo "packaged sloppy source-input run did not return the expected response." >&2
+        exit 1
+      }
+      echo "Package smoke V8 source-input execution passed from extracted package layout."
+    fi
     return
+  fi
+
+  if [[ "$require_v8_runtime" -eq 1 ]]; then
+    echo "Package smoke required V8 runtime execution, but packaged sloppy run failed: $run_output" >&2
+    exit 1
   fi
 
   grep -q "requires V8-enabled build" <<<"$run_output" || {
@@ -162,14 +184,32 @@ grep -Eq '"containsV8Sdk"[[:space:]]*:[[:space:]]*false' "$manifest_path" || {
   echo "Package smoke manifest must not record V8 SDK inclusion." >&2
   exit 1
 }
+for field in manifestSchema manifestVersion archiveName packageRoot platformTriplet releaseKind publicReleaseCreated canonicalDistribution npmPackageSource platformStatus runtimeUserStatus dependencyStatuses knownLimitations checksums; do
+  grep -Eq "\"$field\"[[:space:]]*:" "$manifest_path" || {
+    echo "Package smoke manifest is missing required release field: $field" >&2
+    exit 1
+  }
+done
+grep -Eq '"manifestSchema"[[:space:]]*:[[:space:]]*"sloppy.release-artifact.v1"' "$manifest_path" || {
+  echo "Package smoke manifestSchema was not sloppy.release-artifact.v1." >&2
+  exit 1
+}
+grep -Eq '"releaseKind"[[:space:]]*:[[:space:]]*"dry-run"' "$manifest_path" || {
+  echo "Package smoke manifest must record releaseKind dry-run." >&2
+  exit 1
+}
+grep -Eq '"publicReleaseCreated"[[:space:]]*:[[:space:]]*false' "$manifest_path" || {
+  echo "Package smoke manifest must record publicReleaseCreated=false." >&2
+  exit 1
+}
 
 if [[ "$require_v8_runtime" -eq 1 ]]; then
   grep -Eq '"containsV8Runtime"[[:space:]]*:[[:space:]]*true' "$manifest_path" || {
-    echo "Package smoke required V8 runtime files, but manifest containsV8Runtime is not true." >&2
+    echo "Package smoke required V8 runtime support, but manifest containsV8Runtime is not true." >&2
     exit 1
   }
 elif grep -Eq '"containsV8Runtime"[[:space:]]*:[[:space:]]*true' "$manifest_path"; then
-  echo "Package smoke note: manifest records V8 runtime files. This run validates layout only; V8 execution still requires a V8-enabled package smoke."
+  echo "Package smoke note: manifest records V8 runtime support. This run validates layout only; use --require-v8-runtime for V8 execution proof."
 fi
 
 invoke_cli_smoke "$package_root/bin/sloppy" "sloppy"
@@ -206,18 +246,16 @@ for excluded_sdk_file in engines/v8/include/v8.h engines/v8/lib/v8_monolith.lib;
   assert_missing "$package_root" "$excluded_sdk_file"
 done
 
-if [[ "$require_v8_runtime" -eq 1 ]]; then
-  v8_runtime_root="$package_root/engines/v8"
-  [[ -d "$v8_runtime_root" ]] || {
-    echo "Package smoke required V8 runtime files, but engines/v8 is missing." >&2
-    exit 1
-  }
-  runtime_count="$(find "$v8_runtime_root" -maxdepth 1 -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) | wc -l | tr -d ' ')"
-  [[ "$runtime_count" != "0" ]] || {
-    echo "Package smoke required V8 runtime files, but no DLL/shared-library files were found." >&2
-    exit 1
-  }
+local_path_scan_file="$temp_root/local-path-scan.txt"
+if find "$package_root" -type f \( -name '*.json' -o -name '*.md' -o -name '*.txt' \) -print0 |
+  xargs -0 grep -nE '([A-Z]:[\\/]|\\\\[^\\[:space:]"<>|]+\\[^\\[:space:]"<>|]+|(^|[[:space:]"=:,(])/(Users|home|Volumes|mnt|workspace|workspaces)(/|$))' 2>/dev/null |
+  grep -vE 'https?://' >"$local_path_scan_file"; then
+  cat "$local_path_scan_file" >&2
+  rm -f "$local_path_scan_file"
+  echo "Package smoke found maintainer-local absolute path text." >&2
+  exit 1
 fi
+rm -f "$local_path_scan_file"
 
 checksum_path="$(dirname "$package_path")/SHA256SUMS.txt"
 if [[ -f "$checksum_path" ]]; then

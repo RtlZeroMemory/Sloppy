@@ -61,3 +61,4 @@ logs/
 *.zip
 *.7z
 *.tar.gz
+*.tgz

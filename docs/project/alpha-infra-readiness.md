@@ -25,7 +25,9 @@ consume during consolidation and final gate review.
 - Bootstrap, dependency, V8 resolver, dev-script, packaging, smoke, release dry-run, and
   no-claims guardrails are represented.
 - Windows x64 V8 SDK provisioning has a pinned, checksum-validated GitHub release asset
-  consumed by `tools/windows/fetch-v8.ps1`; Linux and macOS SDK artifacts remain planned.
+  consumed by `tools/windows/fetch-v8.ps1`; Linux x64 has the same Sloppy-owned SDK model
+  through `tools/unix/build-v8.sh`, with hosted artifact URL/checksum still pending until
+  upload. macOS SDK artifacts remain planned.
 - The dogfood catalog names `hello` artifact/source-input/package lanes and future feature
   apps without claiming unfinished HTTP, TLS, provider, or Framework behavior.
 
