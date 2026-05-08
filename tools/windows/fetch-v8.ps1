@@ -179,9 +179,12 @@ if (-not [string]::IsNullOrWhiteSpace($SourceArchive)) {
         $oldProgressPreference = $ProgressPreference
         $ProgressPreference = "SilentlyContinue"
         try {
-            Invoke-WebRequest -Uri $url -OutFile $tempArchive -UseBasicParsing
+            Invoke-WebRequest -Uri $url -OutFile $tempArchive -UseBasicParsing -TimeoutSec 1200
         } finally {
             $ProgressPreference = $oldProgressPreference
+        }
+        if (-not (Test-Path -LiteralPath $tempArchive -PathType Leaf)) {
+            throw "V8 SDK artifact download did not produce an archive: $tempArchive"
         }
         Move-Item -LiteralPath $tempArchive -Destination $archivePath -Force
     }
