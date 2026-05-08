@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #define TEST_ARENA_SIZE 65536U
 
@@ -18,6 +19,24 @@ static int expect_status(SlStatus status, SlStatusCode code)
 static int expect_str_equal(SlStr actual, const char* expected)
 {
     return expect_true(sl_str_equal(actual, sl_str_from_cstr(expected)));
+}
+
+static int expect_body_contains(SlBytes body, const char* expected)
+{
+    SlStr needle = sl_str_from_cstr(expected);
+    size_t index = 0U;
+
+    if (body.ptr == NULL || needle.ptr == NULL || needle.length == 0U ||
+        body.length < needle.length)
+    {
+        return 1;
+    }
+    for (index = 0U; index <= body.length - needle.length; index += 1U) {
+        if (memcmp(body.ptr + index, needle.ptr, needle.length) == 0) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static SlBytes bytes_from_cstr(const char* text)
@@ -845,6 +864,376 @@ static int test_missing_plan_handler_fails_before_engine_call(void)
     return 0;
 }
 
+static SlPlan validation_plan(SlPlanHandler* handler, SlPlanRoute* route,
+                              SlPlanRequestBinding* bindings, SlPlanSchema* schemas,
+                              SlPlanSchemaProperty* properties, SlPlanSchemaNode* property_nodes)
+{
+    SlPlan plan = one_handler_plan(handler);
+
+    route->method = sl_str_from_cstr("POST");
+    route->pattern = sl_str_from_cstr("/users");
+    route->handler_id = 1U;
+    route->bindings = bindings;
+    route->binding_count = 1U;
+
+    bindings[0].kind = SL_PLAN_REQUEST_BINDING_BODY_JSON;
+    bindings[0].parameter = sl_str_from_cstr("input");
+    bindings[0].schema = sl_str_from_cstr("UserCreate");
+    bindings[0].type = sl_str_from_cstr("UserCreate");
+
+    schemas[0].name = sl_str_from_cstr("UserCreate");
+    schemas[0].definition.kind = SL_PLAN_SCHEMA_OBJECT;
+    schemas[0].definition.properties = properties;
+    schemas[0].definition.property_count = 3U;
+
+    properties[0].name = sl_str_from_cstr("name");
+    properties[0].schema = &property_nodes[0];
+    property_nodes[0].kind = SL_PLAN_SCHEMA_STRING;
+    property_nodes[0].has_min = true;
+    property_nodes[0].min_value = 1;
+
+    properties[1].name = sl_str_from_cstr("email");
+    properties[1].schema = &property_nodes[1];
+    property_nodes[1].kind = SL_PLAN_SCHEMA_STRING;
+    property_nodes[1].validation = sl_str_from_cstr("email");
+
+    properties[2].name = sl_str_from_cstr("password");
+    properties[2].schema = &property_nodes[2];
+    property_nodes[2].kind = SL_PLAN_SCHEMA_STRING;
+    property_nodes[2].has_min = true;
+    property_nodes[2].min_value = 8;
+    property_nodes[2].secret = true;
+
+    plan.routes = route;
+    plan.route_count = 1U;
+    plan.schemas = schemas;
+    plan.schema_count = 1U;
+    return plan;
+}
+
+static int test_plan_backed_body_validation_returns_problem_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 43\r\n\r\n"
+                      "{\"name\":\"\",\"email\":\"no\",\"password\":\"short\"}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 140;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 141;
+    }
+
+    if (expect_body_contains(result.response.body, "\"body.name\"") != 0 ||
+        expect_body_contains(result.response.body, "\"body.email\"") != 0 ||
+        expect_body_contains(result.response.body, "\"body.password\"") != 0 ||
+        expect_body_contains(result.response.body, "short") == 0 ||
+        expect_body_contains(result.response.body, "\"no\"") == 0)
+    {
+        sl_engine_destroy(engine);
+        return 142;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_plan_backed_route_query_header_validation_returns_problem(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[3] = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/users/{id}");
+    route.handler_id = 1U;
+    route.bindings = bindings;
+    route.binding_count = 3U;
+    bindings[0].kind = SL_PLAN_REQUEST_BINDING_ROUTE;
+    bindings[0].parameter = sl_str_from_cstr("id");
+    bindings[0].name = sl_str_from_cstr("id");
+    bindings[0].schema = sl_str_from_cstr("number");
+    bindings[0].type = sl_str_from_cstr("Route<number>");
+    bindings[1].kind = SL_PLAN_REQUEST_BINDING_QUERY;
+    bindings[1].parameter = sl_str_from_cstr("includeDeleted");
+    bindings[1].name = sl_str_from_cstr("includeDeleted");
+    bindings[1].schema = sl_str_from_cstr("bool");
+    bindings[1].type = sl_str_from_cstr("Query<boolean>");
+    bindings[2].kind = SL_PLAN_REQUEST_BINDING_HEADER;
+    bindings[2].parameter = sl_str_from_cstr("trace");
+    bindings[2].name = sl_str_from_cstr("x-trace-id");
+    bindings[2].type = sl_str_from_cstr("string");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "GET /users/not-int?includeDeleted=maybe HTTP/1.1\r\nHost: example\r\n\r\n",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 143;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 144;
+    }
+
+    if (expect_body_contains(result.response.body, "\"id\"") != 0 ||
+        expect_body_contains(result.response.body, "\"includeDeleted\"") != 0 ||
+        expect_body_contains(result.response.body, "\"x-trace-id\"") != 0 ||
+        expect_body_contains(result.response.body, "not-int") == 0 ||
+        expect_body_contains(result.response.body, "maybe") == 0)
+    {
+        sl_engine_destroy(engine);
+        return 145;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_plan_backed_nullable_required_body_field_must_be_present(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    property_nodes[1].nullable = true;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 36\r\n\r\n"
+                      "{\"name\":\"Ada\",\"password\":\"longpass\"}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 146;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 147;
+    }
+
+    if (expect_body_contains(result.response.body, "\"body.email\"") != 0 ||
+        expect_body_contains(result.response.body, "Ada") == 0 ||
+        expect_body_contains(result.response.body, "longpass") == 0)
+    {
+        sl_engine_destroy(engine);
+        return 148;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_plan_backed_array_validation_reports_indexed_paths(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaNode item = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/tags");
+    route.handler_id = 1U;
+    route.bindings = bindings;
+    route.binding_count = 1U;
+    bindings[0].kind = SL_PLAN_REQUEST_BINDING_BODY_JSON;
+    bindings[0].parameter = sl_str_from_cstr("tags");
+    bindings[0].schema = sl_str_from_cstr("Tags");
+    schemas[0].name = sl_str_from_cstr("Tags");
+    schemas[0].definition.kind = SL_PLAN_SCHEMA_ARRAY;
+    schemas[0].definition.items = &item;
+    item.kind = SL_PLAN_SCHEMA_STRING;
+    item.has_min = true;
+    item.min_value = 1;
+    plan.routes = &route;
+    plan.route_count = 1U;
+    plan.schemas = schemas;
+    plan.schema_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /tags HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 9\r\n\r\n"
+                      "[\"ok\",\"\"]",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 151;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 152;
+    }
+
+    if (expect_body_contains(result.response.body, "\"body[1]\"") != 0) {
+        sl_engine_destroy(engine);
+        return 153;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_manual_dispatch_ignores_stale_route_index_for_validation(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute routes[2] = {0};
+    SlPlanRequestBinding stale_binding = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/admin");
+    routes[0].handler_id = 1U;
+    routes[0].bindings = &stale_binding;
+    routes[0].binding_count = 1U;
+    stale_binding.kind = SL_PLAN_REQUEST_BINDING_HEADER;
+    stale_binding.parameter = sl_str_from_cstr("trace");
+    stale_binding.name = sl_str_from_cstr("x-trace-id");
+    stale_binding.type = sl_str_from_cstr("string");
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/users");
+    routes[1].handler_id = 1U;
+    plan.routes = routes;
+    plan.route_count = 2U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        parse_pattern(&arena, "/users", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 149;
+    }
+
+    route.method = SL_HTTP_METHOD_GET;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    route.route_index = 0U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag);
+    if (sl_status_code(status) != SL_STATUS_UNSUPPORTED || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 150;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_route_params_may_match_but_are_not_required_by_dispatch(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -1021,6 +1410,11 @@ int main(void)
         {test_body_too_large_fails_before_handler_call},
         {test_lifecycle_dispatch_uses_backend_body_limit},
         {test_missing_plan_handler_fails_before_engine_call},
+        {test_plan_backed_body_validation_returns_problem_before_handler_call},
+        {test_plan_backed_route_query_header_validation_returns_problem},
+        {test_plan_backed_nullable_required_body_field_must_be_present},
+        {test_plan_backed_array_validation_reports_indexed_paths},
+        {test_manual_dispatch_ignores_stale_route_index_for_validation},
         {test_route_params_may_match_but_are_not_required_by_dispatch},
         {test_conformance_smoke_default_http_cases},
     };

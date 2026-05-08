@@ -43,16 +43,19 @@ The compiler can emit route metadata for the supported source subset:
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
 
 The native runtime validates route metadata, builds a deterministic route table, and
-dispatches supported requests through V8 in the V8 lane. Dynamic route registration,
-middleware, modules, automatic validation, arbitrary imports, and full TypeScript semantics
+dispatches supported requests through V8 in the V8 lane. For Framework v2 metadata, the
+native dispatcher also consumes Plan-backed route/query/header scalar bindings and
+schema-backed JSON body metadata to fail invalid requests with a safe `400`
+`application/problem+json` response before calling the handler. Dynamic route registration,
+middleware, modules, arbitrary imports, custom validators, and full TypeScript semantics
 remain outside the current source subset.
 
 Typed Framework v2 handler metadata is compiler/Plan-first. When the compiler sees a typed
 multi-parameter handler that the current runtime cannot execute directly, it emits
 `handlers[].runtimeDispatch: "deferred"` and a generated handler that returns a 501 problem
 descriptor. That is an honest runtime boundary: the Plan metadata may be complete for route,
-binding, schema, injection, and response facts while actual HTTP dispatch, DI/provider
-resolution, runtime validation, and response writing remain separate implementation lanes.
+binding, schema, injection, and response facts while typed handler execution, DI/provider
+resolution, and full response writing remain separate implementation lanes.
 
 ## Server Config Metadata
 

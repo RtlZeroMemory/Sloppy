@@ -363,6 +363,54 @@ static SlStatus sl_plan_intern_handlers(SlArena* arena, SlInternTable* table, Sl
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_intern_bindings(SlArena* arena, SlInternTable* table, SlPlanRoute* route)
+{
+    SlPlanRequestBinding* bindings = NULL;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (route->binding_count == 0U) {
+        route->bindings = NULL;
+        return sl_status_ok();
+    }
+    if (route->bindings == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_plan_alloc_copy(arena, route->bindings, route->binding_count,
+                                sizeof(SlPlanRequestBinding), _Alignof(SlPlanRequestBinding),
+                                (void**)&bindings);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (bindings == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        status =
+            sl_plan_intern_required(table, bindings[index].parameter, &bindings[index].parameter);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, bindings[index].name, &bindings[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, bindings[index].schema, &bindings[index].schema);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, bindings[index].type, &bindings[index].type);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    route->bindings = bindings;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPlan* staged)
 {
     SlPlanRoute* routes = NULL;
@@ -398,8 +446,277 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        status = sl_plan_intern_bindings(arena, table, &routes[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
     staged->routes = routes;
+    return sl_status_ok();
+}
+
+typedef struct SlPlanSchemaNodeInternEntry
+{
+    const SlPlanSchemaNode* source;
+    SlPlanSchemaNode* target;
+    struct SlPlanSchemaNodeInternEntry* next;
+} SlPlanSchemaNodeInternEntry;
+
+typedef struct SlPlanSchemaInternMap
+{
+    SlPlanSchemaNodeInternEntry* head;
+} SlPlanSchemaInternMap;
+
+static SlPlanSchemaNode* sl_plan_schema_intern_map_find(const SlPlanSchemaInternMap* map,
+                                                        const SlPlanSchemaNode* source)
+{
+    const SlPlanSchemaNodeInternEntry* entry = NULL;
+
+    if (map == NULL || source == NULL) {
+        return NULL;
+    }
+    for (entry = map->head; entry != NULL; entry = entry->next) {
+        if (entry->source == source) {
+            return entry->target;
+        }
+    }
+    return NULL;
+}
+
+static SlStatus sl_plan_schema_intern_map_insert(SlArena* arena, SlPlanSchemaInternMap* map,
+                                                 const SlPlanSchemaNode* source,
+                                                 SlPlanSchemaNode* target)
+{
+    SlPlanSchemaNodeInternEntry* entry = NULL;
+    void* ptr = NULL;
+    SlStatus status;
+
+    if (arena == NULL || map == NULL || source == NULL || target == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_arena_alloc(arena, sizeof(SlPlanSchemaNodeInternEntry),
+                            _Alignof(SlPlanSchemaNodeInternEntry), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    entry = (SlPlanSchemaNodeInternEntry*)ptr;
+    entry->source = source;
+    entry->target = target;
+    entry->next = map->head;
+    map->head = entry;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_schema_node(SlArena* arena, SlInternTable* table,
+                                           SlPlanSchemaInternMap* map,
+                                           const SlPlanSchemaNode* source,
+                                           SlPlanSchemaNode* target);
+
+static SlStatus sl_plan_intern_schema_node_alloc(SlArena* arena, SlInternTable* table,
+                                                 SlPlanSchemaInternMap* map,
+                                                 const SlPlanSchemaNode* source,
+                                                 SlPlanSchemaNode** out)
+{
+    SlPlanSchemaNode* target = NULL;
+    void* ptr = NULL;
+    SlStatus status;
+
+    if (out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+    if (source == NULL) {
+        return sl_status_ok();
+    }
+    target = sl_plan_schema_intern_map_find(map, source);
+    if (target != NULL) {
+        *out = target;
+        return sl_status_ok();
+    }
+
+    status = sl_arena_alloc(arena, sizeof(SlPlanSchemaNode), _Alignof(SlPlanSchemaNode), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    target = (SlPlanSchemaNode*)ptr;
+    *target = (SlPlanSchemaNode){0};
+    status = sl_plan_intern_schema_node(arena, table, map, source, target);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = target;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_schema_properties(SlArena* arena, SlInternTable* table,
+                                                 SlPlanSchemaInternMap* map,
+                                                 SlPlanSchemaNode* target)
+{
+    SlPlanSchemaProperty* properties = NULL;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (target->property_count == 0U) {
+        target->properties = NULL;
+        return sl_status_ok();
+    }
+    if (target->properties == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_plan_alloc_copy(arena, target->properties, target->property_count,
+                                sizeof(SlPlanSchemaProperty), _Alignof(SlPlanSchemaProperty),
+                                (void**)&properties);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (properties == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    for (index = 0U; index < target->property_count; index += 1U) {
+        SlPlanSchemaNode* property_schema = NULL;
+
+        status = sl_plan_intern_required(table, properties[index].name, &properties[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_schema_node_alloc(arena, table, map, properties[index].schema,
+                                                  &property_schema);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        properties[index].schema = property_schema;
+    }
+
+    target->properties = properties;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_schema_variants(SlArena* arena, SlInternTable* table,
+                                               SlPlanSchemaInternMap* map, SlPlanSchemaNode* target)
+{
+    SlPlanSchemaNode* variants = NULL;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (target->variant_count == 0U) {
+        target->variants = NULL;
+        return sl_status_ok();
+    }
+    if (target->variants == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status =
+        sl_plan_alloc_copy(arena, target->variants, target->variant_count, sizeof(SlPlanSchemaNode),
+                           _Alignof(SlPlanSchemaNode), (void**)&variants);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (variants == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    for (index = 0U; index < target->variant_count; index += 1U) {
+        status = sl_plan_intern_schema_node(arena, table, map, &target->variants[index],
+                                            &variants[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    target->variants = variants;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_schema_node(SlArena* arena, SlInternTable* table,
+                                           SlPlanSchemaInternMap* map,
+                                           const SlPlanSchemaNode* source, SlPlanSchemaNode* target)
+{
+    SlPlanSchemaNode* items = NULL;
+    SlPlanSchemaNode* mapped = NULL;
+    SlStatus status;
+
+    if (arena == NULL || table == NULL || map == NULL || source == NULL || target == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    mapped = sl_plan_schema_intern_map_find(map, source);
+    if (mapped != NULL) {
+        if (mapped != target) {
+            *target = *mapped;
+        }
+        return sl_status_ok();
+    }
+    status = sl_plan_schema_intern_map_insert(arena, map, source, target);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *target = *source;
+    status = sl_plan_intern_required(table, target->semantic, &target->semantic);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_intern_required(table, target->validation, &target->validation);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_intern_required(table, target->literal_string, &target->literal_string);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_intern_schema_properties(arena, table, map, target);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_intern_schema_node_alloc(arena, table, map, target->items, &items);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    target->items = items;
+    return sl_plan_intern_schema_variants(arena, table, map, target);
+}
+
+static SlStatus sl_plan_intern_schemas(SlArena* arena, SlInternTable* table, SlPlan* staged)
+{
+    SlPlanSchema* schemas = NULL;
+    SlPlanSchemaInternMap map = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (staged->schema_count == 0U) {
+        staged->schemas = NULL;
+        return sl_status_ok();
+    }
+    if (staged->schemas == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_plan_alloc_copy(arena, staged->schemas, staged->schema_count, sizeof(SlPlanSchema),
+                                _Alignof(SlPlanSchema), (void**)&schemas);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (schemas == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    for (index = 0U; index < staged->schema_count; index += 1U) {
+        status = sl_plan_intern_required(table, schemas[index].name, &schemas[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_schema_node(arena, table, &map, &staged->schemas[index].definition,
+                                            &schemas[index].definition);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    staged->schemas = schemas;
     return sl_status_ok();
 }
 
@@ -550,6 +867,7 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
 
     if ((plan->handler_count > 0U && plan->handlers == NULL) ||
         (plan->route_count > 0U && plan->routes == NULL) ||
+        (plan->schema_count > 0U && plan->schemas == NULL) ||
         (plan->data_provider_count > 0U && plan->data_providers == NULL) ||
         (plan->capability_count > 0U && plan->capabilities == NULL) ||
         (plan->required_feature_count > 0U && plan->required_features == NULL))
@@ -575,6 +893,10 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
         goto failure;
     }
     status = sl_plan_intern_routes(arena, &table, &staged);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_plan_intern_schemas(arena, &table, &staged);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }

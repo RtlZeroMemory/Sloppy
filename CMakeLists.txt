@@ -433,6 +433,7 @@ set(
     src/core/http_context.c
     src/core/http_dispatch.c
     src/core/http_response.c
+    src/core/request_validation.c
     src/core/route.c
     src/core/plan.c
     src/core/plan_parse.c

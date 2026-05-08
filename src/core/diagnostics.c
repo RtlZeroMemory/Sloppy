@@ -1402,6 +1402,15 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING:
         return sl_diag_literal("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING",
                                sizeof("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING") - 1U);
+    case SL_DIAG_REQUEST_BINDING_FAILED:
+        return sl_diag_literal("SLOPPY_E_REQUEST_BINDING_FAILED",
+                               sizeof("SLOPPY_E_REQUEST_BINDING_FAILED") - 1U);
+    case SL_DIAG_REQUEST_VALIDATION_FAILED:
+        return sl_diag_literal("SLOPPY_E_REQUEST_VALIDATION_FAILED",
+                               sizeof("SLOPPY_E_REQUEST_VALIDATION_FAILED") - 1U);
+    case SL_DIAG_UNSUPPORTED_MODEL_SCHEMA:
+        return sl_diag_literal("SLOPPY_E_UNSUPPORTED_MODEL_SCHEMA",
+                               sizeof("SLOPPY_E_UNSUPPORTED_MODEL_SCHEMA") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

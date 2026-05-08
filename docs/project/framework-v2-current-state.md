@@ -21,17 +21,22 @@ emit deterministic metadata for:
 - visible `Results.*` status and response metadata where statically visible.
 
 The generated handler for typed multi-parameter Framework v2 routes remains runtime
-deferred. Provider parameters and queue parameters are Plan facts only; they do not
-register native providers, create provider handles, perform DI, execute queues, or open
-SQLite/PostgreSQL/SQL Server JavaScript bridges. The provider platform is ready for a
-future Framework v2 injection slice because provider metadata, capability references,
-runtime features, stdlib facades, and provider bridge contracts now use one common Db
-shape; this document is not that runtime injection implementation.
+deferred after the validation boundary. The native HTTP dispatch path now consumes
+Plan-backed route/query/header bindings and schema-backed JSON body metadata to return a
+safe `400` validation problem before handler invocation when supported metadata fails.
+Provider parameters and queue parameters are Plan facts only; they do not register native
+providers, create provider handles, perform DI, execute queues, or open SQLite/PostgreSQL/
+SQL Server JavaScript bridges. The provider platform is ready for a future Framework v2
+injection slice because provider metadata, capability references, runtime features, stdlib
+facades, and provider bridge contracts now use one common Db shape; this document is not
+that runtime injection implementation.
 
 Still deferred:
 
 - controller/module runtime APIs and constructor injection;
-- runtime binding, validation, and default validation error responses;
+- typed handler execution after successful runtime validation;
+- full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
+  schema validation;
 - provider runtime injection and full provider/DI consumption;
 - broader CRUD/background examples that actually execute through runtime provider and queue
   integrations;
@@ -43,7 +48,9 @@ Issue-state guide:
 - `#667`, `#668`, `#669`, `#670`, `#671`, `#674`, and `#675` have compiler metadata
   foundation coverage, but runtime portions stay open unless GitHub has narrower
   completion comments.
-- `#672`, `#673`, and `#676` remain runtime/example follow-up work.
+- `#672` and `#676` remain runtime/example follow-up work.
+- `#673` has a native Plan-backed validation foundation, but remains open if GitHub tracks
+  broader coercion, custom validation, or typed-handler execution under the same issue.
 
 Non-claims:
 

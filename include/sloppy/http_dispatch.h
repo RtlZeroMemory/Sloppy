@@ -28,6 +28,7 @@ typedef struct SlHttpRouteBinding
     SlHttpMethod method;
     const SlRoutePattern* pattern;
     SlHandlerId handler_id;
+    size_t route_index;
 } SlHttpRouteBinding;
 
 /*

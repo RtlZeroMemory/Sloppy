@@ -133,7 +133,7 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     SlEngine* engine = NULL;
     SlRoutePattern pattern = {0};
     SlHttpRequestHead request = {0};
-    SlHttpRouteBinding binding = {SL_HTTP_METHOD_GET, &pattern, 1U};
+    SlHttpRouteBinding binding = {SL_HTTP_METHOD_GET, &pattern, 1U, 0U};
     SlHttpDispatchTable table = {&binding, 1U};
     SlPlanHandler handlers[] = {
         {1U, sl_str_from_cstr("getUserPost"),

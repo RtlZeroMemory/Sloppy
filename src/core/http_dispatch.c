@@ -17,6 +17,7 @@
 #include "sloppy/http_dispatch.h"
 
 #include "sloppy/http_context.h"
+#include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
 
 #include "sloppy/checked_math.h"
@@ -148,6 +149,45 @@ static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* ou
     }
     return sl_http_method_supported(*out_method) ? sl_status_ok()
                                                  : sl_status_from_code(SL_STATUS_UNSUPPORTED);
+}
+
+static bool sl_http_dispatch_plan_route_matches_binding(const SlPlanRoute* route,
+                                                        const SlHttpRouteBinding* binding)
+{
+    SlHttpMethod method = SL_HTTP_METHOD_UNKNOWN;
+
+    if (route == NULL || binding == NULL || binding->pattern == NULL ||
+        route->handler_id != binding->handler_id)
+    {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_http_dispatch_method_from_plan(route->method, &method)) ||
+        method != binding->method)
+    {
+        return false;
+    }
+    return sl_str_equal(route->pattern, binding->pattern->source);
+}
+
+static const SlPlanRoute* sl_http_dispatch_find_validation_route(const SlPlan* plan,
+                                                                 const SlHttpRouteBinding* binding)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || binding == NULL) {
+        return NULL;
+    }
+    if (binding->route_index < plan->route_count &&
+        sl_http_dispatch_plan_route_matches_binding(&plan->routes[binding->route_index], binding))
+    {
+        return &plan->routes[binding->route_index];
+    }
+    for (index = 0U; index < plan->route_count; index += 1U) {
+        if (sl_http_dispatch_plan_route_matches_binding(&plan->routes[index], binding)) {
+            return &plan->routes[index];
+        }
+    }
+    return NULL;
 }
 
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)
@@ -627,6 +667,7 @@ static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* p
         }
         entries[entry_count].binding.pattern = &entries[entry_count].pattern;
         entries[entry_count].binding.handler_id = route->handler_id;
+        entries[entry_count].binding.route_index = index;
         entries[entry_count].source_order = index;
         entries[entry_count].has_params = entries[entry_count].binding.pattern->param_count != 0U;
         entry_count += 1U;
@@ -783,6 +824,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
 {
     const SlHttpRouteBinding* binding = NULL;
     const SlPlanHandler* handler = NULL;
+    const SlPlanRoute* validation_route = NULL;
     SlRouteMatch route_match = {0};
     SlHttpQuery query = {0};
     SlHttpRequestContext request_context = {0};
@@ -865,6 +907,15 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.route_param_count = route_match.param_count;
     request_context.query_params = query.params;
     request_context.query_param_count = query.param_count;
+
+    validation_route = sl_http_dispatch_find_validation_route(plan, binding);
+    if (validation_route != NULL) {
+        status = sl_request_validation_validate(arena, plan, validation_route, &request_context,
+                                                out_result, out_diag);
+        if (!sl_status_is_ok(status) || out_result->kind != SL_ENGINE_RESULT_NONE) {
+            return status;
+        }
+    }
 
     return sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
                                                          &request_context, out_result, out_diag);

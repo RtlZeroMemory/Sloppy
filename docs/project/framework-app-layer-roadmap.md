@@ -86,8 +86,9 @@ Issue #440 adds the first hardened example set for the implemented developer loo
 `examples/modules-api`, and `examples/validation-errors`. These examples compile through
 source input, document their V8 requirements, and have CTest coverage for artifact
 emission plus routes/doctor/audit/OpenAPI tooling where relevant. The users API remains
-the executable SQLite/transport proof; validation schema examples are Plan/OpenAPI
-metadata evidence until runtime semantic schema validation lands.
+the executable SQLite/transport proof; validation schema examples now also align with the
+bounded native Plan-backed request validation path, while typed handler execution and
+provider/DI validation integration remain later framework work.
 
 ## Non-Goals
 

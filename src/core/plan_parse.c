@@ -689,6 +689,161 @@ static SlStatus sl_plan_parse_validate_route_pattern(SlPlanParseContext* ctx, Sl
     return sl_status_ok();
 }
 
+static SlPlanRequestBindingKind sl_plan_parse_binding_kind(SlStr kind)
+{
+    if (sl_str_equal(kind, sl_str_from_cstr("route"))) {
+        return SL_PLAN_REQUEST_BINDING_ROUTE;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("query"))) {
+        return SL_PLAN_REQUEST_BINDING_QUERY;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("body.json"))) {
+        return SL_PLAN_REQUEST_BINDING_BODY_JSON;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("header"))) {
+        return SL_PLAN_REQUEST_BINDING_HEADER;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("context"))) {
+        return SL_PLAN_REQUEST_BINDING_CONTEXT;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("injection"))) {
+        return SL_PLAN_REQUEST_BINDING_INJECTION;
+    }
+    return SL_PLAN_REQUEST_BINDING_UNKNOWN;
+}
+
+static SlStatus sl_plan_parse_bool_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                         const char* field_name, bool default_value, bool* out)
+{
+    yyjson_val* value = NULL;
+
+    if (ctx == NULL || object == NULL || field_name == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out = default_value;
+    value = yyjson_obj_get(object, field_name);
+    if (value == NULL || yyjson_is_null(value)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_bool(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("expected a JSON boolean for this metadata field",
+                                  sizeof("expected a JSON boolean for this metadata field") - 1U));
+    }
+
+    *out = yyjson_get_bool(value);
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_one_binding(SlPlanParseContext* ctx, yyjson_val* value,
+                                          SlPlanRequestBinding* out)
+{
+    SlStr kind = {0};
+    SlStatus status;
+
+    if (!yyjson_is_obj(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("each route binding entry must be a JSON object",
+                                  sizeof("each route binding entry must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, value, "kind", true, &kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out->kind = sl_plan_parse_binding_kind(kind);
+    if (out->kind == SL_PLAN_REQUEST_BINDING_UNKNOWN) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported route binding kind",
+                                  sizeof("unsupported route binding kind") - 1U),
+            sl_plan_parse_literal("route bindings must use supported Framework v2 metadata kinds",
+                                  sizeof("route bindings must use supported Framework v2 metadata "
+                                         "kinds") -
+                                      1U));
+    }
+
+    status = sl_plan_parse_optional_string(ctx, value, "parameter", false, &out->parameter);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, value, "name", false, &out->name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, value, "schema", false, &out->schema);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, value, "type", false, &out->type);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_plan_parse_bool_field(ctx, value, "redacted", false, &out->redacted);
+}
+
+static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val* route,
+                                             SlPlanRoute* out)
+{
+    yyjson_val* bindings = yyjson_obj_get(route, "bindings");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanRequestBinding* parsed = NULL;
+    void* ptr = NULL;
+    size_t count = 0U;
+    size_t alloc_size = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (bindings == NULL || yyjson_is_null(bindings)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(bindings)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("route bindings must be a JSON array",
+                                  sizeof("route bindings must be a JSON array") - 1U));
+    }
+
+    count = yyjson_arr_size(bindings);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+
+    status = sl_checked_array_size(count, sizeof(SlPlanRequestBinding), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanRequestBinding), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    parsed = (SlPlanRequestBinding*)ptr;
+    yyjson_arr_iter_init(bindings, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        parsed[index] = (SlPlanRequestBinding){0};
+        status = sl_plan_parse_one_binding(ctx, value, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+
+    out->bindings = parsed;
+    out->binding_count = count;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* plan,
                                         yyjson_val* value, SlPlanRoute* out)
 {
@@ -743,7 +898,12 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
                                   sizeof("routes[].handlerId must reference handlers[].id") - 1U));
     }
 
-    return sl_plan_parse_optional_string(ctx, value, "name", true, &out->name);
+    status = sl_plan_parse_optional_string(ctx, value, "name", true, &out->name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_plan_parse_route_bindings(ctx, value, out);
 }
 
 static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, SlPlan* out)
@@ -817,6 +977,542 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
                                   sizeof("non-empty route names must be unique") - 1U));
     }
 
+    return sl_status_ok();
+}
+
+static SlPlanSchemaKind sl_plan_parse_schema_kind(SlStr kind)
+{
+    if (sl_str_equal(kind, sl_str_from_cstr("object"))) {
+        return SL_PLAN_SCHEMA_OBJECT;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("string"))) {
+        return SL_PLAN_SCHEMA_STRING;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("number"))) {
+        return SL_PLAN_SCHEMA_NUMBER;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("boolean"))) {
+        return SL_PLAN_SCHEMA_BOOLEAN;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("int"))) {
+        return SL_PLAN_SCHEMA_INT;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("array"))) {
+        return SL_PLAN_SCHEMA_ARRAY;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("literalUnion"))) {
+        return SL_PLAN_SCHEMA_LITERAL_UNION;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("literal"))) {
+        return SL_PLAN_SCHEMA_LITERAL;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("null"))) {
+        return SL_PLAN_SCHEMA_NULL;
+    }
+    return SL_PLAN_SCHEMA_UNKNOWN;
+}
+
+static SlStatus sl_plan_parse_i64_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                        const char* field_name, bool* out_present, int64_t* out)
+{
+    yyjson_val* value = NULL;
+
+    if (ctx == NULL || object == NULL || field_name == NULL || out_present == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_present = false;
+    *out = 0;
+    value = yyjson_obj_get(object, field_name);
+    if (value == NULL || yyjson_is_null(value)) {
+        return sl_status_ok();
+    }
+    if (yyjson_is_int(value)) {
+        *out_present = true;
+        *out = yyjson_get_sint(value);
+        return sl_status_ok();
+    }
+    if (yyjson_is_num(value)) {
+        double number = yyjson_get_num(value);
+        int64_t converted = 0;
+
+        if (number >= (double)INT64_MIN && number <= (double)INT64_MAX) {
+            converted = (int64_t)number;
+            if ((double)converted == number) {
+                *out_present = true;
+                *out = converted;
+                return sl_status_ok();
+            }
+        }
+    }
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("expected an integer for this schema constraint",
+                                  sizeof("expected an integer for this schema constraint") - 1U));
+    }
+}
+
+static SlStatus sl_plan_parse_schema_node(SlPlanParseContext* ctx, yyjson_val* value,
+                                          SlPlanSchemaNode* out);
+
+static SlStatus sl_plan_parse_schema_node_alloc(SlPlanParseContext* ctx, yyjson_val* value,
+                                                SlPlanSchemaNode** out)
+{
+    void* ptr = NULL;
+    SlStatus status;
+
+    if (ctx == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out = NULL;
+    status = sl_arena_alloc(ctx->arena, sizeof(SlPlanSchemaNode), _Alignof(SlPlanSchemaNode), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = (SlPlanSchemaNode*)ptr;
+    **out = (SlPlanSchemaNode){0};
+    return sl_plan_parse_schema_node(ctx, value, *out);
+}
+
+static SlStatus sl_plan_parse_schema_properties(SlPlanParseContext* ctx, yyjson_val* object,
+                                                SlPlanSchemaNode* out)
+{
+    yyjson_val* properties = yyjson_obj_get(object, "properties");
+    yyjson_val* key = NULL;
+    yyjson_val* value = NULL;
+    yyjson_obj_iter iter;
+    SlPlanSchemaProperty* parsed = NULL;
+    void* ptr = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    size_t alloc_size = 0U;
+    SlStatus status;
+
+    if (properties == NULL || yyjson_is_null(properties)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(properties)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("object schema properties must be a JSON object",
+                                  sizeof("object schema properties must be a JSON object") - 1U));
+    }
+
+    count = yyjson_obj_size(properties);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+
+    status = sl_checked_array_size(count, sizeof(SlPlanSchemaProperty), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchemaProperty), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    parsed = (SlPlanSchemaProperty*)ptr;
+    yyjson_obj_iter_init(properties, &iter);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        SlPlanSchemaNode* child = NULL;
+
+        value = yyjson_obj_iter_get_val(key);
+        parsed[index] = (SlPlanSchemaProperty){0};
+        status = sl_plan_parse_copy_str(ctx->arena,
+                                        sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key)),
+                                        &parsed[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_parse_schema_node_alloc(ctx, value, &child);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        parsed[index].schema = child;
+        index += 1U;
+    }
+
+    out->properties = parsed;
+    out->property_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_schema_array_items(SlPlanParseContext* ctx, yyjson_val* object,
+                                                 SlPlanSchemaNode* out)
+{
+    yyjson_val* items = yyjson_obj_get(object, "items");
+    SlPlanSchemaNode* parsed = NULL;
+    SlStatus status;
+
+    if (items == NULL || yyjson_is_null(items)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("missing schema array item metadata",
+                                  sizeof("missing schema array item metadata") - 1U),
+            sl_plan_parse_literal("array schemas must include an items schema",
+                                  sizeof("array schemas must include an items schema") - 1U));
+    }
+
+    status = sl_plan_parse_schema_node_alloc(ctx, items, &parsed);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    out->items = parsed;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_schema_variants(SlPlanParseContext* ctx, yyjson_val* object,
+                                              SlPlanSchemaNode* out)
+{
+    yyjson_val* variants = yyjson_obj_get(object, "variants");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanSchemaNode* parsed = NULL;
+    void* ptr = NULL;
+    size_t count = 0U;
+    size_t alloc_size = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (variants == NULL || !yyjson_is_arr(variants)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("literalUnion schemas must include a variants array",
+                                  sizeof("literalUnion schemas must include a variants array") -
+                                      1U));
+    }
+
+    count = yyjson_arr_size(variants);
+    if (count == 0U) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("missing literal union variants",
+                                  sizeof("missing literal union variants") - 1U),
+            sl_plan_parse_literal("literalUnion schemas must include at least one variant",
+                                  sizeof("literalUnion schemas must include at least one variant") -
+                                      1U));
+    }
+
+    status = sl_checked_array_size(count, sizeof(SlPlanSchemaNode), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchemaNode), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    parsed = (SlPlanSchemaNode*)ptr;
+    yyjson_arr_iter_init(variants, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        parsed[index] = (SlPlanSchemaNode){0};
+        status = sl_plan_parse_schema_node(ctx, value, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+
+    out->variants = parsed;
+    out->variant_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_schema_literal(SlPlanParseContext* ctx, yyjson_val* object,
+                                             SlPlanSchemaNode* out)
+{
+    yyjson_val* value = yyjson_obj_get(object, "value");
+
+    if (value == NULL) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("missing literal schema value",
+                                  sizeof("missing literal schema value") - 1U),
+            sl_plan_parse_literal("literal schemas must include a value",
+                                  sizeof("literal schemas must include a value") - 1U));
+    }
+
+    if (yyjson_is_str(value)) {
+        out->literal_kind = SL_PLAN_SCHEMA_LITERAL_STRING;
+        return sl_plan_parse_copy_str(
+            ctx->arena, sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value)),
+            &out->literal_string);
+    }
+    if (yyjson_is_num(value)) {
+        out->literal_kind = SL_PLAN_SCHEMA_LITERAL_NUMBER;
+        out->literal_number = yyjson_get_num(value);
+        return sl_status_ok();
+    }
+    if (yyjson_is_bool(value)) {
+        out->literal_kind = SL_PLAN_SCHEMA_LITERAL_BOOLEAN;
+        out->literal_boolean = yyjson_get_bool(value);
+        return sl_status_ok();
+    }
+
+    return sl_plan_parse_field_diag(
+        ctx,
+        sl_plan_parse_literal("unsupported literal schema value",
+                              sizeof("unsupported literal schema value") - 1U),
+        sl_plan_parse_literal("literal schemas support string, number, and boolean values",
+                              sizeof("literal schemas support string, number, and boolean values") -
+                                  1U));
+}
+
+static SlStatus sl_plan_parse_schema_node(SlPlanParseContext* ctx, yyjson_val* value,
+                                          SlPlanSchemaNode* out)
+{
+    SlStr kind = {0};
+    SlStatus status;
+
+    if (!yyjson_is_obj(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("schema definitions must be JSON objects",
+                                  sizeof("schema definitions must be JSON objects") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, value, "kind", true, &kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    out->kind = sl_plan_parse_schema_kind(kind);
+    if (out->kind == SL_PLAN_SCHEMA_UNKNOWN) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported app plan schema kind",
+                                  sizeof("unsupported app plan schema kind") - 1U),
+            sl_plan_parse_literal("rebuild the app with schema metadata supported by this runtime",
+                                  sizeof("rebuild the app with schema metadata supported by this "
+                                         "runtime") -
+                                      1U));
+    }
+
+    status = sl_plan_parse_bool_field(ctx, value, "optional", false, &out->optional);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_bool_field(ctx, value, "nullable", false, &out->nullable);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_bool_field(ctx, value, "secret", false, &out->secret);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, value, "semantic", false, &out->semantic);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, value, "validation", false, &out->validation);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_i64_field(ctx, value, "min", &out->has_min, &out->min_value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (out->kind == SL_PLAN_SCHEMA_OBJECT) {
+        return sl_plan_parse_schema_properties(ctx, value, out);
+    }
+    if (out->kind == SL_PLAN_SCHEMA_ARRAY) {
+        return sl_plan_parse_schema_array_items(ctx, value, out);
+    }
+    if (out->kind == SL_PLAN_SCHEMA_LITERAL_UNION) {
+        return sl_plan_parse_schema_variants(ctx, value, out);
+    }
+    if (out->kind == SL_PLAN_SCHEMA_LITERAL) {
+        return sl_plan_parse_schema_literal(ctx, value, out);
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_one_schema(SlPlanParseContext* ctx, yyjson_val* value,
+                                         SlPlanSchema* out)
+{
+    yyjson_val* definition = NULL;
+    SlStatus status;
+
+    if (!yyjson_is_obj(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("each schemas entry must be a JSON object",
+                                  sizeof("each schemas entry must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, value, "name", true, &out->name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    definition = yyjson_obj_get(value, "definition");
+    if (definition == NULL || !yyjson_is_obj(definition)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan schema definition",
+                                  sizeof("invalid app plan schema definition") - 1U),
+            sl_plan_parse_literal("schemas[].definition must be a JSON object",
+                                  sizeof("schemas[].definition must be a JSON object") - 1U));
+    }
+
+    return sl_plan_parse_schema_node(ctx, definition, &out->definition);
+}
+
+static SlStatus sl_plan_parse_schemas(SlPlanParseContext* ctx, yyjson_val* root, SlPlan* out)
+{
+    yyjson_val* schemas = yyjson_obj_get(root, "schemas");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanSchema* parsed = NULL;
+    void* ptr = NULL;
+    size_t count = 0U;
+    size_t alloc_size = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (schemas == NULL || yyjson_is_null(schemas)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(schemas)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("schemas must be a JSON array",
+                                  sizeof("schemas must be a JSON array") - 1U));
+    }
+
+    count = yyjson_arr_size(schemas);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+
+    status = sl_checked_array_size(count, sizeof(SlPlanSchema), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchema), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    parsed = (SlPlanSchema*)ptr;
+    yyjson_arr_iter_init(schemas, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        parsed[index] = (SlPlanSchema){0};
+        status = sl_plan_parse_one_schema(ctx, value, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+
+    out->schemas = parsed;
+    out->schema_count = count;
+    return sl_status_ok();
+}
+
+static bool sl_plan_parse_has_schema_named(const SlPlan* plan, SlStr name)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(name) ||
+        (plan->schema_count != 0U && plan->schemas == NULL))
+    {
+        return false;
+    }
+    for (index = 0U; index < plan->schema_count; index += 1U) {
+        if (sl_str_equal(plan->schemas[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_plan_parse_validate_schema_names(SlPlanParseContext* ctx, const SlPlan* plan)
+{
+    size_t left = 0U;
+    size_t right = 0U;
+
+    if (plan == NULL || plan->schema_count == 0U) {
+        return sl_status_ok();
+    }
+    if (plan->schemas == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (left = 0U; left < plan->schema_count; left += 1U) {
+        for (right = left + 1U; right < plan->schema_count; right += 1U) {
+            if (sl_str_equal(plan->schemas[left].name, plan->schemas[right].name)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("duplicate app plan schema name",
+                                          sizeof("duplicate app plan schema name") - 1U),
+                    sl_plan_parse_literal("schemas[].name values must be unique",
+                                          sizeof("schemas[].name values must be unique") - 1U));
+            }
+        }
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_validate_schema_references(SlPlanParseContext* ctx,
+                                                         const SlPlan* plan)
+{
+    size_t route_index = 0U;
+
+    if (plan == NULL || plan->route_count == 0U || plan->schema_count == 0U) {
+        return sl_status_ok();
+    }
+    if (plan->routes == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (route_index = 0U; route_index < plan->route_count; route_index += 1U) {
+        const SlPlanRoute* route = &plan->routes[route_index];
+        size_t binding_index = 0U;
+
+        if (route->binding_count != 0U && route->bindings == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        for (binding_index = 0U; binding_index < route->binding_count; binding_index += 1U) {
+            const SlPlanRequestBinding* binding = &route->bindings[binding_index];
+
+            if (binding->kind != SL_PLAN_REQUEST_BINDING_BODY_JSON) {
+                continue;
+            }
+            if (sl_str_is_empty(binding->schema)) {
+                continue;
+            }
+            if (!sl_plan_parse_has_schema_named(plan, binding->schema)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("app plan route binding references missing schema",
+                                          sizeof("app plan route binding references missing "
+                                                 "schema") -
+                                              1U),
+                    sl_plan_parse_literal("body.json bindings must reference schemas[].name",
+                                          sizeof("body.json bindings must reference "
+                                                 "schemas[].name") -
+                                              1U));
+            }
+        }
+    }
     return sl_status_ok();
 }
 
@@ -1217,6 +1913,19 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_routes(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_schemas(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_validate_schema_names(ctx, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_validate_schema_references(ctx, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

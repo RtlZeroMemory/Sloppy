@@ -375,8 +375,9 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 - No ORM/migrations.
 - No decorators or controllers in framework MVP.
 - No full DI container.
-- No native JSON fast path. OpenAPI/doctor/audit may report native JSON or body validation
-  candidates from Plan metadata, but those reports do not implement runtime optimization.
+- No native JSON fast path. The runtime can consume Plan-backed validation metadata for
+  bounded request validation, but OpenAPI/doctor/audit reports are not runtime
+  optimization claims.
 - No multi-isolate implementation.
 ## ENGINE-14 Implementation Note
 
@@ -386,7 +387,8 @@ subset: `app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, 
 the existing Plan and classic artifact path. This does not mean the bootstrap stdlib exposes a
 general runtime implementation of those APIs yet; the current classic bootstrap still executes the
 compiler-generated artifact helpers such as `mapGet`/`mapPost` plus provider metadata. Controllers,
-decorators, runtime validation, and broader framework examples remain separate framework tasks.
+decorators, typed handler execution, provider/DI validation integration, and broader framework
+examples remain separate framework tasks.
 COMPILER-30.E adds compiler metadata for supported config reads, schema declarations, request
 bindings, and result helpers; it does not make those bootstrap APIs executable outside the
 compiler-generated artifact path.

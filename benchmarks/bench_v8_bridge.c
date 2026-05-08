@@ -618,7 +618,7 @@ static SlStatus sl_bench_v8_flow_http_dispatch_json(const SlBenchContext* contex
     SlArena dispatch_arena = {0};
     SlEngine* engine = NULL;
     SlRoutePattern pattern = {0};
-    SlHttpRouteBinding binding = {SL_HTTP_METHOD_POST, &pattern, 1U};
+    SlHttpRouteBinding binding = {SL_HTTP_METHOD_POST, &pattern, 1U, 0U};
     SlHttpDispatchTable table = {&binding, 1U};
     SlPlanHandler handlers[] = {
         {1U, sl_str_from_cstr("benchHttp"), sl_str_from_cstr("POST /bench")},
