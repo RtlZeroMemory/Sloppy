@@ -75,8 +75,15 @@ PostgreSQL bootstrap service shape:
 
 ```ts
 import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
 
-const postgresConnectionString = readFromLocalSecretSource("SLOPPY_POSTGRES_TEST_URL");
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
 
 const PostgresModule = Sloppy.module("data.postgres")
   .capabilities(caps => {
@@ -88,7 +95,7 @@ const PostgresModule = Sloppy.module("data.postgres")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.postgres.open({
-      connectionString: postgresConnectionString,
+      connectionString: requireEnvironment("SLOPPY_POSTGRES_TEST_URL"),
       maxConnections: 2,
     }));
   });
@@ -98,9 +105,15 @@ SQL Server bootstrap service shape:
 
 ```ts
 import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
 
-const sqlServerConnectionString =
-  readFromLocalSecretSource("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING");
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
 
 const SqlServerModule = Sloppy.module("data.sqlserver")
   .capabilities(caps => {
@@ -112,7 +125,7 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.sqlserver.open({
-      connectionString: sqlServerConnectionString,
+      connectionString: requireEnvironment("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"),
       maxConnections: 2,
     }));
   });

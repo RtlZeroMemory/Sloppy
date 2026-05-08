@@ -10,7 +10,8 @@ if [ "${1:-}" = "--self-test" ]; then
 
     valid="$tmp/valid"
     invalid="$tmp/invalid"
-    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/src/cli" "$invalid/tests/unit/core"
+    invalid_inc="$tmp/invalid-inc"
+    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/tests/unit/core" "$invalid_inc/src/cli"
 
     cat > "$valid/src/core/string.c" <<'EOF'
 #include <string.h>
@@ -38,7 +39,7 @@ EOF
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
 EOF
-    cat > "$invalid/src/cli/bad.inc" <<'EOF'
+    cat > "$invalid_inc/src/cli/bad.inc" <<'EOF'
 #include <stdlib.h>
 void* bad_cli_alloc(void) { return malloc(16); }
 EOF
@@ -46,6 +47,10 @@ EOF
     SLOPPY_C_STANDARDS_ROOT="$valid" "$0" >/dev/null
     if SLOPPY_C_STANDARDS_ROOT="$invalid" "$0" >/dev/null 2>&1; then
         echo "C standards scanner self-test invalid fixture unexpectedly passed." >&2
+        exit 1
+    fi
+    if SLOPPY_C_STANDARDS_ROOT="$invalid_inc" "$0" >/dev/null 2>&1; then
+        echo "C standards scanner self-test .inc-only invalid fixture unexpectedly passed." >&2
         exit 1
     fi
     echo "C standards scanner self-test passed."

@@ -40,6 +40,7 @@ endfunction()
 
 require_substring("${config_basic_js}" "app.config.bind(\"Auth\"" "config-basic app is missing bind")
 require_substring("${config_basic_js}" "jwtSecret: { type: \"secret\"" "config-basic app is missing secret descriptor")
+reject_substring("${config_basic_js}" "jwtSecret: \"secret\"" "config-basic app must not use legacy plain-string secret shape")
 require_substring("${config_basic_js}" "default: 60" "config-basic app is missing default descriptor")
 require_substring("${config_secret_js}" "app.config.getSecret(\"Auth:JwtSecret\")" "secret example is missing getSecret")
 require_substring("${config_strict_js}" "app.config.getString(\"Auth:Issuer\")" "strict example is missing required read")

@@ -3258,6 +3258,7 @@ export default app;
 #[test]
 fn typed_framework_handler_erases_nested_typescript_syntax() {
     let source = r#"import { Sloppy, Results, Body } from "sloppy";
+import { sql } from "sloppy/data";
 import { Postgres } from "sloppy/providers/postgres";
 type UserCreate = { name: string; email: string };
 type UserDto = { id: number; name: string; email: string };
@@ -3274,6 +3275,7 @@ app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
     const row: UserDto = await db.queryOne<UserDto>("select id, name, email from users where id = $1", [item.id]);
     return row;
   }));
+  const typedQuery = sql`select ${input! as UserCreate} where id = ${loaded[0]!.id}`;
   function normalize(user: UserDto): UserDto {
     return user;
   }
@@ -3299,6 +3301,11 @@ export default app;
     assert!(!emitted_js.source.contains("function normalize(user:"));
     assert!(!emitted_js.source.contains("Promise.all<UserDto>"));
     assert!(!emitted_js.source.contains("queryOne<UserDto>"));
+    assert!(emitted_js
+        .source
+        .contains("const typedQuery = sql`select ${input} where id = ${loaded[0].id}`;"));
+    assert!(!emitted_js.source.contains("input! as UserCreate"));
+    assert!(!emitted_js.source.contains("loaded[0]!.id"));
 }
 
 #[test]

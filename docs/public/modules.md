@@ -52,6 +52,16 @@ const app = builder.build();
 PostgreSQL uses the same module phase shape with provider-specific metadata:
 
 ```ts
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
+
 const PostgresModule = Sloppy.module("data.postgres")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
@@ -62,7 +72,7 @@ const PostgresModule = Sloppy.module("data.postgres")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.postgres.open({
-      connectionString: "<redacted local PostgreSQL connection string>",
+      connectionString: requireEnvironment("SLOPPY_POSTGRES_TEST_URL"),
       maxConnections: 2,
     }));
   });
@@ -71,6 +81,16 @@ const PostgresModule = Sloppy.module("data.postgres")
 SQL Server uses the same module phase shape with ODBC-specific metadata:
 
 ```ts
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
+
 const SqlServerModule = Sloppy.module("data.sqlserver")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
@@ -81,7 +101,7 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.sqlserver.open({
-      connectionString: "<redacted local SQL Server connection string>",
+      connectionString: requireEnvironment("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"),
       maxConnections: 2,
     }));
   });

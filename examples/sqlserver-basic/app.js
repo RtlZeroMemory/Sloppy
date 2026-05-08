@@ -1,4 +1,13 @@
 import { Sloppy, data, sql } from "sloppy";
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+    const value = Environment.get(name);
+    if (value === undefined || value === "") {
+        throw new Error(`Missing required environment value: ${name}`);
+    }
+    return value;
+}
 
 const SqlServerModule = Sloppy.module("data.sqlserver")
     .capabilities((caps) => {
@@ -10,7 +19,7 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
     })
     .services((services) => {
         services.addSingleton("data.main", () => data.sqlserver.open({
-            connectionString: "<redacted local SQL Server connection string>",
+            connectionString: requireEnvironment("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"),
             maxConnections: 2,
         }));
     });
@@ -24,7 +33,7 @@ const lowered = sql.lower(["select id, name from users where name = ", ""], ["Ad
 });
 
 const doctor = data.sqlserver.doctor({
-    connectionString: "<redacted local SQL Server connection string>",
+    connectionString: requireEnvironment("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"),
 });
 
 async function insertUser(db, name) {
