@@ -845,13 +845,36 @@ async function flushMicrotasks(count = 6) {
 
     let singletonCalls = 0;
     let transientCalls = 0;
+    let scopedCalls = 0;
+    let scopedDisposals = 0;
+    let transientDisposals = 0;
+    let singletonDisposals = 0;
     builder.services.addSingleton("message", () => {
         singletonCalls += 1;
         return "Hello from Sloppy";
     });
+    builder.services.addSingleton("disposable-singleton", () => ({
+        dispose() {
+            singletonDisposals += 1;
+        },
+    }));
+    builder.services.addScoped("request-id", () => {
+        scopedCalls += 1;
+        return {
+            value: scopedCalls,
+            dispose() {
+                scopedDisposals += 1;
+            },
+        };
+    });
     builder.services.addTransient("clock", () => {
         transientCalls += 1;
-        return { now: () => transientCalls };
+        return {
+            now: () => transientCalls,
+            dispose() {
+                transientDisposals += 1;
+            },
+        };
     });
 
     assertThrowsMessage(
@@ -860,6 +883,7 @@ async function flushMicrotasks(count = 6) {
     );
     assertThrowsMessage(() => builder.services.addTransient("", () => "bad"), /non-empty string/);
     assertThrowsMessage(() => builder.services.addTransient("bad", 123), /factory/);
+    assertThrowsMessage(() => builder.services.addScoped("bad-scoped", 123), /factory/);
 
     const app = builder.build();
 
@@ -874,11 +898,21 @@ async function flushMicrotasks(count = 6) {
     assert.equal(scope.get("message"), "Hello from Sloppy");
     assert.equal(scope.get("message"), "Hello from Sloppy");
     assert.equal(singletonCalls, 1);
+    assert.equal(scope.get("request-id").value, 1);
+    assert.equal(scope.get("request-id").value, 1);
+    assert.equal(scopedCalls, 1);
     assert.equal(scope.get("clock").now(), 1);
     assert.equal(scope.get("clock").now(), 2);
     assert.equal(transientCalls, 2);
-    assert.equal(app.services.get("message"), "Hello from Sloppy");
     assertThrowsMessage(() => scope.get("missing"), /not registered/);
+    scope.dispose();
+    scope.dispose();
+    assert.equal(scopedDisposals, 1);
+    assert.equal(transientDisposals, 2);
+    assertThrowsMessage(() => scope.get("message"), /scope is disposed/);
+    assert.equal(app.services.createScope().get("request-id").value, 2);
+    assert.equal(app.services.get("message"), "Hello from Sloppy");
+    app.services.get("disposable-singleton");
 
     const fields = { route: "/" };
     app.log.debug("filtered", fields);
@@ -937,6 +971,27 @@ async function flushMicrotasks(count = 6) {
     assert.equal(afterFreeze[0].name, beforeFreeze[0].name);
     assertThrowsMessage(() => app.mapGet("/late", () => Results.text("late")), /app is frozen/);
     assertThrowsMessage(() => users.mapGet("/late", () => Results.text("late")), /app is frozen/);
+
+    app.services.dispose();
+    app.services.dispose();
+    assert.equal(singletonDisposals, 1);
+    assertThrowsMessage(() => app.services.get("message"), /provider is disposed/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.services.addSingleton("root", (scope) => scope.get("request"));
+    builder.services.addScoped("request", () => "request");
+    const app = builder.build();
+    assertThrowsMessage(() => app.services.get("root"), /singleton service cannot depend on scoped service/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.services.addTransient("a", (scope) => scope.get("b"));
+    builder.services.addTransient("b", (scope) => scope.get("a"));
+    const app = builder.build();
+    assertThrowsMessage(() => app.services.get("a"), /circular dependency/);
 }
 
 {

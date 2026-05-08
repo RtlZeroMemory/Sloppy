@@ -15,6 +15,8 @@ emit deterministic metadata for:
   context bindings;
 - metadata-only `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and
   `WorkQueue<"name">` injection requirements;
+- literal `app.services.addSingleton/addScoped/addTransient("Token", factory)` registrations
+  for generated Framework v2 service injection;
 - supported TypeScript aliases/interfaces/object literals, optional and nested properties,
   arrays, nullable unions, literal unions, and selected semantic types;
 - password/secret redaction metadata;
@@ -26,12 +28,17 @@ dispatch path consumes Plan-backed route/query/header bindings and schema-backed
 metadata to return a safe `400` validation problem before handler invocation when supported
 metadata fails. After that boundary, the wrapper materializes typed route, query, header,
 body, and context arguments and invokes the stripped handler source in the V8 owner-thread
-Promise settlement lane. Provider parameters, service parameters, and queue parameters still
-do not silently produce fake dependencies: unsupported runtime injections fail with explicit
-unavailable diagnostics until the corresponding DI/provider/queue lane can materialize them.
-The provider platform is ready for future Framework v2 injection expansion because provider
-metadata, capability references, runtime features, stdlib facades, and provider bridge
-contracts now use one common Db shape; this document is not full DI completion.
+Promise settlement lane. The generated wrapper also creates one request service scope and
+resolves `Service<T>` from literal source-level service registrations, including singleton,
+scoped, and transient lifetimes plus circular-dependency and singleton-to-scoped diagnostics.
+Provider parameters no longer return fake dependencies: SQLite injection opens the existing
+Plan-backed stdlib/native bridge, and PostgreSQL or SQL Server injection attempts the
+provider bridge and reports the existing provider/config/live-lane error honestly when the
+lane is unavailable. Queue and `Config<T>` parameters still fail explicitly until their
+runtime lanes can materialize them. The provider platform is ready for future Framework v2
+injection expansion because provider metadata, capability references, runtime features,
+stdlib facades, and provider bridge contracts now use one common Db shape; this document is
+not full controller/module completion.
 
 Still deferred:
 
@@ -39,7 +46,7 @@ Still deferred:
 - full typed handler breadth beyond the current compiler-emitted wrapper subset;
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
-- provider runtime injection breadth and full provider/DI consumption;
+- queue injection, `Config<T>` injection, and broader provider/live-lane evidence;
 - broader CRUD/background examples that actually execute through runtime provider and queue
   integrations;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan
@@ -56,8 +63,8 @@ Issue-state guide:
 
 Non-claims:
 
-- no full provider runtime integration;
-- no full DI container;
+- no queue or config injection runtime;
+- no controller constructor injection;
 - no HTTP/TLS runtime scope from this Framework v2 compiler state;
 - no public alpha docs;
 - no benchmark or performance claims;

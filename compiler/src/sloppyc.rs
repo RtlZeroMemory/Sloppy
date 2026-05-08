@@ -174,6 +174,13 @@ struct DatabaseCapability {
 }
 
 #[derive(Debug, Clone)]
+struct ServiceRegistration {
+    token: String,
+    lifetime: &'static str,
+    factory_source: String,
+}
+
+#[derive(Debug, Clone)]
 struct SourceMapMapping {
     generated_line: usize,
     generated_column: usize,
@@ -202,6 +209,7 @@ struct ExtractedApp {
     uses_sql_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
+    service_registrations: Vec<ServiceRegistration>,
     modules: Vec<FunctionModule>,
     helper_sources: Vec<String>,
     capabilities: Vec<DatabaseCapability>,
@@ -421,6 +429,7 @@ struct AppState {
     used_modules: Vec<(String, Span)>,
     modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
+    service_registrations: Vec<ServiceRegistration>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
     schema_names: BTreeSet<String>,
@@ -462,6 +471,7 @@ impl AppState {
             used_modules: Vec::new(),
             modules: BTreeMap::new(),
             routes: Vec::new(),
+            service_registrations: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
             schema_names: BTreeSet::new(),
@@ -1671,6 +1681,7 @@ fn extract_entry(
         uses_sql_runtime: state.sql_imported,
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        service_registrations: state.service_registrations,
         modules: state.modules.into_values().collect(),
         helper_sources,
         capabilities: state.capabilities,
@@ -2529,6 +2540,13 @@ fn extract_expression_statement(
 
     if let Some((module_name, span)) = app_use_module_call(&statement.expression, state) {
         state.used_modules.push((module_name, span));
+        return Ok(());
+    }
+
+    if let Some(registration) =
+        app_service_registration_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.service_registrations.push(registration);
         return Ok(());
     }
 
@@ -4259,6 +4277,78 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
         return None;
     };
     Some((identifier.name.as_str().to_string(), identifier.span))
+}
+
+fn app_service_registration_call(
+    path: &Path,
+    source: &str,
+    _source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<ServiceRegistration>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some(chain) = static_member_chain(&call.callee) else {
+        return Ok(None);
+    };
+    if chain.len() != 3 || chain[1] != "services" || !state.app_vars.contains(chain[0]) {
+        return Ok(None);
+    }
+    let lifetime = match chain[2] {
+        "addSingleton" => "singleton",
+        "addScoped" => "scoped",
+        "addTransient" => "transient",
+        _ => return Ok(None),
+    };
+    if call.arguments.len() != 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registrations require a string token and one factory",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let Some(token_argument) = call.arguments.first() else {
+        return Ok(None);
+    };
+    let Some(factory_argument) = call.arguments.get(1) else {
+        return Ok(None);
+    };
+    let token = string_argument(token_argument).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration token must be a string literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(token_argument).unwrap_or(call.span))
+    })?;
+    if !matches!(
+        factory_argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration factory must be an inline function",
+        )
+        .with_path(path)
+        .with_span(argument_span(factory_argument).unwrap_or(call.span)));
+    }
+    let Some(factory_source) =
+        argument_span(factory_argument).and_then(|span| source_slice(source, span))
+    else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration factory source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    Ok(Some(ServiceRegistration {
+        token: token.to_string(),
+        lifetime,
+        factory_source,
+    }))
 }
 
 fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapability) {
@@ -8762,6 +8852,8 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         .routes
         .iter()
         .any(|route| route.handler.source.contains("__sloppy_framework_arg"));
+    let needs_framework_services =
+        needs_framework_arg_helper || !app.service_registrations.is_empty();
 
     push_generated_line(
         &mut output,
@@ -8839,6 +8931,29 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             runtime_exports.join(", ")
         ),
     );
+    if needs_framework_services {
+        for line in crate::framework_runtime::FRAMEWORK_SERVICE_RUNTIME.lines() {
+            push_generated_line(&mut output, &mut generated_line, line);
+        }
+        for registration in &app.service_registrations {
+            let token =
+                serde_json::to_string(&registration.token).unwrap_or_else(|_| "\"\"".to_string());
+            let method = match registration.lifetime {
+                "singleton" => "addSingleton",
+                "scoped" => "addScoped",
+                "transient" => "addTransient",
+                _ => "addTransient",
+            };
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                &format!(
+                    "__sloppy_framework_services.{method}({token}, {});",
+                    registration.factory_source
+                ),
+            );
+        }
+    }
     if app.uses_data_runtime && needs_provider_open_helper {
         push_generated_line(
             &mut output,
@@ -8861,7 +8976,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_framework_arg(ctx, binding) {",
+            "function __sloppy_framework_arg(ctx, scope, binding) {",
         );
         push_generated_line(
             &mut output,
@@ -8876,7 +8991,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.kind === \"injection\") { return __sloppy_framework_injection(binding); }",
+            "  if (binding.kind === \"injection\") { return __sloppy_framework_injection(scope, binding); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"config\") { throw new Error(`sloppy: Config injection for '${binding.name}' is unavailable in this runtime lane.`); }",
         );
         push_generated_line(&mut output, &mut generated_line, "  let value;");
         push_generated_line(
@@ -8978,17 +9098,37 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_framework_injection(binding) {",
+            "function __sloppy_framework_injection(scope, binding) {",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\") { return data.sqlite(binding.name); }",
+            "  const dependencyName = binding.capability || (binding.name && binding.name.includes(\".\") ? binding.name : `data.${binding.name}`);",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\") { throw new Error(`sloppy: ${binding.providerKind} provider injection for '${binding.name}' is unavailable in this runtime lane.`); }",
+            "  if (binding.injectionKind === \"service\") { return scope.get(binding.name); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"queue\") { return scope.get(dependencyName); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\") { return scope.track(data.sqlite(dependencyName)); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\") { return scope.track(data.postgres.open({ provider: dependencyName })); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\") { return scope.track(data.sqlserver.open({ provider: dependencyName })); }",
         );
         push_generated_line(
             &mut output,
@@ -9637,6 +9777,7 @@ mod tests {
             uses_sql_runtime: false,
             source_files: Vec::new(),
             routes: Vec::new(),
+            service_registrations: Vec::new(),
             modules: Vec::new(),
             helper_sources: Vec::new(),
             capabilities: vec![super::DatabaseCapability {

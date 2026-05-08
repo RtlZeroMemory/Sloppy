@@ -7,12 +7,12 @@
 #include "sloppyrc.h"
 
 #include "sloppy/arena.h"
+#include "sloppy/builder.h"
 #include "sloppy/bytes.h"
 #include "sloppy/fs.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
-#include <string.h>
 #include <stdio.h>
 #include <yyjson.h>
 
@@ -98,7 +98,9 @@ static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t
 
 static bool sl_sloppyrc_copy_json_string(char* buffer, size_t capacity, yyjson_val* value)
 {
+    SlStringBuilder builder = {0};
     SlStr text = {0};
+    SlStr view = {0};
 
     if (buffer == NULL || capacity == 0U || value == NULL || !yyjson_is_str(value)) {
         return false;
@@ -109,11 +111,9 @@ static bool sl_sloppyrc_copy_json_string(char* buffer, size_t capacity, yyjson_v
         return false;
     }
 
-    if (text.length > 0U) {
-        memcpy(buffer, text.ptr, text.length);
-    }
-    buffer[text.length] = '\0';
-    return true;
+    return sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
+           sl_status_is_ok(sl_string_builder_append_str(&builder, text)) &&
+           sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view));
 }
 
 static bool sl_sloppyrc_json_string_equals_literal(yyjson_val* value, SlStr expected)
@@ -180,17 +180,20 @@ static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field,
     yyjson_val* value = yyjson_obj_get(root, field);
 
     if (value == NULL) {
-        size_t length = 0U;
+        SlStringBuilder builder = {0};
+        SlStr view = {0};
         if (buffer == NULL || default_value == NULL) {
             sl_sloppyrc_write_cstr(stderr, invalid_message);
             return 1;
         }
-        length = strlen(default_value);
-        if (length == 0U || length >= capacity) {
+        if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&builder, default_value)) ||
+            sl_string_builder_length(&builder) == 0U ||
+            !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
+        {
             sl_sloppyrc_write_cstr(stderr, invalid_message);
             return 1;
         }
-        memcpy(buffer, default_value, length + 1U);
         return 0;
     }
 

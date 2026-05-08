@@ -1168,6 +1168,19 @@ function createServicesBuilder(guard) {
             });
         },
 
+        addScoped(token, factory) {
+            guard.assertMutable();
+
+            if (typeof factory !== "function") {
+                throw new TypeError("Sloppy scoped service factory must be a function.");
+            }
+
+            return addRegistration(token, {
+                lifetime: "scoped",
+                factory,
+            });
+        },
+
         __snapshot() {
             return new Map(Array.from(registrations.entries(), ([token, registration]) => [
                 token,
@@ -1191,8 +1204,35 @@ function createServicesBuilder(guard) {
 }
 
 function createServiceProvider(registrations, capabilities) {
+    const singletonDisposables = [];
+    let providerDisposed = false;
+
+    function disposeValue(value) {
+        if (value === null || value === undefined) {
+            return undefined;
+        }
+        if (typeof value[Symbol.dispose] === "function") {
+            return value[Symbol.dispose]();
+        }
+        if (typeof value.dispose === "function") {
+            return value.dispose();
+        }
+        if (typeof value.close === "function") {
+            return value.close();
+        }
+        return undefined;
+    }
+
     function resolve(scope, token) {
         validateServiceToken(token);
+
+        if (providerDisposed) {
+            throw new Error("Sloppy service provider is disposed.");
+        }
+
+        if (scope.__disposed()) {
+            throw new Error("Sloppy service scope is disposed.");
+        }
 
         if (!registrations.has(token)) {
             throw new Error(`Sloppy service '${token}' is not registered.`);
@@ -1200,23 +1240,105 @@ function createServiceProvider(registrations, capabilities) {
 
         const registration = registrations.get(token);
 
+        if (scope.__resolving().includes(token)) {
+            throw new Error(`Sloppy service circular dependency detected: ${[...scope.__resolving(), token].join(" -> ")}.`);
+        }
+
+        if (
+            registration.lifetime === "scoped" &&
+            scope.__resolvingLifetimes().includes("singleton")
+        ) {
+            throw new Error(`Sloppy singleton service cannot depend on scoped service '${token}'.`);
+        }
+
         if (registration.lifetime === "singleton") {
             if (!registration.initialized) {
-                registration.value = registration.factory(scope);
+                scope.__pushResolving(token, "singleton");
+                try {
+                    registration.value = registration.factory(scope);
+                    singletonDisposables.push(registration.value);
+                } finally {
+                    scope.__popResolving();
+                }
                 registration.initialized = true;
             }
 
             return registration.value;
         }
 
-        return registration.factory(scope);
+        if (registration.lifetime === "scoped") {
+            if (!scope.__hasScoped(token)) {
+                scope.__pushResolving(token, "scoped");
+                try {
+                    scope.__setScoped(token, registration.factory(scope));
+                } finally {
+                    scope.__popResolving();
+                }
+            }
+            return scope.__getScoped(token);
+        }
+
+        scope.__pushResolving(token, "transient");
+        try {
+            const value = registration.factory(scope);
+            scope.__trackTransient(value);
+            return value;
+        } finally {
+            scope.__popResolving();
+        }
     }
 
     function createScope() {
+        const scopedValues = new Map();
+        const transientValues = [];
+        const resolving = [];
+        const resolvingLifetimes = [];
+        let disposed = false;
+
         const scope = Object.freeze({
             capabilities,
             get(token) {
                 return resolve(scope, token);
+            },
+            dispose() {
+                if (disposed) {
+                    return undefined;
+                }
+                disposed = true;
+                const values = [...transientValues.reverse(), ...Array.from(scopedValues.values()).reverse()];
+                for (const value of values) {
+                    disposeValue(value);
+                }
+                return undefined;
+            },
+            __disposed() {
+                return disposed;
+            },
+            __hasScoped(token) {
+                return scopedValues.has(token);
+            },
+            __getScoped(token) {
+                return scopedValues.get(token);
+            },
+            __setScoped(token, value) {
+                scopedValues.set(token, value);
+            },
+            __trackTransient(value) {
+                transientValues.push(value);
+            },
+            __resolving() {
+                return resolving;
+            },
+            __resolvingLifetimes() {
+                return resolvingLifetimes;
+            },
+            __pushResolving(token, lifetime) {
+                resolving.push(token);
+                resolvingLifetimes.push(lifetime);
+            },
+            __popResolving() {
+                resolving.pop();
+                resolvingLifetimes.pop();
             },
         });
 
@@ -1225,10 +1347,26 @@ function createServiceProvider(registrations, capabilities) {
 
     const provider = Object.freeze({
         get(token) {
-            return resolve(provider.createScope(), token);
+            const scope = provider.createScope();
+            try {
+                return resolve(scope, token);
+            } finally {
+                scope.dispose();
+            }
         },
 
         createScope,
+
+        dispose() {
+            if (providerDisposed) {
+                return undefined;
+            }
+            providerDisposed = true;
+            for (const value of singletonDisposables.reverse()) {
+                disposeValue(value);
+            }
+            return undefined;
+        },
     });
 
     return provider;

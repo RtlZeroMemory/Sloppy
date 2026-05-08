@@ -2006,6 +2006,10 @@ if(SLOPPY_ENABLE_TESTS)
                 conformance.framework_v2_typed_handler.run_once framework-v2-typed-handler
                 tests/integration/framework-v2-typed-handler/app.ts GET /framework/42?active=true
                 "\"id\":42.*\"active\":true.*\"method\":\"GET\".*\"path\":\"/framework/42\"")
+            sloppy_add_conformance_run_once_test(
+                conformance.framework_v2_di_services.run_once framework-v2-di-services
+                tests/integration/framework-v2-di-services/app.ts GET /di/42
+                "\"message\":\"user-42\".*\"counter\":7.*\"stamp\":\"transient\"")
             if(SLOPPY_BUILD_COMPILER)
                 add_test(
                     NAME conformance.hello.source_input_run_once

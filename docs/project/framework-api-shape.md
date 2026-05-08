@@ -90,7 +90,7 @@ app.controller("/users", UsersController, c => {
 
 Controllers are a target shape, not a framework MVP dependency. Controllers must compile or
 desugar into the same route graph as Minimal API. Decorators, controller implementation,
-constructor injection, and full DI are deferred.
+constructor injection, and DI beyond the current small service registry are deferred.
 
 ## Provider and Capability Inference
 
@@ -258,13 +258,17 @@ public framework shape exposes pipelining, concurrent per-connection requests,
 
 ## Services and DI
 
-Do not build a full .NET DI container now.
+Do not build a full .NET DI container now. The current implemented subset is a small
+Sloppy-owned registry: literal string tokens, inline factories, singleton/scoped/transient
+lifetimes, request scopes, disposal hooks, circular-dependency diagnostics, and
+singleton-to-scoped dependency diagnostics. Source-input Framework v2 handlers can inject
+services registered with literal `app.services.addSingleton/addScoped/addTransient("Token",
+factory)` calls when the `Service<T>` type name matches the token.
 
-Staged approach:
+Still staged:
 
-1. simple service registry, factories, and singleton-ish services;
-2. class-token services;
-3. controller constructor injection.
+1. class-token services;
+2. controller constructor injection.
 
 Provider handles are provider/capability objects, not just ordinary services, though they
 may become injectable later.
@@ -367,14 +371,13 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 
 ## Non-Goals
 
-- No runtime/compiler/provider/HTTP feature implementation in this design-lock PR.
 - No public alpha docs.
 - No benchmark/performance claims.
 - No Node/npm/package-manager compatibility.
-- No PostgreSQL/SQL Server JS bridge.
+- No live PostgreSQL/SQL Server success claim from default evidence.
 - No ORM/migrations.
 - No decorators or controllers in framework MVP.
-- No full DI container.
+- No full DI container beyond the current small service registry.
 - No native JSON fast path. The runtime can consume Plan-backed validation metadata for
   bounded request validation, but OpenAPI/doctor/audit reports are not runtime
   optimization claims.
