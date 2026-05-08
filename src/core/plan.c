@@ -576,15 +576,18 @@ static SlStatus sl_plan_intern_schema_properties(SlArena* arena, SlInternTable* 
     }
 
     for (index = 0U; index < target->property_count; index += 1U) {
+        SlPlanSchemaNode* property_schema = NULL;
+
         status = sl_plan_intern_required(table, properties[index].name, &properties[index].name);
         if (!sl_status_is_ok(status)) {
             return status;
         }
         status = sl_plan_intern_schema_node_alloc(arena, table, map, properties[index].schema,
-                                                  &properties[index].schema);
+                                                  &property_schema);
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        properties[index].schema = property_schema;
     }
 
     target->properties = properties;

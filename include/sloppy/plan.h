@@ -128,7 +128,7 @@ typedef struct SlPlanSchemaNode SlPlanSchemaNode;
 typedef struct SlPlanSchemaProperty
 {
     SlStr name;
-    SlPlanSchemaNode* schema;
+    const SlPlanSchemaNode* schema;
 } SlPlanSchemaProperty;
 
 typedef struct SlPlanSchemaNode
