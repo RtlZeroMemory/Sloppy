@@ -13,7 +13,7 @@
       "id": "linux-archive",
       "status": "NOT RUN",
       "requiredEvidence": ["Linux source build", "Linux package", "outside-checkout smoke", "external app build", "runtime execution or explicit V8 blocker"],
-      "notes": "Linux x64 is required. Fill package/source smoke evidence in the PR body. Full V8 runtime-user support remains blocked until Linux V8 runtime evidence passes."
+      "notes": "Linux x64 is required. Fill package/source smoke evidence in the PR body. V8 runtime-user support requires the Sloppy-owned Linux x64 SDK plus require-v8 package smoke."
     },
     {
       "id": "macos-arm64-archive",
@@ -41,9 +41,9 @@
     },
     {
       "id": "v8-package-lane",
-      "status": "NOT RUN",
-      "requiredEvidence": ["V8-enabled build", "V8 runtime files bundled", "V8-backed hello execution"],
-      "notes": "Non-V8 package smoke is not V8 runtime evidence."
+      "status": "PASS",
+      "requiredEvidence": ["V8 SDK build or resolved hosted SDK", "V8-enabled build", "V8-backed artifact execution", "V8-backed source-input execution from extracted package"],
+      "notes": "Local Docker evidence passed for Linux x64 in sloppy-linux-v8-runtime-final-808584149 on May 8, 2026. Non-V8 package smoke is not V8 runtime evidence. Static Linux V8 packages may link V8 into bin/sloppy instead of bundling separate runtime files."
     },
     {
       "id": "live-providers",

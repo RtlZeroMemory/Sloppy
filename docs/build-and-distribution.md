@@ -53,9 +53,14 @@ checksum-validated SDK artifact source; `tools/windows/fetch-v8.ps1` downloads i
 `.sdeps/v8/_downloads`, extracts `.sdeps/v8/windows-x64`, and validates the SDK layout
 before it can be used. `tools/windows/resolve-v8-sdk.ps1 -Fetch` and
 `tools/windows/dev.ps1 configure -EnableV8` use that source when no compatible local SDK
-is found. Linux and macOS SDK artifacts remain planned. `SLOPPY_V8_ROOT` is an advanced
-override, not the happy path. Rust dependencies are owned by the `compiler/` project.
-JavaScript dependencies are not a package-manager surface for Sloppy apps.
+is found. Linux x64 uses the same ownership model through `tools/unix/build-v8.sh`, which
+builds the pinned V8 revision, packages `.sdeps/v8/linux-x64`, and writes a reusable SDK
+archive under `artifacts/v8-sdk/`; it does not adapt distro Node/V8 development packages.
+The Linux SDK is built with V8's Chromium libc++ support and records ABI flags from V8's
+generated feature metadata. macOS SDK artifacts remain planned.
+`SLOPPY_V8_ROOT` is an advanced override, not the happy path. Rust dependencies are owned
+by the `compiler/` project. JavaScript dependencies are not a package-manager surface for
+Sloppy apps.
 
 ## Packages
 
@@ -83,6 +88,10 @@ Package fixtures must not recompile source when the package contract says execut
 from packaged artifacts. Default package smoke proves packaged CLI startup, `sloppy doctor`,
 manifest/checksum layout, required docs, stdlib/examples presence, and no accidental source
 checkout dependency; V8 package execution remains a separate V8-gated lane.
+Linux V8 package smoke must use `tools/unix/dev.sh package --enable-v8` followed by
+`tools/unix/dev.sh test-package --require-v8-runtime` and prove extracted-package JS app
+execution from both compiled artifacts and source input before it is reported as runtime
+user evidence.
 
 ## CI
 

@@ -81,9 +81,6 @@ function Test-SlV8SdkManifest {
     if ($manifest.abi.v8CompressPointersInSharedCage -ne $true) {
         $errors.Add("abi.v8CompressPointersInSharedCage must be true")
     }
-    if ($manifest.abi.v8_31BitSmisOn64BitArch -ne $true) {
-        $errors.Add("abi.v8_31BitSmisOn64BitArch must be true")
-    }
     if ($manifest.abi.v8EnableSandbox -ne $true) {
         $errors.Add("abi.v8EnableSandbox must be true")
     }

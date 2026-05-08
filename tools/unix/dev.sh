@@ -9,6 +9,9 @@ fi
 
 preset=""
 package_path=""
+enable_v8=0
+v8_root=""
+require_v8_runtime=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,6 +22,18 @@ while [[ $# -gt 0 ]]; do
     --package-path)
       package_path="${2:?missing value for --package-path}"
       shift 2
+      ;;
+    --enable-v8)
+      enable_v8=1
+      shift
+      ;;
+    --v8-root)
+      v8_root="${2:?missing value for --v8-root}"
+      shift 2
+      ;;
+    --require-v8-runtime)
+      require_v8_runtime=1
+      shift
       ;;
     -h|--help)
       command_name="help"
@@ -65,7 +80,7 @@ resolve_vcpkg_toolchain_arg() {
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH]
+Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH] [--enable-v8] [--v8-root DIR]
 
 Commands:
   doctor        Validate required Unix host tools and optional dependency status.
@@ -76,18 +91,20 @@ Commands:
   format-check  Run Rust format check when rustfmt is available.
   package       Build an experimental local tar.gz package.
   test-package  Extract a package outside the checkout and run smoke checks.
+  build-v8      Build/package the pinned Sloppy-owned Linux x64 V8 SDK.
   npm-dry-run   Unavailable on Unix in this PR; use tools/windows/npm-dry-run.ps1 or hosted follow-up.
   dogfood      Run or report ALPHA-INFRA dogfood/example evidence.
   clean         Remove the selected build directory.
   help          Print this help.
 
-Unsupported optional lanes are reported as unavailable/skipped, never as pass evidence.
+Use --enable-v8 for the Linux V8 build/package lane after tools/unix/dev.sh build-v8
+or an extracted Sloppy-owned SDK has populated .sdeps/v8/linux-x64.
 USAGE
 }
 
 doctor() {
   local missing=0
-  for tool in git cmake ninja cargo clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
+  for tool in git python3 cmake ninja cargo clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
     if command -v "$tool" >/dev/null 2>&1; then
       echo "doctor: found: $tool"
     else
@@ -109,18 +126,50 @@ doctor() {
   else
     echo "doctor: optional unavailable: docker"
   fi
-  echo "doctor: optional unavailable: V8 SDK artifact fetch for Unix is not implemented"
+  if command -v ld.lld >/dev/null 2>&1; then
+    echo "doctor: optional found: ld.lld for Linux V8 package linking"
+  else
+    echo "doctor: optional unavailable: ld.lld; required for tools/unix/dev.sh package --enable-v8 on linux-x64"
+  fi
+  if "$repo_root/tools/unix/resolve-v8-sdk.sh" --mode AUTO --quiet >/dev/null 2>&1; then
+    echo "doctor: optional found: V8 SDK"
+  else
+    echo "doctor: optional unavailable: V8 SDK; run tools/unix/dev.sh build-v8 or set SLOPPY_V8_ROOT to a Sloppy-owned SDK"
+  fi
   return "$missing"
+}
+
+resolve_v8_root_arg() {
+  local resolved
+  local args=(--mode REQUIRED --quiet)
+  if [[ -n "$v8_root" ]]; then
+    args+=(--v8-root "$v8_root")
+  fi
+  resolved="$("$repo_root/tools/unix/resolve-v8-sdk.sh" "${args[@]}")"
+  printf '%s\n' "-DSLOPPY_V8_ROOT=$resolved"
 }
 
 configure() {
   local selected_preset
   selected_preset="$(host_preset)"
-  cmake --preset "$selected_preset" \
+  local cmake_args=(
+    --preset "$selected_preset"
     "$(resolve_vcpkg_toolchain_arg)" \
     -DCMAKE_MAKE_PROGRAM="$(command -v ninja)" \
-    -DSLOPPY_ENABLE_V8=OFF \
-    -DSLOPPY_ENGINE=none
+  )
+  if [[ "$enable_v8" -eq 1 ]]; then
+    cmake_args+=(
+      -DSLOPPY_ENABLE_V8=ON
+      -DSLOPPY_ENGINE=v8
+      "$(resolve_v8_root_arg)"
+    )
+  else
+    cmake_args+=(
+      -DSLOPPY_ENABLE_V8=OFF
+      -DSLOPPY_ENGINE=none
+    )
+  fi
+  cmake "${cmake_args[@]}"
 }
 
 build() {
@@ -158,7 +207,18 @@ clean() {
 }
 
 package_repo() {
-  bash "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)"
+  local args=(--configuration "$(package_configuration)")
+  if [[ "$enable_v8" -eq 1 ]]; then
+    args+=(--enable-v8)
+    if [[ -n "$v8_root" ]]; then
+      args+=(--v8-root "$v8_root")
+    fi
+  fi
+  bash "$repo_root/tools/unix/package.sh" "${args[@]}"
+}
+
+build_v8() {
+  "$repo_root/tools/unix/build-v8.sh"
 }
 
 test_package() {
@@ -170,7 +230,11 @@ test_package() {
     echo "sloppy dev: no Unix package archive found; run tools/unix/dev.sh package or pass --package-path." >&2
     exit 1
   fi
-  "$repo_root/tools/unix/test-package.sh" --package-path "$resolved"
+  local args=(--package-path "$resolved")
+  if [[ "$require_v8_runtime" -eq 1 ]]; then
+    args+=(--require-v8-runtime)
+  fi
+  "$repo_root/tools/unix/test-package.sh" "${args[@]}"
 }
 
 dogfood_repo() {
@@ -192,6 +256,7 @@ case "$command_name" in
   clean) clean ;;
   package) package_repo ;;
   test-package) test_package ;;
+  build-v8) build_v8 ;;
   npm-dry-run)
     echo "sloppy dev: npm-dry-run is unavailable in tools/unix/dev.sh in this dry-run PR. Generate npm tarballs from tested archives with tools/windows/npm-dry-run.ps1, or add a Unix implementation in a follow-up." >&2
     exit 2

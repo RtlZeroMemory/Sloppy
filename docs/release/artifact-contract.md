@@ -13,7 +13,7 @@ apps.
 | Platform | Archive | Package root | Current status |
 | --- | --- | --- | --- |
 | Windows x64 | `sloppy-windows-x64.zip` | `sloppy-windows-x64` | Experimental dry-run package lane. |
-| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane when Linux source build and package smoke pass; full V8 runtime app execution remains a separate blocked lane. |
+| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and `test-package --require-v8-runtime`. |
 | macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Experimental hosted dry-run lane. |
 | macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Source-build only unless the optional hosted x64 package lane is requested and smoked. |
 
@@ -37,8 +37,10 @@ sloppy-<platform>-<arch>/
 
 Packages must not contain `.sdeps`, source build trees, `compiler/target`, `target`,
 `vcpkg_installed`, maintainer-local absolute paths, V8 SDK headers, or V8 SDK import
-libraries. V8 runtime files may appear only when deliberately included and when the
-manifest records the V8 runtime status honestly.
+libraries. V8 runtime support may appear only when deliberately included and when the
+manifest records the V8 runtime status honestly. Static Linux V8 packages may link V8 into
+`bin/sloppy` without an `engines/v8` directory; shared-library packages may include only
+the runtime shared libraries required by the packaged executable.
 
 ## Manifest
 

@@ -130,6 +130,10 @@ else()
 endif()
 
 include(cmake/SloppyCli.cmake)
+if(SLOPPY_ENABLE_V8 AND UNIX AND NOT APPLE)
+    set_target_properties(sloppy PROPERTIES BUILD_RPATH "$ORIGIN;$ORIGIN/../engines/v8"
+                                         INSTALL_RPATH "$ORIGIN;$ORIGIN/../engines/v8")
+endif()
 include(cmake/SloppyFrameworkExamples.cmake)
 
 add_executable(

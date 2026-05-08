@@ -167,9 +167,26 @@ standards scanners. It does not yet run package execution smoke for Linux/macOS 
 
 V8 runtime packaging is not proven by default package smoke. The default local package is
 non-V8 and records no V8 SDK inclusion. Any V8 runtime packaging evidence must state the
-build, SDK/runtime files, package flags, V8 runtime-file validation command, and V8-gated
-package execution smoke that actually ran. Runtime-file presence alone is not V8 execution
-evidence.
+build, SDK source, package flags, require-V8 package smoke, and V8-gated package execution
+that actually ran. Runtime-file presence alone is not V8 execution evidence. Linux x64 V8
+packages use the Sloppy-owned SDK from `tools/unix/build-v8.sh`; static SDK packages may
+link V8 into `bin/sloppy` without separate runtime files, so the proof is extracted
+package JS execution from both artifacts and source input.
+
+Current local Docker evidence for the Linux x64 V8 package lane:
+
+```sh
+tools/unix/build-v8.sh --package-only --work-root /tmp/v8-proper-work --sdk-root /work/.sdeps/v8/linux-x64 --archive-dir /work/artifacts/v8-sdk
+tools/unix/dev.sh package --enable-v8
+tools/unix/dev.sh test-package --require-v8-runtime
+```
+
+Evidence result: PASS in `sloppy-linux-v8-runtime-final-808584149` on May 8, 2026.
+The SDK was rebuilt in Docker from the pinned V8 checkout with the same work root before
+this final package-only repackaging pass; the final passing container did not fetch or
+rebuild V8 again after the bridge stack-size fix because the SDK bits were unchanged.
+The extracted package ran both V8-backed artifact execution and V8-backed source-input
+execution, each returning `HTTP/1.1 200 OK` with `Hello from packaged Sloppy`.
 
 ## Dogfood And Alpha Infra Evidence
 

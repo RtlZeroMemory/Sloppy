@@ -939,8 +939,12 @@ SlStatus sl_v8_platform_acquire(void)
     std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
 
     if (!g_v8_platform_initialized) {
+#ifdef V8_INTL_SUPPORT
         v8::V8::InitializeICUDefaultLocation("");
+#endif
+#ifdef V8_USE_EXTERNAL_STARTUP_DATA
         v8::V8::InitializeExternalStartupData("");
+#endif
         v8::V8::SetFlagsFromString("--stack-size=4096");
         std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
         if (!platform) {

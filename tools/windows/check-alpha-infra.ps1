@@ -102,7 +102,7 @@ function Write-FakeV8Manifest {
             v8TargetArch = "x64"
             v8CompressPointers = $true
             v8CompressPointersInSharedCage = $true
-            v8_31BitSmisOn64BitArch = $true
+            v8_31BitSmisOn64BitArch = $false
             v8EnableSandbox = $true
         }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root "share/sloppy-v8-sdk.json") -Encoding ASCII

@@ -91,11 +91,17 @@ under `.sdeps/v8/windows-x64` or another explicit ignored path. CMake must not d
 or hardcode machine-local SDK paths.
 
 The current Windows source SDK is a monolithic release build with Chromium libc++ support.
-Use `windows-relwithdebinfo` for V8 execution tests with this SDK. The `windows-dev` Debug
-CRT preset remains the default non-V8 contributor path. The monolithic Windows library
-contains Chromium allocator-shim overrides for CRT allocation symbols, so the CMake V8
-interface target applies the required Windows link override explicitly for V8-enabled
-executables.
+Use `windows-relwithdebinfo` for V8 execution tests with this SDK. Linux x64 uses the
+same Sloppy-owned SDK model through `tools/unix/build-v8.sh`, which builds the pinned V8
+revision into `.sdeps/v8/linux-x64` instead of adapting distro Node/V8 development
+packages. The Linux SDK is built with V8's Chromium libc++ support, records ABI flags from
+V8's generated `v8_features.json`, and requires the V8 sandbox to be enabled in the SDK
+manifest. Linux V8 source builds use the depot_tools LLVM toolchain that built the SDK;
+set `SLOPPY_V8_LLVM_ROOT` when the SDK work root is not `.sdeps/v8-work`. The
+`windows-dev` Debug CRT preset remains the default non-V8 contributor path.
+The monolithic Windows library contains Chromium
+allocator-shim overrides for CRT allocation symbols, so the CMake V8 interface target
+applies the required Windows link override explicitly for V8-enabled executables.
 
 Use `.\tools\windows\resolve-v8-sdk.ps1` to check what a fresh worktree will use, then
 `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` for local V8
@@ -117,11 +123,12 @@ EPIC-25 distribution policy separates build-time SDKs from runtime packages:
 - static/monolithic V8 linking is preferred when practical because it keeps runtime
   archives simple;
 - dynamic runtime DLL/shared-library bundling is the fallback, and only runtime files from
-  an SDK `bin/` directory may be copied into `engines/v8/`;
+  an SDK `bin/` or `lib/` directory may be copied into `engines/v8/`;
 - default local packages record `containsV8Sdk: false` and are non-V8 unless a V8-linked
   executable plus required runtime files are explicitly staged.
-- package smoke can validate V8 runtime-file staging with an explicit V8-runtime flag, but
-  runtime-file presence is not V8 execution evidence by itself.
+- package smoke can validate V8 runtime support with an explicit V8-runtime flag, but
+  runtime-file presence is not V8 execution evidence by itself. Static Linux V8 packages
+  may link V8 into `bin/sloppy` without an `engines/v8` directory.
 - V8-enabled package validation must also run the V8-gated artifact execution smoke from
   the extracted package layout; packaged executables now resolve `../stdlib/sloppy`
   relative to `bin/` before falling back to build-tree bootstrap assets.

@@ -6,8 +6,8 @@
   "dependencies": [
     {
       "id": "v8",
-      "packagePolicy": "SDK headers/import libraries excluded; runtime files bundled only in explicit V8 package lanes",
-      "currentStatus": "Windows x64 SDK artifact source exists; Linux/macOS V8 runtime package lanes are planned",
+      "packagePolicy": "SDK headers/import libraries excluded; V8 runtime support included only in explicit V8 package lanes; static Linux SDK packages may link V8 into bin/sloppy",
+      "currentStatus": "Windows x64 SDK artifact source exists; Linux x64 SDK can be built locally with tools/unix/build-v8.sh; macOS V8 runtime package lanes are planned",
       "noticeStatus": "incomplete before public release"
     },
     {

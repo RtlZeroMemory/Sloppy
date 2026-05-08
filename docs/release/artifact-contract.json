@@ -38,8 +38,8 @@
       "packageRoot": "sloppy-linux-x64",
       "packageFormat": "tar.gz",
       "platformStatus": "experimental",
-      "runtimeUserStatus": "experimental package smoke when Linux source build and package smoke pass; V8 runtime app execution remains blocked until the Linux V8 runtime artifact lane exists",
-      "v8RuntimeStatus": "Linux V8 SDK/runtime artifact lane is not available yet"
+      "runtimeUserStatus": "experimental package smoke when Linux source build and package smoke pass; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and require-v8 package smoke",
+      "v8RuntimeStatus": "Linux x64 V8 SDK can be built locally with tools/unix/build-v8.sh; hosted artifact URL and checksum remain pending until upload"
     },
     {
       "id": "macos-arm64",

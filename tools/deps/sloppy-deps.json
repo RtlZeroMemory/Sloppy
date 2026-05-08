@@ -91,8 +91,8 @@
       "runner": "ubuntu-latest",
       "defaultPresets": ["linux-clang", "linux-gcc"],
       "compiler": "clang or gcc",
-      "v8SdkPlatform": null,
-      "notes": "Default non-V8 hosted CI lane. V8 SDK artifact lane remains planned."
+      "v8SdkPlatform": "linux-x64",
+      "notes": "Default hosted CI lane remains non-V8. Linux x64 V8 uses the Sloppy-owned SDK built by tools/unix/build-v8.sh until a hosted SDK artifact is attached."
     },
     "macos-arm64": {
       "status": "experimental",
@@ -124,7 +124,7 @@
       "status": "experimental",
       "defaultMode": "AUTO",
       "supportedModes": ["OFF", "AUTO", "REQUIRED"],
-      "evidence": "V8-gated Windows lane only when a compatible SDK resolves."
+      "evidence": "V8-gated Windows and Linux lanes only when a compatible Sloppy-owned SDK resolves."
     },
     "http": {
       "status": "experimental",
@@ -170,7 +170,7 @@
       "downloadImplemented": true,
       "transport": "github-release-asset",
       "cacheLayout": ".sdeps/v8/_downloads",
-      "reason": "Windows x64 has a pinned, checksum-validated GitHub release asset. Other platform SDK artifacts remain planned until their V8 package lanes are built and validated.",
+      "reason": "Windows x64 has a pinned, checksum-validated GitHub release asset. Linux x64 has a source SDK builder and local package lane until the validated SDK archive is attached as a hosted release asset. Other platform SDK artifacts remain planned.",
       "platforms": {
         "windows-x64": {
           "status": "available",
@@ -181,8 +181,9 @@
           "release": "https://github.com/RtlZeroMemory/Slop/releases/tag/v8-sdk-windows-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38"
         },
         "linux-x64": {
-          "status": "planned",
-          "reason": "No Linux x64 V8 SDK artifact has been built and validated yet."
+          "status": "source-build only",
+          "archive": "sloppy-v8-sdk-linux-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38.tar.gz",
+          "reason": "tools/unix/build-v8.sh builds and packages the pinned Linux x64 SDK locally; hosted artifact URL, checksum, and size must be filled only after upload."
         },
         "macos-arm64": {
           "status": "planned",
@@ -201,7 +202,7 @@
           "v8TargetArch": "x64",
           "v8CompressPointers": true,
           "v8CompressPointersInSharedCage": true,
-          "v8_31BitSmisOn64BitArch": true,
+          "v8_31BitSmisOn64BitArch": false,
           "v8EnableSandbox": true
         },
         "requiredFiles": [
@@ -215,9 +216,28 @@
         "optionalRuntimeFiles": ["bin/*.dll"]
       },
       "linux-x64": {
-        "status": "planned",
-        "requiredFiles": [],
-        "optionalRuntimeFiles": ["bin/*.so"]
+        "status": "source-build only",
+        "abi": {
+          "v8TargetArch": "x64",
+          "v8CompressPointers": true,
+          "v8CompressPointersInSharedCage": true,
+          "v8_31BitSmisOn64BitArch": false,
+          "v8EnableSandbox": true,
+          "v8EnableWebAssembly": false
+        },
+        "requiredFiles": [
+          "include/v8.h",
+          "include/libplatform/libplatform.h",
+          "lib/libv8_monolith.a or lib/libv8_monolith.so",
+          "lib/libv8_libplatform.a or lib/libv8_libplatform.so",
+          "lib/libv8_libbase.a or lib/libv8_libbase.so",
+          "lib/libc++.a or lib/libc++.so",
+          "lib/libc++abi.a",
+          "support/libcxx/include/",
+          "support/libcxx/buildtools/__config_site",
+          "share/sloppy-v8-sdk.json"
+        ],
+        "optionalRuntimeFiles": ["bin/*.so", "lib/*.so"]
       },
       "macos-arm64": {
         "status": "planned",

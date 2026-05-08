@@ -21,17 +21,19 @@ tools/unix/check-c-standards.sh
 ```
 
 The Unix `bootstrap.sh` and `dev.sh` command contract mirrors the Windows vocabulary for
-Linux and macOS. Unsupported optional lanes, including Unix V8 SDK artifact fetch, are
-reported as unavailable rather than pass evidence.
+Linux and macOS. Unsupported optional lanes are reported as unavailable rather than pass
+evidence. Linux x64 V8 does not use distro Node/V8 development packages; it uses the
+Sloppy-owned SDK produced by `tools/unix/build-v8.sh` or an extracted matching SDK
+artifact.
 
 On Debian/Ubuntu-style Linux containers or hosts, install the current non-V8 Linux clang
 lane prerequisites before running bootstrap:
 
 ```sh
 apt-get install -y --no-install-recommends \
-  git cmake ninja-build curl zip unzip tar pkg-config build-essential clang \
+  git cmake ninja-build curl zip unzip tar file pkg-config build-essential clang \
   ca-certificates perl bison flex autoconf autoconf-archive automake libtool \
-  m4 python3 gawk
+  m4 python3 gawk lld libglib2.0-dev
 ```
 
 Use a Rust toolchain new enough for the compiler dependencies. The current Oxc dependency
@@ -60,6 +62,25 @@ stdlib assets, package docs, examples, manifest fields, required package files, 
 build/dependency directories, packaged `sloppyc build` from the extracted layout, and
 `SHA256SUMS.txt` when present. Default non-V8 packages report packaged
 `sloppy run --artifacts` as skipped/not configured because V8 is unavailable.
+
+Linux x64 V8 package evidence uses the pinned Sloppy-owned SDK:
+
+```sh
+tools/unix/dev.sh build-v8
+tools/unix/dev.sh package --enable-v8
+tools/unix/dev.sh test-package --require-v8-runtime
+```
+
+`build-v8` fetches/builds the pinned V8 revision with depot_tools, packages
+`.sdeps/v8/linux-x64`, validates the SDK manifest, and writes a reusable SDK archive under
+ignored `artifacts/v8-sdk/`. The package script excludes SDK headers and libraries from
+the user archive; static SDK builds link V8 into `bin/sloppy`, while shared SDK builds
+bundle only the required runtime shared libraries under `engines/v8`. The Linux x64 SDK is
+Sloppy-built with V8's Chromium libc++ support and sandbox-enabled ABI metadata generated
+from V8's own `v8_features.json`; it does not depend on distro Node/V8 development
+packages. V8-enabled Linux source builds use the depot_tools LLVM toolchain from
+`.sdeps/v8-work/v8/third_party/llvm-build/Release+Asserts`; set `SLOPPY_V8_LLVM_ROOT`
+when the SDK was built with a non-default `--work-root`.
 
 Manual Unix release artifact dry-runs wrap the same package smoke path:
 
