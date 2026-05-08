@@ -39,9 +39,10 @@ lib/sloppy/bootstrap/sloppy/
 - `index.js` re-exports the app-host facade, result helpers, schema helpers, provider
   facades, and core API namespaces.
 - `app.js` provides the bootstrap builder/app/module surface used by examples and tests:
-  `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, route registration,
-  group metadata, config/log/services/capabilities facades, structural freeze behavior,
-  and debug snapshots.
+  `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, `Router.group(...)`,
+  route registration, route-only `app.useModule(...)`, explicit controller mapping, group
+  metadata, config/log/services/capabilities facades, structural freeze behavior, and debug
+  snapshots.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; descriptors do not write responses by themselves.
 - `schema.js` provides the current validation metadata skeleton for strings, numbers,

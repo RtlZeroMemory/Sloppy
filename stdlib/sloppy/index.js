@@ -1,4 +1,4 @@
-export { Sloppy } from "./app.js";
+export { Router, Sloppy } from "./app.js";
 export { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text } from "./codec.js";
 export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } from "./crypto.js";
 export { data, sql } from "./data.js";

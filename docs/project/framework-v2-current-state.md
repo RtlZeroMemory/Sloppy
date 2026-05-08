@@ -31,7 +31,10 @@ body, and context arguments and invokes the stripped handler source in the V8 ow
 Promise settlement lane. The generated wrapper also creates one request service scope and
 resolves `Service<T>` from literal source-level service registrations, including singleton,
 scoped, and transient lifetimes plus circular-dependency and singleton-to-scoped diagnostics.
-Provider parameters no longer return fake dependencies: SQLite injection opens the existing
+Bootstrap controller/module APIs now cover route-only `app.useModule(...)`,
+`Router.group(...)`, nested `app.group(...)` route composition, duplicate route diagnostics,
+and explicit `app.mapController(...)` method mapping with constructor injection through the
+same service provider. Provider parameters no longer return fake dependencies: SQLite injection opens the existing
 Plan-backed stdlib/native bridge, and PostgreSQL or SQL Server injection attempts the
 provider bridge and reports the existing provider/config/live-lane error honestly when the
 lane is unavailable. Queue and `Config<T>` parameters still fail explicitly until their
@@ -42,7 +45,7 @@ not full controller/module completion.
 
 Still deferred:
 
-- controller/module runtime APIs and constructor injection;
+- compiler extraction for controller classes and decorator/scanning-style controllers;
 - full typed handler breadth beyond the current compiler-emitted wrapper subset;
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
@@ -64,7 +67,7 @@ Issue-state guide:
 Non-claims:
 
 - no queue or config injection runtime;
-- no controller constructor injection;
+- no controller class compiler extraction or decorator/scanning support;
 - no HTTP/TLS runtime scope from this Framework v2 compiler state;
 - no public alpha docs;
 - no benchmark or performance claims;

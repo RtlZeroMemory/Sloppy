@@ -52,7 +52,7 @@ default, layered Plan-visible config, explicit `ctx` binding helpers, and explic
 | Direct source run | Supported as a dev-loop compiler handoff for the current compiler subset. It is not a Node/npm loader, package manager, watch mode, hot reload loop, or production server contract. |
 | Public import | Core examples use `import { Sloppy, Results, data } from "sloppy";`. This is a compiler/stdlib contract, not Node/npm resolution. |
 | App API | Current compiler/runtime support uses `Sloppy.create()` plus `map*` calls; post-Core framework target is `app.get/post/put/patch/delete(...)`, `Results`, request context, cancellation signal, and explicit provider imports. |
-| Services/modules | Function modules are the first framework modularization target. Controllers, decorators, and full DI are deferred. |
+| Services/modules | Function modules are the first framework modularization target. The bootstrap app supports route-only `app.useModule(...)`, `Router.group(...)`, and explicit controller route mapping with service constructor injection. Decorators, scanning, and package modules are deferred. |
 | HTTP methods | GET, POST, PUT, PATCH, and DELETE are core. OPTIONS is framework-owned for allowed-method/preflight-style responses. HEAD is deferred until its body/metadata policy is explicit. |
 | Body support | JSON and text request bodies are core. Multipart/file upload, streaming uploads, and form binding are deferred. |
 | Results | Text, JSON, status, empty, and problem results are core. Files, streams, redirects, cookies, content negotiation, and filters are deferred. |

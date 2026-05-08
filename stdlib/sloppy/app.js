@@ -7,6 +7,7 @@ const LOG_LEVEL_RANK = Object.freeze({
 });
 const MEMORY_SINK_STATE = new WeakMap();
 const MODULE_STATE = new WeakMap();
+const FUNCTION_MODULE_NAME = "__sloppyModuleName";
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
 const DATABASE_ACCESS_MODES = Object.freeze(["read", "write", "readwrite"]);
 const CONFIG_SECRET_INSPECT = Symbol.for("nodejs.util.inspect.custom");
@@ -592,6 +593,18 @@ function validateGroupChildPattern(pattern) {
 function validateHandler(handler) {
     if (typeof handler !== "function") {
         throw new TypeError("Sloppy route handler must be a function.");
+    }
+}
+
+function validateController(controller) {
+    if (typeof controller !== "function") {
+        throw new TypeError("Sloppy controller must be a constructor function.");
+    }
+}
+
+function validateControllerAction(action) {
+    if (typeof action !== "string" || action.length === 0) {
+        throw new TypeError("Sloppy controller action must be a non-empty string.");
     }
 }
 
@@ -1384,7 +1397,22 @@ function createHandlerContext(host) {
 
 function createRouteHandler(host, handler) {
     return function routeHandler(context) {
-        return handler(context ?? createHandlerContext(host));
+        if (context !== undefined && context !== null) {
+            return handler(context);
+        }
+
+        const ownedContext = createHandlerContext(host);
+        try {
+            const result = handler(ownedContext);
+            if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                return result.finally(() => ownedContext.services.dispose());
+            }
+            ownedContext.services.dispose();
+            return result;
+        } catch (error) {
+            ownedContext.services.dispose();
+            throw error;
+        }
     };
 }
 
@@ -1520,6 +1548,10 @@ function registerRoute(
     validatePattern(args.pattern);
     validateHandler(args.handler);
 
+    if (routes.some((route) => route.method === method && route.pattern === args.pattern)) {
+        throw new Error(`Sloppy route '${method} ${args.pattern}' is already registered.`);
+    }
+
     const route = {
         method,
         pattern: args.pattern,
@@ -1533,6 +1565,85 @@ function registerRoute(
 
     routes.push(route);
     return createEndpointBuilder(route, assertAppMutable);
+}
+
+function controllerInjectionTokens(controller) {
+    const tokens = controller.inject ?? controller.dependencies ?? [];
+
+    if (!Array.isArray(tokens)) {
+        throw new TypeError("Sloppy controller inject metadata must be an array when provided.");
+    }
+
+    for (const token of tokens) {
+        validateServiceToken(token);
+    }
+
+    return Object.freeze([...tokens]);
+}
+
+function createControllerHandler(host, Controller, action) {
+    const inject = controllerInjectionTokens(Controller);
+    const prototypeMethod = Controller.prototype?.[action];
+
+    if (typeof prototypeMethod !== "function") {
+        throw new TypeError(`Sloppy controller action '${action}' must name a prototype method.`);
+    }
+
+    return function controllerHandler(context) {
+        const ctx = context ?? createHandlerContext(host);
+        const services = ctx.services ?? host.services.createScope();
+        const dependencies = inject.map((token) => services.get(token));
+        const instance = new Controller(...dependencies);
+        return instance[action](ctx);
+    };
+}
+
+function createControllerMapper(
+    routes,
+    host,
+    assertAppMutable,
+    currentModule,
+    prefix,
+    Controller,
+) {
+    validateGroupPrefix(prefix);
+    validateController(Controller);
+
+    function map(method, pattern, action, options) {
+        validateControllerAction(action);
+        return registerRoute(
+            routes,
+            host,
+            assertAppMutable,
+            currentModule,
+            method,
+            composeRoutePattern(prefix, pattern),
+            {
+                ...(options ?? {}),
+                controller: Controller.name || "AnonymousController",
+                action,
+            },
+            createControllerHandler(host, Controller, action),
+        );
+    }
+
+    return Object.freeze({
+        get(pattern, action, options) {
+            return map("GET", pattern, action, options);
+        },
+        post(pattern, action, options) {
+            return map("POST", pattern, action, options);
+        },
+        put(pattern, action, options) {
+            return map("PUT", pattern, action, options);
+        },
+        patch(pattern, action, options) {
+            return map("PATCH", pattern, action, options);
+        },
+        delete(pattern, action, options) {
+            return map("DELETE", pattern, action, options);
+        },
+    });
 }
 
 function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix) {
@@ -1592,9 +1703,62 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
         mapPut: createMapMethod("PUT"),
         mapPatch: createMapMethod("PATCH"),
         mapDelete: createMapMethod("DELETE"),
+        get: createMapMethod("GET"),
+        post: createMapMethod("POST"),
+        put: createMapMethod("PUT"),
+        patch: createMapMethod("PATCH"),
+        delete: createMapMethod("DELETE"),
+        group(childPrefix) {
+            assertAppMutable();
+            return createRouteGroup(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule,
+                composeRoutePattern(groupMetadata.prefix, childPrefix),
+            );
+        },
     };
 
     return Object.freeze(group);
+}
+
+function assertRouteOnlyModule(state) {
+    if (
+        state.dependencies.length !== 0 ||
+        state.capabilityCallbacks.length !== 0 ||
+        state.serviceCallbacks.length !== 0
+    ) {
+        throw new Error(
+            "Sloppy app.useModule only accepts route-only modules; use builder.addModule for dependencies, capabilities, or services.",
+        );
+    }
+}
+
+function functionModuleName(moduleFactory) {
+    return moduleFactory[FUNCTION_MODULE_NAME] ?? moduleFactory.name;
+}
+
+function createRouterGroup(prefix, configure) {
+    validateGroupPrefix(prefix);
+
+    if (configure !== undefined && typeof configure !== "function") {
+        throw new TypeError("Sloppy Router.group configure callback must be a function.");
+    }
+
+    function routerGroup(app) {
+        const group = app.group(prefix);
+        if (configure !== undefined) {
+            configure(group);
+        }
+        return group;
+    }
+
+    Object.defineProperty(routerGroup, FUNCTION_MODULE_NAME, {
+        value: `router:${normalizeGroupPrefix(prefix)}`,
+        enumerable: false,
+    });
+    return Object.freeze(routerGroup);
 }
 
 function createApp(host) {
@@ -1603,6 +1767,7 @@ function createApp(host) {
     const guard = createMutationGuard("app");
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
+    const directModules = new Set();
 
     function assertAppMutable() {
         guard.assertMutable();
@@ -1644,6 +1809,44 @@ function createApp(host) {
                 token: sqliteProviderToken(provider.name),
                 options,
             });
+        },
+
+        useModule(moduleOrFactory) {
+            assertAppMutable();
+
+            const moduleState = getModuleState(moduleOrFactory);
+            if (moduleState !== undefined) {
+                assertRouteOnlyModule(moduleState);
+                if (directModules.has(moduleState.name)) {
+                    throw new Error(`Sloppy module '${moduleState.name}' is already registered.`);
+                }
+                moduleState.finalized = true;
+                directModules.add(moduleState.name);
+                for (const callback of moduleState.routeCallbacks) {
+                    app.__runInModule(moduleState.name, (moduleApp) => {
+                        runModulePhase(moduleState, "routes", callback, moduleApp);
+                    });
+                }
+                return app;
+            }
+
+            if (typeof moduleOrFactory !== "function" || functionModuleName(moduleOrFactory).length === 0) {
+                throw new TypeError(
+                    "Sloppy app.useModule expected a named function module or route-only Sloppy.module.",
+                );
+            }
+            const moduleName = functionModuleName(moduleOrFactory);
+            if (directModules.has(moduleName)) {
+                throw new Error(`Sloppy module '${moduleName}' is already registered.`);
+            }
+            directModules.add(moduleName);
+            app.__runInModule(moduleName, (moduleApp) => {
+                const result = moduleOrFactory(moduleApp);
+                if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                    throw new TypeError("Sloppy function modules must be synchronous.");
+                }
+            });
+            return app;
         },
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
@@ -1711,9 +1914,58 @@ function createApp(host) {
             );
         },
 
+        get(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapGet(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        post(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPost(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        put(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPut(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        patch(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPatch(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        delete(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapDelete(pattern, optionsOrHandler, maybeHandler);
+        },
+
         mapGroup(prefix) {
             assertAppMutable();
             return createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix);
+        },
+
+        group(prefix) {
+            return app.mapGroup(prefix);
+        },
+
+        mapController(prefix, Controller, configure) {
+            assertAppMutable();
+            const mapper = createControllerMapper(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                prefix,
+                Controller,
+            );
+
+            if (configure === undefined) {
+                return mapper;
+            }
+            if (typeof configure !== "function") {
+                throw new TypeError("Sloppy app.mapController configure callback must be a function.");
+            }
+            configure(mapper);
+            return app;
+        },
+
+        controller(prefix, Controller, configure) {
+            return app.mapController(prefix, Controller, configure);
         },
 
         freeze() {
@@ -2072,4 +2324,8 @@ export const Sloppy = Object.freeze({
     create,
     createBuilder,
     module: createModule,
+});
+
+export const Router = Object.freeze({
+    group: createRouterGroup,
 });

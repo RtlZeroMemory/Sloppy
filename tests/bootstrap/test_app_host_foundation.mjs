@@ -18,6 +18,7 @@ import {
     NonCryptoHash,
     Password,
     Random,
+    Router,
     Results,
     Secret,
     Sloppy,
@@ -976,6 +977,86 @@ async function flushMicrotasks(count = 6) {
     app.services.dispose();
     assert.equal(singletonDisposals, 1);
     assertThrowsMessage(() => app.services.get("message"), /provider is disposed/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let disposedScoped = 0;
+
+    builder.services.addScoped("GreetingService", () => ({
+        greet(id) {
+            return `hello-${id}`;
+        },
+        dispose() {
+            disposedScoped += 1;
+        },
+    }));
+
+    const app = builder.build();
+
+    class UsersController {
+        static inject = ["GreetingService"];
+
+        constructor(greeting) {
+            this.greeting = greeting;
+        }
+
+        get({ route }) {
+            return Results.ok({ message: this.greeting.greet(route.id ?? "demo") });
+        }
+    }
+
+    app.mapController("/users", UsersController, (users) => {
+        users.get("/{id:int}", "get").withName("Users.Get");
+    });
+
+    const route = app.__getRoutes()[0];
+    assert.equal(route.method, "GET");
+    assert.equal(route.pattern, "/users/{id:int}");
+    assert.equal(route.name, "Users.Get");
+    assert.equal(route.metadata.controller, "UsersController");
+    assert.equal(route.metadata.action, "get");
+    assert.deepEqual(route.handler({ route: { id: 42 }, services: app.services.createScope() }).body, {
+        message: "hello-42",
+    });
+    assert.deepEqual(route.handler().body, { message: "hello-demo" });
+    assert.equal(disposedScoped, 1);
+
+    assertThrowsMessage(() => app.mapController("/bad", UsersController, (bad) => {
+        bad.get("/", "missing");
+    }), /prototype method/);
+}
+
+{
+    const app = Sloppy.create();
+    function usersModule(moduleApp) {
+        const api = moduleApp.group("/api");
+        api.group("/users").get("/{id:int}", ({ route }) => Results.ok({ id: route.id ?? "demo" }));
+    }
+
+    app.useModule(usersModule);
+    assert.equal(app.__getRoutes()[0].pattern, "/api/users/{id:int}");
+    assert.equal(app.__getRoutes()[0].metadata.module, "usersModule");
+    assert.deepEqual(app.__getRoutes()[0].handler().body, { id: "demo" });
+    assertThrowsMessage(() => app.useModule(usersModule), /already registered/);
+    assertThrowsMessage(() => app.get("/api/users/{id:int}", () => Results.ok({})), /already registered/);
+
+    const reports = Sloppy.module("reports").routes((moduleApp) => {
+        moduleApp.get("/reports", () => Results.ok({ ok: true }));
+    });
+    app.useModule(reports);
+    assert.equal(app.__getRoutes()[1].metadata.module, "reports");
+
+    assertThrowsMessage(
+        () => app.useModule(Sloppy.module("data").services(() => {})),
+        /route-only modules/,
+    );
+
+    app.useModule(Router.group("/admin", (admin) => {
+        admin.get("/health", () => Results.text("ok"));
+    }));
+    assert.equal(app.__getRoutes()[2].pattern, "/admin/health");
+    assert.equal(app.__getRoutes()[2].metadata.module, "router:/admin");
 }
 
 {

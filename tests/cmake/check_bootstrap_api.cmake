@@ -285,6 +285,10 @@ foreach(required_pattern IN ITEMS
         "__debug()"
         "__getModuleGraph()"
         "__getPlanContributions()"
+        "useModule(moduleOrFactory)"
+        "mapController(prefix, Controller, configure)"
+        "controller(prefix, Controller, configure)"
+        "group: createRouterGroup"
         "addObject(object)"
         "setMinimumLevel(level)"
         "addMemorySink()"
@@ -297,7 +301,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

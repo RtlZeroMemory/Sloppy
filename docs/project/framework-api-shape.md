@@ -69,28 +69,34 @@ Locked decisions:
 - Relative multi-file imports, Slop stdlib imports, provider imports, and function modules
   are required for framework MVP.
 - Module registration compiles into the same Plan route/provider/capability graph.
-- COMPILER-30.D supports direct module-app routes and nested literal module route groups;
-  controllers, decorators, filters, and middleware are still later shapes.
+- COMPILER-30.D supports direct module-app routes and nested literal module route groups.
+  The bootstrap app surface also supports route-only `app.useModule(...)` for named
+  function modules and `Sloppy.module(...).routes(...)` modules. Modules that contribute
+  dependencies, capabilities, or services still use `builder.addModule(...)` so build order
+  and provider/service snapshots stay deterministic.
 - npm resolution, `package.json` semantics, TS path aliases, dynamic import, and broad
   module systems remain deferred.
 
-## Controllers Later
+## Controllers
 
 ```ts
 class UsersController {
-  list(ctx) { /* ... */ }
-  create(ctx) { /* ... */ }
+  static inject = ["UsersService"];
+  constructor(users) { this.users = users; }
+  list(ctx) { return Results.ok(this.users.list(ctx)); }
+  create(ctx) { return Results.created("/users", this.users.create(ctx)); }
 }
 
-app.controller("/users", UsersController, c => {
+app.mapController("/users", UsersController, c => {
   c.get("/", "list");
   c.post("/", "create");
 });
 ```
 
-Controllers are a target shape, not a framework MVP dependency. Controllers must compile or
-desugar into the same route graph as Minimal API. Decorators, controller implementation,
-constructor injection, and DI beyond the current small service registry are deferred.
+Controllers are a small explicit routing shape over the same route graph as Minimal API.
+Constructor injection uses the same service provider via `static inject = [...]`, and each
+mapped action names a prototype method. Decorators, automatic scanning, and package-level
+controller discovery remain deferred.
 
 ## Provider and Capability Inference
 
@@ -377,7 +383,7 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 - No Node/npm/package-manager compatibility.
 - No live PostgreSQL/SQL Server success claim from default evidence.
 - No ORM/migrations.
-- No decorators or controllers in framework MVP.
+- No decorators or controller scanning in framework MVP.
 - No full DI container beyond the current small service registry.
 - No native JSON fast path. The runtime can consume Plan-backed validation metadata for
   bounded request validation, but OpenAPI/doctor/audit reports are not runtime
@@ -388,11 +394,10 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 The framework MVP function-module shape is supported at source level by the compiler-owned
 subset: `app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, and literal
 `group.get/post/put/patch/delete(...)` registrations are resolved, analyzed, and lowered into
-the existing Plan and classic artifact path. This does not mean the bootstrap stdlib exposes a
-general runtime implementation of those APIs yet; the current classic bootstrap still executes the
-compiler-generated artifact helpers such as `mapGet`/`mapPost` plus provider metadata. Controllers,
-decorators, typed handler execution, provider/DI validation integration, and broader framework
-examples remain separate framework tasks.
+the existing Plan and classic artifact path. The bootstrap stdlib now exposes the route
+module, nested group, and explicit controller APIs for direct app-host tests as well.
+Decorators, package scanning, arbitrary class/object inference, and broader controller
+discovery remain separate framework tasks.
 COMPILER-30.E adds compiler metadata for supported config reads, schema declarations, request
 bindings, and result helpers; it does not make those bootstrap APIs executable outside the
 compiler-generated artifact path.
