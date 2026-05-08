@@ -44,6 +44,14 @@ function Test-CliOutputAllowed {
     return $RelativePath -eq "compiler/src/main.rs"
 }
 
+function Test-RustTestModuleFile {
+    param(
+        [string]$RelativePath
+    )
+
+    return $RelativePath -match '(^|/)[^/]+_tests\.rs$'
+}
+
 function Test-ArtifactOrderingSensitivePath {
     param(
         [string]$RelativePath
@@ -65,6 +73,10 @@ $violations = @()
 
 foreach ($file in Get-RustSourceFiles) {
     $relativePath = Convert-ToRepoPath $file.FullName
+    if (Test-RustTestModuleFile $relativePath) {
+        continue
+    }
+
     $lineNumber = 0
     $pendingCfgTest = $false
     $testModuleDepth = $null

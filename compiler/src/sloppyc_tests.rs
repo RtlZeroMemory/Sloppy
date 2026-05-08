@@ -1,0 +1,3734 @@
+use std::{
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+};
+
+use super::{
+    canonical_config_key, checksum_security_context_visible, command_from_args, extract,
+    noncrypto_hash_security_context_visible, route_pattern_supported, CliCommand, CompileOptions,
+};
+
+fn fixture_temp_dir(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("sloppyc-{name}-{}", std::process::id()));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale test directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("test directory should be created");
+    root
+}
+
+fn extract_temp_input(root: &Path, source: &str) -> Result<super::ExtractedApp, super::Diagnostic> {
+    let input = root.join("input.js");
+    fs::write(&input, source).expect("fixture input should be writable");
+    extract(&input, source)
+}
+
+#[test]
+fn no_argument_prints_help() {
+    assert_eq!(command_from_args(Vec::<OsString>::new()), CliCommand::Help);
+}
+
+#[test]
+fn version_flag_prints_version() {
+    assert_eq!(
+        command_from_args([OsString::from("--version")]),
+        CliCommand::Version
+    );
+}
+
+#[test]
+fn build_requires_input_and_output() {
+    assert_eq!(
+        command_from_args([OsString::from("build")]),
+        CliCommand::Invalid("build requires an input file".to_string())
+    );
+}
+
+#[test]
+fn build_args_accept_environment_and_runtime_overrides() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("app.js"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--environment"),
+            OsString::from("Development"),
+            OsString::from("--host"),
+            OsString::from("127.0.0.1"),
+            OsString::from("--port"),
+            OsString::from("5173"),
+            OsString::from("--config"),
+            OsString::from("Auth:Issuer=cli"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("app.js"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: CompileOptions {
+                environment: Some("Development".to_string()),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(5173),
+                config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+            },
+        }
+    );
+}
+
+#[test]
+fn keep_alive_environment_override_keys_are_canonicalized() {
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:KEEPALIVEENABLED"),
+        "Sloppy:Server:KeepAliveEnabled"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:KEEPALIVEIDLETIMEOUTMS"),
+        "Sloppy:Server:KeepAliveIdleTimeoutMs"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:MAXREQUESTSPERCONNECTION"),
+        "Sloppy:Server:MaxRequestsPerConnection"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:TLS:PRIVATEKEYPATH"),
+        "Sloppy:Server:Tls:PrivateKeyPath"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:TLS:CERTIFICATEPATH"),
+        "Sloppy:Server:Tls:CertificatePath"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:SERVER:TLS:PASSPHRASE"),
+        "Sloppy:Server:Tls:Passphrase"
+    );
+}
+
+#[test]
+fn configuration_files_overlay_and_bind_sqlite_provider() {
+    let root = std::env::temp_dir().join(format!("sloppyc-config-test-{}", std::process::id()));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("config test directory should be created");
+    let input = root.join("app.js");
+    fs::write(&input, "export default {};").expect("input should be written");
+    fs::write(
+            root.join("appsettings.json"),
+            r#"{"Sloppy":{"Server":{"Port":5000},"Providers":{"sqlite":{"main":{"database":"base.db"}}}}}"#,
+        )
+        .expect("base appsettings should be written");
+    fs::write(
+            root.join("appsettings.Development.json"),
+            r#"{"Sloppy":{"Server":{"Port":5173},"Providers":{"sqlite":{"main":{"database":"dev.db"}}}}}"#,
+        )
+        .expect("environment appsettings should be written");
+
+    let options = CompileOptions {
+        environment: Some("Development".to_string()),
+        host: Some("0.0.0.0".to_string()),
+        port: Some(6000),
+        config_overrides: Vec::new(),
+    };
+    let config =
+        super::ConfigurationModel::load(&input, &options, &[]).expect("configuration should load");
+    assert_eq!(
+        config
+            .get_string("Sloppy:Providers:sqlite:main:database")
+            .expect("database key should be string"),
+        Some("dev.db".to_string())
+    );
+    assert_eq!(
+        &config
+            .get("Sloppy:Server:Port")
+            .expect("port should exist")
+            .value,
+        &serde_json::json!(6000)
+    );
+    assert_eq!(
+        &config
+            .get("Sloppy:Server:Host")
+            .expect("host should exist")
+            .value,
+        &serde_json::json!("0.0.0.0")
+    );
+
+    let mut app = super::ExtractedApp {
+        uses_data_runtime: true,
+        uses_sql_runtime: false,
+        source_files: Vec::new(),
+        routes: Vec::new(),
+        service_registrations: Vec::new(),
+        modules: Vec::new(),
+        helper_sources: Vec::new(),
+        capabilities: vec![super::DatabaseCapability {
+            token: "data.main".to_string(),
+            capability_kind: "database".to_string(),
+            provider: "sqlite".to_string(),
+            config_name: Some("main".to_string()),
+            config_key: None,
+            access: "readwrite".to_string(),
+            database: None,
+            config_source: None,
+            source_name: "app.js".to_string(),
+            source: String::new(),
+            span: super::Span::new(0, 0),
+            from_provider_use: true,
+        }],
+        configuration: None,
+        schemas: Vec::new(),
+        config_reads: Vec::new(),
+        uses_time_runtime: false,
+        uses_fs_runtime: false,
+        uses_crypto_runtime: false,
+        noncrypto_hash_security_context_visible: false,
+        uses_codec_runtime: false,
+        checksum_security_context_visible: false,
+        uses_net_runtime: false,
+        uses_os_runtime: false,
+        uses_http_client_runtime: false,
+        uses_workers_runtime: false,
+    };
+    config
+        .apply_to_app(&mut app)
+        .expect("provider config should bind");
+    assert_eq!(app.capabilities[0].database.as_deref(), Some("dev.db"));
+    assert!(app.configuration.is_some());
+
+    fs::remove_dir_all(&root).expect("config test directory should be removable");
+}
+
+#[test]
+fn configuration_precedence_includes_local_secrets_env_and_cli_overrides() {
+    let root = fixture_temp_dir("config-precedence");
+    let input = root.join("app.js");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const jwt = app.config.getSecret("Auth:JwtSecret");
+const issuer = app.config.getString("Auth:Issuer");
+app.get("/", () => Results.text("ok"));
+export default app;
+"#,
+    )
+    .expect("input should be written");
+    fs::write(
+        root.join("appsettings.json"),
+        r#"{"Auth":{"Issuer":"base","JwtSecret":"base-value"}}"#,
+    )
+    .expect("base appsettings should be written");
+    fs::write(
+        root.join("appsettings.Development.json"),
+        r#"{"Auth":{"Issuer":"environment"}}"#,
+    )
+    .expect("environment appsettings should be written");
+    fs::write(
+        root.join("appsettings.local.json"),
+        r#"{"Auth":{"Issuer":"local"}}"#,
+    )
+    .expect("local appsettings should be written");
+    fs::write(
+        root.join("appsettings.Development.local.json"),
+        r#"{"Auth":{"Issuer":"environment-local"}}"#,
+    )
+    .expect("environment local appsettings should be written");
+    fs::create_dir_all(root.join(".sloppy")).expect("secret directory should be created");
+    fs::write(
+        root.join(".sloppy").join("secrets.json"),
+        r#"{"Auth":{"JwtSecret":"store-value"}}"#,
+    )
+    .expect("user secrets should be written");
+
+    std::env::set_var("Auth__JwtSecret", "env-value");
+    let mut app = extract(
+        &input,
+        &fs::read_to_string(&input).expect("source should read"),
+    )
+    .expect("config app should extract");
+    let options = CompileOptions {
+        environment: Some("Development".to_string()),
+        host: None,
+        port: None,
+        config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+    };
+    let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)
+        .expect("configuration should load");
+    assert_eq!(
+        config
+            .get_string("Auth:JwtSecret")
+            .expect("secret key should be string"),
+        Some("env-value".to_string())
+    );
+    assert_eq!(
+        config
+            .get_string("Auth:Issuer")
+            .expect("issuer key should be string"),
+        Some("cli".to_string())
+    );
+    config
+        .apply_to_app(&mut app)
+        .expect("configuration should apply");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(!plan.contains("env-value"));
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert!(plan["configuration"]["requirements"]
+        .as_array()
+        .expect("requirements should be an array")
+        .iter()
+        .any(|requirement| requirement["key"] == "Auth:JwtSecret"
+            && requirement["status"] == "present"
+            && requirement["redaction"] == "secret"));
+    assert!(plan["configuration"]["packageManifest"]["required"]
+        .as_array()
+        .expect("required manifest should be an array")
+        .iter()
+        .any(|entry| entry["env"] == "Auth__JwtSecret" && entry["secret"] == true));
+    std::env::remove_var("Auth__JwtSecret");
+    fs::remove_dir_all(&root).expect("config test directory should be removable");
+}
+
+#[test]
+fn config_bind_descriptors_emit_required_optional_and_secret_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const auth = app.config.bind("Auth", {
+  jwtSecret: "secret",
+  tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
+  issuer: { key: "Jwt:Issuer", type: "string", required: true }
+});
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let mut app =
+        extract(std::path::Path::new("app.js"), source).expect("bind descriptors should extract");
+    assert_eq!(app.config_reads.len(), 3);
+    assert!(app
+        .config_reads
+        .iter()
+        .any(|read| { read.key == "Auth:JwtSecret" && read.sensitive && read.required }));
+    assert!(app
+        .config_reads
+        .iter()
+        .any(|read| { read.key == "Auth:TokenTtlMinutes" && read.has_default && !read.required }));
+    assert!(app
+        .config_reads
+        .iter()
+        .any(|read| read.key == "Auth:Jwt:Issuer" && !read.sensitive && read.required));
+    let config = super::ConfigurationModel {
+        environment: "Development".to_string(),
+        values: std::collections::BTreeMap::new(),
+    };
+    config
+        .apply_to_app(&mut app)
+        .expect("bind metadata should apply without requiring dev values");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let requirements = plan["configuration"]["requirements"]
+        .as_array()
+        .expect("requirements should be an array");
+    assert!(requirements
+        .iter()
+        .any(|requirement| requirement["key"] == "Auth:JwtSecret"
+            && requirement["status"] == "missing"
+            && requirement["secret"] == true));
+    assert!(requirements
+        .iter()
+        .any(|requirement| requirement["key"] == "Auth:Jwt:Issuer"
+            && requirement["status"] == "missing"
+            && requirement["secret"] == false));
+    assert!(plan["configuration"]["packageManifest"]["optional"]
+        .as_array()
+        .expect("optional manifest should be an array")
+        .iter()
+        .any(|entry| entry["key"] == "Auth:TokenTtlMinutes"
+            && entry["default"].as_f64() == Some(60.0)));
+}
+
+#[test]
+fn provider_config_preserves_declared_name_for_dotted_sqlite_names() {
+    let root =
+        std::env::temp_dir().join(format!("sloppyc-config-dotted-test-{}", std::process::id()));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("config test directory should be created");
+    let input = root.join("app.js");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("data.main"));
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+    )
+    .expect("input should be written");
+    fs::write(
+            root.join("appsettings.json"),
+            r#"{"Sloppy":{"Providers":{"sqlite":{"data.main":{"database":"dotted.db"},"main":{"database":"wrong.db"}}}}}"#,
+        )
+        .expect("appsettings should be written");
+    let out_dir = root.join(".sloppy");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("dotted provider config should bind");
+    let plan = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+    assert!(plan.contains("\"database\": \"dotted.db\""));
+    assert!(plan.contains("\"prefix\": \"Sloppy:Providers:sqlite:data.main\""));
+    assert!(!plan.contains("\"database\": \"wrong.db\""));
+
+    fs::remove_dir_all(&root).expect("config test directory should be removable");
+}
+
+#[test]
+fn repeated_sqlite_provider_use_keeps_latest_declaration() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main"));
+app.use(sqlite("main", { database: ":memory:" }));
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let mut app = extract(std::path::Path::new("app.js"), source)
+        .expect("repeated provider use should extract");
+    assert_eq!(app.capabilities.len(), 1);
+    assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+    let config = super::ConfigurationModel {
+        environment: "Development".to_string(),
+        values: std::collections::BTreeMap::new(),
+    };
+    config
+        .apply_to_app(&mut app)
+        .expect("latest inline provider declaration should not require config");
+}
+
+#[test]
+fn configuration_plan_redacts_sensitive_values() {
+    let mut config = super::ConfigurationModel {
+        environment: "Development".to_string(),
+        values: std::collections::BTreeMap::new(),
+    };
+    config.set(
+        "Sloppy:Providers:sqlite:main:password",
+        serde_json::json!("secret"),
+        "test",
+    );
+    let keys = config.plan_keys();
+    assert_eq!(keys.len(), 1);
+    assert!(keys[0].sensitive);
+    assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
+    assert!(!keys[0].value.to_string().contains("secret"));
+}
+
+#[test]
+fn configuration_plan_redacts_pwd_alias_values() {
+    let mut config = super::ConfigurationModel {
+        environment: "Development".to_string(),
+        values: std::collections::BTreeMap::new(),
+    };
+    config.set(
+        "Sloppy:Providers:sqlite:main:Pwd",
+        serde_json::json!("secret"),
+        "test",
+    );
+    let keys = config.plan_keys();
+    assert_eq!(keys.len(), 1);
+    assert!(keys[0].sensitive);
+    assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
+    assert!(!keys[0].value.to_string().contains("secret"));
+}
+
+#[test]
+fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
+    let mut config = super::ConfigurationModel {
+        environment: "Development".to_string(),
+        values: std::collections::BTreeMap::new(),
+    };
+    config.set(
+        "Sloppy:Server:Tls:CertificatePath",
+        serde_json::json!("certs/server.crt"),
+        "test",
+    );
+    config.set(
+        "Sloppy:Server:Tls:PrivateKeyPath",
+        serde_json::json!("C:/keys/server.key"),
+        "test",
+    );
+    config.set(
+        "Sloppy:Server:Tls:Passphrase",
+        serde_json::json!("secret"),
+        "test",
+    );
+    let keys = config.plan_keys();
+    assert_eq!(keys.len(), 3);
+    let certificate_path = keys
+        .iter()
+        .find(|key| key.key == "Sloppy:Server:Tls:CertificatePath")
+        .expect("certificate path should be present");
+    let key_path = keys
+        .iter()
+        .find(|key| key.key == "Sloppy:Server:Tls:PrivateKeyPath")
+        .expect("private key path should be present");
+    let passphrase = keys
+        .iter()
+        .find(|key| key.key == "Sloppy:Server:Tls:Passphrase")
+        .expect("passphrase should be present");
+    assert!(!certificate_path.sensitive);
+    assert_eq!(
+        certificate_path.value,
+        serde_json::json!("certs/server.crt")
+    );
+    assert!(!key_path.sensitive);
+    assert_eq!(key_path.value, serde_json::json!("C:/keys/server.key"));
+    assert!(passphrase.sensitive);
+    assert_eq!(passphrase.value, serde_json::json!("<redacted>"));
+    assert!(!keys
+        .iter()
+        .any(|key| key.value.to_string().contains("secret")));
+}
+
+#[test]
+fn configuration_json_rejects_empty_key_segments() {
+    let root =
+        std::env::temp_dir().join(format!("sloppyc-config-empty-key-{}", std::process::id()));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("config test directory should be created");
+    let input = root.join("app.js");
+    fs::write(&input, "export default {};").expect("input should be written");
+    fs::write(
+        root.join("appsettings.json"),
+        r#"{"Sloppy":{"Server":{"":5173}}}"#,
+    )
+    .expect("appsettings should be written");
+
+    let diagnostic = super::ConfigurationModel::load(&input, &super::CompileOptions::new(), &[])
+        .expect_err("empty config key segment should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_CONFIG_KEY");
+    assert!(
+        diagnostic.message.contains("empty config key segment"),
+        "{}",
+        diagnostic.message
+    );
+
+    fs::remove_dir_all(&root).expect("config test directory should be removable");
+}
+
+#[test]
+fn extracts_literal_map_get() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/");
+}
+
+#[test]
+fn extracts_minimal_api_methods() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/get", () => Results.text("get"));
+app.post("/post", () => Results.text("post"));
+app.put("/put", () => Results.text("put"));
+app.patch("/patch", () => Results.text("patch"));
+app.delete("/delete", () => Results.text("delete"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    let routes = app
+        .routes
+        .iter()
+        .map(|route| (route.method, route.pattern.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        routes,
+        [
+            ("GET", "/get"),
+            ("POST", "/post"),
+            ("PUT", "/put"),
+            ("PATCH", "/patch"),
+            ("DELETE", "/delete"),
+        ]
+    );
+}
+
+#[test]
+fn rejects_unsupported_direct_http_methods_explicitly() {
+    for method in ["head", "options"] {
+        let source = format!(
+            r#"import {{ Sloppy, Results }} from "sloppy";
+const app = Sloppy.create();
+app.{method}("/", () => Results.text("unsupported"));
+export default app;
+"#
+        );
+        let diagnostic = extract(std::path::Path::new("app.js"), &source)
+            .expect_err("unsupported direct HTTP method should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD");
+    }
+}
+
+#[test]
+fn extracts_nested_route_groups() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const api = app.group("/api");
+const users = api.group("/users");
+users.get("/{id:int}", () => Results.json({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].method, "GET");
+    assert_eq!(app.routes[0].pattern, "/api/users/{id:int}");
+}
+
+#[test]
+fn typed_framework_route_bindings_use_full_grouped_pattern() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const users = app.group("/users/:userId");
+users.get("/posts/:postId", (userId: number, postId: number) => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed grouped route should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users/{userId}/posts/{postId}");
+    assert_eq!(
+        app.routes[0].framework_path.as_deref(),
+        Some("/users/:userId/posts/:postId")
+    );
+    let bindings = app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bindings,
+        [("route", Some("userId")), ("route", Some("postId")),]
+    );
+}
+
+#[test]
+fn typed_framework_colon_route_type_suffix_binds_name() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id:int", (id: number) => Results.ok({ id }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed colon route with type suffix should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users/{id:int}");
+    let bindings = app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(bindings, [("route", Some("id"))]);
+}
+
+#[test]
+fn extracts_direct_and_nested_function_module_routes() {
+    let root = fixture_temp_dir("function-module-routes");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/module-health", () => Results.text("ok"));
+    const api = app.group("/api");
+    const users = api.group("/users");
+    users.post("/", () => Results.json({ ok: true }));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert_eq!(app.modules.len(), 1);
+    assert_eq!(app.modules[0].name, "usersModule");
+    let routes = app
+        .routes
+        .iter()
+        .map(|route| {
+            (
+                route.method,
+                route.pattern.as_str(),
+                route.module.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        routes,
+        [
+            ("GET", "/health", None),
+            ("GET", "/module-health", Some("usersModule")),
+            ("POST", "/api/users", Some("usersModule")),
+        ]
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"module\": \"usersModule\""));
+    assert!(plan.contains("\"path\": \"users.js\""));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn typed_function_module_route_bindings_use_full_grouped_pattern() {
+    let root = fixture_temp_dir("function-module-typed-groups");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.ts"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const users = app.group("/users/:userId");
+    users.get("/posts/:postId", (userId: number, postId: number) => Results.ok({ ok: true }));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.ts";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("typed grouped function module route should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users/{userId}/posts/{postId}");
+    assert_eq!(app.routes[0].module.as_deref(), Some("usersModule"));
+    let bindings = app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bindings,
+        [("route", Some("userId")), ("route", Some("postId")),]
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_sloppy_time_import_emits_required_feature() {
+    let root = fixture_temp_dir("function-module-time-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("jobs.js"),
+        r#"import { Results } from "sloppy";
+import { Time, Deadline } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_time_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Time, Deadline"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
+    assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_sloppy_net_import_emits_required_feature() {
+    let root = fixture_temp_dir("function-module-net-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("tcp.js"),
+        r#"import { Results } from "sloppy";
+import { TcpClient, TcpConnection } from "sloppy/net";
+
+export function tcpModule(app) {
+    app.get("/tcp", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { tcpModule } from "./modules/tcp.js";
+
+const app = Sloppy.create();
+app.useModule(tcpModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("TcpClient"));
+    assert!(emitted_js.source.contains("TcpConnection"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.net"]));
+    assert_eq!(plan["features"]["network"], serde_json::json!(true));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_sloppy_net_http_client_import_emits_http_client_required_feature() {
+    let root = fixture_temp_dir("function-module-http-client-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("billing.js"),
+        r#"import { Results } from "sloppy";
+import { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.js";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_http_client_runtime);
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(
+        plan["requiredFeatures"],
+        serde_json::json!(["stdlib.httpclient"])
+    );
+    assert_eq!(plan["features"]["httpClient"], serde_json::json!(true));
+    assert_eq!(
+        plan["strongPlan"]["evidence"]["httpClient"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        plan["doctorChecks"][0]["id"],
+        serde_json::json!("stdlib.httpclient.contract")
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_sloppy_workers_import_emits_required_feature() {
+    let root = fixture_temp_dir("function-module-workers-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("jobs.js"),
+        r#"import { Results } from "sloppy";
+import { WorkerPool } from "sloppy/workers";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_workers_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("WorkerPool"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(
+        plan["requiredFeatures"],
+        serde_json::json!(["stdlib.workers"])
+    );
+    assert_eq!(plan["features"]["workers"], serde_json::json!(true));
+    assert_eq!(
+        plan["strongPlan"]["evidence"]["workers"],
+        serde_json::json!(true)
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_sloppy_codec_import_emits_required_feature() {
+    let root = fixture_temp_dir("function-module-codec-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("payloads.js"),
+        r#"import { Results } from "sloppy";
+import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
+
+export function payloadsModule(app) {
+    app.get("/payloads", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { payloadsModule } from "./modules/payloads.js";
+
+const app = Sloppy.create();
+app.useModule(payloadsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_codec_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Base64"));
+    assert!(emitted_js.source.contains("Checksums"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(
+        plan["requiredFeatures"],
+        serde_json::json!(["stdlib.codec"])
+    );
+    assert_eq!(plan["features"]["codec"], serde_json::json!(true));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_type_only_sloppy_net_import_does_not_emit_required_feature() {
+    let root = fixture_temp_dir("function-module-type-only-net-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("tcp.ts"),
+        r#"import { Results } from "sloppy";
+import type { TcpClient } from "sloppy/net";
+
+export function tcpModule(app) {
+    app.get("/tcp", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { tcpModule } from "./modules/tcp.ts";
+
+const app = Sloppy.create();
+app.useModule(tcpModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let input = root.join("input.ts");
+    fs::write(&input, source).expect("fixture input should be writable");
+    let app = extract(&input, source).expect("fixture should extract");
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("TcpClient"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert!(plan.get("requiredFeatures").is_none());
+    assert!(plan["features"].get("network").is_none());
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_type_only_sloppy_net_http_client_import_does_not_emit_required_feature() {
+    let root = fixture_temp_dir("function-module-type-only-http-client-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("billing.ts"),
+        r#"import { Results } from "sloppy";
+import type { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.ts";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let input = root.join("input.ts");
+    fs::write(&input, source).expect("fixture input should be writable");
+    let app = extract(&input, source).expect("fixture should extract");
+    assert!(!app.uses_http_client_runtime);
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("HttpClient"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert!(plan.get("requiredFeatures").is_none());
+    assert!(plan["features"].get("httpClient").is_none());
+    assert!(plan["features"].get("network").is_none());
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_type_only_sloppy_time_import_does_not_emit_required_feature() {
+    let root = fixture_temp_dir("function-module-type-only-time-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("jobs.ts"),
+        r#"import { Results } from "sloppy";
+import type { Deadline } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.ts";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let input = root.join("input.ts");
+    fs::write(&input, source).expect("fixture input should be writable");
+    let app = extract(&input, source).expect("fixture should extract");
+    assert!(!app.uses_time_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("Deadline"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert!(plan.get("requiredFeatures").is_none());
+    assert!(plan["features"].get("time").is_none());
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_invalid_sloppy_time_import_uses_import_diagnostic() {
+    let root = fixture_temp_dir("function-module-invalid-time-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("jobs.js"),
+        r#"import { Results } from "sloppy";
+import { Time as Clock } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract_temp_input(&root, source)
+        .expect_err("invalid sloppy/time import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"Time\""));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn emits_used_function_modules_without_routes() {
+    let root = fixture_temp_dir("empty-function-module");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("empty.js"),
+        r#"export function emptyModule(app) {
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { emptyModule } from "./modules/empty.js";
+
+const app = Sloppy.create();
+app.useModule(emptyModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.modules.len(), 1);
+    assert_eq!(app.modules[0].name, "emptyModule");
+    assert!(app.modules[0].source_name.ends_with("empty.js"));
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"name\": \"emptyModule\""));
+    assert!(plan.contains("empty.js"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn rejects_invalid_composed_function_module_route_pattern() {
+    let root = fixture_temp_dir("invalid-module-route-pattern");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const api = app.group("/api");
+    api.get("/users/", () => Results.text("bad"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("invalid module route should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN");
+    assert!(diagnostic
+        .path
+        .as_deref()
+        .is_some_and(|path| path.ends_with("modules/users.js")));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn rejects_duplicate_method_and_path_routes() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/dupe", () => Results.text("one"));
+app.get("/dupe", () => Results.text("two"));
+export default app;
+"#;
+    let diagnostic =
+        extract(std::path::Path::new("app.js"), source).expect_err("duplicate routes should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+}
+
+#[test]
+fn duplicate_module_routes_report_module_source() {
+    let root = fixture_temp_dir("duplicate-module-routes");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    let module_path = modules.join("users.js");
+    fs::write(
+        &module_path,
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/dupe", () => Results.text("module"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let input = root.join("input.js");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/dupe", () => Results.text("entry"));
+export default app;
+"#,
+    )
+    .expect("input fixture should be writable");
+    let out_dir = root.join("out");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("duplicate route should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+    let canonical_module_path =
+        fs::canonicalize(&module_path).expect("module path should canonicalize");
+    assert_eq!(
+        failure.diagnostic.path.as_deref(),
+        Some(canonical_module_path.as_path())
+    );
+    let rendered = failure.diagnostic.render(failure.source.as_deref());
+    assert!(rendered.contains("users.js:4:5"), "{rendered}");
+    assert!(
+        rendered.contains(r#"4 |     app.get("/dupe", () => Results.text("module"));"#),
+        "{rendered}"
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn duplicate_module_route_names_report_module_source() {
+    let root = fixture_temp_dir("duplicate-module-route-names");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    let module_path = modules.join("users.js");
+    fs::write(
+        &module_path,
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/module", () => Results.text("module")).withName("Users.Get");
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let input = root.join("input.js");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/entry", () => Results.text("entry")).withName("Users.Get");
+export default app;
+"#,
+    )
+    .expect("input fixture should be writable");
+    let out_dir = root.join("out");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("duplicate route name should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE_NAME");
+    let canonical_module_path =
+        fs::canonicalize(&module_path).expect("module path should canonicalize");
+    assert_eq!(
+        failure.diagnostic.path.as_deref(),
+        Some(canonical_module_path.as_path())
+    );
+    let rendered = failure.diagnostic.render(failure.source.as_deref());
+    assert!(rendered.contains("users.js:4:5"), "{rendered}");
+    assert!(
+        rendered.contains(
+            r#"4 |     app.get("/module", () => Results.text("module")).withName("Users.Get");"#
+        ),
+        "{rendered}"
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn rejects_missing_module_function_binding() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("missing module function should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE");
+}
+
+#[test]
+fn rejects_wrong_module_export_shape() {
+    let root = fixture_temp_dir("wrong-module-shape");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"export const usersModule = () => {};
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract_temp_input(&root, source).expect_err("wrong module shape should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE");
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn rejects_dynamic_route_pattern() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const pattern = "/";
+app.mapGet(pattern, () => Results.text("Hello"));
+export default app;
+"#;
+    let diagnostic =
+        extract(std::path::Path::new("app.js"), source).expect_err("dynamic route should fail");
+    assert_eq!(
+        diagnostic.code,
+        "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
+    );
+}
+
+#[test]
+fn rejects_static_route_segments_with_stray_braces() {
+    assert!(!route_pattern_supported("/foo{bar"));
+    assert!(!route_pattern_supported("/a}b"));
+    assert!(!route_pattern_supported("/{id{slug}}"));
+}
+
+#[test]
+fn accepts_supported_http_result_helpers() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+app.mapGet("/empty", () => Results.noContent());
+app.mapGet("/created", () => Results.created("/users/1", { id: 1 }));
+app.mapGet("/accepted", () => Results.accepted({ queued: true }));
+app.mapGet("/not-found", () => Results.notFound({ error: "missing" }));
+app.mapGet("/bad", () => Results.badRequest({ error: "bad" }));
+app.mapGet("/status", () => Results.status(202, { accepted: true }));
+app.mapGet("/problem", () => Results.problem("broken"));
+app.mapGet("/html", () => Results.html("<p>ok</p>"));
+app.mapGet("/bytes", () => Results.bytes(new Uint8Array([0, 65, 255]), { contentType: "application/x-test" }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.routes.len(), 10);
+    assert_eq!(app.routes[0].pattern, "/ok");
+    assert_eq!(app.routes[1].pattern, "/empty");
+    assert_eq!(app.routes[2].pattern, "/created");
+    assert_eq!(app.routes[7].pattern, "/problem");
+    assert_eq!(app.routes[8].pattern, "/html");
+    assert_eq!(app.routes[9].pattern, "/bytes");
+}
+
+#[test]
+fn extracts_schema_binding_config_and_result_metadata() {
+    let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({
+  name: schema.string().min(1),
+  tags: schema.array(schema.string()).optional()
+});
+const app = Sloppy.create();
+const host = app.config.getString("Sloppy:Server:Host", "127.0.0.1");
+app.post("/users/{id:int}", (ctx) => Results.json({
+  id: ctx.route.id,
+  search: ctx.query.q,
+  agent: ctx.header.userAgent,
+  body: ctx.body.json(UserCreate)
+}));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.js"), source).expect("metadata fixture should extract");
+    assert_eq!(app.schemas.len(), 1);
+    assert_eq!(app.schemas[0].name, "UserCreate");
+    assert_eq!(app.config_reads.len(), 1);
+    assert_eq!(app.config_reads[0].key, "Sloppy:Server:Host");
+    assert_eq!(app.routes[0].handler.bindings.len(), 4);
+    assert_eq!(
+        app.routes[0]
+            .handler
+            .response
+            .as_ref()
+            .map(|response| (response.helper.as_str(), response.status)),
+        Some(("json", 200))
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.json(UserCreate)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["schemas"][0]["name"], "UserCreate");
+    assert_eq!(plan["configReads"][0]["key"], "Sloppy:Server:Host");
+    assert_eq!(plan["routes"][0]["bindings"][0]["kind"], "route");
+    assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+    assert_eq!(plan["features"]["metadataInference"], true);
+}
+
+#[test]
+fn extracts_bindings_for_named_context_parameter() {
+    let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const app = Sloppy.create();
+app.post("/users/{id:int}", (request) => Results.json({
+  id: request.route.id,
+  body: request.body.json(UserCreate)
+}));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("named context fixture should extract");
+    assert_eq!(app.routes[0].handler.bindings.len(), 2);
+    assert_eq!(app.routes[0].handler.bindings[0].kind, "route");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].name.as_deref(),
+        Some("id")
+    );
+    assert_eq!(app.routes[0].handler.bindings[1].kind, "body.json");
+    assert_eq!(
+        app.routes[0].handler.bindings[1].schema.as_deref(),
+        Some("UserCreate")
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("request.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("request.body.json(UserCreate)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["features"]["metadataInference"], true);
+    assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+}
+
+#[test]
+fn extracts_body_schema_declared_after_route() {
+    let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.json(UserCreate) }));
+const UserCreate = schema.object({ name: schema.string() });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("schema name prepass should make route order independent");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].schema.as_deref(),
+        Some("UserCreate")
+    );
+}
+
+#[test]
+fn emits_response_metadata_for_response_only_routes() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("response-only fixture should extract");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["features"]["metadataInference"], true);
+    assert_eq!(plan["features"]["strongPlanMetadata"], true);
+    assert_eq!(plan["completeness"]["status"], "complete");
+    assert_eq!(plan["routes"][0]["completeness"]["status"], "complete");
+    assert_eq!(plan["routes"][0]["response"]["helper"], "text");
+    assert_eq!(plan["sourceFiles"][0]["path"], "app.js");
+    assert_eq!(plan["strongPlan"]["profile"], "compiler-30-strong-plan");
+}
+
+#[test]
+fn dynamic_status_result_does_not_emit_response_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/status", (ctx) => Results.status(ctx.route.code, { ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("dynamic status route should extract");
+    assert!(app.routes[0].handler.response.is_none());
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["completeness"]["status"], "partial");
+    assert_eq!(
+        plan["routes"][0]["completeness"]["reasons"][0]["code"],
+        "response-metadata-missing"
+    );
+}
+
+#[test]
+fn body_json_without_schema_marks_route_partial() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.json() }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("body json without schema should extract as partial metadata");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial body plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["completeness"]["status"], "partial");
+    assert_eq!(
+        plan["routes"][0]["completeness"]["reasons"][0]["code"],
+        "body-schema-missing"
+    );
+}
+
+#[test]
+fn does_not_extract_schema_without_schema_import() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("unbound local schema expression should stay outside Sloppy DSL");
+    assert!(app.schemas.is_empty());
+}
+
+#[test]
+fn rejects_invalid_schema_and_config_metadata() {
+    let invalid_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object(UserShape);
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), invalid_schema)
+        .expect_err("invalid schema should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+    let invalid_config = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const key = "Sloppy:Server:Host";
+const host = app.config.getString(key);
+app.get("/", () => Results.text(host));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), invalid_config)
+        .expect_err("invalid config key should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_CONFIG_KEY");
+
+    let invalid_body_helper = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/", (ctx) => Results.json({ form: ctx.body.formData() }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), invalid_body_helper)
+        .expect_err("invalid body helper should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+
+    let unknown_body_schema = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const options = {};
+app.post("/", (ctx) => Results.json({ body: ctx.body.json(options) }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), unknown_body_schema)
+        .expect_err("unknown body schema identifier should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+
+    let invalid_schema_modifier = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({ email: schema.string().email("strict") });
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), invalid_schema_modifier)
+        .expect_err("schema modifier arity should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+    let conditional_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const flag = true;
+const UserCreate = flag ? schema.string() : schema.number();
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), conditional_schema)
+        .expect_err("conditional schema should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+    let wrapped_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = wrap(schema.string());
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), wrapped_schema)
+        .expect_err("schema hidden in call arguments should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+    let object_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = { value: schema.string() };
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), object_schema)
+        .expect_err("schema hidden in object values should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+    let array_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = [schema.string()][0];
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), array_schema)
+        .expect_err("schema hidden in array elements should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+}
+
+#[test]
+fn extracts_route_metadata_without_runtime_claims() {
+    let source = r#"import { Sloppy, Results, data } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("users.db", { provider: "sqlite", access: "read" });
+const app = builder.build();
+app.mapPost("/users", async () => Results.json({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].method, "POST");
+    assert!(app.routes[0].handler.is_async);
+    assert_eq!(app.capabilities.len(), 1);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("const { Results, data }"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    assert!(emitted_source_map.contains("\"sourcesContent\""));
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"asyncHandlers\": true"));
+    assert!(plan.contains("\"method\": \"POST\""));
+    assert!(plan.contains("\"provider\": \"sqlite\""));
+}
+
+#[test]
+fn data_backed_handlers_may_preserve_runtime_body_shape() {
+    let source = r#"import { Sloppy, Results, data } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: "users-api-sqlite-runtime.db",
+});
+const app = builder.build();
+app.mapPost("/users", (ctx) => {
+  const body = ctx.request.json();
+  const db = data.sqlite("main");
+  try {
+    db.exec("create table if not exists users (id integer primary key, name text not null)", []);
+    db.exec("insert into users (name) values (?)", [body.name]);
+    return Results.created("/users/1", db.queryOne("select id, name from users where id = last_insert_rowid()", []));
+  } finally {
+    db.close();
+  }
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("data-backed handler body should be preserved for runtime execution");
+    assert_eq!(app.routes.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .source
+        .contains("data.sqlite(\"main\")"));
+    assert!(app.routes[0].handler.source.contains("ctx.request.json()"));
+    assert_eq!(app.capabilities.len(), 1);
+}
+
+#[test]
+fn data_backed_body_json_with_extra_arguments_is_not_sanitized() {
+    let source = r#"import { Sloppy, Results, data, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const opts = {};
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: "users-api-sqlite-runtime.db",
+});
+const app = builder.build();
+app.mapPost("/users", (ctx) => Results.json({ body: ctx.body.json(UserCreate, opts) }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("data-backed handler body should be preserved for runtime execution");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("ctx.body.json(UserCreate, opts)"));
+    assert!(!emitted_js.source.contains("ctx.body.json(undefined, opts)"));
+}
+
+#[test]
+fn infers_direct_provider_read_effect_without_manual_uses() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id, name from users", [])));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("direct provider read should infer effects");
+    assert_eq!(app.capabilities[0].access, "read");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert_eq!(app.routes[0].handler.effects[0].provider, "data.main");
+    assert_eq!(app.routes[0].handler.effects[0].capability_kind, "database");
+    assert_eq!(app.routes[0].handler.effects[0].provider_kind, "sqlite");
+    assert_eq!(app.routes[0].handler.effects[0].access, "read");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["capabilities"][0]["access"], "read");
+    assert_eq!(plan["capabilities"][0]["kind"], "database");
+    assert_eq!(plan["dataProviders"][0]["capabilityKind"], "database");
+    assert_eq!(plan["dataProviders"][0]["providerKind"], "sqlite");
+    assert_eq!(
+        plan["routes"][0]["effects"][0]["capabilityKind"],
+        "database"
+    );
+    assert_eq!(plan["routes"][0]["effects"][0]["providerKind"], "sqlite");
+    assert_eq!(plan["routes"][0]["effects"][0]["operation"], "query");
+}
+
+#[test]
+fn infers_provider_write_and_readwrite_effects() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.post("/users", () => {
+  db.exec("insert into users (name) values (?)", ["Ada"]);
+  return Results.json(db.queryOne("select id, name from users where name = ?", ["Ada"]));
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("mixed provider usage should infer readwrite");
+    assert_eq!(app.capabilities[0].access, "readwrite");
+    assert_eq!(app.routes[0].handler.effects.len(), 2);
+    assert!(app.routes[0]
+        .handler
+        .effects
+        .iter()
+        .any(|effect| effect.access == "write"));
+    assert!(app.routes[0]
+        .handler
+        .effects
+        .iter()
+        .any(|effect| effect.access == "read"));
+}
+
+#[test]
+fn provider_effect_model_is_database_provider_generic() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.analytics", { provider: "postgres", access: "readwrite" });
+builder.capabilities.addDatabase("data.reporting", { provider: "sqlserver", access: "read" });
+const app = builder.build();
+const analytics = app.provider("postgres:analytics");
+app.get("/analytics", () => Results.json({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("database provider metadata should not be sqlite-only");
+    assert_eq!(app.capabilities.len(), 2);
+    assert_eq!(app.capabilities[0].provider, "postgres");
+    assert_eq!(app.capabilities[1].provider, "sqlserver");
+    assert!(app.routes[0].handler.effects.is_empty());
+    let binding = super::database_provider_binding_from_token("postgres:analytics")
+        .expect("postgres binding should be recognized");
+    assert_eq!(binding.capability_kind, "database");
+    assert_eq!(binding.provider, "postgres");
+    assert_eq!(binding.token, "data.analytics");
+}
+
+#[test]
+fn rejects_non_sqlite_generated_provider_bridge_until_runtime_exists() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.analytics", { provider: "postgres", access: "readwrite" });
+const app = builder.build();
+const analytics = app.provider("postgres:analytics");
+app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("non-sqlite generated bridge should be rejected honestly");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE");
+}
+
+#[test]
+fn rejects_provider_effect_without_registered_provider() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id from users", [])));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("provider effects require a registered provider");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_MISSING_PROVIDER");
+    assert!(diagnostic.message.contains("database provider"));
+}
+
+#[test]
+fn infers_same_file_helper_effects_without_manual_uses() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+function listUsers() {
+  return db.query("select id, name from users", []);
+}
+app.get("/users", () => Results.json(listUsers()));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("same-file helper should infer provider effects");
+    assert_eq!(app.capabilities[0].access, "read");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function listUsers()"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    assert!(!app.routes[0].handler.source.contains("uses"));
+}
+
+#[test]
+fn infers_provider_effects_inside_control_flow() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", (ctx) => {
+  if (ctx.query.write) {
+    db.exec("insert into users (name) values (?)", ["Ada"]);
+  }
+  return Results.json(db.query("select id from users", []));
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("control-flow provider calls should infer effects");
+    assert_eq!(app.capabilities[0].access, "readwrite");
+    assert!(app.routes[0]
+        .handler
+        .effects
+        .iter()
+        .any(|effect| effect.access == "write"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn resolves_multi_hop_helper_effects() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+function readUsers() {
+  return db.query("select id from users", []);
+}
+function listUsers() {
+  return readUsers();
+}
+app.get("/users", () => Results.json(listUsers()));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("multi-hop helper effects should be resolved");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert_eq!(app.routes[0].handler.effects[0].access, "read");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn preindexes_later_function_helpers_before_route_extraction() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(listUsers()));
+function listUsers() {
+  return db.query("select id from users", []);
+}
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("later helper declaration should be indexed before routes");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn rejects_unrelated_closed_over_values_when_provider_exists_elsewhere() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+const config = { message: "hello" };
+app.get("/message", () => Results.text(config.message));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("unrelated closed-over state should not be accepted");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+}
+
+#[test]
+fn rejects_unknown_provider_handle_usage() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.prepare("select id from users")));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("unknown provider method should fail closed");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+}
+
+#[test]
+fn infers_provider_effects_inside_expression_wrappers() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", (ctx) => Results.json(ctx.query.all ? db.query("select id from users", []) : []));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("conditional provider calls should infer effects");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert_eq!(app.routes[0].handler.effects[0].access, "read");
+}
+
+#[test]
+fn manual_database_capability_overrides_provider_use_duplicate() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", { provider: "sqlite", access: "readwrite", database: ":memory:" });
+const app = builder.build();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id from users", [])));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("manual capability should override synthetic provider use");
+    assert_eq!(app.capabilities.len(), 1);
+    assert_eq!(app.capabilities[0].access, "readwrite");
+    assert!(!app.capabilities[0].from_provider_use);
+}
+
+#[test]
+fn detects_dynamic_import_inside_function_helper() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function loadPlugin() {
+  return import("./plugin.js");
+}
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("dynamic import in helper should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT");
+}
+
+#[test]
+fn classifies_with_sql_as_write_by_default() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.post("/users", () => {
+  db.exec("with input(name) as (values ('Ada')) insert into users(name) select name from input", []);
+  return Results.noContent();
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("WITH SQL should default to write access");
+    assert_eq!(app.routes[0].handler.effects[0].access, "write");
+    assert_eq!(app.capabilities[0].access, "write");
+}
+
+#[test]
+fn database_capability_accepts_matching_path_alias() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: ":memory:",
+  path: ":memory:",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.capabilities.len(), 1);
+    assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"database\": \":memory:\""));
+}
+
+#[test]
+fn database_capability_accepts_path_alias_only() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  path: ":memory:",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert_eq!(app.capabilities.len(), 1);
+    assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"database\": \":memory:\""));
+}
+
+#[test]
+fn sloppy_fs_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { File, Directory, Path } from "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/fs import should be recognized");
+    assert!(app.uses_fs_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(value["requiredFeatures"], serde_json::json!(["stdlib.fs"]));
+    assert_eq!(value["features"]["fileSystem"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["filesystem"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_time_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Time, Deadline, CancellationController } from "sloppy/time";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/time import should be recognized");
+    assert!(app.uses_time_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "const { Results, Time, Deadline, CancellationController, TimeoutError, CancelledError, InvalidDeadlineError, TimerDisposedError } = __sloppyRuntime;"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.time"])
+    );
+    assert_eq!(value["features"]["time"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["time"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_crypto_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash } from "sloppy/crypto";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/crypto import should be recognized");
+    assert!(app.uses_crypto_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "const { Results, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash } = __sloppyRuntime;"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.crypto"])
+    );
+    assert_eq!(value["features"]["crypto"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["crypto"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_crypto_noncrypto_hash_security_context_emits_doctor_warning() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { NonCryptoHash } from "sloppy/crypto";
+const app = Sloppy.create();
+const tokenHash = NonCryptoHash.xxHash64("token");
+app.mapGet("/token", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/crypto import should be recognized");
+    assert!(app.noncrypto_hash_security_context_visible);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        value["doctorChecks"][0]["id"],
+        serde_json::json!("stdlib.crypto.noncrypto_hash.security_context")
+    );
+    assert_eq!(
+        value["doctorChecks"][0]["status"],
+        serde_json::json!("warn")
+    );
+}
+
+#[test]
+fn sloppy_crypto_noncrypto_hash_security_context_scans_tokens() {
+    assert!(noncrypto_hash_security_context_visible(
+        r#"const tokenHash = NonCryptoHash . xxHash64(value);"#
+    ));
+    assert!(!noncrypto_hash_security_context_visible(
+        r#"const machineId = NonCryptoHash.xxHash64(value);"#
+    ));
+    assert!(!noncrypto_hash_security_context_visible(
+        r#"const cacheHash = NonCryptoHash.xxHash64("token");"#
+    ));
+    assert!(!noncrypto_hash_security_context_visible(
+        r#"const tokenHash = NonCryptoHashxxHash64(value);"#
+    ));
+}
+
+#[test]
+fn sloppy_crypto_import_alias_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Random as R } from "sloppy/crypto";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("aliased sloppy/crypto import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"Random\""));
+}
+
+#[test]
+fn sloppy_net_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { TcpClient, TcpListener, TcpConnection, NetworkAddress } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/net import should be recognized");
+    assert!(app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "const { Results, TcpClient, TcpListener, TcpConnection, NetworkAddress } = __sloppyRuntime;"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(value["requiredFeatures"], serde_json::json!(["stdlib.net"]));
+    assert_eq!(value["features"]["network"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["network"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_os_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { System, Environment, Process, Signals } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/os import should be recognized");
+    assert!(app.uses_os_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results, System, Environment, Process, Signals } = __sloppyRuntime;"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(value["requiredFeatures"], serde_json::json!(["stdlib.os"]));
+    assert_eq!(value["features"]["os"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["os"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_net_http_client_import_emits_http_client_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { HttpClient } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/net HttpClient import should be recognized");
+    assert!(app.uses_http_client_runtime);
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.httpclient"])
+    );
+    assert_eq!(value["features"]["httpClient"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClient"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        value["doctorChecks"][0]["id"],
+        serde_json::json!("stdlib.httpclient.contract")
+    );
+}
+
+#[test]
+fn sloppy_workers_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { BackgroundService, WorkQueue, WorkerPool, Worker } from "sloppy/workers";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/workers import should be recognized");
+    assert!(app.uses_workers_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "const { Results, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.workers"])
+    );
+    assert_eq!(value["features"]["workers"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["workers"],
+        serde_json::json!(true)
+    );
+    assert!(value.get("workers").is_none());
+    assert!(value.get("doctorChecks").is_none());
+}
+
+#[test]
+fn sloppy_workers_type_only_import_does_not_require_runtime_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { WorkerPool } from "sloppy/workers";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("type-only sloppy/workers import should be recognized");
+    assert!(!app.uses_workers_runtime);
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert!(value.get("requiredFeatures").is_none());
+}
+
+#[test]
+fn typed_framework_queue_injection_infers_capability_and_default_service() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { WorkQueue } from "sloppy/workers";
+const app = Sloppy.create();
+app.post("/emails", async (emails: WorkQueue<"emails">) => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed queue injection should extract");
+    assert!(app.uses_workers_runtime);
+    assert!(app.capabilities.iter().any(|capability| {
+        capability.token == "queue.emails"
+            && capability.capability_kind == "queue"
+            && capability.access == "enqueue"
+    }));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "__sloppy_framework_services.addSingleton(\"queue.emails\", () => WorkQueue.create(\"emails\"));"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.workers"])
+    );
+    assert_eq!(
+        value["capabilities"][0],
+        serde_json::json!({
+            "access": "enqueue",
+            "kind": "queue",
+            "source": {
+                "column": 28,
+                "line": 4,
+                "path": "app.ts"
+            },
+            "token": "queue.emails"
+        })
+    );
+}
+
+#[test]
+fn sloppy_codec_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/codec import should be recognized");
+    assert!(app.uses_codec_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+            "const { Results, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } = __sloppyRuntime;"
+        ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.codec"])
+    );
+    assert_eq!(value["features"]["codec"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["codec"],
+        serde_json::json!(true)
+    );
+}
+
+#[test]
+fn sloppy_codec_checksum_security_context_emits_doctor_warning() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Checksums } from "sloppy/codec";
+const app = Sloppy.create();
+const tokenChecksum = Checksums.crc32(Text.utf8.encode("token"));
+app.mapGet("/token", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/codec import should be recognized");
+    assert!(app.checksum_security_context_visible);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["strongPlan"]["evidence"]["checksumSecurityContext"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        value["doctorChecks"][0]["id"],
+        serde_json::json!("stdlib.codec.checksum.security_context")
+    );
+    assert_eq!(
+        value["doctorChecks"][0]["status"],
+        serde_json::json!("warn")
+    );
+}
+
+#[test]
+fn sloppy_codec_checksum_security_context_flows_from_relative_module() {
+    let root = fixture_temp_dir("codec-checksum-module");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("checks.js"),
+        r#"import { Results } from "sloppy";
+import { Checksums } from "sloppy/codec";
+
+export function tokenChecksumModule(app) {
+    const tokenChecksum = Checksums.crc32(new Uint8Array([1, 2, 3]));
+    app.get("/token-checksum", () => Results.text("ok"));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { tokenChecksumModule } from "./modules/checks.js";
+
+const app = Sloppy.create();
+app.useModule(tokenChecksumModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    assert!(app.uses_codec_runtime);
+    assert!(app.checksum_security_context_visible);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(
+        value["strongPlan"]["evidence"]["checksumSecurityContext"],
+        serde_json::json!(true)
+    );
+    assert!(value["doctorChecks"]
+        .as_array()
+        .is_some_and(|checks| checks.iter().any(|check| check["id"]
+            == serde_json::json!("stdlib.codec.checksum.security_context")
+            && check["status"] == serde_json::json!("warn"))));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn sloppy_codec_checksum_security_context_scans_tokens() {
+    assert!(checksum_security_context_visible(
+        r#"const tokenChecksum = Checksums . crc32(value);"#
+    ));
+    assert!(!checksum_security_context_visible(
+        r#"const tokenChecksum = checksums.crc32(value);"#
+    ));
+    assert!(!checksum_security_context_visible(
+        r#"const cacheChecksum = Checksums.crc32(value);"#
+    ));
+    assert!(!checksum_security_context_visible(
+        r#"const cacheChecksum = Checksums.crc32("token");"#
+    ));
+    assert!(!checksum_security_context_visible(
+        r#"const tokenChecksum = Checksumscrc32(value);"#
+    ));
+}
+
+#[test]
+fn sloppy_codec_import_alias_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Base64 as B64 } from "sloppy/codec";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("aliased sloppy/codec import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"Base64\""));
+}
+
+#[test]
+fn type_only_sloppy_net_import_does_not_emit_runtime_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { TcpClient } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("type-only sloppy/net import should be recognized");
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("TcpClient"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert!(value.get("requiredFeatures").is_none());
+    assert!(value["features"].get("network").is_none());
+    assert!(value["strongPlan"]["evidence"].get("network").is_none());
+}
+
+#[test]
+fn type_only_sloppy_os_import_does_not_emit_runtime_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { Process } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("type-only sloppy/os import should be recognized");
+    assert!(!app.uses_os_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("Process"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert!(value.get("requiredFeatures").is_none());
+    assert!(value["features"].get("os").is_none());
+    assert!(value["strongPlan"]["evidence"].get("os").is_none());
+}
+
+#[test]
+fn sloppy_net_import_alias_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { TcpClient as Client } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("aliased sloppy/net import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"TcpClient\""));
+}
+
+#[test]
+fn sloppy_os_import_alias_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Process as ChildProcess } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("aliased sloppy/os import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"Process\""));
+}
+
+#[test]
+fn side_effect_sloppy_fs_import_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("side-effect sloppy/fs import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+    assert!(diagnostic
+        .message
+        .contains("unsupported import specifier \"sloppy/fs\""));
+}
+
+#[test]
+fn side_effect_sloppy_time_import_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import "sloppy/time";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("side-effect sloppy/time import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+    assert!(diagnostic
+        .message
+        .contains("unsupported import specifier \"sloppy/time\""));
+}
+
+#[test]
+fn empty_named_sloppy_fs_import_is_rejected() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import {} from "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("empty named sloppy/fs import should be rejected");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+    assert!(diagnostic
+        .message
+        .contains("unsupported import specifier \"sloppy/fs\""));
+}
+
+#[test]
+fn database_capability_rejects_mismatched_path_alias() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: ":memory:",
+  path: "app.db",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("mismatched database/path alias should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE");
+    assert_eq!(
+        diagnostic.message,
+        "database capability cannot declare different database and path values"
+    );
+}
+
+#[test]
+fn extracts_function_module_routes_and_provider_metadata() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("tests/fixtures/function-module/input.js");
+    let source = fs::read_to_string(&input).expect("fixture input should exist");
+    let app = extract(&input, &source).expect("function module fixture should extract");
+
+    assert_eq!(app.routes.len(), 2);
+    assert_eq!(app.routes[0].pattern, "/health");
+    assert_eq!(app.routes[1].pattern, "/users");
+    assert_eq!(app.routes[1].module.as_deref(), Some("usersModule"));
+    assert_eq!(app.capabilities.len(), 1);
+    assert_eq!(app.capabilities[0].token, "data.main");
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("const { Results, data }"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    assert!(emitted_source_map.contains("\"users.js\""));
+    assert!(emitted_source_map.contains("\"input.js\""));
+
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    assert!(plan.contains("\"module\": \"usersModule\""));
+    assert!(plan.contains("\"path\": \"users.js\""));
+}
+
+#[test]
+fn extracts_multiple_function_modules_from_same_file() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("tests/fixtures/function-module-same-file/input.js");
+    let source = fs::read_to_string(&input).expect("fixture input should exist");
+    let app = extract(&input, &source).expect("same-file function modules should extract");
+
+    assert_eq!(app.routes.len(), 2);
+    assert_eq!(app.routes[0].pattern, "/health");
+    assert_eq!(app.routes[0].module.as_deref(), Some("healthModule"));
+    assert_eq!(app.routes[1].pattern, "/users");
+    assert_eq!(app.routes[1].module.as_deref(), Some("usersModule"));
+}
+
+#[test]
+fn typed_framework_metadata_fixture_expected_outputs_stay_current() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_name = "framework-v2-metadata";
+    let fixture = root
+        .join("tests/fixtures")
+        .join(fixture_name)
+        .join("input.ts");
+    let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+    let mut app = extract(&fixture, &source).expect("framework v2 fixture should extract");
+    super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
+        .expect("fixture configuration should load")
+        .apply_to_app(&mut app)
+        .expect("fixture configuration should apply");
+
+    let emitted_js = super::emit_app_js(&app);
+    let expected_js = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.js"),
+    )
+    .expect("expected app.js should exist");
+    assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
+
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let emitted_plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let expected_plan = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.plan.json"),
+    )
+    .expect("expected app.plan.json should exist");
+    assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+
+    let expected_source_map = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.js.map"),
+    )
+    .expect("expected app.js.map should exist");
+    assert_eq!(
+        emitted_source_map, expected_source_map,
+        "{fixture_name} app.js.map"
+    );
+}
+
+#[test]
+fn typed_framework_negative_diagnostics_are_source_aware() {
+    for (source, code) in [
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (id: number) => Results.ok({ id }));
+export default app;
+"#,
+            "SLOPPYC_E_AMBIGUOUS_BINDING",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { name: string };
+const app = Sloppy.create();
+app.post("/users", (a: BodyA, b: BodyB) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+        ),
+        (
+            r#"import { Sloppy, Results, Header } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (trace: Header<string>) => Results.ok({ trace }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_HEADER_BINDING",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+const app = Sloppy.create();
+app.get("/users", (db: Postgres<string>) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_DYNAMIC_PROVIDER_NAME",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (db: Mongo<"main">) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNKNOWN_INJECTION_MARKER",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (input: MissingModel) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNRESOLVED_TYPE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+type Body = { child: MissingModel };
+const app = Sloppy.create();
+app.post("/users", (input: Body) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNRESOLVED_TYPE",
+        ),
+        (
+            r#"import { Sloppy, Results, Body } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (input: Body<MissingModel>) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNRESOLVED_TYPE",
+        ),
+        (
+            r#"import { Sloppy, Results, Body } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { note: string };
+const app = Sloppy.create();
+app.post("/users", (a: Body<BodyA>, b: Body<BodyB>) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+        ),
+        (
+            r#"import { Sloppy, Results, Body } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { note: string };
+const app = Sloppy.create();
+app.post("/users", (a: Body<BodyA>, b: BodyB) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+type UserCreate = { name: string };
+const app = Sloppy.create();
+app.post("/users", (input: Paginated<UserCreate>) => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNRESOLVED_TYPE",
+        ),
+        (
+            r#"import { Sloppy, Results, Route } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id", (routeId: Route<number>) => Results.ok({ routeId }));
+export default app;
+"#,
+            "SLOPPYC_E_ROUTE_BINDING_MISMATCH",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+type Maybe<T> = T extends string ? string : number;
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+type Node = { next: Node };
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+        ),
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("unsupported framework v2 source should fail");
+        assert_eq!(diagnostic.code, code);
+        assert!(
+            diagnostic.span.is_some(),
+            "{code} should include a source span"
+        );
+    }
+}
+
+#[test]
+fn typed_framework_service_wrapper_emits_service_metadata() {
+    let source = r#"import { Sloppy, Results, Service } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (users: Service<UserService>) => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("explicit service wrapper should extract metadata");
+    let binding = app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .find(|binding| binding.parameter.as_deref() == Some("users"))
+        .expect("service wrapper binding should be present");
+    assert_eq!(binding.kind, "injection");
+    assert_eq!(binding.wrapper.as_deref(), Some("Service"));
+    assert_eq!(binding.injection_kind.as_deref(), Some("service"));
+    assert_eq!(binding.name.as_deref(), Some("UserService"));
+}
+
+#[test]
+fn framework_service_registration_rejects_captured_factory_identifiers() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+function makeGreeting() {
+  return { prefix: "hello" };
+}
+const app = Sloppy.create();
+app.services.addScoped("GreetingService", () => makeGreeting());
+app.get("/users", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.ts"), source)
+        .expect_err("captured service factory identifiers should be rejected");
+    assert_eq!(
+        diagnostic.code,
+        "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION"
+    );
+    assert!(diagnostic.message.contains("makeGreeting"));
+}
+
+#[test]
+fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
+    let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", (input: Body<UserCreate>) => Results.created(`/users/${input.email}`, {
+  name: input.name,
+  email: input.email,
+}));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("typed body handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const __sloppy_args = await Promise.all(["));
+    assert!(emitted_js.source.contains("ctx.request.json()"));
+    assert!(emitted_js
+        .source
+        .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
+    assert!(!emitted_js
+        .source
+        .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+}
+
+#[test]
+fn typed_framework_handler_erases_nested_typescript_syntax() {
+    let source = r#"import { Sloppy, Results, Body } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+type UserCreate = { name: string; email: string };
+type UserDto = { id: number; name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
+  const first: UserCreate = input;
+  const mapped = [first].map((item: UserCreate): UserDto => ({
+    id: Number.parseInt("1", 10),
+    name: item.name,
+    email: item.email,
+  }));
+  const loaded = await Promise.all<UserDto>(mapped.map(async (item: UserDto): Promise<UserDto> => {
+    const row: UserDto = await db.queryOne<UserDto>("select id, name, email from users where id = $1", [item.id]);
+    return row;
+  }));
+  function normalize(user: UserDto): UserDto {
+    return user;
+  }
+  return Results.created(`/users/${loaded[0].id}`, normalize(loaded[0]));
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed handler with nested TypeScript syntax should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("const first = input;"));
+    assert!(emitted_js.source.contains("function normalize(user)"));
+    assert!(!emitted_js.source.contains("const first:"));
+    assert!(!emitted_js.source.contains("(item:"));
+    assert!(!emitted_js.source.contains("): UserDto"));
+    assert!(!emitted_js.source.contains("function normalize(user:"));
+    assert!(!emitted_js.source.contains("Promise.all<UserDto>"));
+    assert!(!emitted_js.source.contains("queryOne<UserDto>"));
+}
+
+#[test]
+fn typed_framework_source_maps_point_at_user_handler_source() {
+    let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>) => {
+  const name: string = input.name;
+  return Results.created(`/users/${name}`, { name });
+});
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("typed handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(app.routes[0]
+        .handler
+        .source
+        .contains("input: Body<UserCreate>"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("const __sloppy_typed_handler = async (input)"));
+    let handler_start = emitted_js
+        .handler_generated_starts
+        .iter()
+        .find(|start| start.handler_id == 1)
+        .expect("handler start should be recorded");
+    let first_mapping = emitted_js
+        .mappings
+        .iter()
+        .find(|mapping| mapping.generated_line == handler_start.generated_line)
+        .expect("typed handler should have a same-line source map segment");
+    let (original_line, original_column) =
+        super::line_column(source, app.routes[0].handler.span.start);
+    assert!(first_mapping.generated_column > handler_start.generated_column);
+    assert_eq!(first_mapping.original_line, original_line.saturating_sub(1));
+    assert_eq!(
+        first_mapping.original_column,
+        original_column.saturating_sub(1)
+    );
+}
+
+#[test]
+fn typed_framework_provider_injection_uses_configured_provider_options() {
+    let source = r#"import { Sloppy, Results, RequestContext } from "sloppy";
+import { sql } from "sloppy/data";
+import { Postgres } from "sloppy/providers/postgres";
+import { Sqlite } from "sloppy/providers/sqlite";
+import { SqlServer } from "sloppy/providers/sqlserver";
+const app = Sloppy.create();
+app.get("/users", async (pg: Postgres<"main">, sqlite: Sqlite<"audit">, sqlserver: SqlServer<"search">, ctx: RequestContext) => {
+  await sqlite.exec(sql`create table if not exists audit(id integer)`, { deadline: ctx.deadline });
+  return Results.ok({ ok: true });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed provider injection should extract");
+    assert!(app.capabilities.iter().any(|capability| {
+        capability.token == "data.main"
+            && capability.capability_kind == "database"
+            && capability.provider == "postgres"
+            && capability.config_name.as_deref() == Some("main")
+    }));
+    assert!(app.capabilities.iter().any(|capability| {
+        capability.token == "data.audit"
+            && capability.capability_kind == "database"
+            && capability.provider == "sqlite"
+            && capability.config_name.as_deref() == Some("audit")
+    }));
+    assert!(app.capabilities.iter().any(|capability| {
+        capability.token == "data.search"
+            && capability.capability_kind == "database"
+            && capability.provider == "sqlserver"
+            && capability.config_name.as_deref() == Some("search")
+    }));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+        "\"connectionStringEnv\":\"Sloppy__Providers__postgres__main__connectionString\""
+    ));
+    assert!(emitted_js.source.contains(
+        "\"connectionStringEnv\":\"Sloppy__Providers__sqlserver__search__connectionString\""
+    ));
+    assert!(emitted_js
+        .source
+        .contains("data.postgres.open(__sloppy_framework_provider_open_options"));
+    assert!(emitted_js
+        .source
+        .contains("data.sqlserver.open(__sloppy_framework_provider_open_options"));
+    assert!(emitted_js.source.contains("data.sqlite(dependencyName)"));
+    assert!(!emitted_js.source.contains("data.postgres.open({ provider:"));
+    assert!(!emitted_js
+        .source
+        .contains("data.sqlserver.open({ provider:"));
+}
+
+#[test]
+fn typed_framework_response_schema_inference_is_scope_aware() {
+    let source = r#"import { Sloppy, Results, Route } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+type UserDto = { id: number };
+type OrderDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", async (id: Route<number>, db: Postgres<"main">) => {
+  if (id > 0) {
+    const payload = await db.queryOne<UserDto>("select user");
+    return Results.ok(payload);
+  }
+  const payload = await db.queryOne<OrderDto>("select order");
+  return Results.ok(payload);
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("scoped response schemas should extract");
+    let body_schemas: Vec<_> = app.routes[0]
+        .handler
+        .responses
+        .iter()
+        .map(|response| response.body_schema.as_deref())
+        .collect();
+    assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+}
+
+#[test]
+fn typed_framework_response_dedupe_preserves_distinct_body_schema() {
+    let source = r#"import { Sloppy, Results, Route } from "sloppy";
+type UserDto = { id: number };
+type OrderDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", (id: Route<number>) => {
+  if (id > 0) {
+    return Results.ok<UserDto>({ id });
+  }
+  return Results.ok<OrderDto>({ id });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("distinct typed responses should extract");
+    let body_schemas: Vec<_> = app.routes[0]
+        .handler
+        .responses
+        .iter()
+        .map(|response| response.body_schema.as_deref())
+        .collect();
+    assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+}
+
+#[test]
+fn typed_framework_response_schema_ignores_arbitrary_generic_wrappers() {
+    let source = r#"import { Sloppy, Results, Route } from "sloppy";
+type UserDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", async (id: Route<number>) => {
+  const payload = await Promise.resolve<UserDto>({ id });
+  return Results.ok(payload);
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("unsupported generic wrapper should not become schema evidence");
+    assert_eq!(app.routes[0].handler.responses.len(), 1);
+    assert_eq!(app.routes[0].handler.responses[0].body_schema, None);
+}
+
+#[test]
+fn import_call_text_in_comments_and_strings_is_not_dynamic_import() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+// import("./commented.js") documents unsupported syntax.
+const app = Sloppy.create();
+const note = "dynamic import text: import(\"./string.js\")";
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("comments and strings should not trigger dynamic import diagnostics");
+    assert_eq!(app.routes.len(), 1);
+}
+
+#[test]
+fn rejects_member_expression_captures_outside_context_roots() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const config = { message: "captured" };
+app.mapGet("/", (ctx) => Results.json({ message: config.message, id: ctx.route.id }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("captured member expression should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+}
+
+#[test]
+fn rejects_destructured_or_default_handler_parameters() {
+    for source in [
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", ({ route }) => Results.json({ id: route.id }));
+export default app;
+"#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", ([ctx]) => Results.json({ id: ctx.route.id }));
+export default app;
+"#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", (ctx = {}) => Results.json({ id: ctx.route.id }));
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported handler parameter should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS");
+    }
+}
+
+#[test]
+fn ignores_unrelated_map_named_initializers() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const items = ["ok"];
+const labels = items.map((value) => value);
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("ordinary JavaScript map initializer should not be treated as a route");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/");
+}
+
+#[test]
+fn success_fixture_expected_outputs_stay_current() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for fixture_name in [
+        "hello-mapget",
+        "builder-mapget",
+        "grouped-route",
+        "results-json",
+        "function-handler",
+        "http-methods",
+        "async-handler",
+        "provider-capability",
+        "metadata-extraction",
+        "effects-capability",
+        "realistic-users-api",
+        "partial-body-without-schema",
+        "partial-dynamic-status",
+        "provider-metadata-multiple-databases",
+        "function-module-empty",
+        "function-module",
+        "source-map",
+    ] {
+        let fixture = root
+            .join("tests/fixtures")
+            .join(fixture_name)
+            .join("input.js");
+        let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+        let mut app = extract(&fixture, &source).expect("fixture should extract");
+        super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
+            .expect("fixture configuration should load")
+            .apply_to_app(&mut app)
+            .expect("fixture configuration should apply");
+
+        let emitted_js = super::emit_app_js(&app);
+        let expected_js = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js"),
+        )
+        .expect("expected app.js should exist");
+        assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
+
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let emitted_js_hash = super::sha256_hex(&emitted_js.source);
+        let emitted_map_hash = super::sha256_hex(&emitted_source_map);
+        let emitted_plan =
+            super::emit_plan(&app, &emitted_js_hash, &emitted_map_hash).expect("plan should emit");
+        let expected_plan = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.plan.json"),
+        )
+        .expect("expected app.plan.json should exist");
+        assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+
+        let expected_source_map = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js.map"),
+        )
+        .expect("expected app.js.map should exist");
+        assert_eq!(
+            emitted_source_map, expected_source_map,
+            "{fixture_name} app.js.map"
+        );
+    }
+}
+
+#[test]
+fn rejected_fixture_diagnostics_stay_current() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (fixture_name, input_name) in [
+        ("unsupported-dynamic-route", "input.js"),
+        ("computed-method", "input.js"),
+        ("loop-route-registration", "input.js"),
+        ("conditional-route-registration", "input.js"),
+        ("unsupported-handler-parameter", "input.js"),
+        ("unsupported-handler-capture", "input.js"),
+        ("unsupported-handler-shape", "input.js"),
+        ("unsupported-typescript-handler", "input.ts"),
+        ("unsupported-import-alias", "input.js"),
+        ("unsupported-data-import-alias", "input.js"),
+        ("unsupported-sloppy-default-import", "input.js"),
+        ("unsupported-import-specifier", "input.js"),
+        ("node-fs-import", "input.js"),
+        ("missing-app", "input.js"),
+        ("multiple-apps", "input.js"),
+        ("unsupported-http-method", "input.js"),
+        ("unsupported-async-handler-body", "input.js"),
+        ("unsupported-secret-capability", "input.js"),
+        ("unsupported-dynamic-import", "input.js"),
+        ("missing-relative-import", "input.js"),
+        ("missing-provider-effect", "input.js"),
+        ("non-sqlite-provider-bridge", "input.js"),
+        ("unsupported-provider-method", "input.js"),
+    ] {
+        let fixture = root
+            .join("tests/fixtures")
+            .join(fixture_name)
+            .join(input_name);
+        let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+        let diagnostic = extract(&fixture, &source).expect_err("fixture should be rejected");
+        let expected = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected-diagnostics.txt"),
+        )
+        .expect("expected diagnostic should exist");
+        let rendered = diagnostic
+            .render(Some(&source))
+            .replace(&crate::source::display_path(root), "<compiler>");
+        assert_eq!(format!("{rendered}\n"), expected, "{fixture_name}");
+    }
+}
+
+#[test]
+fn rejected_build_does_not_emit_success_artifacts() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("tests/fixtures/computed-method/input.js");
+    let out_dir = std::env::temp_dir().join(format!(
+        "sloppyc-rejected-build-test-{}",
+        std::process::id()
+    ));
+
+    if out_dir.exists() {
+        fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
+    }
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("fixture should fail to build");
+    assert_eq!(
+        failure.diagnostic.code,
+        "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD"
+    );
+    assert!(
+        !out_dir.join("app.plan.json").exists()
+            && !out_dir.join("app.js").exists()
+            && !out_dir.join("app.js.map").exists(),
+        "rejected compiler input must not leave success artifacts"
+    );
+
+    if out_dir.exists() {
+        fs::remove_dir_all(&out_dir).expect("test output directory should be removable");
+    }
+}
+
+#[test]
+fn build_writes_expected_artifacts_to_requested_output_directory() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("../examples/compiler-hello/app.js");
+    let out_dir = std::env::temp_dir().join(format!("sloppyc-build-test-{}", std::process::id()));
+
+    if out_dir.exists() {
+        fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
+    }
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("compiler example should build");
+
+    let emitted_plan =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be written");
+    let expected_plan =
+        fs::read_to_string(root.join("../examples/compiler-hello/expected/app.plan.json"))
+            .expect("expected plan should exist");
+    assert_eq!(emitted_plan, expected_plan);
+
+    let emitted_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should be written");
+    let expected_js = fs::read_to_string(root.join("../examples/compiler-hello/expected/app.js"))
+        .expect("expected app.js should exist");
+    assert_eq!(emitted_js, expected_js);
+
+    let emitted_map =
+        fs::read_to_string(out_dir.join("app.js.map")).expect("source map should be written");
+    let expected_map =
+        fs::read_to_string(root.join("../examples/compiler-hello/expected/app.js.map"))
+            .expect("expected app.js.map should exist");
+    assert_eq!(emitted_map, expected_map);
+
+    fs::remove_dir_all(&out_dir).expect("test output directory should be removable");
+}
+
+#[test]
+fn compiler_hello_artifacts_are_repeatable_and_path_clean() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = root.join("../examples/compiler-hello/app.js");
+    let base = std::env::temp_dir().join(format!(
+        "sloppyc-main-determinism-test-{}",
+        std::process::id()
+    ));
+    let first = base.join("first");
+    let second = base.join("second");
+
+    if base.exists() {
+        fs::remove_dir_all(&base).expect("stale test output directory should be removable");
+    }
+
+    super::build(&input, &first, &CompileOptions::new()).expect("first build should succeed");
+    super::build(&input, &second, &CompileOptions::new()).expect("second build should succeed");
+
+    for artifact in ["app.plan.json", "app.js", "app.js.map"] {
+        let first_text =
+            fs::read_to_string(first.join(artifact)).expect("first artifact should exist");
+        let second_text =
+            fs::read_to_string(second.join(artifact)).expect("second artifact should exist");
+        assert_eq!(first_text, second_text, "{artifact} should be repeatable");
+
+        assert!(
+            !first_text.contains(env!("CARGO_MANIFEST_DIR")),
+            "{artifact} must not contain the local compiler manifest path"
+        );
+        assert!(
+            !first_text.contains("\\Slop\\") && !first_text.contains("/Slop/"),
+            "{artifact} must not contain checkout-local paths"
+        );
+        assert!(
+            !first_text.contains("timestamp") && !first_text.contains("random"),
+            "{artifact} must not contain volatility marker text"
+        );
+    }
+
+    let plan = fs::read_to_string(first.join("app.plan.json")).expect("plan should exist");
+    assert!(
+        plan.contains("\"id\": 1") && plan.contains("\"handlerId\": 1"),
+        "MAIN hello handler IDs must remain stable"
+    );
+
+    fs::remove_dir_all(&base).expect("test output directory should be removable");
+}

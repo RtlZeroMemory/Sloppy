@@ -65,7 +65,12 @@ function Test-SourcePath {
     }
 
     $extension = [System.IO.Path]::GetExtension($RelativePath)
-    return $extension -in $sourceExtensions
+    if ($extension -in $sourceExtensions) {
+        return $true
+    }
+
+    return $RelativePath.StartsWith("src/cli/", [System.StringComparison]::OrdinalIgnoreCase) -and
+        $extension -eq ".inc"
 }
 
 function Test-ImplementationPath {
@@ -329,6 +334,7 @@ if ($SelfTest) {
         New-Item -ItemType Directory -Force -Path (Join-Path $validRoot "src/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $validRoot "tests/unit/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/core") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/cli") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "tests/unit/core") | Out-Null
 
         Set-Content -LiteralPath (Join-Path $validRoot "src/core/string.c") -Value @'
@@ -353,6 +359,10 @@ void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
 '@
+        Set-Content -LiteralPath (Join-Path $invalidRoot "src/cli/bad_fragment.inc") -Value @'
+#include <string.h>
+void bad_fragment_copy(char* dst, const char* src) { strcpy(dst, src); }
+'@
         Set-Content -LiteralPath (Join-Path $invalidRoot "tests/unit/core/test_bad.c") -Value @'
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
@@ -363,9 +373,12 @@ void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
             throw "C standards scanner self-test valid fixture failed."
         }
 
-        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $invalidRoot *> $null
+        $invalidOutput = & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $invalidRoot *>&1
         if ($LASTEXITCODE -eq 0) {
             throw "C standards scanner self-test invalid fixture unexpectedly passed."
+        }
+        if (-not (($invalidOutput -join "`n") -match "src/cli/bad_fragment\.inc")) {
+            throw "C standards scanner self-test did not scan CLI .inc fragments."
         }
 
         Write-Host "C standards scanner self-test passed."
