@@ -99,6 +99,8 @@ size_t sl_ring_queue_capacity(const SlRingQueue* queue);
 bool sl_ring_queue_is_empty(const SlRingQueue* queue);
 bool sl_ring_queue_is_full(const SlRingQueue* queue);
 SlStatus sl_ring_queue_push(SlRingQueue* queue, const void* item);
+bool sl_ring_queue_peek_front(const SlRingQueue* queue, void* out_item);
+bool sl_ring_queue_discard_front(SlRingQueue* queue);
 bool sl_ring_queue_pop_front(SlRingQueue* queue, void* out_item);
 bool sl_ring_queue_pop_back(SlRingQueue* queue, void* out_item);
 

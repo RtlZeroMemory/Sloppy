@@ -387,9 +387,9 @@ SlStatus sl_ring_queue_push(SlRingQueue* queue, const void* item)
     return sl_status_ok();
 }
 
-bool sl_ring_queue_pop_front(SlRingQueue* queue, void* out_item)
+bool sl_ring_queue_peek_front(const SlRingQueue* queue, void* out_item)
 {
-    void* slot = NULL;
+    const void* slot = NULL;
 
     if (queue == NULL || out_item == NULL || queue->count == 0U || queue->items == NULL ||
         queue->capacity == 0U || queue->elem_size == 0U)
@@ -399,10 +399,32 @@ bool sl_ring_queue_pop_front(SlRingQueue* queue, void* out_item)
 
     slot = sl_container_item_at(queue->items, queue->elem_size, queue->head);
     sl_container_copy(out_item, slot, queue->elem_size);
+    return true;
+}
+
+bool sl_ring_queue_discard_front(SlRingQueue* queue)
+{
+    void* slot = NULL;
+
+    if (queue == NULL || queue->count == 0U || queue->items == NULL || queue->capacity == 0U ||
+        queue->elem_size == 0U)
+    {
+        return false;
+    }
+
+    slot = sl_container_item_at(queue->items, queue->elem_size, queue->head);
     sl_container_zero(slot, queue->elem_size);
     queue->head = (queue->head + 1U) % queue->capacity;
     queue->count -= 1U;
     return true;
+}
+
+bool sl_ring_queue_pop_front(SlRingQueue* queue, void* out_item)
+{
+    if (!sl_ring_queue_peek_front(queue, out_item)) {
+        return false;
+    }
+    return sl_ring_queue_discard_front(queue);
 }
 
 bool sl_ring_queue_pop_back(SlRingQueue* queue, void* out_item)

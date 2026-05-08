@@ -11,6 +11,8 @@
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
 
+#define SL_FS_WATCH_EVENT_PATH_CAPACITY 4096U
+
 typedef struct SlFsWatchSnapshot
 {
     SlOwnedStr path;
@@ -20,6 +22,14 @@ typedef struct SlFsWatchSnapshot
     bool exists;
     bool seen;
 } SlFsWatchSnapshot;
+
+typedef struct SlFsWatchQueuedEvent
+{
+    SlFsWatchEventKind kind;
+    size_t path_length;
+    char path[SL_FS_WATCH_EVENT_PATH_CAPACITY];
+    bool is_directory;
+} SlFsWatchQueuedEvent;
 
 struct SlFsWatchHandle
 {
@@ -82,50 +92,74 @@ static SlStatus sl_fs_watch_copy_path(SlArena* arena, SlStr path, SlOwnedStr* ou
     return sl_str_copy_to_arena(arena, path, out);
 }
 
+static SlStatus sl_fs_watch_queue_path(SlFsWatchQueuedEvent* event, SlStr path)
+{
+    if (event == NULL || (path.length != 0U && path.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (path.length > sizeof(event->path)) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
+    for (size_t index = 0U; index < path.length; index += 1U) {
+        event->path[index] = path.ptr[index];
+    }
+    event->path_length = path.length;
+    return sl_status_ok();
+}
+
+static SlStr sl_fs_watch_queued_path_view(const SlFsWatchQueuedEvent* event)
+{
+    if (event == NULL || event->path_length == 0U) {
+        return sl_str_empty();
+    }
+    return sl_str_from_parts(event->path, event->path_length);
+}
+
 static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlFsWatchEventKind kind, SlStr path,
                                     bool is_directory)
 {
-    SlArenaMark mark = {0};
-    SlFsWatchEvent event;
+    SlFsWatchQueuedEvent event = {0};
     SlStatus status;
 
     if (watch == NULL || watch->arena == NULL || watch->closed) {
         return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
     }
-    mark = sl_arena_mark(watch->arena);
-    event = (SlFsWatchEvent){.kind = kind, .is_directory = is_directory};
-    status = sl_fs_watch_copy_path(watch->arena, path, &event.path);
+    event.kind = kind;
+    event.is_directory = is_directory;
+    status = sl_fs_watch_queue_path(&event, path);
     if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+            watch->overflow_pending = true;
+            return sl_status_ok();
+        }
         return status;
     }
     status = sl_ring_queue_push(&watch->queue, &event);
     if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
-        (void)sl_arena_reset_to(watch->arena, mark);
         watch->overflow_pending = true;
         return sl_status_ok();
-    }
-    if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(watch->arena, mark);
     }
     return status;
 }
 
 static SlStatus sl_fs_watch_pop(SlFsWatchHandle* watch, SlArena* arena, SlFsWatchEvent* out)
 {
-    SlFsWatchEvent event = {0};
+    SlFsWatchQueuedEvent event = {0};
     SlStatus status;
 
     if (watch == NULL || arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = (SlFsWatchEvent){0};
-    if (sl_ring_queue_pop_front(&watch->queue, &event)) {
+    if (sl_ring_queue_peek_front(&watch->queue, &event)) {
         *out = (SlFsWatchEvent){
-            .kind = event.kind, .is_directory = event.is_directory, .overflow = event.overflow};
-        status = sl_fs_watch_copy_path(arena, sl_owned_str_as_view(event.path), &out->path);
+            .kind = event.kind, .is_directory = event.is_directory, .overflow = false};
+        status = sl_fs_watch_copy_path(arena, sl_fs_watch_queued_path_view(&event), &out->path);
         if (!sl_status_is_ok(status)) {
+            *out = (SlFsWatchEvent){0};
             return status;
         }
+        (void)sl_ring_queue_discard_front(&watch->queue);
         return sl_status_ok();
     }
     if (watch->overflow_pending) {
@@ -435,8 +469,9 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_ring_queue_init_from_arena(&watch->queue, arena, sizeof(SlFsWatchEvent),
-                                           _Alignof(SlFsWatchEvent), options->queue_capacity);
+    status = sl_ring_queue_init_from_arena(&watch->queue, arena, sizeof(SlFsWatchQueuedEvent),
+                                           _Alignof(SlFsWatchQueuedEvent),
+                                           options->queue_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -338,7 +338,7 @@ cleanup:
 
 static int test_system_info_is_normalized(void)
 {
-    unsigned char storage[4096];
+    unsigned char storage[16384];
     SlArena arena = {0};
     SlOsPolicy policy = sl_os_development_policy();
     SlOsSystemInfo info = {0};
@@ -378,7 +378,7 @@ static int test_strict_system_info_denied(void)
 
 static int test_environment_get_has_and_missing(void)
 {
-    unsigned char storage[4096];
+    unsigned char storage[16384];
     char long_value[2048];
     SlArena arena = {0};
     SlOsPolicy policy = sl_os_development_policy();
@@ -552,7 +552,7 @@ static int test_strict_environment_denies_ungranted_key(void)
 
 static int test_environment_list_names_only_and_prefix_scoped(void)
 {
-    unsigned char storage[8192];
+    unsigned char storage[65536];
     SlArena arena = {0};
     SlOsPolicy policy = sl_os_development_policy();
     SlOsEnvironmentList list = {0};
@@ -592,7 +592,7 @@ static int test_environment_list_names_only_and_prefix_scoped(void)
 
 static int test_secret_redaction_helper_never_returns_value(void)
 {
-    unsigned char storage[1024];
+    unsigned char storage[4096];
     SlArena arena = {0};
     SlOwnedStr redacted = {0};
     SlDiag diag = {0};
@@ -935,34 +935,41 @@ static int test_system_and_environment_suite(void)
 {
     int result = test_system_info_is_normalized();
     if (result != 0) {
+        fprintf(stderr, "test_system_info_is_normalized failed: %d\n", result);
         return result;
     }
     result = test_strict_system_info_denied();
     if (result != 0) {
+        fprintf(stderr, "test_strict_system_info_denied failed: %d\n", result);
         return result;
     }
     result = test_environment_get_has_and_missing();
     if (result != 0) {
+        fprintf(stderr, "test_environment_get_has_and_missing failed: %d\n", result);
         return result;
     }
     result = test_embedded_nul_cstring_boundaries_reject();
     if (result != 0) {
+        fprintf(stderr, "test_embedded_nul_cstring_boundaries_reject failed: %d\n", result);
         return result;
     }
     result = test_strict_environment_denies_ungranted_key();
     if (result != 0) {
+        fprintf(stderr, "test_strict_environment_denies_ungranted_key failed: %d\n", result);
         return result;
     }
     result = test_environment_list_names_only_and_prefix_scoped();
     if (result != 0) {
+        fprintf(stderr, "test_environment_list_names_only_and_prefix_scoped failed: %d\n", result);
         return result;
     }
     result = test_secret_redaction_helper_never_returns_value();
     if (result != 0) {
+        fprintf(stderr, "test_secret_redaction_helper_never_returns_value failed: %d\n", result);
         return result;
     }
 
-    return test_secret_redaction_helper_never_returns_value();
+    return 0;
 }
 
 static int test_process_run_suite(const char* self_path)
