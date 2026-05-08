@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_CONFIG_PLAN_VISIBLE", "message": "configuration requirements are Plan-visible without values", "path": "configuration.requirements" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_CONFIG_REQUIRED_MISSING", "message": "Missing required config Auth:Issuer required by src/auth.ts:5 (redaction: none)", "path": "configuration.requirements" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_CONFIG_SECRET_REDACTED", "message": "secret configuration requirements report key, status, source, and owner metadata without values", "path": "configuration.requirements" }
+  ]
+}

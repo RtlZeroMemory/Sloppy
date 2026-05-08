@@ -557,9 +557,16 @@ pub(super) fn canonical_config_segment(segment: &str) -> String {
         "ENABLED" => "Enabled".to_string(),
         "CERTIFICATEPATH" => "CertificatePath".to_string(),
         "PRIVATEKEYPATH" => "PrivateKeyPath".to_string(),
+        "PRIVATEKEY" => "privateKey".to_string(),
         "PASSPHRASE" => "Passphrase".to_string(),
         "V8MICROTASKDRAINLIMIT" => "V8MicrotaskDrainLimit".to_string(),
         "DATABASE" => "database".to_string(),
+        "CONNECTIONSTRING" => "connectionString".to_string(),
+        "CONNECTION_STRING" => "connectionString".to_string(),
+        "APIKEY" => "apiKey".to_string(),
+        "API_KEY" => "apiKey".to_string(),
+        "CLIENTSECRET" => "clientSecret".to_string(),
+        "CLIENT_SECRET" => "clientSecret".to_string(),
         "QUEUECAPACITY" => "queueCapacity".to_string(),
         _ => segment.to_string(),
     }
@@ -598,6 +605,10 @@ pub(super) fn config_key_is_sensitive(key: &str) -> bool {
                 | "token"
                 | "apikey"
                 | "api_key"
+                | "clientsecret"
+                | "client_secret"
+                | "privatekey"
+                | "private_key"
                 | "passphrase"
                 | "connectionstring"
                 | "connection_string"
@@ -605,6 +616,8 @@ pub(super) fn config_key_is_sensitive(key: &str) -> bool {
             || segment.ends_with("password")
             || segment.ends_with("token")
             || segment.ends_with("apikey")
+            || segment.ends_with("clientsecret")
+            || segment.ends_with("privatekey")
             || segment.ends_with("passphrase")
             || segment.ends_with("connectionstring")
     })

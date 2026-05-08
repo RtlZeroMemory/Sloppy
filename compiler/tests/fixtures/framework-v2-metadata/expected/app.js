@@ -5,7 +5,7 @@ if (__sloppyRuntime === undefined) {
 const { Results, data, sql, System, Environment, Process, Signals, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;
 const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
-const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","providerKind":"sqlserver"}]]);
+const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","connectionStringKey":"Sloppy:Providers:postgres:main:connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","connectionStringKey":"Sloppy:Providers:sqlserver:search:connectionString","providerKind":"sqlserver"}]]);
 function __sloppy_framework_arg(ctx, scope, binding) {
   if (binding.kind === "body.json") { return ctx.request.json(); }
   if (binding.kind === "context") { return ctx; }
@@ -49,10 +49,11 @@ function __sloppy_framework_provider_open_options(binding, token) {
   const config = __sloppy_framework_provider_configs.get(token);
   if (config === undefined) { throw new Error(`sloppy: provider '${token}' is not configured for Framework injection.`); }
   if (config.providerKind !== binding.providerKind) { throw new Error(`sloppy: provider '${token}' is configured as ${config.providerKind}, not ${binding.providerKind}.`); }
-  const key = config.connectionStringEnv;
-  if (typeof key !== "string" || key.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }
-  const connectionString = Environment.get(key);
-  if (typeof connectionString !== "string" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires environment config '${key}'.`); }
+  const key = config.connectionStringKey;
+  const env = config.connectionStringEnv;
+  if (typeof key !== "string" || key.length === 0 || typeof env !== "string" || env.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }
+  const connectionString = Environment.get(env);
+  if (typeof connectionString !== "string" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires config '${key}' from environment '${env}'.`); }
   return { connectionString, capability: token, access: config.access === "read" ? "read" : "readwrite" };
 }
 

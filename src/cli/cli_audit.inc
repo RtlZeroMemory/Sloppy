@@ -259,6 +259,88 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
     }
 }
 
+static void sl_cli_audit_config_requirements(const SlCliOptions* options,
+                                             const SlCliMetadata* metadata, size_t* findings,
+                                             size_t* errors)
+{
+    char message_buffer[640];
+    bool has_secret = false;
+    size_t index = 0U;
+
+    if (metadata->config_requirement_count == 0U) {
+        return;
+    }
+
+    sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_CONFIG_PLAN_VISIBLE",
+                      "configuration requirements are Plan-visible without values",
+                      "configuration.requirements", findings, errors);
+
+    for (index = 0U; index < metadata->config_requirement_count; index += 1U) {
+        const SlCliConfigRequirement* requirement = &metadata->config_requirements[index];
+        SlStringBuilder message_builder = {0};
+        SlStr message = {0};
+        const char* redaction = requirement->secret ? "secret" : "none";
+        const char* severity = NULL;
+        const char* code = NULL;
+        const char* missing_kind = NULL;
+
+        if (requirement->secret) {
+            has_secret = true;
+        }
+        if (!sl_cli_span_equal_cstr(requirement->status, "missing")) {
+            continue;
+        }
+
+        if (requirement->required) {
+            severity = "error";
+            code = "SLOPPY_AUDIT_CONFIG_REQUIRED_MISSING";
+            missing_kind = requirement->secret ? "required secret config " : "required config ";
+        }
+        else {
+            severity = "warn";
+            code = "SLOPPY_AUDIT_CONFIG_OPTIONAL_MISSING";
+            missing_kind = requirement->secret ? "optional secret config " : "optional config ";
+        }
+
+        if (!sl_status_is_ok(
+                sl_string_builder_init_fixed(&message_builder, message_buffer,
+                                             sizeof(message_buffer))) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "Missing ")) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, missing_kind)) ||
+            !sl_cli_string_builder_append_span(&message_builder, requirement->key) ||
+            !sl_status_is_ok(
+                sl_string_builder_append_cstr(&message_builder, " required by ")) ||
+            !sl_cli_string_builder_append_span(&message_builder, requirement->required_by) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, " (redaction: ")) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, redaction)) ||
+            !sl_status_is_ok(sl_string_builder_append_char(&message_builder, ')')))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_CONFIG_METADATA_TRUNCATED",
+                              "configuration requirement metadata is too long",
+                              "configuration.requirements", findings, errors);
+            continue;
+        }
+
+        message = sl_string_builder_view(&message_builder);
+        if (message.length >= sizeof(message_buffer)) {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_CONFIG_METADATA_TRUNCATED",
+                              "configuration requirement metadata is too long",
+                              "configuration.requirements", findings, errors);
+            continue;
+        }
+        message_buffer[message.length] = '\0';
+        sl_cli_audit_emit(options, severity, code, message_buffer, "configuration.requirements",
+                          findings, errors);
+    }
+
+    if (has_secret) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_CONFIG_SECRET_REDACTED",
+                          "secret configuration requirements report key, status, source, and owner "
+                          "metadata without values",
+                          "configuration.requirements", findings, errors);
+    }
+}
+
 static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCliMetadata* metadata,
                                          size_t* findings, size_t* errors)
 {
@@ -421,6 +503,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_modules(options, &metadata, &findings, &errors);
     sl_cli_audit_providers(options, &metadata, &findings, &errors);
     sl_cli_audit_capabilities(options, &metadata, &findings, &errors);
+    sl_cli_audit_config_requirements(options, &metadata, &findings, &errors);
     sl_cli_audit_os_capabilities(options, &metadata, &findings, &errors);
     sl_cli_audit_os_features(options, &metadata, &findings, &errors);
     sl_cli_audit_http_clients(options, &metadata, &findings, &errors);

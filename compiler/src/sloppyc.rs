@@ -7426,26 +7426,57 @@ fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
     })
 }
 
+fn config_source_env_name(source: &str) -> Option<String> {
+    if let Some(env) = source.strip_prefix("env:") {
+        return (!env.is_empty()).then(|| env.to_string());
+    }
+    let start = source.find("${")?;
+    let rest = &source[start + 2..];
+    let end = rest.find('}')?;
+    let env = &rest[..end];
+    (!env.is_empty()).then(|| env.to_string())
+}
+
+fn framework_provider_connection_string_env(app: &ExtractedApp, key: &str) -> String {
+    app.configuration
+        .as_ref()
+        .and_then(|configuration| {
+            configuration
+                .requirements
+                .iter()
+                .find(|requirement| {
+                    normalize_config_key(&requirement.key) == normalize_config_key(key)
+                })
+                .and_then(|requirement| requirement.source.as_deref())
+                .and_then(config_source_env_name)
+        })
+        .unwrap_or_else(|| config_key_to_env_name(key))
+}
+
 fn framework_provider_config_entries(app: &ExtractedApp) -> String {
     let entries = app
         .capabilities
         .iter()
         .filter(|capability| capability.capability_kind == "database")
         .map(|capability| {
-            let connection_string_env = capability.config_key.clone().or_else(|| {
+            let connection_string_key = capability.config_key.clone().or_else(|| {
                 if matches!(capability.provider.as_str(), "postgres" | "sqlserver") {
-                    Some(config_key_to_env_name(&format!(
+                    Some(format!(
                         "Sloppy:Providers:{}:{}:connectionString",
                         capability.provider,
                         provider_config_name(capability)
-                    )))
+                    ))
                 } else {
                     None
                 }
             });
+            let connection_string_env = connection_string_key
+                .as_deref()
+                .map(|key| framework_provider_connection_string_env(app, key));
             let value = json!({
                 "providerKind": capability.provider,
                 "access": capability.access,
+                "connectionStringKey": connection_string_key,
                 "connectionStringEnv": connection_string_env
             });
             format!(
@@ -7841,22 +7872,27 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  const key = config.connectionStringEnv;",
+            "  const key = config.connectionStringKey;",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (typeof key !== \"string\" || key.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }",
+            "  const env = config.connectionStringEnv;",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  const connectionString = Environment.get(key);",
+            "  if (typeof key !== \"string\" || key.length === 0 || typeof env !== \"string\" || env.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (typeof connectionString !== \"string\" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires environment config '${key}'.`); }",
+            "  const connectionString = Environment.get(env);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (typeof connectionString !== \"string\" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires config '${key}' from environment '${env}'.`); }",
         );
         push_generated_line(
             &mut output,

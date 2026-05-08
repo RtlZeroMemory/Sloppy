@@ -1,0 +1,5 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_CONFIG_PLAN_VISIBLE configuration requirements are Plan-visible without values (configuration.requirements)
+[error] SLOPPY_AUDIT_CONFIG_REQUIRED_MISSING Missing required config Auth:Issuer required by src/auth.ts:5 (redaction: none) (configuration.requirements)
+[note] SLOPPY_AUDIT_CONFIG_SECRET_REDACTED secret configuration requirements report key, status, source, and owner metadata without values (configuration.requirements)
