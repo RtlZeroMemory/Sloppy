@@ -237,6 +237,20 @@ function Invoke-SelfTest {
         Assert-True ($LASTEXITCODE -eq 0) "V8 artifact fetch fixture failed."
         Assert-True (Test-SlV8SdkLayout -Root (Join-Path $fetchDestination "windows-x64") -Quiet) "Fetched V8 fixture did not validate."
 
+        $resolveScript = Join-Path $PSScriptRoot "resolve-v8-sdk.ps1"
+        $badExplicitRoot = Start-Process -FilePath "powershell" -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $resolveScript,
+            "-V8Root",
+            $missingRoot,
+            "-Fetch",
+            "-Quiet"
+        ) -Wait -PassThru -WindowStyle Hidden
+        Assert-True ($badExplicitRoot.ExitCode -ne 0) "V8 resolver should not fetch around an explicit invalid -V8Root."
+
         $badFetch = Start-Process -FilePath "powershell" -ArgumentList @(
             "-NoProfile",
             "-ExecutionPolicy",

@@ -18,6 +18,12 @@ $fetchScript = Join-Path $PSScriptRoot "fetch-v8.ps1"
 try {
     $resolution = Resolve-SlV8SdkRootForMode -RepoRoot $Root -V8Root $V8Root -SearchRoots $SearchRoot -Mode $Mode
 } catch {
+    if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+        Write-Host "No compatible Sloppy V8 SDK was resolved."
+        Write-Host ([string]$_)
+        exit 1
+    }
+
     if (-not $Fetch -or $Mode -eq "OFF") {
         Write-Host "No compatible Sloppy V8 SDK was resolved."
         Write-Host ([string]$_)
