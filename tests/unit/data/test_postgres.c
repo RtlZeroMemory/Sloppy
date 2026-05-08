@@ -469,7 +469,7 @@ static int test_live_query_exec_and_transactions(void)
                          "'2026-05-08 12:34:56+04'::timestamptz as instant, "
                          "decode('0041ff', 'hex')::bytea as raw"),
         NULL, 0U, &one, NULL);
-    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found || one.column_count != 8U ||
         one.values[0].kind != SL_POSTGRES_VALUE_DECIMAL ||
         expect_str_equal(one.values[0].value.decimal, "12345678901234567890.1234") != 0 ||
         one.values[1].kind != SL_POSTGRES_VALUE_UUID ||

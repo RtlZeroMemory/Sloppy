@@ -572,23 +572,10 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
             }
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            v8::Local<v8::ArrayBuffer> buffer = bytes->Buffer();
-            std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
-            const size_t offset = bytes->ByteOffset();
-            const size_t byte_length = bytes->ByteLength();
-            const unsigned char* data =
-                backing == nullptr ? nullptr : static_cast<const unsigned char*>(backing->Data());
             param.kind = SL_SQLITE_PARAM_BLOB;
-            if (backing == nullptr || offset > backing->ByteLength() ||
-                byte_length > backing->ByteLength() - offset ||
-                (byte_length != 0U && data == nullptr))
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 sqlite_v8_throw_type_error(isolate, "sqlite Uint8Array parameter is out of range");
                 return false;
-            }
-            if (byte_length != 0U) {
-                param.bytes.assign(data + offset, data + offset + byte_length);
             }
         }
         else {

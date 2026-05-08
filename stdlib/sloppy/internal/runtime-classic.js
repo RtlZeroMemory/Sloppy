@@ -23,21 +23,59 @@
         return prototype === Object.prototype || prototype === null;
     }
 
-    const DB_VALUE_MARKER = "__sloppyDbValue";
+    const DB_VALUE_MARKER = Symbol("sloppyDbValue");
+    const DB_BRIDGE_VALUE_MARKER = "__sloppyDbValue";
+    const DB_VALUE_KINDS = Object.freeze({
+        decimal: true,
+        uuid: true,
+        date: true,
+        time: true,
+        localDateTime: true,
+        instant: true,
+        offsetDateTime: true,
+        json: true,
+        rawJson: true,
+        bytes: true,
+    });
+
+    function isKnownDbValueKind(kind) {
+        return typeof kind === "string" && Object.prototype.hasOwnProperty.call(DB_VALUE_KINDS, kind);
+    }
 
     function createDbValue(kind, value) {
-        return Object.freeze({
-            [DB_VALUE_MARKER]: true,
+        if (!isKnownDbValueKind(kind)) {
+            throw new TypeError("Sloppy DB value wrapper kind is not supported.");
+        }
+        const storedValue = kind === "bytes" ? new Uint8Array(value) : value;
+        const wrapper = {
             kind,
-            value,
             toString() {
-                return kind === "json" ? JSON.stringify(value) : String(value);
+                return kind === "json" ? JSON.stringify(storedValue) : String(storedValue);
+            },
+        };
+        Object.defineProperties(wrapper, {
+            [DB_VALUE_MARKER]: {
+                value: true,
+            },
+            [DB_BRIDGE_VALUE_MARKER]: {
+                value: true,
+            },
+            value: {
+                enumerable: true,
+                get() {
+                    return kind === "bytes" ? new Uint8Array(storedValue) : storedValue;
+                },
             },
         });
+        return Object.freeze(wrapper);
     }
 
     function isDbValue(value) {
-        return value !== null && typeof value === "object" && value[DB_VALUE_MARKER] === true && typeof value.kind === "string";
+        return value !== null && typeof value === "object" && Object.isFrozen(value) &&
+            isKnownDbValueKind(value.kind) &&
+            (value[DB_VALUE_MARKER] === true ||
+                (value[DB_BRIDGE_VALUE_MARKER] === true &&
+                    Object.prototype.toString.call(value) === "[object String]"));
     }
 
     function requireDbString(value) {
@@ -49,7 +87,7 @@
 
     const DB_TEXT_VALUE_SPECS = {
         decimal: ["decimal", /^[+-]?(?:\d+|\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$/, "finite decimal string"],
-        uuid: ["uuid", /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, "canonical UUID string"],
+        uuid: ["uuid", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, "canonical UUID string"],
         date: ["date", /^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"],
         time: ["time", /^\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/, "HH:MM:SS"],
         timestamp: ["localDateTime", /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/, "local date-time"],
@@ -92,10 +130,10 @@
 
     function dbBytes(value) {
         if (value instanceof Uint8Array) {
-            return new Uint8Array(value);
+            return createDbValue("bytes", value);
         }
         if (value instanceof ArrayBuffer) {
-            return new Uint8Array(value.slice(0));
+            return createDbValue("bytes", new Uint8Array(value));
         }
         throw new TypeError("Sloppy DB bytes requires Uint8Array or ArrayBuffer.");
     }
@@ -287,9 +325,15 @@ Operation:
                 if (param.kind === "rawJson") {
                     return param.value;
                 }
+                if (param.kind === "bytes") {
+                    return param.value;
+                }
                 if (SQLITE_TEXT_DB_VALUE_KINDS.has(param.kind)) {
                     return param.toString();
                 }
+            }
+            if (param !== null && typeof param === "object" && param[DB_BRIDGE_VALUE_MARKER] === true) {
+                throw new TypeError(`Sloppy sqlite.${operation} parameter uses an unsupported DB value wrapper.`);
             }
             return param;
         });

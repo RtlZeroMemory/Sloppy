@@ -1122,7 +1122,7 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             indicators[index] = (SQLLEN)param->value.json.length;
-            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_WVARCHAR,
+            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR,
                                   param->value.json.length, 0, (SQLPOINTER)param->value.json.ptr,
                                   indicators[index], &indicators[index]);
             break;

@@ -711,20 +711,28 @@ void sqlsrv_v8_completion_cleanup(const SlAsyncCompletion* completion, void* use
     delete payload;
 }
 
+void sqlsrv_v8_note_async_activity(SqlSrvV8Request* request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    request->async_progress_started = true;
+    request->async_progress_started_at = std::chrono::steady_clock::now();
+}
+
 bool sqlsrv_v8_post_pump(const std::shared_ptr<SqlSrvV8Request>& request)
 {
     SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    const auto now = std::chrono::steady_clock::now();
     if (backend == nullptr || backend->async_loop == nullptr || request->connection == nullptr) {
         return false;
     }
     request->async_poll_count += 1U;
     if (!request->async_progress_started) {
         request->async_progress_started = true;
-        request->async_progress_started_at = std::chrono::steady_clock::now();
+        request->async_progress_started_at = now;
     }
-    if (std::chrono::steady_clock::now() - request->async_progress_started_at >
-        sqlsrv_v8_async_progress_timeout)
-    {
+    if (now - request->async_progress_started_at > sqlsrv_v8_async_progress_timeout) {
         const char* state = "unknown";
         if (request->state == SqlSrvV8RequestState::Connecting) {
             state = "connecting";
@@ -741,6 +749,7 @@ bool sqlsrv_v8_post_pump(const std::shared_ptr<SqlSrvV8Request>& request)
         sqlsrv_v8_settle_request(request, false);
         return true;
     }
+    request->async_progress_started_at = now;
     auto* payload = new (std::nothrow) SqlSrvV8CompletionPayload();
     if (payload == nullptr) {
         return false;
@@ -1272,6 +1281,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver connection failed"));
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             connection->state = SqlSrvV8ConnectionState::Busy;
             request->state = SqlSrvV8RequestState::Executing;
         }
@@ -1294,6 +1304,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver statement failed"));
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             if (!sqlsrv_v8_prepare_after_execute(request.get())) {
                 sqlsrv_v8_fail_request(request, request->error);
                 return;
@@ -1321,6 +1332,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                     sqlsrv_v8_fail_request(request, "sqlserver async fetch continuation failed");
                     return;
                 }
+                sqlsrv_v8_note_async_activity(request.get());
                 rc = async_rc;
             }
             else {
@@ -1334,6 +1346,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 return;
             }
             if (rc == SQL_NO_DATA) {
+                sqlsrv_v8_note_async_activity(request.get());
                 request->state = SqlSrvV8RequestState::Terminal;
                 sqlsrv_v8_settle_request(request, true);
                 return;
@@ -1347,6 +1360,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 sqlsrv_v8_fail_request(request, request->error);
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             if (request->operation == SqlSrvV8Operation::QueryOne ||
                 request->operation == SqlSrvV8Operation::TransactionQueryOne)
             {
@@ -1497,7 +1511,7 @@ bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Contex
             return false;
         }
         param->kind = SqlSrvV8ParamKind::JsonText;
-        param->sql_type = SQL_WVARCHAR;
+        param->sql_type = SQL_VARCHAR;
         return true;
     }
     if (kind == "rawJson") {
@@ -1507,7 +1521,16 @@ bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Contex
             return false;
         }
         param->kind = SqlSrvV8ParamKind::JsonText;
-        param->sql_type = SQL_WVARCHAR;
+        param->sql_type = SQL_VARCHAR;
+        return true;
+    }
+    if (kind == "bytes") {
+        if (!sl_v8_db_copy_uint8_array(raw_value, &param->bytes)) {
+            sqlsrv_v8_throw_type_error(isolate,
+                                       "sqlserver bytes value wrapper must hold Uint8Array");
+            return false;
+        }
+        param->kind = SqlSrvV8ParamKind::Bytes;
         return true;
     }
     if (!raw_value->IsString() || !sl_v8_std_string_from_value(isolate, raw_value, &param->text)) {
@@ -1622,18 +1645,10 @@ bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
             param.int_value = value64;
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            std::shared_ptr<v8::BackingStore> backing = bytes->Buffer()->GetBackingStore();
-            size_t offset = bytes->ByteOffset();
-            size_t length = bytes->ByteLength();
-            if (backing == nullptr || offset > backing->ByteLength() ||
-                length > backing->ByteLength() - offset)
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 return false;
             }
-            unsigned char* data = static_cast<unsigned char*>(backing->Data());
             param.kind = SqlSrvV8ParamKind::Bytes;
-            param.bytes.assign(data + offset, data + offset + length);
         }
         else if (sqlsrv_v8_is_db_value(isolate, context, item)) {
             if (!sqlsrv_v8_convert_db_value_param(isolate, context, item, &param)) {

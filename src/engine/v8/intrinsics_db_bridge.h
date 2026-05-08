@@ -10,6 +10,7 @@
 #include "engine_v8_internal.h"
 
 #include <string>
+#include <vector>
 
 SlStatus sl_v8_db_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out);
 bool sl_v8_db_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> value,
@@ -32,6 +33,7 @@ bool sl_v8_db_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Con
 bool sl_v8_db_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                   v8::Local<v8::Object> object, const char* key,
                                   v8::Local<v8::Value> value);
+bool sl_v8_db_copy_uint8_array(v8::Local<v8::Value> value, std::vector<unsigned char>* out);
 
 bool sl_v8_db_is_value_wrapper(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value);

@@ -46,7 +46,9 @@ function createForgedLoweredQuery() {
     const offset = sql.offsetDateTime("2026-05-08T12:34:56+04:00");
     const json = sql.json({ ok: true });
     const rawJson = sql.rawJson("{\"ok\":true}");
-    const bytes = sql.bytes(new Uint8Array([0, 1, 255]));
+    const sourceBytes = new Uint8Array([0, 1, 255]);
+    const bytes = sql.bytes(sourceBytes);
+    sourceBytes[0] = 99;
 
     assert.equal(decimal.__sloppyDbValue, true);
     assert.equal(decimal.kind, "decimal");
@@ -60,12 +62,23 @@ function createForgedLoweredQuery() {
     assert.equal(offset.kind, "offsetDateTime");
     assert.equal(json.toString(), "{\"ok\":true}");
     assert.equal(rawJson.toString(), "{\"ok\":true}");
-    assert.deepEqual(Array.from(bytes), [0, 1, 255]);
+    assert.equal(data.values.isDbValue(bytes), true);
+    assert.equal(Object.isFrozen(bytes), true);
+    assert.equal(bytes.kind, "bytes");
+    assert.deepEqual(Array.from(bytes.value), [0, 1, 255]);
+    bytes.value[0] = 42;
+    assert.deepEqual(Array.from(bytes.value), [0, 1, 255]);
     assertThrowsMessage(() => sql.decimal("NaN"), /finite decimal/);
+    assert.equal(sql.uuid("00000000-0000-7000-8000-000000000001").kind, "uuid");
     assertThrowsMessage(() => sql.uuid("not-a-uuid"), /canonical UUID/);
     assertThrowsMessage(() => sql.date("2026/05/08"), /YYYY-MM-DD/);
     assertThrowsMessage(() => sql.json(undefined), /JSON-serializable/);
     assertThrowsMessage(() => sql.rawJson("{"), /valid JSON/);
+    assert.equal(data.values.isDbValue({
+        __sloppyDbValue: true,
+        kind: "decimal",
+        value: "1",
+    }), false);
 }
 
 {

@@ -7,6 +7,8 @@
 #include "intrinsics_db_bridge.h"
 #include "string_interop.h"
 
+#include <memory>
+
 namespace {
 
 v8::Local<v8::String> sl_v8_db_fallback_string(v8::Isolate* isolate, const char* fallback)
@@ -18,6 +20,13 @@ v8::Local<v8::String> sl_v8_db_fallback_string(v8::Isolate* isolate, const char*
         return value;
     }
     return v8::String::Empty(isolate);
+}
+
+bool sl_v8_db_supported_value_kind(const std::string& kind)
+{
+    return kind == "decimal" || kind == "uuid" || kind == "date" || kind == "time" ||
+           kind == "localDateTime" || kind == "instant" || kind == "offsetDateTime" ||
+           kind == "json" || kind == "rawJson" || kind == "bytes";
 }
 
 } // namespace
@@ -118,14 +127,45 @@ bool sl_v8_db_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> c
            object->Set(context, local_key, value).FromMaybe(false);
 }
 
+bool sl_v8_db_copy_uint8_array(v8::Local<v8::Value> value, std::vector<unsigned char>* out)
+{
+    if (out == nullptr || !value->IsUint8Array()) {
+        return false;
+    }
+    v8::Local<v8::Uint8Array> bytes = value.As<v8::Uint8Array>();
+    std::shared_ptr<v8::BackingStore> backing = bytes->Buffer()->GetBackingStore();
+    const size_t offset = bytes->ByteOffset();
+    const size_t length = bytes->ByteLength();
+    if (backing == nullptr || offset > backing->ByteLength() ||
+        length > backing->ByteLength() - offset)
+    {
+        return false;
+    }
+    if (length == 0U) {
+        out->clear();
+        return true;
+    }
+    const auto* data = static_cast<const unsigned char*>(backing->Data());
+    if (data == nullptr) {
+        return false;
+    }
+    out->assign(data + offset, data + offset + length);
+    return true;
+}
+
 bool sl_v8_db_is_value_wrapper(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value)
 {
     v8::Local<v8::Value> marker;
-    return value->IsObject() &&
-           sl_v8_db_get_object_property(isolate, context, value.As<v8::Object>(), "__sloppyDbValue",
-                                        &marker) &&
-           marker->IsTrue();
+    std::string kind;
+    if (!value->IsObject()) {
+        return false;
+    }
+    v8::Local<v8::Object> object = value.As<v8::Object>();
+    return sl_v8_db_get_object_property(isolate, context, object, "__sloppyDbValue", &marker) &&
+           marker->IsTrue() &&
+           sl_v8_db_get_object_string_property(isolate, context, object, "kind", &kind) &&
+           sl_v8_db_supported_value_kind(kind);
 }
 
 bool sl_v8_db_make_typed_string_value(v8::Isolate* isolate, v8::Local<v8::Context> context,

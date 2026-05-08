@@ -49,6 +49,142 @@ enum
     SL_PG_OID_JSONB = 3802
 };
 
+bool pg_v8_is_digit(char value)
+{
+    return value >= '0' && value <= '9';
+}
+
+bool pg_v8_parse_date_part(const char* value, int length, std::string* out)
+{
+    if (out == nullptr || value == nullptr || length < 10 || !pg_v8_is_digit(value[0]) ||
+        !pg_v8_is_digit(value[1]) || !pg_v8_is_digit(value[2]) || !pg_v8_is_digit(value[3]) ||
+        value[4] != '-' || !pg_v8_is_digit(value[5]) || !pg_v8_is_digit(value[6]) ||
+        value[7] != '-' || !pg_v8_is_digit(value[8]) || !pg_v8_is_digit(value[9]))
+    {
+        return false;
+    }
+    out->assign(value, 10U);
+    return true;
+}
+
+bool pg_v8_normalize_date_text(const char* value, int length, std::string* out)
+{
+    return length == 10 && pg_v8_parse_date_part(value, length, out);
+}
+
+bool pg_v8_parse_time_part(const char* value, int length, int* consumed, std::string* out)
+{
+    int index = 8;
+    if (out == nullptr || consumed == nullptr || value == nullptr || length < 8 ||
+        !pg_v8_is_digit(value[0]) || !pg_v8_is_digit(value[1]) || value[2] != ':' ||
+        !pg_v8_is_digit(value[3]) || !pg_v8_is_digit(value[4]) || value[5] != ':' ||
+        !pg_v8_is_digit(value[6]) || !pg_v8_is_digit(value[7]))
+    {
+        return false;
+    }
+    if (index < length && value[index] == '.') {
+        index += 1;
+        const int fraction_start = index;
+        while (index < length && pg_v8_is_digit(value[index])) {
+            index += 1;
+        }
+        if (index == fraction_start) {
+            return false;
+        }
+    }
+    out->assign(value, static_cast<size_t>(index));
+    *consumed = index;
+    return true;
+}
+
+bool pg_v8_normalize_time_text(const char* value, int length, std::string* out)
+{
+    int consumed = 0;
+    return pg_v8_parse_time_part(value, length, &consumed, out) && consumed == length;
+}
+
+bool pg_v8_normalize_timestamp_text(const char* value, int length, std::string* out,
+                                    int* consumed = nullptr)
+{
+    std::string date;
+    std::string time;
+    int time_consumed = 0;
+    if (out == nullptr || value == nullptr || length < 19 ||
+        !pg_v8_parse_date_part(value, length, &date) || (value[10] != ' ' && value[10] != 'T') ||
+        !pg_v8_parse_time_part(value + 11, length - 11, &time_consumed, &time))
+    {
+        return false;
+    }
+    const int total_consumed = 11 + time_consumed;
+    if (consumed == nullptr && total_consumed != length) {
+        return false;
+    }
+    *out = date + "T" + time;
+    if (consumed != nullptr) {
+        *consumed = total_consumed;
+    }
+    return true;
+}
+
+bool pg_v8_normalize_timestamptz_text(const char* value, int length, std::string* kind,
+                                      std::string* out)
+{
+    std::string timestamp;
+    int consumed = 0;
+    if (kind == nullptr || out == nullptr ||
+        !pg_v8_normalize_timestamp_text(value, length, &timestamp, &consumed))
+    {
+        return false;
+    }
+    if (consumed == length - 1 && value[consumed] == 'Z') {
+        *kind = "instant";
+        *out = timestamp + "Z";
+        return true;
+    }
+    if (consumed >= length || (value[consumed] != '+' && value[consumed] != '-')) {
+        return false;
+    }
+    const char sign = value[consumed];
+    const int offset_start = consumed + 1;
+    if (offset_start + 2 > length || !pg_v8_is_digit(value[offset_start]) ||
+        !pg_v8_is_digit(value[offset_start + 1]))
+    {
+        return false;
+    }
+    char hour0 = value[offset_start];
+    char hour1 = value[offset_start + 1];
+    char minute0 = '0';
+    char minute1 = '0';
+    int offset_end = offset_start + 2;
+    if (offset_end < length) {
+        if (value[offset_end] != ':' || offset_end + 3 != length ||
+            !pg_v8_is_digit(value[offset_end + 1]) || !pg_v8_is_digit(value[offset_end + 2]))
+        {
+            return false;
+        }
+        minute0 = value[offset_end + 1];
+        minute1 = value[offset_end + 2];
+        offset_end += 3;
+    }
+    if (offset_end != length) {
+        return false;
+    }
+    if (hour0 == '0' && hour1 == '0' && minute0 == '0' && minute1 == '0') {
+        *kind = "instant";
+        *out = timestamp + "Z";
+        return true;
+    }
+    *kind = "offsetDateTime";
+    *out = timestamp;
+    out->push_back(sign);
+    out->push_back(hour0);
+    out->push_back(hour1);
+    out->push_back(':');
+    out->push_back(minute0);
+    out->push_back(minute1);
+    return true;
+}
+
 enum class PgV8Operation
 {
     Exec,
@@ -82,6 +218,8 @@ enum class PgV8RequestState
 struct PgV8ConnectionResource;
 struct PgV8Connection;
 struct PgV8Request;
+
+void pg_v8_clear_result(PgV8Request* request);
 
 struct PgV8Param
 {
@@ -464,24 +602,39 @@ bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Lo
         }
     }
     else if (oid == SL_PG_OID_DATE) {
-        if (!pg_v8_make_typed_string_value(isolate, context, "date", value, length, &js_value)) {
+        std::string normalized;
+        if (!pg_v8_normalize_date_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "date", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
             return false;
         }
     }
     else if (oid == SL_PG_OID_TIME) {
-        if (!pg_v8_make_typed_string_value(isolate, context, "time", value, length, &js_value)) {
+        std::string normalized;
+        if (!pg_v8_normalize_time_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "time", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
             return false;
         }
     }
     else if (oid == SL_PG_OID_TIMESTAMP) {
-        if (!pg_v8_make_typed_string_value(isolate, context, "localDateTime", value, length,
-                                           &js_value))
+        std::string normalized;
+        if (!pg_v8_normalize_timestamp_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "localDateTime", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
         {
             return false;
         }
     }
     else if (oid == SL_PG_OID_TIMESTAMPTZ) {
-        if (!pg_v8_make_typed_string_value(isolate, context, "instant", value, length, &js_value)) {
+        std::string kind;
+        std::string normalized;
+        if (!pg_v8_normalize_timestamptz_text(value, length, &kind, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, kind.c_str(), normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
             return false;
         }
     }
@@ -645,6 +798,7 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
         value = v8::Exception::Error(
             v8::String::NewFromUtf8Literal(isolate, "postgres result conversion failed"));
         (void)resolver->Reject(context, value);
+        pg_v8_clear_result(request.get());
         pg_v8_finish_request(request, false);
         return;
     }
@@ -1064,6 +1218,15 @@ bool pg_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> c
         param->type = SL_PG_OID_JSONB;
         return true;
     }
+    if (kind == "bytes") {
+        if (!sl_v8_db_copy_uint8_array(raw_value, &param->bytes)) {
+            pg_v8_throw_type_error(isolate, "postgres bytes value wrapper must hold Uint8Array");
+            return false;
+        }
+        param->type = SL_PG_OID_BYTEA;
+        param->format = 1;
+        return true;
+    }
     if (!raw_value->IsString() || !sl_v8_std_string_from_value(isolate, raw_value, &text)) {
         return false;
     }
@@ -1169,19 +1332,11 @@ bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
             param.text = std::to_string(value64);
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            std::shared_ptr<v8::BackingStore> backing = bytes->Buffer()->GetBackingStore();
-            size_t offset = bytes->ByteOffset();
-            size_t length = bytes->ByteLength();
-            if (backing == nullptr || offset > backing->ByteLength() ||
-                length > backing->ByteLength() - offset)
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 return false;
             }
-            unsigned char* data = static_cast<unsigned char*>(backing->Data());
             param.type = SL_PG_OID_BYTEA;
             param.format = 1;
-            param.bytes.assign(data + offset, data + offset + length);
         }
         else if (pg_v8_is_db_value(isolate, context, item)) {
             if (!pg_v8_convert_db_value_param(isolate, context, item, &param)) {
