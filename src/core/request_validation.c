@@ -12,7 +12,6 @@
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
-#include <stdio.h>
 #include <string.h>
 #include <yyjson.h>
 
@@ -279,8 +278,6 @@ static SlStatus sl_request_validation_child_path(SlArena* arena, SlStr parent, S
 static SlStatus sl_request_validation_index_path(SlArena* arena, SlStr parent, size_t index,
                                                  SlStr* out)
 {
-    char suffix[32];
-    int written = 0;
     size_t capacity = 0U;
     SlStringBuilder builder = {0};
     SlStatus status;
@@ -289,11 +286,7 @@ static SlStatus sl_request_validation_index_path(SlArena* arena, SlStr parent, s
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = sl_str_empty();
-    written = snprintf(suffix, sizeof(suffix), "[%zu]", index);
-    if (written <= 0 || (size_t)written >= sizeof(suffix)) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-    }
-    status = sl_checked_add_size(parent.length, (size_t)written, &capacity);
+    status = sl_checked_add_size(parent.length, 32U, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -305,7 +298,15 @@ static SlStatus sl_request_validation_index_path(SlArena* arena, SlStr parent, s
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_string_builder_append_str(&builder, sl_str_from_parts(suffix, (size_t)written));
+    status = sl_string_builder_append_char(&builder, '[');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_size(&builder, index);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_char(&builder, ']');
     if (!sl_status_is_ok(status)) {
         return status;
     }
