@@ -107,7 +107,7 @@ function Invoke-SlCommandVersion {
         }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit(5000)) {
+        if (-not $process.WaitForExit(20000)) {
             try {
                 $process.Kill()
             } catch {

@@ -76,7 +76,31 @@ esac
 cd "$repo_root"
 
 if [[ "$skip_build" -eq 0 ]]; then
-  cmake -S "$repo_root" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE="$build_type"
+  cmake_args=(
+    -S "$repo_root"
+    -B "$build_dir"
+    -DCMAKE_BUILD_TYPE="$build_type"
+    -DSLOPPY_ENABLE_V8=OFF
+    -DSLOPPY_ENGINE=none
+  )
+  vcpkg_root="${VCPKG_ROOT:-$repo_root/.sdeps/vcpkg}"
+  vcpkg_toolchain="$vcpkg_root/scripts/buildsystems/vcpkg.cmake"
+  if [[ -f "$vcpkg_toolchain" ]]; then
+    cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$vcpkg_toolchain")
+  fi
+  if command -v ninja >/dev/null 2>&1; then
+    cmake_args+=(
+      -G Ninja
+      "-DCMAKE_MAKE_PROGRAM=$(command -v ninja)"
+    )
+  fi
+  if command -v ccache >/dev/null 2>&1; then
+    cmake_args+=(
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+    )
+  fi
+  cmake "${cmake_args[@]}"
   cmake --build "$build_dir"
   cargo "${cargo_args[@]}"
 fi
@@ -87,7 +111,10 @@ sloppyc_bin="$repo_root/compiler/target/$cargo_profile/sloppyc"
 [[ -x "$sloppyc_bin" ]] || { echo "missing built sloppyc executable: $sloppyc_bin" >&2; exit 1; }
 
 package_name="sloppy-$package_version-$platform-$arch"
-output_root="$repo_root/$output_dir"
+case "$output_dir" in
+  /*) output_root="$output_dir" ;;
+  *) output_root="$repo_root/$output_dir" ;;
+esac
 stage_root="$output_root/stage/$package_name"
 rm -rf "$stage_root"
 mkdir -p "$stage_root/bin" "$stage_root/stdlib" "$stage_root/examples" "$stage_root/docs"

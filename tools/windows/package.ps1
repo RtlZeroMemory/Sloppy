@@ -217,12 +217,16 @@ $Commit = Get-GitValue @("rev-parse", "--short", "HEAD")
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = "unknown"
 }
+$PowerShellExe = (Get-Process -Id $PID).Path
+if ([string]::IsNullOrWhiteSpace($PowerShellExe)) {
+    $PowerShellExe = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
+}
 
 if (-not $SkipBuild) {
     Import-SlVisualStudioEnvironment
 
     $devScript = Join-Path $PSScriptRoot "dev.ps1"
-    Invoke-Native "powershell" @(
+    Invoke-Native $PowerShellExe @(
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -232,16 +236,7 @@ if (-not $SkipBuild) {
         "-Preset",
         $Preset
     )
-    Invoke-Native "powershell" @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $devScript,
-        "build",
-        "-Preset",
-        $Preset
-    )
+    Invoke-Native "cmake" @("--build", "--preset", $Preset, "--target", "sloppy")
 
     $cargoArgs = @("build", "--manifest-path", (Join-Path $Root "compiler/Cargo.toml"))
     if ($Configuration -eq "Release") {

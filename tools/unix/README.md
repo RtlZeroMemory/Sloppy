@@ -46,6 +46,16 @@ build/dependency directories, packaged `sloppyc build` from the extracted layout
 `SHA256SUMS.txt` when present. Default non-V8 packages report packaged
 `sloppy run --artifacts` as skipped/not configured because V8 is unavailable.
 
+Manual Unix release artifact dry-runs wrap the same package smoke path:
+
+```sh
+tools/unix/release-dry-run.sh --preset linux-clang
+```
+
+The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies package
+checksums through `test-package.sh`, and does not require secrets or create a public
+release.
+
 Provider live lanes have POSIX wrappers for machines that already have the matching CMake
 preset configured and the required service dependencies installed:
 
