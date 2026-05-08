@@ -1,0 +1,139 @@
+# Bootstrap asset, example API-shape, stdlib, and package tests. Included by cmake/SloppyTests.cmake.
+
+    add_test(
+        NAME bootstrap.stdlib.assets
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
+            "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_assets.cmake")
+    add_test(
+        NAME bootstrap.stdlib.api_shape
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
+            "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_api.cmake")
+    add_test(
+        NAME examples.hello.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_hello_example.cmake")
+    add_test(
+        NAME examples.ergonomics.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_ergonomics_example.cmake")
+    add_test(
+        NAME examples.modules_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_modules_basic_example.cmake")
+    add_test(
+        NAME examples.data_foundation.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_data_foundation_example.cmake")
+    add_test(
+        NAME examples.sqlite_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlite_basic_example.cmake")
+    add_test(
+        NAME examples.postgres_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_postgres_basic_example.cmake")
+    add_test(
+        NAME examples.sqlserver_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlserver_basic_example.cmake")
+    add_test(
+        NAME examples.request_context.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_request_context_example.cmake")
+    add_test(
+        NAME examples.time.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_time_examples.cmake")
+    add_test(
+        NAME examples.crypto.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_crypto_examples.cmake")
+    add_test(
+        NAME examples.codec.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_codec_examples.cmake")
+    add_test(
+        NAME examples.net.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_net_examples.cmake")
+    add_test(
+        NAME examples.os.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_os_examples.cmake")
+    add_test(
+        NAME examples.workers.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_workers_examples.cmake")
+    add_test(
+        NAME examples.config.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
+    add_test(
+        NAME examples.core_integration.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
+    sloppy_add_framework_v2_static_example_tests()
+    set_tests_properties(
+        examples.core_integration.api_shape PROPERTIES LABELS
+                                                     "CORE-INTEGRATION-01;examples;conformance")
+
+    if(NODE_EXECUTABLE)
+        add_test(
+            NAME bootstrap.stdlib.app_host_foundation
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
+        add_test(
+            NAME bootstrap.stdlib.modules
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_modules.mjs")
+        add_test(
+            NAME bootstrap.stdlib.data_foundation
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_data_foundation.mjs")
+        add_test(
+            NAME bootstrap.stdlib.codec
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
+        add_test(
+            NAME bootstrap.stdlib.codec_properties
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec_properties.mjs")
+        add_test(
+            NAME bootstrap.stdlib.os
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
+        add_test(
+            NAME bootstrap.stdlib.http_client
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
+        add_test(
+            NAME bootstrap.stdlib.workers
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
+        add_test(
+            NAME bootstrap.stdlib.core_integration
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
+        set_tests_properties(
+            bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
+            bootstrap.stdlib.http_client bootstrap.stdlib.workers
+            bootstrap.stdlib.codec_properties
+            bootstrap.stdlib.core_integration PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            bootstrap.stdlib.core_integration PROPERTIES LABELS
+                                                       "CORE-INTEGRATION-01;bootstrap;conformance")
+    endif()
+
+    if(WIN32 AND SLOPPY_PACKAGE_ARCHIVE)
+        add_test(
+            NAME conformance.package.windows_outside_checkout
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+                    "${PROJECT_SOURCE_DIR}/tools/windows/test-package.ps1" -PackagePath
+                    "${SLOPPY_PACKAGE_ARCHIVE}" -MetadataPath
+                    "${PROJECT_SOURCE_DIR}/tests/fixtures/package/windows-default/case.json")
+        set_tests_properties(
+            conformance.package.windows_outside_checkout
+            PROPERTIES LABELS "conformance;package;outside-checkout")
+    endif()
+

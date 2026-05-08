@@ -1,0 +1,179 @@
+set(
+    SLOPPY_CORE_SOURCES
+    src/core/status.c
+    src/core/source_loc.c
+    src/core/string.c
+    src/core/bytes.c
+    src/core/cancellation.c
+    src/core/checked_math.c
+    src/core/arena.c
+    src/core/builder.c
+    src/core/intern.c
+    src/core/scope.c
+    src/core/resource.c
+    src/core/capability.c
+    src/core/execution_domain.c
+    src/core/features.c
+    src/core/crypto.c
+    src/core/crypto_noncrypto_hash.c
+    src/core/fs.c
+    src/core/os.c
+    src/platform/crypto_password_sodium.c
+    src/platform/libuv/net_tcp_libuv.c
+    src/core/app_host.c
+    src/core/loop.c
+    src/core/async.c
+    src/core/async_backend.c
+    src/core/provider_executor.c
+    src/core/worker_pool.c
+    src/core/http.c
+    src/core/http_backend.c
+    src/core/http_context.c
+    src/core/http_dispatch.c
+    src/core/http_response.c
+    src/core/request_validation.c
+    src/core/route.c
+    src/core/plan.c
+    src/core/plan_parse.c
+    src/core/runtime_contract.c
+    src/core/diagnostics.c
+    src/data/common.c
+    src/data/postgres.c
+    src/data/sqlserver.c
+    src/data/sqlite.c
+    src/engine/engine.c
+    src/platform/libuv/async_backend_libuv.c
+    src/platform/libuv/http_transport_libuv.c
+    src/platform/libuv/process.c
+    src/platform/libuv/thread.c)
+
+if(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
+    list(APPEND SLOPPY_CORE_SOURCES src/core/bytes_simd_sse2.c src/core/string_simd_sse2.c)
+endif()
+if(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE)
+    list(APPEND SLOPPY_CORE_SOURCES src/core/bytes_simd_avx2.c src/core/string_simd_avx2.c)
+endif()
+
+if(WIN32)
+    list(
+        APPEND
+        SLOPPY_CORE_SOURCES
+        src/platform/win32/time.c
+        src/platform/win32/fs_win32.c
+        src/platform/win32/net_local_win32.c
+        src/platform/win32/crypto_win32.c
+        src/platform/win32/os_win32.c)
+else()
+    list(
+        APPEND
+        SLOPPY_CORE_SOURCES
+        src/platform/posix/time.c
+        src/platform/posix/fs_posix.c
+        src/platform/posix/net_local_posix.c
+        src/platform/posix/crypto_posix.c
+        src/platform/posix/os_posix.c)
+endif()
+
+if(SLOPPY_ENABLE_V8)
+    list(
+        APPEND
+        SLOPPY_CORE_SOURCES
+        src/engine/v8/engine_v8.cc
+        src/engine/v8/async_scheduler.cc
+        src/engine/v8/http_bridge.cc
+        src/engine/v8/string_interop.cc
+        src/engine/v8/intrinsics.cc
+        src/engine/v8/intrinsics_crypto.cc
+        src/engine/v8/intrinsics_codec.cc
+        src/engine/v8/intrinsics_fs.cc
+        src/engine/v8/intrinsics_net.cc
+        src/engine/v8/intrinsics_os.cc
+        src/engine/v8/intrinsics_time.cc
+        src/engine/v8/intrinsics_workers.cc
+        src/engine/v8/intrinsics_db_bridge.cc
+        src/engine/v8/intrinsics_sqlite.cc
+        src/engine/v8/intrinsics_postgres.cc
+        src/engine/v8/intrinsics_sqlserver.cc)
+endif()
+
+set(
+    SLOPPY_C_LINT_SOURCES
+    src/main.c
+    src/cli/sloppyrc.c
+    ${SLOPPY_CORE_SOURCES}
+    tests/unit/core/test_status.c
+    tests/unit/core/test_source_loc.c
+    tests/unit/core/test_string.c
+    tests/unit/core/test_bytes.c
+    tests/unit/core/test_cancellation.c
+    tests/unit/core/test_checked_math.c
+    tests/unit/core/test_arena.c
+    tests/unit/core/test_builder.c
+    tests/unit/core/test_intern.c
+    tests/unit/core/test_scope.c
+    tests/unit/core/test_resource.c
+    tests/unit/core/test_capability.c
+    tests/unit/core/test_execution_domain.c
+    tests/unit/core/test_features.c
+    tests/unit/core/test_crypto.c
+    tests/unit/core/test_fs.c
+    tests/unit/core/test_os.c
+    tests/unit/core/test_app_host.c
+    tests/unit/core/test_loop.c
+    tests/unit/core/test_async.c
+    tests/unit/core/test_async_backend.c
+    tests/unit/core/test_provider_executor.c
+    tests/unit/core/test_worker_pool.c
+    tests/unit/core/test_http.c
+    tests/unit/core/test_http_backend.c
+    tests/unit/core/test_http_transport.cc
+    tests/unit/core/test_http_context.c
+    tests/unit/core/test_http_dispatch.c
+    tests/unit/core/test_http_response.c
+    tests/unit/core/test_route.c
+    tests/unit/core/test_plan.c
+    tests/unit/core/test_plan_parse.c
+    tests/unit/core/test_runtime_contract.c
+    tests/unit/core/test_engine.c
+    tests/unit/core/test_diagnostics.c
+    tests/unit/data/test_data_common.c
+    tests/unit/data/test_postgres.c
+    tests/unit/data/test_sqlserver.c
+    tests/unit/core/test_assert.c
+    tests/unit/core/test_assert_enabled_under_ndebug.c
+    tests/unit/data/test_sqlite.c
+    tests/fuzz/fuzz_plan_parse.c
+    tests/fuzz/fuzz_route_pattern.c
+    tests/fuzz/fuzz_http_request.c
+    tests/fuzz/fuzz_diagnostics_render.c
+    tests/fuzz/fuzz_memory_primitives.c
+    benchmarks/bench_main.c
+    benchmarks/bench_v8_bridge.c
+    benchmarks/bench_route_matcher.c
+    benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_memory.c)
+
+if(CMAKE_CXX_COMPILER)
+    list(
+        APPEND
+        SLOPPY_C_LINT_SOURCES
+        tests/unit/core/test_net_tcp_client.cc
+        tests/unit/core/test_async_backend_libuv.cc
+        tests/unit/core/test_source_loc_cpp.cpp)
+    if(WIN32)
+        list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/core/test_net_local_win32.cc)
+    else()
+        list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/core/test_net_local_posix.cc)
+    endif()
+endif()
+
+if(SLOPPY_ENABLE_V8)
+    list(
+        APPEND
+        SLOPPY_C_LINT_SOURCES
+        tests/unit/engine/test_v8_smoke.c
+        tests/integration/execution/test_handwritten_artifact_execution.c
+        tests/integration/http_dispatch/test_http_dispatch_execution.c)
+endif()
+
+set(SLOPPY_MEMORY_ANALYSIS_SOURCES ${SLOPPY_C_LINT_SOURCES})

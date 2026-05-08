@@ -1,0 +1,340 @@
+# Native unit, fuzz seed, data-provider, assertion, benchmark, and V8 smoke tests. Included by cmake/SloppyTests.cmake.
+
+    add_test(
+        NAME docs.test_platform_contract
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_test_platform_contract.cmake")
+    set_tests_properties(docs.test_platform_contract PROPERTIES LABELS "docs;test-platform")
+    add_test(
+        NAME docs.provider_evidence_policy
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_provider_evidence_policy.cmake")
+    set_tests_properties(
+        docs.provider_evidence_policy PROPERTIES LABELS "docs;provider;live-provider")
+
+    sloppy_add_c_unit_test(core_status_basic core.status.basic tests/unit/core/test_status.c)
+    sloppy_add_c_unit_test(
+        core_source_loc_current core.source_loc.current tests/unit/core/test_source_loc.c)
+    sloppy_add_c_unit_test(core_str_views core.str.views tests/unit/core/test_string.c)
+    sloppy_add_c_unit_test(core_bytes_views core.bytes.views tests/unit/core/test_bytes.c)
+    sloppy_add_c_unit_test(
+        core_cancellation_token core.cancellation.token tests/unit/core/test_cancellation.c)
+    sloppy_add_c_unit_test(
+        core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
+    sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
+    sloppy_add_c_unit_test(core_builder_foundation core.builder.foundation
+                           tests/unit/core/test_builder.c)
+    sloppy_add_c_unit_test(core_intern_table core.intern.table tests/unit/core/test_intern.c)
+    sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
+    sloppy_add_c_unit_test(
+        core_resource_lifecycle core.resource.lifecycle tests/unit/core/test_resource.c)
+    sloppy_add_c_unit_test(
+        core_capability_registry core.capability.registry tests/unit/core/test_capability.c)
+    sloppy_add_c_unit_test(
+        core_execution_domain core.execution_domain tests/unit/core/test_execution_domain.c)
+    sloppy_add_c_unit_test(core_runtime_features core.runtime_features
+                           tests/unit/core/test_features.c)
+    set_tests_properties(core.runtime_features PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(core_crypto_foundation core.crypto.foundation
+                           tests/unit/core/test_crypto.c)
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_net_tcp_client core.net.tcp_client tests/unit/core/test_net_tcp_client.cc)
+        target_link_libraries(core_net_tcp_client PRIVATE ${SLOPPY_LIBUV_TARGET})
+        add_test(NAME conformance.net.tcp_client_loopback COMMAND $<TARGET_FILE:core_net_tcp_client>)
+        set_tests_properties(
+            conformance.net.tcp_client_loopback PROPERTIES LABELS "conformance;net;tcp;smoke")
+        if(NOT WIN32)
+            sloppy_add_cxx_unit_test(
+                core_net_local_posix core.net.local_posix
+                tests/unit/core/test_net_local_posix.cc)
+            add_test(
+                NAME conformance.net.local_ipc_posix
+                COMMAND $<TARGET_FILE:core_net_local_posix>)
+            set_tests_properties(
+                conformance.net.local_ipc_posix
+                PROPERTIES LABELS "conformance;net;local-ipc;posix")
+        else()
+            sloppy_add_cxx_unit_test(
+                core_net_local_win32 core.net.local_win32
+                tests/unit/core/test_net_local_win32.cc)
+            add_test(
+                NAME conformance.net.local_ipc_win32
+                COMMAND $<TARGET_FILE:core_net_local_win32>)
+            set_tests_properties(
+                conformance.net.local_ipc_win32
+                PROPERTIES LABELS "conformance;net;local-ipc;win32")
+        endif()
+    endif()
+    sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
+    sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
+                           tests/unit/core/test_os.c)
+    sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
+                           tests/unit/core/test_app_host.c)
+    sloppy_add_c_unit_test(
+        core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
+    sloppy_add_c_unit_test(
+        core_async_settlement core.async.settlement tests/unit/core/test_async.c)
+    sloppy_add_c_unit_test(
+        core_async_backend core.async.backend tests/unit/core/test_async_backend.c)
+    add_test(NAME conformance.async.native_settlement COMMAND $<TARGET_FILE:core_async_settlement>)
+    set_tests_properties(
+        conformance.async.native_settlement PROPERTIES LABELS "conformance;async")
+    add_test(NAME conformance.async.backend_completion COMMAND $<TARGET_FILE:core_async_backend>)
+    set_tests_properties(
+        conformance.async.backend_completion PROPERTIES LABELS "conformance;async")
+    sloppy_add_c_unit_test(
+        core_provider_executor core.provider_executor tests/unit/core/test_provider_executor.c)
+    add_test(
+        NAME conformance.capability.provider_executor
+        COMMAND $<TARGET_FILE:core_provider_executor>)
+    set_tests_properties(
+        conformance.capability.provider_executor
+        PROPERTIES LABELS "conformance;capability;smoke")
+    add_test(NAME stress.provider_executor COMMAND $<TARGET_FILE:core_provider_executor>)
+    set_tests_properties(
+        stress.provider_executor PROPERTIES LABELS "stress;provider;executor")
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_async_backend_libuv core.async.backend_libuv
+            tests/unit/core/test_async_backend_libuv.cc)
+        add_test(
+            NAME conformance.async.backend_libuv
+            COMMAND $<TARGET_FILE:core_async_backend_libuv>)
+        set_tests_properties(
+            conformance.async.backend_libuv PROPERTIES LABELS "conformance;async;smoke")
+    endif()
+    sloppy_add_c_unit_test(
+        core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
+    sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
+    sloppy_add_c_unit_test(
+        core_http_backend core.http.backend tests/unit/core/test_http_backend.c)
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_http_transport core.http.transport tests/unit/core/test_http_transport.cc)
+        target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
+        function(sloppy_add_http_transport_case test_name case_name)
+            add_test(
+                NAME ${test_name}
+                COMMAND $<TARGET_FILE:core_http_transport> --case ${case_name})
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance;transport;http")
+        endfunction()
+        sloppy_add_http_transport_case(conformance.transport.localhost_mvp localhost_mvp)
+        sloppy_add_http_transport_case(conformance.transport.keep_alive keep_alive)
+        sloppy_add_http_transport_case(
+            conformance.transport.keep_alive_idle_timeout keep_alive_idle_timeout)
+        sloppy_add_http_transport_case(
+            conformance.transport.keep_alive_max_requests keep_alive_max_requests)
+        sloppy_add_http_transport_case(conformance.transport.lifecycle_reset lifecycle_reset)
+        sloppy_add_http_transport_case(conformance.transport.chunked_request chunked_request)
+        sloppy_add_http_transport_case(
+            conformance.transport.streaming_response streaming_response)
+        sloppy_add_http_transport_case(conformance.transport.backpressure backpressure)
+        sloppy_add_http_transport_case(conformance.transport.https_loopback https_loopback)
+        sloppy_add_http_transport_case(conformance.transport.https_tls_negative https_tls_negative)
+        sloppy_add_http_transport_case(conformance.transport.shutdown_cancel shutdown_cancel)
+        add_test(
+            NAME smoke.transport.keep_alive_streaming_bounded
+            COMMAND $<TARGET_FILE:core_http_transport> --bounded-smoke-only)
+        set_tests_properties(
+            smoke.transport.keep_alive_streaming_bounded PROPERTIES LABELS "smoke;transport;http")
+    endif()
+    sloppy_add_c_unit_test(
+        core_http_context core.http.context tests/unit/core/test_http_context.c)
+    sloppy_add_c_unit_test(
+        core_http_dispatch core.http.dispatch tests/unit/core/test_http_dispatch.c)
+    add_test(NAME conformance.http.default_dispatch COMMAND $<TARGET_FILE:core_http_dispatch>)
+    set_tests_properties(
+        conformance.http.default_dispatch PROPERTIES LABELS "conformance;http")
+    sloppy_add_c_unit_test(
+        core_http_response core.http.response tests/unit/core/test_http_response.c)
+    sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
+    sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
+    set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(
+        core_plan_parse_json core.plan.parse_json tests/unit/core/test_plan_parse.c)
+    set_tests_properties(
+        core.plan.parse_json PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(
+        core_runtime_contract core.runtime_contract tests/unit/core/test_runtime_contract.c)
+    sloppy_add_c_unit_test(core_engine_abi core.engine.abi tests/unit/core/test_engine.c)
+    if(SLOPPY_ENABLE_V8)
+        sloppy_add_c_unit_test(
+            engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
+        add_test(NAME conformance.v8.runtime_bridge COMMAND $<TARGET_FILE:engine_v8_smoke>)
+        set_tests_properties(
+            conformance.v8.runtime_bridge PROPERTIES LABELS "conformance;v8;http;async;net;local-ipc")
+        sloppy_add_cxx_unit_test(
+            engine_v8_owner_thread engine.v8.owner_thread
+            tests/unit/engine/test_v8_owner_thread.cc)
+        target_link_libraries(engine_v8_owner_thread PRIVATE Sloppy::V8)
+        target_compile_features(engine_v8_owner_thread PRIVATE cxx_std_20)
+        add_test(NAME conformance.v8.owner_thread COMMAND $<TARGET_FILE:engine_v8_owner_thread>)
+        set_tests_properties(
+            conformance.v8.owner_thread PROPERTIES LABELS "conformance;v8;async")
+        sloppy_add_cxx_unit_test(
+            engine_v8_async_scheduler engine.v8.async_scheduler
+            tests/unit/engine/test_v8_async_scheduler.cc)
+        target_link_libraries(engine_v8_async_scheduler PRIVATE Sloppy::V8)
+        target_compile_features(engine_v8_async_scheduler PRIVATE cxx_std_20)
+        add_test(
+            NAME conformance.v8.native_async_scheduler
+            COMMAND $<TARGET_FILE:engine_v8_async_scheduler>)
+        set_tests_properties(
+            conformance.v8.native_async_scheduler PROPERTIES LABELS "conformance;v8;async")
+        sloppy_add_c_unit_test(
+            execution_handwritten_artifact execution.handwritten_artifact
+            tests/integration/execution/test_handwritten_artifact_execution.c)
+        set_tests_properties(
+            execution.handwritten_artifact PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        sloppy_add_c_unit_test(
+            http_dispatch_execution http.dispatch.execution
+            tests/integration/http_dispatch/test_http_dispatch_execution.c)
+        set_tests_properties(
+            http.dispatch.execution PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME conformance.v8.http_dispatch_execution
+            COMMAND $<TARGET_FILE:http_dispatch_execution>)
+        set_tests_properties(
+            conformance.v8.http_dispatch_execution
+            PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" LABELS "conformance;v8;http")
+    endif()
+    sloppy_add_c_unit_test(
+        core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
+    set_tests_properties(
+        core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    add_test(
+        NAME conformance.foundation.resource_lifecycle
+        COMMAND $<TARGET_FILE:core_resource_lifecycle>)
+    set_tests_properties(
+        conformance.foundation.resource_lifecycle
+        PROPERTIES LABELS "conformance;resource-lifecycle;shutdown")
+    add_test(
+        NAME conformance.foundation.app_host_lifecycle
+        COMMAND $<TARGET_FILE:core_app_host_hardening>)
+    set_tests_properties(
+        conformance.foundation.app_host_lifecycle
+        PROPERTIES LABELS "conformance;resource-lifecycle;shutdown")
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_plan_parse fuzz.plan_parse.seed_replay tests/fuzz/fuzz_plan_parse.c plan)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_route_pattern fuzz.route_pattern.seed_replay tests/fuzz/fuzz_route_pattern.c
+        route-pattern)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
+        http-request)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
+        tests/fuzz/fuzz_diagnostics_render.c diagnostics-render)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_memory_primitives fuzz.memory_primitives.seed_replay
+        tests/fuzz/fuzz_memory_primitives.c memory-primitives)
+    sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
+    sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
+    sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
+    sloppy_add_libfuzzer_target(
+        fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
+    sloppy_add_libfuzzer_target(
+        fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
+    sloppy_add_c_unit_test(
+        data_common_contract data.common.contract tests/unit/data/test_data_common.c)
+    add_test(NAME conformance.data.common_contract COMMAND $<TARGET_FILE:data_common_contract>)
+    set_tests_properties(
+        conformance.data.common_contract PROPERTIES LABELS "conformance;data;provider")
+    sloppy_add_c_unit_test(
+        data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
+    add_test(NAME conformance.postgres.native_provider COMMAND $<TARGET_FILE:data_postgres_provider>)
+    set_tests_properties(
+        conformance.postgres.native_provider PROPERTIES LABELS "conformance;postgres;provider")
+    add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)
+    set_tests_properties(
+        data.postgres.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;postgres")
+    add_test(NAME conformance.postgres.native_live COMMAND data_postgres_provider --live)
+    set_tests_properties(
+        conformance.postgres.native_live
+        PROPERTIES SKIP_RETURN_CODE 77 LABELS "conformance;postgres;live-provider")
+    sloppy_add_c_unit_test(
+        data_sqlserver_provider data.sqlserver.provider tests/unit/data/test_sqlserver.c)
+    add_test(NAME conformance.sqlserver.native_provider COMMAND $<TARGET_FILE:data_sqlserver_provider>)
+    set_tests_properties(
+        conformance.sqlserver.native_provider PROPERTIES LABELS "conformance;sqlserver;provider")
+    add_test(NAME data.sqlserver.live_provider COMMAND data_sqlserver_provider --live)
+    set_tests_properties(
+        data.sqlserver.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;sqlserver")
+    add_test(NAME conformance.sqlserver.native_live COMMAND data_sqlserver_provider --live)
+    set_tests_properties(
+        conformance.sqlserver.native_live
+        PROPERTIES SKIP_RETURN_CODE 77 LABELS "conformance;sqlserver;live-provider")
+    sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
+    add_test(NAME conformance.sqlite.native_provider COMMAND $<TARGET_FILE:data_sqlite_provider>)
+    set_tests_properties(
+        conformance.sqlite.native_provider PROPERTIES LABELS "conformance;sqlite")
+    add_test(
+        NAME conformance.capability.native_registry
+        COMMAND $<TARGET_FILE:core_capability_registry>)
+    set_tests_properties(
+        conformance.capability.native_registry PROPERTIES LABELS "conformance;capability")
+    sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
+
+    add_executable(
+        core_assert_enabled_under_ndebug tests/unit/core/test_assert_enabled_under_ndebug.c)
+    target_include_directories(
+        core_assert_enabled_under_ndebug PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_features(core_assert_enabled_under_ndebug PRIVATE c_std_17)
+    target_compile_definitions(core_assert_enabled_under_ndebug PRIVATE SL_ENABLE_ASSERTS=1 NDEBUG)
+    sloppy_apply_warnings(core_assert_enabled_under_ndebug)
+    sloppy_apply_sanitizers(core_assert_enabled_under_ndebug)
+    add_test(NAME core.assert.enabled_under_ndebug COMMAND core_assert_enabled_under_ndebug)
+    set_tests_properties(core.assert.enabled_under_ndebug PROPERTIES WILL_FAIL TRUE)
+
+    if(CMAKE_CXX_COMPILER)
+        add_executable(core_source_loc_cpp_syntax tests/unit/core/test_source_loc_cpp.cpp)
+        target_include_directories(
+            core_source_loc_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_compile_features(core_source_loc_cpp_syntax PRIVATE cxx_std_17)
+        add_test(NAME core.source_loc.cpp_syntax COMMAND core_source_loc_cpp_syntax)
+    endif()
+
+    add_test(NAME sloppy.cli.version COMMAND sloppy --version)
+    set_tests_properties(sloppy.cli.version PROPERTIES PASS_REGULAR_EXPRESSION "Sloppy")
+
+    add_test(NAME sloppy.cli.help COMMAND sloppy --help)
+    set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Pre-alpha runtime")
+
+    add_test(NAME benchmarks.sloppy_bench.list COMMAND sloppy_bench --list)
+    set_tests_properties(
+        benchmarks.sloppy_bench.list PROPERTIES PASS_REGULAR_EXPRESSION "memory.bytes.find_any")
+
+    add_test(NAME benchmarks.sloppy_bench.smoke_json COMMAND sloppy_bench --smoke --format json)
+    set_tests_properties(
+        benchmarks.sloppy_bench.smoke_json
+        PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
+
+    if(SLOPPY_ENABLE_V8)
+        add_test(
+            NAME benchmarks.sloppy_bench.v8_bridge_smoke_json
+            COMMAND
+                sloppy_bench --include-v8 --smoke --format json --bench
+                v8.bridge.call.noop_proxy)
+        set_tests_properties(
+            benchmarks.sloppy_bench.v8_bridge_smoke_json
+            PROPERTIES PASS_REGULAR_EXPRESSION "\"name\": \"v8.bridge.call.noop_proxy\"")
+    else()
+        add_test(
+            NAME benchmarks.sloppy_bench.v8_unavailable
+            COMMAND sloppy_bench --include-v8 --bench v8.bridge.call.noop_proxy)
+        set_tests_properties(
+            benchmarks.sloppy_bench.v8_unavailable
+            PROPERTIES PASS_REGULAR_EXPRESSION
+                       "benchmark skipped/deferred: v8.bridge.call.noop_proxy")
+    endif()
+
+    if(WIN32)
+        add_test(
+            NAME benchmarks.windows_wrapper.smoke_json
+            COMMAND
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
+                "${PROJECT_SOURCE_DIR}")
+    endif()
+
