@@ -66,6 +66,18 @@ function Get-RelativeRepoPath {
     return $pathFull.Replace("\", "/")
 }
 
+function Test-PathInsideDirectory {
+    param(
+        [string]$Path,
+        [string]$Directory
+    )
+
+    $directoryFull = [System.IO.Path]::GetFullPath($Directory).TrimEnd('\', '/')
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    $prefix = $directoryFull + [System.IO.Path]::DirectorySeparatorChar
+    return $pathFull.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Require-Text {
     param(
         [string]$RelativePath,
@@ -311,8 +323,10 @@ function Test-FixtureMetadata {
 
             $fixtureDir = $metadataFile.Directory.FullName
             foreach ($requiredRelative in @("sloppy.json", "expected/plan-semantic.json", "expected/doctor.json", "expected/diagnostics.json")) {
-                $candidate = Join-Path $fixtureDir $requiredRelative
-                if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                $candidate = [System.IO.Path]::GetFullPath((Join-Path $fixtureDir $requiredRelative))
+                if (-not (Test-PathInsideDirectory -Path $candidate -Directory $fixtureDir)) {
+                    Add-Violation -Path $relative -Line 0 -Message "source-input fixture path escapes fixture directory: $requiredRelative"
+                } elseif (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
                     Add-Violation -Path $relative -Line 0 -Message "source-input fixture is missing $requiredRelative"
                 }
             }
@@ -331,8 +345,10 @@ function Test-FixtureMetadata {
             if ([string]::IsNullOrWhiteSpace($sourceRelative)) {
                 Add-Violation -Path $relative -Line 0 -Message "source-input fixture must declare a source input or sloppy.json entry"
             } else {
-                $sourceCandidate = Join-Path $fixtureDir $sourceRelative
-                if (-not (Test-Path -LiteralPath $sourceCandidate -PathType Leaf)) {
+                $sourceCandidate = [System.IO.Path]::GetFullPath((Join-Path $fixtureDir $sourceRelative))
+                if (-not (Test-PathInsideDirectory -Path $sourceCandidate -Directory $fixtureDir)) {
+                    Add-Violation -Path $relative -Line 0 -Message "source-input fixture source escapes fixture directory: $sourceRelative"
+                } elseif (-not (Test-Path -LiteralPath $sourceCandidate -PathType Leaf)) {
                     Add-Violation -Path $relative -Line 0 -Message "source-input fixture is missing $sourceRelative"
                 }
             }

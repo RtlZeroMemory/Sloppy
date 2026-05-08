@@ -59,10 +59,10 @@ static bool sl_sloppyrc_path_is_absolute(SlStr path)
     if (path.ptr[0] == '/' || path.ptr[0] == '\\') {
         return true;
     }
-    return path.length >= 3U &&
+    return path.length >= 2U &&
            ((path.ptr[0] >= 'A' && path.ptr[0] <= 'Z') ||
             (path.ptr[0] >= 'a' && path.ptr[0] <= 'z')) &&
-           path.ptr[1] == ':' && (path.ptr[2] == '/' || path.ptr[2] == '\\');
+           path.ptr[1] == ':';
 }
 
 static bool sl_sloppyrc_entry_path_is_safe(const char* path)

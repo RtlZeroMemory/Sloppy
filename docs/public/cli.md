@@ -11,8 +11,8 @@ Implemented commands:
 
 ```powershell
 sloppy build
-sloppy build <source.js|source.ts> [--out <dir>]
-sloppy run <source.js|source.ts>
+sloppy build <source.js|source.mjs|source.ts> [--out <dir>]
+sloppy run <source.js|source.mjs|source.ts>
 sloppy run
 sloppy run --artifacts <dir> [--stdlib <dir>]
            [--environment Development] [--host 127.0.0.1] [--port 5173]
@@ -26,17 +26,18 @@ sloppy openapi --plan <path> [--output <path>]
 
 `sloppy build` reads `sloppy.json`, compiles the configured source entry, emits
 Plan-backed artifacts into `outDir`, validates `app.plan.json`, `app.js`, and
-`app.js.map`, then exits without entering V8. `sloppy build <source.js|source.ts>` uses
-the deterministic source-input cache directory unless `--out <dir>` is supplied.
+`app.js.map`, then exits without entering V8.
+`sloppy build <source.js|source.mjs|source.ts>` uses the deterministic source-input cache
+directory unless `--out <dir>` is supplied.
 `--environment`, `--host`, and `--port` are forwarded consistently with source-input
 compile handoff.
 
-`sloppy run <source.js>` invokes `sloppyc build`. `sloppy run <source.js|source.ts>`
-writes artifacts to a deterministic
-tool-owned output directory, validates `app.plan.json`, `app.js`, and `app.js.map`, then
-enters the same runtime path as `sloppy run --artifacts <dir>`. Runtime execution is still
-dev-only and requires a V8-enabled build. Default non-V8 builds may prove the compiler
-handoff and artifact validation, but they must not be reported as V8 execution success.
+`sloppy run <source.js|source.mjs|source.ts>` invokes `sloppyc build`, writes artifacts to
+a deterministic tool-owned output directory, validates `app.plan.json`, `app.js`, and
+`app.js.map`, then enters the same runtime path as `sloppy run --artifacts <dir>`.
+Runtime execution is still dev-only and requires a V8-enabled build. Default non-V8 builds
+may prove the compiler handoff and artifact validation, but they must not be reported as
+V8 execution success.
 The compiler handoff passes argv through the platform process runner; source paths and
 `sloppy.json` values are not interpolated through a shell command string.
 

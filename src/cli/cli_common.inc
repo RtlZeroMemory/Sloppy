@@ -127,9 +127,9 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
-    printf("  sloppy build [source.js|source.ts] [--out <dir>]\n");
+    printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
-    printf("  sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
+    printf("  sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
     printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("             [--once METHOD TARGET]\n");
     printf("  sloppy routes --plan <path> [--format text|json]\n");
@@ -150,7 +150,7 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        printf("Usage: sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
+        printf("Usage: sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
         printf("                  [--environment Development] [--host 127.0.0.1]\n");
         printf("                  [--port 5173] [--once METHOD TARGET]\n");
         printf("\n");
@@ -160,7 +160,7 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "build") == 0) {
-        printf("Usage: sloppy build [source.js|source.ts] [--out <dir>]\n");
+        printf("Usage: sloppy build [source.js|source.mjs|source.ts] [--out <dir>]\n");
         printf("                    [--environment Development] [--host 127.0.0.1]\n");
         printf("                    [--port 5173]\n");
         printf("\n");

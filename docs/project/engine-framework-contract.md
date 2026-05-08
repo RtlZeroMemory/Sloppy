@@ -407,8 +407,8 @@ without requiring the runtime to infer app shape from JS at startup.
 
 Deferred:
 
-- `sloppy run app.ts` / `sloppy run <source>` implementation until #302 has cache, stale-artifact, diagnostics,
-  and cleanup acceptance criteria implemented;
+- cache reuse, stale-artifact decisions, richer diagnostics, and cleanup acceptance criteria
+  beyond the current `sloppy run <source>` compiler handoff;
 - `app.run` and `app.listen`;
 - service/module framework expansion beyond narrow proof needs;
 - middleware, filters, validation DSL binding, and full OpenAPI schemas;

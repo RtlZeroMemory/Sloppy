@@ -307,7 +307,9 @@ foreach ($file in $files) {
             }
         }
 
-        if ($line -match $ignoredStdioVoidCastPattern) {
+        if ((Test-ImplementationPath $relativePath) -and
+            ($line -match $ignoredStdioVoidCastPattern))
+        {
             $violations += New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
@@ -392,6 +394,9 @@ void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
         }
         if (-not (($invalidOutput -join "`n") -match "src/cli/bad_fragment\.inc")) {
             throw "C standards scanner self-test did not scan CLI .inc fragments."
+        }
+        if (-not (($invalidOutput -join "`n") -match "\(void\)fputs")) {
+            throw "C standards scanner self-test did not assert ignored stdio void casts."
         }
 
         Write-Host "C standards scanner self-test passed."

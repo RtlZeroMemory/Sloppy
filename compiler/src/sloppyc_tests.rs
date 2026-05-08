@@ -7,7 +7,7 @@ use std::{
 use super::{
     canonical_config_key, checksum_security_context_visible, command_from_args,
     config_key_is_sensitive, extract, noncrypto_hash_security_context_visible,
-    route_pattern_supported, CliCommand, CompileOptions,
+    route_pattern_supported, CliCommand, CompileOptions, ConfigurationModel,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -523,6 +523,56 @@ fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
     assert!(!keys
         .iter()
         .any(|key| key.value.to_string().contains("secret")));
+}
+
+#[test]
+fn configuration_load_anchors_tls_paths_to_config_dir() {
+    let root = fixture_temp_dir("config-tls-path-root");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("config test directory should be created");
+    fs::write(
+        root.join("appsettings.json"),
+        r#"{
+  "Sloppy": {
+    "Server": {
+      "Tls": {
+        "CertificatePath": "certs/dev.crt",
+        "PrivateKeyPath": "keys/dev.key"
+      }
+    }
+  }
+}"#,
+    )
+    .expect("appsettings should be written");
+
+    let mut options = CompileOptions::default();
+    options.config_dir = Some(root.clone());
+    let model = ConfigurationModel::load(&root.join("src/main.ts"), &options, &[])
+        .expect("configuration should load");
+    let keys = model.plan_keys();
+    let certificate_path = keys
+        .iter()
+        .find(|key| key.key == "Sloppy:Server:Tls:CertificatePath")
+        .and_then(|key| key.value.as_str())
+        .expect("certificate path should be present");
+    let private_key_path = keys
+        .iter()
+        .find(|key| key.key == "Sloppy:Server:Tls:PrivateKeyPath")
+        .and_then(|key| key.value.as_str())
+        .expect("private key path should be present");
+
+    assert!(Path::new(certificate_path).is_absolute());
+    assert!(Path::new(private_key_path).is_absolute());
+    assert!(
+        certificate_path.ends_with("certs/dev.crt") || certificate_path.ends_with("certs\\dev.crt")
+    );
+    assert!(
+        private_key_path.ends_with("keys/dev.key") || private_key_path.ends_with("keys\\dev.key")
+    );
+
+    fs::remove_dir_all(&root).expect("config test directory should be cleaned up");
 }
 
 #[test]

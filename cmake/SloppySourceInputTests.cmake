@@ -265,6 +265,19 @@
                              PROPERTIES LABELS "source-input")
 
         add_test(
+            NAME sloppy.build.artifacts_rejected
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" "-DSLOPPY_COMMAND=build"
+                "-DSLOPPY_CASE=build-artifacts-rejected"
+                "-DSLOPPY_EXTRA_ARGS=--artifacts;tests/integration/execution/compiler_mvp"
+                "-DSLOPPY_EXPECTED_ERROR=--artifacts is not supported" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.build.artifacts_rejected
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
             NAME sloppy.build.source_input_unsupported_config_field
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

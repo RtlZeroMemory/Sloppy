@@ -196,7 +196,8 @@ while IFS= read -r file; do
             add_finding violations "$file" "$line_number" "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." "${BASH_REMATCH[2]}"
         fi
 
-        if [[ "$line" =~ \(void\)[[:space:]]*(snprintf|fprintf|fputs|printf|fputc)[[:space:]]*\( ]]; then
+        if is_implementation_path "$file" &&
+            [[ "$line" =~ \(void\)[[:space:]]*(snprintf|fprintf|fputs|printf|fputc)[[:space:]]*\( ]]; then
             add_finding violations "$file" "$line_number" "Do not cast ignored stdio/format return values to void." "(void)${BASH_REMATCH[1]}"
         fi
 

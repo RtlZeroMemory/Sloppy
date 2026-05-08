@@ -44,7 +44,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-        "`sloppy run <source.js>` invokes `sloppyc build`"
+        "`sloppy run <source.js|source.mjs|source.ts>` invokes `sloppyc build`"
         "no package manager"
         "no npm resolution"
         "no Node compatibility")

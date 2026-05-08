@@ -765,6 +765,26 @@ static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* 
     sl_cli_write_cstr(stderr, "operation failed\n");
 }
 
+static const char* sl_run_command_name_or_default(const char* command_name)
+{
+    return command_name != NULL && command_name[0] != '\0' ? command_name : "sloppy run";
+}
+
+static void sl_run_write_command_message(const char* command_name, const char* message)
+{
+    sl_cli_write_cstr(stderr, sl_run_command_name_or_default(command_name));
+    sl_cli_write_cstr(stderr, ": ");
+    sl_cli_write_cstr(stderr, message);
+}
+
+static void sl_run_print_command_diag(const char* command_name, const char* message,
+                                      SlArena* arena, const SlDiag* diag)
+{
+    sl_cli_write_cstr(stderr, sl_run_command_name_or_default(command_name));
+    sl_cli_write_cstr(stderr, ": ");
+    sl_run_print_diag(message, arena, diag);
+}
+
 static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js_path)
 {
     SlEngineOptions options = {0};
@@ -1138,7 +1158,8 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     return 0;
 }
 
-static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
+static int sl_run_load_artifacts(const char* artifacts_path, const char* command_name,
+                                 SlRunApp* app,
                                  bool validate_runtime_features)
 {
     char plan_path[1024];
@@ -1154,7 +1175,7 @@ static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
 
     *app = (SlRunApp){0};
     if (!sl_run_copy_cstr(app->artifacts_path, sizeof(app->artifacts_path), artifacts_path)) {
-        sl_cli_write_cstr(stderr, "sloppy run: invalid artifacts directory\n");
+        sl_run_write_command_message(command_name, "invalid artifacts directory\n");
         return 1;
     }
     if (!sl_status_is_ok(sl_arena_init(&app->plan_arena, app->plan_arena_storage,
@@ -1171,12 +1192,13 @@ static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
             &app->lifecycle, app->app_cleanups,
             sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), &diag)))
     {
-        sl_run_print_diag("sloppy run: failed to start app lifecycle: ", &app->engine_arena, &diag);
+        sl_run_print_command_diag(command_name, "failed to start app lifecycle: ",
+                                  &app->engine_arena, &diag);
         return 1;
     }
 
     if (!sl_run_artifact_file_path(plan_path, sizeof(plan_path), artifacts_path, "app.plan.json")) {
-        sl_cli_write_cstr(stderr, "sloppy run: invalid artifacts directory\n");
+        sl_run_write_command_message(command_name, "invalid artifacts directory\n");
         return 1;
     }
 
@@ -1190,14 +1212,15 @@ static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
                           sl_run_str_span(app->plan.bundle.path)))
     {
-        sl_cli_write_cstr(stderr, "sloppy run: invalid bundle path in app.plan.json\n");
+        sl_run_write_command_message(command_name, "invalid bundle path in app.plan.json\n");
         return 1;
     }
 
     if (!sl_run_join_path(source_map_path, sizeof(source_map_path), artifacts_path,
                           sl_run_str_span(app->plan.source_map.path)))
     {
-        sl_cli_write_cstr(stderr, "sloppy run: invalid source map path in app.plan.json\n");
+        sl_run_write_command_message(command_name,
+                                     "invalid source map path in app.plan.json\n");
         return 1;
     }
 
@@ -1212,11 +1235,12 @@ static int sl_run_load_artifacts(const char* artifacts_path, SlRunApp* app,
         return 1;
     }
     if (!sl_run_hash_matches(app->plan.bundle.hash, app_js)) {
-        sl_cli_write_cstr(stderr, "sloppy run: bundle hash mismatch in app.plan.json\n");
+        sl_run_write_command_message(command_name, "bundle hash mismatch in app.plan.json\n");
         return 1;
     }
     if (!sl_run_hash_matches(app->plan.source_map.hash, source_map)) {
-        sl_cli_write_cstr(stderr, "sloppy run: source map hash mismatch in app.plan.json\n");
+        sl_run_write_command_message(command_name,
+                                     "source map hash mismatch in app.plan.json\n");
         return 1;
     }
     app->app_js_bytes = app_js;
@@ -1233,7 +1257,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
 {
     char app_js_path[1024];
 
-    if (sl_run_load_artifacts(artifacts_path, app, true) != 0) {
+    if (sl_run_load_artifacts(artifacts_path, "sloppy run", app, true) != 0) {
         return 1;
     }
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
@@ -2047,7 +2071,7 @@ static int sl_cli_command_build(const SlCliOptions* options)
         return 1;
     }
 
-    result = sl_run_load_artifacts(out_dir, &app, false);
+    result = sl_run_load_artifacts(out_dir, "sloppy build", &app, false);
     if (sl_run_shutdown_app(&app) != 0 && result == 0) {
         result = 1;
     }
