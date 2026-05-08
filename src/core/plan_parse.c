@@ -1429,6 +1429,93 @@ static SlStatus sl_plan_parse_schemas(SlPlanParseContext* ctx, yyjson_val* root,
     return sl_status_ok();
 }
 
+static bool sl_plan_parse_has_schema_named(const SlPlan* plan, SlStr name)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(name) ||
+        (plan->schema_count != 0U && plan->schemas == NULL))
+    {
+        return false;
+    }
+    for (index = 0U; index < plan->schema_count; index += 1U) {
+        if (sl_str_equal(plan->schemas[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_plan_parse_validate_schema_names(SlPlanParseContext* ctx, const SlPlan* plan)
+{
+    size_t left = 0U;
+    size_t right = 0U;
+
+    if (plan == NULL || plan->schema_count == 0U) {
+        return sl_status_ok();
+    }
+    if (plan->schemas == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (left = 0U; left < plan->schema_count; left += 1U) {
+        for (right = left + 1U; right < plan->schema_count; right += 1U) {
+            if (sl_str_equal(plan->schemas[left].name, plan->schemas[right].name)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("duplicate app plan schema name",
+                                          sizeof("duplicate app plan schema name") - 1U),
+                    sl_plan_parse_literal("schemas[].name values must be unique",
+                                          sizeof("schemas[].name values must be unique") - 1U));
+            }
+        }
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_validate_schema_references(SlPlanParseContext* ctx,
+                                                         const SlPlan* plan)
+{
+    size_t route_index = 0U;
+
+    if (plan == NULL || plan->route_count == 0U || plan->schema_count == 0U) {
+        return sl_status_ok();
+    }
+    if (plan->routes == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (route_index = 0U; route_index < plan->route_count; route_index += 1U) {
+        const SlPlanRoute* route = &plan->routes[route_index];
+        size_t binding_index = 0U;
+
+        if (route->binding_count != 0U && route->bindings == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        for (binding_index = 0U; binding_index < route->binding_count; binding_index += 1U) {
+            const SlPlanRequestBinding* binding = &route->bindings[binding_index];
+
+            if (binding->kind != SL_PLAN_REQUEST_BINDING_BODY_JSON) {
+                continue;
+            }
+            if (sl_str_is_empty(binding->schema)) {
+                continue;
+            }
+            if (!sl_plan_parse_has_schema_named(plan, binding->schema)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("app plan route binding references missing schema",
+                                          sizeof("app plan route binding references missing "
+                                                 "schema") -
+                                              1U),
+                    sl_plan_parse_literal("body.json bindings must reference schemas[].name",
+                                          sizeof("body.json bindings must reference "
+                                                 "schemas[].name") -
+                                              1U));
+            }
+        }
+    }
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_one_provider(SlPlanParseContext* ctx, yyjson_val* value,
                                            SlPlanDataProvider* out)
 {
@@ -1831,6 +1918,14 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_schemas(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_validate_schema_names(ctx, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_validate_schema_references(ctx, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

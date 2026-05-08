@@ -1023,6 +1023,7 @@ static int test_plan_backed_route_query_header_validation_returns_problem(void)
                                                     &request, &result, &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
     {
         sl_engine_destroy(engine);
@@ -1093,6 +1094,77 @@ static int test_plan_backed_nullable_required_body_field_must_be_present(void)
     {
         sl_engine_destroy(engine);
         return 148;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_plan_backed_array_validation_reports_indexed_paths(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaNode item = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/tags");
+    route.handler_id = 1U;
+    route.bindings = bindings;
+    route.binding_count = 1U;
+    bindings[0].kind = SL_PLAN_REQUEST_BINDING_BODY_JSON;
+    bindings[0].parameter = sl_str_from_cstr("tags");
+    bindings[0].schema = sl_str_from_cstr("Tags");
+    schemas[0].name = sl_str_from_cstr("Tags");
+    schemas[0].definition.kind = SL_PLAN_SCHEMA_ARRAY;
+    schemas[0].definition.items = &item;
+    item.kind = SL_PLAN_SCHEMA_STRING;
+    item.has_min = true;
+    item.min_value = 1;
+    plan.routes = &route;
+    plan.route_count = 1U;
+    plan.schemas = schemas;
+    plan.schema_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /tags HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 9\r\n\r\n"
+                      "[\"ok\",\"\"]",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 151;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 152;
+    }
+
+    if (expect_body_contains(result.response.body, "\"body[1]\"") != 0) {
+        sl_engine_destroy(engine);
+        return 153;
     }
 
     sl_engine_destroy(engine);
@@ -1341,6 +1413,7 @@ int main(void)
         {test_plan_backed_body_validation_returns_problem_before_handler_call},
         {test_plan_backed_route_query_header_validation_returns_problem},
         {test_plan_backed_nullable_required_body_field_must_be_present},
+        {test_plan_backed_array_validation_reports_indexed_paths},
         {test_manual_dispatch_ignores_stale_route_index_for_validation},
         {test_route_params_may_match_but_are_not_required_by_dispatch},
         {test_conformance_smoke_default_http_cases},

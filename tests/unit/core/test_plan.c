@@ -332,6 +332,57 @@ static int test_plan_metadata_interns_stable_strings(void)
     return 0;
 }
 
+static int test_plan_metadata_interns_recursive_schema_graph(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena = {0};
+    SlPlanSchemaProperty properties[1] = {{0}};
+    SlPlanSchema schemas[1] = {{0}};
+    SlPlan plan = {0};
+    SlPlan interned_plan = {0};
+    SlInternTable table = {0};
+    SlStatus status;
+
+    schemas[0].name = sl_str_from_cstr("Node");
+    schemas[0].definition.kind = SL_PLAN_SCHEMA_OBJECT;
+    schemas[0].definition.properties = properties;
+    schemas[0].definition.property_count = 1U;
+    properties[0].name = sl_str_from_cstr("next");
+    properties[0].schema = &schemas[0].definition;
+    plan.version = SL_PLAN_VERSION_1;
+    plan.compiler_version = sl_str_from_cstr("sloppyc-test");
+    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.bundle.id = sl_str_from_cstr("app-js");
+    plan.source_map.id = sl_str_from_cstr("app-js-map");
+    plan.schemas = schemas;
+    plan.schema_count = 1U;
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 83;
+    }
+
+    status = sl_plan_intern_metadata(&arena, &plan, 64U, 32U, &interned_plan, &table);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 84;
+    }
+    if (interned_plan.schemas == schemas ||
+        interned_plan.schemas[0].definition.properties == properties)
+    {
+        return 85;
+    }
+    if (interned_plan.schemas[0].definition.properties[0].schema !=
+        &interned_plan.schemas[0].definition)
+    {
+        return 86;
+    }
+
+    return 0;
+}
+
 static int test_plan_metadata_rebuild_advances_generation(void)
 {
     unsigned char arena_storage[2048];
@@ -507,6 +558,11 @@ int main(void)
     }
 
     result = test_plan_metadata_interns_stable_strings();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_plan_metadata_interns_recursive_schema_graph();
     if (result != 0) {
         return result;
     }

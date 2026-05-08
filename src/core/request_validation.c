@@ -10,7 +10,9 @@
 #include "sloppy/request_validation.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <yyjson.h>
 
@@ -274,6 +276,43 @@ static SlStatus sl_request_validation_child_path(SlArena* arena, SlStr parent, S
     return sl_status_ok();
 }
 
+static SlStatus sl_request_validation_index_path(SlArena* arena, SlStr parent, size_t index,
+                                                 SlStr* out)
+{
+    char suffix[32];
+    int written = 0;
+    size_t capacity = 0U;
+    SlStringBuilder builder = {0};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = sl_str_empty();
+    written = snprintf(suffix, sizeof(suffix), "[%zu]", index);
+    if (written <= 0 || (size_t)written >= sizeof(suffix)) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
+    status = sl_checked_add_size(parent.length, (size_t)written, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_init_arena(&builder, arena, capacity, capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&builder, parent);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&builder, sl_str_from_parts(suffix, (size_t)written));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
+    return sl_status_ok();
+}
+
 static bool sl_request_validation_email_like(SlStr value)
 {
     size_t index = 0U;
@@ -499,6 +538,7 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
 {
     yyjson_val* item = NULL;
     yyjson_arr_iter iter;
+    size_t item_index = 0U;
     SlStatus status;
 
     if (!yyjson_is_arr(value)) {
@@ -515,10 +555,17 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
 
     yyjson_arr_iter_init(value, &iter);
     while ((item = yyjson_arr_iter_next(&iter)) != NULL) {
-        status = sl_request_validation_validate_json_value(state, schema->items, item, path);
+        SlStr item_path = {0};
+
+        status = sl_request_validation_index_path(state->arena, path, item_index, &item_path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        status = sl_request_validation_validate_json_value(state, schema->items, item, item_path);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        item_index += 1U;
     }
     return sl_status_ok();
 }
@@ -879,6 +926,7 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
     if (out_result == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out_result = (SlEngineResult){0};
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
     }

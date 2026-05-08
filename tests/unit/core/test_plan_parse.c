@@ -1,5 +1,6 @@
 #include "sloppy/plan.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #define TEST_ARENA_SIZE 65536U
@@ -112,6 +113,22 @@ static SlStatus parse_fixture(const char* path, SlPlan* out_plan, SlDiag* out_di
 
     options.source_name = sl_str_from_cstr(path);
     return sl_plan_parse_json(&arena, json, &options, out_plan, out_diag);
+}
+
+static SlStatus parse_inline_plan(const char* json, SlPlan* out_plan, SlDiag* out_diag,
+                                  unsigned char* arena_storage, size_t arena_storage_size)
+{
+    SlArena arena = {0};
+    SlPlanParseOptions options = {0};
+    SlStatus status;
+
+    status = sl_arena_init(&arena, arena_storage, arena_storage_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    options.source_name = sl_str_from_cstr("inline-test.plan.json");
+    return sl_plan_parse_json(&arena, bytes_from_cstr(json), &options, out_plan, out_diag);
 }
 
 static int expect_common_plan_fields(const SlPlan* plan)
@@ -456,6 +473,10 @@ static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
     const SlPlanRoute* post_route = NULL;
     const SlPlanRoute* get_route = NULL;
     const SlPlanSchema* user_create = NULL;
+    bool saw_email = false;
+    bool saw_password = false;
+    bool saw_profile = false;
+    bool saw_role = false;
     size_t index = 0U;
 
     if (expect_status(status, SL_STATUS_OK) != 0) {
@@ -515,32 +536,99 @@ static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
     for (index = 0U; index < user_create->definition.property_count; index += 1U) {
         const SlPlanSchemaProperty* property = &user_create->definition.properties[index];
 
-        if (sl_str_equal(property->name, sl_str_from_cstr("email")) &&
-            (property->schema->kind != SL_PLAN_SCHEMA_STRING ||
-             !sl_str_equal(property->schema->validation, sl_str_from_cstr("email"))))
-        {
-            return 9;
+        if (sl_str_equal(property->name, sl_str_from_cstr("email"))) {
+            saw_email = true;
+            if (property->schema->kind != SL_PLAN_SCHEMA_STRING ||
+                !sl_str_equal(property->schema->validation, sl_str_from_cstr("email")))
+            {
+                return 9;
+            }
         }
-        if (sl_str_equal(property->name, sl_str_from_cstr("password")) &&
-            (property->schema->kind != SL_PLAN_SCHEMA_STRING || !property->schema->secret ||
-             !property->schema->has_min || property->schema->min_value != 8))
-        {
-            return 10;
+        if (sl_str_equal(property->name, sl_str_from_cstr("password"))) {
+            saw_password = true;
+            if (property->schema->kind != SL_PLAN_SCHEMA_STRING || !property->schema->secret ||
+                !property->schema->has_min || property->schema->min_value != 8)
+            {
+                return 10;
+            }
         }
-        if (sl_str_equal(property->name, sl_str_from_cstr("profile")) &&
-            (property->schema->kind != SL_PLAN_SCHEMA_OBJECT || !property->schema->optional ||
-             property->schema->property_count != 2U))
-        {
-            return 11;
+        if (sl_str_equal(property->name, sl_str_from_cstr("profile"))) {
+            saw_profile = true;
+            if (property->schema->kind != SL_PLAN_SCHEMA_OBJECT || !property->schema->optional ||
+                property->schema->property_count != 2U)
+            {
+                return 11;
+            }
         }
-        if (sl_str_equal(property->name, sl_str_from_cstr("role")) &&
-            (property->schema->kind != SL_PLAN_SCHEMA_LITERAL_UNION ||
-             property->schema->variant_count != 2U))
-        {
-            return 12;
+        if (sl_str_equal(property->name, sl_str_from_cstr("role"))) {
+            saw_role = true;
+            if (property->schema->kind != SL_PLAN_SCHEMA_LITERAL_UNION ||
+                property->schema->variant_count != 2U)
+            {
+                return 12;
+            }
         }
     }
+    if (!saw_email || !saw_password || !saw_profile || !saw_role) {
+        return 13;
+    }
 
+    return 0;
+}
+
+static int test_schema_names_must_be_unique(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.Create\"}],"
+        "\"schemas\":["
+        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":[]}},"
+        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":[]}}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 14;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 15;
+    }
+    return 0;
+}
+
+static int test_body_schema_references_must_resolve(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.Create\"}],"
+        "\"routes\":[{\"method\":\"POST\",\"pattern\":\"/users\",\"handlerId\":1,"
+        "\"bindings\":[{\"kind\":\"body.json\",\"parameter\":\"input\","
+        "\"schema\":\"MissingModel\"}]}],"
+        "\"schemas\":[{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\","
+        "\"properties\":[]}}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 17;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 18;
+    }
     return 0;
 }
 
@@ -793,6 +881,16 @@ int main(void)
     }
 
     result = test_framework_v2_metadata_bindings_and_schemas_fixture();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_schema_names_must_be_unique();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_body_schema_references_must_resolve();
     if (result != 0) {
         return result;
     }
