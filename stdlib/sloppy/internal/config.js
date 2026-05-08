@@ -15,10 +15,21 @@ const CONFIG_BIND_TYPES = Object.freeze([
     "size",
     "string",
 ]);
+const DISALLOWED_CONFIG_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
+function createConfigContainer() {
+    return Object.create(null);
+}
 
 function validateConfigKey(key) {
     if (typeof key !== "string" || key.length === 0) {
         throw new TypeError("Sloppy config key must be a non-empty string.");
+    }
+}
+
+function assertSupportedConfigSegment(segment) {
+    if (DISALLOWED_CONFIG_SEGMENTS.has(segment)) {
+        throw new TypeError(`Sloppy config key segment '${segment}' is not supported.`);
     }
 }
 
@@ -47,14 +58,17 @@ function setConfigPath(target, segments, value) {
     let cursor = target;
     for (let index = 0; index < segments.length - 1; index += 1) {
         const segment = segments[index];
+        assertSupportedConfigSegment(segment);
         const next = cursor[segment];
         if (next !== undefined && !isPlainObject(next)) {
             throw new Error(`Sloppy config bind cannot merge scalar and object at '${segments.slice(0, index + 1).join(":")}'.`);
         }
-        cursor[segment] = next ?? {};
+        cursor[segment] = next ?? createConfigContainer();
         cursor = cursor[segment];
     }
-    cursor[segments[segments.length - 1]] = value;
+    const leaf = segments[segments.length - 1];
+    assertSupportedConfigSegment(leaf);
+    cursor[leaf] = value;
 }
 
 function flattenConfigObject(values, object, prefix = []) {
@@ -91,7 +105,7 @@ function getConfigObjectValue(values, key, fallback, required) {
     if (Object.prototype.hasOwnProperty.call(values, normalized)) {
         return values[normalized];
     }
-    const result = {};
+    const result = createConfigContainer();
     let found = false;
     for (const [entryKey, value] of Object.entries(values)) {
         if (!entryKey.startsWith(`${normalized}:`)) {
@@ -323,7 +337,9 @@ function normalizeConfigDescriptor(property, descriptor) {
     const normalized = {
         key: descriptor.key ?? configDescriptorSegmentName(property),
         type,
-        required: descriptor.required === true || !Object.prototype.hasOwnProperty.call(descriptor, "default"),
+        required: Object.prototype.hasOwnProperty.call(descriptor, "required")
+            ? descriptor.required === true
+            : !Object.prototype.hasOwnProperty.call(descriptor, "default"),
         allowed: descriptor.enum ?? descriptor.values,
         min: descriptor.min,
         max: descriptor.max,
@@ -388,7 +404,7 @@ function bindConfigDescriptor(values, logicalPrefix, property, descriptor) {
 function bindConfigValues(values, prefix, schema) {
     const logicalPrefix = providerConfigPrefix(prefix);
     const normalizedPrefix = normalizeConfigKey(logicalPrefix);
-    const result = {};
+    const result = createConfigContainer();
 
     for (const [key, value] of Object.entries(values)) {
         if (key === normalizedPrefix || !key.startsWith(`${normalizedPrefix}:`)) {

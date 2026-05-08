@@ -1,28 +1,37 @@
 import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const modules = [
-    "../../stdlib/sloppy/app.js",
-    "../../stdlib/sloppy/results.js",
-    "../../stdlib/sloppy/schema.js",
-    "../../stdlib/sloppy/data.js",
-    "../../stdlib/sloppy/codec.js",
-    "../../stdlib/sloppy/crypto.js",
-    "../../stdlib/sloppy/fs.js",
-    "../../stdlib/sloppy/net.js",
-    "../../stdlib/sloppy/os.js",
-    "../../stdlib/sloppy/time.js",
-    "../../stdlib/sloppy/workers.js",
-    "../../stdlib/sloppy/providers/sqlite.js",
-    "../../stdlib/sloppy/internal/capabilities.js",
-    "../../stdlib/sloppy/internal/config.js",
-    "../../stdlib/sloppy/internal/logging.js",
-    "../../stdlib/sloppy/internal/modules.js",
-    "../../stdlib/sloppy/internal/routes.js",
-    "../../stdlib/sloppy/internal/services.js",
-    "../../stdlib/sloppy/internal/shared.js",
+    "app.js",
+    "results.js",
+    "schema.js",
+    "data.js",
+    "codec.js",
+    "crypto.js",
+    "fs.js",
+    "net.js",
+    "os.js",
+    "time.js",
+    "workers.js",
+    "providers/sqlite.js",
+    "internal/capabilities.js",
+    "internal/config.js",
+    "internal/logging.js",
+    "internal/modules.js",
+    "internal/routes.js",
+    "internal/services.js",
+    "internal/shared.js",
 ];
 
+const sourceBootstrapDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../stdlib/sloppy",
+);
+const bootstrapBaseDir = process.env.SLOPPY_BOOTSTRAP_BUILD_DIR ?? sourceBootstrapDir;
+
 for (const modulePath of modules) {
-    const namespace = await import(modulePath);
+    const specifier = pathToFileURL(path.join(bootstrapBaseDir, modulePath)).href;
+    const namespace = await import(specifier);
     assert.equal(typeof namespace, "object", `${modulePath} should import as an ESM module`);
 }

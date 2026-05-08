@@ -832,9 +832,22 @@ async function flushMicrotasks(count = 6) {
     assert.equal(auth.tokenTtlMinutes, 60);
     assert.equal(auth.issuer, "sloppy-tests");
     assert.equal(auth.audience, "api");
+    assert.deepEqual(builder.config.bind("Optional", {
+        enabled: {
+            type: "boolean",
+            required: false,
+        },
+    }), {});
     assertThrowsMessage(() => builder.config.bind("Auth", { missing: { type: "string", required: true } }), /required/);
     assertThrowsMessage(() => builder.config.bind("Auth", { jwtSecret: { type: "secret", default: "unsafe" } }), /literal default/);
     assertThrowsMessage(() => builder.config.bind("Feature", { mode: { type: "string", enum: ["safe"] } }), /declared values/);
+    builder.config.addObject({
+        Unsafe: {
+            constructor: "blocked",
+        },
+    });
+    assertThrowsMessage(() => builder.config.bind("Unsafe"), /not supported/);
+    assertThrowsMessage(() => builder.config.getObject("Unsafe"), /not supported/);
     assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);
@@ -919,13 +932,15 @@ async function flushMicrotasks(count = 6) {
     const fields = { route: "/" };
     app.log.debug("filtered", fields);
     app.log.info("hello", fields);
+    fields.route = "/mutated";
     assert.equal(memorySink.entries().length, 1);
     assert.deepEqual(memorySink.entries()[0], {
         level: "info",
         message: "hello",
-        fields,
+        fields: { route: "/" },
     });
-    assert.equal(memorySink.entries()[0].fields, fields);
+    assert.notEqual(memorySink.entries()[0].fields, fields);
+    assert.equal(Object.isFrozen(memorySink.entries()[0].fields), true);
 
     app.mapGet("/", ({ config, log, services }) => {
         log.info("handler", { route: "/" });

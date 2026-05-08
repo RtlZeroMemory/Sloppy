@@ -84,7 +84,10 @@
     if(NODE_EXECUTABLE)
         add_test(
             NAME bootstrap.stdlib.import_graph
-            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_import_graph.mjs")
+            COMMAND
+                "${CMAKE_COMMAND}" -E env
+                "SLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" "${NODE_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_import_graph.mjs")
         add_test(
             NAME bootstrap.stdlib.app_host_foundation
             COMMAND "${NODE_EXECUTABLE}"

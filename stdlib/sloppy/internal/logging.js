@@ -70,10 +70,13 @@ function createLogger(snapshot) {
             return;
         }
 
+        const snapshotFields = fields !== null && typeof fields === "object"
+            ? Object.freeze({ ...fields })
+            : fields;
         const entry = Object.freeze({
             level,
             message: String(message),
-            fields,
+            fields: snapshotFields,
         });
 
         for (const sink of snapshot.memorySinks) {

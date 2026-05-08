@@ -1,3 +1,5 @@
+import { isPlainObject } from "./shared.js";
+
 const MODULE_STATE = new WeakMap();
 const FUNCTION_MODULE_NAME = "__sloppyModuleName";
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
@@ -30,8 +32,28 @@ function validateModulePhaseCallback(callback, phase) {
     }
 }
 
+function snapshotMetadataValue(value) {
+    if (Array.isArray(value)) {
+        return Object.freeze(value.map(snapshotMetadataValue));
+    }
+
+    if (isPlainObject(value)) {
+        const snapshot = {};
+        for (const [key, entry] of Object.entries(value)) {
+            snapshot[key] = snapshotMetadataValue(entry);
+        }
+        return Object.freeze(snapshot);
+    }
+
+    return value;
+}
+
 function snapshotModuleMetadata(metadata) {
-    return Object.freeze({ ...metadata });
+    const snapshot = {};
+    for (const [key, value] of Object.entries(metadata)) {
+        snapshot[key] = snapshotMetadataValue(value);
+    }
+    return Object.freeze(snapshot);
 }
 
 function getModuleState(module) {
@@ -116,7 +138,7 @@ function createModule(name) {
         metadata(key, value) {
             assertMutable();
             validateModuleMetadataKey(key);
-            state.metadata[key] = value;
+            state.metadata[key] = snapshotMetadataValue(value);
             return module;
         },
 
