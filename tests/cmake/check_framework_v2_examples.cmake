@@ -1,0 +1,168 @@
+if(NOT DEFINED PROJECT_SOURCE_DIR)
+    message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
+endif()
+
+set(example_root "${PROJECT_SOURCE_DIR}/examples")
+set(framework_examples
+    framework-v2-hello
+    framework-v2-validation-errors
+    framework-v2-explicit-binding
+    framework-v2-di-services
+    framework-v2-controller
+    framework-v2-sqlite-crud
+    framework-v2-postgres-crud
+    framework-v2-sqlserver-crud)
+
+function(require_file path)
+    if(NOT EXISTS "${path}")
+        message(FATAL_ERROR "Missing Framework v2 example file: ${path}")
+    endif()
+endfunction()
+
+function(require_substring haystack needle description)
+    string(FIND "${haystack}" "${needle}" found_index)
+    if(found_index EQUAL -1)
+        message(FATAL_ERROR "${description}: ${needle}")
+    endif()
+endfunction()
+
+foreach(example_name IN LISTS framework_examples)
+    require_file("${example_root}/${example_name}/README.md")
+    if(EXISTS "${example_root}/${example_name}/package.json")
+        message(FATAL_ERROR "${example_name} must not introduce package-manager scope")
+    endif()
+endforeach()
+
+foreach(example_name IN ITEMS
+        framework-v2-hello
+        framework-v2-validation-errors
+        framework-v2-explicit-binding
+        framework-v2-di-services)
+    require_file("${example_root}/${example_name}/app.ts")
+endforeach()
+
+foreach(example_name IN ITEMS
+        framework-v2-controller
+        framework-v2-sqlite-crud
+        framework-v2-postgres-crud
+        framework-v2-sqlserver-crud)
+    require_file("${example_root}/${example_name}/app.js")
+endforeach()
+
+file(READ "${example_root}/framework-v2-hello/app.ts" hello_app)
+require_substring("${hello_app}" "Route<string>" "Framework v2 hello typed route binding")
+require_substring("${hello_app}" "RequestContext" "Framework v2 hello request context")
+require_substring("${hello_app}" "Results.ok" "Framework v2 hello result mapping")
+
+file(READ "${example_root}/framework-v2-validation-errors/app.ts" validation_app)
+require_substring("${validation_app}" "type UserCreate" "Framework v2 validation schema type")
+require_substring("${validation_app}" "Body<UserCreate>" "Framework v2 validation body binding")
+require_substring("${validation_app}" "Results.created" "Framework v2 validation result mapping")
+
+file(READ "${example_root}/framework-v2-explicit-binding/app.ts" binding_app)
+foreach(required_pattern IN ITEMS
+        "Route<string>"
+        "Route<number>"
+        "Header<\"x-trace-id\">"
+        "Query<boolean>"
+        "Body<UserPatch>"
+        "RequestContext")
+    require_substring(
+        "${binding_app}" "${required_pattern}"
+        "Framework v2 explicit binding example is missing expected binding")
+endforeach()
+
+file(READ "${example_root}/framework-v2-di-services/app.ts" di_app)
+foreach(required_pattern IN ITEMS
+        "app.services.addSingleton"
+        "app.services.addScoped"
+        "app.services.addTransient"
+        "Service<GreetingService>"
+        "Service<RequestCounter>"
+        "Service<TransientStamp>")
+    require_substring(
+        "${di_app}" "${required_pattern}"
+        "Framework v2 DI example is missing expected service shape")
+endforeach()
+
+file(READ "${example_root}/framework-v2-controller/app.js" controller_app)
+foreach(required_pattern IN ITEMS
+        "from \"../../stdlib/sloppy/index.js\""
+        "static inject = [\"GreetingService\"]"
+        "app.services.addScoped"
+        "app.mapController"
+        "users.get(\"/{id:int}\", \"get\")")
+    require_substring(
+        "${controller_app}" "${required_pattern}"
+        "Framework v2 controller example is missing expected controller shape")
+endforeach()
+
+file(READ "${example_root}/framework-v2-sqlite-crud/app.js" sqlite_app)
+foreach(required_pattern IN ITEMS
+        "from \"sloppy/providers/sqlite\""
+        "sqlite(\"main\", { database: \":memory:\" })"
+        "app.provider(\"sqlite:main\")"
+        "db.query("
+        "db.queryOne("
+        "db.exec("
+        "Results.problem"
+        "Results.created")
+    require_substring(
+        "${sqlite_app}" "${required_pattern}"
+        "Framework v2 SQLite example is missing expected CRUD shape")
+endforeach()
+
+file(READ "${example_root}/framework-v2-postgres-crud/app.js" postgres_app)
+foreach(required_pattern IN ITEMS
+        "provider: \"postgres\""
+        "app.provider(\"postgres:main\")"
+        "{ deadline: ctx.deadline }"
+        "Results.notFound")
+    require_substring(
+        "${postgres_app}" "${required_pattern}"
+        "Framework v2 PostgreSQL example is missing expected live-lane shape")
+endforeach()
+
+file(READ "${example_root}/framework-v2-sqlserver-crud/app.js" sqlserver_app)
+foreach(required_pattern IN ITEMS
+        "provider: \"sqlserver\""
+        "app.provider(\"sqlserver:main\")"
+        "{ deadline: ctx.deadline }"
+        "Results.notFound")
+    require_substring(
+        "${sqlserver_app}" "${required_pattern}"
+        "Framework v2 SQL Server example is missing expected live-lane shape")
+endforeach()
+
+foreach(example_name IN LISTS framework_examples)
+    file(READ "${example_root}/${example_name}/README.md" readme_text)
+    require_substring(
+        "${readme_text}" "Status:"
+        "${example_name} README is missing explicit evidence status")
+    require_substring(
+        "${readme_text}" "package-manager"
+        "${example_name} README is missing package-manager boundary text")
+endforeach()
+
+file(READ "${example_root}/framework-v2-postgres-crud/README.md" postgres_readme)
+foreach(required_pattern IN ITEMS
+        "opt-in live-lane"
+        "not part of default CI"
+        "unavailable diagnostics, not pass evidence"
+        "redacted connection string")
+    require_substring(
+        "${postgres_readme}" "${required_pattern}"
+        "Framework v2 PostgreSQL README is missing live-lane boundary text")
+endforeach()
+
+file(READ "${example_root}/framework-v2-sqlserver-crud/README.md" sqlserver_readme)
+foreach(required_pattern IN ITEMS
+        "opt-in live-lane"
+        "honest unavailable"
+        "not part of default CI"
+        "unavailable diagnostics, not pass evidence"
+        "Microsoft ODBC Driver 18")
+    require_substring(
+        "${sqlserver_readme}" "${required_pattern}"
+        "Framework v2 SQL Server README is missing live-lane boundary text")
+endforeach()

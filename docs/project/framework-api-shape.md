@@ -358,13 +358,23 @@ module side effects, or broad TypeScript inference.
 
 Hardened examples now cover the supported shapes:
 
-- `examples/hello-minimal`: `sloppy run`, `sloppy.json`, route binding, and Results.
-- `examples/users-api-sqlite`: config-driven SQLite, inferred capabilities, module routes,
-  and V8-gated runtime evidence.
-- `examples/configured-api`: `appsettings*.json` and Plan-visible typed config reads.
-- `examples/modules-api`: multi-file function modules and route groups.
-- `examples/validation-errors`: schema-backed body binding metadata and OpenAPI problem
-  response shape.
+- `examples/framework-v2-hello`: source-input TypeScript route binding and Results
+  execution.
+- `examples/framework-v2-validation-errors`: schema-backed body binding metadata and
+  problem-response tooling shape.
+- `examples/framework-v2-explicit-binding`: explicit route/query/header/body/context
+  binding metadata.
+- `examples/framework-v2-di-services`: request-scoped service injection with singleton,
+  scoped, and transient lifetimes.
+- `examples/framework-v2-controller`: bootstrap explicit controller mapping and
+  constructor injection shape.
+- `examples/framework-v2-sqlite-crud`: V8-gated source-input SQLite CRUD execution.
+- `examples/framework-v2-postgres-crud` and `examples/framework-v2-sqlserver-crud`:
+  opt-in live-lane provider examples with unavailable diagnostics kept separate from
+  default evidence.
+- Older examples such as `examples/hello-minimal`, `examples/users-api-sqlite`,
+  `examples/configured-api`, `examples/modules-api`, and `examples/validation-errors`
+  remain compatibility/evidence fixtures for the earlier source-input shape.
 
 ## Modularity Rule
 

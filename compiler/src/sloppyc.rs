@@ -7965,7 +7965,7 @@ fn results_call_arguments_are_supported(
                 .arguments
                 .first()
                 .is_some_and(argument_is_inline_bytes_value)
-            && call.arguments.get(1).map_or(true, |argument| {
+            && call.arguments.get(1).is_none_or(|argument| {
                 argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
             });
     }

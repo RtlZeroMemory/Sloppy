@@ -392,7 +392,8 @@ SlStatus http_v8_copy_binary_value_bytes(SlArena* arena, v8::Local<v8::Value> va
         if (length != 0U) {
             bytes = static_cast<const unsigned char*>(backing->Data()) + offset;
         }
-    } else if (value->IsArrayBuffer()) {
+    }
+    else if (value->IsArrayBuffer()) {
         v8::Local<v8::ArrayBuffer> buffer = value.As<v8::ArrayBuffer>();
         std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
         length = buffer->ByteLength();
@@ -402,7 +403,8 @@ SlStatus http_v8_copy_binary_value_bytes(SlArena* arena, v8::Local<v8::Value> va
         if (length != 0U) {
             bytes = static_cast<const unsigned char*>(backing->Data());
         }
-    } else {
+    }
+    else {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 

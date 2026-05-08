@@ -664,6 +664,7 @@ else()
 endif()
 
 include(cmake/SloppyCli.cmake)
+include(cmake/SloppyFrameworkExamples.cmake)
 
 add_executable(
     sloppy_bench
@@ -1615,6 +1616,7 @@ if(SLOPPY_ENABLE_TESTS)
             examples.users_api_sqlite.tooling users-api-sqlite examples/users-api-sqlite/app.js
             "users-api-sqlite-runtime.db" "Users.Create" "data.main" "\"findings\""
             "x-slop-capabilities")
+        sloppy_add_framework_v2_compile_example_tests()
     endif()
 
     add_test(
@@ -2056,6 +2058,7 @@ if(SLOPPY_ENABLE_TESTS)
                 set_tests_properties(conformance.users_api_sqlite.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input;sqlite")
             endif()
+            sloppy_add_framework_v2_v8_example_tests()
             add_test(
                 NAME conformance.users_api_sqlite.localhost_transport
                 COMMAND
@@ -2285,6 +2288,7 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.core_integration.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
+    sloppy_add_framework_v2_static_example_tests()
     set_tests_properties(
         examples.core_integration.api_shape PROPERTIES LABELS
                                                      "CORE-INTEGRATION-01;examples;conformance")

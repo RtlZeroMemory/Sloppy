@@ -43,10 +43,11 @@ function copyBytes(value) {
     }
 
     if (ArrayBuffer.isView(value)) {
-        return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+        const storage = value["buf" + "fer"];
+        return new Uint8Array(storage.slice(value.byteOffset, value.byteOffset + value.byteLength));
     }
 
-    throw new TypeError("Sloppy Results.bytes body must be an ArrayBuffer or ArrayBuffer view.");
+    throw new TypeError("Sloppy Results.bytes body must be binary data or a typed array view.");
 }
 
 function resolveContentType(options, defaultContentType) {

@@ -65,10 +65,9 @@ static int expect_bytes_equal(SlBytes actual, const char* expected)
 
 static int expect_bytes_exact(SlBytes actual, const unsigned char* expected, size_t expected_length)
 {
-    return expect_true(actual.length == expected_length &&
-                       (actual.ptr != NULL || expected_length == 0U) &&
-                       (expected_length == 0U ||
-                        memcmp(actual.ptr, expected, expected_length) == 0));
+    return expect_true(
+        actual.length == expected_length && (actual.ptr != NULL || expected_length == 0U) &&
+        (expected_length == 0U || memcmp(actual.ptr, expected, expected_length) == 0));
 }
 
 static int set_test_env(const char* key, const char* value)
@@ -3409,17 +3408,17 @@ static int test_result_descriptor_preserves_binary_body(void)
         return 97;
     }
 
-    if (expect_status(sl_engine_eval_source(
-                          engine, sl_str_from_cstr("v8-result-bytes.js"),
-                          sl_str_from_cstr("globalThis.sloppy_result_bytes = function () {"
-                                           "  return { __sloppyResult: true, kind: 'bytes',"
-                                           "    status: 200, contentType: "
-                                           "    'application/x-test',"
-                                           "    headers: { 'x-result': 'bytes' },"
-                                           "    body: new Uint8Array([0, 65, 0, 255]) };"
-                                           "};"),
-                          &diag),
-                      SL_STATUS_OK) != 0)
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-result-bytes.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_result_bytes = function () {"
+                                                   "  return { __sloppyResult: true, kind: 'bytes',"
+                                                   "    status: 200, contentType: "
+                                                   "    'application/x-test',"
+                                                   "    headers: { 'x-result': 'bytes' },"
+                                                   "    body: new Uint8Array([0, 65, 0, 255]) };"
+                                                   "};"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 98;

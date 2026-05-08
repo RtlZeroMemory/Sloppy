@@ -1188,7 +1188,7 @@ async function flushMicrotasks(count = 6) {
     });
     assertThrowsMessage(() => Results.ok("bad", { status: 99 }), /status/);
     assertThrowsMessage(() => Results.ok("bad", { headers: new Map() }), /plain object/);
-    assertThrowsMessage(() => Results.bytes([1, 2, 3]), /ArrayBuffer/);
+    assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
 }
 

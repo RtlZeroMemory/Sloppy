@@ -28,8 +28,9 @@ HTTP, packaging, example, release-note, and final verification work.
 Checked-in examples are split into two groups:
 
 - compiler/runtime examples, such as `examples/compiler-hello/`,
-  `examples/request-context/`, and `examples/users-api-sqlite/`, which have scoped
-  artifact or V8-gated evidence;
+  `examples/request-context/`, `examples/users-api-sqlite/`, and
+  `examples/framework-v2-*`, which have scoped artifact, source-input, static, live-lane,
+  or V8-gated evidence called out by each example README;
 - API-shape examples, such as `examples/hello/`, `examples/ergonomics/`,
   `examples/modules-basic/`, and provider examples, which document current or intended
   source shape without claiming full runtime execution.
@@ -41,4 +42,5 @@ Every public page must preserve these boundaries:
 - no Node/Bun/Deno compatibility claim;
 - no package-manager claim;
 - no public alpha release claim;
-- no tutorial that depends on Framework v2 or packaging work that has not landed.
+- no tutorial that depends on Framework v2 or packaging work beyond the evidence lane that
+  has landed.
