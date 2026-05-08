@@ -1,9 +1,9 @@
 # Services
 
-Status: Bootstrap string-token services skeleton implemented.
+Status: Bootstrap string-token services with singleton, scoped, and transient lifetimes implemented.
 
-Purpose: document the current minimal service registry/provider API and the future path to
-request-scoped lifetimes, disposal, modules, and plan-visible service graphs.
+Purpose: document the current service registry/provider API and the future path to
+plan-visible service graphs and broader native lifecycle integration.
 
 Implemented API example:
 
@@ -11,6 +11,7 @@ Implemented API example:
 const builder = Sloppy.createBuilder();
 
 builder.services.addSingleton("message", () => "Hello");
+builder.services.addScoped("requestState", () => ({ seen: 0 }));
 builder.services.addTransient("clock", () => ({ now: () => 123 }));
 builder.addModule(Sloppy.module("users")
   .services(services => {
@@ -32,19 +33,29 @@ Implemented behavior:
 - Singleton non-function values are returned as supplied.
 - `addTransient(token, factory)` registers a transient factory.
 - Transient factories are called on every `get`.
+- `addScoped(token, factory)` registers a scoped factory.
+- Scoped factories are called once per created scope and cached until that scope is
+  disposed.
 - Duplicate service tokens fail during registration.
 - Missing service tokens fail during resolution with a helpful error.
-- Module service phases can register singleton and transient services through the same
+- Circular dependencies are detected during resolution.
+- Singleton services cannot depend on scoped services.
+- Module service phases can register singleton, scoped, and transient services through the same
   service builder.
 - Services registered during a module services phase are attributed in
   `app.__debug().modules[].services`.
 - `builder.build()` freezes further service registration.
-- `app.services.get(token)` resolves through a short-lived scope.
+- `app.services.get(token)` resolves singleton services from the root provider.
 - `app.services.createScope()` returns a scope with `scope.get(token)` and
   `scope.capabilities`.
+- `scope.dispose()` disposes scope-owned scoped and transient values in reverse creation
+  order when they expose `Symbol.dispose`, `dispose()`, or `close()`. Async disposers are
+  awaited by returned promises and multiple failures are aggregated.
+- `app.services.dispose()` disposes singleton values tracked by the root provider.
 
-The current scope object is a tiny resolution context only. It is not a real request
-lifetime and it does not own disposal.
+The current scope object is the JavaScript bootstrap request-scope shape used by generated
+Framework v2 handlers. Native service graph validation and native request-scope ownership
+remain future work.
 
 `examples/ergonomics/app.js` uses a singleton service from a grouped route handler to show
 the current bootstrap handler context shape. This is still JavaScript-only route snapshot
@@ -73,9 +84,8 @@ currently fails with an honest bridge-unavailable error if resolved from JavaScr
 SQL Server execution is covered by C tests, with live ODBC coverage gated by
 `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`.
 
-Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
-dependency graph validation, service cycle diagnostics, typed tokens, decorators, native
-service graph validation, and real plan emission.
+Not implemented yet: async factories, typed tokens, decorators, native service graph
+validation, and full service graph Plan emission beyond the current source-input subset.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/diagnostics.md`.

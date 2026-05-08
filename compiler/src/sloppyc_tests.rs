@@ -3258,12 +3258,14 @@ export default app;
 #[test]
 fn typed_framework_handler_erases_nested_typescript_syntax() {
     let source = r#"import { Sloppy, Results, Body } from "sloppy";
+import { sql } from "sloppy/data";
 import { Postgres } from "sloppy/providers/postgres";
 type UserCreate = { name: string; email: string };
 type UserDto = { id: number; name: string; email: string };
 const app = Sloppy.create();
 app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
-  const first: UserCreate = input;
+  const first: UserCreate = input! as UserCreate;
+  const checked = ({ name: first.name, email: first.email } satisfies UserCreate);
   const mapped = [first].map((item: UserCreate): UserDto => ({
     id: Number.parseInt("1", 10),
     name: item.name,
@@ -3273,10 +3275,11 @@ app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
     const row: UserDto = await db.queryOne<UserDto>("select id, name, email from users where id = $1", [item.id]);
     return row;
   }));
+  const typedQuery = sql`select ${input! as UserCreate} where id = ${loaded[0]!.id}`;
   function normalize(user: UserDto): UserDto {
     return user;
   }
-  return Results.created(`/users/${loaded[0].id}`, normalize(loaded[0]));
+  return Results.created(`/users/${loaded[0]!.id}`, normalize(loaded[0]));
 });
 export default app;
 "#;
@@ -3284,13 +3287,25 @@ export default app;
         .expect("typed handler with nested TypeScript syntax should extract");
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("const first = input;"));
+    assert!(emitted_js
+        .source
+        .contains("const checked = ({ name: first.name, email: first.email });"));
     assert!(emitted_js.source.contains("function normalize(user)"));
     assert!(!emitted_js.source.contains("const first:"));
+    assert!(!emitted_js.source.contains(" as UserCreate"));
+    assert!(!emitted_js.source.contains(" satisfies UserCreate"));
+    assert!(!emitted_js.source.contains("input!"));
+    assert!(!emitted_js.source.contains("loaded[0]!"));
     assert!(!emitted_js.source.contains("(item:"));
     assert!(!emitted_js.source.contains("): UserDto"));
     assert!(!emitted_js.source.contains("function normalize(user:"));
     assert!(!emitted_js.source.contains("Promise.all<UserDto>"));
     assert!(!emitted_js.source.contains("queryOne<UserDto>"));
+    assert!(emitted_js
+        .source
+        .contains("const typedQuery = sql`select ${input} where id = ${loaded[0].id}`;"));
+    assert!(!emitted_js.source.contains("input! as UserCreate"));
+    assert!(!emitted_js.source.contains("loaded[0]!.id"));
 }
 
 #[test]

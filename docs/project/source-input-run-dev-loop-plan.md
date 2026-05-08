@@ -25,13 +25,15 @@ The direct source-input command is:
 
 ```powershell
 sloppy run app.js
+sloppy run app.ts
 sloppy run
 ```
 
 The command performs an explicit compiler handoff, produces artifacts, validates the Plan,
-bundle, and source map, then runs the same artifact path that is already proven. `.ts` is
-still rejected by the current compiler; the CLI hands it to `sloppyc` so the compiler
-diagnostic remains authoritative.
+bundle, and source map, then runs the same artifact path that is already proven. `.ts`
+source input is accepted for the compiler-owned Framework subset documented in
+`docs/compiler-supported-syntax.md`; unsupported TypeScript shapes still fail through
+`sloppyc` diagnostics.
 
 The default no-argument form uses `sloppy.json` when present:
 

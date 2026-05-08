@@ -18,8 +18,9 @@ Rules:
 - `v8::*` types must never leak outside this directory.
 - V8 headers may appear only under this directory.
 - JS code must never receive raw C pointers.
-- Native handles exposed to JS must flow through `SlResourceId` values with generation,
-  liveness, and kind checks in `SlResourceTable`.
+- Native resources exposed to JS must use opaque bridge-owned objects that keep
+  `SlResourceId` slot/generation data in V8-private state and validate generation,
+  liveness, and kind through `SlResourceTable` on every operation.
 - `engine_v8.cc` owns isolate/context lifecycle, handler registration, source evaluation,
   owner-thread checks, and Promise orchestration only.
 - Framework-specific V8 bridge code such as HTTP request context materialization and

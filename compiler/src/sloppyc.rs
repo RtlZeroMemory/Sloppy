@@ -4195,6 +4195,7 @@ fn reject_secret_option_fields(
             )
             .with_path(path)
             .with_span(property.span)
+            .without_source_frame()
             .with_hint(
                 "Reference config keys in future provider metadata instead of embedding secrets.",
             ));

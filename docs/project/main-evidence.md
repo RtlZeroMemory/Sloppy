@@ -200,7 +200,7 @@ evidence and it is not a live external service check.
 PostgreSQL live provider coverage is opt-in:
 
 ```powershell
-$env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+$env:SLOPPY_POSTGRES_TEST_URL="<redacted PostgreSQL connection string>"
 .\tools\windows\dev.ps1 test
 ```
 
@@ -208,7 +208,7 @@ SQL Server live provider coverage is opt-in and also depends on a local ODBC dri
 reachable server:
 
 ```powershell
-$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;"
+$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="<redacted SQL Server connection string>"
 .\tools\windows\dev.ps1 test
 ```
 

@@ -31,7 +31,7 @@ Implemented behavior includes:
 - JSON, text, and octet-stream request body classification for the V8-gated handler lane;
 - Plan-backed route table construction and handler dispatch;
 - protocol-abstract request context fields for request metadata, route/query data,
-  connection metadata, cancellation signal, and current deadline marker;
+  connection metadata, cancellation signal, and deadline status marker;
 - response serialization for fixed native responses and scoped native/runtime streaming
   responses with validated headers and chunked framing;
 - libuv-backed localhost transport with bounded connection storage, sequential HTTP/1.1
@@ -57,6 +57,14 @@ length, and a string request ID when a transport lifecycle provides one.
 HTTP listeners set `scheme` to `http`. HTTPS listeners set `scheme` to `https` after the
 TLS handshake completes and expose `ctx.connection.secure === true` without exposing TLS
 or socket handles.
+
+`ctx.signal` is the request cancellation token surface for handler code that needs to fail
+before dispatching work after the request has already been cancelled. `ctx.deadline` is a
+status marker for the current request lifecycle. It is `null` for the normal non-expired
+request path and becomes an elapsed-deadline object only when the native request deadline
+has already fired. Provider APIs may accept both values in operation options for
+pre-dispatch cancellation/deadline checks, but that does not imply provider-specific
+mid-query interruption unless the provider lane documents and tests that behavior.
 
 `ctx.request.body.bytes()`, `text()`, and `json()` are consumed-once helpers for the
 bounded buffered body. The existing top-level `ctx.request.bytes()`, `text()`, and

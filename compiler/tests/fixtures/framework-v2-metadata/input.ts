@@ -56,7 +56,7 @@ app.post("/users", async (
 ) => {
   const user = await db.queryOne<UserDto>(
     sql`select id, email, name from users where id = ${1}`,
-    { deadline: ctx.deadline }
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return Results.created(`/users/${user.id}`, user);
@@ -72,7 +72,7 @@ app.get("/users/:id", async (
 ) => {
   const user = await db.queryOne<UserDto>(
     sql`select id, email, name from users where id = ${id}`,
-    { deadline: ctx.deadline, trace, includeDeleted, input }
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return user ? Results.ok(user) : Results.notFound();

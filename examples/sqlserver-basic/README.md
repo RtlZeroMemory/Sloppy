@@ -24,7 +24,7 @@ Current limitations:
 Native live provider tests are opt-in:
 
 ```powershell
-$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;"
+$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="<redacted SQL Server connection string>"
 .\tools\windows\test-live-sqlserver.ps1
 ```
 

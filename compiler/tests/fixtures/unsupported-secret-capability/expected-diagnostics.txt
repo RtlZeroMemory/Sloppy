@@ -1,6 +1,2 @@
 <compiler>/tests/fixtures/unsupported-secret-capability/input.js:7:3: SLOPPYC_E_SECRET_PLAN_METADATA: provider and capability metadata must not contain secret-bearing fields
-  --> <compiler>/tests/fixtures/unsupported-secret-capability/input.js:7:3
-   |
-7 |   connectionString: "file:users.db"
-   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 hint: Reference config keys in future provider metadata instead of embedding secrets.

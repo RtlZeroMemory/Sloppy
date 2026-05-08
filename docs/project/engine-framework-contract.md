@@ -415,7 +415,7 @@ Deferred:
 - HEAD, streaming uploads/downloads, multipart, files, redirects, cookies, compression,
   and production server hardening;
 - prepared statements as public handles;
-- PostgreSQL and SQL Server JS bridges;
+- hosted live-provider defaults for PostgreSQL and SQL Server;
 - ORM, migrations, and query builder;
 - Node/npm compatibility and package-manager behavior;
 - benchmark claims and public alpha docs.

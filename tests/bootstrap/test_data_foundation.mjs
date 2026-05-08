@@ -313,6 +313,32 @@ function createForgedLoweredQuery() {
                     return { tx: true, text };
                 },
             },
+            postgres: {
+                open(options) {
+                    calls.push(["pgOpen", options.connectionString]);
+                    return { slot: 2, kind: "postgres.connection" };
+                },
+                query(handle, text, params) {
+                    calls.push(["pgQuery", handle.slot, text, params]);
+                    return [{ pg: true }];
+                },
+                close(handle) {
+                    calls.push(["pgClose", handle.slot]);
+                },
+            },
+            sqlserver: {
+                open(options) {
+                    calls.push(["mssqlOpen", options.connectionString]);
+                    return { slot: 3, kind: "sqlserver.connection" };
+                },
+                query(handle, text, params) {
+                    calls.push(["mssqlQuery", handle.slot, text, params]);
+                    return [{ mssql: true }];
+                },
+                close(handle) {
+                    calls.push(["mssqlClose", handle.slot]);
+                },
+            },
         },
     };
 
@@ -339,7 +365,42 @@ function createForgedLoweredQuery() {
             { affectedRows: 1 },
         );
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
+        assert.deepEqual(db.query("select name from users", { timeoutMs: 500 }), [{ name: "Ada" }]);
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
+        assert.deepEqual(
+            db.query(sql`select name from users`, {
+                deadline: { remainingMs: () => 1000 },
+                signal: { aborted: false, throwIfAborted() {} },
+                timeoutMs: 500,
+            }),
+            [{ name: "Ada" }],
+        );
+        assertThrowsMessage(
+            () => db.query(sql`select name from users`, { deadline: { remainingMs: () => 0 } }),
+            /SLOPPY_E_DEADLINE_EXCEEDED/,
+        );
+        assertThrowsMessage(
+            () => db.query(sql`select name from users`, { signal: { aborted: true, reason: "client cancelled" } }),
+            /SLOPPY_E_CANCELLED[\s\S]*client cancelled/,
+        );
+        assertThrowsMessage(
+            () => db.query("select name from users", {
+                signal: {
+                    aborted: false,
+                    reason: "timeout signal",
+                    throwIfAborted() {
+                        throw new Error("raw abort");
+                    },
+                },
+            }),
+            /SLOPPY_E_CANCELLED[\s\S]*timeout signal/,
+        );
+        const pgDb = data.postgres.open({ connectionString: "postgres://localhost/sloppy" });
+        assert.deepEqual(pgDb.query("select id from users", { timeoutMs: 250 }), [{ pg: true }]);
+        pgDb.close();
+        const sqlServerDb = data.sqlserver.open({ connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;" });
+        assert.deepEqual(sqlServerDb.query("select id from users", { timeoutMs: 250 }), [{ mssql: true }]);
+        sqlServerDb.close();
         let capturedTx;
         const txResult = await db.transaction(async (tx) => {
             capturedTx = tx;
@@ -366,7 +427,7 @@ function createForgedLoweredQuery() {
             await db.transaction(async () => {});
         }), /nested transactions/);
         assert.equal(db.prepare, undefined);
-        assert.equal(db.__debug().resource.kind, "sqlite.connection");
+        assert.equal(db.__debug().resource, "opaque");
         assert.equal(db.__debug().transactionActive, false);
         db.close();
         db.close();
@@ -380,7 +441,15 @@ function createForgedLoweredQuery() {
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
             ["exec", 1, "insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]],
             ["query", 1, "select name from users", []],
+            ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
+            ["query", 1, "select name from users", []],
+            ["pgOpen", "postgres://localhost/sloppy"],
+            ["pgQuery", 2, "select id from users", []],
+            ["pgClose", 2],
+            ["mssqlOpen", "Driver={ODBC Driver 18 for SQL Server};Server=localhost;"],
+            ["mssqlQuery", 3, "select id from users", []],
+            ["mssqlClose", 3],
             ["begin", 1],
             ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
             ["txQuery", 1, "select name from users", []],
@@ -515,12 +584,12 @@ function createForgedLoweredQuery() {
 {
     const received = [];
     const fakeDb = data.createFakeProvider({
-        query(lowered) {
-            received.push(["query", lowered]);
+        query(lowered, options) {
+            received.push(["query", lowered, options]);
             return [{ id: lowered.parameters[0], name: "Ada" }];
         },
-        exec(lowered) {
-            received.push(["exec", lowered]);
+        exec(lowered, options) {
+            received.push(["exec", lowered, options]);
             return { affectedRows: 1 };
         },
     });
@@ -530,9 +599,16 @@ function createForgedLoweredQuery() {
     assert.equal(received[0][1].text, "select id from users where id = ?");
     assert.deepEqual(received[0][1].parameters, [1]);
     const lowered = sql`select id from users where id = ${3}`;
-    assert.deepEqual(await fakeDb.query(lowered, { deadline: { remainingMs: () => 1000 } }), [
-        { id: 3, name: "Ada" },
-    ]);
+    assert.deepEqual(await fakeDb.query(lowered, {
+        deadline: { remainingMs: () => 1000 },
+        signal: { aborted: false },
+        timeoutMs: 50,
+    }), [{ id: 3, name: "Ada" }]);
+    assert.equal(received[1][2].timeoutMs, 50);
+    assert.equal(received[1][2].signal.aborted, false);
+    assertThrowsMessage(() => fakeDb.query(lowered, {
+        deadline: { expired: true },
+    }), /SLOPPY_E_DEADLINE_EXCEEDED/);
 
     const one = await fakeDb.queryOne`select id from users where id = ${2}`;
     assert.deepEqual(one, { id: 2, name: "Ada" });

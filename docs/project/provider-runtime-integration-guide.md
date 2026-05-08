@@ -21,8 +21,9 @@ ENGINE-23 now provides a Slop-owned native provider/offload executor with:
 - cleanup-once behavior across success, failure, rejection, shutdown, and late completion;
 - stable provider executor diagnostics/counters covered by bounded native stress smoke.
 
-The evidence is native executor evidence. It is not live SQLite/PostgreSQL/SQL Server
-throughput evidence, not V8 provider bridge evidence, and not public performance proof.
+The executor evidence is native executor evidence. It is not live
+SQLite/PostgreSQL/SQL Server throughput evidence, not provider bridge proof by itself, and
+not public performance proof.
 
 ## Generic Provider Rules
 
@@ -49,8 +50,7 @@ Rules:
 
 Default mode for a single SQLite connection is `SERIALIZED_BLOCKING`.
 
-Future SQLite runtime completion should route `query`, `execute`, and `queryOne`
-through the executor:
+SQLite runtime work routes bridge operations through this model:
 
 1. Resolve the JS-facing opaque resource ID to the native SQLite connection resource on the
    owner thread.
@@ -96,8 +96,8 @@ direct bridge call into native provider code.
 
 ## SQL Server Integration
 
-SQL Server final provider work must use true async driver behavior when available and must
-report `UNAVAILABLE` or `UNSUPPORTED` honestly when the configured ODBC/driver lane cannot
+SQL Server provider work uses true async driver behavior when available and reports
+`UNAVAILABLE` or `UNSUPPORTED` honestly when the configured ODBC/driver lane cannot
 provide async execution. Blocking-pool fallback must not be labeled true async.
 
 Rules:
@@ -146,8 +146,9 @@ Do not report:
 - latency;
 - live database scalability;
 - SQLite async/offload completion;
-- SQL Server bridge readiness;
+- default SQL Server bridge readiness from skipped live-provider evidence;
 - public alpha provider readiness.
 
-The remaining provider bridge work belongs to SQL Server async-provider completion and
-provider consolidation tasks.
+Remaining provider work belongs to live-provider CI/service hardening, provider-specific
+cancellation/interruption, pooling policy, public prepared statement policy, and future
+provider families.

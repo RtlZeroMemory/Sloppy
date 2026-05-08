@@ -67,7 +67,7 @@ globalThis.__sloppy_handler_1 = async (ctx) => { const __sloppy_scope = __sloppy
 ) => {
   const user = await db.queryOne(
     sql`select id, email, name from users where id = ${1}`,
-    { deadline: ctx.deadline }
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return Results.created(`/users/${user.id}`, user);
@@ -83,7 +83,7 @@ globalThis.__sloppy_handler_2 = async (ctx) => { const __sloppy_scope = __sloppy
 ) => {
   const user = await db.queryOne(
     sql`select id, email, name from users where id = ${id}`,
-    { deadline: ctx.deadline, trace, includeDeleted, input }
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return user ? Results.ok(user) : Results.notFound();

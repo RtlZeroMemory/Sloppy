@@ -20,7 +20,7 @@ Current limitations:
 Native live provider tests are opt-in:
 
 ```powershell
-$env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+$env:SLOPPY_POSTGRES_TEST_URL="<redacted PostgreSQL connection string>"
 .\tools\windows\test-live-postgres.ps1
 ```
 

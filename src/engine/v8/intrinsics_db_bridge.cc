@@ -203,6 +203,8 @@ bool sl_v8_db_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> conte
                               v8::Local<v8::Value> value, SlResourceId* out)
 {
     v8::Local<v8::Object> object;
+    v8::Local<v8::String> slot_name;
+    v8::Local<v8::String> generation_name;
     v8::Local<v8::Value> slot_value;
     v8::Local<v8::Value> generation_value;
 
@@ -210,8 +212,14 @@ bool sl_v8_db_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> conte
         return false;
     }
     object = value.As<v8::Object>();
-    if (!sl_v8_db_get_object_property(isolate, context, object, "slot", &slot_value) ||
-        !sl_v8_db_get_object_property(isolate, context, object, "generation", &generation_value) ||
+    if (!sl_status_is_ok(sl_v8_db_to_local_string(
+            isolate, sl_str_from_cstr("sloppy.db.resource.slot"), &slot_name)) ||
+        !sl_status_is_ok(sl_v8_db_to_local_string(
+            isolate, sl_str_from_cstr("sloppy.db.resource.generation"), &generation_name)) ||
+        !object->GetPrivate(context, v8::Private::ForApi(isolate, slot_name))
+             .ToLocal(&slot_value) ||
+        !object->GetPrivate(context, v8::Private::ForApi(isolate, generation_name))
+             .ToLocal(&generation_value) ||
         !slot_value->IsUint32() || !generation_value->IsUint32())
     {
         return false;
@@ -226,14 +234,25 @@ bool sl_v8_db_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context> 
 {
     v8::Local<v8::Object> handle = v8::Object::New(isolate);
     v8::Local<v8::String> kind_value;
+    v8::Local<v8::String> slot_name;
+    v8::Local<v8::String> generation_name;
 
     if (out == nullptr || kind == nullptr ||
         !sl_status_is_ok(sl_v8_db_to_local_string(isolate, sl_str_from_cstr(kind), &kind_value)) ||
-        !sl_v8_db_set_object_property(isolate, context, handle, "slot",
-                                      v8::Integer::NewFromUnsigned(isolate, id.slot)) ||
-        !sl_v8_db_set_object_property(isolate, context, handle, "generation",
-                                      v8::Integer::NewFromUnsigned(isolate, id.generation)) ||
-        !sl_v8_db_set_object_property(isolate, context, handle, "kind", kind_value))
+        !sl_status_is_ok(sl_v8_db_to_local_string(
+            isolate, sl_str_from_cstr("sloppy.db.resource.slot"), &slot_name)) ||
+        !sl_status_is_ok(sl_v8_db_to_local_string(
+            isolate, sl_str_from_cstr("sloppy.db.resource.generation"), &generation_name)) ||
+        !handle
+             ->SetPrivate(context, v8::Private::ForApi(isolate, slot_name),
+                          v8::Integer::NewFromUnsigned(isolate, id.slot))
+             .FromMaybe(false) ||
+        !handle
+             ->SetPrivate(context, v8::Private::ForApi(isolate, generation_name),
+                          v8::Integer::NewFromUnsigned(isolate, id.generation))
+             .FromMaybe(false) ||
+        !sl_v8_db_set_object_property(isolate, context, handle, "kind", kind_value) ||
+        !handle->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
     {
         return false;
     }

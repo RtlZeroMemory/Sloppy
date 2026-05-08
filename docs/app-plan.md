@@ -64,7 +64,8 @@ available: SQLite uses Plan-backed provider tokens, while PostgreSQL and SQL Ser
 materialize configured provider options from inferred database capability metadata and the
 normal provider config key before opening the active bridge. Queue injection materializes an
 inferred `queue.<name>` capability and, unless the source explicitly registers that token,
-adds a default request-scope service registration backed by `WorkQueue.create("<name>")`.
+adds a default singleton service registration that is resolved through the request scope
+and backed by `WorkQueue.create("<name>")`.
 `Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
 TypeScript lowering, controller
 constructor injection, and broader response writing remain separate implementation lanes.

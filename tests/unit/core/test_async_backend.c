@@ -353,6 +353,7 @@ static int test_invalid_arguments(void)
     SlArena arena;
     SlAsyncCompletion storage[1];
     SlAsyncLoop* loop = NULL;
+    size_t used_before = 0U;
     AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
     AsyncPayload payload;
     SlAsyncCompletion completion;
@@ -363,6 +364,7 @@ static int test_invalid_arguments(void)
         return 30;
     }
 
+    used_before = sl_arena_used(&arena);
     completion = make_completion(&record, &payload, 1);
     if (expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, NULL, storage, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
@@ -370,6 +372,7 @@ static int test_invalid_arguments(void)
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_NONE, &arena, storage, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        sl_arena_used(&arena) != used_before ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, NULL, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, NULL, 0U, &loop),
@@ -382,6 +385,35 @@ static int test_invalid_arguments(void)
     }
 
     sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_libuv_init_failure_rolls_back_arena(void)
+{
+    unsigned char arena_storage[512];
+    SlArena arena;
+    SlAsyncCompletion storage[1];
+    SlAsyncLoop* loop = NULL;
+    size_t used_before = 0U;
+    SlStatus status;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 70;
+    }
+
+    used_before = sl_arena_used(&arena);
+    status = sl_async_loop_create(SL_ASYNC_BACKEND_LIBUV, &arena, storage, 1U, &loop);
+    if (sl_status_is_ok(status) || sl_status_code(status) != SL_STATUS_OUT_OF_MEMORY ||
+        loop != NULL || sl_arena_used(&arena) != used_before)
+    {
+        if (loop != NULL) {
+            sl_async_loop_dispose(loop);
+        }
+        return 71;
+    }
+
     return 0;
 }
 
@@ -413,5 +445,10 @@ int main(void)
         return result;
     }
 
-    return test_invalid_arguments();
+    result = test_invalid_arguments();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_libuv_init_failure_rolls_back_arena();
 }

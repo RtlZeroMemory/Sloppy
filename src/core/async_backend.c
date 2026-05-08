@@ -244,6 +244,7 @@ SlStatus sl_async_loop_create(SlAsyncBackendKind kind, SlArena* arena, SlAsyncCo
 {
     void* memory = NULL;
     SlAsyncLoop* loop = NULL;
+    SlArenaMark mark = {0U};
     SlStatus status;
 
     if (out_loop == NULL) {
@@ -251,10 +252,13 @@ SlStatus sl_async_loop_create(SlAsyncBackendKind kind, SlArena* arena, SlAsyncCo
     }
 
     *out_loop = NULL;
-    if (arena == NULL || (storage == NULL && capacity != 0U) || kind == SL_ASYNC_BACKEND_NONE) {
+    if (arena == NULL || (storage == NULL && capacity != 0U) ||
+        (kind != SL_ASYNC_BACKEND_TEST && kind != SL_ASYNC_BACKEND_LIBUV))
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    mark = sl_arena_mark(arena);
     status = sl_arena_alloc(arena, sizeof(SlAsyncLoop), _Alignof(SlAsyncLoop), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -263,17 +267,16 @@ SlStatus sl_async_loop_create(SlAsyncBackendKind kind, SlArena* arena, SlAsyncCo
     loop = (SlAsyncLoop*)memory;
     status = sl_async_loop_common_init(loop, kind, arena, storage, capacity);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(arena, mark);
         return status;
     }
 
     if (kind == SL_ASYNC_BACKEND_LIBUV) {
         status = sl_async_loop_libuv_init(loop, arena);
         if (!sl_status_is_ok(status)) {
+            (void)sl_arena_reset_to(arena, mark);
             return status;
         }
-    }
-    else if (kind != SL_ASYNC_BACKEND_TEST) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     *out_loop = loop;

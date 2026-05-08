@@ -1,4 +1,13 @@
 import { Sloppy, data, sql } from "sloppy";
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+    const value = Environment.get(name);
+    if (value === undefined || value === "") {
+        throw new Error(`Missing required environment value: ${name}`);
+    }
+    return value;
+}
 
 const PostgresModule = Sloppy.module("data.postgres")
     .capabilities((caps) => {
@@ -10,7 +19,7 @@ const PostgresModule = Sloppy.module("data.postgres")
     })
     .services((services) => {
         services.addSingleton("data.main", () => data.postgres.open({
-            connectionString: "postgres://localhost/sloppy_test",
+            connectionString: requireEnvironment("SLOPPY_POSTGRES_TEST_URL"),
             maxConnections: 2,
         }));
     });

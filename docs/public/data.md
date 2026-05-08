@@ -1,10 +1,10 @@
 # Data
 
 Status: Bootstrap data/capabilities foundation, native SQLite/PostgreSQL/SQL Server
-providers, a Plan/capability-wired V8-gated SQLite JavaScript bridge, and a
-Plan/capability-wired V8-gated true-async PostgreSQL JavaScript bridge implemented.
-V8-gated SQLite and PostgreSQL artifact fixtures run through separate conformance lanes;
-PostgreSQL additionally requires a live database connection string.
+providers, Plan/capability-wired V8-gated SQLite, PostgreSQL, and SQL Server JavaScript
+bridges implemented. V8-gated SQLite fixtures run through the configured V8 lane;
+PostgreSQL and SQL Server bridge evidence additionally require their live provider
+connection settings and dependencies.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
@@ -22,8 +22,7 @@ Current target contract:
 - cancellation must be plumbed through request-context SQLite calls; sync-backed calls
   check cancellation before work and before result conversion until real interruption
   exists.
-- public prepared statement handles, ORM, migrations, query builders, and SQL Server
-  JavaScript bridge completion remain deferred.
+- public prepared statement handles, ORM, migrations, and query builders remain deferred.
 - the users API proof is not a public alpha, production HTTP edge, benchmark, ORM,
   migration, or SQL Server bridge claim.
 
@@ -76,6 +75,15 @@ PostgreSQL bootstrap service shape:
 
 ```ts
 import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
 
 const PostgresModule = Sloppy.module("data.postgres")
   .capabilities(caps => {
@@ -87,7 +95,7 @@ const PostgresModule = Sloppy.module("data.postgres")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.postgres.open({
-      connectionString: "postgres://localhost/sloppy_test",
+      connectionString: requireEnvironment("SLOPPY_POSTGRES_TEST_URL"),
       maxConnections: 2,
     }));
   });
@@ -97,6 +105,15 @@ SQL Server bootstrap service shape:
 
 ```ts
 import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
+
+function requireEnvironment(name) {
+  const value = Environment.get(name);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment value: ${name}`);
+  }
+  return value;
+}
 
 const SqlServerModule = Sloppy.module("data.sqlserver")
   .capabilities(caps => {
@@ -108,8 +125,7 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
   })
   .services(services => {
     services.addSingleton("data.main", () => data.sqlserver.open({
-      connectionString:
-        "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;Trusted_Connection=yes;TrustServerCertificate=yes;",
+      connectionString: requireEnvironment("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"),
       maxConnections: 2,
     }));
   });
@@ -124,6 +140,13 @@ Implemented behavior:
   `{ __sloppyQuery, text, parameters, parameterCount, placeholderStyle, placeholders }`.
 - `data.createFakeProvider(...)` creates a JS-only fake provider for tests/examples with
   `query`, `queryOne`, `exec`, and `transaction`.
+- SQL operation methods accept an optional operation-options object with `signal`,
+  `deadline`, and `timeoutMs`. The stdlib checks already-aborted signals and expired
+  deadlines before provider dispatch and forwards the normalized option state to JS fake
+  providers. Current native SQL bridges treat this as Sloppy-side terminal admission
+  behavior; provider-specific active interruption, such as SQLite interruption, libpq
+  cancel, or ODBC statement cancellation while a native call is already running, remains
+  separately tested provider work before it can be claimed.
 - `data.sqlite` exposes SQLite provider metadata, callable provider shorthand, and
   `open(options)`. In a V8-enabled Sloppy runtime that installs SQLite intrinsics and has
   Plan/capability metadata, `data.sqlite("main")` resolves provider token `data.main` and
@@ -140,8 +163,11 @@ Implemented behavior:
   nonblocking libpq-backed connection pool. In bootstrap-only or non-V8 contexts, it fails
   with a bridge-unavailable error.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
-  connection string redaction, a doctor helper shape, and `open(options)` as the future
-  stdlib entry point.
+  connection string redaction, a doctor helper shape, and `open(options)`. In a
+  V8-enabled runtime that installs SQL Server intrinsics, has Plan/capability metadata,
+  and can enable required ODBC async behavior, it returns a safe wrapper around a bounded
+  ODBC connection pool. In bootstrap-only, non-V8, missing-driver, or async-unavailable
+  contexts, it fails with a bridge/driver-unavailable error.
 - Plan v1 alpha can carry metadata-only `dataProviders` entries with a token, provider
   kind (`sqlite`, `postgres`, or `sqlserver`), optional service token, and optional
   capability token reference.
@@ -246,18 +272,23 @@ timestamps as strings unless a later typed-value policy promotes them. Callback
 transactions pin one pooled connection until commit or rollback; nested transactions are
 rejected.
 
+SQL Server JS bridge support follows the same stdlib wrapper shape as PostgreSQL, using
+ODBC `?` placeholders and live-lane configuration through
+`SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. It is live-provider evidence only when the SQL
+Server V8 lane runs with an ODBC driver and reachable service; default tests do not prove
+live SQL Server behavior.
+
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
 resource table is engine-owned, and provider-specific V8 conversion code lives in
 `src/engine/v8/intrinsics_<provider>.cc`. SQLite uses `intrinsics_sqlite.cc`, PostgreSQL
-uses `intrinsics_postgres.cc`, and SQL Server should follow the same provider-owned bridge
-shape rather than adding provider logic directly to `engine_v8.cc`.
+uses `intrinsics_postgres.cc`, and SQL Server uses `intrinsics_sqlserver.cc`; future
+providers should follow that provider-owned bridge shape rather than adding provider logic
+directly to `engine_v8.cc`.
 
 Not implemented yet:
 
-- no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
-  validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no SQL parser, ORM, migrations, production operational pooling policy, public prepared
-  statement handles, or SQL Server native SQL execution from JavaScript;
+  statement handles, hosted live-provider service CI, or default live SQL Server execution;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 
@@ -266,9 +297,9 @@ CLI status:
 - `sloppy doctor` can report deterministic provider readiness metadata supplied through
   `doctorChecks` and reports whether provider/capability metadata is present in a
   native-validated plan;
-- live PostgreSQL and SQL Server checks are not run by default; PostgreSQL live bridge
-  evidence is available through the opt-in CTest/tooling lane when
-  `SLOPPY_POSTGRES_TEST_URL` is configured;
+- live PostgreSQL and SQL Server checks are not run by default; live bridge evidence is
+  available through the opt-in CTest/tooling lanes when the relevant environment variable
+  and provider dependencies are configured;
 - default CI and package smoke do not prove live database availability, SQL Server driver
   installation, or V8-gated provider execution;
 - doctor output redacts connection-string-like secrets before printing;

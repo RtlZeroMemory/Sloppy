@@ -27,7 +27,7 @@ app.get("/users", async (db: Postgres<"main">, ctx: RequestContext) => {
     const users = await db.query<UserDto>(
         "select id, name, email from users order by id",
         [],
-        { deadline: ctx.deadline },
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     return Results.ok(users);
 }).withName("Users.List");
@@ -40,7 +40,7 @@ app.get("/users/{id:int}", async (
     const user = await db.queryOne<UserDto>(
         "select id, name, email from users where id = $1",
         [id],
-        { deadline: ctx.deadline },
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     return user === null ? Results.notFound() : Results.ok(user);
 }).withName("Users.Get");
@@ -53,7 +53,7 @@ app.post("/users", async (
     const user = await db.queryOne<UserDto>(
         "insert into users (name, email) values ($1, $2) returning id, name, email",
         [input.name, input.email],
-        { deadline: ctx.deadline },
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     if (user === null) {
         throw new Error("PostgreSQL user insert did not return a row.");
