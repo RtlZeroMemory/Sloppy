@@ -380,8 +380,9 @@ Foundation decisions:
 - app-scope versus request-scope connections must be documented;
 - `:memory:` examples are core for conformance;
 - file DB policy requires capability/path rules before public docs;
-- PostgreSQL has a V8-gated true-async bridge over nonblocking libpq. SQL Server JS bridge
-  work remains separate until ODBC async behavior is proven.
+- PostgreSQL has a V8-gated true-async bridge over nonblocking libpq. SQL Server has a
+  V8-gated stdlib/native bridge, but broader async/pooling claims remain separate until
+  ODBC async behavior and live-provider evidence prove them.
 - SQLite's scalable provider path depends on ENGINE-23 serialized blocking execution for
   SQLite-class provider instances.
 

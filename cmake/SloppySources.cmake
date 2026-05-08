@@ -187,6 +187,8 @@ if(SLOPPY_ENABLE_V8)
         APPEND
         SLOPPY_C_LINT_SOURCES
         tests/unit/engine/test_v8_smoke.c
+        tests/unit/engine/test_v8_owner_thread.cc
+        tests/unit/engine/test_v8_async_scheduler.cc
         tests/integration/execution/test_handwritten_artifact_execution.c
         tests/integration/http_dispatch/test_http_dispatch_execution.c)
 endif()

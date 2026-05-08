@@ -125,10 +125,9 @@ validation responses.
 Not implemented yet: `app.run`, `app.listen`, native startup validation for the full app
 host, true bootstrap ESM loading, nested route groups, middleware, filters, automatic
 validation, typed request binding beyond the current route/query/request context,
-config file/env providers, console/file/native logging, service disposal, async factories,
-real request-scoped lifetimes, module packages, PostgreSQL/SQL Server JavaScript data
-providers, native plugins, broad bundling, Node/npm package resolution, arbitrary import
-graphs, or full TypeScript type checking.
+config file/env providers, console/file/native logging, async factories, module packages,
+hosted live-provider defaults for PostgreSQL/SQL Server, native plugins, broad bundling,
+Node/npm package resolution, arbitrary import graphs, or full TypeScript type checking.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

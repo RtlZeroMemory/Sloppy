@@ -353,6 +353,7 @@ static int test_invalid_arguments(void)
     SlArena arena;
     SlAsyncCompletion storage[1];
     SlAsyncLoop* loop = NULL;
+    size_t used_before = 0U;
     AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
     AsyncPayload payload;
     SlAsyncCompletion completion;
@@ -363,6 +364,7 @@ static int test_invalid_arguments(void)
         return 30;
     }
 
+    used_before = sl_arena_used(&arena);
     completion = make_completion(&record, &payload, 1);
     if (expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, NULL, storage, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
@@ -370,6 +372,7 @@ static int test_invalid_arguments(void)
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_NONE, &arena, storage, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        sl_arena_used(&arena) != used_before ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, NULL, 1U, &loop),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, NULL, 0U, &loop),

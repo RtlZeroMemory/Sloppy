@@ -76,7 +76,7 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
  *
  * `response`, `buffer`, and `out_bytes` are required. Returned bytes borrow `buffer` and
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
- * 204, 400, 404, 405, 413, 415, 500, and 501. Unknown statuses, invalid custom header
+ * 204, 400, 404, 405, 408, 413, 415, 500, and 501. Unknown statuses, invalid custom header
  * names, managed custom headers, and CR/LF in Content-Type or header values are rejected.
  * Status 204 always writes no Content-Type, no Content-Length, and no body.
  */

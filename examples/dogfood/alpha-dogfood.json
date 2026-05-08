@@ -90,10 +90,7 @@
       "feature": "SQLite",
       "status": "v8-gated",
       "lane": "future feature app",
-      "blockedBy": [
-        816,
-        883
-      ],
+      "blockedBy": [],
       "reason": "Native SQLite and scoped V8 bridge evidence exist in gated lanes, but a default dogfood app must wait for package/source-input V8 evidence to be recorded here."
     },
     {
@@ -101,9 +98,7 @@
       "feature": "PostgreSQL",
       "status": "live-provider-gated",
       "lane": "future live-provider app",
-      "blockedBy": [
-        816
-      ],
+      "blockedBy": [],
       "reason": "PostgreSQL dogfood requires live-provider evidence and service configuration outside default CI."
     },
     {
@@ -111,9 +106,7 @@
       "feature": "SQL Server",
       "status": "live-provider-gated",
       "lane": "future live-provider app",
-      "blockedBy": [
-        816
-      ],
+      "blockedBy": [],
       "reason": "SQL Server dogfood requires live-provider evidence, ODBC driver availability, and service configuration outside default CI."
     },
     {

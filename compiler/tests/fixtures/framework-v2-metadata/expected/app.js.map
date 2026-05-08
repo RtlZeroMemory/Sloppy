@@ -1,12 +1,12 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;0LAgDmB;AACnB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;;0LAEsB;AACtB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA",
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;0LA+CmB;AACnB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;;0LAEsB;AACtB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA",
   "names": [],
   "sources": [
     "input.ts"
   ],
   "sourcesContent": [
-    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  SecretString,\n  Uuid,\n  PositiveInt,\n  DateTime,\n  Instant,\n  RequestContext,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport { WorkQueue } from \"sloppy/workers\";\n\n// Fixture invariant: semantic schema extraction and redaction coverage.\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  secretNote: SecretString;\n  tenantId: Uuid;\n  loginCount: PositiveInt;\n  createdAt: DateTime;\n  lastSeenAt: Instant | null;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`,\n    { deadline: ctx.deadline }\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`,\n    { deadline: ctx.deadline, trace, includeDeleted, input }\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
+    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  SecretString,\n  Uuid,\n  PositiveInt,\n  DateTime,\n  Instant,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport { WorkQueue } from \"sloppy/workers\";\n\n// Fixture invariant: semantic schema extraction and redaction coverage.\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  secretNote: SecretString;\n  tenantId: Uuid;\n  loginCount: PositiveInt;\n  createdAt: DateTime;\n  lastSeenAt: Instant | null;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
   ],
   "version": 3,
   "x_sloppy": {
@@ -16,7 +16,7 @@
         "kind": "database",
         "source": {
           "column": 3,
-          "line": 51,
+          "line": 50,
           "path": "input.ts"
         },
         "token": "data.main"
@@ -26,7 +26,7 @@
         "kind": "database",
         "source": {
           "column": 3,
-          "line": 52,
+          "line": 51,
           "path": "input.ts"
         },
         "token": "data.audit"
@@ -36,7 +36,7 @@
         "kind": "database",
         "source": {
           "column": 3,
-          "line": 53,
+          "line": 52,
           "path": "input.ts"
         },
         "token": "data.search"
@@ -46,7 +46,7 @@
         "kind": "queue",
         "source": {
           "column": 3,
-          "line": 54,
+          "line": 53,
           "path": "input.ts"
         },
         "token": "queue.emails"
@@ -62,19 +62,19 @@
         "id": 1,
         "source": {
           "column": 20,
-          "line": 49,
+          "line": 48,
           "path": "input.ts"
         }
       },
       {
         "generated": {
           "column": 33,
-          "line": 76
+          "line": 74
         },
         "id": 2,
         "source": {
           "column": 23,
-          "line": 65,
+          "line": 62,
           "path": "input.ts"
         }
       }
@@ -86,7 +86,7 @@
         "providerKind": "postgres",
         "source": {
           "column": 3,
-          "line": 51,
+          "line": 50,
           "path": "input.ts"
         },
         "token": "data.main"
@@ -96,7 +96,7 @@
         "providerKind": "sqlite",
         "source": {
           "column": 3,
-          "line": 52,
+          "line": 51,
           "path": "input.ts"
         },
         "token": "data.audit"
@@ -106,7 +106,7 @@
         "providerKind": "sqlserver",
         "source": {
           "column": 3,
-          "line": 53,
+          "line": 52,
           "path": "input.ts"
         },
         "token": "data.search"
@@ -116,7 +116,7 @@
         "providerKind": "",
         "source": {
           "column": 3,
-          "line": 54,
+          "line": 53,
           "path": "input.ts"
         },
         "token": "queue.emails"
@@ -130,7 +130,7 @@
         "pattern": "/users",
         "source": {
           "column": 1,
-          "line": 49,
+          "line": 48,
           "path": "input.ts"
         }
       },
@@ -142,7 +142,7 @@
         "pattern": "/users/{id}",
         "source": {
           "column": 1,
-          "line": 65,
+          "line": 62,
           "path": "input.ts"
         }
       }
@@ -152,7 +152,7 @@
         "name": "UserCreate",
         "source": {
           "column": 1,
-          "line": 25,
+          "line": 24,
           "path": "input.ts"
         }
       },
@@ -160,14 +160,14 @@
         "name": "UserDto",
         "source": {
           "column": 1,
-          "line": 41,
+          "line": 40,
           "path": "input.ts"
         }
       }
     ],
     "sourceFiles": [
       {
-        "hash": "sha256:7c4a70f58fb7cb6db8d0b4df47ba808447c1ce1f668768a5c5d4a7fec87570ec",
+        "hash": "sha256:e7f6c51e893a47de75afeb239e73014e21e18a871d90e65bec67fcec47007147",
         "path": "input.ts"
       }
     ],

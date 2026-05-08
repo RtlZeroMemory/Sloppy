@@ -3,7 +3,6 @@ import {
     Email,
     NonEmptyString,
     PositiveInt,
-    RequestContext,
     Results,
     Route,
     Sloppy,
@@ -23,30 +22,26 @@ type UserDto = {
 
 const app = Sloppy.create();
 
-async function seedUsers(db, deadline) {
+async function seedUsers(db) {
     await db.exec(
         "create table if not exists users (id integer primary key, name text not null, email text not null unique)",
         [],
-        { deadline },
     );
     await db.exec(
         "insert or ignore into users (id, name, email) values (?, ?, ?)",
         [1, "Ada Lovelace", "ada@example.test"],
-        { deadline },
     );
     await db.exec(
         "insert or ignore into users (id, name, email) values (?, ?, ?)",
         [2, "Grace Hopper", "grace@example.test"],
-        { deadline },
     );
 }
 
-app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {
-    await seedUsers(db, ctx.deadline);
+app.get("/users", async (db: Sqlite<"main">) => {
+    await seedUsers(db);
     const users = await db.query<UserDto>(
         "select id, name, email from users order by id",
         [],
-        { deadline: ctx.deadline },
     );
     return Results.ok(users);
 }).withName("Users.List");
@@ -54,13 +49,11 @@ app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {
 app.get("/users/{id:int}", async (
     id: Route<PositiveInt>,
     db: Sqlite<"main">,
-    ctx: RequestContext,
 ) => {
-    await seedUsers(db, ctx.deadline);
+    await seedUsers(db);
     const user = await db.queryOne<UserDto>(
         "select id, name, email from users where id = ?",
         [id],
-        { deadline: ctx.deadline },
     );
     return user === null ? Results.notFound() : Results.ok(user);
 }).withName("Users.Get");
@@ -68,18 +61,15 @@ app.get("/users/{id:int}", async (
 app.post("/users", async (
     input: Body<UserCreate>,
     db: Sqlite<"main">,
-    ctx: RequestContext,
 ) => {
-    await seedUsers(db, ctx.deadline);
+    await seedUsers(db);
     await db.exec(
         "insert or ignore into users (name, email) values (?, ?)",
         [input.name, input.email],
-        { deadline: ctx.deadline },
     );
     const user = await db.queryOne<UserDto>(
         "select id, name, email from users where email = ?",
         [input.email],
-        { deadline: ctx.deadline },
     );
     if (user === null) {
         throw new Error("SQLite user insert did not return a row.");

@@ -10,7 +10,7 @@ const PostgresModule = Sloppy.module("data.postgres")
     })
     .services((services) => {
         services.addSingleton("data.main", () => data.postgres.open({
-            connectionString: "postgres://localhost/sloppy_test",
+            connectionString: "<redacted local PostgreSQL connection string>",
             maxConnections: 2,
         }));
     });

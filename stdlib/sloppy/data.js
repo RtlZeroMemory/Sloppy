@@ -291,6 +291,12 @@ function validateOperationOptions(options, operation) {
     if (!isPlainObject(options)) {
         throw new TypeError(`Sloppy data ${operation} options must be a plain object.`);
     }
+    const keys = Object.keys(options);
+    if (keys.length !== 0) {
+        throw new TypeError(
+            `Sloppy data ${operation} option '${keys[0]}' is not supported by the current runtime bridge.`,
+        );
+    }
 }
 
 function normalizeQueryArguments(operation, placeholderStyle, args) {
@@ -687,11 +693,7 @@ function createSqliteConnection(nativeBridge, handle) {
                 kind: "sqlite-connection",
                 closed: state.closed,
                 transactionActive: state.transactionActive,
-                resource: Object.freeze({
-                    slot: state.handle.slot,
-                    generation: state.handle.generation,
-                    kind: state.handle.kind,
-                }),
+                resource: "opaque",
             });
         },
     });
@@ -1112,11 +1114,7 @@ function createPostgresConnection(nativeBridge, handle) {
                 kind: "postgres-connection",
                 closed: state.closed,
                 transactionActive: state.transactionActive,
-                resource: Object.freeze({
-                    slot: state.handle.slot,
-                    generation: state.handle.generation,
-                    kind: state.handle.kind,
-                }),
+                resource: "opaque",
             });
         },
     });
@@ -1339,11 +1337,7 @@ function createSqlServerConnection(nativeBridge, handle) {
                 kind: "sqlserver-connection",
                 closed: state.closed,
                 transactionActive: state.transactionActive,
-                resource: Object.freeze({
-                    slot: state.handle.slot,
-                    generation: state.handle.generation,
-                    kind: state.handle.kind,
-                }),
+                resource: "opaque",
             });
         },
     });
@@ -1382,7 +1376,7 @@ function doctorSqlServer(options = {}) {
         provider: "sqlserver",
         driverManager: "native-check-unavailable",
         driver: driver.length > 0 ? "unchecked" : "unknown",
-        message: "Native SQL Server doctor diagnostics are available in the C provider tests until the stdlib bridge lands.",
+        message: "SQL Server doctor metadata is redacted here; live driver/service validation runs only in the opt-in native or V8 live-provider lanes.",
         connectionString: connectionString.length > 0
             ? redactOdbcConnectionString(connectionString)
             : undefined,

@@ -146,6 +146,34 @@ SlStatus fs_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::St
     return sl_v8_string_from_native_view(backend, str, out);
 }
 
+bool fs_v8_resource_private(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
+{
+    v8::Local<v8::String> key;
+    if (out == nullptr ||
+        !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)))
+    {
+        return false;
+    }
+    *out = v8::Private::ForApi(isolate, key);
+    return true;
+}
+
+bool fs_v8_set_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                           v8::Local<v8::Object> object, SlResourceId id)
+{
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
+    return fs_v8_resource_private(isolate, "sloppy.fs.resource.slot", &slot_key) &&
+           fs_v8_resource_private(isolate, "sloppy.fs.resource.generation", &generation_key) &&
+           object->SetPrivate(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
+               .FromMaybe(false) &&
+           object
+               ->SetPrivate(context, generation_key,
+                            v8::Integer::NewFromUnsigned(isolate, id.generation))
+               .FromMaybe(false) &&
+           object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false);
+}
+
 bool fs_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> value, std::string* out)
 {
     return out != nullptr && value->IsString() && sl_v8_std_string_from_value(isolate, value, out);
@@ -893,8 +921,6 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
     case FsV8Operation::OpenHandle: {
         SlResourceId id = sl_resource_id_invalid();
         v8::Local<v8::Object> object = v8::Object::New(isolate);
-        v8::Local<v8::String> slot_key;
-        v8::Local<v8::String> generation_key;
         SlStatus status;
 
         if (request->logical_file == nullptr) {
@@ -911,19 +937,18 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
             return false;
         }
         request->logical_file = nullptr;
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key);
-        (void)object->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot));
-        (void)object->Set(context, generation_key,
-                          v8::Integer::NewFromUnsigned(isolate, id.generation));
+        if (!fs_v8_set_resource_id(isolate, context, object, id)) {
+            (void)sl_resource_table_close_kind(&request->backend->resources, id,
+                                               SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
+            *out_error = "filesystem handle could not be materialized";
+            return false;
+        }
         *out = object;
         return true;
     }
     case FsV8Operation::WatchOpen: {
         SlResourceId id = sl_resource_id_invalid();
         v8::Local<v8::Object> object = v8::Object::New(isolate);
-        v8::Local<v8::String> slot_key;
-        v8::Local<v8::String> generation_key;
         SlStatus status;
 
         if (request->logical_watch == nullptr) {
@@ -940,11 +965,12 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
             return false;
         }
         request->logical_watch = nullptr;
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key);
-        (void)object->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot));
-        (void)object->Set(context, generation_key,
-                          v8::Integer::NewFromUnsigned(isolate, id.generation));
+        if (!fs_v8_set_resource_id(isolate, context, object, id)) {
+            (void)sl_resource_table_close_kind(&request->backend->resources, id,
+                                               SL_RESOURCE_KIND_FS_WATCH, nullptr);
+            *out_error = "filesystem watch could not be materialized";
+            return false;
+        }
         *out = object;
         return true;
     }
@@ -1153,17 +1179,16 @@ bool fs_v8_get_optional_size(v8::Isolate* isolate, v8::Local<v8::Context> contex
 bool fs_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            v8::Local<v8::Value> value, SlResourceId* out)
 {
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
     v8::Local<v8::Value> slot;
     v8::Local<v8::Value> generation;
 
     if (out == nullptr || !value->IsObject() ||
-        !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            fs_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !value.As<v8::Object>()->Get(context, slot_key).ToLocal(&slot) ||
-        !value.As<v8::Object>()->Get(context, generation_key).ToLocal(&generation) ||
+        !fs_v8_resource_private(isolate, "sloppy.fs.resource.slot", &slot_key) ||
+        !fs_v8_resource_private(isolate, "sloppy.fs.resource.generation", &generation_key) ||
+        !value.As<v8::Object>()->GetPrivate(context, slot_key).ToLocal(&slot) ||
+        !value.As<v8::Object>()->GetPrivate(context, generation_key).ToLocal(&generation) ||
         !slot->IsUint32() || !generation->IsUint32())
     {
         return false;

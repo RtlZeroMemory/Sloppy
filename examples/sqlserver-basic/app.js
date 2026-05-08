@@ -10,7 +10,7 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
     })
     .services((services) => {
         services.addSingleton("data.main", () => data.sqlserver.open({
-            connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;Trusted_Connection=yes;TrustServerCertificate=yes;",
+            connectionString: "<redacted local SQL Server connection string>",
             maxConnections: 2,
         }));
     });
@@ -24,7 +24,7 @@ const lowered = sql.lower(["select id, name from users where name = ", ""], ["Ad
 });
 
 const doctor = data.sqlserver.doctor({
-    connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;",
+    connectionString: "<redacted local SQL Server connection string>",
 });
 
 async function insertUser(db, name) {

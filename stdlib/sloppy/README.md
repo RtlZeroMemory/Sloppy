@@ -74,7 +74,8 @@ lib/sloppy/bootstrap/sloppy/
 - Source examples may use relative imports into this directory when they are API-shape
   fixtures; compiler-owned runnable examples use the supported bare `"sloppy"` input shape.
 - Feature-gated APIs fail closed when the active runtime bridge is unavailable.
-- Native handles and raw pointers are not exposed to JavaScript.
+- Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
+  facades use opaque Sloppy-owned objects, not public slot/generation fields.
 - Node, Bun, Deno, Web API, and npm compatibility are not claimed.
 - Benchmark, production-readiness, and public alpha claims do not come from this directory.
 
@@ -84,11 +85,10 @@ lib/sloppy/bootstrap/sloppy/
 - public handler registration APIs;
 - full compiler extraction or arbitrary import rewriting;
 - ORM, migrations, or schema-management behavior for database providers;
-- middleware, automatic validation/request binding, module packages, native plugins, or
-  full app lifecycle integration;
+- middleware, module packages, native plugins, or full app lifecycle integration;
 - config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
-  logging sinks, request-scoped service lifetimes, disposal hooks, async factories, or
-  typed DI tokens.
+  logging sinks, async service factories, typed DI tokens, or native service graph
+  validation.
 
 ## Source Docs
 

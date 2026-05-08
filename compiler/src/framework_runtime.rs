@@ -1,8 +1,8 @@
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, Expression, ForStatementInit, ObjectPropertyKind, Statement,
-    VariableDeclaration,
+    TaggedTemplateExpression, TemplateLiteral, VariableDeclaration,
 };
-use oxc_span::Span;
+use oxc_span::{GetSpan, Span};
 use serde_json::{json, Value};
 
 use crate::sloppyc::{ts_type_span, RequestBinding};
@@ -242,15 +242,31 @@ fn collect_expression_erase_spans(expression: &Expression<'_>, erase_spans: &mut
             collect_expression_erase_spans(&expression.object, erase_spans);
             collect_expression_erase_spans(&expression.expression, erase_spans);
         }
+        Expression::TemplateLiteral(template) => {
+            collect_template_literal_erase_spans(template, erase_spans);
+        }
+        Expression::TaggedTemplateExpression(expression) => {
+            collect_tagged_template_erase_spans(expression, erase_spans);
+        }
         Expression::TSAsExpression(expression) => {
-            erase_spans.push(ts_type_span(&expression.type_annotation));
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
             collect_expression_erase_spans(&expression.expression, erase_spans);
         }
         Expression::TSSatisfiesExpression(expression) => {
-            erase_spans.push(ts_type_span(&expression.type_annotation));
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
             collect_expression_erase_spans(&expression.expression, erase_spans);
         }
         Expression::TSNonNullExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                expression.span.end,
+            ));
             collect_expression_erase_spans(&expression.expression, erase_spans);
         }
         _ => {}
@@ -296,6 +312,33 @@ fn collect_argument_erase_spans(argument: &Argument<'_>, erase_spans: &mut Vec<S
             collect_expression_erase_spans(&expression.object, erase_spans);
             collect_expression_erase_spans(&expression.expression, erase_spans);
         }
+        Argument::TemplateLiteral(template) => {
+            collect_template_literal_erase_spans(template, erase_spans);
+        }
+        Argument::TaggedTemplateExpression(expression) => {
+            collect_tagged_template_erase_spans(expression, erase_spans);
+        }
+        Argument::TSAsExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
+        Argument::TSSatisfiesExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
+        Argument::TSNonNullExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                expression.span.end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
         _ => {}
     }
 }
@@ -332,8 +375,55 @@ fn collect_array_element_erase_spans(
                 collect_array_element_erase_spans(element, erase_spans);
             }
         }
+        ArrayExpressionElement::TemplateLiteral(template) => {
+            collect_template_literal_erase_spans(template, erase_spans);
+        }
+        ArrayExpressionElement::TaggedTemplateExpression(expression) => {
+            collect_tagged_template_erase_spans(expression, erase_spans);
+        }
+        ArrayExpressionElement::TSAsExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
+        ArrayExpressionElement::TSSatisfiesExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                ts_type_span(&expression.type_annotation).end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
+        ArrayExpressionElement::TSNonNullExpression(expression) => {
+            erase_spans.push(Span::new(
+                expression.expression.span().end,
+                expression.span.end,
+            ));
+            collect_expression_erase_spans(&expression.expression, erase_spans);
+        }
         _ => {}
     }
+}
+
+fn collect_template_literal_erase_spans(
+    template: &TemplateLiteral<'_>,
+    erase_spans: &mut Vec<Span>,
+) {
+    for expression in &template.expressions {
+        collect_expression_erase_spans(expression, erase_spans);
+    }
+}
+
+fn collect_tagged_template_erase_spans(
+    expression: &TaggedTemplateExpression<'_>,
+    erase_spans: &mut Vec<Span>,
+) {
+    if let Some(type_arguments) = &expression.type_arguments {
+        erase_spans.push(type_arguments.span);
+    }
+    collect_expression_erase_spans(&expression.tag, erase_spans);
+    collect_template_literal_erase_spans(&expression.quasi, erase_spans);
 }
 
 fn erase_spans_from_source(

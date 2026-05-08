@@ -3263,7 +3263,8 @@ type UserCreate = { name: string; email: string };
 type UserDto = { id: number; name: string; email: string };
 const app = Sloppy.create();
 app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
-  const first: UserCreate = input;
+  const first: UserCreate = input! as UserCreate;
+  const checked = ({ name: first.name, email: first.email } satisfies UserCreate);
   const mapped = [first].map((item: UserCreate): UserDto => ({
     id: Number.parseInt("1", 10),
     name: item.name,
@@ -3276,7 +3277,7 @@ app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
   function normalize(user: UserDto): UserDto {
     return user;
   }
-  return Results.created(`/users/${loaded[0].id}`, normalize(loaded[0]));
+  return Results.created(`/users/${loaded[0]!.id}`, normalize(loaded[0]));
 });
 export default app;
 "#;
@@ -3284,8 +3285,15 @@ export default app;
         .expect("typed handler with nested TypeScript syntax should extract");
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("const first = input;"));
+    assert!(emitted_js
+        .source
+        .contains("const checked = ({ name: first.name, email: first.email });"));
     assert!(emitted_js.source.contains("function normalize(user)"));
     assert!(!emitted_js.source.contains("const first:"));
+    assert!(!emitted_js.source.contains(" as UserCreate"));
+    assert!(!emitted_js.source.contains(" satisfies UserCreate"));
+    assert!(!emitted_js.source.contains("input!"));
+    assert!(!emitted_js.source.contains("loaded[0]!"));
     assert!(!emitted_js.source.contains("(item:"));
     assert!(!emitted_js.source.contains("): UserDto"));
     assert!(!emitted_js.source.contains("function normalize(user:"));

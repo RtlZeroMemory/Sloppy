@@ -184,9 +184,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   generic cancellation/timeout/shutdown terminal handling, late-completion cleanup-only
   behavior, capability-gated dispatch, redacted diagnostics/counters, bounded stress
   smoke, and the provider runtime integration guide now exist. ENGINE-17 still must route
-  SQLite through this executor before claiming scalable SQLite provider execution, and
-  future PostgreSQL/SQL Server bridges must consume the same runtime model instead of
-  bypassing it.
+  SQLite through this executor before claiming scalable SQLite provider execution, and the
+  PostgreSQL/SQL Server bridges still need executor-path hardening before broad runtime
+  scalability claims.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13.A/B/C now owns the first
   listener/backend architecture, connection and request lifecycle, parser limits,
   timeout/deadline hooks, bounded admission/backpressure, and deterministic lifecycle
@@ -395,11 +395,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   covers represented route/provider/capability metadata and duplicate provider service
   tokens, but bootstrap module graphs and real service lifetimes still need compiler-emitted
   metadata.
-- Future provider bridges must route through the ENGINE-23 capability-gated executor
+- Future provider families must route through the ENGINE-23 capability-gated executor
   dispatch path and follow `docs/project/provider-runtime-integration-guide.md` instead
-  of using only direct bridge-ready hooks.
-- Provider primitive cleanup follow-up is mapped to #448; PostgreSQL/SQL Server JS bridge
-  implementation remains deferred and is not part of immediate next-wave work.
+  of using direct bridge-only hooks. Current SQLite, PostgreSQL, and SQL Server bridges
+  still need broader cancellation/interruption, pooling policy, hosted live-provider CI,
+  and public prepared-statement policy work.
+- Provider primitive cleanup follow-up is mapped to #448; remaining provider work is
+  hardening/evidence, not a claim that PostgreSQL or SQL Server JS bridges are absent.
 - Source map consumption beyond V8 exception primary spans. ENGINE-15.B consumes compiler
   Source Map v3 mappings for V8 compile/eval/call exceptions, ENGINE-15.CD adds the
   shared JSON source-frame renderer when source text is supplied, and ENGINE-15.E pins

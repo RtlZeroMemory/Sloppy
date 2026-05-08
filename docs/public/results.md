@@ -92,12 +92,13 @@ value:
 }
 ```
 
-Both helpers accept `options.status`; status must be an integer from 100 to 999 and
-defaults to each helper's documented default. `Results.text` and `Results.html` store
-`String(body)`. `Results.json` and JSON-shaped status helpers preserve the provided
-JavaScript value as `body`; the descriptor is frozen, but object values are not deep-frozen.
-In the current V8 response conversion path, omitted or `undefined` JSON-shaped
-descriptor bodies serialize deterministically as JSON `null`.
+Both helpers accept `options.status`; descriptor creation accepts any integer from 100 to
+999 so unsupported-but-explicit statuses can be rejected by the runtime writer with a
+stable diagnostic instead of at helper construction time. `Results.text` and
+`Results.html` store `String(body)`. `Results.json` and JSON-shaped status helpers
+preserve the provided JavaScript value as `body`; the descriptor is frozen, but object
+values are not deep-frozen. In the current V8 response conversion path, omitted or
+`undefined` JSON-shaped descriptor bodies serialize deterministically as JSON `null`.
 `options.headers` may be a plain object and is shallow-copied/frozen as descriptor metadata.
 There is no header normalization class.
 
@@ -105,7 +106,7 @@ Implemented in the dev run path now:
 
 - `text`, `html`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
   `badRequest`, `status`, and `problem` descriptors;
-- `200`, `201`, `202`, `204`, `400`, `404`, `405`, `413`, `415`, `500`, and `501`
+- `200`, `201`, `202`, `204`, `400`, `404`, `405`, `408`, `413`, `415`, `500`, and `501`
   response status writing;
 - JSON body serialization through V8 `JSON.stringify` for JSON/problem descriptors;
 - omitted or `undefined` JSON/problem descriptor bodies serialized as `null`;

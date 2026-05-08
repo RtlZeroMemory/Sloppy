@@ -10,7 +10,7 @@ if [ "${1:-}" = "--self-test" ]; then
 
     valid="$tmp/valid"
     invalid="$tmp/invalid"
-    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/tests/unit/core"
+    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/src/cli" "$invalid/tests/unit/core"
 
     cat > "$valid/src/core/string.c" <<'EOF'
 #include <string.h>
@@ -37,6 +37,10 @@ EOF
     cat > "$invalid/tests/unit/core/test_bad.c" <<'EOF'
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
+EOF
+    cat > "$invalid/src/cli/bad.inc" <<'EOF'
+#include <stdlib.h>
+void* bad_cli_alloc(void) { return malloc(16); }
 EOF
 
     SLOPPY_C_STANDARDS_ROOT="$valid" "$0" >/dev/null
@@ -107,7 +111,7 @@ collect_files() {
 
 while IFS= read -r file; do
     case "$file" in
-        *.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hh|*.hxx) ;;
+        *.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hh|*.hxx|*.inc) ;;
         *) continue ;;
     esac
 

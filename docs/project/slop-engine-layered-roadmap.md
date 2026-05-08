@@ -413,8 +413,9 @@ claims, and public alpha docs.
 
 Acceptance criteria: each EPIC has issue-backed tasks, implementation PRs update source
 docs and tests together, public alpha remains blocked until the foundation evidence gate
-passes, PostgreSQL/SQL Server stay deferred, benchmark output stays non-claim evidence, and
-hot-path memory/string adoption is complete or explicitly deferred with honest evidence.
+passes, PostgreSQL/SQL Server live-provider evidence stays opt-in and separately reported,
+benchmark output stays non-claim evidence, and hot-path memory/string adoption is complete
+or explicitly deferred with honest evidence.
 
 Likely PR grouping: prefer bounded but coherent implementation PRs by ownership surface.
 Do not split one lifecycle or backend invariant across tiny PRs if that would leave fake

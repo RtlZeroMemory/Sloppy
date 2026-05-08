@@ -1391,14 +1391,14 @@ jobs:
         run: |
           $v8Root = "${{ inputs.v8_root }}"
           if ([string]::IsNullOrWhiteSpace($v8Root)) {
-            Write-Host "::notice title=Optional V8 validation skipped::No v8_root workflow input was supplied. This job did not run V8 configure/build/tests."
+            Write-Host "::error title=Optional V8 validation unavailable::enable_v8=true requires a v8_root workflow input. This job must not report success without V8 configure/build/tests."
             "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            exit 0
+            exit 1
           }
           if (-not (Test-Path -LiteralPath $v8Root -PathType Container)) {
-            Write-Host "::notice title=Optional V8 validation skipped::The supplied v8_root does not exist on this runner: $v8Root"
+            Write-Host "::error title=Optional V8 validation unavailable::The supplied v8_root does not exist on this runner: $v8Root"
             "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            exit 0
+            exit 1
           }
           "SLOPPY_V8_ROOT=$v8Root" | Out-File -FilePath $env:GITHUB_ENV -Append
           "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append

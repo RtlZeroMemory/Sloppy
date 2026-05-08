@@ -4,8 +4,9 @@ Status: opt-in live-lane Framework v2 PostgreSQL example.
 
 This example documents the Plan-visible Framework v2 shape for PostgreSQL CRUD-style
 handlers: typed `Body<T>` and `Route<T>` bindings, compiler-inferred `postgres/main`
-provider metadata from `Postgres<"main">`, semantic request types, and deadline
-propagation into provider calls.
+provider metadata from `Postgres<"main">`, and semantic request types. Provider operation
+deadline propagation remains separate provider/runtime work and is not claimed by this
+example.
 
 It is not part of default CI. Run it only with a local PostgreSQL test database and a
 redacted connection string managed outside source control. Missing PostgreSQL/libpq/live

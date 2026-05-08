@@ -29,6 +29,7 @@ pub struct Diagnostic {
     pub span: Option<Span>,
     pub message: String,
     pub hint: Option<String>,
+    pub show_source_frame: bool,
 }
 
 impl Diagnostic {
@@ -40,6 +41,7 @@ impl Diagnostic {
             span: None,
             message: message.into(),
             hint: None,
+            show_source_frame: true,
         }
     }
 
@@ -58,6 +60,11 @@ impl Diagnostic {
         self
     }
 
+    pub fn without_source_frame(mut self) -> Self {
+        self.show_source_frame = false;
+        self
+    }
+
     pub fn render(&self, source: Option<&str>) -> String {
         let location = match (&self.path, self.span, source) {
             (Some(path), Some(span), Some(source_text)) => {
@@ -69,10 +76,12 @@ impl Diagnostic {
         };
 
         let mut output = format!("{location}: {}: {}", self.code, self.message);
-        if let (Some(path), Some(span), Some(source_text)) = (&self.path, self.span, source) {
-            if let Some(frame) = source_frame(path, source_text, span) {
-                output.push('\n');
-                output.push_str(&frame);
+        if self.show_source_frame {
+            if let (Some(path), Some(span), Some(source_text)) = (&self.path, self.span, source) {
+                if let Some(frame) = source_frame(path, source_text, span) {
+                    output.push('\n');
+                    output.push_str(&frame);
+                }
             }
         }
         if let Some(hint) = &self.hint {
