@@ -16,6 +16,7 @@ needed:
 .\tools\windows\dev.ps1 lint
 .\tools\windows\dev.ps1 package
 .\tools\windows\dev.ps1 test-package
+.\tools\windows\dev.ps1 dogfood
 ```
 
 The root `tools/*.ps1` files forward here as convenience entrypoints.
@@ -86,3 +87,15 @@ package/test-package path:
 
 The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or create a public GitHub release.
+
+Alpha dogfood evidence is cataloged in `examples/dogfood/alpha-dogfood.json` and can be
+reported through:
+
+```powershell
+.\tools\windows\dogfood.ps1 -StatusOnly
+.\tools\windows\dev.ps1 dogfood -Preset windows-relwithdebinfo -EnableV8
+```
+
+`dogfood.ps1` reuses the existing source-input and package smoke harnesses. Without a
+V8-enabled build it reports V8-required examples as unavailable diagnostics, not positive
+execution. Without `-PackagePath` it reports package-mode dogfood as skipped.

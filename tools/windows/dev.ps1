@@ -55,6 +55,7 @@ function Write-DevHelp {
     Write-Host "  format-check  Run C/C++ and Rust format checks."
     Write-Host "  package       Build an experimental local package archive."
     Write-Host "  test-package  Extract a package outside the checkout and run smoke checks."
+    Write-Host "  dogfood       Run or report ALPHA-INFRA dogfood/example evidence."
     Write-Host "  analyze       Run the advanced static-analysis target."
     Write-Host "  clean         Remove the selected build directory."
     Write-Host "  all           Configure, build, and test."
@@ -697,6 +698,41 @@ function Invoke-TestPackage {
     )
 }
 
+function Invoke-Dogfood {
+    $script = Join-Path $PSScriptRoot "dogfood.ps1"
+    $sloppyExe = Join-Path $BuildDir "sloppy.exe"
+    $cargoProfile = if ((Get-PackageConfiguration) -eq "Release") { "release" } else { "debug" }
+    $sloppycExe = Join-Path (Join-Path $Root "compiler/target/$cargoProfile") "sloppyc.exe"
+    if (-not (Test-Path -LiteralPath $sloppyExe -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $sloppycExe -PathType Leaf))
+    {
+        throw "Dogfood requires built sloppy.exe under $BuildDir and sloppyc.exe under compiler/target/$cargoProfile. Run .\tools\windows\dev.ps1 build and cargo build --manifest-path compiler/Cargo.toml first, or invoke tools/windows/dogfood.ps1 -StatusOnly."
+    }
+
+    $dogfoodArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $script,
+        "-SloppyExe",
+        $sloppyExe,
+        "-SloppycExe",
+        $sloppycExe
+    )
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+        $dogfoodArgs += "-RequireV8Runtime"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
+        $dogfoodArgs += @("-PackagePath", (Resolve-Path -LiteralPath $PackagePath).Path)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PackageMetadataPath)) {
+        $dogfoodArgs += @("-PackageMetadataPath", (Resolve-Path -LiteralPath $PackageMetadataPath).Path)
+    }
+
+    Invoke-Native "powershell" $dogfoodArgs
+}
+
 switch ($Command) {
     "help" { Write-DevHelp }
     "doctor" { Invoke-Doctor }
@@ -708,6 +744,7 @@ switch ($Command) {
     "lint" { Invoke-Lint }
     "package" { Invoke-Package }
     "test-package" { Invoke-TestPackage }
+    "dogfood" { Invoke-Dogfood }
     "analyze" { Invoke-Analyze }
     "all" {
         Invoke-Configure

@@ -131,6 +131,10 @@ contain historical or fake marker text when that text is clearly scoped.
   and outside-checkout package smoke for the package lane under test.
 - The release artifact workflow is manual and read-only; it must not require secrets or
   create a public release.
+- Dogfood/readiness changes must validate `examples/dogfood/alpha-dogfood.json` and
+  `docs/project/alpha-infra-readiness.json` through `check-alpha-infra.ps1`. Positive hello
+  execution remains V8-gated; status-only dogfood checks do not prove V8 execution or
+  package-mode behavior.
 - No-claims scanning rejects unguarded production, performance, Node/Bun/Deno,
   provider-readiness, V8-readiness, package-readiness, release-readiness, or unsupported
   platform claims.

@@ -76,6 +76,7 @@ Commands:
   format-check  Run Rust format check when rustfmt is available.
   package       Build an experimental local tar.gz package.
   test-package  Extract a package outside the checkout and run smoke checks.
+  dogfood      Run or report ALPHA-INFRA dogfood/example evidence.
   clean         Remove the selected build directory.
   help          Print this help.
 
@@ -162,6 +163,14 @@ test_package() {
   "$repo_root/tools/unix/test-package.sh" --package-path "$resolved"
 }
 
+dogfood_repo() {
+  local args=()
+  if [[ -n "$package_path" ]]; then
+    args+=(--package-path "$package_path")
+  fi
+  "$repo_root/tools/unix/dogfood.sh" "${args[@]}"
+}
+
 case "$command_name" in
   help) usage ;;
   doctor) doctor ;;
@@ -173,6 +182,7 @@ case "$command_name" in
   clean) clean ;;
   package) package_repo ;;
   test-package) test_package ;;
+  dogfood) dogfood_repo ;;
   *)
     echo "sloppy dev: unknown command '$command_name'. Run tools/unix/dev.sh help for the command contract." >&2
     exit 2

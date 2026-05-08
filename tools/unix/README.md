@@ -13,6 +13,7 @@ tools/unix/dev.sh test
 tools/unix/dev.sh lint
 tools/unix/dev.sh package
 tools/unix/dev.sh test-package
+tools/unix/dev.sh dogfood
 tools/unix/check-platform-boundaries.sh
 tools/unix/check-c-standards.sh --self-test
 tools/unix/check-c-standards.sh
@@ -55,6 +56,17 @@ tools/unix/release-dry-run.sh --preset linux-clang
 The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies package
 checksums through `test-package.sh`, and does not require secrets or create a public
 release.
+
+Alpha dogfood status is represented through:
+
+```sh
+tools/unix/dogfood.sh
+tools/unix/dev.sh dogfood
+```
+
+The Unix dogfood script validates the shared catalog and can run package-mode smoke when a
+TAR archive is supplied. Positive source-input execution remains V8-gated and must be
+reported separately from this static Unix lane.
 
 Provider live lanes have POSIX wrappers for machines that already have the matching CMake
 preset configured and the required service dependencies installed:
