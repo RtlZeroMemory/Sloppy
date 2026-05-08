@@ -86,9 +86,11 @@ Manual artifact dry-runs use the `release-artifacts` GitHub Actions workflow or 
 uses read-only repository permissions, restores the same Rust/vcpkg caches as CI, uploads
 package archives with `SHA256SUMS.txt`, and does not create a public GitHub release.
 
-Default pull-request CI stays focused on static checks and path-gated build/package lanes.
-Release dry-run package builds are manual or package-path gated so routine docs/tooling
-changes do not add always-on cross-platform package cost.
+Default pull-request CI stays focused on static checks and fast tooling lanes. Package
+smoke CI is opt-in through `workflow_dispatch`, `full-ci`, or `package-smoke` because it
+performs an outside-checkout package build/smoke and is intentionally heavier than the
+fast path. PRs that skip remote package smoke must report the skipped lane separately and
+provide local package evidence when package behavior changes.
 
 Release notes and limitation templates live in `RELEASE_NOTES.md`, `CHANGELOG.md`, and
 `docs/release/`. They must keep unsupported platforms, V8 status, provider status, and

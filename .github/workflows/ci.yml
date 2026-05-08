@@ -470,7 +470,6 @@ jobs:
     runs-on: windows-latest
     needs: changes
     if: |
-      (needs.changes.outputs.package_relevant == 'true' && needs.changes.outputs.docs_only != 'true') ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'full-ci') || contains(github.event.pull_request.labels.*.name, 'package-smoke')))
 
