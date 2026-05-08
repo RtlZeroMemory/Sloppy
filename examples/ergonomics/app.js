@@ -1,4 +1,4 @@
-import { Sloppy, Results, schema } from "../../stdlib/sloppy/index.js";
+import { Sloppy, Results, schema } from "sloppy";
 
 const builder = Sloppy.createBuilder();
 

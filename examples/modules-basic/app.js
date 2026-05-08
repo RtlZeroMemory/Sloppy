@@ -1,4 +1,4 @@
-import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
+import { Sloppy, Results } from "sloppy";
 
 export const DataModule = Sloppy.module("data")
     .metadata("description", "in-memory demo data service")

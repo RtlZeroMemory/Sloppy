@@ -19,10 +19,10 @@ Canonical Windows commands:
 git diff --check
 ```
 
-`tools/windows/dev.ps1 lint` runs language standards checks, docs freshness and
-claim checks, core API integration checks, test-governance checks, C complexity
-warnings, alpha-infra dependency manifest checks, optional local `clang-tidy` where
-configured, and artifact hygiene.
+`tools/windows/dev.ps1 lint` runs platform and physical boundary checks, language
+standards checks, docs freshness and claim checks, core API integration checks,
+test-governance checks, C complexity warnings, alpha-infra dependency manifest
+checks, optional local `clang-tidy` where configured, and artifact hygiene.
 
 Run narrower checks only when the task scope justifies them, and report that
 scope honestly.

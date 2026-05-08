@@ -23,7 +23,7 @@ function(require_substring haystack needle description)
 endfunction()
 
 foreach(required_pattern IN ITEMS
-        "from \"../../stdlib/sloppy/index.js\";"
+        "from \"sloppy\";"
         "Sloppy.module(\"data.sqlite\")"
         "caps.addDatabase(\"data.main\""
         "provider: \"sqlite\""

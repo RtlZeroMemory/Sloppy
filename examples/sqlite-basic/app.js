@@ -1,4 +1,4 @@
-import { Sloppy, data, Results, sql } from "../../stdlib/sloppy/index.js";
+import { Sloppy, data, Results, sql } from "sloppy";
 
 export const SqliteModule = Sloppy.module("data.sqlite")
     .capabilities((caps) => {

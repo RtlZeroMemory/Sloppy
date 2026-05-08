@@ -249,6 +249,7 @@ jobs:
         shell: pwsh
         run: |
           .\tools\windows\check-platform-boundaries.ps1
+          .\tools\windows\check-physical-boundaries.ps1
           .\tools\windows\check-c-standards.ps1 -SelfTest
           .\tools\windows\check-c-standards.ps1
           .\tools\windows\check-js-ts-standards.ps1

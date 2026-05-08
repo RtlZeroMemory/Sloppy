@@ -23,7 +23,7 @@ function(require_substring haystack needle description)
 endfunction()
 
 foreach(required_pattern IN ITEMS
-        "import { Sloppy, Results } from \"../../stdlib/sloppy/index.js\";"
+        "import { Sloppy, Results } from \"sloppy\";"
         "Sloppy.module(\"data\")"
         "Sloppy.module(\"users\")"
         ".dependsOn(\"data\")"

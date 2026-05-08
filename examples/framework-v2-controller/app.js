@@ -1,4 +1,4 @@
-import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
+import { Sloppy, Results } from "sloppy";
 
 class GreetingService {
     constructor() {

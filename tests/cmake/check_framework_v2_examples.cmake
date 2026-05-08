@@ -90,7 +90,7 @@ endforeach()
 
 file(READ "${example_root}/framework-v2-controller/app.js" controller_app)
 foreach(required_pattern IN ITEMS
-        "from \"../../stdlib/sloppy/index.js\""
+        "from \"sloppy\""
         "static inject = [\"GreetingService\"]"
         "app.services.addScoped"
         "app.mapController"

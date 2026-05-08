@@ -38,6 +38,11 @@ Headers must be self-contained, use include guards or `#pragma once` consistentl
 heavy/platform headers, document ownership/lifetime, and avoid exposing internal structs
 unless intended.
 
+Public headers under `include/sloppy/` must not include V8, libuv, OS, or provider
+dependency headers. Internal headers should live under the owning `src/<module>/` tree and
+must not be used to bypass the documented core, platform, provider, engine, or CLI
+ownership boundaries.
+
 ## Ownership Rules
 
 - Borrowed pointer: valid only for the documented call or lifetime.

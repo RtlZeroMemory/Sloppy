@@ -120,8 +120,7 @@ static int test_ring_queue_fifo_wrap_and_pop_back(void)
     if (expect_status(sl_ring_queue_push(&queue, &value), SL_STATUS_CAPACITY_EXCEEDED) != 0) {
         return 25;
     }
-    if (!sl_ring_queue_peek_front(&queue, &out) || out != 2 || sl_ring_queue_count(&queue) != 3U)
-    {
+    if (!sl_ring_queue_peek_front(&queue, &out) || out != 2 || sl_ring_queue_count(&queue) != 3U) {
         return 26;
     }
     if (!sl_ring_queue_discard_front(&queue) || sl_ring_queue_count(&queue) != 2U) {

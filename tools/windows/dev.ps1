@@ -403,6 +403,18 @@ function Invoke-PlatformBoundaryCheck {
     }
 }
 
+function Invoke-PhysicalBoundaryCheck {
+    $script = Join-Path $PSScriptRoot "check-physical-boundaries.ps1"
+    & $script
+    if (-not $?) {
+        throw "physical boundary check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "physical boundary check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-CStandardsCheck {
     $script = Join-Path $PSScriptRoot "check-c-standards.ps1"
     & $script -SelfTest
@@ -577,6 +589,7 @@ function Invoke-Lint {
     Import-SlVisualStudioEnvironment
 
     Invoke-PlatformBoundaryCheck
+    Invoke-PhysicalBoundaryCheck
     Invoke-CStandardsCheck
     Invoke-JsTsStandardsCheck
     Invoke-RustStandardsCheck

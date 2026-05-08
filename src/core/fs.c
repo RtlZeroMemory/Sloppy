@@ -470,8 +470,7 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
         return status;
     }
     status = sl_ring_queue_init_from_arena(&watch->queue, arena, sizeof(SlFsWatchQueuedEvent),
-                                           _Alignof(SlFsWatchQueuedEvent),
-                                           options->queue_capacity);
+                                           _Alignof(SlFsWatchQueuedEvent), options->queue_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }

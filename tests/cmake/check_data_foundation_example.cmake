@@ -27,7 +27,7 @@ foreach(required_pattern IN ITEMS
         "Sloppy"
         "data"
         "sql"
-        "from \"../../stdlib/sloppy/index.js\";"
+        "from \"sloppy\";"
         "Sloppy.module(\"data\")"
         ".capabilities((caps)"
         "caps.addDatabase(\"data.main\""
