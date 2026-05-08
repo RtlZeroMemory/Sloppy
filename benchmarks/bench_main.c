@@ -31,56 +31,56 @@ static bool sl_bench_streq(const char* left, const char* right)
 
 static void sl_bench_print_usage(void)
 {
-    (void)printf("Usage: sloppy_bench [--list] [--smoke] [--format text|json] [--bench NAME] "
-                 "[--include-v8]\n");
+    printf("Usage: sloppy_bench [--list] [--smoke] [--format text|json] [--bench NAME] "
+           "[--include-v8]\n");
 }
 
 static void sl_bench_print_error_text(const char* text)
 {
-    (void)fputs(text, stderr);
+    fputs(text, stderr);
 }
 
 static void sl_bench_print_json_string(const char* text)
 {
     const unsigned char* cursor = (const unsigned char*)text;
 
-    (void)fputc('"', stdout);
+    fputc('"', stdout);
     while (*cursor != '\0') {
         unsigned char ch = *cursor;
         switch (ch) {
         case '"':
-            (void)fputs("\\\"", stdout);
+            fputs("\\\"", stdout);
             break;
         case '\\':
-            (void)fputs("\\\\", stdout);
+            fputs("\\\\", stdout);
             break;
         case '\b':
-            (void)fputs("\\b", stdout);
+            fputs("\\b", stdout);
             break;
         case '\f':
-            (void)fputs("\\f", stdout);
+            fputs("\\f", stdout);
             break;
         case '\n':
-            (void)fputs("\\n", stdout);
+            fputs("\\n", stdout);
             break;
         case '\r':
-            (void)fputs("\\r", stdout);
+            fputs("\\r", stdout);
             break;
         case '\t':
-            (void)fputs("\\t", stdout);
+            fputs("\\t", stdout);
             break;
         default:
             if (ch < 0x20U) {
-                (void)printf("\\u%04x", (unsigned int)ch);
+                printf("\\u%04x", (unsigned int)ch);
             }
             else {
-                (void)fputc((int)ch, stdout);
+                fputc((int)ch, stdout);
             }
             break;
         }
         cursor += 1;
     }
-    (void)fputc('"', stdout);
+    fputc('"', stdout);
 }
 
 static int sl_bench_parse_options(int argc, char** argv, SlBenchOptions* out_options)
@@ -186,8 +186,7 @@ static void sl_bench_list(const SlBenchOptions* options)
             if (!sl_bench_should_run(options, definition)) {
                 continue;
             }
-            (void)printf("%s\t%s\t%s\n", definition->name, definition->category,
-                         definition->description);
+            printf("%s\t%s\t%s\n", definition->name, definition->category, definition->description);
         }
     }
 }
@@ -259,77 +258,77 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
 
 static void sl_bench_print_text_header(const SlBenchOptions* options)
 {
-    (void)printf("Sloppy benchmarks v1\n");
-    (void)printf("mode: %s\n", options->smoke ? "smoke" : "measured");
-    (void)printf("configuration: run Release builds for meaningful numbers\n");
+    printf("Sloppy benchmarks v1\n");
+    printf("mode: %s\n", options->smoke ? "smoke" : "measured");
+    printf("configuration: run Release builds for meaningful numbers\n");
 }
 
 static void sl_bench_print_text_result(const SlBenchResult* result)
 {
-    (void)printf("%-42s %12" PRIu64 " iters %12" PRIu64 " ns %10.2f ns/op checksum=%" PRIu64 "\n",
-                 result->name, result->iterations, result->elapsed_ns, result->ns_per_op,
-                 result->checksum);
+    printf("%-42s %12" PRIu64 " iters %12" PRIu64 " ns %10.2f ns/op checksum=%" PRIu64 "\n",
+           result->name, result->iterations, result->elapsed_ns, result->ns_per_op,
+           result->checksum);
 }
 
 static void sl_bench_print_json_header(const SlBenchOptions* options)
 {
-    (void)printf("{\n");
-    (void)printf("  \"sloppyBenchmarkVersion\": 1,\n");
-    (void)printf("  \"mode\": \"%s\",\n", options->smoke ? "smoke" : "measured");
-    (void)printf("  \"build\": {\n");
-    (void)printf("    \"configuration\": \"%s\",\n",
+    printf("{\n");
+    printf("  \"sloppyBenchmarkVersion\": 1,\n");
+    printf("  \"mode\": \"%s\",\n", options->smoke ? "smoke" : "measured");
+    printf("  \"build\": {\n");
+    printf("    \"configuration\": \"%s\",\n",
 #ifdef NDEBUG
-                 "Release"
+           "Release"
 #else
-                 "Debug"
+           "Debug"
 #endif
     );
-    (void)printf("    \"platform\": \"");
+    printf("    \"platform\": \"");
 #if SL_PLATFORM_WINDOWS
-    (void)printf("windows-x64");
+    printf("windows-x64");
 #elif SL_PLATFORM_LINUX
-    (void)printf("linux");
+    printf("linux");
 #elif SL_PLATFORM_APPLE
-    (void)printf("macos");
+    printf("macos");
 #else
-    (void)printf("unknown");
+    printf("unknown");
 #endif
-    (void)printf("\",\n");
+    printf("\",\n");
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
-    (void)printf("    \"v8Enabled\": true\n");
+    printf("    \"v8Enabled\": true\n");
 #else
-    (void)printf("    \"v8Enabled\": false\n");
+    printf("    \"v8Enabled\": false\n");
 #endif
-    (void)printf("  },\n");
-    (void)printf("  \"benchmarks\": [\n");
+    printf("  },\n");
+    printf("  \"benchmarks\": [\n");
 }
 
 static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
 {
-    (void)printf("%s", first ? "" : ",\n");
-    (void)printf("    {\n");
-    (void)printf("      \"name\": ");
+    printf("%s", first ? "" : ",\n");
+    printf("    {\n");
+    printf("      \"name\": ");
     sl_bench_print_json_string(result->name);
-    (void)printf(",\n");
-    (void)printf("      \"category\": ");
+    printf(",\n");
+    printf("      \"category\": ");
     sl_bench_print_json_string(result->category);
-    (void)printf(",\n");
-    (void)printf("      \"warmupIterations\": %" PRIu64 ",\n", result->warmup_iterations);
-    (void)printf("      \"iterations\": %" PRIu64 ",\n", result->iterations);
-    (void)printf("      \"elapsedNs\": %" PRIu64 ",\n", result->elapsed_ns);
-    (void)printf("      \"nsPerOp\": %.2f,\n", result->ns_per_op);
-    (void)printf("      \"checksum\": %" PRIu64 ",\n", result->checksum);
-    (void)printf("      \"note\": ");
+    printf(",\n");
+    printf("      \"warmupIterations\": %" PRIu64 ",\n", result->warmup_iterations);
+    printf("      \"iterations\": %" PRIu64 ",\n", result->iterations);
+    printf("      \"elapsedNs\": %" PRIu64 ",\n", result->elapsed_ns);
+    printf("      \"nsPerOp\": %.2f,\n", result->ns_per_op);
+    printf("      \"checksum\": %" PRIu64 ",\n", result->checksum);
+    printf("      \"note\": ");
     sl_bench_print_json_string(result->note);
-    (void)printf("\n");
-    (void)printf("    }");
+    printf("\n");
+    printf("    }");
 }
 
 static void sl_bench_print_json_footer(bool any_result)
 {
-    (void)printf("%s", any_result ? "\n" : "");
-    (void)printf("  ]\n");
-    (void)printf("}\n");
+    printf("%s", any_result ? "\n" : "");
+    printf("  ]\n");
+    printf("}\n");
 }
 
 static int sl_bench_run(const SlBenchOptions* options)

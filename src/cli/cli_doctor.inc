@@ -7,27 +7,27 @@
 static void sl_cli_doctor_emit_text(SlArena* arena, SlCliSpan id, SlCliSpan status,
                                     SlCliSpan message)
 {
-    (void)printf("[");
+    printf("[");
     sl_cli_write_span(stdout, status);
-    (void)printf("] ");
+    printf("] ");
     sl_cli_write_span(stdout, id);
     if (!sl_cli_span_empty(message)) {
-        (void)printf(": ");
+        printf(": ");
         sl_cli_write_redacted(stdout, arena, message);
     }
-    (void)printf("\n");
+    printf("\n");
 }
 
 static void sl_cli_doctor_emit_json(SlArena* arena, SlCliSpan id, SlCliSpan status,
                                     SlCliSpan message, bool comma)
 {
-    (void)printf("%s\n    { \"id\": ", comma ? "," : "");
+    printf("%s\n    { \"id\": ", comma ? "," : "");
     sl_cli_json_escape(stdout, id);
-    (void)printf(", \"status\": ");
+    printf(", \"status\": ");
     sl_cli_json_escape(stdout, status);
-    (void)printf(", \"message\": ");
+    printf(", \"message\": ");
     sl_cli_json_redacted(stdout, arena, message);
-    (void)printf(" }");
+    printf(" }");
 }
 
 static bool sl_cli_path_exists(const char* path)
@@ -547,7 +547,7 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
     }
 
     if (options->format == SL_CLI_FORMAT_JSON) {
-        (void)printf("{\n  \"checks\": [");
+        printf("{\n  \"checks\": [");
         sl_cli_doctor_emit_environment(options, &diag_arena, &emitted);
         if (options->plan_path != NULL) {
             sl_cli_doctor_emit(
@@ -560,10 +560,10 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
                                metadata.doctor_checks[index].status,
                                metadata.doctor_checks[index].message, &emitted);
         }
-        (void)printf("\n  ]\n}\n");
+        printf("\n  ]\n}\n");
     }
     else {
-        (void)printf("Sloppy Doctor\n\n");
+        printf("Sloppy Doctor\n\n");
         sl_cli_doctor_emit_environment(options, &diag_arena, &emitted);
         if (options->plan_path != NULL) {
             sl_cli_doctor_emit(

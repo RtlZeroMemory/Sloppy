@@ -29,21 +29,21 @@ static int sloppy_fuzz_run_seed_file(const char* path)
 #endif
 
     if (file == NULL) {
-        (void)fprintf(stderr, "failed to open fuzz seed: %s\n", path);
+        fprintf(stderr, "failed to open fuzz seed: %s\n", path);
         return 2;
     }
 
     bytes_read = fread(buffer, 1U, sizeof(buffer), file);
     if (ferror(file) != 0) {
         (void)fclose(file);
-        (void)fprintf(stderr, "failed to read fuzz seed: %s\n", path);
+        fprintf(stderr, "failed to read fuzz seed: %s\n", path);
         return 3;
     }
 
     if (fgetc(file) != EOF) {
         (void)fclose(file);
-        (void)fprintf(stderr, "fuzz seed is larger than %u bytes: %s\n",
-                      (unsigned)SLOPPY_FUZZ_MAX_SEED_BYTES, path);
+        fprintf(stderr, "fuzz seed is larger than %u bytes: %s\n",
+                (unsigned)SLOPPY_FUZZ_MAX_SEED_BYTES, path);
         return 4;
     }
 
@@ -59,7 +59,7 @@ int main(int argc, char** argv)
     int index = 0;
 
     if (argc < 2) {
-        (void)fprintf(stderr, "usage: %s <seed> [seed...]\n", argv[0]);
+        fprintf(stderr, "usage: %s <seed> [seed...]\n", argv[0]);
         return 2;
     }
 

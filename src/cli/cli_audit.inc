@@ -7,17 +7,17 @@
 static void sl_cli_audit_text(SlCliSpan severity, const char* code, const char* message,
                               const char* path)
 {
-    (void)printf("[%.*s] %s %s (%s)\n", (int)severity.length, severity.ptr, code, message, path);
+    printf("[%.*s] %s %s (%s)\n", (int)severity.length, severity.ptr, code, message, path);
 }
 
 static void sl_cli_audit_json(SlCliSpan severity, const char* code, const char* message,
                               const char* path, bool comma)
 {
-    (void)printf("%s\n    { \"severity\": ", comma ? "," : "");
+    printf("%s\n    { \"severity\": ", comma ? "," : "");
     sl_cli_json_escape(stdout, severity);
-    (void)printf(", \"code\": \"%s\", \"message\": ", code);
+    printf(", \"code\": \"%s\", \"message\": ", code);
     sl_cli_json_escape(stdout, sl_cli_span_cstr(message));
-    (void)printf(", \"path\": \"%s\" }", path);
+    printf(", \"path\": \"%s\" }", path);
 }
 
 static void sl_cli_audit_emit(const SlCliOptions* options, const char* severity, const char* code,
@@ -302,14 +302,12 @@ static void sl_cli_audit_config_requirements(const SlCliOptions* options,
             missing_kind = requirement->secret ? "optional secret config " : "optional config ";
         }
 
-        if (!sl_status_is_ok(
-                sl_string_builder_init_fixed(&message_builder, message_buffer,
-                                             sizeof(message_buffer))) ||
+        if (!sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
+                                                          sizeof(message_buffer))) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "Missing ")) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, missing_kind)) ||
             !sl_cli_string_builder_append_span(&message_builder, requirement->key) ||
-            !sl_status_is_ok(
-                sl_string_builder_append_cstr(&message_builder, " required by ")) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, " required by ")) ||
             !sl_cli_string_builder_append_span(&message_builder, requirement->required_by) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, " (redaction: ")) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, redaction)) ||
@@ -487,10 +485,10 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     }
 
     if (options->format == SL_CLI_FORMAT_JSON) {
-        (void)printf("{\n  \"findings\": [");
+        printf("{\n  \"findings\": [");
     }
     else {
-        (void)printf("Sloppy Audit\n\n");
+        printf("Sloppy Audit\n\n");
     }
 
     if (!sl_cli_span_empty(metadata.completeness) &&
@@ -510,10 +508,10 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_workers(options, &metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
-        (void)printf("No findings.\n");
+        printf("No findings.\n");
     }
     if (options->format == SL_CLI_FORMAT_JSON) {
-        (void)printf("\n  ]\n}\n");
+        printf("\n  ]\n}\n");
     }
 
     yyjson_doc_free(doc);
