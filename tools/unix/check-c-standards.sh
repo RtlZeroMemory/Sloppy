@@ -49,8 +49,14 @@ EOF
         echo "C standards scanner self-test invalid fixture unexpectedly passed." >&2
         exit 1
     fi
-    if SLOPPY_C_STANDARDS_ROOT="$invalid_inc" "$0" >/dev/null 2>&1; then
+    invalid_inc_out="$tmp/invalid-inc.out"
+    if SLOPPY_C_STANDARDS_ROOT="$invalid_inc" "$0" >"$invalid_inc_out" 2>&1; then
         echo "C standards scanner self-test .inc-only invalid fixture unexpectedly passed." >&2
+        exit 1
+    fi
+    if ! grep -q "C standards violations found:" "$invalid_inc_out"; then
+        echo "C standards scanner self-test .inc-only fixture failed for an unexpected reason." >&2
+        cat "$invalid_inc_out" >&2
         exit 1
     fi
     echo "C standards scanner self-test passed."
