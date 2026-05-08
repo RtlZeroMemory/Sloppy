@@ -76,6 +76,7 @@ Commands:
   format-check  Run Rust format check when rustfmt is available.
   package       Build an experimental local tar.gz package.
   test-package  Extract a package outside the checkout and run smoke checks.
+  npm-dry-run   Unavailable on Unix in this PR; use tools/windows/npm-dry-run.ps1 or hosted follow-up.
   dogfood      Run or report ALPHA-INFRA dogfood/example evidence.
   clean         Remove the selected build directory.
   help          Print this help.
@@ -182,6 +183,10 @@ case "$command_name" in
   clean) clean ;;
   package) package_repo ;;
   test-package) test_package ;;
+  npm-dry-run)
+    echo "sloppy dev: npm-dry-run is unavailable in tools/unix/dev.sh in this dry-run PR. Generate npm tarballs from tested archives with tools/windows/npm-dry-run.ps1, or add a Unix implementation in a follow-up." >&2
+    exit 2
+    ;;
   dogfood) dogfood_repo ;;
   *)
     echo "sloppy dev: unknown command '$command_name'. Run tools/unix/dev.sh help for the command contract." >&2

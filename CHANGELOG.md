@@ -12,3 +12,5 @@ evidence and a completed readiness gate.
 ## Unreleased
 
 - Added alpha infrastructure release dry-run and no-claims guardrail skeletons.
+- Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
+  scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.

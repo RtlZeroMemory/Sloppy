@@ -210,9 +210,10 @@ Included runtime files:
 $Preset = Get-PresetName
 $BuildDir = Join-Path (Join-Path $Root "build") $Preset
 $CargoProfile = if ($Configuration -eq "Release") { "release" } else { "debug" }
-$PackageVersion = "0.0.0-dev"
+$PackageVersion = "0.1.0-alpha.0"
 $Platform = "windows"
 $Arch = "x64"
+$PlatformTriplet = "windows-x64"
 $Commit = Get-GitValue @("rev-parse", "--short", "HEAD")
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = "unknown"
@@ -247,7 +248,7 @@ if (-not $SkipBuild) {
 
 $SloppyExe = Join-Path $BuildDir "sloppy.exe"
 $SloppycExe = Join-Path (Join-Path $Root "compiler/target/$CargoProfile") "sloppyc.exe"
-$PackageName = "sloppy-$PackageVersion-$Platform-$Arch"
+$PackageName = "sloppy-$Platform-$Arch"
 $StageRoot = Join-Path $PackageOutputRoot "stage"
 $PackageRoot = Join-Path $StageRoot $PackageName
 
@@ -308,12 +309,23 @@ if ($containsV8Runtime) {
 Write-Notice -Path (Join-Path $PackageRoot "docs/NOTICE.md") -RuntimeFiles $nativeRuntimeFiles
 
 $manifest = [ordered]@{
+    manifestSchema = "sloppy.release-artifact.v1"
+    manifestVersion = 1
     name = "sloppy"
     version = $PackageVersion
+    archiveName = "$PackageName.zip"
+    packageRoot = $PackageName
     platform = $Platform
     arch = $Arch
+    platformTriplet = $PlatformTriplet
     configuration = $Configuration
     commit = $Commit
+    releaseKind = "dry-run"
+    publicReleaseCreated = $false
+    canonicalDistribution = "github-release-archive"
+    npmPackageSource = "platform packages must be generated from this tested archive content"
+    platformStatus = "experimental"
+    runtimeUserStatus = "experimental pending outside-checkout package smoke evidence"
     compiler = [ordered]@{
         name = "sloppyc"
         profile = $CargoProfile
@@ -335,19 +347,33 @@ $manifest = [ordered]@{
         v8Sdk = "excluded"
         v8Runtime = if ($containsV8Runtime) { "bundled" } else { "not bundled" }
         liveProviders = "not configured"
+        runtimeDependencyAudit = "docs/release/runtime-dependency-audit.json"
+    }
+    providers = [ordered]@{
+        sqlite = "packaged runtime dependency status only; provider behavior evidence is separate"
+        postgresql = "live-provider evidence is separate"
+        sqlserver = "driver/runtime availability evidence is separate"
     }
     containsV8Runtime = $containsV8Runtime
     containsV8Sdk = $false
     containsStdlib = $true
     containsExamples = $containsExamples
     containsNativeRuntimeDependencies = $true
+    knownLimitations = "docs/KNOWN_LIMITATIONS.md"
+    checksums = [ordered]@{
+        file = "SHA256SUMS.txt"
+        algorithm = "SHA-256"
+    }
     tools = @("sloppy", "sloppyc")
     layoutVersion = 1
     notes = @(
         "experimental",
+        "dry-run artifact",
         "not production ready",
+        "not a public alpha release",
         "no installer",
         "no package manager",
+        "npm launcher packages may reuse this archive but do not add npm app dependency support",
         "no auto update",
         "no signed or notarized artifacts"
     )

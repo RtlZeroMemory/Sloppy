@@ -162,6 +162,24 @@ grep -Eq '"containsV8Sdk"[[:space:]]*:[[:space:]]*false' "$manifest_path" || {
   echo "Package smoke manifest must not record V8 SDK inclusion." >&2
   exit 1
 }
+for field in manifestSchema manifestVersion archiveName packageRoot platformTriplet releaseKind publicReleaseCreated canonicalDistribution npmPackageSource platformStatus runtimeUserStatus dependencyStatuses knownLimitations checksums; do
+  grep -Eq "\"$field\"[[:space:]]*:" "$manifest_path" || {
+    echo "Package smoke manifest is missing required release field: $field" >&2
+    exit 1
+  }
+done
+grep -Eq '"manifestSchema"[[:space:]]*:[[:space:]]*"sloppy.release-artifact.v1"' "$manifest_path" || {
+  echo "Package smoke manifestSchema was not sloppy.release-artifact.v1." >&2
+  exit 1
+}
+grep -Eq '"releaseKind"[[:space:]]*:[[:space:]]*"dry-run"' "$manifest_path" || {
+  echo "Package smoke manifest must record releaseKind dry-run." >&2
+  exit 1
+}
+grep -Eq '"publicReleaseCreated"[[:space:]]*:[[:space:]]*false' "$manifest_path" || {
+  echo "Package smoke manifest must record publicReleaseCreated=false." >&2
+  exit 1
+}
 
 if [[ "$require_v8_runtime" -eq 1 ]]; then
   grep -Eq '"containsV8Runtime"[[:space:]]*:[[:space:]]*true' "$manifest_path" || {
@@ -205,6 +223,17 @@ done
 for excluded_sdk_file in engines/v8/include/v8.h engines/v8/lib/v8_monolith.lib; do
   assert_missing "$package_root" "$excluded_sdk_file"
 done
+
+local_path_scan_file="$temp_root/local-path-scan.txt"
+if find "$package_root" -type f \( -name '*.json' -o -name '*.md' -o -name '*.txt' \) -print0 |
+  xargs -0 grep -nE '([A-Z]:[\\/]|\\\\[^\\[:space:]"<>|]+\\[^\\[:space:]"<>|]+|(^|[[:space:]"=:,(])/(Users|home|Volumes|mnt|workspace|workspaces)(/|$))' 2>/dev/null |
+  grep -vE 'https?://' >"$local_path_scan_file"; then
+  cat "$local_path_scan_file" >&2
+  rm -f "$local_path_scan_file"
+  echo "Package smoke found maintainer-local absolute path text." >&2
+  exit 1
+fi
+rm -f "$local_path_scan_file"
 
 if [[ "$require_v8_runtime" -eq 1 ]]; then
   v8_runtime_root="$package_root/engines/v8"

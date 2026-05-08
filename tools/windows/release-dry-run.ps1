@@ -75,7 +75,7 @@ if (-not $SkipPackage) {
 $packagePath = ""
 if (Test-Path -LiteralPath $packageDir -PathType Container) {
     $latest = Get-ChildItem -LiteralPath $packageDir -File |
-        Where-Object { $_.Name -like "sloppy-*-windows-x64.zip" } |
+        Where-Object { $_.Name -eq "sloppy-windows-x64.zip" -or $_.Name -like "sloppy-*-windows-x64.zip" } |
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 1
     if ($null -ne $latest) {

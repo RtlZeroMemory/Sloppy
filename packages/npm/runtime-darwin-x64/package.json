@@ -1,0 +1,13 @@
+{
+  "name": "@sloppy/runtime-darwin-x64",
+  "version": "0.1.0-alpha.0",
+  "description": "macOS x64 Sloppy runtime package generated from a tested release archive when that optional lane is requested.",
+  "license": "SEE LICENSE IN LICENSE",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": ["bin/", "stdlib/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"],
+  "publishConfig": {
+    "tag": "alpha",
+    "access": "public"
+  }
+}

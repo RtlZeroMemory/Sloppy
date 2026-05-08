@@ -26,8 +26,11 @@ pass evidence.
 ## Package and Release Limits
 
 - Packages are experimental development artifacts.
-- No installer, signing, notarization, auto-update, Homebrew, winget, npm wrapper, or
-  public GitHub release is included in the dry-run.
+- No installer, signing, notarization, auto-update, Homebrew, winget, or public GitHub
+  release is included in the dry-run.
+- npm dry-run packages are launcher/package-content checks only. They install Sloppy
+  itself and do not add npm app dependency support, `node_modules` resolution, or Node
+  compatibility.
 - Package smoke validates outside-checkout layout and basic CLI behavior; it is not
   production readiness evidence.
 - Live provider behavior requires separate opt-in evidence.

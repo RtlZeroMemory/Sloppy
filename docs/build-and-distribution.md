@@ -60,10 +60,13 @@ JavaScript dependencies are not a package-manager surface for Sloppy apps.
 ## Packages
 
 Current package artifacts are experimental evidence for layout and outside-checkout
-behavior. The alpha layout is:
+behavior. GitHub Release archives are the canonical distribution artifacts. The alpha
+archive names are `sloppy-windows-x64.zip`, `sloppy-linux-x64.tar.gz`,
+`sloppy-macos-arm64.tar.gz`, and `sloppy-macos-x64.tar.gz` only when that optional lane is
+requested and evidenced. The alpha layout is:
 
 ```text
-sloppy-<version>-<platform>-<arch>/
+sloppy-<platform>-<arch>/
   bin/
   stdlib/
     sloppy/
@@ -102,6 +105,13 @@ Release notes and limitation templates live in `RELEASE_NOTES.md`, `CHANGELOG.md
 `docs/release/`. They must keep unsupported platforms, V8 status, provider status, and
 package smoke evidence separate. Skipped or unavailable lanes are not pass evidence.
 
+The npm package track is a dry-run convenience installer for Sloppy itself. `@sloppy/runtime`
+is a launcher that resolves a generated platform package such as
+`@sloppy/runtime-win32-x64` or `@sloppy/runtime-linux-x64-gnu`. Platform package contents
+must be generated from already-built archive contents. npm install must not compile native
+code, run `node-gyp`, build V8, or download V8. This does not add npm dependency support to
+Sloppy apps.
+
 ## Dogfood And Readiness
 
 ALPHA-INFRA dogfood/test-app status is cataloged in
@@ -129,5 +139,5 @@ final public documentation or a public release claim.
 ## Non-Claims
 
 Sloppy does not currently claim production-ready builds, public alpha release artifacts,
-TLS distribution, package-manager integration, Node/Bun/Deno compatibility, or benchmarked
-performance.
+TLS distribution, npm app dependency support, package-manager integration, or Node/Bun/Deno
+compatibility. It makes no benchmarked performance result claim.

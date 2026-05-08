@@ -16,6 +16,7 @@ needed:
 .\tools\windows\dev.ps1 lint
 .\tools\windows\dev.ps1 package
 .\tools\windows\dev.ps1 test-package
+.\tools\windows\dev.ps1 npm-dry-run
 .\tools\windows\dev.ps1 dogfood
 ```
 
@@ -93,6 +94,17 @@ package/test-package path:
 
 The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or create a public GitHub release.
+
+npm package dry-runs generate `@sloppy/runtime` and the matching platform package from an
+already-built archive:
+
+```powershell
+.\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip
+```
+
+The npm package path is an installer/launcher for Sloppy itself. It does not add npm app
+dependency support, `node_modules` resolution, `node-gyp`, native postinstall builds, or V8
+downloads during install.
 
 Alpha dogfood evidence is cataloged in `examples/dogfood/alpha-dogfood.json` and can be
 reported through:

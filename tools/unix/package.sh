@@ -57,7 +57,7 @@ esac
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 configuration_lower="$(printf '%s' "$configuration" | tr '[:upper:]' '[:lower:]')"
 build_dir="$repo_root/build/unix-$configuration_lower"
-package_version="0.0.0-dev"
+package_version="0.1.0-alpha.0"
 kernel_name="$(uname -s)"
 machine_name="$(uname -m)"
 
@@ -72,6 +72,7 @@ case "$machine_name" in
   arm64|aarch64) arch="arm64" ;;
   *) arch="$machine_name" ;;
 esac
+platform_triplet="$platform-$arch"
 
 cd "$repo_root"
 
@@ -110,7 +111,7 @@ sloppyc_bin="$repo_root/compiler/target/$cargo_profile/sloppyc"
 [[ -x "$sloppy_bin" ]] || { echo "missing built sloppy executable: $sloppy_bin" >&2; exit 1; }
 [[ -x "$sloppyc_bin" ]] || { echo "missing built sloppyc executable: $sloppyc_bin" >&2; exit 1; }
 
-package_name="sloppy-$package_version-$platform-$arch"
+package_name="sloppy-$platform-$arch"
 case "$output_dir" in
   /*) output_root="$output_dir" ;;
   *) output_root="$repo_root/$output_dir" ;;
@@ -168,12 +169,23 @@ README
 commit="$(git rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
 cat > "$stage_root/manifest.json" <<JSON
 {
+  "manifestSchema": "sloppy.release-artifact.v1",
+  "manifestVersion": 1,
   "name": "sloppy",
   "version": "$package_version",
+  "archiveName": "$package_name.tar.gz",
+  "packageRoot": "$package_name",
   "platform": "$platform",
   "arch": "$arch",
+  "platformTriplet": "$platform_triplet",
   "configuration": "$configuration",
   "commit": "$commit",
+  "releaseKind": "dry-run",
+  "publicReleaseCreated": false,
+  "canonicalDistribution": "github-release-archive",
+  "npmPackageSource": "platform packages must be generated from this tested archive content",
+  "platformStatus": "$([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'blocked' || printf 'experimental')",
+  "runtimeUserStatus": "$([[ "$platform" == "linux" && "$arch" == "x64" ]] && printf 'blocked until Linux archive smoke and runtime app execution pass' || printf 'experimental pending hosted package smoke evidence')",
   "compiler": {
     "name": "sloppyc",
     "profile": "$cargo_profile",
@@ -190,16 +202,27 @@ cat > "$stage_root/manifest.json" <<JSON
     "nativeRuntimeDependencies": "host-linked or system-provided",
     "v8Sdk": "excluded",
     "v8Runtime": "not bundled",
-    "liveProviders": "not configured"
+    "liveProviders": "not configured",
+    "runtimeDependencyAudit": "docs/release/runtime-dependency-audit.json"
+  },
+  "providers": {
+    "sqlite": "packaged runtime dependency status only; provider behavior evidence is separate",
+    "postgresql": "live-provider evidence is separate",
+    "sqlserver": "driver/runtime availability evidence is separate"
   },
   "containsV8Runtime": false,
   "containsV8Sdk": false,
   "containsStdlib": true,
   "containsExamples": true,
   "containsNativeRuntimeDependencies": false,
+  "knownLimitations": "docs/KNOWN_LIMITATIONS.md",
+  "checksums": {
+    "file": "SHA256SUMS.txt",
+    "algorithm": "SHA-256"
+  },
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
-  "notes": ["experimental", "not production ready", "no installer", "no package manager"]
+  "notes": ["experimental", "dry-run artifact", "not production ready", "not a public alpha release", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
 }
 JSON
 

@@ -55,6 +55,7 @@ function Write-DevHelp {
     Write-Host "  format-check  Run C/C++ and Rust format checks."
     Write-Host "  package       Build an experimental local package archive."
     Write-Host "  test-package  Extract a package outside the checkout and run smoke checks."
+    Write-Host "  npm-dry-run   Generate npm launcher/platform tarballs from a package archive."
     Write-Host "  dogfood       Run or report ALPHA-INFRA dogfood/example evidence."
     Write-Host "  analyze       Run the advanced static-analysis target."
     Write-Host "  clean         Remove the selected build directory."
@@ -727,6 +728,21 @@ function Invoke-TestPackage {
     )
 }
 
+function Invoke-NpmDryRun {
+    $script = Join-Path $PSScriptRoot "npm-dry-run.ps1"
+    $nativeArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $script
+    )
+    if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
+        $nativeArgs += @("-PackagePath", (Resolve-Path -LiteralPath $PackagePath).Path)
+    }
+    Invoke-Native "powershell" $nativeArgs
+}
+
 function Invoke-Dogfood {
     $script = Join-Path $PSScriptRoot "dogfood.ps1"
     $sloppyExe = Join-Path $BuildDir "sloppy.exe"
@@ -773,6 +789,7 @@ switch ($Command) {
     "lint" { Invoke-Lint }
     "package" { Invoke-Package }
     "test-package" { Invoke-TestPackage }
+    "npm-dry-run" { Invoke-NpmDryRun }
     "dogfood" { Invoke-Dogfood }
     "analyze" { Invoke-Analyze }
     "all" {

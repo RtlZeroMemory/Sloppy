@@ -13,6 +13,7 @@ tools/unix/dev.sh test
 tools/unix/dev.sh lint
 tools/unix/dev.sh package
 tools/unix/dev.sh test-package
+tools/unix/dev.sh npm-dry-run
 tools/unix/dev.sh dogfood
 tools/unix/check-platform-boundaries.sh
 tools/unix/check-c-standards.sh --self-test
@@ -67,6 +68,12 @@ tools/unix/dev.sh dogfood
 The Unix dogfood script validates the shared catalog and can run package-mode smoke when a
 TAR archive is supplied. Positive source-input execution remains V8-gated and must be
 reported separately from this static Unix lane.
+
+`tools/unix/dev.sh npm-dry-run` currently reports unavailable instead of faking a Unix npm
+package generator. The committed npm package skeletons are platform-neutral, but the local
+dry-run generator in this PR is the Windows `tools/windows/npm-dry-run.ps1` path. A Unix
+generator should reuse tested archive contents and preserve the no native install-script
+policy before being reported as pass evidence.
 
 Provider live lanes have POSIX wrappers for machines that already have the matching CMake
 preset configured and the required service dependencies installed:
