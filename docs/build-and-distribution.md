@@ -31,6 +31,7 @@ Canonical local workflow:
 .\tools\windows\dev.ps1 lint
 .\tools\windows\dev.ps1 package
 .\tools\windows\dev.ps1 test-package
+.\tools\windows\dev.ps1 dogfood
 ```
 
 V8-enabled work must run the resolver and V8 preset when the task touches runtime,
@@ -95,6 +96,30 @@ provide local package evidence when package behavior changes.
 Release notes and limitation templates live in `RELEASE_NOTES.md`, `CHANGELOG.md`, and
 `docs/release/`. They must keep unsupported platforms, V8 status, provider status, and
 package smoke evidence separate. Skipped or unavailable lanes are not pass evidence.
+
+## Dogfood And Readiness
+
+ALPHA-INFRA dogfood/test-app status is cataloged in
+`examples/dogfood/alpha-dogfood.json`. The harnesses are:
+
+```powershell
+.\tools\windows\dogfood.ps1 -StatusOnly
+.\tools\windows\dev.ps1 dogfood -Preset windows-relwithdebinfo -EnableV8
+```
+
+```sh
+tools/unix/dogfood.sh
+tools/unix/dev.sh dogfood
+```
+
+The catalog names the current hello artifact/source-input/package lanes and future HTTP,
+HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and Framework v2 feature apps. Blocked,
+skipped, unavailable, V8-gated, package-gated, and live-provider-gated entries are not pass
+evidence.
+
+`docs/project/alpha-infra-readiness.json` is the machine-readable ALPHA-INFRA input for
+#300 and related packaging/release/final-gate issues. It is internal gate evidence, not
+final public documentation or a public release claim.
 
 ## Non-Claims
 

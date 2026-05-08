@@ -8,6 +8,8 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $ManifestPath = Join-Path $Root "tools/deps/sloppy-deps.json"
+$DogfoodManifestPath = Join-Path $Root "examples/dogfood/alpha-dogfood.json"
+$ReadinessManifestPath = Join-Path $Root "docs/project/alpha-infra-readiness.json"
 
 function Read-JsonFile {
     param([string]$Path)
@@ -129,6 +131,41 @@ function Invoke-SelfTest {
     Assert-True (Test-SlVersionAtLeast -Actual "3.25.0" -Minimum "3.25.0") "Version parser failed equality fixture."
     Assert-True (-not (Test-SlVersionAtLeast -Actual "3.24.9" -Minimum "3.25.0")) "Version parser accepted an old version."
     Assert-True (-not (Test-SlVersionAtLeast -Actual "not-a-version" -Minimum "3.25.0")) "Version parser accepted malformed version text."
+
+    $dogfoodFixture = [pscustomobject]@{
+        schemaVersion = 1
+        statusVocabulary = @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable", "planned")
+        scenarios = @(
+            [pscustomobject]@{ id = "hello-artifact"; status = "v8-gated"; reason = "requires V8" },
+            [pscustomobject]@{ id = "hello-source-input"; status = "v8-gated"; reason = "requires V8" },
+            [pscustomobject]@{ id = "package-hello-artifact"; status = "package-gated"; reason = "requires package" },
+            [pscustomobject]@{ id = "http-app"; status = "blocked"; reason = "owned by HTTP track" },
+            [pscustomobject]@{ id = "https-app"; status = "blocked"; reason = "owned by TLS track" },
+            [pscustomobject]@{ id = "sqlite-app"; status = "v8-gated"; reason = "requires V8 lane" },
+            [pscustomobject]@{ id = "postgresql-app"; status = "live-provider-gated"; reason = "requires live service" },
+            [pscustomobject]@{ id = "sqlserver-app"; status = "live-provider-gated"; reason = "requires live service" },
+            [pscustomobject]@{ id = "framework-v2-app"; status = "blocked"; reason = "owned by framework track" }
+        )
+    }
+    Test-DogfoodManifestObject -Manifest $dogfoodFixture
+
+    $readinessFixture = [pscustomobject]@{
+        schemaVersion = 1
+        parentIssue = 873
+        consumerIssues = @(300, 681, 685, 684, 301)
+        completedIssues = @(874, 875, 877, 878, 879, 880, 881, 882, 883)
+        deferredIssues = @([pscustomobject]@{ issue = 876; status = "deferred"; reason = "fixture"; risk = "fixture"; followUpCondition = "fixture" })
+        evidenceLanes = @(
+            [pscustomobject]@{ id = "windows-x64"; status = "supported"; evidence = "fixture" },
+            [pscustomobject]@{ id = "v8"; status = "deferred"; evidence = "fixture" },
+            [pscustomobject]@{ id = "package"; status = "experimental"; evidence = "fixture" },
+            [pscustomobject]@{ id = "outside-checkout-package"; status = "experimental"; evidence = "fixture" },
+            [pscustomobject]@{ id = "dogfood-source"; status = "experimental"; evidence = "fixture" },
+            [pscustomobject]@{ id = "dogfood-package"; status = "skipped"; evidence = "fixture" }
+        )
+        dogfoodCatalog = "examples/dogfood/alpha-dogfood.json"
+    }
+    Test-ReadinessManifestObject -Manifest $readinessFixture
 
     $hygieneRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-alpha-infra-hygiene-" + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $hygieneRoot | Out-Null
@@ -283,6 +320,7 @@ function Test-LocalPathHygiene {
         "tools/windows/dev.ps1",
         "tools/windows/package.ps1",
         "tools/windows/test-package.ps1",
+        "tools/windows/dogfood.ps1",
         "tools/windows/check-alpha-claims.ps1",
         "tools/windows/check-release-artifacts.ps1",
         "tools/windows/release-dry-run.ps1",
@@ -290,9 +328,14 @@ function Test-LocalPathHygiene {
         "tools/unix/dev.sh",
         "tools/unix/package.sh",
         "tools/unix/test-package.sh",
+        "tools/unix/dogfood.sh",
         "tools/unix/release-dry-run.sh",
+        "examples/dogfood/README.md",
+        "examples/dogfood/alpha-dogfood.json",
         "docs/dependencies.md",
         "docs/build-and-distribution.md",
+        "docs/project/alpha-infra-readiness.md",
+        "docs/project/alpha-infra-readiness.json",
         "docs/release/README.md",
         "docs/release/KNOWN_LIMITATIONS.md",
         "docs/release/LICENSES.md",
@@ -389,9 +432,79 @@ function Test-DevCommandContract {
     $devPath = Join-Path $Root "tools/unix/dev.sh"
     Assert-True (Test-Path -LiteralPath $devPath -PathType Leaf) "Unix dev script is missing."
     $devText = Get-Content -LiteralPath $devPath -Raw
-    foreach ($command in @("doctor", "configure", "build", "test", "lint", "format-check", "package", "test-package")) {
+    foreach ($command in @("doctor", "configure", "build", "test", "lint", "format-check", "package", "test-package", "dogfood")) {
         Assert-True $devText.Contains($command) "Unix dev command contract is missing '$command'."
     }
+}
+
+function Test-DogfoodManifestObject {
+    param([object]$Manifest)
+
+    Assert-True ($Manifest.schemaVersion -eq 1) "Dogfood catalog schemaVersion must be 1."
+    $statuses = @($Manifest.statusVocabulary)
+    foreach ($status in @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable", "planned")) {
+        Assert-True ($statuses -contains $status) "Dogfood catalog statusVocabulary missing '$status'."
+    }
+
+    $ids = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($scenario in @($Manifest.scenarios)) {
+        $id = [string]$scenario.id
+        Assert-True (-not [string]::IsNullOrWhiteSpace($id)) "Dogfood scenario missing id."
+        Assert-True ($ids.Add($id)) "Dogfood scenario id duplicated: $id"
+        Assert-True ($statuses -contains [string]$scenario.status) "Dogfood scenario '$id' has invalid status '$($scenario.status)'."
+        if ([string]$scenario.status -in @("blocked", "unavailable", "live-provider-gated")) {
+            Assert-True (-not [string]::IsNullOrWhiteSpace([string]$scenario.reason)) "Dogfood scenario '$id' must explain blocked/unavailable/live-provider status."
+        }
+    }
+
+    foreach ($requiredId in @("hello-artifact", "hello-source-input", "package-hello-artifact", "http-app", "https-app", "sqlite-app", "postgresql-app", "sqlserver-app", "framework-v2-app")) {
+        Assert-True ($ids.Contains($requiredId)) "Dogfood catalog missing required scenario '$requiredId'."
+    }
+}
+
+function Test-DogfoodManifest {
+    $manifest = Read-JsonFile -Path $DogfoodManifestPath
+    Test-DogfoodManifestObject -Manifest $manifest
+
+    foreach ($scenario in @($manifest.scenarios)) {
+        foreach ($property in @("source", "artifactFixture", "sourceFixture", "example", "metadataFixture")) {
+            $value = [string]$scenario.PSObject.Properties[$property].Value
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                continue
+            }
+            $path = Join-Path $Root $value
+            Assert-True (Test-Path -LiteralPath $path) "Dogfood scenario '$($scenario.id)' references missing path '$value'."
+        }
+    }
+}
+
+function Test-ReadinessManifestObject {
+    param([object]$Manifest)
+
+    Assert-True ($Manifest.schemaVersion -eq 1) "Readiness manifest schemaVersion must be 1."
+    Assert-True ($Manifest.parentIssue -eq 873) "Readiness manifest must point to parent issue #873."
+    foreach ($issue in @(300, 681, 685, 684, 301)) {
+        Assert-True (@($Manifest.consumerIssues) -contains $issue) "Readiness manifest missing consumer issue #$issue."
+    }
+    foreach ($issue in @(874, 875, 877, 878, 879, 880, 881, 882, 883)) {
+        Assert-True (@($Manifest.completedIssues) -contains $issue) "Readiness manifest missing completed issue #$issue."
+    }
+    $deferred = @($Manifest.deferredIssues | Where-Object { $_.issue -eq 876 })
+    Assert-True ($deferred.Count -eq 1) "Readiness manifest must keep #876 as deferred until hosted V8 artifacts land."
+    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$Manifest.dogfoodCatalog)) "Readiness manifest must link dogfoodCatalog."
+
+    $laneIds = @($Manifest.evidenceLanes | ForEach-Object { [string]$_.id })
+    foreach ($lane in @("windows-x64", "v8", "package", "outside-checkout-package", "dogfood-source", "dogfood-package")) {
+        Assert-True ($laneIds -contains $lane) "Readiness manifest missing evidence lane '$lane'."
+    }
+}
+
+function Test-ReadinessManifest {
+    $manifest = Read-JsonFile -Path $ReadinessManifestPath
+    Test-ReadinessManifestObject -Manifest $manifest
+
+    $dogfoodCatalog = Join-Path $Root ([string]$manifest.dogfoodCatalog)
+    Assert-True (Test-Path -LiteralPath $dogfoodCatalog -PathType Leaf) "Readiness dogfoodCatalog path is missing: $($manifest.dogfoodCatalog)"
 }
 
 if ($SelfTest) {
@@ -400,6 +513,8 @@ if ($SelfTest) {
 }
 
 Test-Manifest
+Test-DogfoodManifest
+Test-ReadinessManifest
 Test-LocalPathHygiene
 Test-DevCommandContract
 Write-Host "alpha infra manifest and hygiene checks passed."

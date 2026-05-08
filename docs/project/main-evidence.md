@@ -171,6 +171,26 @@ build, SDK/runtime files, package flags, V8 runtime-file validation command, and
 package execution smoke that actually ran. Runtime-file presence alone is not V8 execution
 evidence.
 
+## Dogfood And Alpha Infra Evidence
+
+ALPHA-INFRA dogfood evidence is cataloged in `examples/dogfood/alpha-dogfood.json` and
+reported through:
+
+```powershell
+.\tools\windows\dogfood.ps1 -StatusOnly
+.\tools\windows\dev.ps1 dogfood -Preset windows-relwithdebinfo -EnableV8
+```
+
+The status-only lane validates the dogfood catalog and reports blocked/unavailable feature
+apps. It does not prove runtime execution. Positive hello execution requires the
+V8-enabled source-input/artifact lane. Package-mode dogfood requires an explicit package
+archive and must stay separate from default source-input evidence.
+
+`docs/project/alpha-infra-readiness.json` is the machine-readable input for #300. It records
+ALPHA-INFRA issue completion, deferred #876 V8 artifact hosting, platform/package/V8 lane
+status, release dry-run status, and dogfood status. This is internal gate evidence, not a
+public alpha or final release verification.
+
 ## Live Provider Evidence
 
 SQLite default evidence is in-memory native provider coverage through the default CTest
