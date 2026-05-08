@@ -23,6 +23,7 @@
   "completedIssues": [
     874,
     875,
+    876,
     877,
     878,
     879,
@@ -31,15 +32,7 @@
     882,
     883
   ],
-  "deferredIssues": [
-    {
-      "issue": 876,
-      "status": "deferred",
-      "reason": "Hosted or public V8 SDK artifact source is not yet available.",
-      "risk": "Contributors can use resolver/cache/override flows, but the happy path still needs a publishable SDK source before public alpha packaging can claim V8 provisioning.",
-      "followUpCondition": "A hosted artifact endpoint or release-attached SDK source is available and validated by resolver checksum tests."
-    }
-  ],
+  "deferredIssues": [],
   "evidenceLanes": [
     {
       "id": "windows-x64",
@@ -63,8 +56,8 @@
     },
     {
       "id": "v8",
-      "status": "deferred",
-      "evidence": "Resolver/cache/validation exists; hosted/public SDK artifact source remains #876."
+      "status": "experimental",
+      "evidence": "Windows x64 resolver/cache/validation exists with a pinned GitHub release SDK artifact and checksum. Linux/macOS V8 SDK artifacts remain planned."
     },
     {
       "id": "package",
@@ -106,6 +99,6 @@
   },
   "consolidationRecommendation": {
     "status": "ready-for-consolidation-review",
-    "condition": "Review ALPHA-INFRA evidence with #876 deferred and keep final public docs/release verification outside this loop."
+    "condition": "Review ALPHA-INFRA evidence with Linux/macOS V8 artifacts still planned and keep final public docs/release verification outside this loop."
   }
 }

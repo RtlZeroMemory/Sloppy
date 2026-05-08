@@ -485,7 +485,7 @@ A dependency can be added when:
 ## Open Questions
 
 - Exact V8 SDK update cadence.
-- Exact Sloppy V8 SDK prebuilt source and checksum policy.
+- Linux/macOS Sloppy V8 SDK prebuilt source and checksum policy.
 - Complete sqlite runtime packaging and notice strategy.
 - Complete libpq DLL/shared-library packaging and notice strategy.
 - Exact dynamic V8 runtime file list for non-monolithic builds.

@@ -153,8 +153,8 @@ function Invoke-SelfTest {
         schemaVersion = 1
         parentIssue = 873
         consumerIssues = @(300, 681, 685, 684, 301)
-        completedIssues = @(874, 875, 877, 878, 879, 880, 881, 882, 883)
-        deferredIssues = @([pscustomobject]@{ issue = 876; status = "deferred"; reason = "fixture"; risk = "fixture"; followUpCondition = "fixture" })
+        completedIssues = @(874, 875, 876, 877, 878, 879, 880, 881, 882, 883)
+        deferredIssues = @()
         evidenceLanes = @(
             [pscustomobject]@{ id = "windows-x64"; status = "supported"; evidence = "fixture" },
             [pscustomobject]@{ id = "v8"; status = "deferred"; evidence = "fixture" },
@@ -224,6 +224,48 @@ function Invoke-SelfTest {
 
         $required = Resolve-SlV8SdkRootForMode -RepoRoot $tempRoot -Mode REQUIRED -SearchRoots @($validRoot)
         Assert-True (-not [string]::IsNullOrWhiteSpace($required.Root)) "V8 REQUIRED mode did not resolve a valid SDK."
+
+        $archiveStage = Join-Path $tempRoot "archive-stage"
+        $archiveSdkRoot = Join-Path $archiveStage "windows-x64"
+        New-FakeV8Sdk -Root $archiveSdkRoot
+        $archivePath = Join-Path $tempRoot "sloppy-v8-sdk-fixture.zip"
+        Compress-Archive -Path $archiveSdkRoot -DestinationPath $archivePath -Force
+        $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $fetchDestination = Join-Path $tempRoot "fetch-destination"
+        $fetchScript = Join-Path $PSScriptRoot "fetch-v8.ps1"
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $fetchScript -Destination $fetchDestination -SourceArchive $archivePath -Sha256 $archiveHash -Force | Out-Null
+        Assert-True ($LASTEXITCODE -eq 0) "V8 artifact fetch fixture failed."
+        Assert-True (Test-SlV8SdkLayout -Root (Join-Path $fetchDestination "windows-x64") -Quiet) "Fetched V8 fixture did not validate."
+
+        $resolveScript = Join-Path $PSScriptRoot "resolve-v8-sdk.ps1"
+        $badExplicitRoot = Start-Process -FilePath "powershell" -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $resolveScript,
+            "-V8Root",
+            $missingRoot,
+            "-Fetch",
+            "-Quiet"
+        ) -Wait -PassThru -WindowStyle Hidden
+        Assert-True ($badExplicitRoot.ExitCode -ne 0) "V8 resolver should not fetch around an explicit invalid -V8Root."
+
+        $badFetch = Start-Process -FilePath "powershell" -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $fetchScript,
+            "-Destination",
+            (Join-Path $tempRoot "bad-fetch"),
+            "-SourceArchive",
+            $archivePath,
+            "-Sha256",
+            ("0" * 64),
+            "-Force"
+        ) -Wait -PassThru -WindowStyle Hidden
+        Assert-True ($badFetch.ExitCode -ne 0) "V8 artifact fetch fixture should fail for wrong checksum."
     } finally {
         $env:SLOPPY_V8_ROOT = $oldV8Root
         $env:SLOPPY_V8_SDK_HINTS = $oldV8Hints
@@ -256,6 +298,12 @@ function Test-Manifest {
 
     Assert-True ($manifest.v8Sdk.name -eq "sloppy-v8-sdk") "V8 SDK manifest policy must name sloppy-v8-sdk."
     Assert-True ($manifest.v8Sdk.platforms.PSObject.Properties["windows-x64"].Value.status -eq "supported") "V8 windows-x64 SDK status must be supported."
+    Assert-True ($manifest.v8Sdk.artifactSource.status -eq "active") "V8 artifact source must be active for Windows x64."
+    Assert-True ($manifest.v8Sdk.artifactSource.downloadImplemented -eq $true) "V8 artifact download must be implemented."
+    $windowsV8Artifact = $manifest.v8Sdk.artifactSource.platforms.PSObject.Properties["windows-x64"].Value
+    Assert-True ($windowsV8Artifact.status -eq "available") "V8 windows-x64 artifact source must be available."
+    Assert-True ([string]$windowsV8Artifact.url -match '^https://github.com/RtlZeroMemory/Slop/releases/download/') "V8 windows-x64 artifact URL must be a GitHub release asset."
+    Assert-True ([string]$windowsV8Artifact.sha256 -match '^[0-9a-f]{64}$') "V8 windows-x64 artifact must name a SHA-256 checksum."
     foreach ($mode in @("OFF", "AUTO", "REQUIRED")) {
         Assert-True (@($manifest.features.v8.supportedModes) -contains $mode) "V8 supportedModes must include $mode."
     }
@@ -315,6 +363,7 @@ function Test-LocalPathHygiene {
         "tools/windows/deps-doctor.ps1",
         "tools/windows/check-alpha-infra.ps1",
         "tools/windows/v8-sdk.ps1",
+        "tools/windows/fetch-v8.ps1",
         "tools/windows/resolve-v8-sdk.ps1",
         "tools/windows/bootstrap.ps1",
         "tools/windows/dev.ps1",
@@ -486,11 +535,11 @@ function Test-ReadinessManifestObject {
     foreach ($issue in @(300, 681, 685, 684, 301)) {
         Assert-True (@($Manifest.consumerIssues) -contains $issue) "Readiness manifest missing consumer issue #$issue."
     }
-    foreach ($issue in @(874, 875, 877, 878, 879, 880, 881, 882, 883)) {
+    foreach ($issue in @(874, 875, 876, 877, 878, 879, 880, 881, 882, 883)) {
         Assert-True (@($Manifest.completedIssues) -contains $issue) "Readiness manifest missing completed issue #$issue."
     }
     $deferred = @($Manifest.deferredIssues | Where-Object { $_.issue -eq 876 })
-    Assert-True ($deferred.Count -eq 1) "Readiness manifest must keep #876 as deferred until hosted V8 artifacts land."
+    Assert-True ($deferred.Count -eq 0) "Readiness manifest must not keep #876 deferred after Windows x64 V8 artifact source lands."
     Assert-True (-not [string]::IsNullOrWhiteSpace([string]$Manifest.dogfoodCatalog)) "Readiness manifest must link dogfoodCatalog."
 
     $laneIds = @($Manifest.evidenceLanes | ForEach-Object { [string]$_.id })

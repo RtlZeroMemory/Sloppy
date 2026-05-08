@@ -278,18 +278,22 @@ function Resolve-SlV8SdkRoot {
     }
 
     $candidates = New-Object System.Collections.Generic.List[string]
+    $hasExplicitV8Root = -not [string]::IsNullOrWhiteSpace($V8Root)
     Add-SlV8Candidate -Candidates $candidates -CandidatePath $V8Root
-    Add-SlV8Candidate -Candidates $candidates -CandidatePath $env:SLOPPY_V8_ROOT
-    Add-SlV8PathListCandidates -Candidates $candidates -PathList $env:SLOPPY_V8_SDK_HINTS
 
-    foreach ($searchRoot in $SearchRoots) {
-        Add-SlV8Candidate -Candidates $candidates -CandidatePath $searchRoot
-    }
+    if (-not $hasExplicitV8Root) {
+        Add-SlV8Candidate -Candidates $candidates -CandidatePath $env:SLOPPY_V8_ROOT
+        Add-SlV8PathListCandidates -Candidates $candidates -PathList $env:SLOPPY_V8_SDK_HINTS
 
-    Add-SlV8Candidate -Candidates $candidates -CandidatePath (Join-Path $RepoRoot ".sdeps/v8/$SlV8DefaultPlatform")
+        foreach ($searchRoot in $SearchRoots) {
+            Add-SlV8Candidate -Candidates $candidates -CandidatePath $searchRoot
+        }
 
-    foreach ($worktreeRoot in Get-SlV8GitWorktreeRoots -RepoRoot $RepoRoot) {
-        Add-SlV8Candidate -Candidates $candidates -CandidatePath (Join-Path $worktreeRoot ".sdeps/v8/$SlV8DefaultPlatform")
+        Add-SlV8Candidate -Candidates $candidates -CandidatePath (Join-Path $RepoRoot ".sdeps/v8/$SlV8DefaultPlatform")
+
+        foreach ($worktreeRoot in Get-SlV8GitWorktreeRoots -RepoRoot $RepoRoot) {
+            Add-SlV8Candidate -Candidates $candidates -CandidatePath (Join-Path $worktreeRoot ".sdeps/v8/$SlV8DefaultPlatform")
+        }
     }
 
     foreach ($candidate in $candidates) {
@@ -299,12 +303,20 @@ function Resolve-SlV8SdkRoot {
     }
 
     if ($Require) {
-        $message = @(
-            "No compatible Sloppy V8 SDK was found.",
-            "Checked explicit -V8Root, SLOPPY_V8_ROOT, SLOPPY_V8_SDK_HINTS, this worktree's .sdeps, and registered git worktrees.",
-            "Set SLOPPY_V8_ROOT to an SDK root, or set SLOPPY_V8_SDK_HINTS to one or more portable search roots separated by '$([System.IO.Path]::PathSeparator)'.",
-            "You can validate discovery with: .\tools\windows\resolve-v8-sdk.ps1"
-        ) -join [Environment]::NewLine
+        if ($hasExplicitV8Root) {
+            $message = @(
+                "No compatible Sloppy V8 SDK was found at the explicit -V8Root path.",
+                "Checked only -V8Root because explicit SDK roots must not be replaced by automatic discovery or fetch.",
+                "Use a compatible SDK root or omit -V8Root to allow cache/worktree discovery."
+            ) -join [Environment]::NewLine
+        } else {
+            $message = @(
+                "No compatible Sloppy V8 SDK was found.",
+                "Checked SLOPPY_V8_ROOT, SLOPPY_V8_SDK_HINTS, this worktree's .sdeps, and registered git worktrees.",
+                "Set SLOPPY_V8_ROOT to an SDK root, or set SLOPPY_V8_SDK_HINTS to one or more portable search roots separated by '$([System.IO.Path]::PathSeparator)'.",
+                "You can validate discovery with: .\tools\windows\resolve-v8-sdk.ps1"
+            ) -join [Environment]::NewLine
+        }
         throw $message
     }
 

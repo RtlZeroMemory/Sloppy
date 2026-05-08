@@ -40,7 +40,7 @@ V8 is optional for the default developer loop. When a V8-enabled build is needed
 shared resolver instead of hard-coding one local path:
 
 ```powershell
-.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
 .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 ```
 
@@ -53,13 +53,19 @@ resolver supports `OFF`, `AUTO`, and `REQUIRED` modes. It checks, in order, an e
 separator, so agents can point at portable cache roots without baking machine-local paths
 into docs or PRs.
 
-Validation uses the same helper:
+Windows x64 has a pinned, checksum-validated SDK artifact source. `fetch-v8.ps1` stores
+the downloaded archive under `.sdeps/v8/_downloads`, extracts the SDK into
+`.sdeps/v8/windows-x64`, validates `share/sloppy-v8-sdk.json`, and refuses checksum or
+layout mismatches. `dev.ps1 configure -EnableV8` also provisions the SDK when no
+compatible local SDK is found. Linux and macOS SDK artifact sources remain planned and
+must not be reported as pass evidence.
+
+Validation uses the same helper without downloading:
 
 ```powershell
 .\tools\windows\fetch-v8.ps1 -ValidateOnly
 ```
 
-`fetch-v8.ps1` still downloads nothing; it validates or explains the expected SDK layout.
 Maintainers can build and package a local SDK with `build-v8.ps1`.
 
 Experimental local packaging lives here too:

@@ -92,7 +92,7 @@
       "defaultPresets": ["linux-clang", "linux-gcc"],
       "compiler": "clang or gcc",
       "v8SdkPlatform": null,
-      "notes": "Default non-V8 hosted CI lane. V8 SDK artifact lane is not implemented yet."
+      "notes": "Default non-V8 hosted CI lane. V8 SDK artifact lane remains planned."
     },
     "macos-arm64": {
       "status": "experimental",
@@ -166,9 +166,33 @@
     "advancedOverrideEnv": "SLOPPY_V8_ROOT",
     "hintsEnv": "SLOPPY_V8_SDK_HINTS",
     "artifactSource": {
-      "status": "planned",
-      "downloadImplemented": false,
-      "reason": "No public pinned SDK artifact source is selected in Wave 1; resolver validates local cache or explicit override only."
+      "status": "active",
+      "downloadImplemented": true,
+      "transport": "github-release-asset",
+      "cacheLayout": ".sdeps/v8/_downloads",
+      "reason": "Windows x64 has a pinned, checksum-validated GitHub release asset. Other platform SDK artifacts remain planned until their V8 package lanes are built and validated.",
+      "platforms": {
+        "windows-x64": {
+          "status": "available",
+          "archive": "sloppy-v8-sdk-windows-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38.zip",
+          "url": "https://github.com/RtlZeroMemory/Slop/releases/download/v8-sdk-windows-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38/sloppy-v8-sdk-windows-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38.zip",
+          "sha256": "cce266afcc89948407dd300c857a454d0ce1fe10849004589973879a3b03e27e",
+          "sizeBytes": 227614365,
+          "release": "https://github.com/RtlZeroMemory/Slop/releases/tag/v8-sdk-windows-x64-v8-7221f49fdb6c89cce6be08005732ebcab3c45b38"
+        },
+        "linux-x64": {
+          "status": "planned",
+          "reason": "No Linux x64 V8 SDK artifact has been built and validated yet."
+        },
+        "macos-arm64": {
+          "status": "planned",
+          "reason": "No macOS arm64 V8 SDK artifact has been built and validated yet."
+        },
+        "macos-x64": {
+          "status": "planned",
+          "reason": "No macOS x64 V8 SDK artifact has been built and validated yet."
+        }
+      }
     },
     "platforms": {
       "windows-x64": {

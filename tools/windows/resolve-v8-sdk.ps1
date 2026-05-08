@@ -3,6 +3,8 @@ param(
     [string[]]$SearchRoot = @(),
     [ValidateSet("OFF", "AUTO", "REQUIRED")]
     [string]$Mode = "REQUIRED",
+    [switch]$Fetch,
+    [switch]$ForceFetch,
     [switch]$Quiet
 )
 
@@ -11,12 +13,50 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "v8-sdk.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+$fetchScript = Join-Path $PSScriptRoot "fetch-v8.ps1"
+
 try {
     $resolution = Resolve-SlV8SdkRootForMode -RepoRoot $Root -V8Root $V8Root -SearchRoots $SearchRoot -Mode $Mode
 } catch {
-    Write-Host "No compatible Sloppy V8 SDK was resolved."
-    Write-Host ([string]$_)
-    exit 1
+    if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+        Write-Host "No compatible Sloppy V8 SDK was resolved."
+        Write-Host ([string]$_)
+        exit 1
+    }
+
+    if (-not $Fetch -or $Mode -eq "OFF") {
+        Write-Host "No compatible Sloppy V8 SDK was resolved."
+        Write-Host ([string]$_)
+        exit 1
+    }
+
+    $resolution = $null
+}
+
+if ($Fetch -and $Mode -ne "OFF" -and
+    ($ForceFetch -or $null -eq $resolution -or [string]::IsNullOrWhiteSpace([string]$resolution.Root))) {
+    $fetchArgs = @(
+        "-File",
+        $fetchScript,
+        "-Destination",
+        (Join-Path $Root ".sdeps/v8")
+    )
+    if ($ForceFetch) {
+        $fetchArgs += "-Force"
+    }
+
+    & powershell -NoProfile -ExecutionPolicy Bypass @fetchArgs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    try {
+        $resolution = Resolve-SlV8SdkRootForMode -RepoRoot $Root -V8Root $V8Root -SearchRoots $SearchRoot -Mode $Mode
+    } catch {
+        Write-Host "No compatible Sloppy V8 SDK was resolved after fetch."
+        Write-Host ([string]$_)
+        exit 1
+    }
 }
 $resolved = $resolution.Root
 

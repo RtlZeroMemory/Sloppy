@@ -193,7 +193,23 @@ function Get-ConfigureCacheRefreshReason {
 }
 
 function Resolve-V8Root {
-    return Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
+    try {
+        return Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
+    } catch {
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            throw
+        }
+
+        $fetchScript = Join-Path $PSScriptRoot "fetch-v8.ps1"
+        Invoke-Native "powershell" @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $fetchScript
+        )
+        return Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
+    }
 }
 
 function Resolve-GateTool {
