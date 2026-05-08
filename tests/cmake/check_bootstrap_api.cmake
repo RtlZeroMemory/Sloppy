@@ -7,9 +7,13 @@ set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
+set(config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/config.js")
+set(logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/logging.js")
+set(modules_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/modules.js")
+set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${config_source}" "${logging_source}" "${modules_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -24,6 +28,10 @@ file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
+file(READ "${config_source}" config_js)
+file(READ "${logging_source}" logging_js)
+file(READ "${modules_source}" modules_js)
+file(READ "${shared_source}" shared_js)
 file(READ "${runtime_classic_source}" runtime_classic_js)
 
 function(require_substring haystack needle description)
@@ -218,6 +226,51 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "addObject(object)"
+        "getSecret(key)"
+        "bind(prefix, schema)"
+        "providerConfigPrefix"
+        "Sloppy config key"
+        "literal default"
+        "Object.freeze")
+    require_substring("${config_js}" "${required_pattern}" "internal/config.js is missing expected app-host config pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "setMinimumLevel(level)"
+        "addMemorySink()"
+        "trace(message, fields)"
+        "debug(message, fields)"
+        "info(message, fields)"
+        "warn(message, fields)"
+        "error(message, fields)"
+        "MEMORY_SINK_STATE"
+        "Object.freeze")
+    require_substring("${logging_js}" "${required_pattern}" "internal/logging.js is missing expected app-host logging pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "function createModule(name)"
+        "dependsOn(...names)"
+        "capabilities(callback)"
+        "function resolveModuleOrder(moduleStates)"
+        "module dependency missing"
+        "module dependency cycle detected"
+        "module phase failed"
+        "function createModuleDebugEntries(orderedModules, capabilitySnapshot, serviceSnapshot, routes)"
+        "Object.freeze")
+    require_substring("${modules_js}" "${required_pattern}" "internal/modules.js is missing expected app-host module pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "function isPlainObject(value)"
+        "function createMutationGuard(subject)"
+        "function isPromiseLike(value)"
+        "Object.freeze")
+    require_substring("${shared_js}" "${required_pattern}" "internal/shared.js is missing expected app-host shared helper pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "const Time = Object.freeze"
         "const Deadline = Object.freeze"
         "class CancellationController"
@@ -258,17 +311,11 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "createBuilder()"
         "module: createModule"
-        "dependsOn(...names)"
-        "capabilities(callback)"
         "addModule(module)"
         "addDatabase(token, options)"
         "capability token already declared"
         "capability token is not declared"
         "capabilities,"
-        "resolveModuleOrder"
-        "module dependency missing"
-        "module dependency cycle detected"
-        "module phase failed"
         "config,"
         "logging,"
         "services,"
@@ -297,9 +344,6 @@ foreach(required_pattern IN ITEMS
         "mapController(prefix, Controller, configure)"
         "controller(prefix, Controller, configure)"
         "group: createRouterGroup"
-        "addObject(object)"
-        "setMinimumLevel(level)"
-        "addMemorySink()"
         "addSingleton(token, factoryOrValue)"
         "addTransient(token, factory)"
         "createScope()"

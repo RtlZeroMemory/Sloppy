@@ -16,7 +16,11 @@
     "sloppy/results.js",
     "sloppy/schema.js",
     "sloppy/app.js",
+    "sloppy/internal/config.js",
     "sloppy/internal/intrinsics.js",
+    "sloppy/internal/logging.js",
+    "sloppy/internal/modules.js",
+    "sloppy/internal/shared.js",
     "sloppy/internal/runtime-classic.js"
   ]
 }

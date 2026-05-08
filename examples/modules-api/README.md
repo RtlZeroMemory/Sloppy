@@ -22,5 +22,8 @@ The example proves relative module imports, multiple function modules from one m
 route groups, module-attributed Plan routes, route binding, explicit `Results` helpers, and
 routes/doctor/openapi metadata over a multi-file source graph.
 
+This is the function-module source-input subset. It is intentionally distinct from the
+bootstrap `Sloppy.module(...)` capability/service module shape used by other examples.
+
 It does not prove controller/decorator routing, a DI container, dynamic imports,
 package-manager resolution, or runtime module loading.
