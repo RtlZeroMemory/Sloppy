@@ -6,6 +6,7 @@
  * readiness watch; no blocking worker is used and JS receives only resource IDs.
  */
 #include "engine_v8_internal.h"
+#include "intrinsics_db_bridge.h"
 #include "string_interop.h"
 
 #include "sloppy/capability.h"
@@ -13,6 +14,7 @@
 
 #include <libpq-fe.h>
 
+#include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
@@ -22,6 +24,9 @@
 #include <vector>
 
 namespace {
+
+constexpr double pg_v8_max_safe_integer = 9007199254740991.0;
+constexpr double pg_v8_min_safe_integer = -9007199254740991.0;
 
 enum
 {
@@ -43,6 +48,142 @@ enum
     SL_PG_OID_JSON = 114,
     SL_PG_OID_JSONB = 3802
 };
+
+bool pg_v8_is_digit(char value)
+{
+    return value >= '0' && value <= '9';
+}
+
+bool pg_v8_parse_date_part(const char* value, int length, std::string* out)
+{
+    if (out == nullptr || value == nullptr || length < 10 || !pg_v8_is_digit(value[0]) ||
+        !pg_v8_is_digit(value[1]) || !pg_v8_is_digit(value[2]) || !pg_v8_is_digit(value[3]) ||
+        value[4] != '-' || !pg_v8_is_digit(value[5]) || !pg_v8_is_digit(value[6]) ||
+        value[7] != '-' || !pg_v8_is_digit(value[8]) || !pg_v8_is_digit(value[9]))
+    {
+        return false;
+    }
+    out->assign(value, 10U);
+    return true;
+}
+
+bool pg_v8_normalize_date_text(const char* value, int length, std::string* out)
+{
+    return length == 10 && pg_v8_parse_date_part(value, length, out);
+}
+
+bool pg_v8_parse_time_part(const char* value, int length, int* consumed, std::string* out)
+{
+    int index = 8;
+    if (out == nullptr || consumed == nullptr || value == nullptr || length < 8 ||
+        !pg_v8_is_digit(value[0]) || !pg_v8_is_digit(value[1]) || value[2] != ':' ||
+        !pg_v8_is_digit(value[3]) || !pg_v8_is_digit(value[4]) || value[5] != ':' ||
+        !pg_v8_is_digit(value[6]) || !pg_v8_is_digit(value[7]))
+    {
+        return false;
+    }
+    if (index < length && value[index] == '.') {
+        index += 1;
+        const int fraction_start = index;
+        while (index < length && pg_v8_is_digit(value[index])) {
+            index += 1;
+        }
+        if (index == fraction_start) {
+            return false;
+        }
+    }
+    out->assign(value, static_cast<size_t>(index));
+    *consumed = index;
+    return true;
+}
+
+bool pg_v8_normalize_time_text(const char* value, int length, std::string* out)
+{
+    int consumed = 0;
+    return pg_v8_parse_time_part(value, length, &consumed, out) && consumed == length;
+}
+
+bool pg_v8_normalize_timestamp_text(const char* value, int length, std::string* out,
+                                    int* consumed = nullptr)
+{
+    std::string date;
+    std::string time;
+    int time_consumed = 0;
+    if (out == nullptr || value == nullptr || length < 19 ||
+        !pg_v8_parse_date_part(value, length, &date) || (value[10] != ' ' && value[10] != 'T') ||
+        !pg_v8_parse_time_part(value + 11, length - 11, &time_consumed, &time))
+    {
+        return false;
+    }
+    const int total_consumed = 11 + time_consumed;
+    if (consumed == nullptr && total_consumed != length) {
+        return false;
+    }
+    *out = date + "T" + time;
+    if (consumed != nullptr) {
+        *consumed = total_consumed;
+    }
+    return true;
+}
+
+bool pg_v8_normalize_timestamptz_text(const char* value, int length, std::string* kind,
+                                      std::string* out)
+{
+    std::string timestamp;
+    int consumed = 0;
+    if (kind == nullptr || out == nullptr ||
+        !pg_v8_normalize_timestamp_text(value, length, &timestamp, &consumed))
+    {
+        return false;
+    }
+    if (consumed == length - 1 && value[consumed] == 'Z') {
+        *kind = "instant";
+        *out = timestamp + "Z";
+        return true;
+    }
+    if (consumed >= length || (value[consumed] != '+' && value[consumed] != '-')) {
+        return false;
+    }
+    const char sign = value[consumed];
+    const int offset_start = consumed + 1;
+    if (offset_start + 2 > length || !pg_v8_is_digit(value[offset_start]) ||
+        !pg_v8_is_digit(value[offset_start + 1]))
+    {
+        return false;
+    }
+    char hour0 = value[offset_start];
+    char hour1 = value[offset_start + 1];
+    char minute0 = '0';
+    char minute1 = '0';
+    int offset_end = offset_start + 2;
+    if (offset_end < length) {
+        if (value[offset_end] != ':' || offset_end + 3 != length ||
+            !pg_v8_is_digit(value[offset_end + 1]) || !pg_v8_is_digit(value[offset_end + 2]))
+        {
+            return false;
+        }
+        minute0 = value[offset_end + 1];
+        minute1 = value[offset_end + 2];
+        offset_end += 3;
+    }
+    if (offset_end != length) {
+        return false;
+    }
+    if (hour0 == '0' && hour1 == '0' && minute0 == '0' && minute1 == '0') {
+        *kind = "instant";
+        *out = timestamp + "Z";
+        return true;
+    }
+    *kind = "offsetDateTime";
+    *out = timestamp;
+    out->push_back(sign);
+    out->push_back(hour0);
+    out->push_back(hour1);
+    out->push_back(':');
+    out->push_back(minute0);
+    out->push_back(minute1);
+    return true;
+}
 
 enum class PgV8Operation
 {
@@ -77,6 +218,8 @@ enum class PgV8RequestState
 struct PgV8ConnectionResource;
 struct PgV8Connection;
 struct PgV8Request;
+
+void pg_v8_clear_result(PgV8Request* request);
 
 struct PgV8Param
 {
@@ -133,116 +276,92 @@ struct PgV8ConnectionResource
 
 SlStatus pg_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
-    SlV8Engine* backend =
-        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
-    return sl_v8_string_from_native_view(backend, str, out);
+    return sl_v8_db_to_local_string(isolate, str, out);
 }
 
 void pg_v8_throw_type_error(v8::Isolate* isolate, const char* message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr(message), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy PostgreSQL type error")));
-        return;
-    }
-    isolate->ThrowException(v8::Exception::TypeError(local_message));
+    sl_v8_db_throw_type_error(isolate, message, "Sloppy PostgreSQL type error");
 }
 
 void pg_v8_throw_error(v8::Isolate* isolate, const std::string& message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(pg_v8_to_local_string(
-            isolate, sl_str_from_parts(message.data(), message.size()), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy PostgreSQL operation failed")));
-        return;
-    }
-    isolate->ThrowException(v8::Exception::Error(local_message));
+    sl_v8_db_throw_error(isolate, message, "Sloppy PostgreSQL operation failed");
 }
 
 bool pg_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> value, std::string* out)
 {
-    return out != nullptr && value->IsString() && sl_v8_std_string_from_value(isolate, value, out);
+    return sl_v8_db_value_to_std_string(isolate, value, out);
+}
+
+bool pg_v8_local_string_from_text(v8::Isolate* isolate, const char* value, int length,
+                                  v8::Local<v8::String>* out)
+{
+    if (value == nullptr || length < 0) {
+        return false;
+    }
+    return sl_status_is_ok(
+        pg_v8_to_local_string(isolate, sl_str_from_parts(value, static_cast<size_t>(length)), out));
+}
+
+bool pg_v8_make_typed_string_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   const char* kind, const char* value, int length,
+                                   v8::Local<v8::Value>* out)
+{
+    if (out == nullptr || kind == nullptr || value == nullptr || length < 0) {
+        return false;
+    }
+    return sl_v8_db_make_typed_string_value(
+        isolate, context, kind, sl_str_from_parts(value, static_cast<size_t>(length)), out);
+}
+
+bool pg_v8_parse_json_value(v8::Isolate* isolate, v8::Local<v8::Context> context, const char* value,
+                            int length, v8::Local<v8::Value>* out)
+{
+    v8::Local<v8::String> text;
+    if (out == nullptr || !pg_v8_local_string_from_text(isolate, value, length, &text)) {
+        return false;
+    }
+    return v8::JSON::Parse(context, text).ToLocal(out);
+}
+
+bool pg_v8_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Object> object, const char* key,
+                                      std::string* out)
+{
+    return sl_v8_db_get_object_string_property(isolate, context, object, key, out);
+}
+
+bool pg_v8_get_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               v8::Local<v8::Object> object, const char* key,
+                               v8::Local<v8::Value>* out)
+{
+    return sl_v8_db_get_object_property(isolate, context, object, key, out);
+}
+
+bool pg_v8_is_db_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       v8::Local<v8::Value> value)
+{
+    return sl_v8_db_is_value_wrapper(isolate, context, value);
 }
 
 bool pg_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                       v8::Local<v8::Object> object, const char* key,
                                       std::string* out, bool* present)
 {
-    v8::Local<v8::String> local_key;
-    v8::Local<v8::Value> value;
-
-    if (out == nullptr || present == nullptr ||
-        !sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
-        !object->Get(context, local_key).ToLocal(&value))
-    {
-        return false;
-    }
-    if (value->IsUndefined() || value->IsNull()) {
-        *present = false;
-        out->clear();
-        return true;
-    }
-    *present = true;
-    return pg_v8_value_to_std_string(isolate, value, out);
+    return sl_v8_db_get_optional_object_string(isolate, context, object, key, out, present);
 }
 
 bool pg_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            v8::Local<v8::Value> value, SlResourceId* out)
 {
-    v8::Local<v8::Object> object;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::Value> slot_value;
-    v8::Local<v8::Value> generation_value;
-
-    if (out == nullptr || !value->IsObject()) {
-        return false;
-    }
-    object = value.As<v8::Object>();
-    if (!sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            pg_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !object->Get(context, slot_key).ToLocal(&slot_value) ||
-        !object->Get(context, generation_key).ToLocal(&generation_value) ||
-        !slot_value->IsUint32() || !generation_value->IsUint32())
-    {
-        return false;
-    }
-    out->slot = slot_value.As<v8::Uint32>()->Value();
-    out->generation = generation_value.As<v8::Uint32>()->Value();
-    return sl_resource_id_is_valid(*out);
+    return sl_v8_db_get_resource_id(isolate, context, value, out);
 }
 
 bool pg_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                 SlResourceId id, v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Object> handle = v8::Object::New(isolate);
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::String> kind_key;
-    v8::Local<v8::String> kind_value;
-
-    if (out == nullptr ||
-        !sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            pg_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
-        !sl_status_is_ok(
-            pg_v8_to_local_string(isolate, sl_str_from_cstr("postgres.connection"), &kind_value)) ||
-        !handle->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
-             .FromMaybe(false) ||
-        !handle->Set(context, generation_key, v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false) ||
-        !handle->Set(context, kind_key, kind_value).FromMaybe(false))
-    {
-        return false;
-    }
-    *out = handle;
-    return true;
+    return sl_v8_db_make_resource_handle(isolate, context, id, "postgres.connection", out);
 }
 
 bool pg_v8_plan_provider_matches(const SlPlanDataProvider& provider, SlStr token)
@@ -425,11 +544,31 @@ bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Lo
     if (oid == SL_PG_OID_BOOL && length == 1) {
         js_value = v8::Boolean::New(isolate, value[0] == 't');
     }
-    else if (oid == SL_PG_OID_INT2 || oid == SL_PG_OID_INT4 || oid == SL_PG_OID_INT8) {
-        js_value = v8::Number::New(isolate, std::strtod(value, nullptr));
+    else if (oid == SL_PG_OID_INT2 || oid == SL_PG_OID_INT4) {
+        char* end = nullptr;
+        errno = 0;
+        long parsed = std::strtol(value, &end, 10);
+        if (errno != 0 || end != value + length) {
+            return false;
+        }
+        js_value = v8::Number::New(isolate, static_cast<double>(parsed));
+    }
+    else if (oid == SL_PG_OID_INT8) {
+        char* end = nullptr;
+        errno = 0;
+        long long parsed = std::strtoll(value, &end, 10);
+        if (errno != 0 || end != value + length) {
+            return false;
+        }
+        js_value = v8::BigInt::New(isolate, static_cast<int64_t>(parsed));
     }
     else if (oid == SL_PG_OID_FLOAT4 || oid == SL_PG_OID_FLOAT8) {
         js_value = v8::Number::New(isolate, std::strtod(value, nullptr));
+    }
+    else if (oid == SL_PG_OID_NUMERIC) {
+        if (!pg_v8_make_typed_string_value(isolate, context, "decimal", value, length, &js_value)) {
+            return false;
+        }
     }
     else if (oid == SL_PG_OID_BYTEA) {
         size_t unescaped_length = 0U;
@@ -451,6 +590,53 @@ bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Lo
         PQfreemem(unescaped);
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         js_value = v8::Uint8Array::New(buffer, 0U, unescaped_length);
+    }
+    else if (oid == SL_PG_OID_UUID) {
+        if (!pg_v8_make_typed_string_value(isolate, context, "uuid", value, length, &js_value)) {
+            return false;
+        }
+    }
+    else if (oid == SL_PG_OID_JSON || oid == SL_PG_OID_JSONB) {
+        if (!pg_v8_parse_json_value(isolate, context, value, length, &js_value)) {
+            return false;
+        }
+    }
+    else if (oid == SL_PG_OID_DATE) {
+        std::string normalized;
+        if (!pg_v8_normalize_date_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "date", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
+            return false;
+        }
+    }
+    else if (oid == SL_PG_OID_TIME) {
+        std::string normalized;
+        if (!pg_v8_normalize_time_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "time", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
+            return false;
+        }
+    }
+    else if (oid == SL_PG_OID_TIMESTAMP) {
+        std::string normalized;
+        if (!pg_v8_normalize_timestamp_text(value, length, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, "localDateTime", normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
+            return false;
+        }
+    }
+    else if (oid == SL_PG_OID_TIMESTAMPTZ) {
+        std::string kind;
+        std::string normalized;
+        if (!pg_v8_normalize_timestamptz_text(value, length, &kind, &normalized) ||
+            !pg_v8_make_typed_string_value(isolate, context, kind.c_str(), normalized.data(),
+                                           static_cast<int>(normalized.size()), &js_value))
+        {
+            return false;
+        }
     }
     else {
         v8::Local<v8::String> text;
@@ -578,14 +764,8 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
     if (!ok) {
-        v8::Local<v8::String> message;
-        if (!sl_status_is_ok(pg_v8_to_local_string(
-                isolate, sl_str_from_parts(request->error.data(), request->error.size()),
-                &message)))
-        {
-            message = v8::String::NewFromUtf8Literal(isolate, "postgres operation failed");
-        }
-        (void)resolver->Reject(context, v8::Exception::Error(message));
+        (void)sl_v8_db_reject_promise(isolate, context, resolver, request->error,
+                                      "postgres operation failed");
         pg_v8_finish_request(request, false);
         return;
     }
@@ -618,10 +798,11 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
         value = v8::Exception::Error(
             v8::String::NewFromUtf8Literal(isolate, "postgres result conversion failed"));
         (void)resolver->Reject(context, value);
+        pg_v8_clear_result(request.get());
         pg_v8_finish_request(request, false);
         return;
     }
-    (void)resolver->Resolve(context, value);
+    (void)sl_v8_db_resolve_promise(context, resolver, value);
     pg_v8_finish_request(request, true);
 }
 
@@ -959,7 +1140,10 @@ std::string pg_v8_array_literal(v8::Isolate* isolate, v8::Local<v8::Context> con
         if (index != 0U) {
             output += ",";
         }
-        if (item->IsNull() || item->IsUndefined()) {
+        if (item->IsUndefined()) {
+            return "";
+        }
+        if (item->IsNull()) {
             output += "NULL";
             continue;
         }
@@ -968,6 +1152,13 @@ std::string pg_v8_array_literal(v8::Isolate* isolate, v8::Local<v8::Context> con
             continue;
         }
         if (item->IsNumber()) {
+            double number_value = item.As<v8::Number>()->Value();
+            if (!std::isfinite(number_value) ||
+                (std::trunc(number_value) == number_value &&
+                 (number_value < pg_v8_min_safe_integer || number_value > pg_v8_max_safe_integer)))
+            {
+                return "";
+            }
             v8::String::Utf8Value number(isolate, item);
             if (*number == nullptr) {
                 return "";
@@ -989,6 +1180,80 @@ std::string pg_v8_array_literal(v8::Isolate* isolate, v8::Local<v8::Context> con
     }
     output += "}";
     return output;
+}
+
+bool pg_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  v8::Local<v8::Value> item, PgV8Param* param)
+{
+    std::string kind;
+    std::string text;
+    v8::Local<v8::Value> raw_value;
+    v8::Local<v8::String> json_text;
+
+    if (param == nullptr || !item->IsObject()) {
+        return false;
+    }
+    v8::Local<v8::Object> object = item.As<v8::Object>();
+    if (!pg_v8_get_object_string_property(isolate, context, object, "kind", &kind) ||
+        !pg_v8_get_object_property(isolate, context, object, "value", &raw_value))
+    {
+        return false;
+    }
+    if (kind == "json") {
+        if (!v8::JSON::Stringify(context, raw_value).ToLocal(&json_text) ||
+            !sl_v8_std_string_from_value(isolate, json_text, &param->text))
+        {
+            pg_v8_throw_type_error(isolate, "postgres json parameters must be JSON-serializable");
+            return false;
+        }
+        param->type = SL_PG_OID_JSONB;
+        return true;
+    }
+    if (kind == "rawJson") {
+        if (!raw_value->IsString() ||
+            !sl_v8_std_string_from_value(isolate, raw_value, &param->text))
+        {
+            return false;
+        }
+        param->type = SL_PG_OID_JSONB;
+        return true;
+    }
+    if (kind == "bytes") {
+        if (!sl_v8_db_copy_uint8_array(raw_value, &param->bytes)) {
+            pg_v8_throw_type_error(isolate, "postgres bytes value wrapper must hold Uint8Array");
+            return false;
+        }
+        param->type = SL_PG_OID_BYTEA;
+        param->format = 1;
+        return true;
+    }
+    if (!raw_value->IsString() || !sl_v8_std_string_from_value(isolate, raw_value, &text)) {
+        return false;
+    }
+    param->text = text;
+    if (kind == "decimal") {
+        param->type = SL_PG_OID_NUMERIC;
+    }
+    else if (kind == "uuid") {
+        param->type = SL_PG_OID_UUID;
+    }
+    else if (kind == "date") {
+        param->type = SL_PG_OID_DATE;
+    }
+    else if (kind == "time") {
+        param->type = SL_PG_OID_TIME;
+    }
+    else if (kind == "localDateTime") {
+        param->type = SL_PG_OID_TIMESTAMP;
+    }
+    else if (kind == "instant" || kind == "offsetDateTime") {
+        param->type = SL_PG_OID_TIMESTAMPTZ;
+    }
+    else {
+        pg_v8_throw_type_error(isolate, "postgres sql value wrapper kind is not supported");
+        return false;
+    }
+    return true;
 }
 
 bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1018,7 +1283,12 @@ bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
         if (!array->Get(context, index).ToLocal(&item)) {
             return false;
         }
-        if (item->IsNull() || item->IsUndefined()) {
+        if (item->IsUndefined()) {
+            pg_v8_throw_type_error(isolate,
+                                   "postgres undefined parameters are not SQL NULL; use null");
+            return false;
+        }
+        if (item->IsNull()) {
             param.is_null = true;
         }
         else if (item->IsBoolean()) {
@@ -1027,7 +1297,19 @@ bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
         }
         else if (item->IsNumber()) {
             double number = item.As<v8::Number>()->Value();
-            if (std::isfinite(number) && std::trunc(number) == number) {
+            if (!std::isfinite(number)) {
+                pg_v8_throw_type_error(isolate, "postgres number parameters must be finite");
+                return false;
+            }
+            if (std::trunc(number) == number &&
+                (number < pg_v8_min_safe_integer || number > pg_v8_max_safe_integer))
+            {
+                pg_v8_throw_type_error(
+                    isolate,
+                    "postgres integer parameters outside JS safe integer range must use BigInt");
+                return false;
+            }
+            if (std::trunc(number) == number) {
                 param.type = SL_PG_OID_INT8;
             }
             else {
@@ -1050,19 +1332,16 @@ bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
             param.text = std::to_string(value64);
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            std::shared_ptr<v8::BackingStore> backing = bytes->Buffer()->GetBackingStore();
-            size_t offset = bytes->ByteOffset();
-            size_t length = bytes->ByteLength();
-            if (backing == nullptr || offset > backing->ByteLength() ||
-                length > backing->ByteLength() - offset)
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 return false;
             }
-            unsigned char* data = static_cast<unsigned char*>(backing->Data());
             param.type = SL_PG_OID_BYTEA;
             param.format = 1;
-            param.bytes.assign(data + offset, data + offset + length);
+        }
+        else if (pg_v8_is_db_value(isolate, context, item)) {
+            if (!pg_v8_convert_db_value_param(isolate, context, item, &param)) {
+                return false;
+            }
         }
         else if (item->IsArray()) {
             param.text = pg_v8_array_literal(isolate, context, item.As<v8::Array>());
@@ -1079,7 +1358,8 @@ bool pg_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
         }
         else {
             pg_v8_throw_type_error(isolate, "postgres parameters support null, boolean, number, "
-                                            "bigint, string, bytes, and scalar arrays");
+                                            "bigint, string, bytes, sql value wrappers, and scalar "
+                                            "arrays");
             return false;
         }
         out->push_back(std::move(param));
@@ -1241,12 +1521,9 @@ void pg_v8_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 bool pg_v8_make_promise(v8::Isolate* isolate, v8::Local<v8::Context> context,
                         const std::shared_ptr<PgV8Request>& request, v8::Local<v8::Promise>* out)
 {
-    v8::Local<v8::Promise::Resolver> resolver;
-    if (out == nullptr || !v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+    if (request == nullptr || !sl_v8_db_make_promise(isolate, context, &request->resolver, out)) {
         return false;
     }
-    request->resolver.Reset(isolate, resolver);
-    *out = resolver->GetPromise();
     return true;
 }
 

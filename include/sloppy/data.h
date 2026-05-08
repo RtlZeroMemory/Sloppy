@@ -39,12 +39,25 @@ typedef enum SlDbValueKind
 
 typedef struct SlDbValue SlDbValue;
 
+/*
+ * Borrowed provider-neutral array value. `values` is nullable only when `count == 0`.
+ * The caller owns the pointed-to SlDbValue storage and must keep it alive at least as
+ * long as the containing SlDbValue/row-set view is observed.
+ */
 typedef struct SlDbArray
 {
     const SlDbValue* values;
     size_t count;
 } SlDbArray;
 
+/*
+ * Borrowed provider-neutral database value.
+ *
+ * String/byte views are valid only for the lifetime promised by the provider result
+ * that returned them, or by the caller that supplied the parameter. Rich SQL values use
+ * explicit kinds instead of weak stringification so bridges can preserve precision and
+ * semantics when materializing JavaScript values.
+ */
 struct SlDbValue
 {
     SlDbValueKind kind;
@@ -76,10 +89,16 @@ typedef enum SlDbPlaceholderStyle
 
 typedef struct SlDbParameter
 {
+    /* Optional provider-specific name. Positional providers leave this empty. */
     SlStr name;
     SlDbValue value;
 } SlDbParameter;
 
+/*
+ * Borrowed SQL statement view. `parameters` is nullable only when `parameter_count == 0`.
+ * Diagnostics must use sl_db_sql_statement_redacted rather than printing parameter
+ * values directly.
+ */
 typedef struct SlDbSqlStatement
 {
     SlStr text;
@@ -91,6 +110,7 @@ typedef struct SlDbSqlStatement
 
 typedef struct SlDbColumnInfo
 {
+    /* Borrowed column name and provider type text owned by the containing row-set. */
     SlStr name;
     SlDbValueKind value_kind;
     SlStr provider_type;
@@ -99,10 +119,15 @@ typedef struct SlDbColumnInfo
 
 typedef struct SlDbRow
 {
+    /* Borrowed value array. Nullable only when `value_count == 0`. */
     const SlDbValue* values;
     size_t value_count;
 } SlDbRow;
 
+/*
+ * Borrowed row-set materialized into caller/provider-owned storage. Columns and rows
+ * remain valid only until that storage is reset or destroyed.
+ */
 typedef struct SlDbRowSet
 {
     const SlDbColumnInfo* columns;

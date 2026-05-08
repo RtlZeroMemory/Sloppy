@@ -1,4 +1,18 @@
 const QUERY_MARKER = "__sloppyQuery";
+const DB_VALUE_MARKER = Symbol("sloppyDbValue");
+const DB_BRIDGE_VALUE_MARKER = "__sloppyDbValue";
+const DB_VALUE_KINDS = Object.freeze({
+    decimal: true,
+    uuid: true,
+    date: true,
+    time: true,
+    localDateTime: true,
+    instant: true,
+    offsetDateTime: true,
+    json: true,
+    rawJson: true,
+    bytes: true,
+});
 const LOWERED_QUERIES = new WeakSet();
 const PLACEHOLDER_STYLES = Object.freeze({
     question: (index) => ({
@@ -26,6 +40,172 @@ function isPlainObject(value) {
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
 }
+
+function dbValueToString(kind, value) {
+    if (kind === "json") {
+        return JSON.stringify(value);
+    }
+    return String(value);
+}
+
+function isKnownDbValueKind(kind) {
+    return typeof kind === "string"
+        && Object.prototype.hasOwnProperty.call(DB_VALUE_KINDS, kind);
+}
+
+function createDbValue(kind, value) {
+    if (!isKnownDbValueKind(kind)) {
+        throw new TypeError("Sloppy sql value wrapper kind is not supported.");
+    }
+    const storedValue = kind === "bytes" ? new Uint8Array(value) : value;
+    const wrapper = {
+        kind,
+        toString() {
+            return dbValueToString(kind, storedValue);
+        },
+    };
+    Object.defineProperties(wrapper, {
+        [DB_VALUE_MARKER]: {
+            value: true,
+        },
+        [DB_BRIDGE_VALUE_MARKER]: {
+            value: true,
+        },
+        value: {
+            enumerable: true,
+            get() {
+                return kind === "bytes" ? new Uint8Array(storedValue) : storedValue;
+            },
+        },
+    });
+    return Object.freeze(wrapper);
+}
+
+function isDbValue(value) {
+    return value !== null
+        && typeof value === "object"
+        && Object.isFrozen(value)
+        && isKnownDbValueKind(value.kind)
+        && (
+            value[DB_VALUE_MARKER] === true
+            || (
+                value[DB_BRIDGE_VALUE_MARKER] === true
+                && Object.prototype.toString.call(value) === "[object String]"
+            )
+        );
+}
+
+function requireStringValue(value, operation) {
+    if (typeof value !== "string" || value.length === 0) {
+        throw new TypeError(`Sloppy ${operation} value must be a non-empty string.`);
+    }
+    return value;
+}
+
+function decimal(value) {
+    const text = requireStringValue(value, "sql.decimal");
+    if (!/^[+-]?(?:\d+|\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) {
+        throw new TypeError("Sloppy sql.decimal value must be a finite decimal string.");
+    }
+    return createDbValue("decimal", text);
+}
+
+function uuid(value) {
+    const text = requireStringValue(value, "sql.uuid").toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) {
+        throw new TypeError("Sloppy sql.uuid value must be a canonical UUID string.");
+    }
+    return createDbValue("uuid", text);
+}
+
+function date(value) {
+    const text = requireStringValue(value, "sql.date");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        throw new TypeError("Sloppy sql.date value must be YYYY-MM-DD.");
+    }
+    return createDbValue("date", text);
+}
+
+function time(value) {
+    const text = requireStringValue(value, "sql.time");
+    if (!/^\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/.test(text)) {
+        throw new TypeError("Sloppy sql.time value must be HH:MM:SS with optional fractional seconds.");
+    }
+    return createDbValue("time", text);
+}
+
+function timestamp(value) {
+    const text = requireStringValue(value, "sql.timestamp");
+    if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/.test(text)) {
+        throw new TypeError("Sloppy sql.timestamp value must be a local date-time string.");
+    }
+    return createDbValue("localDateTime", text);
+}
+
+function instant(value) {
+    const text = requireStringValue(value, "sql.instant");
+    if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(text)) {
+        throw new TypeError("Sloppy sql.instant value must be a UTC timestamp ending in Z.");
+    }
+    return createDbValue("instant", text);
+}
+
+function offsetDateTime(value) {
+    const text = requireStringValue(value, "sql.offsetDateTime");
+    if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?[+-]\d{2}:\d{2}$/.test(text)) {
+        throw new TypeError("Sloppy sql.offsetDateTime value must include an explicit UTC offset.");
+    }
+    return createDbValue("offsetDateTime", text);
+}
+
+function json(value) {
+    if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+        throw new TypeError("Sloppy sql.json value must be JSON-serializable.");
+    }
+    try {
+        const encoded = JSON.stringify(value);
+        if (encoded === undefined) {
+            throw new TypeError("not serializable");
+        }
+    } catch {
+        throw new TypeError("Sloppy sql.json value must be JSON-serializable.");
+    }
+    return createDbValue("json", value);
+}
+
+function rawJson(value) {
+    const text = requireStringValue(value, "sql.rawJson");
+    try {
+        JSON.parse(text);
+    } catch {
+        throw new TypeError("Sloppy sql.rawJson value must be valid JSON text.");
+    }
+    return createDbValue("rawJson", text);
+}
+
+function bytes(value) {
+    if (value instanceof Uint8Array) {
+        return createDbValue("bytes", value);
+    }
+    if (value instanceof ArrayBuffer) {
+        return createDbValue("bytes", new Uint8Array(value));
+    }
+    throw new TypeError("Sloppy sql.bytes value must be a Uint8Array or ArrayBuffer.");
+}
+
+const values = Object.freeze({
+    decimal,
+    uuid,
+    date,
+    time,
+    timestamp,
+    instant,
+    offsetDateTime,
+    json,
+    rawJson,
+    bytes,
+    isDbValue,
+});
 
 function validatePlaceholderStyle(style) {
     if (!Object.prototype.hasOwnProperty.call(PLACEHOLDER_STYLES, style)) {
@@ -254,22 +434,49 @@ function validateSqliteParams(params, operation) {
         throw new TypeError(`Sloppy sqlite.${operation} parameters must be an array.`);
     }
 
-    for (const param of params) {
+    return params.map((param) => {
+        if (isDbValue(param)) {
+            if (param.kind === "json") {
+                return JSON.stringify(param.value);
+            }
+            if (param.kind === "rawJson") {
+                return param.value;
+            }
+            if (param.kind === "bytes") {
+                return param.value;
+            }
+            if (
+                param.kind === "decimal"
+                || param.kind === "uuid"
+                || param.kind === "date"
+                || param.kind === "time"
+                || param.kind === "localDateTime"
+                || param.kind === "instant"
+                || param.kind === "offsetDateTime"
+            ) {
+                return param.toString();
+            }
+        }
+        if (param !== null && typeof param === "object" && param[DB_BRIDGE_VALUE_MARKER] === true) {
+            throw new TypeError(
+                `Sloppy sqlite.${operation} parameter uses an unsupported sql value wrapper.`,
+            );
+        }
         const type = typeof param;
         if (
             param !== null
             && type !== "string"
             && type !== "number"
+            && type !== "bigint"
             && type !== "boolean"
             && !(param instanceof Uint8Array)
         ) {
             throw new TypeError(
-                `Sloppy sqlite.${operation} parameters support only null, string, number, boolean, and Uint8Array values.`,
+                `Sloppy sqlite.${operation} parameters support only null, string, number, bigint, boolean, Uint8Array, and explicit sql value wrappers.`,
             );
         }
-    }
-
-    return params;
+        return param;
+    });
 }
 
 function normalizeSqliteOperation(operation, args) {
@@ -1155,7 +1362,17 @@ const sqliteSupports = {
     memory: true,
     file: true,
     queryTemplates: true,
-    parameters: Object.freeze(["null", "string", "integer", "float", "boolean", "bytes"]),
+    parameters: Object.freeze([
+        "null",
+        "string",
+        "integer",
+        "bigint",
+        "float",
+        "boolean",
+        "bytes",
+        "explicit-json-text",
+        "explicit-date-time-text",
+    ]),
     transactions: true,
     transactionsMode: "callback",
     preparedStatements: false,
@@ -1181,7 +1398,15 @@ const postgresSupports = {
         "float",
         "boolean",
         "bigint",
+        "decimal",
         "bytes",
+        "uuid",
+        "json",
+        "date",
+        "time",
+        "timestamp",
+        "instant",
+        "offsetDateTime",
         "array",
     ]),
     transactions: true,
@@ -1209,7 +1434,14 @@ const sqlserverSupports = {
         "float",
         "boolean",
         "bigint",
+        "decimal",
         "bytes",
+        "uuid",
+        "date",
+        "time",
+        "timestamp",
+        "offsetDateTime",
+        "explicit-json-text",
     ]),
     transactions: true,
     pooling: true,
@@ -1488,6 +1720,17 @@ sql.lower = function lower(strings, values = [], options) {
     return createLoweredQuery(strings, values, options);
 };
 
+sql.decimal = decimal;
+sql.uuid = uuid;
+sql.date = date;
+sql.time = time;
+sql.timestamp = timestamp;
+sql.instant = instant;
+sql.offsetDateTime = offsetDateTime;
+sql.json = json;
+sql.rawJson = rawJson;
+sql.bytes = bytes;
+
 Object.freeze(sql);
 
 export { sql };
@@ -1496,6 +1739,7 @@ export const data = Object.freeze({
     createFakeProvider,
     lowerQueryTemplate: createLoweredQuery,
     isQuery: isLoweredQuery,
+    values,
     sqlite,
     postgres,
     sqlserver,

@@ -7,6 +7,7 @@
  * context, and handler orchestration.
  */
 #include "engine_v8_internal.h"
+#include "intrinsics_db_bridge.h"
 #include "string_interop.h"
 
 #include "sloppy/capability.h"
@@ -22,6 +23,9 @@
 #include <vector>
 
 namespace {
+
+constexpr double sqlite_v8_max_safe_integer = 9007199254740991.0;
+constexpr double sqlite_v8_min_safe_integer = -9007199254740991.0;
 
 struct SqliteV8OpenRequest
 {
@@ -91,9 +95,7 @@ constexpr uint32_t sqlite_v8_max_parameter_count = 32766U;
 
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
-    SlV8Engine* backend =
-        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
-    return sl_v8_string_from_native_view(backend, str, out);
+    return sl_v8_db_to_local_string(isolate, str, out);
 }
 
 std::string sqlite_v8_diag_to_string(const char* fallback, const SlDiag& diag)
@@ -116,30 +118,12 @@ std::string sqlite_v8_diag_to_string(const char* fallback, const SlDiag& diag)
 
 void sqlite_v8_throw_type_error(v8::Isolate* isolate, const char* message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(
-            sqlite_v8_to_local_string(isolate, sl_str_from_cstr(message), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy native type error")));
-        return;
-    }
-
-    isolate->ThrowException(v8::Exception::TypeError(local_message));
+    sl_v8_db_throw_type_error(isolate, message, "Sloppy native type error");
 }
 
 void sqlite_v8_throw_error(v8::Isolate* isolate, const std::string& message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(sqlite_v8_to_local_string(
-            isolate, sl_str_from_parts(message.data(), message.size()), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy native operation failed")));
-        return;
-    }
-
-    isolate->ThrowException(v8::Exception::Error(local_message));
+    sl_v8_db_throw_error(isolate, message, "Sloppy native operation failed");
 }
 
 void sqlite_v8_throw_diag(v8::Isolate* isolate, const char* fallback, const SlDiag& diag)
@@ -150,35 +134,14 @@ void sqlite_v8_throw_diag(v8::Isolate* isolate, const char* fallback, const SlDi
 bool sqlite_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> value,
                                    std::string* out)
 {
-    if (out == nullptr || !value->IsString()) {
-        return false;
-    }
-
-    return sl_v8_std_string_from_value(isolate, value, out);
+    return sl_v8_db_value_to_std_string(isolate, value, out);
 }
 
 bool sqlite_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                           v8::Local<v8::Object> object, const char* key,
                                           std::string* out, bool* present)
 {
-    v8::Local<v8::String> local_key;
-    v8::Local<v8::Value> value;
-
-    if (out == nullptr || present == nullptr ||
-        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
-        !object->Get(context, local_key).ToLocal(&value))
-    {
-        return false;
-    }
-
-    if (value->IsUndefined() || value->IsNull()) {
-        *present = false;
-        out->clear();
-        return true;
-    }
-
-    *present = true;
-    return sqlite_v8_value_to_std_string(isolate, value, out);
+    return sl_v8_db_get_optional_object_string(isolate, context, object, key, out, present);
 }
 
 bool sqlite_v8_parse_access(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -472,59 +435,13 @@ bool sqlite_v8_check_capability(v8::Isolate* isolate, SlV8Engine* backend, SlAre
 bool sqlite_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value, SlResourceId* out)
 {
-    v8::Local<v8::Object> object;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::Value> slot_value;
-    v8::Local<v8::Value> generation_value;
-
-    if (out == nullptr || !value->IsObject()) {
-        return false;
-    }
-
-    object = value.As<v8::Object>();
-    if (!sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            sqlite_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !object->Get(context, slot_key).ToLocal(&slot_value) ||
-        !object->Get(context, generation_key).ToLocal(&generation_value) ||
-        !slot_value->IsUint32() || !generation_value->IsUint32())
-    {
-        return false;
-    }
-
-    out->slot = slot_value.As<v8::Uint32>()->Value();
-    out->generation = generation_value.As<v8::Uint32>()->Value();
-    return true;
+    return sl_v8_db_get_resource_id(isolate, context, value, out);
 }
 
 bool sqlite_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     SlResourceId id, v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Object> handle = v8::Object::New(isolate);
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::String> kind_key;
-    v8::Local<v8::String> kind_value;
-
-    if (out == nullptr ||
-        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            sqlite_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
-        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("sqlite.connection"),
-                                                   &kind_value)) ||
-        !handle->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
-             .FromMaybe(false) ||
-        !handle->Set(context, generation_key, v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false) ||
-        !handle->Set(context, kind_key, kind_value).FromMaybe(false))
-    {
-        return false;
-    }
-
-    *out = handle;
-    return true;
+    return sl_v8_db_make_resource_handle(isolate, context, id, "sqlite.connection", out);
 }
 
 void sqlite_v8_connection_cleanup(void* ptr, void* user)
@@ -598,7 +515,12 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
             return false;
         }
 
-        if (item->IsNull() || item->IsUndefined()) {
+        if (item->IsUndefined()) {
+            sqlite_v8_throw_type_error(isolate,
+                                       "sqlite undefined parameters are not SQL NULL; use null");
+            return false;
+        }
+        if (item->IsNull()) {
             param.kind = SL_SQLITE_PARAM_NULL;
         }
         else if (item->IsBoolean()) {
@@ -611,10 +533,19 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
         }
         else if (item->IsNumber()) {
             const double number = item.As<v8::Number>()->Value();
+            if (!std::isfinite(number)) {
+                sqlite_v8_throw_type_error(isolate, "sqlite number parameters must be finite");
+                return false;
+            }
             if (std::isfinite(number) && std::trunc(number) == number &&
-                number >= static_cast<double>(std::numeric_limits<int64_t>::min()) &&
-                number < static_cast<double>(std::numeric_limits<int64_t>::max()))
+                (number < sqlite_v8_min_safe_integer || number > sqlite_v8_max_safe_integer))
             {
+                sqlite_v8_throw_type_error(
+                    isolate,
+                    "sqlite integer parameters outside JS safe integer range must use BigInt");
+                return false;
+            }
+            if (std::trunc(number) == number) {
                 param.kind = SL_SQLITE_PARAM_INTEGER;
                 param.integer = static_cast<int64_t>(number);
             }
@@ -622,6 +553,16 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
                 param.kind = SL_SQLITE_PARAM_FLOAT;
                 param.number = number;
             }
+        }
+        else if (item->IsBigInt()) {
+            bool lossless = false;
+            int64_t value64 = item.As<v8::BigInt>()->Int64Value(&lossless);
+            if (!lossless) {
+                sqlite_v8_throw_type_error(isolate, "sqlite BigInt parameters must fit int64");
+                return false;
+            }
+            param.kind = SL_SQLITE_PARAM_INTEGER;
+            param.integer = value64;
         }
         else if (item->IsString()) {
             param.kind = SL_SQLITE_PARAM_TEXT;
@@ -631,27 +572,16 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
             }
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            v8::Local<v8::ArrayBuffer> buffer = bytes->Buffer();
-            std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
-            const size_t offset = bytes->ByteOffset();
-            const size_t byte_length = bytes->ByteLength();
-            const unsigned char* data = static_cast<const unsigned char*>(backing->Data());
             param.kind = SL_SQLITE_PARAM_BLOB;
-            if (byte_length != 0U && (data == nullptr || offset > backing->ByteLength() ||
-                                      byte_length > backing->ByteLength() - offset))
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 sqlite_v8_throw_type_error(isolate, "sqlite Uint8Array parameter is out of range");
                 return false;
-            }
-            if (byte_length != 0U) {
-                param.bytes.assign(data + offset, data + offset + byte_length);
             }
         }
         else {
             sqlite_v8_throw_type_error(
                 isolate,
-                "sqlite parameters support only null, string, integer, float, boolean, and bytes");
+                "sqlite parameters support only null, string, number, BigInt, boolean, and bytes");
             return false;
         }
 
@@ -747,7 +677,14 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
         break;
     }
     case SL_SQLITE_VALUE_INTEGER:
-        js_value = v8::Number::New(isolate, static_cast<double>(value->value.integer));
+        if (value->value.integer < static_cast<int64_t>(sqlite_v8_min_safe_integer) ||
+            value->value.integer > static_cast<int64_t>(sqlite_v8_max_safe_integer))
+        {
+            js_value = v8::BigInt::New(isolate, value->value.integer);
+        }
+        else {
+            js_value = v8::Number::New(isolate, static_cast<double>(value->value.integer));
+        }
         break;
     case SL_SQLITE_VALUE_FLOAT:
         js_value = v8::Number::New(isolate, value->value.number);
@@ -1037,20 +974,18 @@ SlStatus sqlite_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletio
 
     bool ok = false;
     if (!sl_status_is_ok(request->status)) {
-        v8::Local<v8::String> message =
-            v8::String::NewFromUtf8(isolate, request->error.c_str()).ToLocalChecked();
-        ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
+        ok = sl_v8_db_reject_promise(isolate, context, resolver, request->error,
+                                     "sqlite operation failed");
     }
     else {
         v8::Local<v8::Value> value;
         std::string error;
         if (sqlite_v8_request_value(isolate, context, request, &value, &error)) {
-            ok = resolver->Resolve(context, value).FromMaybe(false);
+            ok = sl_v8_db_resolve_promise(context, resolver, value);
         }
         else {
-            v8::Local<v8::String> message =
-                v8::String::NewFromUtf8(isolate, error.c_str()).ToLocalChecked();
-            ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
+            ok = sl_v8_db_reject_promise(isolate, context, resolver, error,
+                                         "sqlite result conversion failed");
         }
     }
 
@@ -1091,15 +1026,14 @@ bool sqlite_v8_submit_request(v8::Isolate* isolate, v8::Local<v8::Context> conte
         return false;
     }
 
-    v8::Local<v8::Promise::Resolver> resolver;
-    if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+    v8::Local<v8::Promise> promise;
+    if (!sl_v8_db_make_promise(isolate, context, &request->resolver, &promise)) {
         sqlite_v8_throw_error(isolate, "sqlite bridge could not create a Promise");
         return false;
     }
 
     request->backend = backend;
     request->resource = resource;
-    request->resolver.Reset(isolate, resolver);
     resource->pending_operations.fetch_add(1U);
 
     SlProviderOperationDescriptor descriptor = sl_provider_operation_descriptor_init(
@@ -1131,7 +1065,7 @@ bool sqlite_v8_submit_request(v8::Isolate* isolate, v8::Local<v8::Context> conte
     }
 
     (void)provider_operation;
-    *out_promise = resolver->GetPromise();
+    *out_promise = promise;
     request.release();
     return true;
 }

@@ -94,6 +94,36 @@ SQLite stores only SQLite-native null, integer, real, text, and blob values. Slo
 JSON, date, time, timestamp, and instant values through explicit text/blob encodings for
 SQLite instead of claiming native SQLite value types that do not exist.
 
+## Type Mapping Policy
+
+Provider bridges must not silently stringify semantically rich SQL values as the canonical
+result shape. The current canonical mapping is:
+
+| SQL shape | JavaScript/provider value |
+| --- | --- |
+| NULL | `null` |
+| boolean/bit | `boolean` |
+| int16/int32/safe integer | JS `number` where the provider exposes a safe JS integer |
+| int64/bigint | JS `BigInt` at the V8 boundary; native provider integer slots remain `int64_t` |
+| float/real/double | JS/native floating value |
+| decimal/numeric/money | explicit decimal typed value/string wrapper, not JS `number` by default |
+| text/varchar/nvarchar | string |
+| bytes/blob/bytea/varbinary | `Uint8Array` at the V8 boundary; `SlBytes` at native boundaries |
+| uuid/uniqueidentifier | explicit UUID typed value/string wrapper |
+| provider-native JSON | parsed JS JSON for V8 results; JSON text slot at native boundaries |
+| date/time/timestamp | explicit date/time/local-date-time typed value/string wrapper |
+| timestamp with offset/time zone | explicit instant/offset-date-time typed value/string wrapper |
+
+SQLite weak typing is explicit: JSON/date/time/timestamp-like values stay text/blob unless
+the caller supplied an explicit `sql.*`/`data.values.*` wrapper or column policy that marks
+the value as semantic. SQL Server JSON-in-`nvarchar` is treated the same way because SQL
+Server does not expose a native JSON storage type.
+
+Parameter binding follows the inverse rule. `undefined` is a diagnostic, `null` is SQL
+NULL, unsafe integer numbers require `BigInt`, and arbitrary objects/functions/symbols are
+not stringified. JSON objects require the explicit JSON wrapper, and raw JSON text requires
+the explicit raw JSON wrapper.
+
 ## Evidence Lanes
 
 - Default non-V8 tests can prove native provider metadata and native provider contracts.

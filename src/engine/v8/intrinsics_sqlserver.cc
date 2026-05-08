@@ -7,12 +7,14 @@
  * handles, sockets, native pointers, or worker objects to JavaScript.
  */
 #include "engine_v8_internal.h"
+#include "intrinsics_db_bridge.h"
 #include "string_interop.h"
 
 #include "sloppy/capability.h"
 #include "sloppy/data_sqlserver.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -44,9 +46,19 @@ typedef struct GUID
 #endif
 #include <sql.h>
 #include <sqlext.h>
+#ifndef SQL_SS_TIME2
+#define SQL_SS_TIME2 (-154)
+#endif
+#ifndef SQL_SS_TIMESTAMPOFFSET
+#define SQL_SS_TIMESTAMPOFFSET (-155)
+#endif
 #endif
 
 namespace {
+
+constexpr double sqlsrv_v8_max_safe_integer = 9007199254740991.0;
+constexpr double sqlsrv_v8_min_safe_integer = -9007199254740991.0;
+constexpr std::chrono::seconds sqlsrv_v8_async_progress_timeout{30};
 
 enum class SqlSrvV8Operation
 {
@@ -63,118 +75,42 @@ enum class SqlSrvV8Operation
 
 SlStatus sqlsrv_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
-    SlV8Engine* backend =
-        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
-    return sl_v8_string_from_native_view(backend, str, out);
+    return sl_v8_db_to_local_string(isolate, str, out);
 }
 
 void sqlsrv_v8_throw_type_error(v8::Isolate* isolate, const char* message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(
-            sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr(message), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy SQL Server type error")));
-        return;
-    }
-    isolate->ThrowException(v8::Exception::TypeError(local_message));
+    sl_v8_db_throw_type_error(isolate, message, "Sloppy SQL Server type error");
 }
 
 void sqlsrv_v8_throw_error(v8::Isolate* isolate, const std::string& message)
 {
-    v8::Local<v8::String> local_message;
-    if (!sl_status_is_ok(sqlsrv_v8_to_local_string(
-            isolate, sl_str_from_parts(message.data(), message.size()), &local_message)))
-    {
-        isolate->ThrowException(v8::Exception::Error(
-            v8::String::NewFromUtf8Literal(isolate, "Sloppy SQL Server operation failed")));
-        return;
-    }
-    isolate->ThrowException(v8::Exception::Error(local_message));
+    sl_v8_db_throw_error(isolate, message, "Sloppy SQL Server operation failed");
 }
 
 bool sqlsrv_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> value,
                                    std::string* out)
 {
-    return out != nullptr && value->IsString() && sl_v8_std_string_from_value(isolate, value, out);
+    return sl_v8_db_value_to_std_string(isolate, value, out);
 }
 
 bool sqlsrv_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value, SlResourceId* out)
 {
-    v8::Local<v8::Object> object;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::Value> slot_value;
-    v8::Local<v8::Value> generation_value;
-
-    if (out == nullptr || !value->IsObject()) {
-        return false;
-    }
-    object = value.As<v8::Object>();
-    if (!sl_status_is_ok(sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !object->Get(context, slot_key).ToLocal(&slot_value) ||
-        !object->Get(context, generation_key).ToLocal(&generation_value) ||
-        !slot_value->IsUint32() || !generation_value->IsUint32())
-    {
-        return false;
-    }
-    out->slot = slot_value.As<v8::Uint32>()->Value();
-    out->generation = generation_value.As<v8::Uint32>()->Value();
-    return sl_resource_id_is_valid(*out);
+    return sl_v8_db_get_resource_id(isolate, context, value, out);
 }
 
 bool sqlsrv_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     SlResourceId id, v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Object> handle = v8::Object::New(isolate);
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    v8::Local<v8::String> kind_key;
-    v8::Local<v8::String> kind_value;
-
-    if (out == nullptr ||
-        !sl_status_is_ok(sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)) ||
-        !sl_status_is_ok(sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
-        !sl_status_is_ok(sqlsrv_v8_to_local_string(
-            isolate, sl_str_from_cstr("sqlserver.connection"), &kind_value)) ||
-        !handle->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
-             .FromMaybe(false) ||
-        !handle->Set(context, generation_key, v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false) ||
-        !handle->Set(context, kind_key, kind_value).FromMaybe(false))
-    {
-        return false;
-    }
-    *out = handle;
-    return true;
+    return sl_v8_db_make_resource_handle(isolate, context, id, "sqlserver.connection", out);
 }
 
 bool sqlsrv_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                           v8::Local<v8::Object> object, const char* key,
                                           std::string* out, bool* present)
 {
-    v8::Local<v8::String> local_key;
-    v8::Local<v8::Value> value;
-
-    if (out == nullptr || present == nullptr ||
-        !sl_status_is_ok(sqlsrv_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
-        !object->Get(context, local_key).ToLocal(&value))
-    {
-        return false;
-    }
-    if (value->IsUndefined() || value->IsNull()) {
-        *present = false;
-        out->clear();
-        return true;
-    }
-    *present = true;
-    return sqlsrv_v8_value_to_std_string(isolate, value, out);
+    return sl_v8_db_get_optional_object_string(isolate, context, object, key, out, present);
 }
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
@@ -204,16 +140,30 @@ enum class SqlSrvV8ParamKind
     Float64,
     Text,
     Bytes,
+    Decimal,
+    Uuid,
+    Date,
+    Time,
+    LocalDateTime,
+    OffsetDateTime,
+    JsonText,
 };
 
 enum class SqlSrvV8CellKind
 {
     Null,
     Bool,
+    Int32,
     Int64,
     Float64,
     Text,
     Bytes,
+    Decimal,
+    Uuid,
+    Date,
+    Time,
+    LocalDateTime,
+    OffsetDateTime,
 };
 
 struct SqlSrvV8ConnectionResource;
@@ -229,6 +179,7 @@ struct SqlSrvV8Param
     double float_value = 0.0;
     unsigned char bool_value = 0U;
     SQLLEN indicator = SQL_NULL_DATA;
+    SQLSMALLINT sql_type = SQL_VARCHAR;
 };
 
 struct SqlSrvV8Column
@@ -268,6 +219,8 @@ struct SqlSrvV8Request
     bool execute_pending = false;
     bool fetch_pending = false;
     size_t async_poll_count = 0U;
+    bool async_progress_started = false;
+    std::chrono::steady_clock::time_point async_progress_started_at;
 };
 
 struct SqlSrvV8Connection
@@ -516,15 +469,44 @@ void sqlsrv_v8_finish_request(const std::shared_ptr<SqlSrvV8Request>& request, b
 bool sqlsrv_v8_local_string(v8::Isolate* isolate, const std::string& value,
                             v8::Local<v8::String>* out)
 {
-    return sl_status_is_ok(
-        sqlsrv_v8_to_local_string(isolate, sl_str_from_parts(value.data(), value.size()), out));
+    return sl_v8_db_local_string_from_std_string(isolate, value, out);
+}
+
+bool sqlsrv_v8_make_typed_string_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                       const char* kind, const std::string& value,
+                                       v8::Local<v8::Value>* out)
+{
+    if (out == nullptr || kind == nullptr) {
+        return false;
+    }
+    return sl_v8_db_make_typed_string_value(isolate, context, kind,
+                                            sl_str_from_parts(value.data(), value.size()), out);
+}
+
+bool sqlsrv_v8_get_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   v8::Local<v8::Object> object, const char* key,
+                                   v8::Local<v8::Value>* out)
+{
+    return sl_v8_db_get_object_property(isolate, context, object, key, out);
+}
+
+bool sqlsrv_v8_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                          v8::Local<v8::Object> object, const char* key,
+                                          std::string* out)
+{
+    return sl_v8_db_get_object_string_property(isolate, context, object, key, out);
+}
+
+bool sqlsrv_v8_is_db_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                           v8::Local<v8::Value> value)
+{
+    return sl_v8_db_is_value_wrapper(isolate, context, value);
 }
 
 bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
                              const SqlSrvV8Cell& cell, v8::Local<v8::Value>* out)
 {
     v8::Local<v8::String> text;
-    (void)context;
     if (out == nullptr) {
         return false;
     }
@@ -534,6 +516,9 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         return true;
     case SqlSrvV8CellKind::Bool:
         *out = v8::Boolean::New(isolate, cell.bool_value);
+        return true;
+    case SqlSrvV8CellKind::Int32:
+        *out = v8::Number::New(isolate, static_cast<double>(cell.int_value));
         return true;
     case SqlSrvV8CellKind::Int64:
         *out = v8::BigInt::New(isolate, cell.int_value);
@@ -561,6 +546,19 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         }
         *out = text;
         return true;
+    case SqlSrvV8CellKind::Decimal:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "decimal", cell.text, out);
+    case SqlSrvV8CellKind::Uuid:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "uuid", cell.text, out);
+    case SqlSrvV8CellKind::Date:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "date", cell.text, out);
+    case SqlSrvV8CellKind::Time:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "time", cell.text, out);
+    case SqlSrvV8CellKind::LocalDateTime:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "localDateTime", cell.text, out);
+    case SqlSrvV8CellKind::OffsetDateTime:
+        return sqlsrv_v8_make_typed_string_value(isolate, context, "offsetDateTime", cell.text,
+                                                 out);
     }
     return false;
 }
@@ -653,11 +651,8 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
     if (!ok) {
-        v8::Local<v8::String> message;
-        if (!sqlsrv_v8_local_string(isolate, request->error, &message)) {
-            message = v8::String::NewFromUtf8Literal(isolate, "sqlserver operation failed");
-        }
-        (void)resolver->Reject(context, v8::Exception::Error(message));
+        (void)sl_v8_db_reject_promise(isolate, context, resolver, request->error,
+                                      "sqlserver operation failed");
         sqlsrv_v8_finish_request(request, false);
         return;
     }
@@ -700,7 +695,7 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
         sqlsrv_v8_finish_request(request, false);
         return;
     }
-    (void)resolver->Resolve(context, value);
+    (void)sl_v8_db_resolve_promise(context, resolver, value);
     sqlsrv_v8_finish_request(request, true);
 }
 
@@ -716,14 +711,28 @@ void sqlsrv_v8_completion_cleanup(const SlAsyncCompletion* completion, void* use
     delete payload;
 }
 
+void sqlsrv_v8_note_async_activity(SqlSrvV8Request* request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    request->async_progress_started = true;
+    request->async_progress_started_at = std::chrono::steady_clock::now();
+}
+
 bool sqlsrv_v8_post_pump(const std::shared_ptr<SqlSrvV8Request>& request)
 {
     SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    const auto now = std::chrono::steady_clock::now();
     if (backend == nullptr || backend->async_loop == nullptr || request->connection == nullptr) {
         return false;
     }
     request->async_poll_count += 1U;
-    if (request->async_poll_count > 2000U) {
+    if (!request->async_progress_started) {
+        request->async_progress_started = true;
+        request->async_progress_started_at = now;
+    }
+    if (now - request->async_progress_started_at > sqlsrv_v8_async_progress_timeout) {
         const char* state = "unknown";
         if (request->state == SqlSrvV8RequestState::Connecting) {
             state = "connecting";
@@ -736,10 +745,11 @@ bool sqlsrv_v8_post_pump(const std::shared_ptr<SqlSrvV8Request>& request)
         }
         request->error = "sqlserver async ODBC operation did not complete while ";
         request->error += state;
-        request->error += "; driver async support is unavailable or stalled";
+        request->error += "; driver async support is unavailable or stalled for 30 seconds";
         sqlsrv_v8_settle_request(request, false);
         return true;
     }
+    request->async_progress_started_at = now;
     auto* payload = new (std::nothrow) SqlSrvV8CompletionPayload();
     if (payload == nullptr) {
         return false;
@@ -810,6 +820,19 @@ bool sqlsrv_v8_bind_params(SqlSrvV8Request* request)
                                  SQL_WVARCHAR, param.text.size(), 0, (SQLPOINTER)param.text.c_str(),
                                  param.indicator, &param.indicator);
             break;
+        case SqlSrvV8ParamKind::Decimal:
+        case SqlSrvV8ParamKind::Uuid:
+        case SqlSrvV8ParamKind::Date:
+        case SqlSrvV8ParamKind::Time:
+        case SqlSrvV8ParamKind::LocalDateTime:
+        case SqlSrvV8ParamKind::OffsetDateTime:
+        case SqlSrvV8ParamKind::JsonText:
+            param.indicator = static_cast<SQLLEN>(param.text.size());
+            rc =
+                SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
+                                 param.sql_type, param.text.size(), 0,
+                                 (SQLPOINTER)param.text.c_str(), param.indicator, &param.indicator);
+            break;
         case SqlSrvV8ParamKind::Bytes:
             param.indicator = static_cast<SQLLEN>(param.bytes.size());
             rc = SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_BINARY,
@@ -878,8 +901,8 @@ SQLRETURN sqlsrv_v8_connect(SqlSrvV8Request* request)
     if (request->connect_pending) {
         RETCODE async_rc = SQL_ERROR;
         SQLRETURN rc = SQLCompleteAsync(SQL_HANDLE_DBC, connection->dbc, &async_rc);
-        if (rc == SQL_STILL_EXECUTING) {
-            return rc;
+        if (rc == SQL_STILL_EXECUTING || (SQL_SUCCEEDED(rc) && async_rc == SQL_STILL_EXECUTING)) {
+            return SQL_STILL_EXECUTING;
         }
         request->connect_pending = false;
         if (!SQL_SUCCEEDED(rc)) {
@@ -887,9 +910,10 @@ SQLRETURN sqlsrv_v8_connect(SqlSrvV8Request* request)
         }
         return async_rc;
     }
-    return SQLDriverConnectA(connection->dbc, nullptr,
-                             (SQLCHAR*)resource->connection_string.c_str(), SQL_NTS, nullptr, 0,
-                             nullptr, SQL_DRIVER_NOPROMPT);
+    SQLRETURN rc =
+        SQLDriverConnectA(connection->dbc, nullptr, (SQLCHAR*)resource->connection_string.c_str(),
+                          SQL_NTS, nullptr, 0, nullptr, SQL_DRIVER_NOPROMPT);
+    return rc;
 }
 
 bool sqlsrv_v8_allocate_statement(SqlSrvV8Request* request)
@@ -926,8 +950,8 @@ SQLRETURN sqlsrv_v8_execute(SqlSrvV8Request* request)
     if (request->execute_pending) {
         RETCODE async_rc = SQL_ERROR;
         SQLRETURN rc = SQLCompleteAsync(SQL_HANDLE_STMT, request->stmt, &async_rc);
-        if (rc == SQL_STILL_EXECUTING) {
-            return rc;
+        if (rc == SQL_STILL_EXECUTING || (SQL_SUCCEEDED(rc) && async_rc == SQL_STILL_EXECUTING)) {
+            return SQL_STILL_EXECUTING;
         }
         request->execute_pending = false;
         if (!SQL_SUCCEEDED(rc)) {
@@ -935,7 +959,8 @@ SQLRETURN sqlsrv_v8_execute(SqlSrvV8Request* request)
         }
         return async_rc;
     }
-    return SQLExecDirectA(request->stmt, (SQLCHAR*)request->sql.c_str(), SQL_NTS);
+    SQLRETURN rc = SQLExecDirectA(request->stmt, (SQLCHAR*)request->sql.c_str(), SQL_NTS);
+    return rc;
 }
 
 bool sqlsrv_v8_describe_columns(SqlSrvV8Request* request)
@@ -987,6 +1012,41 @@ bool sqlsrv_v8_is_int_type(SQLSMALLINT type)
 bool sqlsrv_v8_is_float_type(SQLSMALLINT type)
 {
     return type == SQL_REAL || type == SQL_FLOAT || type == SQL_DOUBLE;
+}
+
+bool sqlsrv_v8_is_decimal_type(SQLSMALLINT type)
+{
+    return type == SQL_DECIMAL || type == SQL_NUMERIC;
+}
+
+bool sqlsrv_v8_is_date_type(SQLSMALLINT type)
+{
+    return type == SQL_TYPE_DATE || type == SQL_DATE;
+}
+
+bool sqlsrv_v8_is_time_type(SQLSMALLINT type)
+{
+    return type == SQL_TYPE_TIME || type == SQL_TIME || type == SQL_SS_TIME2;
+}
+
+bool sqlsrv_v8_is_timestamp_type(SQLSMALLINT type)
+{
+    return type == SQL_TYPE_TIMESTAMP || type == SQL_TIMESTAMP;
+}
+
+bool sqlsrv_v8_is_offset_datetime_type(SQLSMALLINT type)
+{
+    return type == SQL_SS_TIMESTAMPOFFSET;
+}
+
+bool sqlsrv_v8_is_uuid_type(SQLSMALLINT type)
+{
+#ifdef SQL_GUID
+    return type == SQL_GUID;
+#else
+    (void)type;
+    return false;
+#endif
 }
 
 bool sqlsrv_v8_read_text_cell(SQLHSTMT stmt, SQLUSMALLINT column, SqlSrvV8Cell* out,
@@ -1087,6 +1147,37 @@ bool sqlsrv_v8_read_cell(SQLHSTMT stmt, const SqlSrvV8Column& column, SQLUSMALLI
         out->bool_value = value != 0U;
         return true;
     }
+    if (sqlsrv_v8_is_decimal_type(column.sql_type) || sqlsrv_v8_is_uuid_type(column.sql_type) ||
+        sqlsrv_v8_is_date_type(column.sql_type) || sqlsrv_v8_is_time_type(column.sql_type) ||
+        sqlsrv_v8_is_timestamp_type(column.sql_type) ||
+        sqlsrv_v8_is_offset_datetime_type(column.sql_type))
+    {
+        if (!sqlsrv_v8_read_text_cell(stmt, index, out, error)) {
+            return false;
+        }
+        if (out->kind == SqlSrvV8CellKind::Null) {
+            return true;
+        }
+        if (sqlsrv_v8_is_decimal_type(column.sql_type)) {
+            out->kind = SqlSrvV8CellKind::Decimal;
+        }
+        else if (sqlsrv_v8_is_uuid_type(column.sql_type)) {
+            out->kind = SqlSrvV8CellKind::Uuid;
+        }
+        else if (sqlsrv_v8_is_date_type(column.sql_type)) {
+            out->kind = SqlSrvV8CellKind::Date;
+        }
+        else if (sqlsrv_v8_is_time_type(column.sql_type)) {
+            out->kind = SqlSrvV8CellKind::Time;
+        }
+        else if (sqlsrv_v8_is_offset_datetime_type(column.sql_type)) {
+            out->kind = SqlSrvV8CellKind::OffsetDateTime;
+        }
+        else {
+            out->kind = SqlSrvV8CellKind::LocalDateTime;
+        }
+        return true;
+    }
     if (sqlsrv_v8_is_int_type(column.sql_type)) {
         int64_t value = 0;
         SQLRETURN rc = SQLGetData(stmt, index, SQL_C_SBIGINT, &value, 0, &indicator);
@@ -1101,7 +1192,8 @@ bool sqlsrv_v8_read_cell(SQLHSTMT stmt, const SqlSrvV8Column& column, SQLUSMALLI
             }
             return false;
         }
-        out->kind = SqlSrvV8CellKind::Int64;
+        out->kind =
+            column.sql_type == SQL_BIGINT ? SqlSrvV8CellKind::Int64 : SqlSrvV8CellKind::Int32;
         out->int_value = value;
         return true;
     }
@@ -1189,6 +1281,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver connection failed"));
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             connection->state = SqlSrvV8ConnectionState::Busy;
             request->state = SqlSrvV8RequestState::Executing;
         }
@@ -1211,22 +1304,36 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver statement failed"));
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             if (!sqlsrv_v8_prepare_after_execute(request.get())) {
                 sqlsrv_v8_fail_request(request, request->error);
+                return;
             }
-            return;
+            if (request->state != SqlSrvV8RequestState::Fetching) {
+                return;
+            }
         }
         if (request->state == SqlSrvV8RequestState::Fetching) {
             SQLRETURN rc = SQL_SUCCESS;
             if (request->fetch_pending) {
                 RETCODE async_rc = SQL_ERROR;
                 rc = SQLCompleteAsync(SQL_HANDLE_STMT, request->stmt, &async_rc);
-                if (rc != SQL_STILL_EXECUTING) {
-                    request->fetch_pending = false;
-                    if (SQL_SUCCEEDED(rc)) {
-                        rc = async_rc;
+                if (rc == SQL_STILL_EXECUTING ||
+                    (SQL_SUCCEEDED(rc) && async_rc == SQL_STILL_EXECUTING))
+                {
+                    if (!sqlsrv_v8_post_pump(request)) {
+                        sqlsrv_v8_fail_request(request,
+                                               "sqlserver async fetch continuation failed");
                     }
+                    return;
                 }
+                request->fetch_pending = false;
+                if (!SQL_SUCCEEDED(rc)) {
+                    sqlsrv_v8_fail_request(request, "sqlserver async fetch continuation failed");
+                    return;
+                }
+                sqlsrv_v8_note_async_activity(request.get());
+                rc = async_rc;
             }
             else {
                 rc = SQLFetch(request->stmt);
@@ -1239,6 +1346,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 return;
             }
             if (rc == SQL_NO_DATA) {
+                sqlsrv_v8_note_async_activity(request.get());
                 request->state = SqlSrvV8RequestState::Terminal;
                 sqlsrv_v8_settle_request(request, true);
                 return;
@@ -1252,6 +1360,7 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 sqlsrv_v8_fail_request(request, request->error);
                 return;
             }
+            sqlsrv_v8_note_async_activity(request.get());
             if (request->operation == SqlSrvV8Operation::QueryOne ||
                 request->operation == SqlSrvV8Operation::TransactionQueryOne)
             {
@@ -1377,6 +1486,91 @@ bool sqlsrv_v8_submit_request(const std::shared_ptr<SqlSrvV8Request>& request)
     return sqlsrv_v8_attach_request_to_connection(resource, connection, request);
 }
 
+bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Value> item, SqlSrvV8Param* param)
+{
+    std::string kind;
+    v8::Local<v8::Value> raw_value;
+    v8::Local<v8::String> json_text;
+
+    if (param == nullptr || !item->IsObject()) {
+        return false;
+    }
+    v8::Local<v8::Object> object = item.As<v8::Object>();
+    if (!sqlsrv_v8_get_object_string_property(isolate, context, object, "kind", &kind) ||
+        !sqlsrv_v8_get_object_property(isolate, context, object, "value", &raw_value))
+    {
+        return false;
+    }
+    if (kind == "json") {
+        if (!v8::JSON::Stringify(context, raw_value).ToLocal(&json_text) ||
+            !sl_v8_std_string_from_value(isolate, json_text, &param->text))
+        {
+            sqlsrv_v8_throw_type_error(isolate,
+                                       "sqlserver json parameters must be JSON-serializable");
+            return false;
+        }
+        param->kind = SqlSrvV8ParamKind::JsonText;
+        param->sql_type = SQL_VARCHAR;
+        return true;
+    }
+    if (kind == "rawJson") {
+        if (!raw_value->IsString() ||
+            !sl_v8_std_string_from_value(isolate, raw_value, &param->text))
+        {
+            return false;
+        }
+        param->kind = SqlSrvV8ParamKind::JsonText;
+        param->sql_type = SQL_VARCHAR;
+        return true;
+    }
+    if (kind == "bytes") {
+        if (!sl_v8_db_copy_uint8_array(raw_value, &param->bytes)) {
+            sqlsrv_v8_throw_type_error(isolate,
+                                       "sqlserver bytes value wrapper must hold Uint8Array");
+            return false;
+        }
+        param->kind = SqlSrvV8ParamKind::Bytes;
+        return true;
+    }
+    if (!raw_value->IsString() || !sl_v8_std_string_from_value(isolate, raw_value, &param->text)) {
+        return false;
+    }
+    if (kind == "decimal") {
+        param->kind = SqlSrvV8ParamKind::Decimal;
+        param->sql_type = SQL_DECIMAL;
+    }
+    else if (kind == "uuid") {
+        param->kind = SqlSrvV8ParamKind::Uuid;
+#ifdef SQL_GUID
+        param->sql_type = SQL_GUID;
+#else
+        param->sql_type = SQL_VARCHAR;
+#endif
+    }
+    else if (kind == "date") {
+        param->kind = SqlSrvV8ParamKind::Date;
+        param->sql_type = SQL_TYPE_DATE;
+    }
+    else if (kind == "time") {
+        param->kind = SqlSrvV8ParamKind::Time;
+        param->sql_type = SQL_SS_TIME2;
+    }
+    else if (kind == "localDateTime") {
+        param->kind = SqlSrvV8ParamKind::LocalDateTime;
+        param->sql_type = SQL_TYPE_TIMESTAMP;
+    }
+    else if (kind == "instant" || kind == "offsetDateTime") {
+        param->kind = SqlSrvV8ParamKind::OffsetDateTime;
+        param->sql_type = SQL_SS_TIMESTAMPOFFSET;
+    }
+    else {
+        sqlsrv_v8_throw_type_error(isolate, "sqlserver sql value wrapper kind is not supported");
+        return false;
+    }
+    return true;
+}
+
 bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
                               v8::Local<v8::Value> value, std::vector<SqlSrvV8Param>* out)
 {
@@ -1404,7 +1598,12 @@ bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
         if (!array->Get(context, index).ToLocal(&item)) {
             return false;
         }
-        if (item->IsNull() || item->IsUndefined()) {
+        if (item->IsUndefined()) {
+            sqlsrv_v8_throw_type_error(isolate,
+                                       "sqlserver undefined parameters are not SQL NULL; use null");
+            return false;
+        }
+        if (item->IsNull()) {
             param.kind = SqlSrvV8ParamKind::Null;
             param.indicator = SQL_NULL_DATA;
         }
@@ -1414,10 +1613,19 @@ bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
         }
         else if (item->IsNumber()) {
             double number = item.As<v8::Number>()->Value();
-            if (std::isfinite(number) && std::trunc(number) == number &&
-                number >= static_cast<double>(std::numeric_limits<int64_t>::min()) &&
-                number <= static_cast<double>(std::numeric_limits<int64_t>::max()))
+            if (!std::isfinite(number)) {
+                sqlsrv_v8_throw_type_error(isolate, "sqlserver number parameters must be finite");
+                return false;
+            }
+            if (std::trunc(number) == number &&
+                (number < sqlsrv_v8_min_safe_integer || number > sqlsrv_v8_max_safe_integer))
             {
+                sqlsrv_v8_throw_type_error(
+                    isolate,
+                    "sqlserver integer parameters outside JS safe integer range must use BigInt");
+                return false;
+            }
+            if (std::trunc(number) == number) {
                 param.kind = SqlSrvV8ParamKind::Int64;
                 param.int_value = static_cast<int64_t>(number);
             }
@@ -1437,18 +1645,15 @@ bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
             param.int_value = value64;
         }
         else if (item->IsUint8Array()) {
-            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
-            std::shared_ptr<v8::BackingStore> backing = bytes->Buffer()->GetBackingStore();
-            size_t offset = bytes->ByteOffset();
-            size_t length = bytes->ByteLength();
-            if (backing == nullptr || offset > backing->ByteLength() ||
-                length > backing->ByteLength() - offset)
-            {
+            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
                 return false;
             }
-            unsigned char* data = static_cast<unsigned char*>(backing->Data());
             param.kind = SqlSrvV8ParamKind::Bytes;
-            param.bytes.assign(data + offset, data + offset + length);
+        }
+        else if (sqlsrv_v8_is_db_value(isolate, context, item)) {
+            if (!sqlsrv_v8_convert_db_value_param(isolate, context, item, &param)) {
+                return false;
+            }
         }
         else if (item->IsString()) {
             param.kind = SqlSrvV8ParamKind::Text;
@@ -1459,7 +1664,8 @@ bool sqlsrv_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
         else {
             sqlsrv_v8_throw_type_error(
                 isolate,
-                "sqlserver parameters support null, boolean, number, bigint, string, and bytes");
+                "sqlserver parameters support null, boolean, number, bigint, string, bytes, and "
+                "sql value wrappers");
             return false;
         }
         out->push_back(std::move(param));
@@ -1623,12 +1829,9 @@ bool sqlsrv_v8_make_promise(v8::Isolate* isolate, v8::Local<v8::Context> context
                             const std::shared_ptr<SqlSrvV8Request>& request,
                             v8::Local<v8::Promise>* out)
 {
-    v8::Local<v8::Promise::Resolver> resolver;
-    if (out == nullptr || !v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+    if (request == nullptr || !sl_v8_db_make_promise(isolate, context, &request->resolver, out)) {
         return false;
     }
-    request->resolver.Reset(isolate, resolver);
-    *out = resolver->GetPromise();
     return true;
 }
 

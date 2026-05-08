@@ -31,6 +31,7 @@
 enum
 {
     SL_PG_OID_BOOL = 16,
+    SL_PG_OID_BYTEA = 17,
     SL_PG_OID_INT8 = 20,
     SL_PG_OID_INT2 = 21,
     SL_PG_OID_INT4 = 23,
@@ -38,7 +39,14 @@ enum
     SL_PG_OID_FLOAT4 = 700,
     SL_PG_OID_FLOAT8 = 701,
     SL_PG_OID_VARCHAR = 1043,
-    SL_PG_OID_NUMERIC = 1700
+    SL_PG_OID_DATE = 1082,
+    SL_PG_OID_TIME = 1083,
+    SL_PG_OID_TIMESTAMP = 1114,
+    SL_PG_OID_TIMESTAMPTZ = 1184,
+    SL_PG_OID_JSON = 114,
+    SL_PG_OID_NUMERIC = 1700,
+    SL_PG_OID_UUID = 2950,
+    SL_PG_OID_JSONB = 3802
 };
 
 static SlStr sl_pg_literal(const char* ptr, size_t length)
@@ -111,6 +119,31 @@ static SlStatus sl_pg_copy_cstr(SlArena* arena, SlStr src, char** out)
     }
     dst[src.length] = '\0';
     *out = dst;
+    return sl_status_ok();
+}
+
+static SlStatus sl_pg_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
+{
+    void* ptr = NULL;
+    unsigned char* dst = NULL;
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || (src.length != 0U && src.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (src.length == 0U) {
+        *out = sl_bytes_empty();
+        return sl_status_ok();
+    }
+    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    dst = (unsigned char*)ptr;
+    for (size_t index = 0U; index < src.length; index += 1U) {
+        dst[index] = src.ptr[index];
+    }
+    *out = sl_bytes_from_parts(dst, src.length);
     return sl_status_ok();
 }
 
@@ -504,8 +537,111 @@ static SlStatus sl_pg_param_text(SlArena* arena, const SlPostgresParam* param, c
     case SL_POSTGRES_PARAM_BOOL:
         *out_value = param->value.boolean ? "true" : "false";
         return sl_status_ok();
+    case SL_POSTGRES_PARAM_DECIMAL:
+        if (!sl_pg_str_valid(param->value.decimal)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.decimal, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_UUID:
+        if (!sl_pg_str_valid(param->value.uuid)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.uuid, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_JSON:
+        if (!sl_pg_str_valid(param->value.json)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.json, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_DATE:
+        if (!sl_pg_str_valid(param->value.date)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.date, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_TIME:
+        if (!sl_pg_str_valid(param->value.time)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.time, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_TIMESTAMP:
+        if (!sl_pg_str_valid(param->value.timestamp)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.timestamp, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
+    case SL_POSTGRES_PARAM_INSTANT:
+        if (!sl_pg_str_valid(param->value.instant)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_pg_copy_cstr(arena, param->value.instant, &copied);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = copied;
+        return sl_status_ok();
     default:
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+}
+
+static Oid sl_pg_param_oid(SlPostgresParamKind kind)
+{
+    switch (kind) {
+    case SL_POSTGRES_PARAM_BOOL:
+        return SL_PG_OID_BOOL;
+    case SL_POSTGRES_PARAM_INTEGER:
+        return SL_PG_OID_INT8;
+    case SL_POSTGRES_PARAM_FLOAT:
+        return SL_PG_OID_FLOAT8;
+    case SL_POSTGRES_PARAM_TEXT:
+        return SL_PG_OID_TEXT;
+    case SL_POSTGRES_PARAM_BYTES:
+        return SL_PG_OID_BYTEA;
+    case SL_POSTGRES_PARAM_DECIMAL:
+        return SL_PG_OID_NUMERIC;
+    case SL_POSTGRES_PARAM_UUID:
+        return SL_PG_OID_UUID;
+    case SL_POSTGRES_PARAM_JSON:
+        return SL_PG_OID_JSONB;
+    case SL_POSTGRES_PARAM_DATE:
+        return SL_PG_OID_DATE;
+    case SL_POSTGRES_PARAM_TIME:
+        return SL_PG_OID_TIME;
+    case SL_POSTGRES_PARAM_TIMESTAMP:
+        return SL_PG_OID_TIMESTAMP;
+    case SL_POSTGRES_PARAM_INSTANT:
+        return SL_PG_OID_TIMESTAMPTZ;
+    case SL_POSTGRES_PARAM_NULL:
+    default:
+        return 0;
     }
 }
 
@@ -517,7 +653,11 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
     PGconn* conn = sl_pg_conn(connection);
     char* sql_cstr = NULL;
     const char* values[SL_POSTGRES_MAX_PARAMS] = {0};
+    Oid types[SL_POSTGRES_MAX_PARAMS] = {0};
+    int lengths[SL_POSTGRES_MAX_PARAMS] = {0};
+    int formats[SL_POSTGRES_MAX_PARAMS] = {0};
     char buffers[SL_POSTGRES_MAX_PARAMS][96] = {{0}};
+    static const char empty_bytes[1] = {0};
     PGresult* result = NULL;
     SlStatus status;
 
@@ -538,6 +678,20 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
         return status;
     }
     for (size_t index = 0U; index < param_count; index += 1U) {
+        if (params[index].kind == SL_POSTGRES_PARAM_BYTES) {
+            if (params[index].value.bytes.length > (size_t)INT32_MAX ||
+                (params[index].value.bytes.length != 0U && params[index].value.bytes.ptr == NULL))
+            {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
+            values[index] = params[index].value.bytes.length == 0U
+                                ? empty_bytes
+                                : (const char*)params[index].value.bytes.ptr;
+            types[index] = sl_pg_param_oid(params[index].kind);
+            lengths[index] = (int)params[index].value.bytes.length;
+            formats[index] = 1;
+            continue;
+        }
         status = sl_pg_param_text(arena, &params[index], buffers[index], sizeof(buffers[index]),
                                   &values[index]);
         if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
@@ -550,9 +704,10 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        types[index] = sl_pg_param_oid(params[index].kind);
     }
 
-    result = PQexecParams(conn, sql_cstr, (int)param_count, NULL, values, NULL, NULL, 0);
+    result = PQexecParams(conn, sql_cstr, (int)param_count, types, values, lengths, formats, 0);
     if (result == NULL) {
         return sl_pg_diag(arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
                           sl_pg_literal("postgres provider query allocation failed",
@@ -643,6 +798,10 @@ static SlStatus sl_pg_copy_value(SlArena* arena, PGresult* result, int row, int 
         }
     }
     if (oid == SL_PG_OID_FLOAT4 || oid == SL_PG_OID_FLOAT8 || oid == SL_PG_OID_NUMERIC) {
+        if (oid == SL_PG_OID_NUMERIC) {
+            out->kind = SL_POSTGRES_VALUE_DECIMAL;
+            return sl_pg_copy_str(arena, text, &out->value.decimal);
+        }
         errno = 0;
         number = strtod(text.ptr, &end);
         if (errno == 0 && end == text.ptr + text.length) {
@@ -650,6 +809,42 @@ static SlStatus sl_pg_copy_value(SlArena* arena, PGresult* result, int row, int 
             out->value.number = number;
             return sl_status_ok();
         }
+    }
+    if (oid == SL_PG_OID_BYTEA) {
+        size_t length = 0U;
+        unsigned char* unescaped = PQunescapeBytea((const unsigned char*)text.ptr, &length);
+        SlStatus status;
+        if (unescaped == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        out->kind = SL_POSTGRES_VALUE_BYTES;
+        status = sl_pg_copy_bytes(arena, sl_bytes_from_parts(unescaped, length), &out->value.bytes);
+        PQfreemem(unescaped);
+        return status;
+    }
+    if (oid == SL_PG_OID_UUID) {
+        out->kind = SL_POSTGRES_VALUE_UUID;
+        return sl_pg_copy_str(arena, text, &out->value.uuid);
+    }
+    if (oid == SL_PG_OID_JSON || oid == SL_PG_OID_JSONB) {
+        out->kind = SL_POSTGRES_VALUE_JSON;
+        return sl_pg_copy_str(arena, text, &out->value.json);
+    }
+    if (oid == SL_PG_OID_DATE) {
+        out->kind = SL_POSTGRES_VALUE_DATE;
+        return sl_pg_copy_str(arena, text, &out->value.date);
+    }
+    if (oid == SL_PG_OID_TIME) {
+        out->kind = SL_POSTGRES_VALUE_TIME;
+        return sl_pg_copy_str(arena, text, &out->value.time);
+    }
+    if (oid == SL_PG_OID_TIMESTAMP) {
+        out->kind = SL_POSTGRES_VALUE_TIMESTAMP;
+        return sl_pg_copy_str(arena, text, &out->value.timestamp);
+    }
+    if (oid == SL_PG_OID_TIMESTAMPTZ) {
+        out->kind = SL_POSTGRES_VALUE_INSTANT;
+        return sl_pg_copy_str(arena, text, &out->value.instant);
     }
     (void)SL_PG_OID_TEXT;
     (void)SL_PG_OID_VARCHAR;

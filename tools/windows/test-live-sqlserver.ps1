@@ -41,11 +41,39 @@ exec /opt/mssql-tools/bin/sqlcmd "$@"
 '@
 
     if ($InputFile.Length -gt 0) {
-        Get-Content -Raw $InputFile | docker exec -i $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C
+        docker cp $InputFile "$($container):/tmp/sloppy-live-init.sql"
+        if ($LASTEXITCODE -ne 0) {
+            throw "SQL Server live init copy failed."
+        }
+        docker exec $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C -b -i /tmp/sloppy-live-init.sql | Out-Null
     }
     else {
-        docker exec $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C -Q $Query | Out-Null
+        docker exec $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C -b -Q $Query | Out-Null
     }
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQL Server live query failed."
+    }
+}
+
+function Wait-SqlServerHostConnection {
+    for ($attempt = 0; $attempt -lt 30; $attempt += 1) {
+        $connection = $null
+        try {
+            $connection = [System.Data.Odbc.OdbcConnection]::new($env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING)
+            $connection.Open()
+            return
+        }
+        catch {
+            Start-Sleep -Seconds 1
+        }
+        finally {
+            if ($null -ne $connection) {
+                $connection.Dispose()
+            }
+        }
+    }
+
+    throw "UNAVAILABLE: SQL Server host ODBC connection did not become ready before timeout."
 }
 
 if (-not $NoDocker) {
@@ -69,6 +97,7 @@ if (-not $NoDocker) {
     }
 
     Invoke-SqlServerContainerQuery -Query "" -InputFile $initSql
+    Wait-SqlServerHostConnection
 }
 
 try {

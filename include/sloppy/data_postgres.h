@@ -2,6 +2,7 @@
 #define SLOPPY_DATA_POSTGRES_H
 
 #include "sloppy/arena.h"
+#include "sloppy/bytes.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -52,6 +53,14 @@ typedef enum SlPostgresParamKind
     SL_POSTGRES_PARAM_INTEGER = 2,
     SL_POSTGRES_PARAM_FLOAT = 3,
     SL_POSTGRES_PARAM_BOOL = 4,
+    SL_POSTGRES_PARAM_BYTES = 5,
+    SL_POSTGRES_PARAM_DECIMAL = 6,
+    SL_POSTGRES_PARAM_UUID = 7,
+    SL_POSTGRES_PARAM_JSON = 8,
+    SL_POSTGRES_PARAM_DATE = 9,
+    SL_POSTGRES_PARAM_TIME = 10,
+    SL_POSTGRES_PARAM_TIMESTAMP = 11,
+    SL_POSTGRES_PARAM_INSTANT = 12,
     SL_POSTGRES_PARAM_UNSUPPORTED = 255
 } SlPostgresParamKind;
 
@@ -60,9 +69,17 @@ typedef struct SlPostgresParam
     SlPostgresParamKind kind;
     union {
         SlStr text;
+        SlBytes bytes;
         int64_t integer;
         double number;
         bool boolean;
+        SlStr decimal;
+        SlStr uuid;
+        SlStr json;
+        SlStr date;
+        SlStr time;
+        SlStr timestamp;
+        SlStr instant;
     } value;
 } SlPostgresParam;
 
@@ -72,7 +89,15 @@ typedef enum SlPostgresValueKind
     SL_POSTGRES_VALUE_TEXT = 1,
     SL_POSTGRES_VALUE_INTEGER = 2,
     SL_POSTGRES_VALUE_FLOAT = 3,
-    SL_POSTGRES_VALUE_BOOL = 4
+    SL_POSTGRES_VALUE_BOOL = 4,
+    SL_POSTGRES_VALUE_BYTES = 5,
+    SL_POSTGRES_VALUE_DECIMAL = 6,
+    SL_POSTGRES_VALUE_UUID = 7,
+    SL_POSTGRES_VALUE_JSON = 8,
+    SL_POSTGRES_VALUE_DATE = 9,
+    SL_POSTGRES_VALUE_TIME = 10,
+    SL_POSTGRES_VALUE_TIMESTAMP = 11,
+    SL_POSTGRES_VALUE_INSTANT = 12
 } SlPostgresValueKind;
 
 typedef struct SlPostgresValue
@@ -80,9 +105,17 @@ typedef struct SlPostgresValue
     SlPostgresValueKind kind;
     union {
         SlStr text;
+        SlBytes bytes;
         int64_t integer;
         double number;
         bool boolean;
+        SlStr decimal;
+        SlStr uuid;
+        SlStr json;
+        SlStr date;
+        SlStr time;
+        SlStr timestamp;
+        SlStr instant;
     } value;
 } SlPostgresValue;
 

@@ -11,7 +11,10 @@ When the V8 SDK is resolved and V8 is enabled, the bridge supports classic gener
 scripts, registered handler execution, request-context materialization, `Results.*`
 descriptor conversion, bounded direct Promise settlement, exception diagnostics,
 source-map primary-span remapping, runtime feature-gated intrinsics, and the current
-synchronous SQLite bridge.
+SQLite, PostgreSQL, and SQL Server provider bridges. SQLite provider work is serialized
+through the provider executor; PostgreSQL uses nonblocking libpq readiness watches; SQL
+Server advances asynchronous ODBC connection/statement state through V8 continuations only
+when the driver supports it.
 
 Default non-V8 gates do not prove this behavior.
 
@@ -69,8 +72,8 @@ matches those constraints.
 ## Non-Claims
 
 The current bridge is not a Node runtime, npm package loader, general ESM module cache,
-browser-compatible JavaScript environment, production async runtime, or broad provider
-bridge.
+browser-compatible JavaScript environment, production async runtime, ORM, migration layer,
+or provider readiness claim without the named provider evidence lane.
 
 ## Tests
 
