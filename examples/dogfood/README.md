@@ -10,7 +10,7 @@ Current runnable or diagnosable targets:
 
 - `hello-artifact`: uses `examples/compiler-hello/app.js` and the checked-in generated
   artifact fixture under `compiler/tests/fixtures/hello-mapget/expected`.
-- `hello-source-input`: uses `examples/hello-minimal/app.ts` through the source-input
+- `hello-source-input`: uses `examples/hello-minimal/src/main.ts` through the source-input
   fixture harness.
 - `package-hello-artifact`: uses the package outside-checkout smoke fixture when a package
   archive is provided.

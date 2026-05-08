@@ -5,6 +5,7 @@ Status: executable source-input example for the currently supported framework su
 Run from this directory with a V8-enabled build:
 
 ```powershell
+..\..\build\windows-relwithdebinfo\sloppy.exe build
 ..\..\build\windows-relwithdebinfo\sloppy.exe run --once GET /health
 ..\..\build\windows-relwithdebinfo\sloppy.exe run --once GET /hello/Ada
 ```
@@ -12,7 +13,7 @@ Run from this directory with a V8-enabled build:
 Run from the repository root:
 
 ```powershell
-.\build\windows-relwithdebinfo\sloppy.exe run examples/hello-minimal/app.ts --once GET /hello/Ada
+.\build\windows-relwithdebinfo\sloppy.exe run examples/hello-minimal/src/main.ts --once GET /hello/Ada
 ```
 
 The example proves `sloppy run`, `sloppy.json`, a TypeScript-extension source file in the

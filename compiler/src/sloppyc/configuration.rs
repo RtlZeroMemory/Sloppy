@@ -23,7 +23,11 @@ impl ConfigurationModel {
             .environment
             .clone()
             .unwrap_or_else(|| "Development".to_string());
-        let config_dir = input.parent().unwrap_or_else(|| Path::new(""));
+        let config_dir = options
+            .config_dir
+            .as_deref()
+            .unwrap_or_else(|| input.parent().unwrap_or_else(|| Path::new("")));
+        let config_dir = absolute_config_dir(config_dir)?;
         let mut model = Self {
             environment,
             values: BTreeMap::new(),
@@ -53,6 +57,7 @@ impl ConfigurationModel {
         )?;
         model.apply_environment_variables(config_reads)?;
         model.apply_cli_overrides(options);
+        model.absolutize_config_relative_plan_paths(&config_dir);
         Ok(model)
     }
 
@@ -69,6 +74,17 @@ impl ConfigurationModel {
             ("Sloppy:Runtime:V8MicrotaskDrainLimit", json!(64)),
         ] {
             self.set(key, value, "built-in defaults");
+        }
+    }
+
+    fn absolutize_config_relative_plan_paths(&mut self, config_dir: &Path) {
+        for key in [
+            "Sloppy:Server:Tls:CertificatePath",
+            "Sloppy:Server:Tls:PrivateKeyPath",
+        ] {
+            if let Some(entry) = self.values.get_mut(&normalize_config_key(key)) {
+                entry.value = config_path_value_for_plan(config_dir, &entry.value);
+            }
         }
     }
 
@@ -431,6 +447,40 @@ impl ConfigurationModel {
             .filter_map(|entry| entry.key.split(':').next().map(normalize_config_key))
             .collect()
     }
+}
+
+fn absolute_config_dir(config_dir: &Path) -> Result<PathBuf, Diagnostic> {
+    if config_dir.is_absolute() || path_text_is_absolute_or_drive_relative(config_dir) {
+        return Ok(fs::canonicalize(config_dir).unwrap_or_else(|_| config_dir.to_path_buf()));
+    }
+
+    let current_dir = std::env::current_dir().map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_CONFIG_DIR",
+            format!("failed to resolve configuration directory: {error}"),
+        )
+    })?;
+    let absolute = current_dir.join(config_dir);
+    Ok(fs::canonicalize(&absolute).unwrap_or(absolute))
+}
+
+fn config_path_value_for_plan(config_dir: &Path, value: &Value) -> Value {
+    let Value::String(text) = value else {
+        return value.clone();
+    };
+    if text.is_empty() || path_text_is_absolute_or_drive_relative(Path::new(text)) {
+        return value.clone();
+    }
+    json!(config_dir.join(text).to_string_lossy().into_owned())
+}
+
+fn path_text_is_absolute_or_drive_relative(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    let bytes = text.as_bytes();
+    if text.starts_with('/') || text.starts_with('\\') {
+        return true;
+    }
+    bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
 }
 
 pub(super) fn resolve_json_config_value(

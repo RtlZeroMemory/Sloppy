@@ -287,7 +287,7 @@ static int run_test(const char* name, int (*test)(void))
 #ifdef _MSC_VER
         fprintf_s(stderr, "FAIL: %s returned %d\n", name, result);
 #else
-        (void)fprintf(stderr, "FAIL: %s returned %d\n", name, result);
+        fprintf(stderr, "FAIL: %s returned %d\n", name, result);
 #endif
     }
 

@@ -155,6 +155,7 @@ typedef struct SlCliOptions
     const char* plan_path;
     const char* output_path;
     const char* input_path;
+    const char* out_dir;
     const char* artifacts_path;
     const char* stdlib_path;
     const char* host;
@@ -166,5 +167,6 @@ typedef struct SlCliOptions
     bool host_explicit;
     bool port_explicit;
     bool environment_explicit;
+    bool out_explicit;
     bool help;
 } SlCliOptions;

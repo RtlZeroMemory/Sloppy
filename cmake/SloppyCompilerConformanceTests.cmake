@@ -30,7 +30,7 @@
             conformance.hello.compile_artifacts hello examples/compiler-hello/app.js)
         sloppy_add_conformance_compile_test(
             conformance.hello_minimal.compile_artifacts hello-minimal
-            examples/hello-minimal/app.ts)
+            examples/hello-minimal/src/main.ts)
         sloppy_add_conformance_compile_test(
             conformance.configured_api.compile_artifacts configured-api
             examples/configured-api/app.js)
@@ -109,7 +109,7 @@
         endfunction()
 
         sloppy_add_example_tooling_test(
-            examples.hello_minimal.tooling hello-minimal examples/hello-minimal/app.ts
+            examples.hello_minimal.tooling hello-minimal examples/hello-minimal/src/main.ts
             "Hello.Get" "/hello/\\{name\\}" "" "\"findings\"" "x-slop-completeness")
         sloppy_add_example_tooling_test(
             examples.configured_api.tooling configured-api examples/configured-api/app.js

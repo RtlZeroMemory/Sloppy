@@ -9,14 +9,17 @@ the current subset cannot support a behavior.
 The supported source-input path is:
 
 ```powershell
-sloppyc build examples/compiler-hello/app.js --out .sloppy
+sloppy build
+sloppy run
+sloppy run src/main.ts --once GET /health
 sloppy run --artifacts .sloppy --once GET /
-sloppy run examples/compiler-hello/app.js --once GET /
 ```
 
-`sloppy run <source.js>` compiles first and then enters the artifact runtime. Runtime
-execution requires a V8-enabled build. Default non-V8 evidence proves the default native,
-compiler, CTest, and scanner path only.
+`sloppy build` compiles the configured `src/main.ts` source graph into Plan-backed
+artifacts without entering V8. `sloppy run` and `sloppy run <source.js|source.ts>` compile
+first, validate artifacts, and then enter the artifact runtime. Runtime execution requires
+a V8-enabled build. Default non-V8 evidence proves compile/artifact validation only, not
+handler execution.
 
 ## App API Shape
 
@@ -40,7 +43,7 @@ runnable artifact apps; public docs and example READMEs must say which lane they
 
 Current implementation supports a narrow compiler/runtime subset:
 
-- compiler extraction for supported one-file app sources;
+- compiler extraction for supported static source graphs;
 - deterministic Plan/artifact/source-map emission;
 - artifact validation and V8-gated artifact execution;
 - bounded route dispatch and supported result descriptors;

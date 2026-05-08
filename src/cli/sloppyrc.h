@@ -18,6 +18,7 @@ typedef struct SlSloppyRunConfig
 } SlSloppyRunConfig;
 
 int sl_sloppyrc_load(SlSloppyRunConfig* out);
+int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name);
 
 #ifdef __cplusplus
 }

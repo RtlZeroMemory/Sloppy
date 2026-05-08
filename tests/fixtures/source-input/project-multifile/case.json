@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "lane": "source-input",
+  "mode": "positive",
+  "source": "",
+  "sloppyJson": "sloppy.json",
+  "environment": "",
+  "once": {
+    "method": "GET",
+    "target": "/users/ada"
+  },
+  "expectedExit": 0,
+  "expected": {
+    "stdoutContains": [
+      "\"id\":\"ada\"",
+      "\"name\":\"Ada Lovelace\""
+    ],
+    "stderrContains": [],
+    "artifactDir": ".sloppy",
+    "sourceMapSources": [
+      "main.ts",
+      "health.module.ts",
+      "users.module.ts"
+    ],
+    "planContains": [
+      "Users.Get",
+      "/users/{id}",
+      "appsettings.Development.json",
+      "5174"
+    ],
+    "diagnosticCodes": []
+  },
+  "requiredFeatures": [
+    "http-routing",
+    "codec-json"
+  ],
+  "requiresV8": true,
+  "requiresPlatform": "any",
+  "requiresDependency": "sloppyc"
+}

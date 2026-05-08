@@ -10,6 +10,8 @@ decisions. Do not create a duplicate DEVLOOP EPIC unless the owner explicitly as
 The explicit artifact workflow remains supported:
 
 ```powershell
+sloppy build
+sloppy build <source>
 sloppyc build <source> --out <artifacts>
 sloppy run --artifacts <artifacts>
 ```
@@ -26,6 +28,7 @@ The direct source-input command is:
 ```powershell
 sloppy run app.js
 sloppy run app.ts
+sloppy run src/main.ts
 sloppy run
 ```
 
@@ -39,16 +42,18 @@ The default no-argument form uses `sloppy.json` when present:
 
 ```json
 {
-  "entry": "app.js",
+  "entry": "src/main.ts",
   "outDir": ".sloppy",
   "environment": "Development"
 }
 ```
 
-`sloppy.json` remains project/run config. Application configuration lives in
-`appsettings.json` and `appsettings.{Environment}.json` next to the source entry. The
+`sloppy.json` remains project build/run config. Project-mode application configuration
+lives in `appsettings.json` and `appsettings.{Environment}.json` next to `sloppy.json`;
+positional source-input configuration stays next to the source entry. The
 environment from `sloppy.json` selects the overlay unless `sloppy run --environment <name>`
-is supplied, in which case the CLI value wins. `--artifacts <dir>` remains an explicit
+or `sloppy build --environment <name>` is supplied, in which case the CLI value wins.
+`--artifacts <dir>` remains an explicit
 artifact/debug path and does not require `sloppy.json` or appsettings files.
 
 ## Build/Cache/Artifact Policy
@@ -57,6 +62,8 @@ artifact/debug path and does not require `sloppy.json` or appsettings files.
   in ENGINE-02.E.
 - `sloppy.json` writes to `outDir`, defaulting to `.sloppy`, and rebuilds every run in
   ENGINE-02.E.
+- `sloppy build` emits and validates artifacts without entering V8; runtime execution is
+  still owned by `sloppy run` or `sloppy run --artifacts`.
 - Complete cache reuse remains deferred. Future cache keys must include source and
   supported import hashes, compiler/runtime/stdlib identity, target platform/engine,
   environment, and relevant feature/options.

@@ -176,6 +176,7 @@ $includePattern = '^\s*#\s*include\s*[<"]([^>"]+)[>"]'
 $unsafeFunctionPattern = '\b(gets|strcpy|strncpy|strcat|sprintf|vsprintf|strdup)\s*\('
 $cstringTerminatorPattern = '\bsl_str_copy_to_arena_nul\s*\('
 $memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove|memcmp|memset)\s*\('
+$ignoredStdioVoidCastPattern = '\(void\)\s*(snprintf|fprintf|fputs|printf|fputc)\s*\('
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
 $analysisSuppressionPattern = '\bNOLINT(?:NEXTLINE|BEGIN|END)?\b'
 $validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*remove when .+$'
@@ -307,6 +308,18 @@ foreach ($file in $files) {
         }
 
         if ((Test-ImplementationPath $relativePath) -and
+            ($line -match $ignoredStdioVoidCastPattern))
+        {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern ("(void)" + $Matches[1]) `
+                -Rule "Do not cast ignored stdio/format return values to void." `
+                -Fix "Call the function directly when failure is intentionally non-actionable, or check the return value when truncation or write failure matters." `
+                -Severity "error"
+        }
+
+        if ((Test-ImplementationPath $relativePath) -and
             ($line -match $allocPattern) -and -not (Test-AllowedAllocPath $relativePath)) {
             $violations += New-Finding `
                 -File $relativePath `
@@ -348,6 +361,7 @@ int ok_suppression(void) { return 0; }
 /* NOLINTBEGIN(clang-analyzer-deadcode.DeadStores): sloppy-analysis-suppress: #805 fixture block suppression; remove when fixture is replaced */
 int ok_block_suppression(void) { int value = 1; return value; }
 /* NOLINTEND(clang-analyzer-deadcode.DeadStores) */
+void ok_write(FILE* file) { fputs("ok", file); }
 '@
 
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/core/bad.c") -Value @'
@@ -358,6 +372,7 @@ void bad_memset(char* dst) { memset(dst, 0, 8); }
 void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
+void bad_void_cast(FILE* file) { (void)fputs("bad", file); }
 '@
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/cli/bad_fragment.inc") -Value @'
 #include <string.h>
@@ -379,6 +394,9 @@ void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
         }
         if (-not (($invalidOutput -join "`n") -match "src/cli/bad_fragment\.inc")) {
             throw "C standards scanner self-test did not scan CLI .inc fragments."
+        }
+        if (-not (($invalidOutput -join "`n") -match "\(void\)fputs")) {
+            throw "C standards scanner self-test did not assert ignored stdio void casts."
         }
 
         Write-Host "C standards scanner self-test passed."

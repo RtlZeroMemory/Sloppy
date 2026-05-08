@@ -264,13 +264,37 @@ try {
             $arguments += @("--once", [string]$metadata.once.method, [string]$metadata.once.target)
         }
 
+        $artifactDir = Join-Path $caseWork ([string]$metadata.expected.artifactDir)
+        if ($metadata.mode -eq "positive") {
+            $buildArguments = @("build")
+            if (-not [string]::IsNullOrWhiteSpace($metadata.source)) {
+                $buildArguments += [string]$metadata.source
+            }
+            if (-not [string]::IsNullOrWhiteSpace($metadata.environment)) {
+                $buildArguments += @("--environment", [string]$metadata.environment)
+            }
+            $build = Invoke-CapturedProcess `
+                -Executable $resolvedSloppy `
+                -Arguments $buildArguments `
+                -WorkingDirectory $caseWork `
+                -Environment @{ SLOPPY_SLOPPYC = $resolvedSloppyc }
+            if ($build.ExitCode -ne 0) {
+                throw "source-input fixture '$caseName' build failed with exit code $($build.ExitCode).`nstdout:`n$($build.Stdout)`nstderr:`n$($build.Stderr)"
+            }
+            foreach ($artifact in @("app.plan.json", "app.js", "app.js.map")) {
+                if (-not (Test-Path -LiteralPath (Join-Path $artifactDir $artifact) -PathType Leaf)) {
+                    throw "source-input fixture '$caseName' build did not emit $artifact under $artifactDir."
+                }
+            }
+        }
+
         $run = Invoke-CapturedProcess `
             -Executable $resolvedSloppy `
             -Arguments $arguments `
             -WorkingDirectory $caseWork `
             -Environment @{ SLOPPY_SLOPPYC = $resolvedSloppyc }
 
-        $v8UnavailableInThisLane = $metadata.requiresV8 -eq $true -and -not $RequireV8Runtime
+        $v8UnavailableInThisLane = ($metadata.requiresV8 -eq $true) -and (-not $RequireV8Runtime)
         if ($v8UnavailableInThisLane) {
             if ($run.ExitCode -eq 0 -or -not $run.Stderr.Contains("requires V8-enabled build")) {
                 throw "source-input fixture '$caseName' should report V8 unavailable in the non-V8 lane."
@@ -300,12 +324,20 @@ try {
             }
         }
 
-        $artifactDir = Join-Path $caseWork ([string]$metadata.expected.artifactDir)
         $planPath = Join-Path $artifactDir "app.plan.json"
         $expectedPlan = Read-JsonFile -Path (Join-Path $caseFile.Directory.FullName "expected/plan-semantic.json")
         Assert-PlanMatchesExpected -PlanPath $planPath -ExpectedPlan $expectedPlan -CaseName $caseName
         if (Test-Path -LiteralPath $planPath -PathType Leaf) {
-            Assert-ContainsNone -Text (Get-Content -LiteralPath $planPath -Raw) -Needles $redactionNeedles -Context "$caseName app.plan.json"
+            $planText = Get-Content -LiteralPath $planPath -Raw
+            Assert-ContainsAll -Text $planText -Needles @($metadata.expected.planContains) -Context "$caseName app.plan.json"
+            Assert-ContainsNone -Text $planText -Needles $redactionNeedles -Context "$caseName app.plan.json"
+        }
+        $sourceMapPath = Join-Path $artifactDir "app.js.map"
+        if ((Test-Path -LiteralPath $sourceMapPath -PathType Leaf) -and
+            $null -ne $metadata.expected.sourceMapSources)
+        {
+            $sourceMapText = Get-Content -LiteralPath $sourceMapPath -Raw
+            Assert-ContainsAll -Text $sourceMapText -Needles @($metadata.expected.sourceMapSources) -Context "$caseName app.js.map"
         }
 
         $expectedDoctor = Read-JsonFile -Path (Join-Path $caseFile.Directory.FullName "expected/doctor.json")
@@ -317,6 +349,17 @@ try {
             -WorkingDirectory $caseWork `
             -CaseName $caseName
         Assert-ContainsNone -Text $doctorText -Needles $redactionNeedles -Context "$caseName doctor output"
+
+        if ($RequireV8Runtime -and $metadata.mode -eq "positive" -and $null -ne $metadata.once) {
+            $artifactRun = Invoke-CapturedProcess `
+                -Executable $resolvedSloppy `
+                -Arguments @("run", "--artifacts", $artifactDir, "--once", [string]$metadata.once.method, [string]$metadata.once.target) `
+                -WorkingDirectory $caseWork
+            if ($artifactRun.ExitCode -ne 0) {
+                throw "source-input fixture '$caseName' artifact run failed with exit code $($artifactRun.ExitCode).`nstdout:`n$($artifactRun.Stdout)`nstderr:`n$($artifactRun.Stderr)"
+            }
+            Assert-ContainsAll -Text $artifactRun.Stdout -Needles @($metadata.expected.stdoutContains) -Context "$caseName artifact run stdout"
+        }
 
         Write-Host "source-input fixture passed: $caseName"
     }

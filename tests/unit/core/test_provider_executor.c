@@ -2692,7 +2692,7 @@ int main(void)
 #ifdef _MSC_VER
             fprintf_s(stderr, "provider_executor subtest %zu failed with %d\n", index, result);
 #else
-            (void)fprintf(stderr, "provider_executor subtest %zu failed with %d\n", index, result);
+            fprintf(stderr, "provider_executor subtest %zu failed with %d\n", index, result);
 #endif
             return result;
         }

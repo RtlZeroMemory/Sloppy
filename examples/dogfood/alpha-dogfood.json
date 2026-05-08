@@ -42,7 +42,7 @@
       "status": "v8-gated",
       "lane": "source-input",
       "sourceFixture": "tests/fixtures/source-input/hello-minimal",
-      "example": "examples/hello-minimal/app.ts",
+      "example": "examples/hello-minimal/src/main.ts",
       "once": {
         "method": "GET",
         "target": "/hello/Ada"

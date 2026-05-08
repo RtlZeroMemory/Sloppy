@@ -2167,8 +2167,8 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                "export function onMessage(payload) { return 'msg:' + payload.kind; }\n") -
             1U);
 
-    (void)snprintf(worker_path_buffer, sizeof(worker_path_buffer), "./sloppy-v8-worker-test-%p.js",
-                   (void*)&engine_storage[0]);
+    snprintf(worker_path_buffer, sizeof(worker_path_buffer), "./sloppy-v8-worker-test-%p.js",
+             (void*)&engine_storage[0]);
     worker_path = sl_str_from_cstr(worker_path_buffer);
     (void)sl_fs_delete_file(worker_path, NULL);
     if (expect_status(sl_fs_write_file(worker_path, worker_source, false, &diag), SL_STATUS_OK) !=
@@ -2187,7 +2187,7 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         return 516;
     }
 
-    (void)snprintf(
+    snprintf(
         script_buffer, sizeof(script_buffer),
         "globalThis.sloppy_workers_js_worker = async function () {"
         "  const worker = globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 128 });"

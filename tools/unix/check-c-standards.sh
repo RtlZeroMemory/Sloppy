@@ -11,7 +11,7 @@ if [ "${1:-}" = "--self-test" ]; then
     valid="$tmp/valid"
     invalid="$tmp/invalid"
     invalid_inc="$tmp/invalid-inc"
-    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/tests/unit/core" "$invalid_inc/src/cli"
+    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/src/cli" "$invalid/tests/unit/core" "$invalid_inc/src/cli"
 
     cat > "$valid/src/core/string.c" <<'EOF'
 #include <string.h>
@@ -24,6 +24,7 @@ int ok_suppression(void) { return 0; }
 /* NOLINTBEGIN(clang-analyzer-deadcode.DeadStores): sloppy-analysis-suppress: #805 fixture block suppression; remove when fixture is replaced */
 int ok_block_suppression(void) { int value = 1; return value; }
 /* NOLINTEND(clang-analyzer-deadcode.DeadStores) */
+void ok_write(FILE* file) { fputs("ok", file); }
 EOF
 
     cat > "$invalid/src/core/bad.c" <<'EOF'
@@ -34,6 +35,10 @@ void bad_memset(char* dst) { memset(dst, 0, 8); }
 void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
+void bad_void_cast(FILE* file) { (void)fputs("bad", file); }
+EOF
+    cat > "$invalid/src/cli/bad_fragment.inc" <<'EOF'
+void bad_fragment_write(FILE* file) { (void)fputs("bad", file); }
 EOF
     cat > "$invalid/tests/unit/core/test_bad.c" <<'EOF'
 #include <string.h>
@@ -189,6 +194,11 @@ while IFS= read -r file; do
             [[ "$line" =~ (^|[^[:alnum:]_])(snprintf|strlen|memcpy|memmove|memcmp|memset)[[:space:]]*\( ]] &&
             ! is_allowed_memory_boundary "$file" "${BASH_REMATCH[2]}"; then
             add_finding violations "$file" "$line_number" "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." "${BASH_REMATCH[2]}"
+        fi
+
+        if is_implementation_path "$file" &&
+            [[ "$line" =~ \(void\)[[:space:]]*(snprintf|fprintf|fputs|printf|fputc)[[:space:]]*\( ]]; then
+            add_finding violations "$file" "$line_number" "Do not cast ignored stdio/format return values to void." "(void)${BASH_REMATCH[1]}"
         fi
 
         if is_implementation_path "$file" &&
