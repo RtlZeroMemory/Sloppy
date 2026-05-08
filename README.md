@@ -63,7 +63,7 @@ non-V8 evidence does not prove V8 execution.
 | Runtime kernel | Core C primitives, diagnostics, memory ownership rules, platform boundaries, and app-host validation are established and covered by tests. |
 | V8 bridge | V8 remains isolated behind the engine bridge. Direct handlers and bounded owner-thread microtask drainage are supported only in the scoped V8 lane. |
 | HTTP | HTTP/1.1 runtime support is bounded development evidence. Sequential keep-alive and bounded chunked handling exist, but production-edge HTTP, pipelining, streaming public APIs, middleware, and TLS are not claimed. |
-| Data providers | SQLite has native/runtime support in scoped lanes. PostgreSQL and SQL Server remain metadata/provider-boundary work without complete JS runtime bridges. |
+| Data providers | SQLite, PostgreSQL, and SQL Server have scoped native/provider and V8-gated bridge lanes. PostgreSQL and SQL Server live evidence remains opt-in and must not be reported as default evidence. |
 | Capabilities and security | Capability checks are runtime policy checks. They are not an operating-system sandbox. |
 | Packaging | Package smoke checks prove local archive layout and outside-checkout behavior only. They are not release-readiness evidence. |
 | Benchmarks | Benchmark harnesses may compile or smoke-run, but no performance claim is made from this repository state. |

@@ -232,6 +232,21 @@ static SlStatus provider_test_database_capability_check(const SlCapabilityRegist
                                                  provider_kind, out_diag);
 }
 
+static SlStatus provider_test_counting_database_capability_check(
+    const SlCapabilityRegistry* registry, SlArena* diag_arena, SlStr token,
+    SlCapabilityOperation operation, SlStr provider_token, SlStr provider_kind, SlDiag* out_diag,
+    void* user)
+{
+    size_t* calls = (size_t*)user;
+
+    if (calls == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *calls += 1U;
+    return provider_test_database_capability_check(registry, diag_arena, token, operation,
+                                                   provider_token, provider_kind, out_diag, NULL);
+}
+
 static SlStatus record_provider_completion(SlAsyncLoop* loop, const SlAsyncCompletion* completion,
                                            void* user)
 {
@@ -794,6 +809,7 @@ static int test_unavailable_executor_rejects_after_capability_before_enqueue(voi
     SlDiag diag = {0};
     SlProviderOperation* op = (SlProviderOperation*)1;
     SlProviderOperationDescriptor desc;
+    size_t capability_calls = 0U;
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
             0 ||
@@ -811,7 +827,8 @@ static int test_unavailable_executor_rejects_after_capability_before_enqueue(voi
     config.worker_count = 0U;
     config.max_in_flight = 0U;
     config.capability_registry = provider_test_capability_registry();
-    config.capability_check = provider_test_database_capability_check;
+    config.capability_check = provider_test_counting_database_capability_check;
+    config.capability_check_user = &capability_calls;
     if (expect_status(sl_provider_executor_init(&executor, &arena, &config, NULL, loop),
                       SL_STATUS_OK) != 0)
     {
@@ -834,7 +851,7 @@ static int test_unavailable_executor_rejects_after_capability_before_enqueue(voi
         sl_provider_executor_pending_count(&executor) != 0U ||
         sl_provider_executor_in_flight_count(&executor) != 0U ||
         executor.capability_denied_count != 0U || executor.invalid_operation_count != 1U ||
-        diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE)
+        diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE || capability_calls != 1U)
     {
         return 83;
     }

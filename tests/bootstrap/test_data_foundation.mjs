@@ -37,6 +37,38 @@ function createForgedLoweredQuery() {
 }
 
 {
+    const decimal = sql.decimal("12345678901234567890.1234");
+    const uuid = sql.uuid("00000000-0000-4000-8000-000000000001");
+    const date = sql.date("2026-05-08");
+    const time = sql.time("12:34:56.123");
+    const timestamp = sql.timestamp("2026-05-08 12:34:56");
+    const instant = sql.instant("2026-05-08T12:34:56Z");
+    const offset = sql.offsetDateTime("2026-05-08T12:34:56+04:00");
+    const json = sql.json({ ok: true });
+    const rawJson = sql.rawJson("{\"ok\":true}");
+    const bytes = sql.bytes(new Uint8Array([0, 1, 255]));
+
+    assert.equal(decimal.__sloppyDbValue, true);
+    assert.equal(decimal.kind, "decimal");
+    assert.equal(decimal.toString(), "12345678901234567890.1234");
+    assert.equal(Object.isFrozen(decimal), true);
+    assert.equal(data.values.isDbValue(uuid), true);
+    assert.equal(date.toString(), "2026-05-08");
+    assert.equal(time.toString(), "12:34:56.123");
+    assert.equal(timestamp.kind, "localDateTime");
+    assert.equal(instant.kind, "instant");
+    assert.equal(offset.kind, "offsetDateTime");
+    assert.equal(json.toString(), "{\"ok\":true}");
+    assert.equal(rawJson.toString(), "{\"ok\":true}");
+    assert.deepEqual(Array.from(bytes), [0, 1, 255]);
+    assertThrowsMessage(() => sql.decimal("NaN"), /finite decimal/);
+    assertThrowsMessage(() => sql.uuid("not-a-uuid"), /canonical UUID/);
+    assertThrowsMessage(() => sql.date("2026/05/08"), /YYYY-MM-DD/);
+    assertThrowsMessage(() => sql.json(undefined), /JSON-serializable/);
+    assertThrowsMessage(() => sql.rawJson("{"), /valid JSON/);
+}
+
+{
     const builder = Sloppy.createBuilder();
 
     assert.equal(builder.capabilities.addDatabase("data.main", {
@@ -175,9 +207,12 @@ function createForgedLoweredQuery() {
         "null",
         "string",
         "integer",
+        "bigint",
         "float",
         "boolean",
         "bytes",
+        "explicit-json-text",
+        "explicit-date-time-text",
     ]);
     assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
@@ -362,6 +397,24 @@ function createForgedLoweredQuery() {
     assert.equal(data.postgres.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.postgres.supports.nativeStdlibBridge, false);
     assert.equal(data.postgres.__debug().nativeStdlibBridge, false);
+    assert.deepEqual(data.postgres.supports.parameters, [
+        "null",
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "bigint",
+        "decimal",
+        "bytes",
+        "uuid",
+        "json",
+        "date",
+        "time",
+        "timestamp",
+        "instant",
+        "offsetDateTime",
+        "array",
+    ]);
     assert.equal(sql.lower(["a ", " b ", " c"], ["x", "y"], {
         placeholderStyle: data.postgres.placeholderStyle,
     }).text, "a $1 b $2 c");
@@ -401,6 +454,22 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlserver.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.sqlserver.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlserver.__debug().nativeStdlibBridge, false);
+    assert.deepEqual(data.sqlserver.supports.parameters, [
+        "null",
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "bigint",
+        "decimal",
+        "bytes",
+        "uuid",
+        "date",
+        "time",
+        "timestamp",
+        "offsetDateTime",
+        "explicit-json-text",
+    ]);
     assert.equal(sql.lower(["a ", " b"], ["x"], {
         placeholderStyle: data.sqlserver.placeholderStyle,
     }).text, "a ? b");

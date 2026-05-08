@@ -50,9 +50,10 @@ Provider operations must validate capability token, provider kind, access mode, 
 feature activation before native work begins. Provider bridges must not expose raw native
 pointers to JavaScript.
 
-SQLite has the current scoped executable bridge. Other provider metadata/native boundaries
-must remain honest about whether JavaScript execution, live-provider evidence, and
-offloaded execution are implemented.
+SQLite, PostgreSQL, and SQL Server have scoped executable V8 bridge lanes. Provider
+metadata/native boundaries must still report JavaScript execution, live-provider evidence,
+driver availability, and async support separately; skipped or unavailable live lanes are
+not pass evidence.
 
 ## Secrets
 

@@ -474,6 +474,30 @@ static int test_live_query_exec_and_transactions(void)
     }
     status = sl_sqlserver_query_one(
         &arena, &connection,
+        sl_str_from_cstr("select cast(12345678901234567890.1234 as decimal(24,4)) as amount, "
+                         "cast('00000000-0000-4000-8000-000000000001' as uniqueidentifier) as id, "
+                         "cast('2026-05-08' as date) as day, "
+                         "cast('12:34:56' as time) as clock, "
+                         "cast('2026-05-08 12:34:56' as datetime2) as local_time, "
+                         "cast('2026-05-08 12:34:56 +04:00' as datetimeoffset) as instant, "
+                         "cast(0x0041ff as varbinary(3)) as raw"),
+        NULL, 0U, &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+        one.values[0].kind != SL_SQLSERVER_VALUE_DECIMAL ||
+        expect_str_equal(one.values[0].value.decimal, "12345678901234567890.1234") != 0 ||
+        one.values[1].kind != SL_SQLSERVER_VALUE_UUID ||
+        one.values[2].kind != SL_SQLSERVER_VALUE_DATE ||
+        one.values[3].kind != SL_SQLSERVER_VALUE_TIME ||
+        one.values[4].kind != SL_SQLSERVER_VALUE_TIMESTAMP ||
+        one.values[5].kind != SL_SQLSERVER_VALUE_INSTANT ||
+        one.values[6].kind != SL_SQLSERVER_VALUE_BYTES || one.values[6].value.bytes.length != 3U ||
+        one.values[6].value.bytes.ptr[0] != 0U || one.values[6].value.bytes.ptr[1] != 0x41U ||
+        one.values[6].value.bytes.ptr[2] != 0xffU)
+    {
+        return close_and_return(&connection, 59);
+    }
+    status = sl_sqlserver_query_one(
+        &arena, &connection,
         sl_str_from_cstr("select cast(replicate('x', 5000) as varchar(max)) as payload"), NULL, 0U,
         &one, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||

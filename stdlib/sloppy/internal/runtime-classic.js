@@ -23,6 +23,107 @@
         return prototype === Object.prototype || prototype === null;
     }
 
+    const DB_VALUE_MARKER = "__sloppyDbValue";
+
+    function createDbValue(kind, value) {
+        return Object.freeze({
+            [DB_VALUE_MARKER]: true,
+            kind,
+            value,
+            toString() {
+                return kind === "json" ? JSON.stringify(value) : String(value);
+            },
+        });
+    }
+
+    function isDbValue(value) {
+        return value !== null && typeof value === "object" && value[DB_VALUE_MARKER] === true && typeof value.kind === "string";
+    }
+
+    function requireDbString(value) {
+        if (typeof value !== "string" || value.length === 0) {
+            throw new TypeError("Sloppy DB value requires a non-empty string.");
+        }
+        return value;
+    }
+
+    const DB_TEXT_VALUE_SPECS = {
+        decimal: ["decimal", /^[+-]?(?:\d+|\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$/, "finite decimal string"],
+        uuid: ["uuid", /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, "canonical UUID string"],
+        date: ["date", /^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"],
+        time: ["time", /^\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/, "HH:MM:SS"],
+        timestamp: ["localDateTime", /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?$/, "local date-time"],
+        instant: ["instant", /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/, "UTC timestamp"],
+        offsetDateTime: ["offsetDateTime", /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?[+-]\d{2}:\d{2}$/, "UTC offset"],
+    };
+
+    function dbTextValue(method, value) {
+        const spec = DB_TEXT_VALUE_SPECS[method];
+        const text = (method === "uuid" ? requireDbString(value).toLowerCase() : requireDbString(value));
+        if (!spec[1].test(text)) {
+            throw new TypeError(`Sloppy DB ${method} requires ${spec[2]}.`);
+        }
+        return createDbValue(spec[0], text);
+    }
+
+    function dbJson(value) {
+        if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+            throw new TypeError("Sloppy DB json requires JSON-serializable value.");
+        }
+        try {
+            if (JSON.stringify(value) === undefined) {
+                throw new TypeError("not serializable");
+            }
+        } catch {
+            throw new TypeError("Sloppy DB json requires JSON-serializable value.");
+        }
+        return createDbValue("json", value);
+    }
+
+    function dbRawJson(value) {
+        const text = requireDbString(value);
+        try {
+            JSON.parse(text);
+        } catch {
+            throw new TypeError("Sloppy DB rawJson requires valid JSON text.");
+        }
+        return createDbValue("rawJson", text);
+    }
+
+    function dbBytes(value) {
+        if (value instanceof Uint8Array) {
+            return new Uint8Array(value);
+        }
+        if (value instanceof ArrayBuffer) {
+            return new Uint8Array(value.slice(0));
+        }
+        throw new TypeError("Sloppy DB bytes requires Uint8Array or ArrayBuffer.");
+    }
+
+    const values = Object.freeze({
+        decimal: (value) => dbTextValue("decimal", value),
+        uuid: (value) => dbTextValue("uuid", value),
+        date: (value) => dbTextValue("date", value),
+        time: (value) => dbTextValue("time", value),
+        timestamp: (value) => dbTextValue("timestamp", value),
+        instant: (value) => dbTextValue("instant", value),
+        offsetDateTime: (value) => dbTextValue("offsetDateTime", value),
+        json: dbJson,
+        rawJson: dbRawJson,
+        bytes: dbBytes,
+        isDbValue,
+    });
+
+    const SQLITE_TEXT_DB_VALUE_KINDS = new Set([
+        "decimal",
+        "uuid",
+        "date",
+        "time",
+        "localDateTime",
+        "instant",
+        "offsetDateTime",
+    ]);
+
     function copyHeaders(options) {
         const headers = options?.headers;
 
@@ -178,7 +279,20 @@ Operation:
             throw new TypeError(`Sloppy sqlite.${operation} parameters must be an array.`);
         }
 
-        return params;
+        return params.map((param) => {
+            if (isDbValue(param)) {
+                if (param.kind === "json") {
+                    return JSON.stringify(param.value);
+                }
+                if (param.kind === "rawJson") {
+                    return param.value;
+                }
+                if (SQLITE_TEXT_DB_VALUE_KINDS.has(param.kind)) {
+                    return param.toString();
+                }
+            }
+            return param;
+        });
     }
 
     function normalizeSqliteQuery(operation, sql, params) {
@@ -908,6 +1022,7 @@ Operation:
         sqlite,
         postgres,
         sqlserver,
+        values,
     });
 
     function requireFsBridge(operation) {

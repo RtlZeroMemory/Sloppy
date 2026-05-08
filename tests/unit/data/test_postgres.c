@@ -458,6 +458,38 @@ static int test_live_query_exec_and_transactions(void)
         return close_and_return(&connection, 59);
     }
 
+    status = sl_postgres_query_one(
+        &arena, &connection,
+        sl_str_from_cstr("select 12345678901234567890.1234::numeric as amount, "
+                         "'00000000-0000-4000-8000-000000000001'::uuid as id, "
+                         "'{\"ok\":true}'::jsonb as payload, "
+                         "'2026-05-08'::date as day, "
+                         "'12:34:56'::time as clock, "
+                         "'2026-05-08 12:34:56'::timestamp as local_time, "
+                         "'2026-05-08 12:34:56+04'::timestamptz as instant, "
+                         "decode('0041ff', 'hex')::bytea as raw"),
+        NULL, 0U, &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+        one.values[0].kind != SL_POSTGRES_VALUE_DECIMAL ||
+        expect_str_equal(one.values[0].value.decimal, "12345678901234567890.1234") != 0 ||
+        one.values[1].kind != SL_POSTGRES_VALUE_UUID ||
+        expect_str_equal(one.values[1].value.uuid, "00000000-0000-4000-8000-000000000001") != 0 ||
+        one.values[2].kind != SL_POSTGRES_VALUE_JSON ||
+        expect_str_equal(one.values[2].value.json, "{\"ok\": true}") != 0 ||
+        one.values[3].kind != SL_POSTGRES_VALUE_DATE ||
+        expect_str_equal(one.values[3].value.date, "2026-05-08") != 0 ||
+        one.values[4].kind != SL_POSTGRES_VALUE_TIME ||
+        expect_str_equal(one.values[4].value.time, "12:34:56") != 0 ||
+        one.values[5].kind != SL_POSTGRES_VALUE_TIMESTAMP ||
+        expect_str_equal(one.values[5].value.timestamp, "2026-05-08 12:34:56") != 0 ||
+        one.values[6].kind != SL_POSTGRES_VALUE_INSTANT ||
+        one.values[7].kind != SL_POSTGRES_VALUE_BYTES || one.values[7].value.bytes.length != 3U ||
+        one.values[7].value.bytes.ptr[0] != 0U || one.values[7].value.bytes.ptr[1] != 0x41U ||
+        one.values[7].value.bytes.ptr[2] != 0xffU)
+    {
+        return close_and_return(&connection, 60);
+    }
+
     status = sl_postgres_transaction_begin(&arena, &connection, &tx, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
         return close_and_return(&connection, 45);

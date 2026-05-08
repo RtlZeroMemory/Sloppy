@@ -26,6 +26,8 @@ dependencies.
 - Provider work must validate capability metadata before native execution.
 - Native provider resources must not be exposed as raw JS pointers.
 - Text/blob data crossing provider boundaries must have explicit ownership.
+- Decimal, UUID, JSON, bytes, and date/time values must use explicit typed mapping instead
+  of defaulting to weak strings or unsafe JS numbers.
 - SQL text and parameters must remain separate until the provider-specific binding layer,
   and diagnostics must redact parameter values.
 - SQLite JSON/date/time/timestamp/instant behavior is explicit text/blob encoding policy,

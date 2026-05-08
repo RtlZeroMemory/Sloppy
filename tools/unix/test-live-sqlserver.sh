@@ -40,7 +40,7 @@ if [ "$no_docker" -eq 0 ]; then
 
   ready=0
   for _ in $(seq 1 90); do
-    if docker exec "$container" /bin/bash -lc 'if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd "$@"; else /opt/mssql-tools/bin/sqlcmd "$@"; fi' -- -S localhost -U sa -P "$password" -C -Q 'select 1' >/dev/null 2>&1; then
+    if docker exec "$container" /bin/bash -lc 'if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd "$@"; else /opt/mssql-tools/bin/sqlcmd "$@"; fi' -- -S localhost -U sa -P "$password" -C -b -Q 'select 1' >/dev/null 2>&1; then
       ready=1
       break
     fi
@@ -50,7 +50,10 @@ if [ "$no_docker" -eq 0 ]; then
     printf 'UNAVAILABLE: SQL Server container did not become ready before timeout.\n' >&2
     exit 1
   fi
-  docker exec -i "$container" /bin/bash -lc 'if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd "$@"; else /opt/mssql-tools/bin/sqlcmd "$@"; fi' -- -S localhost -U sa -P "$password" -C < "$init_sql"
+  docker cp "$init_sql" "$container:/tmp/sloppy-live-init.sql"
+  docker exec "$container" /bin/bash -lc 'if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd "$@"; else /opt/mssql-tools/bin/sqlcmd "$@"; fi' -- -S localhost -U sa -P "$password" -C -b -i /tmp/sloppy-live-init.sql >/dev/null
+  docker exec "$container" /bin/bash -lc 'if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd "$@"; else /opt/mssql-tools/bin/sqlcmd "$@"; fi' -- -S localhost -U sa -P "$password" -C -b -d sloppy_test -Q 'select 1' >/dev/null
+  sleep 2
 fi
 
 cleanup() {

@@ -492,6 +492,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_workers.cc
+        src/engine/v8/intrinsics_db_bridge.cc
         src/engine/v8/intrinsics_sqlite.cc
         src/engine/v8/intrinsics_postgres.cc
         src/engine/v8/intrinsics_sqlserver.cc)

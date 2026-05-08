@@ -1012,6 +1012,12 @@ bool sl_v8_postgres_feature_enabled(const SlV8Engine* backend)
            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_POSTGRES);
 }
 
+bool sl_v8_sqlserver_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER);
+}
+
 bool sl_v8_time_feature_enabled(const SlV8Engine* backend)
 {
     return backend != nullptr && backend->has_runtime_features &&
@@ -1048,8 +1054,9 @@ bool sl_v8_needs_async_loop(const SlV8Engine* backend)
     return backend != nullptr &&
            (sl_v8_sqlite_feature_enabled(backend) || sl_v8_fs_feature_enabled(backend) ||
             sl_v8_postgres_feature_enabled(backend) || sl_v8_time_feature_enabled(backend) ||
-            sl_v8_crypto_feature_enabled(backend) || sl_v8_net_feature_enabled(backend) ||
-            sl_v8_os_feature_enabled(backend) || sl_v8_workers_feature_enabled(backend));
+            sl_v8_sqlserver_feature_enabled(backend) || sl_v8_crypto_feature_enabled(backend) ||
+            sl_v8_net_feature_enabled(backend) || sl_v8_os_feature_enabled(backend) ||
+            sl_v8_workers_feature_enabled(backend));
 }
 
 SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
@@ -1502,11 +1509,10 @@ static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_d
                              "drain") -
                           1U),
         sl_str_empty(),
-        sl_v8_literal("This V8 runtime drains Promise microtasks but does not implement timers, "
-                      "fetch, Node APIs, or native async completion queues for handlers.",
-                      sizeof("This V8 runtime drains Promise microtasks but does not implement "
-                             "timers, fetch, Node APIs, or native async completion queues for "
-                             "handlers.") -
+        sl_v8_literal("This V8 runtime drains Promise microtasks and bounded native async "
+                      "completions, but does not implement timers, fetch, or Node APIs.",
+                      sizeof("This V8 runtime drains Promise microtasks and bounded native async "
+                             "completions, but does not implement timers, fetch, or Node APIs.") -
                           1U));
 }
 
@@ -1515,13 +1521,17 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(
     v8::Local<v8::Promise> promise, const SlCancellationToken* cancellation, SlDiag* out_diag)
 {
     SlV8Engine* backend = sl_v8_backend(engine);
-    size_t spins = 0U;
+    size_t idle_spins = 0U;
+    bool saw_native_activity = false;
+    std::chrono::steady_clock::time_point native_activity_started = {};
+    constexpr size_t kIdleSpinLimit = 1000U;
+    constexpr std::chrono::seconds kNativeActivityLimit{35};
 
     if (backend == nullptr || backend->async_loop == nullptr) {
         return sl_status_ok();
     }
 
-    while (promise->State() == v8::Promise::kPending && spins < 1000U) {
+    while (promise->State() == v8::Promise::kPending) {
         size_t ran = 0U;
         SlStatus status = sl_async_loop_drain(backend->async_loop, 0U, &ran);
         if (!sl_status_is_ok(status)) {
@@ -1539,10 +1549,30 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        if (ran == 0U && promise->State() == v8::Promise::kPending) {
+        if (ran == 0U) {
+            idle_spins += 1U;
+        }
+        else {
+            idle_spins = 0U;
+            if (!saw_native_activity) {
+                saw_native_activity = true;
+                native_activity_started = std::chrono::steady_clock::now();
+            }
+        }
+        if (promise->State() != v8::Promise::kPending) {
+            break;
+        }
+        if (!saw_native_activity && idle_spins >= kIdleSpinLimit) {
+            break;
+        }
+        if (saw_native_activity &&
+            std::chrono::steady_clock::now() - native_activity_started > kNativeActivityLimit)
+        {
+            break;
+        }
+        if (ran == 0U) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        spins += 1U;
     }
 
     return sl_status_ok();

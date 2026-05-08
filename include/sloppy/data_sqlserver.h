@@ -2,6 +2,7 @@
 #define SLOPPY_DATA_SQLSERVER_H
 
 #include "sloppy/arena.h"
+#include "sloppy/bytes.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -58,6 +59,14 @@ typedef enum SlSqlServerParamKind
     SL_SQLSERVER_PARAM_INTEGER = 2,
     SL_SQLSERVER_PARAM_FLOAT = 3,
     SL_SQLSERVER_PARAM_BOOL = 4,
+    SL_SQLSERVER_PARAM_BYTES = 5,
+    SL_SQLSERVER_PARAM_DECIMAL = 6,
+    SL_SQLSERVER_PARAM_UUID = 7,
+    SL_SQLSERVER_PARAM_JSON = 8,
+    SL_SQLSERVER_PARAM_DATE = 9,
+    SL_SQLSERVER_PARAM_TIME = 10,
+    SL_SQLSERVER_PARAM_TIMESTAMP = 11,
+    SL_SQLSERVER_PARAM_INSTANT = 12,
     SL_SQLSERVER_PARAM_UNSUPPORTED = 255
 } SlSqlServerParamKind;
 
@@ -66,9 +75,17 @@ typedef struct SlSqlServerParam
     SlSqlServerParamKind kind;
     union {
         SlStr text;
+        SlBytes bytes;
         int64_t integer;
         double number;
         bool boolean;
+        SlStr decimal;
+        SlStr uuid;
+        SlStr json;
+        SlStr date;
+        SlStr time;
+        SlStr timestamp;
+        SlStr instant;
     } value;
 } SlSqlServerParam;
 
@@ -78,7 +95,15 @@ typedef enum SlSqlServerValueKind
     SL_SQLSERVER_VALUE_TEXT = 1,
     SL_SQLSERVER_VALUE_INTEGER = 2,
     SL_SQLSERVER_VALUE_FLOAT = 3,
-    SL_SQLSERVER_VALUE_BOOL = 4
+    SL_SQLSERVER_VALUE_BOOL = 4,
+    SL_SQLSERVER_VALUE_BYTES = 5,
+    SL_SQLSERVER_VALUE_DECIMAL = 6,
+    SL_SQLSERVER_VALUE_UUID = 7,
+    SL_SQLSERVER_VALUE_JSON = 8,
+    SL_SQLSERVER_VALUE_DATE = 9,
+    SL_SQLSERVER_VALUE_TIME = 10,
+    SL_SQLSERVER_VALUE_TIMESTAMP = 11,
+    SL_SQLSERVER_VALUE_INSTANT = 12
 } SlSqlServerValueKind;
 
 typedef struct SlSqlServerValue
@@ -86,9 +111,17 @@ typedef struct SlSqlServerValue
     SlSqlServerValueKind kind;
     union {
         SlStr text;
+        SlBytes bytes;
         int64_t integer;
         double number;
         bool boolean;
+        SlStr decimal;
+        SlStr uuid;
+        SlStr json;
+        SlStr date;
+        SlStr time;
+        SlStr timestamp;
+        SlStr instant;
     } value;
 } SlSqlServerValue;
 
