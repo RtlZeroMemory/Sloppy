@@ -1020,13 +1020,25 @@ async function flushMicrotasks(count = 6) {
 {
     const builder = Sloppy.createBuilder();
     let singletonContext;
+    let singletonScope;
+    let scopedScope;
     builder.services.addSingleton("root", (scope) => {
+        singletonScope = scope;
         singletonContext = scope.context;
         return "root";
     });
+    builder.services.addScoped("scoped", (scope) => {
+        scopedScope = scope;
+        return "scoped";
+    });
     const app = builder.build();
-    assert.equal(app.services.get("root"), "root");
+    const requestScope = app.services.createScope();
+    assert.equal(requestScope.get("root"), "root");
+    assert.equal(requestScope.get("scoped"), "scoped");
     assert.equal(singletonContext, undefined);
+    assert.notEqual(singletonScope, requestScope);
+    assert.notEqual(singletonScope, scopedScope);
+    assert.equal(Object.hasOwn(singletonScope, "context"), false);
 }
 
 {
@@ -1286,6 +1298,8 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\r\nx: y" }), /control characters/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\0" }), /control characters/);
+    assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x1F" }), /control characters/);
+    assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x7F" }), /control characters/);
 }
 
 {
