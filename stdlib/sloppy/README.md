@@ -63,7 +63,8 @@ lib/sloppy/bootstrap/sloppy/
   exists.
 - `data.js` exposes query-template lowering, provider metadata helpers, and SQLite,
   PostgreSQL, and SQL Server bridge entry points when the V8 lane installs the matching
-  provider bridge with Plan/capability metadata.
+  provider bridge with Plan/capability metadata. SQL operation options accept `signal`,
+  `deadline`, and `timeoutMs` for Slop-side pre-dispatch cancellation/deadline checks.
 - `internal/runtime-classic.js` is the V8-gated classic-script runtime asset loaded before
   generated artifacts. Generated code reads `globalThis.__sloppy_runtime` and registers
   handlers through Sloppy-owned intrinsics.
@@ -74,6 +75,8 @@ lib/sloppy/bootstrap/sloppy/
 - Source examples may use relative imports into this directory when they are API-shape
   fixtures; compiler-owned runnable examples use the supported bare `"sloppy"` input shape.
 - Feature-gated APIs fail closed when the active runtime bridge is unavailable.
+- SQL operation cancellation/deadline options are Slop-side admission checks unless a
+  provider-specific lane separately documents and tests active native interruption.
 - Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
   facades use opaque Sloppy-owned objects, not public slot/generation fields.
 - Node, Bun, Deno, Web API, and npm compatibility are not claimed.

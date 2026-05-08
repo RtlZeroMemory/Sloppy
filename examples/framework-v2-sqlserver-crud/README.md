@@ -5,9 +5,10 @@ diagnostics when the local ODBC lane is not configured.
 
 This example documents the Plan-visible Framework v2 shape for SQL Server CRUD-style
 handlers: typed `Body<T>` and `Route<T>` bindings, compiler-inferred `sqlserver/main`
-provider metadata from `SqlServer<"main">`, and semantic request types. Provider operation
-deadline propagation remains separate provider/runtime work and is not claimed by this
-example.
+provider metadata from `SqlServer<"main">`, semantic request types, and SQL operation
+options that pass `ctx.signal`/`ctx.deadline` for Slop-side pre-dispatch cancellation and
+deadline checks. Provider-specific ODBC statement cancellation for already-running queries
+remains separate provider/runtime work and is not claimed by this example.
 
 It is not part of default CI. Run it only with a local SQL Server test database,
 Microsoft ODBC Driver 18 for SQL Server, and a redacted connection string managed outside

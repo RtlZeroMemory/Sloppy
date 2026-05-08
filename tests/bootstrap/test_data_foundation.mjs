@@ -340,9 +340,21 @@ function createForgedLoweredQuery() {
         );
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
+        assert.deepEqual(
+            db.query(sql`select name from users`, {
+                deadline: { remainingMs: () => 1000 },
+                signal: { aborted: false, throwIfAborted() {} },
+                timeoutMs: 500,
+            }),
+            [{ name: "Ada" }],
+        );
         assertThrowsMessage(
-            () => db.query(sql`select name from users`, { deadline: {} }),
-            /option 'deadline' is not supported/,
+            () => db.query(sql`select name from users`, { deadline: { remainingMs: () => 0 } }),
+            /SLOPPY_E_DEADLINE_EXCEEDED/,
+        );
+        assertThrowsMessage(
+            () => db.query(sql`select name from users`, { signal: { aborted: true, reason: "client cancelled" } }),
+            /SLOPPY_E_CANCELLED[\s\S]*client cancelled/,
         );
         let capturedTx;
         const txResult = await db.transaction(async (tx) => {
@@ -385,6 +397,7 @@ function createForgedLoweredQuery() {
             ["exec", 1, "insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]],
             ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
+            ["query", 1, "select name from users", []],
             ["begin", 1],
             ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
             ["txQuery", 1, "select name from users", []],
@@ -519,12 +532,12 @@ function createForgedLoweredQuery() {
 {
     const received = [];
     const fakeDb = data.createFakeProvider({
-        query(lowered) {
-            received.push(["query", lowered]);
+        query(lowered, options) {
+            received.push(["query", lowered, options]);
             return [{ id: lowered.parameters[0], name: "Ada" }];
         },
-        exec(lowered) {
-            received.push(["exec", lowered]);
+        exec(lowered, options) {
+            received.push(["exec", lowered, options]);
             return { affectedRows: 1 };
         },
     });
@@ -534,10 +547,16 @@ function createForgedLoweredQuery() {
     assert.equal(received[0][1].text, "select id from users where id = ?");
     assert.deepEqual(received[0][1].parameters, [1]);
     const lowered = sql`select id from users where id = ${3}`;
-    assertThrowsMessage(
-        () => fakeDb.query(lowered, { deadline: { remainingMs: () => 1000 } }),
-        /option 'deadline' is not supported/,
-    );
+    assert.deepEqual(await fakeDb.query(lowered, {
+        deadline: { remainingMs: () => 1000 },
+        signal: { aborted: false },
+        timeoutMs: 50,
+    }), [{ id: 3, name: "Ada" }]);
+    assert.equal(received[1][2].timeoutMs, 50);
+    assert.equal(received[1][2].signal.aborted, false);
+    assertThrowsMessage(() => fakeDb.query(lowered, {
+        deadline: { expired: true },
+    }), /SLOPPY_E_DEADLINE_EXCEEDED/);
 
     const one = await fakeDb.queryOne`select id from users where id = ${2}`;
     assert.deepEqual(one, { id: 2, name: "Ada" });

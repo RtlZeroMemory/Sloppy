@@ -3,6 +3,7 @@ import {
     Email,
     NonEmptyString,
     PositiveInt,
+    RequestContext,
     Results,
     Route,
     Sloppy,
@@ -22,10 +23,11 @@ type UserDto = {
 
 const app = Sloppy.create();
 
-app.get("/users", async (db: Postgres<"main">) => {
+app.get("/users", async (db: Postgres<"main">, ctx: RequestContext) => {
     const users = await db.query<UserDto>(
         "select id, name, email from users order by id",
         [],
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     return Results.ok(users);
 }).withName("Users.List");
@@ -33,10 +35,12 @@ app.get("/users", async (db: Postgres<"main">) => {
 app.get("/users/{id:int}", async (
     id: Route<PositiveInt>,
     db: Postgres<"main">,
+    ctx: RequestContext,
 ) => {
     const user = await db.queryOne<UserDto>(
         "select id, name, email from users where id = $1",
         [id],
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     return user === null ? Results.notFound() : Results.ok(user);
 }).withName("Users.Get");
@@ -44,10 +48,12 @@ app.get("/users/{id:int}", async (
 app.post("/users", async (
     input: Body<UserCreate>,
     db: Postgres<"main">,
+    ctx: RequestContext,
 ) => {
     const user = await db.queryOne<UserDto>(
         "insert into users (name, email) values ($1, $2) returning id, name, email",
         [input.name, input.email],
+        { signal: ctx.signal, deadline: ctx.deadline },
     );
     if (user === null) {
         throw new Error("PostgreSQL user insert did not return a row.");

@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:d179b3d6b40b51f6dad88c8e120bc1a58128e13ae348780748bab0d74d1b7a70",
+    "hash": "sha256:a50d1b224c0a190fc83f7b4b0961b4559a3291e8f2c7051cbe903716e15e48be",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -11,7 +11,7 @@
       "provider": "data.main",
       "source": {
         "column": 3,
-        "line": 50,
+        "line": 51,
         "path": "input.ts"
       },
       "token": "data.main"
@@ -22,7 +22,7 @@
       "provider": "data.audit",
       "source": {
         "column": 3,
-        "line": 51,
+        "line": 52,
         "path": "input.ts"
       },
       "token": "data.audit"
@@ -33,7 +33,7 @@
       "provider": "data.search",
       "source": {
         "column": 3,
-        "line": 52,
+        "line": 53,
         "path": "input.ts"
       },
       "token": "data.search"
@@ -43,7 +43,7 @@
       "kind": "queue",
       "source": {
         "column": 3,
-        "line": 53,
+        "line": 54,
         "path": "input.ts"
       },
       "token": "queue.emails"
@@ -141,7 +141,7 @@
         "key": "Sloppy:Providers:postgres:main:connectionString",
         "redaction": "secret",
         "required": true,
-        "requiredBy": "input.ts:50",
+        "requiredBy": "input.ts:51",
         "secret": true,
         "source": null,
         "status": "missing",
@@ -151,7 +151,7 @@
         "key": "Sloppy:Providers:sqlite:audit:database",
         "redaction": "none",
         "required": true,
-        "requiredBy": "input.ts:51",
+        "requiredBy": "input.ts:52",
         "secret": false,
         "source": null,
         "status": "missing",
@@ -161,7 +161,7 @@
         "key": "Sloppy:Providers:sqlserver:search:connectionString",
         "redaction": "secret",
         "required": true,
-        "requiredBy": "input.ts:52",
+        "requiredBy": "input.ts:53",
         "secret": true,
         "source": null,
         "status": "missing",
@@ -178,7 +178,7 @@
       "service": null,
       "source": {
         "column": 3,
-        "line": 50,
+        "line": 51,
         "path": "input.ts"
       },
       "token": "data.main"
@@ -191,7 +191,7 @@
       "service": null,
       "source": {
         "column": 3,
-        "line": 51,
+        "line": 52,
         "path": "input.ts"
       },
       "token": "data.audit"
@@ -204,7 +204,7 @@
       "service": null,
       "source": {
         "column": 3,
-        "line": 52,
+        "line": 53,
         "path": "input.ts"
       },
       "token": "data.search"
@@ -228,7 +228,7 @@
       "id": 1,
       "source": {
         "column": 20,
-        "line": 48,
+        "line": 49,
         "path": "input.ts"
       }
     },
@@ -239,7 +239,7 @@
       "id": 2,
       "source": {
         "column": 23,
-        "line": 62,
+        "line": 65,
         "path": "input.ts"
       }
     }
@@ -259,7 +259,7 @@
           "schema": "UserCreate",
           "source": {
             "column": 3,
-            "line": 49,
+            "line": 50,
             "path": "input.ts"
           },
           "type": "UserCreate"
@@ -274,7 +274,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 50,
+            "line": 51,
             "path": "input.ts"
           },
           "type": "Postgres<\"main\">"
@@ -289,7 +289,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 51,
+            "line": 52,
             "path": "input.ts"
           },
           "type": "Sqlite<\"audit\">"
@@ -304,7 +304,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 52,
+            "line": 53,
             "path": "input.ts"
           },
           "type": "SqlServer<\"search\">"
@@ -319,10 +319,22 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 53,
+            "line": 54,
             "path": "input.ts"
           },
           "type": "WorkQueue<\"emails\">"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 55,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
         }
       ],
       "completeness": {
@@ -371,7 +383,7 @@
       },
       "source": {
         "column": 1,
-        "line": 48,
+        "line": 49,
         "path": "input.ts"
       }
     },
@@ -384,7 +396,7 @@
           "schema": "number",
           "source": {
             "column": 3,
-            "line": 63,
+            "line": 66,
             "path": "input.ts"
           },
           "type": "Route<number>",
@@ -397,7 +409,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 64,
+            "line": 67,
             "path": "input.ts"
           },
           "type": "Header<\"x-trace-id\">",
@@ -410,7 +422,7 @@
           "schema": "bool",
           "source": {
             "column": 3,
-            "line": 65,
+            "line": 68,
             "path": "input.ts"
           },
           "type": "Query<boolean>",
@@ -423,7 +435,7 @@
           "schema": "UserCreate",
           "source": {
             "column": 3,
-            "line": 66,
+            "line": 69,
             "path": "input.ts"
           },
           "type": "Body<UserCreate>",
@@ -439,10 +451,22 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 67,
+            "line": 70,
             "path": "input.ts"
           },
           "type": "Postgres<\"main\">"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 71,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
         }
       ],
       "completeness": {
@@ -477,7 +501,7 @@
           "partial": false,
           "source": {
             "column": 17,
-            "line": 73,
+            "line": 78,
             "path": "input.ts"
           },
           "status": 200
@@ -489,7 +513,7 @@
           "partial": false,
           "source": {
             "column": 36,
-            "line": 73,
+            "line": 78,
             "path": "input.ts"
           },
           "status": 404
@@ -497,7 +521,7 @@
       ],
       "source": {
         "column": 1,
-        "line": 62,
+        "line": 65,
         "path": "input.ts"
       }
     }
@@ -586,7 +610,7 @@
       "name": "UserCreate",
       "source": {
         "column": 1,
-        "line": 24,
+        "line": 25,
         "path": "input.ts"
       }
     },
@@ -608,19 +632,19 @@
       "name": "UserDto",
       "source": {
         "column": 1,
-        "line": 40,
+        "line": 41,
         "path": "input.ts"
       }
     }
   ],
   "sourceFiles": [
     {
-      "hash": "sha256:e7f6c51e893a47de75afeb239e73014e21e18a871d90e65bec67fcec47007147",
+      "hash": "sha256:bd77634aa9b5297a9e36b3ea56b783e7992e8a094f6f03c94b297452e5716e49",
       "path": "input.ts"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:4e09549a7833371ac1953b260764458d85055ce3f3b068844e9d95d9289e161a",
+    "hash": "sha256:aa29aca42054bcaf39505bd0fdad0d863e7db748d629b93501c052acc4f4bcc9",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

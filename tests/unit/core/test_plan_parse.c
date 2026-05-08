@@ -493,7 +493,7 @@ static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
     get_route = &plan.routes[1];
     if (!sl_str_equal(post_route->method, sl_str_from_cstr("POST")) ||
         !sl_str_equal(post_route->pattern, sl_str_from_cstr("/users")) ||
-        post_route->binding_count != 5U)
+        post_route->binding_count != 6U)
     {
         return 4;
     }
@@ -501,13 +501,14 @@ static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
         !sl_str_equal(post_route->bindings[0].parameter, sl_str_from_cstr("input")) ||
         !sl_str_equal(post_route->bindings[0].schema, sl_str_from_cstr("UserCreate")) ||
         post_route->bindings[1].kind != SL_PLAN_REQUEST_BINDING_INJECTION ||
-        !sl_str_equal(post_route->bindings[1].name, sl_str_from_cstr("main")))
+        !sl_str_equal(post_route->bindings[1].name, sl_str_from_cstr("main")) ||
+        post_route->bindings[5].kind != SL_PLAN_REQUEST_BINDING_CONTEXT)
     {
         return 5;
     }
     if (!sl_str_equal(get_route->method, sl_str_from_cstr("GET")) ||
         !sl_str_equal(get_route->pattern, sl_str_from_cstr("/users/{id}")) ||
-        get_route->binding_count != 5U)
+        get_route->binding_count != 6U)
     {
         return 6;
     }

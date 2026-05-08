@@ -284,18 +284,172 @@ function isLoweredQuery(value) {
     return value !== null && typeof value === "object" && LOWERED_QUERIES.has(value);
 }
 
-function validateOperationOptions(options, operation) {
+function createOperationCancelledError(operation, reason) {
+    const detail = reason === undefined || reason === null || reason === ""
+        ? "operation cancellation was requested"
+        : String(reason);
+    return new Error(`SLOPPY_E_CANCELLED: Sloppy data ${operation} was cancelled
+
+Operation:
+  ${operation}
+
+Reason:
+  ${detail}`);
+}
+
+function createOperationDeadlineError(operation) {
+    return new Error(`SLOPPY_E_DEADLINE_EXCEEDED: Sloppy data ${operation} deadline was exceeded
+
+Operation:
+  ${operation}
+
+Reason:
+  The operation deadline was already expired before provider dispatch.`);
+}
+
+function normalizeOperationOptions(options, operation) {
     if (options === undefined) {
-        return;
+        return undefined;
     }
     if (!isPlainObject(options)) {
         throw new TypeError(`Sloppy data ${operation} options must be a plain object.`);
     }
+    const allowedKeys = new Set(["deadline", "signal", "timeoutMs"]);
     const keys = Object.keys(options);
-    if (keys.length !== 0) {
-        throw new TypeError(
-            `Sloppy data ${operation} option '${keys[0]}' is not supported by the current runtime bridge.`,
-        );
+    for (const key of keys) {
+        if (!allowedKeys.has(key)) {
+            throw new TypeError(
+                `Sloppy data ${operation} option '${key}' is not supported by the current runtime bridge.`,
+            );
+        }
+    }
+
+    const signal = options.signal;
+    if (
+        signal !== undefined
+        && signal !== null
+        && (typeof signal !== "object" || Array.isArray(signal))
+    ) {
+        throw new TypeError(`Sloppy data ${operation} signal option must be an object.`);
+    }
+
+    const deadline = options.deadline;
+    if (
+        deadline !== undefined
+        && deadline !== null
+        && (typeof deadline !== "object" || Array.isArray(deadline))
+    ) {
+        throw new TypeError(`Sloppy data ${operation} deadline option must be an object or null.`);
+    }
+
+    let timeoutMs = options.timeoutMs;
+    if (timeoutMs !== undefined) {
+        if (!Number.isInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 0xffffffff) {
+            throw new TypeError(
+                `Sloppy data ${operation} timeoutMs option must be an integer from 0 to 4294967295.`,
+            );
+        }
+    }
+
+    if (deadline !== undefined && deadline !== null) {
+        if (deadline.expired === true) {
+            throw createOperationDeadlineError(operation);
+        }
+        if (deadline.remainingMs !== undefined) {
+            if (typeof deadline.remainingMs !== "function") {
+                throw new TypeError(
+                    `Sloppy data ${operation} deadline.remainingMs must be a function when supplied.`,
+                );
+            }
+            const remaining = deadline.remainingMs();
+            if (typeof remaining !== "number" || Number.isNaN(remaining)) {
+                throw new TypeError(
+                    `Sloppy data ${operation} deadline.remainingMs must return a number.`,
+                );
+            }
+            if (remaining <= 0) {
+                throw createOperationDeadlineError(operation);
+            }
+            if (Number.isFinite(remaining)) {
+                const rounded = Math.ceil(remaining);
+                timeoutMs = timeoutMs === undefined ? rounded : Math.min(timeoutMs, rounded);
+            }
+        }
+    }
+
+    const normalized = Object.freeze({
+        deadline: deadline ?? undefined,
+        signal: signal ?? undefined,
+        timeoutMs,
+    });
+    return normalized.deadline === undefined
+        && normalized.signal === undefined
+        && normalized.timeoutMs === undefined
+        ? undefined
+        : normalized;
+}
+
+function throwIfOperationCancelled(options, operation) {
+    if (options === undefined) {
+        return;
+    }
+    if (options.signal !== undefined) {
+        if (typeof options.signal.throwIfAborted === "function") {
+            options.signal.throwIfAborted();
+        }
+        if (options.signal.aborted === true) {
+            throw createOperationCancelledError(operation, options.signal.reason);
+        }
+    }
+    if (options.timeoutMs === 0) {
+        throw createOperationDeadlineError(operation);
+    }
+    if (options.deadline !== undefined) {
+        if (options.deadline.expired === true) {
+            throw createOperationDeadlineError(operation);
+        }
+        if (typeof options.deadline.remainingMs === "function") {
+            const remaining = options.deadline.remainingMs();
+            if (typeof remaining !== "number" || Number.isNaN(remaining)) {
+                throw new TypeError(
+                    `Sloppy data ${operation} deadline.remainingMs must return a number.`,
+                );
+            }
+            if (remaining <= 0) {
+                throw createOperationDeadlineError(operation);
+            }
+        }
+    }
+}
+
+function invokeProviderOperation(operation, options, callback) {
+    throwIfOperationCancelled(options, operation);
+    return callback();
+}
+
+function normalizeProviderCallArguments(operation, placeholderStyle, args) {
+    if (args.length === 2 && isLoweredQuery(args[0])) {
+        return {
+            query: args[0],
+            options: normalizeOperationOptions(args[1], operation),
+        };
+    }
+    if (args.length === 1 && isLoweredQuery(args[0])) {
+        return {
+            query: args[0],
+            options: undefined,
+        };
+    }
+    return {
+        query: normalizeQueryArguments(operation, placeholderStyle, args),
+        options: undefined,
+    };
+}
+
+function validateOperationOptions(options, operation) {
+    const normalized = normalizeOperationOptions(options, operation);
+    if (normalized !== undefined) {
+        throwIfOperationCancelled(normalized, operation);
     }
 }
 
@@ -503,13 +657,15 @@ function normalizeSqliteOperation(operation, args) {
         return {
             text: args[0].text,
             parameters: validateSqliteParams(args[0].parameters, operation),
+            options: undefined,
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        validateOperationOptions(args[1], `sqlite.${operation}`);
+        const options = normalizeOperationOptions(args[1], `sqlite.${operation}`);
         return {
             text: args[0].text,
             parameters: validateSqliteParams(args[0].parameters, operation),
+            options,
         };
     }
 
@@ -517,7 +673,7 @@ function normalizeSqliteOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy sqlite.${operation} accepts sql, optional params, and optional options.`);
         }
-        validateOperationOptions(args[2], `sqlite.${operation}`);
+        const options = normalizeOperationOptions(args[2], `sqlite.${operation}`);
 
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
@@ -526,10 +682,16 @@ function normalizeSqliteOperation(operation, args) {
         return {
             text: args[0],
             parameters: validateSqliteParams(args[1], operation),
+            options,
         };
     }
 
-    return normalizeQueryArguments(operation, "question", args);
+    const call = normalizeProviderCallArguments(`sqlite.${operation}`, "question", args);
+    return {
+        text: call.query.text,
+        parameters: validateSqliteParams(call.query.parameters, operation),
+        options: call.options,
+    };
 }
 
 function createSqliteConnection(nativeBridge, handle) {
@@ -561,19 +723,22 @@ function createSqliteConnection(nativeBridge, handle) {
             query(...args) {
                 assertTransactionOpen("transaction.query");
                 const query = normalizeSqliteOperation("query", args);
-                return nativeBridge.transactionQuery(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlite.transaction.query", query.options, () =>
+                    nativeBridge.transactionQuery(state.handle, query.text, query.parameters));
             },
 
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
                 const query = normalizeSqliteOperation("queryOne", args);
-                return nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlite.transaction.queryOne", query.options, () =>
+                    nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters));
             },
 
             exec(...args) {
                 assertTransactionOpen("transaction.exec");
                 const query = normalizeSqliteOperation("exec", args);
-                return nativeBridge.transactionExec(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlite.transaction.exec", query.options, () =>
+                    nativeBridge.transactionExec(state.handle, query.text, query.parameters));
             },
 
             transaction() {
@@ -633,19 +798,22 @@ function createSqliteConnection(nativeBridge, handle) {
         query(...args) {
             assertOpen("query");
             const query = normalizeSqliteOperation("query", args);
-            return nativeBridge.query(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlite.query", query.options, () =>
+                nativeBridge.query(state.handle, query.text, query.parameters));
         },
 
         queryOne(...args) {
             assertOpen("queryOne");
             const query = normalizeSqliteOperation("queryOne", args);
-            return nativeBridge.queryOne(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlite.queryOne", query.options, () =>
+                nativeBridge.queryOne(state.handle, query.text, query.parameters));
         },
 
         exec(...args) {
             assertOpen("exec");
             const query = normalizeSqliteOperation("exec", args);
-            return nativeBridge.exec(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlite.exec", query.options, () =>
+                nativeBridge.exec(state.handle, query.text, query.parameters));
         },
 
         async transaction(callback) {
@@ -940,13 +1108,15 @@ function normalizePostgresOperation(operation, args) {
         return {
             text: args[0].text,
             parameters: args[0].parameters,
+            options: undefined,
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        validateOperationOptions(args[1], `postgres.${operation}`);
+        const options = normalizeOperationOptions(args[1], `postgres.${operation}`);
         return {
             text: args[0].text,
             parameters: args[0].parameters,
+            options,
         };
     }
 
@@ -954,7 +1124,7 @@ function normalizePostgresOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy postgres.${operation} accepts sql, optional params, and optional options.`);
         }
-        validateOperationOptions(args[2], `postgres.${operation}`);
+        const options = normalizeOperationOptions(args[2], `postgres.${operation}`);
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
         }
@@ -964,10 +1134,16 @@ function normalizePostgresOperation(operation, args) {
         return {
             text: args[0],
             parameters: args[1] ?? [],
+            options,
         };
     }
 
-    return normalizeQueryArguments(operation, "postgres", args);
+    const call = normalizeProviderCallArguments(`postgres.${operation}`, "postgres", args);
+    return {
+        text: call.query.text,
+        parameters: call.query.parameters,
+        options: call.options,
+    };
 }
 
 function createPostgresConnection(nativeBridge, handle) {
@@ -996,17 +1172,20 @@ function createPostgresConnection(nativeBridge, handle) {
             query(...args) {
                 assertTransactionOpen("transaction.query");
                 const query = normalizePostgresOperation("query", args);
-                return nativeBridge.transactionQuery(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("postgres.transaction.query", query.options, () =>
+                    nativeBridge.transactionQuery(state.handle, query.text, query.parameters));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
                 const query = normalizePostgresOperation("queryOne", args);
-                return nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("postgres.transaction.queryOne", query.options, () =>
+                    nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters));
             },
             exec(...args) {
                 assertTransactionOpen("transaction.exec");
                 const query = normalizePostgresOperation("exec", args);
-                return nativeBridge.transactionExec(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("postgres.transaction.exec", query.options, () =>
+                    nativeBridge.transactionExec(state.handle, query.text, query.parameters));
             },
             transaction() {
                 throw createPostgresNestedTransactionError();
@@ -1061,17 +1240,20 @@ function createPostgresConnection(nativeBridge, handle) {
         query(...args) {
             assertOpen("query");
             const query = normalizePostgresOperation("query", args);
-            return nativeBridge.query(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("postgres.query", query.options, () =>
+                nativeBridge.query(state.handle, query.text, query.parameters));
         },
         queryOne(...args) {
             assertOpen("queryOne");
             const query = normalizePostgresOperation("queryOne", args);
-            return nativeBridge.queryOne(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("postgres.queryOne", query.options, () =>
+                nativeBridge.queryOne(state.handle, query.text, query.parameters));
         },
         exec(...args) {
             assertOpen("exec");
             const query = normalizePostgresOperation("exec", args);
-            return nativeBridge.exec(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("postgres.exec", query.options, () =>
+                nativeBridge.exec(state.handle, query.text, query.parameters));
         },
         async transaction(callback) {
             assertOpen("transaction");
@@ -1164,13 +1346,15 @@ function normalizeSqlServerOperation(operation, args) {
         return {
             text: args[0].text,
             parameters: args[0].parameters,
+            options: undefined,
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        validateOperationOptions(args[1], `sqlserver.${operation}`);
+        const options = normalizeOperationOptions(args[1], `sqlserver.${operation}`);
         return {
             text: args[0].text,
             parameters: args[0].parameters,
+            options,
         };
     }
 
@@ -1178,7 +1362,7 @@ function normalizeSqlServerOperation(operation, args) {
         if (args.length > 3) {
             throw new TypeError(`Sloppy sqlserver.${operation} accepts sql, optional params, and optional options.`);
         }
-        validateOperationOptions(args[2], `sqlserver.${operation}`);
+        const options = normalizeOperationOptions(args[2], `sqlserver.${operation}`);
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
         }
@@ -1188,10 +1372,16 @@ function normalizeSqlServerOperation(operation, args) {
         return {
             text: args[0],
             parameters: args[1] ?? [],
+            options,
         };
     }
 
-    return normalizeQueryArguments(operation, "question", args);
+    const call = normalizeProviderCallArguments(`sqlserver.${operation}`, "question", args);
+    return {
+        text: call.query.text,
+        parameters: call.query.parameters,
+        options: call.options,
+    };
 }
 
 function createSqlServerConnection(nativeBridge, handle) {
@@ -1220,17 +1410,20 @@ function createSqlServerConnection(nativeBridge, handle) {
             query(...args) {
                 assertTransactionOpen("transaction.query");
                 const query = normalizeSqlServerOperation("query", args);
-                return nativeBridge.transactionQuery(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlserver.transaction.query", query.options, () =>
+                    nativeBridge.transactionQuery(state.handle, query.text, query.parameters));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
                 const query = normalizeSqlServerOperation("queryOne", args);
-                return nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlserver.transaction.queryOne", query.options, () =>
+                    nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters));
             },
             exec(...args) {
                 assertTransactionOpen("transaction.exec");
                 const query = normalizeSqlServerOperation("exec", args);
-                return nativeBridge.transactionExec(state.handle, query.text, query.parameters);
+                return invokeProviderOperation("sqlserver.transaction.exec", query.options, () =>
+                    nativeBridge.transactionExec(state.handle, query.text, query.parameters));
             },
             transaction() {
                 throw createSqlServerNestedTransactionError();
@@ -1285,17 +1478,20 @@ function createSqlServerConnection(nativeBridge, handle) {
         query(...args) {
             assertOpen("query");
             const query = normalizeSqlServerOperation("query", args);
-            return nativeBridge.query(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlserver.query", query.options, () =>
+                nativeBridge.query(state.handle, query.text, query.parameters));
         },
         queryOne(...args) {
             assertOpen("queryOne");
             const query = normalizeSqlServerOperation("queryOne", args);
-            return nativeBridge.queryOne(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlserver.queryOne", query.options, () =>
+                nativeBridge.queryOne(state.handle, query.text, query.parameters));
         },
         exec(...args) {
             assertOpen("exec");
             const query = normalizeSqlServerOperation("exec", args);
-            return nativeBridge.exec(state.handle, query.text, query.parameters);
+            return invokeProviderOperation("sqlserver.exec", query.options, () =>
+                nativeBridge.exec(state.handle, query.text, query.parameters));
         },
         async transaction(callback) {
             assertOpen("transaction");
@@ -1579,17 +1775,23 @@ function createTransactionProvider(state, placeholderStyle) {
     return Object.freeze({
         query(...args) {
             assertTransactionOpen(state, "query");
-            return state.provider.query(normalizeQueryArguments("query", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("query", placeholderStyle, args);
+            return invokeProviderOperation("query", call.options, () =>
+                state.provider.query(call.query, call.options));
         },
 
         queryOne(...args) {
             assertTransactionOpen(state, "queryOne");
-            return state.provider.queryOne(normalizeQueryArguments("queryOne", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("queryOne", placeholderStyle, args);
+            return invokeProviderOperation("queryOne", call.options, () =>
+                state.provider.queryOne(call.query, call.options));
         },
 
         exec(...args) {
             assertTransactionOpen(state, "exec");
-            return state.provider.exec(normalizeQueryArguments("exec", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("exec", placeholderStyle, args);
+            return invokeProviderOperation("exec", call.options, () =>
+                state.provider.exec(call.query, call.options));
         },
 
         transaction() {
@@ -1613,24 +1815,24 @@ function createFakeProvider(definition = {}) {
     validatePlaceholderStyle(placeholderStyle);
 
     const backend = {
-        query(query) {
+        query(query, options) {
             if (definition.query === undefined) {
                 missingProviderMethod("query");
             }
 
-            return definition.query(query);
+            return definition.query(query, options);
         },
 
-        queryOne(query) {
+        queryOne(query, options) {
             if (definition.queryOne !== undefined) {
-                return definition.queryOne(query);
+                return definition.queryOne(query, options);
             }
 
             if (definition.query === undefined) {
                 missingProviderMethod("queryOne");
             }
 
-            return Promise.resolve(definition.query(query)).then((rows) => {
+            return Promise.resolve(definition.query(query, options)).then((rows) => {
                 if (rows == null) {
                     return null;
                 }
@@ -1643,12 +1845,12 @@ function createFakeProvider(definition = {}) {
             });
         },
 
-        exec(query) {
+        exec(query, options) {
             if (definition.exec === undefined) {
                 missingProviderMethod("exec");
             }
 
-            return definition.exec(query);
+            return definition.exec(query, options);
         },
     };
 
@@ -1712,15 +1914,21 @@ Fix:
 
     const provider = {
         query(...args) {
-            return backend.query(normalizeQueryArguments("query", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("query", placeholderStyle, args);
+            return invokeProviderOperation("query", call.options, () =>
+                backend.query(call.query, call.options));
         },
 
         queryOne(...args) {
-            return backend.queryOne(normalizeQueryArguments("queryOne", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("queryOne", placeholderStyle, args);
+            return invokeProviderOperation("queryOne", call.options, () =>
+                backend.queryOne(call.query, call.options));
         },
 
         exec(...args) {
-            return backend.exec(normalizeQueryArguments("exec", placeholderStyle, args));
+            const call = normalizeProviderCallArguments("exec", placeholderStyle, args);
+            return invokeProviderOperation("exec", call.options, () =>
+                backend.exec(call.query, call.options));
         },
 
         transaction(callback) {

@@ -125,6 +125,7 @@ foreach(required_pattern IN ITEMS
         "db.query<"
         "db.queryOne<"
         "db.exec("
+        "{ signal: ctx.signal, deadline: ctx.deadline }"
         "Results.ok"
         "Results.notFound"
         "Results.created")
@@ -150,6 +151,7 @@ foreach(required_pattern IN ITEMS
         "Route<PositiveInt>"
         "input.name"
         "input.email"
+        "{ signal: ctx.signal, deadline: ctx.deadline }"
         "Results.created"
         "Results.ok"
         "Results.notFound")
@@ -175,6 +177,7 @@ foreach(required_pattern IN ITEMS
         "Route<PositiveInt>"
         "input.name"
         "input.email"
+        "{ signal: ctx.signal, deadline: ctx.deadline }"
         "Results.created"
         "Results.ok"
         "Results.notFound")

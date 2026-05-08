@@ -9,6 +9,7 @@ import {
   PositiveInt,
   DateTime,
   Instant,
+  RequestContext,
   Body,
   Header,
   Query,
@@ -51,9 +52,11 @@ app.post("/users", async (
   audit: Sqlite<"audit">,
   search: SqlServer<"search">,
   emails: WorkQueue<"emails">,
+  ctx: RequestContext,
 ) => {
   const user = await db.queryOne<UserDto>(
-    sql`select id, email, name from users where id = ${1}`
+    sql`select id, email, name from users where id = ${1}`,
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return Results.created(`/users/${user.id}`, user);
@@ -65,9 +68,11 @@ app.get("/users/:id", async (
   includeDeleted: Query<boolean>,
   input: Body<UserCreate>,
   db: Postgres<"main">,
+  ctx: RequestContext,
 ) => {
   const user = await db.queryOne<UserDto>(
-    sql`select id, email, name from users where id = ${id}`
+    sql`select id, email, name from users where id = ${id}`,
+    { signal: ctx.signal, deadline: ctx.deadline }
   );
 
   return user ? Results.ok(user) : Results.notFound();

@@ -58,9 +58,13 @@ HTTP listeners set `scheme` to `http`. HTTPS listeners set `scheme` to `https` a
 TLS handshake completes and expose `ctx.connection.secure === true` without exposing TLS
 or socket handles.
 
-`ctx.deadline` is a status marker for the current request lifecycle. It is `null` for the
-normal non-expired request path and becomes an elapsed-deadline object only when the native
-request deadline has already fired. It is not an active provider-operation deadline token.
+`ctx.signal` is the request cancellation token surface for handler code that needs to fail
+before dispatching work after the request has already been cancelled. `ctx.deadline` is a
+status marker for the current request lifecycle. It is `null` for the normal non-expired
+request path and becomes an elapsed-deadline object only when the native request deadline
+has already fired. Provider APIs may accept both values in operation options for
+pre-dispatch cancellation/deadline checks, but that does not imply provider-specific
+mid-query interruption unless the provider lane documents and tests that behavior.
 
 `ctx.request.body.bytes()`, `text()`, and `json()` are consumed-once helpers for the
 bounded buffered body. The existing top-level `ctx.request.bytes()`, `text()`, and

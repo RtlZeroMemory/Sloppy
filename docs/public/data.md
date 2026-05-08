@@ -127,6 +127,13 @@ Implemented behavior:
   `{ __sloppyQuery, text, parameters, parameterCount, placeholderStyle, placeholders }`.
 - `data.createFakeProvider(...)` creates a JS-only fake provider for tests/examples with
   `query`, `queryOne`, `exec`, and `transaction`.
+- SQL operation methods accept an optional operation-options object with `signal`,
+  `deadline`, and `timeoutMs`. The stdlib checks already-aborted signals and expired
+  deadlines before provider dispatch and forwards the normalized option state to JS fake
+  providers. Current native SQL bridges treat this as Slop-side terminal admission
+  behavior; provider-specific active interruption, such as SQLite interruption, libpq
+  cancel, or ODBC statement cancellation while a native call is already running, remains
+  separately tested provider work before it can be claimed.
 - `data.sqlite` exposes SQLite provider metadata, callable provider shorthand, and
   `open(options)`. In a V8-enabled Sloppy runtime that installs SQLite intrinsics and has
   Plan/capability metadata, `data.sqlite("main")` resolves provider token `data.main` and
