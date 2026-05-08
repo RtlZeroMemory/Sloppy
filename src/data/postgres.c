@@ -22,6 +22,7 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <libpq-fe.h>
 #include <errno.h>
@@ -732,9 +733,8 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
 static SlStatus sl_pg_copy_columns(SlArena* arena, PGresult* result, size_t column_count,
                                    SlStr** out_column_names)
 {
-    void* ptr = NULL;
+    SlSlice names_slice = {0};
     SlStr* names = NULL;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || result == NULL || out_column_names == NULL) {
@@ -744,15 +744,12 @@ static SlStatus sl_pg_copy_columns(SlArena* arena, PGresult* result, size_t colu
     if (column_count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_mul_size(column_count, sizeof(SlStr), &alloc_size);
+    status =
+        sl_arena_array_alloc(arena, column_count, sizeof(SlStr), _Alignof(SlStr), &names_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlStr), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    names = (SlStr*)ptr;
+    names = (SlStr*)names_slice.ptr;
     for (size_t index = 0U; index < column_count; index += 1U) {
         status =
             sl_pg_copy_str(arena, sl_str_from_cstr(PQfname(result, (int)index)), &names[index]);
@@ -857,12 +854,11 @@ static SlStatus sl_pg_materialize_rows(SlArena* arena, PGresult* result, size_t 
 {
     const size_t row_count = (size_t)PQntuples(result);
     const size_t column_count = (size_t)PQnfields(result);
-    void* row_ptr = NULL;
-    void* cell_ptr = NULL;
+    SlSlice row_slice = {0};
+    SlSlice cell_slice = {0};
     SlPostgresRow* rows = NULL;
     SlPostgresValue* cells = NULL;
     size_t cell_count = 0U;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || result == NULL || out_result == NULL || max_rows == 0U) {
@@ -877,30 +873,24 @@ static SlStatus sl_pg_materialize_rows(SlArena* arena, PGresult* result, size_t 
         return status;
     }
     if (row_count > 0U) {
-        status = sl_checked_mul_size(row_count, sizeof(SlPostgresRow), &alloc_size);
+        status = sl_arena_array_alloc(arena, row_count, sizeof(SlPostgresRow),
+                                      _Alignof(SlPostgresRow), &row_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlPostgresRow), &row_ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        rows = (SlPostgresRow*)row_ptr;
+        rows = (SlPostgresRow*)row_slice.ptr;
 
         status = sl_checked_mul_size(row_count, column_count, &cell_count);
         if (!sl_status_is_ok(status)) {
             return status;
         }
         if (cell_count > 0U) {
-            status = sl_checked_mul_size(cell_count, sizeof(SlPostgresValue), &alloc_size);
+            status = sl_arena_array_alloc(arena, cell_count, sizeof(SlPostgresValue),
+                                          _Alignof(SlPostgresValue), &cell_slice);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
-            status = sl_arena_alloc(arena, alloc_size, _Alignof(SlPostgresValue), &cell_ptr);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            cells = (SlPostgresValue*)cell_ptr;
+            cells = (SlPostgresValue*)cell_slice.ptr;
         }
         for (size_t row = 0U; row < row_count; row += 1U) {
             rows[row].values = cells + (row * column_count);
@@ -987,9 +977,8 @@ static SlStatus sl_pg_materialize_first_row(SlArena* arena, PGresult* result,
 {
     const size_t row_count = (size_t)PQntuples(result);
     const size_t column_count = (size_t)PQnfields(result);
-    void* ptr = NULL;
+    SlSlice value_slice = {0};
     SlPostgresValue* values = NULL;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || result == NULL || out_result == NULL) {
@@ -1005,15 +994,12 @@ static SlStatus sl_pg_materialize_first_row(SlArena* arena, PGresult* result,
         return sl_status_ok();
     }
     if (column_count > 0U) {
-        status = sl_checked_mul_size(column_count, sizeof(SlPostgresValue), &alloc_size);
+        status = sl_arena_array_alloc(arena, column_count, sizeof(SlPostgresValue),
+                                      _Alignof(SlPostgresValue), &value_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlPostgresValue), &ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        values = (SlPostgresValue*)ptr;
+        values = (SlPostgresValue*)value_slice.ptr;
         for (size_t column = 0U; column < column_count; column += 1U) {
             status = sl_pg_copy_value(arena, result, 0, (int)column, &values[column]);
             if (!sl_status_is_ok(status)) {

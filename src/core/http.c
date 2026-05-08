@@ -20,6 +20,7 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <llhttp.h>
 #include <stdint.h>
@@ -175,20 +176,11 @@ SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method)
 
 static SlStatus sl_http_copy_str_view(SlArena* arena, SlStr src, SlStr* out)
 {
-    SlOwnedStr owned = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_http_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, src, &owned);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    *out = sl_owned_str_as_view(owned);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, src, out);
 }
 
 static SlStatus sl_http_init_parse_builders(SlHttpParseContext* ctx)
@@ -572,8 +564,7 @@ static SlStatus sl_http_build_diag(SlArena* arena, const SlHttpParseContext* ctx
 static SlStatus sl_http_prepare_headers(SlArena* arena, size_t max_headers,
                                         SlHttpHeader** out_headers)
 {
-    void* ptr = NULL;
-    size_t alloc_size = 0U;
+    SlSlice header_slice = {0};
     SlStatus status;
 
     if (arena == NULL || out_headers == NULL) {
@@ -585,17 +576,13 @@ static SlStatus sl_http_prepare_headers(SlArena* arena, size_t max_headers,
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(max_headers, sizeof(SlHttpHeader), &alloc_size);
+    status = sl_arena_array_alloc(arena, max_headers, sizeof(SlHttpHeader), _Alignof(SlHttpHeader),
+                                  &header_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlHttpHeader), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    *out_headers = (SlHttpHeader*)ptr;
+    *out_headers = (SlHttpHeader*)header_slice.ptr;
     return sl_status_ok();
 }
 

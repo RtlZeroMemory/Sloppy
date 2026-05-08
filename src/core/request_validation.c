@@ -11,8 +11,8 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
-#include <string.h>
 #include <yyjson.h>
 
 #define SL_REQUEST_VALIDATION_MAX_ISSUES 8U
@@ -28,8 +28,8 @@ typedef struct SlRequestValidationIssue
 typedef struct SlRequestValidationState
 {
     SlArena* arena;
-    SlRequestValidationIssue issues[SL_REQUEST_VALIDATION_MAX_ISSUES];
-    size_t issue_count;
+    SlRequestValidationIssue issue_storage[SL_REQUEST_VALIDATION_MAX_ISSUES];
+    SlFixedVec issues;
 } SlRequestValidationState;
 
 static SlStr sl_request_validation_literal(const char* ptr, size_t length)
@@ -66,44 +66,38 @@ static SlStatus sl_request_validation_diag(SlArena* arena, SlDiag* out_diag, SlD
 
 static SlStatus sl_request_validation_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    SlOwnedStr copied = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || (src.length != 0U && src.ptr == NULL)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, src, &copied);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = sl_owned_str_as_view(copied);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, src, out);
 }
 
 static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state, SlStr path,
                                                 SlStr message)
 {
-    size_t index = 0U;
+    SlRequestValidationIssue* issue = NULL;
+    SlStatus status;
 
     if (state == NULL || state->arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (state->issue_count >= SL_REQUEST_VALIDATION_MAX_ISSUES) {
+    if (sl_fixed_vec_count(&state->issues) >= SL_REQUEST_VALIDATION_MAX_ISSUES) {
         return sl_status_ok();
     }
 
-    index = state->issue_count;
-    state->issue_count += 1U;
-    if (sl_str_is_empty(path)) {
-        path = sl_str_from_cstr("$");
-    }
-    SlStatus status =
-        sl_request_validation_copy_str(state->arena, path, &state->issues[index].path);
+    status = sl_fixed_vec_push_zero(&state->issues, (void**)&issue);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    return sl_request_validation_copy_str(state->arena, message, &state->issues[index].message);
+    if (sl_str_is_empty(path)) {
+        path = sl_str_from_cstr("$");
+    }
+    status = sl_request_validation_copy_str(state->arena, path, &issue->path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_request_validation_copy_str(state->arena, message, &issue->message);
 }
 
 static SlStatus sl_request_validation_append_json_escaped(SlStringBuilder* builder, SlStr text)
@@ -187,14 +181,20 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
         return status;
     }
 
-    for (index = 0U; index < state->issue_count; index += 1U) {
+    for (index = 0U; index < sl_fixed_vec_count(&state->issues); index += 1U) {
+        const SlRequestValidationIssue* issue =
+            (const SlRequestValidationIssue*)sl_fixed_vec_at_const(&state->issues, index);
+
+        if (issue == NULL) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         if (index != 0U) {
             status = sl_string_builder_append_char(&builder, ',');
             if (!sl_status_is_ok(status)) {
                 return status;
             }
         }
-        status = sl_request_validation_append_json_escaped(&builder, state->issues[index].path);
+        status = sl_request_validation_append_json_escaped(&builder, issue->path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -202,7 +202,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_request_validation_append_json_escaped(&builder, state->issues[index].message);
+        status = sl_request_validation_append_json_escaped(&builder, issue->message);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -943,6 +943,11 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
     }
 
     state.arena = arena;
+    status = sl_fixed_vec_init(&state.issues, state.issue_storage, sizeof(SlRequestValidationIssue),
+                               SL_REQUEST_VALIDATION_MAX_ISSUES);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     for (index = 0U; index < route->binding_count; index += 1U) {
         status = sl_request_validation_validate_binding(&state, plan, &route->bindings[index],
                                                         request_context);
@@ -951,7 +956,7 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
         }
     }
 
-    if (state.issue_count == 0U) {
+    if (sl_fixed_vec_count(&state.issues) == 0U) {
         return sl_status_ok();
     }
 

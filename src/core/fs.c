@@ -9,6 +9,7 @@
 #include "fs_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 typedef struct SlFsWatchSnapshot
 {
@@ -24,10 +25,7 @@ struct SlFsWatchHandle
 {
     SlArena* arena;
     SlOwnedStr path;
-    SlFsWatchEvent* queue;
-    size_t queue_capacity;
-    size_t queue_head;
-    size_t queue_count;
+    SlRingQueue queue;
     SlFsWatchSnapshot* snapshots;
     size_t snapshot_capacity;
     size_t snapshot_count;
@@ -92,44 +90,38 @@ static SlOwnedStr sl_fs_watch_owned_view(SlStr path)
 static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlFsWatchEventKind kind, SlStr path,
                                     bool is_directory)
 {
-    SlFsWatchEvent* event = NULL;
-    size_t index = 0U;
+    SlFsWatchEvent event;
+    SlStatus status;
 
     if (watch == NULL || watch->closed) {
         return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
     }
-    if (watch->queue_capacity == 0U || watch->queue_count >= watch->queue_capacity) {
+    event = (SlFsWatchEvent){
+        .kind = kind, .path = sl_fs_watch_owned_view(path), .is_directory = is_directory};
+    status = sl_ring_queue_push(&watch->queue, &event);
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
         watch->overflow_pending = true;
         return sl_status_ok();
     }
-    index = (watch->queue_head + watch->queue_count) % watch->queue_capacity;
-    event = &watch->queue[index];
-    *event = (SlFsWatchEvent){
-        .kind = kind, .path = sl_fs_watch_owned_view(path), .is_directory = is_directory};
-    watch->queue_count += 1U;
-    return sl_status_ok();
+    return status;
 }
 
 static SlStatus sl_fs_watch_pop(SlFsWatchHandle* watch, SlArena* arena, SlFsWatchEvent* out)
 {
-    SlFsWatchEvent* event = NULL;
+    SlFsWatchEvent event = {0};
     SlStatus status;
 
     if (watch == NULL || arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = (SlFsWatchEvent){0};
-    if (watch->queue_count != 0U) {
-        event = &watch->queue[watch->queue_head];
+    if (sl_ring_queue_pop_front(&watch->queue, &event)) {
         *out = (SlFsWatchEvent){
-            .kind = event->kind, .is_directory = event->is_directory, .overflow = event->overflow};
-        status = sl_fs_watch_copy_path(arena, sl_owned_str_as_view(event->path), &out->path);
+            .kind = event.kind, .is_directory = event.is_directory, .overflow = event.overflow};
+        status = sl_fs_watch_copy_path(arena, sl_owned_str_as_view(event.path), &out->path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        *event = (SlFsWatchEvent){0};
-        watch->queue_head = (watch->queue_head + 1U) % watch->queue_capacity;
-        watch->queue_count -= 1U;
         return sl_status_ok();
     }
     if (watch->overflow_pending) {
@@ -415,9 +407,9 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
                                   SlFsWatchHandle** out)
 {
     SlFsWatchHandle* watch = NULL;
+    SlSlice snapshot_storage = {0};
     void* memory = NULL;
     SlStatus status;
-    size_t bytes = 0U;
 
     if (arena == NULL || options == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -434,44 +426,22 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
     *watch = (SlFsWatchHandle){.arena = arena,
                                .directory = options->directory,
                                .recursive = options->recursive,
-                               .queue_capacity = options->queue_capacity,
                                .snapshot_capacity = options->snapshot_capacity};
     status = sl_fs_watch_copy_path(arena, path, &watch->path);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_array_size(options->queue_capacity, sizeof(SlFsWatchEvent), &bytes);
+    status = sl_ring_queue_init_from_arena(&watch->queue, arena, sizeof(SlFsWatchEvent),
+                                           _Alignof(SlFsWatchEvent), options->queue_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    memory = NULL;
-    status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchEvent), &memory);
+    status = sl_arena_array_alloc(arena, options->snapshot_capacity, sizeof(SlFsWatchSnapshot),
+                                  _Alignof(SlFsWatchSnapshot), &snapshot_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (memory == NULL) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-    }
-    watch->queue = (SlFsWatchEvent*)memory;
-    for (size_t index = 0U; index < options->queue_capacity; index += 1U) {
-        watch->queue[index] = (SlFsWatchEvent){0};
-    }
-    status = sl_checked_array_size(options->snapshot_capacity, sizeof(SlFsWatchSnapshot), &bytes);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    memory = NULL;
-    status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchSnapshot), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    if (memory == NULL) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-    }
-    watch->snapshots = (SlFsWatchSnapshot*)memory;
-    for (size_t index = 0U; index < options->snapshot_capacity; index += 1U) {
-        watch->snapshots[index] = (SlFsWatchSnapshot){0};
-    }
+    watch->snapshots = (SlFsWatchSnapshot*)snapshot_storage.ptr;
     *out = watch;
     return sl_status_ok();
 }

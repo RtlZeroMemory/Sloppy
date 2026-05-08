@@ -15,7 +15,7 @@
  */
 #include "sloppy/plan.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 #include "sloppy/http.h"
 
 static bool sl_plan_token_equal(SlStr left, SlStr right)
@@ -266,9 +266,7 @@ static SlStatus sl_plan_intern_required(SlInternTable* table, SlStr text, SlStr*
 static SlStatus sl_plan_alloc_copy(SlArena* arena, const void* src, size_t count, size_t item_size,
                                    size_t alignment, void** out)
 {
-    void* storage = NULL;
-    size_t bytes = 0U;
-    size_t index = 0U;
+    SlSlice copy = {0};
     SlStatus status;
 
     if (out == NULL) {
@@ -283,19 +281,12 @@ static SlStatus sl_plan_alloc_copy(SlArena* arena, const void* src, size_t count
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_checked_mul_size(count, item_size, &bytes);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(arena, bytes, alignment, &storage);
+    status = sl_arena_array_copy(arena, src, count, item_size, alignment, &copy);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    for (index = 0U; index < bytes; index += 1U) {
-        ((unsigned char*)storage)[index] = ((const unsigned char*)src)[index];
-    }
-    *out = storage;
+    *out = copy.ptr;
     return sl_status_ok();
 }
 

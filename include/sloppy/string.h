@@ -25,15 +25,28 @@ typedef struct SlStr
     size_t length;
 } SlStr;
 
+#define SL_OWNED_STR_SSO_CAPACITY 16U
+#define SL_OWNED_STR_SSO_MAX_LENGTH (SL_OWNED_STR_SSO_CAPACITY - 1U)
+
 /*
  * SlOwnedStr describes mutable bytes owned by the function/lifetime documented by the API
- * that produced it. The type itself does not free memory. For arena-copy helpers below,
- * `ptr` remains valid until the arena is reset or its backing storage ends.
+ * that produced it. The type itself does not free memory.
+ *
+ * Arena-copy helpers store strings up to SL_OWNED_STR_SSO_MAX_LENGTH bytes inline in
+ * `sso` and set `is_sso`. Longer strings point into the arena and record the arena
+ * generation that produced them. Arena-backed `ptr` values remain valid until the arena
+ * is reset, reset to a mark that invalidates their offset range, disposed, or its backing
+ * storage ends. Inline SSO strings remain valid for the SlOwnedStr object's lifetime.
+ * Copying an SSO SlOwnedStr copies the bytes; call `sl_owned_str_as_view` on the copied
+ * object to read from that object's inline buffer.
  */
 typedef struct SlOwnedStr
 {
     char* ptr;
     size_t length;
+    bool is_sso;
+    unsigned int arena_generation;
+    char sso[SL_OWNED_STR_SSO_CAPACITY];
 } SlOwnedStr;
 
 #define SL_STR_LITERAL(value) sl_str_from_parts((value), sizeof(value) - 1U)
@@ -75,7 +88,16 @@ bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix);
  */
 bool sl_str_contains_nul(SlStr str);
 
-SlStr sl_owned_str_as_view(SlOwnedStr str);
+SlStr sl_owned_str_as_view_ref(const SlOwnedStr* str);
+#define sl_owned_str_as_view(str) sl_owned_str_as_view_ref(&(str))
+void sl_owned_str_rebind(SlOwnedStr* str);
+
+/*
+ * Returns true when `str` is empty or its full pointer range is inside `arena`'s backing
+ * storage. This is a range check only; callers that retain arena-backed views must still
+ * treat arena generation changes from reset/reset_to/dispose as invalidating events.
+ */
+bool sl_arena_contains_str(const SlArena* arena, SlStr str);
 
 /*
  * Hashes the exact bytes in `str` with a deterministic non-cryptographic hash.
@@ -94,12 +116,29 @@ SlStatus sl_str_hash(SlStr str, uint64_t* out_hash);
 SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out);
 
 /*
+ * Copies `src` into `arena` and writes an arena-backed borrowed view to `out`.
+ *
+ * Unlike SlOwnedStr copies, this helper never uses inline SSO storage because the returned
+ * SlStr has no owner object. Empty strings do not allocate. On failure, `out` is left
+ * unchanged.
+ */
+SlStatus sl_str_copy_view_to_arena(SlArena* arena, SlStr src, SlStr* out);
+
+/*
  * Concatenates two valid string views into arena-owned storage.
  *
  * Empty output does not allocate. Non-empty inputs require non-NULL storage. On failure,
  * `out` is left unchanged.
  */
 SlStatus sl_str_concat_to_arena(SlArena* arena, SlStr left, SlStr right, SlOwnedStr* out);
+
+/*
+ * Concatenates two valid string views into arena-backed storage and writes a borrowed view.
+ *
+ * This helper never uses inline SSO storage because the returned SlStr has no owner object.
+ * Empty output does not allocate. On failure, `out` is left unchanged.
+ */
+SlStatus sl_str_concat_view_to_arena(SlArena* arena, SlStr left, SlStr right, SlStr* out);
 
 /*
  * Validates that `str` can safely cross a C-string boundary.

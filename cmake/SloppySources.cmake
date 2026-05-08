@@ -7,6 +7,7 @@ set(
     src/core/cancellation.c
     src/core/checked_math.c
     src/core/arena.c
+    src/core/container.c
     src/core/builder.c
     src/core/intern.c
     src/core/scope.c
@@ -104,6 +105,7 @@ set(
     tests/unit/core/test_status.c
     tests/unit/core/test_source_loc.c
     tests/unit/core/test_string.c
+    tests/unit/core/test_container.c
     tests/unit/core/test_bytes.c
     tests/unit/core/test_cancellation.c
     tests/unit/core/test_checked_math.c

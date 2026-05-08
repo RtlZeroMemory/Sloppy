@@ -15,7 +15,7 @@
  */
 #include "sloppy/route.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 typedef struct SlRouteParseContext
 {
@@ -38,20 +38,11 @@ static bool sl_route_str_valid(SlStr str)
 
 static SlStatus sl_route_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    SlOwnedStr owned = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_route_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, src, &owned);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    *out = sl_owned_str_as_view(owned);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, src, out);
 }
 
 static SlStatus sl_route_set_diag(SlRouteParseContext* ctx, SlDiagCode code, SlStr message,
@@ -342,9 +333,7 @@ static SlStatus sl_route_finalize_pattern(SlRouteParseContext* ctx, SlStr patter
                                           size_t param_count, SlRoutePattern* out_pattern)
 {
     SlRouteSegment* segments = NULL;
-    void* ptr = NULL;
-    size_t alloc_size = 0U;
-    size_t index = 0U;
+    SlSlice segment_slice = {0};
     SlStatus status;
 
     if (ctx == NULL || out_pattern == NULL) {
@@ -357,20 +346,14 @@ static SlStatus sl_route_finalize_pattern(SlRouteParseContext* ctx, SlStr patter
     }
 
     if (segment_count != 0U) {
-        status = sl_checked_array_size(segment_count, sizeof(SlRouteSegment), &alloc_size);
+        status =
+            sl_arena_array_copy(ctx->arena, parsed_segments, segment_count, sizeof(SlRouteSegment),
+                                _Alignof(SlRouteSegment), &segment_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
 
-        status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlRouteSegment), &ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-
-        segments = (SlRouteSegment*)ptr;
-        for (index = 0U; index < segment_count; index += 1U) {
-            segments[index] = parsed_segments[index];
-        }
+        segments = (SlRouteSegment*)segment_slice.ptr;
     }
 
     out_pattern->segments = segments;
@@ -660,9 +643,7 @@ static SlStatus sl_route_pattern_validate_for_match(const SlRoutePattern* patter
 static SlStatus sl_route_copy_match_params(SlArena* arena, const SlRouteParam* captures,
                                            size_t capture_count, SlRouteParam** out)
 {
-    void* ptr = NULL;
-    size_t alloc_size = 0U;
-    size_t index = 0U;
+    SlSlice param_slice = {0};
     SlRouteParam* params = NULL;
     SlStatus status;
 
@@ -675,21 +656,13 @@ static SlStatus sl_route_copy_match_params(SlArena* arena, const SlRouteParam* c
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(capture_count, sizeof(SlRouteParam), &alloc_size);
+    status = sl_arena_array_copy(arena, captures, capture_count, sizeof(SlRouteParam),
+                                 _Alignof(SlRouteParam), &param_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlRouteParam), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    params = (SlRouteParam*)ptr;
-    for (index = 0U; index < capture_count; index += 1U) {
-        params[index] = captures[index];
-    }
-
+    params = (SlRouteParam*)param_slice.ptr;
     *out = params;
     return sl_status_ok();
 }

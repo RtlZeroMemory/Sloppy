@@ -20,7 +20,7 @@
 #include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <yyjson.h>
 
@@ -592,9 +592,8 @@ static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
                                           SlHttpRouteTableEntry** out_entries,
                                           SlHttpRouteBinding** out_bindings)
 {
-    void* entry_memory = NULL;
-    void* binding_memory = NULL;
-    size_t alloc_size = 0U;
+    SlSlice entry_slice = {0};
+    SlSlice binding_slice = {0};
     SlStatus status;
 
     if (arena == NULL || out_entries == NULL || out_bindings == NULL) {
@@ -607,26 +606,20 @@ static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(route_count, sizeof(SlHttpRouteTableEntry), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlHttpRouteTableEntry), &entry_memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    status = sl_checked_array_size(route_count, sizeof(SlHttpRouteBinding), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlHttpRouteBinding), &binding_memory);
+    status = sl_arena_array_alloc(arena, route_count, sizeof(SlHttpRouteTableEntry),
+                                  _Alignof(SlHttpRouteTableEntry), &entry_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    *out_entries = (SlHttpRouteTableEntry*)entry_memory;
-    *out_bindings = (SlHttpRouteBinding*)binding_memory;
+    status = sl_arena_array_alloc(arena, route_count, sizeof(SlHttpRouteBinding),
+                                  _Alignof(SlHttpRouteBinding), &binding_slice);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_entries = (SlHttpRouteTableEntry*)entry_slice.ptr;
+    *out_bindings = (SlHttpRouteBinding*)binding_slice.ptr;
     return sl_status_ok();
 }
 

@@ -22,6 +22,8 @@
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
+    sloppy_add_c_unit_test(core_container_primitives core.container.primitives
+                           tests/unit/core/test_container.c)
     sloppy_add_c_unit_test(core_builder_foundation core.builder.foundation
                            tests/unit/core/test_builder.c)
     sloppy_add_c_unit_test(core_intern_table core.intern.table tests/unit/core/test_intern.c)

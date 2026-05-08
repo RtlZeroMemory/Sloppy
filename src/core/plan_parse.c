@@ -18,7 +18,7 @@
  */
 #include "sloppy/plan.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 #include "sloppy/route.h"
 
 #include <stdint.h>
@@ -106,19 +106,31 @@ static SlStatus sl_plan_parse_field_diag(SlPlanParseContext* ctx, SlStr message,
 
 static SlStatus sl_plan_parse_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    SlOwnedStr copied = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_plan_parse_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_str_copy_to_arena(arena, src, &copied);
+    return sl_str_copy_view_to_arena(arena, src, out);
+}
+
+static SlStatus sl_plan_parse_alloc_array(SlPlanParseContext* ctx, size_t count, size_t elem_size,
+                                          size_t alignment, void** out)
+{
+    SlSlice slice = {0};
+    SlStatus status;
+
+    if (ctx == NULL || out == NULL || elem_size == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (count == 0U) {
+        *out = NULL;
+        return sl_status_ok();
+    }
+    status = sl_arena_array_alloc(ctx->arena, count, elem_size, alignment, &slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-
-    *out = sl_owned_str_as_view(copied);
+    *out = slice.ptr;
     return sl_status_ok();
 }
 
@@ -358,9 +370,7 @@ static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanRequiredFeature* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -380,16 +390,12 @@ static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(count, sizeof(SlPlanRequiredFeature), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanRequiredFeature), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanRequiredFeature),
+                                       _Alignof(SlPlanRequiredFeature), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanRequiredFeature*)ptr;
     yyjson_arr_iter_init(features, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         SlStr feature = {0};
@@ -568,9 +574,7 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanHandler* parsed_handlers = NULL;
-    void* ptr = NULL;
     size_t handler_count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -603,17 +607,12 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
                                   sizeof("minimal Plan v1 requires at least one handler") - 1U));
     }
 
-    status = sl_checked_array_size(handler_count, sizeof(SlPlanHandler), &alloc_size);
+    status = sl_plan_parse_alloc_array(ctx, handler_count, sizeof(SlPlanHandler),
+                                       _Alignof(SlPlanHandler), (void**)&parsed_handlers);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanHandler), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    parsed_handlers = (SlPlanHandler*)ptr;
     yyjson_arr_iter_init(handlers, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed_handlers[index] = (SlPlanHandler){0};
@@ -796,9 +795,7 @@ static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanRequestBinding* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -819,16 +816,12 @@ static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(count, sizeof(SlPlanRequestBinding), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanRequestBinding), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanRequestBinding),
+                                       _Alignof(SlPlanRequestBinding), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanRequestBinding*)ptr;
     yyjson_arr_iter_init(bindings, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed[index] = (SlPlanRequestBinding){0};
@@ -912,9 +905,7 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanRoute* parsed_routes = NULL;
-    void* ptr = NULL;
     size_t route_count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -937,16 +928,12 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(route_count, sizeof(SlPlanRoute), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanRoute), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, route_count, sizeof(SlPlanRoute), _Alignof(SlPlanRoute),
+                                       (void**)&parsed_routes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed_routes = (SlPlanRoute*)ptr;
     yyjson_arr_iter_init(routes, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed_routes[index] = (SlPlanRoute){0};
@@ -1061,7 +1048,8 @@ static SlStatus sl_plan_parse_schema_node(SlPlanParseContext* ctx, yyjson_val* v
 static SlStatus sl_plan_parse_schema_node_alloc(SlPlanParseContext* ctx, yyjson_val* value,
                                                 SlPlanSchemaNode** out)
 {
-    void* ptr = NULL;
+    SlSlice slice = {0};
+    SlPlanSchemaNode* parsed = NULL;
     SlStatus status;
 
     if (ctx == NULL || out == NULL) {
@@ -1069,14 +1057,24 @@ static SlStatus sl_plan_parse_schema_node_alloc(SlPlanParseContext* ctx, yyjson_
     }
 
     *out = NULL;
-    status = sl_arena_alloc(ctx->arena, sizeof(SlPlanSchemaNode), _Alignof(SlPlanSchemaNode), &ptr);
+    status = sl_arena_array_alloc(ctx->arena, 1U, sizeof(SlPlanSchemaNode),
+                                  _Alignof(SlPlanSchemaNode), &slice);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (slice.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    parsed = (SlPlanSchemaNode*)slice.ptr;
+    *parsed = (SlPlanSchemaNode){0};
+    status = sl_plan_parse_schema_node(ctx, value, parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    *out = (SlPlanSchemaNode*)ptr;
-    **out = (SlPlanSchemaNode){0};
-    return sl_plan_parse_schema_node(ctx, value, *out);
+    *out = parsed;
+    return sl_status_ok();
 }
 
 static SlStatus sl_plan_parse_schema_properties(SlPlanParseContext* ctx, yyjson_val* object,
@@ -1087,10 +1085,8 @@ static SlStatus sl_plan_parse_schema_properties(SlPlanParseContext* ctx, yyjson_
     yyjson_val* value = NULL;
     yyjson_obj_iter iter;
     SlPlanSchemaProperty* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
     size_t index = 0U;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     if (properties == NULL || yyjson_is_null(properties)) {
@@ -1110,16 +1106,12 @@ static SlStatus sl_plan_parse_schema_properties(SlPlanParseContext* ctx, yyjson_
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(count, sizeof(SlPlanSchemaProperty), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchemaProperty), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanSchemaProperty),
+                                       _Alignof(SlPlanSchemaProperty), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanSchemaProperty*)ptr;
     yyjson_obj_iter_init(properties, &iter);
     while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
         SlPlanSchemaNode* child = NULL;
@@ -1177,9 +1169,7 @@ static SlStatus sl_plan_parse_schema_variants(SlPlanParseContext* ctx, yyjson_va
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanSchemaNode* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -1204,16 +1194,12 @@ static SlStatus sl_plan_parse_schema_variants(SlPlanParseContext* ctx, yyjson_va
                                       1U));
     }
 
-    status = sl_checked_array_size(count, sizeof(SlPlanSchemaNode), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchemaNode), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanSchemaNode),
+                                       _Alignof(SlPlanSchemaNode), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanSchemaNode*)ptr;
     yyjson_arr_iter_init(variants, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed[index] = (SlPlanSchemaNode){0};
@@ -1381,9 +1367,7 @@ static SlStatus sl_plan_parse_schemas(SlPlanParseContext* ctx, yyjson_val* root,
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanSchema* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -1404,16 +1388,12 @@ static SlStatus sl_plan_parse_schemas(SlPlanParseContext* ctx, yyjson_val* root,
         return sl_status_ok();
     }
 
-    status = sl_checked_array_size(count, sizeof(SlPlanSchema), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanSchema), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanSchema), _Alignof(SlPlanSchema),
+                                       (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanSchema*)ptr;
     yyjson_arr_iter_init(schemas, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed[index] = (SlPlanSchema){0};
@@ -1582,9 +1562,7 @@ static SlStatus sl_plan_parse_data_providers(SlPlanParseContext* ctx, yyjson_val
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanDataProvider* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -1604,16 +1582,12 @@ static SlStatus sl_plan_parse_data_providers(SlPlanParseContext* ctx, yyjson_val
     if (count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_array_size(count, sizeof(SlPlanDataProvider), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanDataProvider), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanDataProvider),
+                                       _Alignof(SlPlanDataProvider), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanDataProvider*)ptr;
     yyjson_arr_iter_init(providers, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed[index] = (SlPlanDataProvider){0};
@@ -1758,9 +1732,7 @@ static SlStatus sl_plan_parse_capabilities(SlPlanParseContext* ctx, yyjson_val* 
     yyjson_val* value = NULL;
     yyjson_arr_iter iter;
     SlPlanCapability* parsed = NULL;
-    void* ptr = NULL;
     size_t count = 0U;
-    size_t alloc_size = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -1780,16 +1752,12 @@ static SlStatus sl_plan_parse_capabilities(SlPlanParseContext* ctx, yyjson_val* 
     if (count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_array_size(count, sizeof(SlPlanCapability), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanCapability), &ptr);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanCapability),
+                                       _Alignof(SlPlanCapability), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    parsed = (SlPlanCapability*)ptr;
     yyjson_arr_iter_init(capabilities, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         parsed[index] = (SlPlanCapability){0};

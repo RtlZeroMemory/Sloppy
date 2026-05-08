@@ -23,6 +23,7 @@
 #include "sloppy/data_sqlserver.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <errno.h>
 #include <stddef.h>
@@ -1282,9 +1283,8 @@ SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, Sl
 static SlStatus sl_sqlsrv_copy_columns(SlArena* arena, SQLHSTMT stmt, size_t column_count,
                                        SlStr** out_column_names)
 {
-    void* ptr = NULL;
+    SlSlice names_slice = {0};
     SlStr* names = NULL;
-    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || stmt == SQL_NULL_HSTMT || out_column_names == NULL) {
@@ -1294,15 +1294,12 @@ static SlStatus sl_sqlsrv_copy_columns(SlArena* arena, SQLHSTMT stmt, size_t col
     if (column_count == 0U) {
         return sl_status_ok();
     }
-    status = sl_checked_mul_size(column_count, sizeof(SlStr), &alloc_size);
+    status =
+        sl_arena_array_alloc(arena, column_count, sizeof(SlStr), _Alignof(SlStr), &names_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlStr), &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    names = (SlStr*)ptr;
+    names = (SlStr*)names_slice.ptr;
     for (size_t index = 0U; index < column_count; index += 1U) {
         char name[256] = {0};
         SQLSMALLINT name_length = 0;
@@ -1414,20 +1411,12 @@ static size_t sl_sqlsrv_chunk_length(const char* buffer, size_t capacity)
 
 static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chunk, SlStr* out)
 {
-    SlOwnedStr copied = {0};
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(current) ||
         !sl_sqlsrv_str_valid(chunk))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_str_concat_to_arena(arena, current, chunk, &copied);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = sl_owned_str_as_view(copied);
-    return sl_status_ok();
+    return sl_str_concat_view_to_arena(arena, current, chunk, out);
 }
 
 static SlStatus sl_sqlsrv_copy_streamed_text(SlArena* arena, SQLHSTMT stmt, size_t column,
@@ -1637,11 +1626,10 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
     SQLSMALLINT column_count_small = 0;
     size_t column_count = 0U;
     size_t row_count = 0U;
-    void* row_ptr = NULL;
-    void* cell_ptr = NULL;
+    SlSlice row_slice = {0};
+    SlSlice cell_slice = {0};
     SlSqlServerRow* rows = NULL;
     SlSqlServerValue* cells = NULL;
-    size_t alloc_size = 0U;
     size_t cell_count = 0U;
     SQLRETURN rc;
     SlStatus status;
@@ -1664,35 +1652,29 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_mul_size(max_rows, sizeof(SlSqlServerRow), &alloc_size);
+    status = sl_arena_array_alloc(arena, max_rows, sizeof(SlSqlServerRow), _Alignof(SlSqlServerRow),
+                                  &row_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlSqlServerRow), &row_ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    if (row_ptr == NULL) {
+    if (row_slice.ptr == NULL) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    rows = (SlSqlServerRow*)row_ptr;
+    rows = (SlSqlServerRow*)row_slice.ptr;
     status = sl_checked_mul_size(max_rows, column_count, &cell_count);
     if (!sl_status_is_ok(status)) {
         return status;
     }
     if (cell_count > 0U) {
-        status = sl_checked_mul_size(cell_count, sizeof(SlSqlServerValue), &alloc_size);
+        status = sl_arena_array_alloc(arena, cell_count, sizeof(SlSqlServerValue),
+                                      _Alignof(SlSqlServerValue), &cell_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlSqlServerValue), &cell_ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        if (cell_ptr == NULL) {
+        if (cell_slice.ptr == NULL) {
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        cells = (SlSqlServerValue*)cell_ptr;
+        cells = (SlSqlServerValue*)cell_slice.ptr;
     }
     while ((rc = SQLFetch(stmt)) != SQL_NO_DATA) {
         if (!sl_sqlsrv_success(rc)) {
@@ -1732,9 +1714,8 @@ static SlStatus sl_sqlsrv_materialize_first_row(SlArena* arena, SQLHSTMT stmt,
 {
     SQLSMALLINT column_count_small = 0;
     size_t column_count = 0U;
-    void* cell_ptr = NULL;
+    SlSlice cell_slice = {0};
     SlSqlServerValue* values = NULL;
-    size_t alloc_size = 0U;
     SQLRETURN rc;
     SlStatus status;
 
@@ -1770,15 +1751,12 @@ static SlStatus sl_sqlsrv_materialize_first_row(SlArena* arena, SQLHSTMT stmt,
             sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     if (column_count > 0U) {
-        status = sl_checked_mul_size(column_count, sizeof(SlSqlServerValue), &alloc_size);
+        status = sl_arena_array_alloc(arena, column_count, sizeof(SlSqlServerValue),
+                                      _Alignof(SlSqlServerValue), &cell_slice);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlSqlServerValue), &cell_ptr);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        values = (SlSqlServerValue*)cell_ptr;
+        values = (SlSqlServerValue*)cell_slice.ptr;
         for (size_t column = 0U; column < column_count; column += 1U) {
             status = sl_sqlsrv_copy_value(arena, stmt, column, &values[column]);
             if (!sl_status_is_ok(status)) {

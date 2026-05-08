@@ -2,6 +2,7 @@
 #define SLOPPY_SCOPE_H
 
 #include "sloppy/arena.h"
+#include "sloppy/container.h"
 #include "sloppy/status.h"
 
 #include <stdbool.h>
@@ -34,9 +35,7 @@ typedef struct SlScopeCleanup
 
 typedef struct SlScope
 {
-    SlScopeCleanup* cleanups;
-    size_t capacity;
-    size_t count;
+    SlFixedVec cleanups;
     bool closed;
 } SlScope;
 

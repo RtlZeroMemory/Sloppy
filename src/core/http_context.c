@@ -9,7 +9,7 @@
  */
 #include "sloppy/http_context.h"
 
-#include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #include <stdbool.h>
 
@@ -173,24 +173,20 @@ static SlStatus sl_http_query_parse_pair(SlArena* arena, SlStr query, size_t pai
 static SlStatus sl_http_query_alloc_params(SlArena* arena, size_t capacity,
                                            SlHttpQueryParam** out_params)
 {
-    size_t alloc_size = 0U;
-    void* memory = NULL;
+    SlSlice param_slice = {0};
     SlStatus status;
 
     if (arena == NULL || out_params == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_checked_array_size(capacity, sizeof(SlHttpQueryParam), &alloc_size);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlHttpQueryParam), &memory);
+    status = sl_arena_array_alloc(arena, capacity, sizeof(SlHttpQueryParam),
+                                  _Alignof(SlHttpQueryParam), &param_slice);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    *out_params = (SlHttpQueryParam*)memory;
+    *out_params = (SlHttpQueryParam*)param_slice.ptr;
     return sl_status_ok();
 }
 

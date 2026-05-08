@@ -2,6 +2,7 @@
 #define SLOPPY_INTERN_H
 
 #include "sloppy/arena.h"
+#include "sloppy/container.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -30,7 +31,6 @@ typedef struct SlInternEntry
 {
     SlOwnedStr text;
     uint64_t hash;
-    size_t next_index;
 } SlInternEntry;
 
 /*
@@ -46,9 +46,8 @@ typedef struct SlInternTable
 {
     SlArena* arena;
     SlInternEntry* entries;
-    size_t* buckets;
+    SlArenaHashIndex index;
     size_t capacity;
-    size_t bucket_count;
     size_t count;
     unsigned int generation;
     bool initialized;

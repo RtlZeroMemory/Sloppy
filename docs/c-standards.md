@@ -51,6 +51,18 @@ unless intended.
 
 Public and internal headers need ownership comments for ambiguous cases.
 
+## Container Rules
+
+Use the standard C container primitives for repeated collection mechanics in the C kernel:
+fixed vectors for bounded append-only lists, ring queues for FIFO completion/event queues,
+arena array allocation/copy for typed slices, and arena hash indexes for bounded lookup
+tables. Do not reimplement checked array sizing, ring-buffer wraparound, or bucket-chain
+bookkeeping in feature modules unless a documented invariant requires a specialized shape.
+
+Containers must follow the same ownership rules as the memory they wrap. They do not own an
+arena, do not free arena storage, and do not hide reset/generation invalidation. Typed
+modules still own cleanup, resource generation, and public API semantics.
+
 ## Comments and Rationale
 
 ### Principle

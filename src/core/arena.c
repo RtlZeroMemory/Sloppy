@@ -16,6 +16,7 @@
 #include "sloppy/arena.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/string.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -265,4 +266,40 @@ SlArenaStats sl_arena_stats(const SlArena* arena)
     stats.high_water = arena->high_water;
     stats.generation = arena->generation;
     return stats;
+}
+
+bool sl_arena_contains_str(const SlArena* arena, SlStr str)
+{
+    uintptr_t arena_start = 0U;
+    uintptr_t arena_end = 0U;
+    uintptr_t str_start = 0U;
+    uintptr_t str_end = 0U;
+
+    if (arena == NULL) {
+        return false;
+    }
+
+    if (str.length == 0U) {
+        return true;
+    }
+
+    if (arena->base == NULL || str.ptr == NULL || arena->capacity == 0U ||
+        arena->capacity > (size_t)UINTPTR_MAX)
+    {
+        return false;
+    }
+
+    arena_start = (uintptr_t)arena->base;
+    if ((size_t)(UINTPTR_MAX - arena_start) < arena->capacity) {
+        return false;
+    }
+    arena_end = arena_start + arena->capacity;
+
+    str_start = (uintptr_t)str.ptr;
+    if ((size_t)(UINTPTR_MAX - str_start) < str.length) {
+        return false;
+    }
+    str_end = str_start + str.length;
+
+    return str_start >= arena_start && str_end <= arena_end;
 }

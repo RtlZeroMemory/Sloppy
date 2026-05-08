@@ -17,22 +17,17 @@
 
 static void sl_loop_clear_slots(SlLoop* loop)
 {
-    size_t index = 0U;
-
-    if (loop == NULL || loop->queue == NULL) {
+    if (loop == NULL) {
         return;
     }
 
-    for (index = 0U; index < loop->capacity; index += 1U) {
-        loop->queue[index].kind = SL_COMPLETION_KIND_NONE;
-        loop->queue[index].fn = NULL;
-        loop->queue[index].payload = NULL;
-        loop->queue[index].user = NULL;
-    }
+    sl_ring_queue_clear(&loop->queue);
 }
 
 SlStatus sl_loop_init(SlLoop* loop, SlCompletion* storage, size_t capacity)
 {
+    SlStatus status;
+
     if (loop == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -41,15 +36,12 @@ SlStatus sl_loop_init(SlLoop* loop, SlCompletion* storage, size_t capacity)
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    loop->queue = storage;
-    loop->capacity = capacity;
-    loop->head = 0U;
-    loop->tail = 0U;
-    loop->count = 0U;
+    status = sl_ring_queue_init(&loop->queue, storage, sizeof(SlCompletion), capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     loop->stopped = false;
     loop->draining = false;
-
-    sl_loop_clear_slots(loop);
     return sl_status_ok();
 }
 
@@ -63,9 +55,6 @@ void sl_loop_reset(SlLoop* loop)
 
     was_draining = loop->draining;
     sl_loop_clear_slots(loop);
-    loop->head = 0U;
-    loop->tail = 0U;
-    loop->count = 0U;
     loop->stopped = false;
     loop->draining = was_draining;
 }
@@ -83,24 +72,12 @@ SlStatus sl_loop_post(SlLoop* loop, SlCompletionKind kind, SlCompletionFn fn, vo
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
-    if (loop->count >= loop->capacity) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-    }
-
-    if (loop->queue == NULL) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-
     completion.kind = kind;
     completion.fn = fn;
     completion.payload = payload;
     completion.user = user;
 
-    loop->queue[loop->tail] = completion;
-    loop->tail = (loop->tail + 1U) % loop->capacity;
-    loop->count += 1U;
-
-    return sl_status_ok();
+    return sl_ring_queue_push(&loop->queue, &completion);
 }
 
 SlStatus sl_loop_run_once(SlLoop* loop, size_t* out_ran)
@@ -115,21 +92,13 @@ SlStatus sl_loop_run_once(SlLoop* loop, size_t* out_ran)
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (loop->stopped || loop->count == 0U) {
+    if (loop->stopped || sl_ring_queue_is_empty(&loop->queue)) {
         return sl_status_ok();
     }
 
-    if (loop->queue == NULL || loop->capacity == 0U) {
+    if (!sl_ring_queue_pop_front(&loop->queue, &completion)) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-
-    completion = loop->queue[loop->head];
-    loop->queue[loop->head].kind = SL_COMPLETION_KIND_NONE;
-    loop->queue[loop->head].fn = NULL;
-    loop->queue[loop->head].payload = NULL;
-    loop->queue[loop->head].user = NULL;
-    loop->head = (loop->head + 1U) % loop->capacity;
-    loop->count -= 1U;
 
     if (out_ran != NULL) {
         *out_ran = 1U;
@@ -158,7 +127,7 @@ SlStatus sl_loop_drain(SlLoop* loop, size_t* out_ran)
     loop->draining = true;
     status = sl_status_ok();
 
-    while (!loop->stopped && loop->count != 0U) {
+    while (!loop->stopped && !sl_ring_queue_is_empty(&loop->queue)) {
         size_t step_ran = 0U;
 
         status = sl_loop_run_once(loop, &step_ran);
@@ -187,12 +156,12 @@ void sl_loop_stop(SlLoop* loop)
 
 size_t sl_loop_pending_count(const SlLoop* loop)
 {
-    return loop == NULL ? 0U : loop->count;
+    return sl_ring_queue_count(loop == NULL ? NULL : &loop->queue);
 }
 
 size_t sl_loop_capacity(const SlLoop* loop)
 {
-    return loop == NULL ? 0U : loop->capacity;
+    return sl_ring_queue_capacity(loop == NULL ? NULL : &loop->queue);
 }
 
 bool sl_loop_is_stopped(const SlLoop* loop)
