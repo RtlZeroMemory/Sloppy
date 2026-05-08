@@ -65,8 +65,9 @@ Inbound HTTP TLS passphrases and private-key material are secret-bearing values.
 diagnostics may identify the failing contract, such as missing path, unsupported backend,
 certificate/key load failure, key mismatch, handshake failure, or shutdown failure, but
 must not include passphrases, PEM contents, raw OpenSSL error strings with sensitive
-material, or native TLS handles. The native transport zeroes its arena-owned TLS passphrase
-copy immediately after OpenSSL key loading succeeds or fails. TLS loopback tests generate
+material, or native TLS handles. The native transport keeps its arena-owned TLS passphrase
+copy in private platform state and zeroes it immediately after OpenSSL key loading succeeds
+or fails. TLS loopback tests generate
 temporary local certificates and keys at runtime instead of committing key fixtures.
 
 ## Native Pointers

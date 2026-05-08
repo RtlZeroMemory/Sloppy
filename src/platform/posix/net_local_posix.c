@@ -385,7 +385,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     SlLocalConnection* connection = NULL;
     struct sockaddr_un addr;
     socklen_t addr_len = 0;
-    char path[sizeof(((struct sockaddr_un*)0)->sun_path)];
+    char path[sizeof(((struct sockaddr_un*)0)->sun_path)] = {0};
     size_t path_length = 0U;
     SlStatus status;
     int fd = -1;
