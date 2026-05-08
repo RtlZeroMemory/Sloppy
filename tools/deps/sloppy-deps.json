@@ -46,7 +46,7 @@
     },
     "rust": {
       "required": true,
-      "minimumVersion": "1.76.0",
+      "minimumVersion": "1.93.0",
       "command": "cargo",
       "versionArguments": ["--version"],
       "versionPattern": "cargo ([0-9]+\\.[0-9]+\\.[0-9]+)"

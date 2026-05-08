@@ -65,9 +65,9 @@ Sloppy apps.
 ## Packages
 
 Current package artifacts are experimental evidence for layout and outside-checkout
-behavior. GitHub Release archives are the canonical distribution artifacts. The alpha
-archive names are `sloppy-windows-x64.zip`, `sloppy-linux-x64.tar.gz`,
-`sloppy-macos-arm64.tar.gz`, and `sloppy-macos-x64.tar.gz` only when that optional lane is
+behavior. GitHub Release archives are the canonical distribution artifacts. The current
+local alpha archive name is `sloppy-windows-x64.zip`. Linux x64, macOS arm64, and macOS x64
+archive names are planned/optional lanes and must be reported only when that lane is
 requested and evidenced. The alpha layout is:
 
 ```text

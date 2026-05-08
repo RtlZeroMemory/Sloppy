@@ -8,14 +8,30 @@ function effectiveArch(env, processArch) {
   return env.SLOPPY_RUNTIME_ARCH || processArch;
 }
 
-function effectiveLibc(env) {
-  return env.SLOPPY_RUNTIME_LIBC || "gnu";
+function effectiveLibc(env, platform) {
+  if (env.SLOPPY_RUNTIME_LIBC) {
+    return env.SLOPPY_RUNTIME_LIBC;
+  }
+  if (platform !== "linux") {
+    return "";
+  }
+  if (
+    typeof process !== "undefined" &&
+    process.report &&
+    typeof process.report.getReport === "function"
+  ) {
+    const report = process.report.getReport();
+    if (report && report.header && report.header.glibcVersionRuntime) {
+      return "gnu";
+    }
+  }
+  return "musl";
 }
 
 function resolvePlatformPackage(env, processPlatform, processArch) {
   const platform = effectivePlatform(env, processPlatform);
   const arch = effectiveArch(env, processArch);
-  const libc = effectiveLibc(env);
+  const libc = effectiveLibc(env, platform);
 
   if (platform === "win32" && arch === "x64") {
     return { supported: true, packageName: "@sloppy/runtime-win32-x64" };

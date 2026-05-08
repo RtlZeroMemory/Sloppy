@@ -13,7 +13,6 @@ tools/unix/dev.sh test
 tools/unix/dev.sh lint
 tools/unix/dev.sh package
 tools/unix/dev.sh test-package
-tools/unix/dev.sh npm-dry-run
 tools/unix/dev.sh dogfood
 tools/unix/check-platform-boundaries.sh
 tools/unix/check-c-standards.sh --self-test
@@ -33,7 +32,7 @@ lane prerequisites before running bootstrap:
 apt-get install -y --no-install-recommends \
   git cmake ninja-build curl zip unzip tar file pkg-config build-essential clang \
   ca-certificates perl bison flex autoconf autoconf-archive automake libtool \
-  m4 python3 gawk lld libglib2.0-dev
+  m4 python3 gawk lld libglib2.0-dev cargo
 ```
 
 Use a Rust toolchain new enough for the compiler dependencies. The current Oxc dependency

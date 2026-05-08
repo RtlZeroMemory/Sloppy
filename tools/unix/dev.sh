@@ -104,7 +104,7 @@ USAGE
 
 doctor() {
   local missing=0
-  for tool in git python3 cmake ninja cargo clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
+  for tool in git python3 cmake ninja cargo clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake bison flex gawk; do
     if command -v "$tool" >/dev/null 2>&1; then
       echo "doctor: found: $tool"
     else
@@ -112,6 +112,12 @@ doctor() {
       missing=1
     fi
   done
+  if command -v libtoolize >/dev/null 2>&1 || command -v glibtoolize >/dev/null 2>&1; then
+    echo "doctor: found: libtoolize or glibtoolize"
+  else
+    echo "doctor: missing: libtoolize or glibtoolize" >&2
+    missing=1
+  fi
   local aclocal_dir
   aclocal_dir="$(aclocal --print-ac-dir 2>/dev/null || true)"
   if [[ -n "$aclocal_dir" && -f "$aclocal_dir/ax_check_compile_flag.m4" ]] ||

@@ -36,6 +36,8 @@ function Invoke-Native {
 }
 
 function Resolve-PackagePath {
+    param([switch]$PreferHostPlatform)
+
     if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
         return (Resolve-Path -LiteralPath $PackagePath).Path
     }
@@ -49,6 +51,12 @@ function Resolve-PackagePath {
     }
     if ($packages.Count -eq 0) {
         throw "No release archive found under $packageDir. Run package/release-dry-run first or pass -PackagePath."
+    }
+    if ($PreferHostPlatform) {
+        $hostPreferred = $packages | Where-Object { $_.Name -eq "sloppy-windows-x64.zip" } | Select-Object -First 1
+        if ($null -ne $hostPreferred) {
+            return $hostPreferred.FullName
+        }
     }
     return $packages[0].FullName
 }
@@ -105,7 +113,7 @@ if ($null -eq $node) {
     throw "node is required for npm dry-run launcher smoke, but it was not found on PATH."
 }
 
-$archivePath = Resolve-PackagePath
+$archivePath = Resolve-PackagePath -PreferHostPlatform:(-not $SkipInstallSmoke)
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-npm-dry-run-" + [System.Guid]::NewGuid().ToString("N"))
 $extractRoot = Join-Path $tempRoot "extract"
 $stageRoot = Join-Path $OutputRoot "stage"
@@ -135,6 +143,18 @@ try {
     if ($manifest.manifestSchema -ne "sloppy.release-artifact.v1") {
         throw "Archive manifest is not a release artifact manifest."
     }
+    if ($manifest.releaseKind -ne "dry-run") {
+        throw "Archive manifest must declare releaseKind=dry-run for npm staging."
+    }
+    if ($manifest.publicReleaseCreated -ne $false) {
+        throw "Archive manifest must declare publicReleaseCreated=false for npm staging."
+    }
+    if ($manifest.canonicalDistribution -ne "github-release-archive") {
+        throw "Archive manifest must declare GitHub Release archives as the canonical distribution."
+    }
+    if ([string]$manifest.packageRoot -ne $roots[0].Name) {
+        throw "Archive manifest packageRoot does not match the extracted archive root."
+    }
 
     $runtimeStage = Join-Path $stageRoot "runtime"
     Copy-DirectoryContents -Source (Join-Path $Root "packages/npm/runtime") -Destination $runtimeStage
@@ -159,8 +179,11 @@ try {
     Invoke-Native $npm.Source @("pack", "--pack-destination", $tarballRoot) -WorkingDirectory $platformStage
     Invoke-Native $npm.Source @("pack", "--pack-destination", $tarballRoot) -WorkingDirectory $runtimeStage
 
-    $runtimeTarball = @(Get-ChildItem -LiteralPath $tarballRoot -Filter "sloppy-runtime-0.1.0-alpha.0.tgz" -File | Select-Object -First 1)
-    $platformTarballName = ($platformPackageDirectoryName -replace '^runtime-', 'sloppy-runtime-') + "-0.1.0-alpha.0.tgz"
+    $runtimePackageJson = Get-Content -LiteralPath (Join-Path $runtimeStage "package.json") -Raw | ConvertFrom-Json
+    $platformPackageJson = Get-Content -LiteralPath (Join-Path $platformStage "package.json") -Raw | ConvertFrom-Json
+    $runtimeTarballName = "sloppy-runtime-$($runtimePackageJson.version).tgz"
+    $platformTarballName = ($platformPackageDirectoryName -replace '^runtime-', 'sloppy-runtime-') + "-$($platformPackageJson.version).tgz"
+    $runtimeTarball = @(Get-ChildItem -LiteralPath $tarballRoot -Filter $runtimeTarballName -File | Select-Object -First 1)
     $platformTarball = @(Get-ChildItem -LiteralPath $tarballRoot -Filter $platformTarballName -File | Select-Object -First 1)
     if ($runtimeTarball.Count -eq 0 -or $platformTarball.Count -eq 0) {
         throw "npm dry-run did not produce both root and platform tarballs."

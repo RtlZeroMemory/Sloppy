@@ -143,7 +143,7 @@ jobs:
 
       - name: npm launcher dry-run from Windows archive
         shell: pwsh
-        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip -SkipInstallSmoke
+        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'

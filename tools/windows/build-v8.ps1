@@ -270,6 +270,22 @@ if ($Revision -ne $V8Revision) {
 }
 
 $Features = Get-Content -LiteralPath (Join-Path $V8BuildDir "v8_features.json") -Raw | ConvertFrom-Json
+$requiredFeatureKeys = @(
+    "v8_enable_pointer_compression",
+    "v8_enable_pointer_compression_shared_cage",
+    "v8_enable_31bit_smis_on_64bit_arch",
+    "v8_enable_sandbox",
+    "v8_enable_i18n_support"
+)
+foreach ($key in $requiredFeatureKeys) {
+    $property = $Features.PSObject.Properties[$key]
+    if ($null -eq $property) {
+        throw "v8_features.json is missing required key '$key'."
+    }
+    if ($property.Value -isnot [bool]) {
+        throw "v8_features.json key '$key' must be boolean."
+    }
+}
 
 $manifest = [ordered]@{
     name = "sloppy-v8-sdk"

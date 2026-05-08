@@ -311,11 +311,13 @@ if(SLOPPY_ENABLE_V8)
                                 v8EnableSandbox)
     if(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "windows-x64")
         if(NOT SLOPPY_V8_ABI_COMPRESS_POINTERS
+           OR NOT SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE
            OR NOT SLOPPY_V8_ABI_ENABLE_SANDBOX)
             message(FATAL_ERROR "V8 bridge: SDK ABI flags must match the pinned SDK.")
         endif()
     elseif(SLOPPY_V8_EXPECTED_PLATFORM STREQUAL "linux-x64")
         if(NOT SLOPPY_V8_ABI_COMPRESS_POINTERS
+           OR NOT SLOPPY_V8_ABI_COMPRESS_POINTERS_IN_SHARED_CAGE
            OR NOT SLOPPY_V8_ABI_ENABLE_SANDBOX)
             message(
                 FATAL_ERROR

@@ -103,8 +103,16 @@ APP
     echo "Package smoke V8 artifact execution passed from extracted package layout."
     if [[ "$require_v8_runtime" -eq 1 ]]; then
       local source_run_output
+      local source_run_status=0
+      set +e
       source_run_output="$(cd "$source_dir" && "$sloppy_executable" run "$source_dir/app.js" --once GET / 2>&1)"
+      source_run_status=$?
+      set -e
       printf '%s\n' "$source_run_output"
+      if [[ "$source_run_status" -ne 0 ]]; then
+        echo "packaged sloppy source-input run failed: $source_run_output" >&2
+        exit 1
+      fi
       grep -q "Hello from packaged Sloppy" <<<"$source_run_output" || {
         echo "packaged sloppy source-input run did not return the expected response." >&2
         exit 1

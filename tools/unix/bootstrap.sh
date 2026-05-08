@@ -47,9 +47,17 @@ esac
 for command_name in git python3 cmake ninja cargo; do
   require_command "$command_name"
 done
-for command_name in clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake libtoolize bison flex gawk; do
+for command_name in clang clang++ curl zip unzip tar pkg-config autoconf aclocal automake bison flex gawk; do
   require_command "$command_name"
 done
+if command -v libtoolize >/dev/null 2>&1; then
+  :
+elif command -v glibtoolize >/dev/null 2>&1; then
+  :
+else
+  echo "bootstrap: missing required command: libtoolize or glibtoolize" >&2
+  exit 1
+fi
 
 require_autoconf_archive() {
   local aclocal_dir
