@@ -164,6 +164,7 @@ struct DatabaseCapability {
     capability_kind: String,
     provider: String,
     config_name: Option<String>,
+    config_key: Option<String>,
     access: String,
     database: Option<String>,
     config_source: Option<String>,
@@ -1069,7 +1070,10 @@ impl ConfigurationModel {
         let Some((field, value_type, sensitive)) = contract else {
             return Ok(Vec::new());
         };
-        let key = format!("{prefix}:{field}");
+        let key = capability
+            .config_key
+            .clone()
+            .unwrap_or_else(|| format!("{prefix}:{field}"));
         let entry = self.get(&key);
         let status = if capability.database.is_some() || entry.is_some() {
             "present"
@@ -1664,6 +1668,15 @@ fn extract_entry(
         .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
         .map(|(_, source)| source.clone())
         .collect();
+    let framework_needs_os_runtime = state.routes.iter().any(|route| {
+        route.handler.bindings.iter().any(|binding| {
+            binding.kind == "config"
+                || matches!(
+                    binding.provider_kind.as_deref(),
+                    Some("postgres") | Some("sqlserver")
+                )
+        })
+    });
 
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
@@ -1697,7 +1710,7 @@ fn extract_entry(
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
-        uses_os_runtime: state.os_imported || graph.uses_os_runtime,
+        uses_os_runtime: state.os_imported || graph.uses_os_runtime || framework_needs_os_runtime,
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_workers_runtime: state.workers_imported || graph.uses_workers_runtime,
     })
@@ -3090,6 +3103,8 @@ fn database_capability_call(
         capability_kind: "database".to_string(),
         provider: provider.to_string(),
         config_name: None,
+        config_key: optional_object_string_property(path, options, "configKey")?
+            .map(ToOwned::to_owned),
         access,
         database,
         config_source: None,
@@ -4214,6 +4229,7 @@ fn sqlite_provider_call_expression(
         capability_kind: "database".to_string(),
         provider: "sqlite".to_string(),
         config_name: Some(name.to_string()),
+        config_key: None,
         access: "readwrite".to_string(),
         database: None,
         config_source: None,
@@ -5596,6 +5612,8 @@ fn explicit_wrapper_binding(
     };
     let name = if wrapper_name == "Service" {
         Some(type_display_name(target_type))
+    } else if wrapper_name == "Config" {
+        type_string_literal_value(target_type).or_else(|| Some(parameter_name.to_string()))
     } else {
         key.as_deref()
             .or(Some(parameter_name))
@@ -8631,6 +8649,9 @@ fn emit_plan(
             if let Some(database) = &capability.database {
                 provider["database"] = json!(database);
             }
+            if let Some(config_key) = &capability.config_key {
+                provider["configKey"] = json!(config_key);
+            }
             provider
         })
         .collect::<Vec<_>>();
@@ -8639,7 +8660,7 @@ fn emit_plan(
         .capabilities
         .iter()
         .map(|capability| {
-            json!({
+            let mut value = json!({
                 "token": capability.token,
                 "kind": capability.capability_kind,
                 "access": capability.access,
@@ -8649,7 +8670,11 @@ fn emit_plan(
                     &capability.source,
                     capability.span
                 )
-            })
+            });
+            if let Some(config_key) = &capability.config_key {
+                value["configKey"] = json!(config_key);
+            }
+            value
         })
         .collect::<Vec<_>>();
 
@@ -8920,6 +8945,39 @@ fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
     })
 }
 
+fn framework_provider_config_entries(app: &ExtractedApp) -> String {
+    let entries = app
+        .capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "database")
+        .map(|capability| {
+            let connection_string_env = capability.config_key.clone().or_else(|| {
+                if matches!(capability.provider.as_str(), "postgres" | "sqlserver") {
+                    Some(config_key_to_env_name(&format!(
+                        "Sloppy:Providers:{}:{}:connectionString",
+                        capability.provider,
+                        provider_config_name(capability)
+                    )))
+                } else {
+                    None
+                }
+            });
+            let value = json!({
+                "providerKind": capability.provider,
+                "access": capability.access,
+                "connectionStringEnv": connection_string_env
+            });
+            format!(
+                "[{}, {}]",
+                serde_json::to_string(&capability.token).unwrap_or_else(|_| "\"\"".to_string()),
+                serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{entries}]")
+}
+
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
     let mut mappings = Vec::new();
@@ -8935,6 +8993,15 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         .any(|route| route.handler.source.contains("__sloppy_framework_arg"));
     let needs_framework_services =
         needs_framework_arg_helper || !app.service_registrations.is_empty();
+    let needs_framework_environment = app.routes.iter().any(|route| {
+        route.handler.bindings.iter().any(|binding| {
+            binding.kind == "config"
+                || matches!(
+                    binding.provider_kind.as_deref(),
+                    Some("postgres") | Some("sqlserver")
+                )
+        })
+    });
 
     push_generated_line(
         &mut output,
@@ -8997,12 +9064,17 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_os_runtime {
         runtime_exports.extend(["System", "Environment", "Process", "Signals"]);
+    } else if needs_framework_environment {
+        runtime_exports.push("Environment");
     }
     if app.uses_http_client_runtime {
         runtime_exports.push("HttpClient");
     }
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
+    }
+    if needs_framework_services {
+        runtime_exports.push("__createFrameworkServiceProvider");
     }
     push_generated_line(
         &mut output,
@@ -9013,9 +9085,11 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         ),
     );
     if needs_framework_services {
-        for line in crate::framework_runtime::FRAMEWORK_SERVICE_RUNTIME.lines() {
-            push_generated_line(&mut output, &mut generated_line, line);
-        }
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const __sloppy_framework_services = __createFrameworkServiceProvider();",
+        );
         for registration in &app.service_registrations {
             let token =
                 serde_json::to_string(&registration.token).unwrap_or_else(|_| "\"\"".to_string());
@@ -9034,6 +9108,14 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
                 ),
             );
         }
+    }
+    if needs_framework_arg_helper {
+        let provider_configs = framework_provider_config_entries(app);
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!("const __sloppy_framework_provider_configs = new Map({provider_configs});"),
+        );
     }
     if app.uses_data_runtime && needs_provider_open_helper {
         push_generated_line(
@@ -9077,7 +9159,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.kind === \"config\") { throw new Error(`sloppy: Config injection for '${binding.name}' is unavailable in this runtime lane.`); }",
+            "  if (binding.kind === \"config\") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }",
         );
         push_generated_line(&mut output, &mut generated_line, "  let value;");
         push_generated_line(
@@ -9204,17 +9286,63 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\") { return scope.track(data.postgres.open({ provider: dependencyName })); }",
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\") { return scope.track(data.sqlserver.open({ provider: dependencyName })); }",
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
             "  throw new Error(`sloppy: ${binding.injectionKind} injection for '${binding.name}' is unavailable in this runtime lane.`);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_provider_open_options(binding, token) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const config = __sloppy_framework_provider_configs.get(token);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (config === undefined) { throw new Error(`sloppy: provider '${token}' is not configured for Framework injection.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (config.providerKind !== binding.providerKind) { throw new Error(`sloppy: provider '${token}' is configured as ${config.providerKind}, not ${binding.providerKind}.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const key = config.connectionStringEnv;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (typeof key !== \"string\" || key.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const connectionString = Environment.get(key);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (typeof connectionString !== \"string\" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires environment config '${key}'.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  return { connectionString, capability: token, access: config.access === \"read\" ? \"read\" : \"readwrite\" };",
         );
         push_generated_line(&mut output, &mut generated_line, "}");
     }
@@ -9866,6 +9994,7 @@ mod tests {
                 capability_kind: "database".to_string(),
                 provider: "sqlite".to_string(),
                 config_name: Some("main".to_string()),
+                config_key: None,
                 access: "readwrite".to_string(),
                 database: None,
                 config_source: None,
@@ -12839,6 +12968,72 @@ export default app;
         assert_eq!(binding.wrapper.as_deref(), Some("Service"));
         assert_eq!(binding.injection_kind.as_deref(), Some("service"));
         assert_eq!(binding.name.as_deref(), Some("UserService"));
+    }
+
+    #[test]
+    fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", (input: Body<UserCreate>) => Results.created(`/users/${input.email}`, {
+  name: input.name,
+  email: input.email,
+}));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed body handler should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const __sloppy_args = await Promise.all(["));
+        assert!(emitted_js.source.contains("ctx.request.json()"));
+        assert!(emitted_js
+            .source
+            .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
+        assert!(!emitted_js
+            .source
+            .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+    }
+
+    #[test]
+    fn typed_framework_provider_injection_uses_configured_provider_options() {
+        let source = r#"import { Sloppy, Results, RequestContext } from "sloppy";
+import { sql } from "sloppy/data";
+import { Postgres } from "sloppy/providers/postgres";
+import { Sqlite } from "sloppy/providers/sqlite";
+import { SqlServer } from "sloppy/providers/sqlserver";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", { provider: "postgres", access: "readwrite", configKey: "SLOPPY_POSTGRES_TEST_URL" });
+builder.capabilities.addDatabase("data.audit", { provider: "sqlite", access: "readwrite", database: ":memory:" });
+builder.capabilities.addDatabase("data.search", { provider: "sqlserver", access: "readwrite", configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING" });
+const app = builder.build();
+app.get("/users", async (pg: Postgres<"main">, sqlite: Sqlite<"audit">, sqlserver: SqlServer<"search">, ctx: RequestContext) => {
+  await sqlite.exec(sql`create table if not exists audit(id integer)`, { deadline: ctx.deadline });
+  return Results.ok({ ok: true });
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed provider injection should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("\"connectionStringEnv\":\"SLOPPY_POSTGRES_TEST_URL\""));
+        assert!(emitted_js
+            .source
+            .contains("\"connectionStringEnv\":\"SLOPPY_SQLSERVER_TEST_CONNECTION_STRING\""));
+        assert!(emitted_js
+            .source
+            .contains("data.postgres.open(__sloppy_framework_provider_open_options"));
+        assert!(emitted_js
+            .source
+            .contains("data.sqlserver.open(__sloppy_framework_provider_open_options"));
+        assert!(emitted_js.source.contains("data.sqlite(dependencyName)"));
+        assert!(!emitted_js.source.contains("data.postgres.open({ provider:"));
+        assert!(!emitted_js
+            .source
+            .contains("data.sqlserver.open({ provider:"));
     }
 
     #[test]

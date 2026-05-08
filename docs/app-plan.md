@@ -60,10 +60,12 @@ registrations in the source-input subset are emitted into the generated artifact
 circular-dependency, and singleton-to-scoped diagnostics.
 
 Provider injection opens provider handles through the existing stdlib/native bridge where
-available: SQLite can use Plan-backed provider tokens, while PostgreSQL and SQL Server
-report the existing bridge/config/live-lane error when provider runtime materialization is
-not available. Queue and `Config<T>` injection still fail explicitly rather than returning
-placeholder objects. Custom validators, arbitrary TypeScript lowering, controller
+available: SQLite uses Plan-backed provider tokens, while PostgreSQL and SQL Server
+materialize configured provider options from database capability metadata and a
+connection-string environment key before opening the active bridge. Queue injection
+resolves service-registered `WorkQueue<"name">` handles through the request service scope,
+and `Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
+TypeScript lowering, controller
 constructor injection, and broader response writing remain separate implementation lanes.
 
 ## Server Config Metadata
@@ -105,6 +107,9 @@ Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main
 `SqlServer<"main">` are represented as injection/capability requirements in route metadata.
 They do not register native database providers by themselves. Runtime injection depends on
 matching provider/capability metadata and the active provider bridge for the current lane.
+PostgreSQL and SQL Server typed injection require capability metadata with a connection
+string config key, such as `configKey: "SLOPPY_POSTGRES_TEST_URL"` or
+`configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"`.
 
 Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
 config references, or secret-source references.

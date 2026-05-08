@@ -374,6 +374,15 @@ Operation:
         };
     }
 
+    function validateProviderOperationOptions(options, operation) {
+        if (options === undefined) {
+            return;
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError(`Sloppy ${operation} options must be a plain object.`);
+        }
+    }
+
     function createSqliteConnection(bridge, handle) {
         const state = {
             closed: false,
@@ -400,18 +409,21 @@ Operation:
             }
 
             const tx = Object.freeze({
-                exec(sql, params) {
+                exec(sql, params, options) {
                     assertTransactionOpen("transaction.exec");
+                    validateProviderOperationOptions(options, "sqlite.transaction.exec");
                     const query = normalizeSqliteQuery("exec", sql, params);
                     return bridge.transactionExec(state.handle, query.text, query.parameters);
                 },
-                query(sql, params) {
+                query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
+                    validateProviderOperationOptions(options, "sqlite.transaction.query");
                     const query = normalizeSqliteQuery("query", sql, params);
                     return bridge.transactionQuery(state.handle, query.text, query.parameters);
                 },
-                queryOne(sql, params) {
+                queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
+                    validateProviderOperationOptions(options, "sqlite.transaction.queryOne");
                     const query = normalizeSqliteQuery("queryOne", sql, params);
                     return bridge.transactionQueryOne(state.handle, query.text, query.parameters);
                 },
@@ -465,18 +477,21 @@ Operation:
         }
 
         return Object.freeze({
-            exec(sql, params) {
+            exec(sql, params, options) {
                 assertOpen("exec");
+                validateProviderOperationOptions(options, "sqlite.exec");
                 const query = normalizeSqliteQuery("exec", sql, params);
                 return bridge.exec(state.handle, query.text, query.parameters);
             },
-            query(sql, params) {
+            query(sql, params, options) {
                 assertOpen("query");
+                validateProviderOperationOptions(options, "sqlite.query");
                 const query = normalizeSqliteQuery("query", sql, params);
                 return bridge.query(state.handle, query.text, query.parameters);
             },
-            queryOne(sql, params) {
+            queryOne(sql, params, options) {
                 assertOpen("queryOne");
+                validateProviderOperationOptions(options, "sqlite.queryOne");
                 const query = normalizeSqliteQuery("queryOne", sql, params);
                 return bridge.queryOne(state.handle, query.text, query.parameters);
             },
@@ -745,18 +760,21 @@ Operation:
                 }
             }
             const tx = Object.freeze({
-                exec(sql, params) {
+                exec(sql, params, options) {
                     assertTransactionOpen("transaction.exec");
+                    validateProviderOperationOptions(options, "postgres.transaction.exec");
                     const query = normalizePostgresQuery("exec", sql, params);
                     return bridge.transactionExec(state.handle, query.text, query.parameters);
                 },
-                query(sql, params) {
+                query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
+                    validateProviderOperationOptions(options, "postgres.transaction.query");
                     const query = normalizePostgresQuery("query", sql, params);
                     return bridge.transactionQuery(state.handle, query.text, query.parameters);
                 },
-                queryOne(sql, params) {
+                queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
+                    validateProviderOperationOptions(options, "postgres.transaction.queryOne");
                     const query = normalizePostgresQuery("queryOne", sql, params);
                     return bridge.transactionQueryOne(state.handle, query.text, query.parameters);
                 },
@@ -809,18 +827,21 @@ Operation:
         }
 
         return Object.freeze({
-            exec(sql, params) {
+            exec(sql, params, options) {
                 assertOpen("exec");
+                validateProviderOperationOptions(options, "postgres.exec");
                 const query = normalizePostgresQuery("exec", sql, params);
                 return bridge.exec(state.handle, query.text, query.parameters);
             },
-            query(sql, params) {
+            query(sql, params, options) {
                 assertOpen("query");
+                validateProviderOperationOptions(options, "postgres.query");
                 const query = normalizePostgresQuery("query", sql, params);
                 return bridge.query(state.handle, query.text, query.parameters);
             },
-            queryOne(sql, params) {
+            queryOne(sql, params, options) {
                 assertOpen("queryOne");
+                validateProviderOperationOptions(options, "postgres.queryOne");
                 const query = normalizePostgresQuery("queryOne", sql, params);
                 return bridge.queryOne(state.handle, query.text, query.parameters);
             },
@@ -971,18 +992,21 @@ Operation:
                 }
             }
             const tx = Object.freeze({
-                exec(sql, params) {
+                exec(sql, params, options) {
                     assertTransactionOpen("transaction.exec");
+                    validateProviderOperationOptions(options, "sqlserver.transaction.exec");
                     const query = normalizeSqlServerQuery("exec", sql, params);
                     return bridge.transactionExec(state.handle, query.text, query.parameters);
                 },
-                query(sql, params) {
+                query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
+                    validateProviderOperationOptions(options, "sqlserver.transaction.query");
                     const query = normalizeSqlServerQuery("query", sql, params);
                     return bridge.transactionQuery(state.handle, query.text, query.parameters);
                 },
-                queryOne(sql, params) {
+                queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
+                    validateProviderOperationOptions(options, "sqlserver.transaction.queryOne");
                     const query = normalizeSqlServerQuery("queryOne", sql, params);
                     return bridge.transactionQueryOne(state.handle, query.text, query.parameters);
                 },
@@ -1035,18 +1059,21 @@ Operation:
         }
 
         return Object.freeze({
-            exec(sql, params) {
+            exec(sql, params, options) {
                 assertOpen("exec");
+                validateProviderOperationOptions(options, "sqlserver.exec");
                 const query = normalizeSqlServerQuery("exec", sql, params);
                 return bridge.exec(state.handle, query.text, query.parameters);
             },
-            query(sql, params) {
+            query(sql, params, options) {
                 assertOpen("query");
+                validateProviderOperationOptions(options, "sqlserver.query");
                 const query = normalizeSqlServerQuery("query", sql, params);
                 return bridge.query(state.handle, query.text, query.parameters);
             },
-            queryOne(sql, params) {
+            queryOne(sql, params, options) {
                 assertOpen("queryOne");
+                validateProviderOperationOptions(options, "sqlserver.queryOne");
                 const query = normalizeSqlServerQuery("queryOne", sql, params);
                 return bridge.queryOne(state.handle, query.text, query.parameters);
             },
@@ -6938,6 +6965,173 @@ Reason:
         },
     });
 
+    function __createFrameworkServiceProvider() {
+        const registrations = new Map();
+        const singletonDisposables = [];
+        let disposed = false;
+
+        function validateToken(token) {
+            if (typeof token !== "string" || token.length === 0) {
+                throw new TypeError("Sloppy Framework service token must be a non-empty string.");
+            }
+        }
+
+        function add(lifetime, token, factory) {
+            validateToken(token);
+            if (typeof factory !== "function") {
+                throw new TypeError(`Sloppy Framework ${lifetime} service factory must be a function.`);
+            }
+            if (registrations.has(token)) {
+                throw new Error(`sloppy: service '${token}' is already registered.`);
+            }
+            registrations.set(token, { lifetime, factory, initialized: false, value: undefined });
+        }
+
+        function disposeValue(value) {
+            if (value === null || value === undefined) {
+                return undefined;
+            }
+            if (typeof value[Symbol.dispose] === "function") {
+                return value[Symbol.dispose]();
+            }
+            if (typeof value.dispose === "function") {
+                return value.dispose();
+            }
+            if (typeof value.close === "function") {
+                return value.close();
+            }
+            return undefined;
+        }
+
+        function createScope(context) {
+            const scoped = new Map();
+            const transient = [];
+            const resolving = [];
+            const resolvingLifetimes = [];
+            let scopeDisposed = false;
+            const scope = {
+                context,
+                get(token) {
+                    return resolve(scope, token);
+                },
+                track(value) {
+                    transient.push(value);
+                    return value;
+                },
+                async dispose() {
+                    if (scopeDisposed) {
+                        return;
+                    }
+                    scopeDisposed = true;
+                    for (const value of [...transient.reverse(), ...Array.from(scoped.values()).reverse()]) {
+                        await disposeValue(value);
+                    }
+                },
+                __disposed() {
+                    return scopeDisposed;
+                },
+                __hasScoped(token) {
+                    return scoped.has(token);
+                },
+                __getScoped(token) {
+                    return scoped.get(token);
+                },
+                __setScoped(token, value) {
+                    scoped.set(token, value);
+                },
+                __resolving() {
+                    return resolving;
+                },
+                __resolvingLifetimes() {
+                    return resolvingLifetimes;
+                },
+                __push(token, lifetime) {
+                    resolving.push(token);
+                    resolvingLifetimes.push(lifetime);
+                },
+                __pop() {
+                    resolving.pop();
+                    resolvingLifetimes.pop();
+                },
+            };
+            return Object.freeze(scope);
+        }
+
+        function resolve(scope, token) {
+            validateToken(token);
+            if (disposed) {
+                throw new Error("sloppy: service provider is disposed.");
+            }
+            if (scope.__disposed()) {
+                throw new Error("sloppy: service scope is disposed.");
+            }
+            if (!registrations.has(token)) {
+                throw new Error(`sloppy: service '${token}' is not registered.`);
+            }
+            const registration = registrations.get(token);
+            if (scope.__resolving().includes(token)) {
+                throw new Error(`sloppy: service circular dependency detected: ${[...scope.__resolving(), token].join(" -> ")}.`);
+            }
+            if (registration.lifetime === "scoped" && scope.__resolvingLifetimes().includes("singleton")) {
+                throw new Error(`sloppy: singleton service cannot depend on scoped service '${token}'.`);
+            }
+            if (registration.lifetime === "singleton") {
+                if (!registration.initialized) {
+                    scope.__push(token, "singleton");
+                    try {
+                        registration.value = registration.factory(scope);
+                        singletonDisposables.push(registration.value);
+                        registration.initialized = true;
+                    } finally {
+                        scope.__pop();
+                    }
+                }
+                return registration.value;
+            }
+            if (registration.lifetime === "scoped") {
+                if (!scope.__hasScoped(token)) {
+                    scope.__push(token, "scoped");
+                    try {
+                        scope.__setScoped(token, registration.factory(scope));
+                    } finally {
+                        scope.__pop();
+                    }
+                }
+                return scope.__getScoped(token);
+            }
+            scope.__push(token, "transient");
+            try {
+                const value = registration.factory(scope);
+                scope.track(value);
+                return value;
+            } finally {
+                scope.__pop();
+            }
+        }
+
+        return Object.freeze({
+            addSingleton(token, factory) {
+                add("singleton", token, factory);
+            },
+            addScoped(token, factory) {
+                add("scoped", token, factory);
+            },
+            addTransient(token, factory) {
+                add("transient", token, factory);
+            },
+            createScope,
+            async dispose() {
+                if (disposed) {
+                    return;
+                }
+                disposed = true;
+                for (const value of singletonDisposables.reverse()) {
+                    await disposeValue(value);
+                }
+            },
+        });
+    }
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Random,
@@ -6984,5 +7178,6 @@ Reason:
         WorkerCancellationController,
         WorkerCancellationSignal,
         SloppyWorkerError,
+        __createFrameworkServiceProvider,
     });
 })();

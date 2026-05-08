@@ -19,7 +19,7 @@ import { sql } from "sloppy/data";
 import { Postgres } from "sloppy/providers/postgres";
 import { Sqlite } from "sloppy/providers/sqlite";
 import { SqlServer } from "sloppy/providers/sqlserver";
-import type { WorkQueue } from "sloppy/workers";
+import { WorkQueue } from "sloppy/workers";
 
 // Fixture invariant: semantic schema extraction and redaction coverage.
 type UserCreate = {
@@ -44,7 +44,25 @@ type UserDto = {
   name: string;
 };
 
-const app = Sloppy.create();
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "postgres",
+  access: "readwrite",
+  configKey: "SLOPPY_POSTGRES_TEST_URL",
+});
+builder.capabilities.addDatabase("data.audit", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: ":memory:",
+});
+builder.capabilities.addDatabase("data.search", {
+  provider: "sqlserver",
+  access: "readwrite",
+  configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+});
+const app = builder.build();
+
+app.services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
 
 app.post("/users", async (
   input: UserCreate,

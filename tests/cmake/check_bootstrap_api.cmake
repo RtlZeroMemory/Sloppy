@@ -228,6 +228,7 @@ foreach(required_pattern IN ITEMS
         "WorkerCancellationController,"
         "WorkerCancellationSignal,"
         "SloppyWorkerError,"
+        "__createFrameworkServiceProvider,"
         "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected time runtime export pattern")
 endforeach()
