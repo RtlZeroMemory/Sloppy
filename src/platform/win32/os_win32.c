@@ -1,6 +1,7 @@
 #include "../../core/os_platform.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -131,10 +132,9 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
 {
     LPCH block = NULL;
     const char* cursor = NULL;
+    SlSlice entries = {0};
     size_t count = 0U;
     size_t index = 0U;
-    size_t alloc_size = 0U;
-    void* memory = NULL;
     SlStatus status;
 
     (void)out_diag;
@@ -157,17 +157,13 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
         cursor += entry.length + 1U;
     }
     if (count != 0U) {
-        status = sl_checked_array_size(count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+        status = sl_arena_array_alloc(arena, count, sizeof(SlOsEnvironmentEntry),
+                                      _Alignof(SlOsEnvironmentEntry), &entries);
         if (!sl_status_is_ok(status)) {
             FreeEnvironmentStringsA(block);
             return status;
         }
-        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlOsEnvironmentEntry), &memory);
-        if (!sl_status_is_ok(status)) {
-            FreeEnvironmentStringsA(block);
-            return status;
-        }
-        out->entries = (SlOsEnvironmentEntry*)memory;
+        out->entries = (SlOsEnvironmentEntry*)entries.ptr;
         out->count = count;
         for (cursor = block; *cursor != '\0';) {
             SlStr entry = sl_str_from_cstr(cursor);

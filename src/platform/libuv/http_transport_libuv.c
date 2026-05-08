@@ -8,6 +8,7 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 #include "sloppy/http_response.h"
 
 #include <limits.h>
@@ -1253,6 +1254,7 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
                                                        const SlHttpResponse* response,
                                                        SlHttpResponse* out_response)
 {
+    SlSlice chunk_storage = {0};
     SlHttpResponseStreamChunk* chunks = NULL;
     SlStatus status;
 
@@ -1283,13 +1285,15 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
             *out_response = (SlHttpResponse){0};
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        status = sl_arena_alloc(&connection->request_arena, chunk_bytes,
-                                _Alignof(SlHttpResponseStreamChunk), (void**)&chunks);
+        status = sl_arena_array_copy(
+            &connection->request_arena, response->stream_chunks, response->stream_chunk_count,
+            sizeof(SlHttpResponseStreamChunk), _Alignof(SlHttpResponseStreamChunk), &chunk_storage);
     }
     if (!sl_status_is_ok(status)) {
         *out_response = (SlHttpResponse){0};
         return status;
     }
+    chunks = (SlHttpResponseStreamChunk*)chunk_storage.ptr;
     for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
         SlOwnedBytes copy = {0};
         if (!sl_http_transport_arena_contains(&connection->request_arena,
@@ -3241,10 +3245,10 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
                                        const SlHttpTransportConfig* config, SlDiag* out_diag)
 {
     SlHttpBackendOptions backend_options = {0};
+    SlSlice connection_storage = {0};
+    SlSlice platform_connection_storage = {0};
     SlStatus status;
     void* memory = NULL;
-    size_t connections_bytes = 0U;
-    size_t platform_connections_bytes = 0U;
     size_t accumulation_capacity = 0U;
     size_t chunked_wire_body_capacity = 0U;
     size_t body_accumulation_capacity = 0U;
@@ -3330,29 +3334,21 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
         return status;
     }
 
-    status = sl_checked_array_size(server->config.connection_capacity,
-                                   sizeof(SlHttpTransportConnection), &connections_bytes);
+    status = sl_arena_array_alloc(arena, server->config.connection_capacity,
+                                  sizeof(SlHttpTransportConnection),
+                                  _Alignof(SlHttpTransportConnection), &connection_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_http_transport_alloc(arena, connections_bytes, _Alignof(SlHttpTransportConnection),
-                                     &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    server->connections = (SlHttpTransportConnection*)memory;
+    server->connections = (SlHttpTransportConnection*)connection_storage.ptr;
 
-    status = sl_checked_array_size(server->config.connection_capacity,
-                                   sizeof(SlHttpPlatformConnection), &platform_connections_bytes);
+    status = sl_arena_array_alloc(arena, server->config.connection_capacity,
+                                  sizeof(SlHttpPlatformConnection),
+                                  _Alignof(SlHttpPlatformConnection), &platform_connection_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_http_transport_alloc(arena, platform_connections_bytes,
-                                     _Alignof(SlHttpPlatformConnection), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    server->platform_connections = (SlHttpPlatformConnection*)memory;
+    server->platform_connections = (SlHttpPlatformConnection*)platform_connection_storage.ptr;
     server->connection_capacity = server->config.connection_capacity;
 
     status = sl_checked_mul_size(server->backend.options.parse.max_body_length, 8U,

@@ -11,6 +11,7 @@
 #include "sloppy/assert.h"
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/container.h"
 
 static bool sl_provider_str_valid(SlStr value)
 {
@@ -594,8 +595,7 @@ static void sl_provider_executor_stop_started_workers(SlProviderInstanceExecutor
 static SlStatus sl_provider_executor_start_workers(SlProviderInstanceExecutor* executor,
                                                    SlArena* arena, size_t worker_count)
 {
-    void* memory = NULL;
-    size_t worker_bytes = 0U;
+    SlSlice workers = {0};
     size_t index = 0U;
     SlStatus status;
 
@@ -618,22 +618,14 @@ static SlStatus sl_provider_executor_start_workers(SlProviderInstanceExecutor* e
         return status;
     }
 
-    status = sl_checked_mul_size(sizeof(SlPlatformThread*), worker_count, &worker_bytes);
+    status = sl_arena_array_alloc(arena, worker_count, sizeof(SlPlatformThread*),
+                                  _Alignof(SlPlatformThread*), &workers);
     if (!sl_status_is_ok(status)) {
         sl_provider_executor_destroy_sync(executor);
         return status;
     }
 
-    status = sl_arena_alloc(arena, worker_bytes, _Alignof(SlPlatformThread*), &memory);
-    if (!sl_status_is_ok(status)) {
-        sl_provider_executor_destroy_sync(executor);
-        return status;
-    }
-
-    executor->worker_threads = (SlPlatformThread**)memory;
-    for (index = 0U; index < worker_count; index += 1U) {
-        executor->worker_threads[index] = NULL;
-    }
+    executor->worker_threads = (SlPlatformThread**)workers.ptr;
 
     for (index = 0U; index < worker_count; index += 1U) {
         status = sl_platform_thread_start(arena, sl_provider_worker_main, executor,

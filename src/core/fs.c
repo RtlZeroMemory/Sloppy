@@ -618,8 +618,7 @@ static void sl_fs_copy_chars(char* dst, const char* src, size_t length)
 
 static SlStatus sl_fs_alloc_size_array(SlArena* arena, size_t count, size_t** out)
 {
-    void* memory = NULL;
-    size_t bytes = 0U;
+    SlSlice storage = {0};
     SlStatus status;
 
     if (arena == NULL || out == NULL) {
@@ -627,15 +626,11 @@ static SlStatus sl_fs_alloc_size_array(SlArena* arena, size_t count, size_t** ou
     }
 
     *out = NULL;
-    status = sl_checked_array_size(count, sizeof(size_t), &bytes);
+    status = sl_arena_array_alloc(arena, count, sizeof(size_t), _Alignof(size_t), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, bytes, _Alignof(size_t), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = (size_t*)memory;
+    *out = (size_t*)storage.ptr;
     return sl_status_ok();
 }
 

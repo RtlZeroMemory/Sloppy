@@ -22,6 +22,7 @@
  */
 #include "sloppy/data_sqlserver.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
 
@@ -77,58 +78,16 @@ static bool sl_sqlsrv_str_valid(SlStr str)
 
 static SlStatus sl_sqlsrv_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (src.length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    dst = (char*)ptr;
-    for (size_t index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-    *out = sl_str_from_parts(dst, src.length);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, src, out);
 }
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
-static SlStatus sl_sqlsrv_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
-{
-    void* ptr = NULL;
-    unsigned char* dst = NULL;
-    SlStatus status;
-
-    if (arena == NULL || out == NULL || (src.length != 0U && src.ptr == NULL)) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    if (src.length == 0U) {
-        *out = sl_bytes_empty();
-        return sl_status_ok();
-    }
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    dst = (unsigned char*)ptr;
-    for (size_t index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-    *out = sl_bytes_from_parts(dst, src.length);
-    return sl_status_ok();
-}
-
 static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
-    void* ptr = NULL;
+    SlSlice storage = {0};
     char* dst = NULL;
     size_t alloc_size = 0U;
     SlStatus status;
@@ -140,11 +99,11 @@ static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
+    status = sl_arena_array_alloc(arena, alloc_size, sizeof(char), _Alignof(char), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (char*)ptr;
+    dst = (char*)storage.ptr;
     for (size_t index = 0U; index < src.length; index += 1U) {
         dst[index] = src.ptr[index];
     }
@@ -248,7 +207,7 @@ static size_t sl_sqlsrv_redact_odbc_value(char* dst, size_t length, size_t value
 
 SlStatus sl_sqlserver_redact_connection_string(SlArena* arena, SlStr connection_string, SlStr* out)
 {
-    void* ptr = NULL;
+    SlSlice storage = {0};
     char* dst = NULL;
     size_t alloc_size = 0U;
     SlStatus status;
@@ -260,11 +219,11 @@ SlStatus sl_sqlserver_redact_connection_string(SlArena* arena, SlStr connection_
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
+    status = sl_arena_array_alloc(arena, alloc_size, sizeof(char), _Alignof(char), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (char*)ptr;
+    dst = (char*)storage.ptr;
     for (size_t index = 0U; index < connection_string.length; index += 1U) {
         dst[index] = connection_string.ptr[index];
     }
@@ -1409,30 +1368,26 @@ static size_t sl_sqlsrv_chunk_length(const char* buffer, size_t capacity)
     return length;
 }
 
-static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chunk, SlStr* out)
-{
-    if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(current) ||
-        !sl_sqlsrv_str_valid(chunk))
-    {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    return sl_str_concat_view_to_arena(arena, current, chunk, out);
-}
-
 static SlStatus sl_sqlsrv_copy_streamed_text(SlArena* arena, SQLHSTMT stmt, size_t column,
                                              char* first_buffer, size_t first_capacity,
                                              SQLRETURN first_rc, SlSqlServerValue* out)
 {
-    SlStr text = sl_str_empty();
+    SlStringBuilder builder = {0};
+    SlStr text = {0};
     SQLRETURN rc = first_rc;
-    SlStatus status = sl_sqlsrv_append_chunk(
-        arena, text,
-        sl_str_from_parts(first_buffer, sl_sqlsrv_chunk_length(first_buffer, first_capacity)),
-        &text);
+    SlStatus status;
 
+    status = sl_string_builder_init_arena(&builder, arena, first_capacity, SIZE_MAX);
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_string_builder_append_str(
+        &builder,
+        sl_str_from_parts(first_buffer, sl_sqlsrv_chunk_length(first_buffer, first_capacity)));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     while (rc == SQL_SUCCESS_WITH_INFO) {
         char buffer[4096] = {0};
         SQLLEN indicator = 0;
@@ -1445,13 +1400,13 @@ static SlStatus sl_sqlsrv_copy_streamed_text(SlArena* arena, SQLHSTMT stmt, size
         if (!sl_sqlsrv_success(rc) || indicator == SQL_NULL_DATA) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        status = sl_sqlsrv_append_chunk(
-            arena, text, sl_str_from_parts(buffer, sl_sqlsrv_chunk_length(buffer, sizeof(buffer))),
-            &text);
+        status = sl_string_builder_append_str(
+            &builder, sl_str_from_parts(buffer, sl_sqlsrv_chunk_length(buffer, sizeof(buffer))));
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
+    text = sl_string_builder_view(&builder);
     out->kind = SL_SQLSERVER_VALUE_TEXT;
     out->value.text = text;
     return sl_status_ok();
@@ -1461,19 +1416,23 @@ static SlStatus sl_sqlsrv_copy_binary_value(SlArena* arena, SQLHSTMT stmt, size_
                                             SlSqlServerValue* out)
 {
     unsigned char buffer[4096];
+    SlByteBuilder builder = {0};
     SQLLEN indicator = 0;
-    SlBytes current = sl_bytes_empty();
     SlStatus status;
 
     if (arena == NULL || stmt == SQL_NULL_HSTMT || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_byte_builder_init_arena(&builder, arena, sizeof(buffer), SIZE_MAX);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
     for (;;) {
         SQLRETURN rc = SQLGetData(stmt, (SQLUSMALLINT)(column + 1U), SQL_C_BINARY, buffer,
                                   (SQLLEN)sizeof(buffer), &indicator);
         if (rc == SQL_NO_DATA) {
             out->kind = SL_SQLSERVER_VALUE_BYTES;
-            out->value.bytes = current;
+            out->value.bytes = sl_byte_builder_view(&builder);
             return sl_status_ok();
         }
         if (!sl_sqlsrv_success(rc)) {
@@ -1483,41 +1442,20 @@ static SlStatus sl_sqlsrv_copy_binary_value(SlArena* arena, SQLHSTMT stmt, size_
             *out = (SlSqlServerValue){.kind = SL_SQLSERVER_VALUE_NULL};
             return sl_status_ok();
         }
-        size_t chunk = sizeof(buffer);
-        SlBytes combined;
-        if (indicator >= 0 && indicator < (SQLLEN)sizeof(buffer)) {
-            chunk = (size_t)indicator;
-        }
-        if (current.length == 0U) {
-            status = sl_sqlsrv_copy_bytes(arena, sl_bytes_from_parts(buffer, chunk), &current);
-        }
-        else {
-            void* ptr = NULL;
-            unsigned char* dst = NULL;
-            size_t total = 0U;
-            status = sl_checked_add_size(current.length, chunk, &total);
-            if (sl_status_is_ok(status)) {
-                status = sl_arena_alloc(arena, total, 1U, &ptr);
+        {
+            size_t chunk = sizeof(buffer);
+            if (indicator >= 0 && indicator < (SQLLEN)sizeof(buffer)) {
+                chunk = (size_t)indicator;
             }
-            if (sl_status_is_ok(status)) {
-                dst = (unsigned char*)ptr;
-                for (size_t index = 0U; index < current.length; index += 1U) {
-                    dst[index] = current.ptr[index];
-                }
-                for (size_t index = 0U; index < chunk; index += 1U) {
-                    dst[current.length + index] = buffer[index];
-                }
-                combined = sl_bytes_from_parts(dst, total);
-                current = combined;
+            status = sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(buffer, chunk));
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        if (rc == SQL_SUCCESS) {
-            out->kind = SL_SQLSERVER_VALUE_BYTES;
-            out->value.bytes = current;
-            return sl_status_ok();
+            if (rc == SQL_SUCCESS) {
+                out->kind = SL_SQLSERVER_VALUE_BYTES;
+                out->value.bytes = sl_byte_builder_view(&builder);
+                return sl_status_ok();
+            }
         }
     }
 }

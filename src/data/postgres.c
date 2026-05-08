@@ -70,34 +70,15 @@ static PGconn* sl_pg_conn(SlPostgresConnection* connection)
 
 static SlStatus sl_pg_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
-    SlStatus status;
-
     if (arena == NULL || out == NULL || !sl_pg_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (src.length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    dst = (char*)ptr;
-    for (index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-    *out = sl_str_from_parts(dst, src.length);
-    return sl_status_ok();
+    return sl_str_copy_view_to_arena(arena, src, out);
 }
 
 static SlStatus sl_pg_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
-    void* ptr = NULL;
+    SlSlice storage = {0};
     char* dst = NULL;
     size_t alloc_size = 0U;
     size_t index = 0U;
@@ -110,11 +91,11 @@ static SlStatus sl_pg_copy_cstr(SlArena* arena, SlStr src, char** out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
+    status = sl_arena_array_alloc(arena, alloc_size, sizeof(char), _Alignof(char), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (char*)ptr;
+    dst = (char*)storage.ptr;
     for (index = 0U; index < src.length; index += 1U) {
         dst[index] = src.ptr[index];
     }
@@ -125,8 +106,7 @@ static SlStatus sl_pg_copy_cstr(SlArena* arena, SlStr src, char** out)
 
 static SlStatus sl_pg_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
 {
-    void* ptr = NULL;
-    unsigned char* dst = NULL;
+    SlOwnedBytes copied = {0};
     SlStatus status;
 
     if (arena == NULL || out == NULL || (src.length != 0U && src.ptr == NULL)) {
@@ -136,15 +116,11 @@ static SlStatus sl_pg_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
         *out = sl_bytes_empty();
         return sl_status_ok();
     }
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
+    status = sl_bytes_copy_to_arena(arena, src, &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (unsigned char*)ptr;
-    for (size_t index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-    *out = sl_bytes_from_parts(dst, src.length);
+    *out = sl_owned_bytes_as_view(copied);
     return sl_status_ok();
 }
 
@@ -272,7 +248,7 @@ static size_t sl_pg_redact_keyword_value(char* dst, size_t length, size_t value_
 
 SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_string, SlStr* out)
 {
-    void* ptr = NULL;
+    SlSlice storage = {0};
     char* dst = NULL;
     size_t alloc_size = 0U;
     size_t index = 0U;
@@ -285,11 +261,11 @@ SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_s
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
+    status = sl_arena_array_alloc(arena, alloc_size, sizeof(char), _Alignof(char), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (char*)ptr;
+    dst = (char*)storage.ptr;
     for (index = 0U; index < connection_string.length; index += 1U) {
         dst[index] = connection_string.ptr[index];
     }

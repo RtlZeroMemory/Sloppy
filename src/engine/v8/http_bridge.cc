@@ -8,6 +8,8 @@
 #include "engine_v8_internal.h"
 #include "string_interop.h"
 
+#include "sloppy/container.h"
+
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -1538,9 +1540,9 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     bool has_headers_object = false;
     bool has_location = false;
     std::string location;
+    SlSlice header_storage = {nullptr, 0U, sizeof(SlHttpHeader)};
     size_t total_header_count = 0U;
     size_t index = 0U;
-    void* memory = nullptr;
     SlHttpHeader* headers = nullptr;
     SlStatus status;
 
@@ -1589,16 +1591,13 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     if (total_header_count == 0U) {
         return sl_status_ok();
     }
-    if (total_header_count > std::numeric_limits<size_t>::max() / sizeof(SlHttpHeader)) {
-        return sl_status_from_code(SL_STATUS_OVERFLOW);
-    }
 
-    status = sl_arena_alloc(arena, total_header_count * sizeof(SlHttpHeader), alignof(SlHttpHeader),
-                            &memory);
+    status = sl_arena_array_alloc(arena, total_header_count, sizeof(SlHttpHeader),
+                                  alignof(SlHttpHeader), &header_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    headers = static_cast<SlHttpHeader*>(memory);
+    headers = static_cast<SlHttpHeader*>(header_storage.ptr);
 
     if (has_headers_object) {
         for (uint32_t property_index = 0U; property_index < names->Length(); property_index += 1U) {
