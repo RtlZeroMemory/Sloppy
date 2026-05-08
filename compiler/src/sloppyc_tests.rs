@@ -78,6 +78,15 @@ fn build_args_accept_environment_and_runtime_overrides() {
 }
 
 #[test]
+fn module_graph_root_level_entry_uses_current_directory_as_source_root() {
+    let graph = super::ModuleGraph::new(Path::new("app.js"));
+    let current_dir =
+        fs::canonicalize(std::env::current_dir().expect("current directory should exist"))
+            .expect("current directory should canonicalize");
+    assert_eq!(graph.entry_dir, current_dir);
+}
+
+#[test]
 fn keep_alive_environment_override_keys_are_canonicalized() {
     assert_eq!(
         canonical_config_key("SLOPPY:SERVER:KEEPALIVEENABLED"),

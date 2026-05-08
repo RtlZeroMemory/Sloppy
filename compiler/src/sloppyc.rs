@@ -813,10 +813,13 @@ struct CachedModule {
 
 impl ModuleGraph {
     fn new(entry_path: &Path) -> Self {
-        let entry_dir = entry_path
+        let mut entry_dir = entry_path
             .parent()
             .unwrap_or_else(|| Path::new(""))
             .to_path_buf();
+        if entry_dir.as_os_str().is_empty() {
+            entry_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        }
         Self {
             entry_dir: fs::canonicalize(&entry_dir).unwrap_or(entry_dir),
             visiting: BTreeSet::new(),
