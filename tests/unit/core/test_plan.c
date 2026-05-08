@@ -336,8 +336,8 @@ static int test_plan_metadata_interns_recursive_schema_graph(void)
 {
     unsigned char arena_storage[8192];
     SlArena arena = {0};
-    SlPlanSchemaProperty properties[1] = {{0}};
-    SlPlanSchema schemas[1] = {{0}};
+    SlPlanSchemaProperty properties[1] = {0};
+    SlPlanSchema schemas[1] = {0};
     SlPlan plan = {0};
     SlPlan interned_plan = {0};
     SlInternTable table = {0};
