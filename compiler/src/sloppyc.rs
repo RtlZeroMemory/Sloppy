@@ -199,6 +199,7 @@ struct EmittedAppJs {
 #[derive(Debug)]
 struct ExtractedApp {
     uses_data_runtime: bool,
+    uses_sql_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
     modules: Vec<FunctionModule>,
@@ -220,21 +221,21 @@ struct ExtractedApp {
 }
 
 #[derive(Debug, Clone)]
-struct RequestBinding {
-    kind: String,
-    name: Option<String>,
-    schema: Option<String>,
-    parameter: Option<String>,
-    type_name: Option<String>,
-    source_name: Option<String>,
-    source_text: Option<String>,
-    span: Option<Span>,
-    wrapper: Option<String>,
-    injection_kind: Option<String>,
-    provider_kind: Option<String>,
-    capability: Option<String>,
-    semantic: Option<String>,
-    redacted: bool,
+pub(crate) struct RequestBinding {
+    pub(crate) kind: String,
+    pub(crate) name: Option<String>,
+    pub(crate) schema: Option<String>,
+    pub(crate) parameter: Option<String>,
+    pub(crate) type_name: Option<String>,
+    pub(crate) source_name: Option<String>,
+    pub(crate) source_text: Option<String>,
+    pub(crate) span: Option<Span>,
+    pub(crate) wrapper: Option<String>,
+    pub(crate) injection_kind: Option<String>,
+    pub(crate) provider_kind: Option<String>,
+    pub(crate) capability: Option<String>,
+    pub(crate) semantic: Option<String>,
+    pub(crate) redacted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -392,6 +393,7 @@ struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
     data_imported: bool,
+    sql_imported: bool,
     schema_imported: bool,
     time_imported: bool,
     fs_imported: bool,
@@ -432,6 +434,7 @@ impl AppState {
             sloppy_imported: false,
             results_imported: false,
             data_imported: false,
+            sql_imported: false,
             schema_imported: false,
             time_imported: false,
             fs_imported: false,
@@ -1654,12 +1657,18 @@ fn extract_entry(
 
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
+            || state.sql_imported
             || state.sqlite_imported
             || !state.app_provider_uses.is_empty()
-            || state
-                .routes
-                .iter()
-                .any(|route| !route.handler.effects.is_empty()),
+            || state.routes.iter().any(|route| {
+                !route.handler.effects.is_empty()
+                    || route
+                        .handler
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.injection_kind.as_deref() == Some("provider"))
+            }),
+        uses_sql_runtime: state.sql_imported,
         source_files: graph.source_files.clone(),
         routes: state.routes,
         modules: state.modules.into_values().collect(),
@@ -2267,7 +2276,10 @@ fn extract_import(
                 };
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
-                if imported != "sql" || local != "sql" {
+                if imported == "sql" && local == "sql" {
+                    state.sql_imported = true;
+                    state.data_imported = true;
+                } else {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
@@ -3904,7 +3916,7 @@ fn key_is_secret_like(key: &str) -> bool {
     lower.contains("password") || lower.contains("secret") || lower.contains("token")
 }
 
-fn ts_type_span(ty: &TSType<'_>) -> Span {
+pub(crate) fn ts_type_span(ty: &TSType<'_>) -> Span {
     match ty {
         TSType::TSAnyKeyword(node) => node.span,
         TSType::TSBigIntKeyword(node) => node.span,
@@ -5286,11 +5298,13 @@ fn typed_framework_handler_from_arrow(
     let bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses = response_metadata_many_from_arrow(function, source_name, source, schema_names);
+    let handler_source =
+        crate::framework_runtime::typed_arrow_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: deferred_framework_handler_source(),
+        source: handler_source,
         span: function.span,
         is_async: function.r#async,
-        runtime_deferred: true,
+        runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
         bindings,
@@ -5311,11 +5325,13 @@ fn typed_framework_handler_from_function(
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses =
         response_metadata_many_from_function(function, source_name, source, schema_names);
+    let handler_source =
+        crate::framework_runtime::typed_function_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: deferred_framework_handler_source(),
+        source: handler_source,
         span: function.span,
         is_async: function.r#async,
-        runtime_deferred: true,
+        runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
         bindings,
@@ -5323,11 +5339,6 @@ fn typed_framework_handler_from_function(
         responses,
         effects: Vec::new(),
     })
-}
-
-fn deferred_framework_handler_source() -> String {
-    "() => Results.problem({ status: 501, title: \"Framework v2 runtime dispatch is deferred\" })"
-        .to_string()
 }
 
 fn typed_framework_bindings_from_parameters(
@@ -8747,6 +8758,10 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         .routes
         .iter()
         .any(|route| route.handler.source.contains("__sloppy_open_data_provider"));
+    let needs_framework_arg_helper = app
+        .routes
+        .iter()
+        .any(|route| route.handler.source.contains("__sloppy_framework_arg"));
 
     push_generated_line(
         &mut output,
@@ -8767,6 +8782,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut runtime_exports = vec!["Results"];
     if app.uses_data_runtime {
         runtime_exports.push("data");
+    }
+    if app.uses_sql_runtime {
+        runtime_exports.push("sql");
     }
     if app.uses_time_runtime {
         runtime_exports.extend([
@@ -8836,6 +8854,146 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut output,
             &mut generated_line,
             "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+    }
+    if needs_framework_arg_helper {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_arg(ctx, binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"context\") { return ctx; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"injection\") { return __sloppy_framework_injection(binding); }",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  let value;");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"route\") { value = ctx.route[binding.name]; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else if (binding.kind === \"query\") { value = ctx.query[binding.name]; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else if (binding.kind === \"header\") { value = ctx.request.headers.get(binding.name); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else { throw new TypeError(`Sloppy Framework binding kind '${binding.kind}' is not supported.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  return __sloppy_framework_coerce(value, binding);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_coerce(value, binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (value === null || value === undefined) { return value; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const type = String(binding.type || binding.schema || \"\");",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (type.includes(\"boolean\")) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    const normalized = String(value).toLowerCase();",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (normalized === \"true\") { return true; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (normalized === \"false\") { return false; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a boolean value.`);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (type.includes(\"number\") || type.includes(\"PositiveInt\") || type === \"int\") {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    const parsed = Number(value);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (!Number.isFinite(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a numeric value.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if ((type.includes(\"PositiveInt\") || type === \"int\") && !Number.isInteger(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected an integer value.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (type.includes(\"PositiveInt\") && parsed <= 0) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a positive integer value.`); }",
+        );
+        push_generated_line(&mut output, &mut generated_line, "    return parsed;");
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(&mut output, &mut generated_line, "  return value;");
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_injection(binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\") { return data.sqlite(binding.name); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\") { throw new Error(`sloppy: ${binding.providerKind} provider injection for '${binding.name}' is unavailable in this runtime lane.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  throw new Error(`sloppy: ${binding.injectionKind} injection for '${binding.name}' is unavailable in this runtime lane.`);",
         );
         push_generated_line(&mut output, &mut generated_line, "}");
     }
@@ -9476,6 +9634,7 @@ mod tests {
 
         let mut app = super::ExtractedApp {
             uses_data_runtime: true,
+            uses_sql_runtime: false,
             source_files: Vec::new(),
             routes: Vec::new(),
             modules: Vec::new(),

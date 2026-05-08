@@ -1,19 +1,14 @@
 {
   "bundle": {
-    "hash": "sha256:fe8478a6f0042863a5f03e86dd0920280bad7f9038cd33a57d5b47e4b8d86c90",
+    "hash": "sha256:51fa9fdffe5327ee36185dfead81c858442d5e8bc88a3e33334bfba7c865e779",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
   "capabilities": [],
   "compilerVersion": "sloppyc-0.8.0",
   "completeness": {
-    "reasons": [
-      {
-        "code": "runtime-only-route",
-        "message": "one or more routes explicitly require runtime-only metadata"
-      }
-    ],
-    "status": "runtime-only"
+    "reasons": [],
+    "status": "complete"
   },
   "configuration": {
     "environment": "Development",
@@ -90,7 +85,6 @@
       "displayName": "POST /users",
       "exportName": "__sloppy_handler_1",
       "id": 1,
-      "runtimeDispatch": "deferred",
       "source": {
         "column": 20,
         "line": 49,
@@ -102,7 +96,6 @@
       "displayName": "GET /users/{id}",
       "exportName": "__sloppy_handler_2",
       "id": 2,
-      "runtimeDispatch": "deferred",
       "source": {
         "column": 23,
         "line": 65,
@@ -200,13 +193,8 @@
         }
       ],
       "completeness": {
-        "reasons": [
-          {
-            "code": "runtime-only-route",
-            "message": "route explicitly requires runtime-only metadata"
-          }
-        ],
-        "status": "runtime-only"
+        "reasons": [],
+        "status": "complete"
       },
       "handlerId": 1,
       "injections": [
@@ -248,20 +236,6 @@
         "kind": "json",
         "status": 201
       },
-      "responses": [
-        {
-          "bodySchema": "UserDto",
-          "helper": "created",
-          "kind": "json",
-          "partial": false,
-          "source": {
-            "column": 10,
-            "line": 62,
-            "path": "input.ts"
-          },
-          "status": 201
-        }
-      ],
       "source": {
         "column": 1,
         "line": 49,
@@ -351,13 +325,8 @@
         }
       ],
       "completeness": {
-        "reasons": [
-          {
-            "code": "runtime-only-route",
-            "message": "route explicitly requires runtime-only metadata"
-          }
-        ],
-        "status": "runtime-only"
+        "reasons": [],
+        "status": "complete"
       },
       "frameworkPath": "/users/:id",
       "handlerId": 2,
@@ -403,11 +372,6 @@
             "path": "input.ts"
           },
           "status": 404
-        }
-      ],
-      "routeParams": [
-        {
-          "name": "id"
         }
       ],
       "source": {
@@ -535,7 +499,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:13113c1bce3c2ea9f1654d65dcc7e95f356c760c4f9b438d376ec621e3ae6783",
+    "hash": "sha256:c1c9d45089db0d257f4f731feb0379ee644b6ac57e777dfb1146d4f14de596fe",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

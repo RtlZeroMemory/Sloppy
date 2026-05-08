@@ -50,12 +50,13 @@ schema-backed JSON body metadata to fail invalid requests with a safe `400`
 middleware, modules, arbitrary imports, custom validators, and full TypeScript semantics
 remain outside the current source subset.
 
-Typed Framework v2 handler metadata is compiler/Plan-first. When the compiler sees a typed
-multi-parameter handler that the current runtime cannot execute directly, it emits
-`handlers[].runtimeDispatch: "deferred"` and a generated handler that returns a 501 problem
-descriptor. That is an honest runtime boundary: the Plan metadata may be complete for route,
-binding, schema, injection, and response facts while typed handler execution, DI/provider
-resolution, and full response writing remain separate implementation lanes.
+Typed Framework v2 handler metadata is compiler/Plan-first. For the current supported
+typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after
+native Plan-backed validation and materializes typed route, query, header, body, and context
+arguments from the request context. Unsupported provider, service, and queue injections fail
+with explicit runtime diagnostics rather than placeholder success. Full DI/provider
+resolution, custom validators, arbitrary TypeScript lowering, and broader response writing
+remain separate implementation lanes.
 
 ## Server Config Metadata
 

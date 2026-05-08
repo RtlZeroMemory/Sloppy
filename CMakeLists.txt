@@ -501,6 +501,7 @@ endif()
 set(
     SLOPPY_C_LINT_SOURCES
     src/main.c
+    src/cli/sloppyrc.c
     ${SLOPPY_CORE_SOURCES}
     tests/unit/core/test_status.c
     tests/unit/core/test_source_loc.c
@@ -662,20 +663,7 @@ else()
     target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_AVX2=0 SL_STRING_SIMD_AVX2=0)
 endif()
 
-add_executable(sloppy src/main.c)
-target_link_libraries(sloppy PRIVATE sloppy_core)
-target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
-target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
-target_compile_features(sloppy PRIVATE c_std_17)
-target_compile_definitions(
-    sloppy
-    PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}"
-            SLOPPY_COMPILER_BUILD_PATH="${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
-if(WIN32 AND MSVC)
-    # The V8-backed HTTP transport enters JavaScript from a deeper libuv callback stack than
-    # --once dispatch. Reserve enough process stack for V8's guard to allow real handler entry.
-    target_link_options(sloppy PRIVATE "/STACK:8388608")
-endif()
+include(cmake/SloppyCli.cmake)
 
 add_executable(
     sloppy_bench
@@ -2014,6 +2002,10 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy_add_conformance_run_once_test(
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
+            sloppy_add_conformance_run_once_test(
+                conformance.framework_v2_typed_handler.run_once framework-v2-typed-handler
+                tests/integration/framework-v2-typed-handler/app.ts GET /framework/42?active=true
+                "\"id\":42.*\"active\":true.*\"method\":\"GET\".*\"path\":\"/framework/42\"")
             if(SLOPPY_BUILD_COMPILER)
                 add_test(
                     NAME conformance.hello.source_input_run_once

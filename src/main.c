@@ -28,6 +28,8 @@
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include "cli/sloppyrc.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -64,15 +66,12 @@
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
 #define SL_RUN_TRANSPORT_ARENA_BYTES 1048576U
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
-#define SL_RUN_CONFIG_MAX_BYTES 8192U
 #define SL_RUN_PATH_MAX_BYTES 1024U
 #define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #define SL_RUN_DEFAULT_ENVIRONMENT "Development"
 #define SL_RUN_DEFAULT_SOURCE_OUT_DIR ".sloppy/cache/dev/source-input"
-#define SL_RUN_DEFAULT_CONFIG_OUT_DIR ".sloppy"
-#define SL_RUN_CONFIG_FILE "sloppy.json"
 #ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
 #define SLOPPY_BOOTSTRAP_BUILD_DIR ""
 #endif
@@ -1748,20 +1747,6 @@ static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expect
            sl_str_equal(sl_str_from_parts(text, text_length), sl_str_from_cstr(expected));
 }
 
-static bool sl_run_json_string_equals_literal(yyjson_val* value, SlStr expected)
-{
-    const char* text = NULL;
-    size_t text_length = 0U;
-
-    if (value == NULL || !yyjson_is_str(value)) {
-        return false;
-    }
-
-    text = yyjson_get_str(value);
-    text_length = yyjson_get_len(value);
-    return sl_str_equal(sl_str_from_parts(text, text_length), expected);
-}
-
 static bool sl_run_manifest_array_contains_asset(yyjson_val* array, const char* required_asset)
 {
     yyjson_arr_iter iter;
@@ -2378,6 +2363,16 @@ static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capa
     status = sl_checked_add_size(capacity, addend, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    for (size_t index = 0U; index < plan->route_count; index += 1U) {
+        status = sl_checked_mul_size(plan->routes[index].binding_count, 4U, &addend);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_checked_add_size(capacity, addend, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
     status = sl_checked_mul_size(plan->data_provider_count, 4U, &addend);
@@ -3172,13 +3167,6 @@ static int sl_run_shutdown_app(SlRunApp* app)
     return 0;
 }
 
-typedef struct SlRunSourceConfig
-{
-    char entry[SL_RUN_PATH_MAX_BYTES];
-    char out_dir[SL_RUN_PATH_MAX_BYTES];
-    char environment[128];
-} SlRunSourceConfig;
-
 static bool sl_run_source_input_extension_supported(const char* path)
 {
     SlCliSpan input = sl_cli_span_cstr(path);
@@ -3311,131 +3299,6 @@ static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* v
     return sl_status_is_ok(status) && view.ptr == buffer && view.length == text.length;
 }
 
-static int sl_run_reject_unknown_project_config_fields(yyjson_val* root)
-{
-    yyjson_obj_iter iter;
-    yyjson_val* key = NULL;
-
-    iter = yyjson_obj_iter_with(root);
-    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
-        if (!sl_run_json_string_equals_literal(key, SL_STR_LITERAL("entry")) &&
-            !sl_run_json_string_equals_literal(key, SL_STR_LITERAL("outDir")) &&
-            !sl_run_json_string_equals_literal(key, SL_STR_LITERAL("environment")))
-        {
-            sl_cli_write_cstr(stderr,
-                              "sloppy run: invalid sloppy.json: unsupported field; supported "
-                              "fields are entry, outDir, and environment\n");
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static int sl_run_read_required_config_string(yyjson_val* root, const char* field, char* buffer,
-                                              size_t capacity, const char* missing_message,
-                                              const char* invalid_message)
-{
-    yyjson_val* value = yyjson_obj_get(root, field);
-
-    if (value == NULL) {
-        sl_cli_write_cstr(stderr, missing_message);
-        return 1;
-    }
-
-    if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U) {
-        sl_cli_write_cstr(stderr, invalid_message);
-        return 1;
-    }
-
-    if (!sl_run_copy_json_string(buffer, capacity, value)) {
-        sl_cli_write_cstr(stderr, invalid_message);
-        return 1;
-    }
-    return 0;
-}
-
-static int sl_run_read_optional_config_string(yyjson_val* root, const char* field, char* buffer,
-                                              size_t capacity, const char* default_value,
-                                              const char* invalid_message)
-{
-    yyjson_val* value = yyjson_obj_get(root, field);
-
-    if (value == NULL) {
-        SlStringBuilder builder = {0};
-        SlStr view = {0};
-        if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) ||
-            !sl_status_is_ok(sl_string_builder_append_cstr(&builder, default_value)) ||
-            !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
-        {
-            sl_cli_write_cstr(stderr, invalid_message);
-            return 1;
-        }
-        return 0;
-    }
-
-    if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U ||
-        !sl_run_copy_json_string(buffer, capacity, value))
-    {
-        sl_cli_write_cstr(stderr, invalid_message);
-        return 1;
-    }
-    return 0;
-}
-
-static int sl_run_parse_project_config(SlRunSourceConfig* out)
-{
-    unsigned char json_storage[SL_RUN_CONFIG_MAX_BYTES];
-    SlBytes json = {0};
-    yyjson_doc* doc = NULL;
-    yyjson_read_err error = {0};
-    yyjson_val* root = NULL;
-    int result = 1;
-
-    if (out == NULL) {
-        return 1;
-    }
-    *out = (SlRunSourceConfig){0};
-
-    if (sl_read_file_with_messages(SL_RUN_CONFIG_FILE, json_storage, sizeof(json_storage), &json,
-                                   "sloppy run: project config not found: ",
-                                   "sloppy run: project config is empty or too large: ",
-                                   "sloppy run: project config read failed: ") != 0)
-    {
-        return 1;
-    }
-
-    doc = yyjson_read_opts((char*)json.ptr, json.length, 0U, NULL, &error);
-    if (doc == NULL) {
-        sl_cli_write_cstr(stderr, "sloppy run: invalid sloppy.json: malformed JSON\n");
-        return 1;
-    }
-
-    root = yyjson_doc_get_root(doc);
-    if (root == NULL || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
-        sl_cli_write_cstr(stderr, "sloppy run: invalid sloppy.json: root must be an object\n");
-        return 1;
-    }
-
-    if (sl_run_reject_unknown_project_config_fields(root) == 0 &&
-        sl_run_read_required_config_string(
-            root, "entry", out->entry, sizeof(out->entry),
-            "sloppy run: missing entry in sloppy.json\n",
-            "sloppy run: invalid sloppy.json: entry must be a non-empty string\n") == 0 &&
-        sl_run_read_optional_config_string(
-            root, "outDir", out->out_dir, sizeof(out->out_dir), SL_RUN_DEFAULT_CONFIG_OUT_DIR,
-            "sloppy run: invalid sloppy.json: outDir must be a string\n") == 0 &&
-        sl_run_read_optional_config_string(
-            root, "environment", out->environment, sizeof(out->environment), "Development",
-            "sloppy run: invalid sloppy.json: environment must be a string\n") == 0)
-    {
-        result = 0;
-    }
-
-    yyjson_doc_free(doc);
-    return result;
-}
-
 static const char* sl_run_getenv(const char* name)
 {
     const char* value = NULL;
@@ -3549,7 +3412,7 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
 static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifacts_path,
                                        size_t artifacts_path_capacity)
 {
-    SlRunSourceConfig config = {0};
+    SlSloppyRunConfig config = {0};
     const char* source_path = NULL;
     const char* out_dir = NULL;
     const char* environment = NULL;
@@ -3565,7 +3428,7 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
             options->environment_explicit ? options->environment : SL_RUN_DEFAULT_ENVIRONMENT;
     }
     else {
-        if (sl_run_parse_project_config(&config) != 0) {
+        if (sl_sloppyrc_load(&config) != 0) {
             return 1;
         }
         source_path = config.entry;

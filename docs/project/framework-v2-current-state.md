@@ -20,24 +20,26 @@ emit deterministic metadata for:
 - password/secret redaction metadata;
 - visible `Results.*` status and response metadata where statically visible.
 
-The generated handler for typed multi-parameter Framework v2 routes remains runtime
-deferred after the validation boundary. The native HTTP dispatch path now consumes
-Plan-backed route/query/header bindings and schema-backed JSON body metadata to return a
-safe `400` validation problem before handler invocation when supported metadata fails.
-Provider parameters and queue parameters are Plan facts only; they do not register native
-providers, create provider handles, perform DI, execute queues, or open SQLite/PostgreSQL/
-SQL Server JavaScript bridges. The provider platform is ready for a future Framework v2
-injection slice because provider metadata, capability references, runtime features, stdlib
-facades, and provider bridge contracts now use one common Db shape; this document is not
-that runtime injection implementation.
+The generated handler for typed multi-parameter Framework v2 routes now uses a compiler-owned
+JavaScript wrapper instead of the previous generated 501 placeholder. The native HTTP
+dispatch path consumes Plan-backed route/query/header bindings and schema-backed JSON body
+metadata to return a safe `400` validation problem before handler invocation when supported
+metadata fails. After that boundary, the wrapper materializes typed route, query, header,
+body, and context arguments and invokes the stripped handler source in the V8 owner-thread
+Promise settlement lane. Provider parameters, service parameters, and queue parameters still
+do not silently produce fake dependencies: unsupported runtime injections fail with explicit
+unavailable diagnostics until the corresponding DI/provider/queue lane can materialize them.
+The provider platform is ready for future Framework v2 injection expansion because provider
+metadata, capability references, runtime features, stdlib facades, and provider bridge
+contracts now use one common Db shape; this document is not full DI completion.
 
 Still deferred:
 
 - controller/module runtime APIs and constructor injection;
-- typed handler execution after successful runtime validation;
+- full typed handler breadth beyond the current compiler-emitted wrapper subset;
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
-- provider runtime injection and full provider/DI consumption;
+- provider runtime injection breadth and full provider/DI consumption;
 - broader CRUD/background examples that actually execute through runtime provider and queue
   integrations;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan
