@@ -476,6 +476,7 @@ SlStatus sl_arena_hash_index_find(const SlArenaHashIndex* index, uint64_t hash,
 {
     size_t entry_index = 0U;
     size_t bucket_index = 0U;
+    size_t visited_count = 0U;
 
     if (index == NULL || equals == NULL || out_entry_index == NULL || index->buckets == NULL ||
         index->next_indices == NULL || index->bucket_count == 0U)
@@ -489,6 +490,10 @@ SlStatus sl_arena_hash_index_find(const SlArenaHashIndex* index, uint64_t hash,
         if (entry_index > index->capacity) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
+        if (visited_count >= index->capacity) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        visited_count += 1U;
         if (equals(entry_index, user)) {
             *out_entry_index = entry_index;
             return sl_status_ok();
@@ -502,11 +507,29 @@ SlStatus sl_arena_hash_index_find(const SlArenaHashIndex* index, uint64_t hash,
 SlStatus sl_arena_hash_index_insert(SlArenaHashIndex* index, uint64_t hash, size_t entry_index)
 {
     size_t bucket_index = 0U;
+    size_t bucket = 0U;
+    size_t current = 0U;
+    size_t visited_count = 0U;
 
     if (index == NULL || index->buckets == NULL || index->next_indices == NULL ||
         index->bucket_count == 0U || entry_index == 0U || entry_index > index->capacity)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (bucket = 0U; bucket < index->bucket_count; bucket += 1U) {
+        current = index->buckets[bucket];
+        visited_count = 0U;
+        while (current != 0U) {
+            if (current > index->capacity || visited_count >= index->capacity) {
+                return sl_status_from_code(SL_STATUS_INVALID_STATE);
+            }
+            if (current == entry_index) {
+                return sl_status_from_code(SL_STATUS_INVALID_STATE);
+            }
+            visited_count += 1U;
+            current = index->next_indices[current - 1U];
+        }
     }
 
     if (index->count >= index->capacity) {

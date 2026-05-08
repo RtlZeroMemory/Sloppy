@@ -63,7 +63,7 @@ static void sl_internal_copy(char* restrict dest, const char* restrict src, size
     }
 }
 
-static int sl_internal_compare_word_bytes(const char* restrict left, const char* restrict right)
+static int sl_internal_compare_word_bytes(const char* left, const char* right)
 {
     size_t index = 0U;
 
@@ -77,7 +77,7 @@ static int sl_internal_compare_word_bytes(const char* restrict left, const char*
     return 0;
 }
 
-static int sl_internal_compare(const char* restrict left, const char* restrict right, size_t length)
+static int sl_internal_compare(const char* left, const char* right, size_t length)
 {
     size_t index = 0U;
     size_t word_count = 0U;

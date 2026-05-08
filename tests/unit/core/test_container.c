@@ -158,6 +158,9 @@ static int test_hash_index_find_insert(void)
     {
         return 31;
     }
+    if (expect_status(sl_arena_hash_index_insert(&index, 11U, 1U), SL_STATUS_INVALID_STATE) != 0) {
+        return 35;
+    }
     record.target = 2U;
     if (expect_status(sl_arena_hash_index_find(&index, 9U, hash_equals, &record, &found),
                       SL_STATUS_OK) != 0 ||

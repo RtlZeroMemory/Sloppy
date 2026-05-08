@@ -82,26 +82,30 @@ static SlStatus sl_fs_watch_copy_path(SlArena* arena, SlStr path, SlOwnedStr* ou
     return sl_str_copy_to_arena(arena, path, out);
 }
 
-static SlOwnedStr sl_fs_watch_owned_view(SlStr path)
-{
-    return (SlOwnedStr){.ptr = (char*)path.ptr, .length = path.length};
-}
-
 static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlFsWatchEventKind kind, SlStr path,
                                     bool is_directory)
 {
+    SlArenaMark mark = {0};
     SlFsWatchEvent event;
     SlStatus status;
 
-    if (watch == NULL || watch->closed) {
+    if (watch == NULL || watch->arena == NULL || watch->closed) {
         return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
     }
-    event = (SlFsWatchEvent){
-        .kind = kind, .path = sl_fs_watch_owned_view(path), .is_directory = is_directory};
+    mark = sl_arena_mark(watch->arena);
+    event = (SlFsWatchEvent){.kind = kind, .is_directory = is_directory};
+    status = sl_fs_watch_copy_path(watch->arena, path, &event.path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     status = sl_ring_queue_push(&watch->queue, &event);
     if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        (void)sl_arena_reset_to(watch->arena, mark);
         watch->overflow_pending = true;
         return sl_status_ok();
+    }
+    if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(watch->arena, mark);
     }
     return status;
 }

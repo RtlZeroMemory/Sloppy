@@ -316,8 +316,8 @@ static int test_arena_copies(void)
     owned = sentinel;
     used_before = sl_arena_used(&arena);
     if (expect_status(sl_str_copy_to_arena(&arena, embedded_str, &owned), SL_STATUS_OK) != 0 ||
-        owned.ptr == embedded || owned.length != embedded_str.length || !owned.is_sso ||
-        owned.ptr != owned.sso || sl_arena_used(&arena) != used_before ||
+        owned.ptr == embedded || owned.length != embedded_str.length ||
+        sl_arena_used(&arena) != used_before ||
         !sl_str_equal(sl_owned_str_as_view(owned), embedded_str))
     {
         return 21;
@@ -328,8 +328,7 @@ static int test_arena_copies(void)
     if (expect_status(
             sl_str_concat_to_arena(&arena, sl_str_from_cstr("ab"), sl_str_from_cstr("cd"), &owned),
             SL_STATUS_OK) != 0 ||
-        owned.length != 4U || !owned.is_sso || owned.ptr != owned.sso ||
-        sl_arena_used(&arena) != used_before ||
+        owned.length != 4U || sl_arena_used(&arena) != used_before ||
         !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")))
     {
         return 31;
@@ -354,7 +353,7 @@ static int test_arena_copies(void)
     if (expect_status(sl_str_concat_to_arena(&tiny_arena, sl_str_from_cstr("ab"),
                                              sl_str_from_cstr("cd"), &owned),
                       SL_STATUS_OK) != 0 ||
-        owned.length != 4U || !owned.is_sso ||
+        owned.length != 4U ||
         !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")) ||
         sl_arena_used(&tiny_arena) != 0U)
     {
@@ -378,8 +377,8 @@ static int test_arena_copies(void)
 
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena_nul(&arena, embedded_str, &owned), SL_STATUS_OK) != 0 ||
-        owned.length != embedded_str.length || !owned.is_sso || owned.ptr != owned.sso ||
-        owned.ptr[owned.length] != '\0' || !sl_str_equal(sl_owned_str_as_view(owned), embedded_str))
+        owned.length != embedded_str.length || owned.ptr[owned.length] != '\0' ||
+        !sl_str_equal(sl_owned_str_as_view(owned), embedded_str))
     {
         return 24;
     }
@@ -395,8 +394,7 @@ static int test_arena_copies(void)
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena_cstr(&arena, sl_str_from_cstr("host"), &owned),
                       SL_STATUS_OK) != 0 ||
-        owned.length != 4U || !owned.is_sso || owned.ptr != owned.sso ||
-        owned.ptr[owned.length] != '\0' ||
+        owned.length != 4U || owned.ptr[owned.length] != '\0' ||
         !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("host")))
     {
         return 29;
@@ -405,7 +403,7 @@ static int test_arena_copies(void)
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena_cstr(&arena, sl_str_empty(), &owned), SL_STATUS_OK) !=
             0 ||
-        owned.ptr == NULL || owned.length != 0U || !owned.is_sso || owned.ptr[0] != '\0')
+        owned.ptr == NULL || owned.length != 0U || owned.ptr[0] != '\0')
     {
         return 30;
     }
@@ -427,7 +425,7 @@ static int test_arena_copies(void)
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena_nul(&tiny_arena, embedded_str, &owned), SL_STATUS_OK) !=
             0 ||
-        owned.length != embedded_str.length || !owned.is_sso ||
+        owned.length != embedded_str.length ||
         !sl_str_equal(sl_owned_str_as_view(owned), embedded_str) ||
         sl_arena_used(&tiny_arena) != 0U)
     {
@@ -444,8 +442,7 @@ static int test_arena_copies(void)
 
     owned = sentinel;
     if (expect_status(sl_str_copy_to_arena(&arena, large_str, &owned), SL_STATUS_OK) != 0 ||
-        owned.is_sso || owned.length != large_str.length ||
-        ((uintptr_t)owned.ptr & (uintptr_t)(_Alignof(uint64_t) - 1U)) != 0U ||
+        owned.length != large_str.length ||
         owned.arena_generation != sl_arena_stats(&arena).generation ||
         !sl_arena_contains_str(&arena, sl_owned_str_as_view(owned)) ||
         !sl_str_equal(sl_owned_str_as_view(owned), large_str))

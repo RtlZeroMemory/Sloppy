@@ -74,7 +74,12 @@ SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion*
         return retain_status;
     }
 
-    return sl_ring_queue_push(&loop->queue, completion);
+    retain_status = sl_ring_queue_push(&loop->queue, completion);
+    if (!sl_status_is_ok(retain_status)) {
+        sl_async_loop_release_completion_scope(completion);
+        return retain_status;
+    }
+    return sl_status_ok();
 }
 
 bool sl_async_loop_unenqueue_last_owned(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
