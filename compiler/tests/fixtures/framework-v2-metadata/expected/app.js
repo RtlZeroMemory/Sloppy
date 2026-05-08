@@ -40,9 +40,9 @@ function __sloppy_framework_injection(scope, binding) {
   const dependencyName = binding.capability || (binding.name && binding.name.includes(".") ? binding.name : `data.${binding.name}`);
   if (binding.injectionKind === "service") { return scope.get(binding.name); }
   if (binding.injectionKind === "queue") { return scope.get(dependencyName); }
-  if (binding.injectionKind === "provider" && binding.providerKind === "sqlite") { return scope.track(data.sqlite(dependencyName)); }
-  if (binding.injectionKind === "provider" && binding.providerKind === "postgres") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }
-  if (binding.injectionKind === "provider" && binding.providerKind === "sqlserver") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }
+  if (binding.injectionKind === "provider" && binding.providerKind === "sqlite" && typeof data.sqlite === "function") { return scope.track(data.sqlite(dependencyName)); }
+  if (binding.injectionKind === "provider" && binding.providerKind === "postgres" && data.postgres !== undefined && typeof data.postgres.open === "function") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }
+  if (binding.injectionKind === "provider" && binding.providerKind === "sqlserver" && data.sqlserver !== undefined && typeof data.sqlserver.open === "function") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }
   throw new Error(`sloppy: ${binding.injectionKind} injection for '${binding.name}' is unavailable in this runtime lane.`);
 }
 function __sloppy_framework_provider_open_options(binding, token) {

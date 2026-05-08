@@ -197,6 +197,10 @@
             throw new TypeError("Sloppy Results contentType must be a non-empty string.");
         }
 
+        if (/[\x00-\x1F\x7F]/.test(contentType)) {
+            throw new TypeError("Sloppy Results contentType must not contain control characters.");
+        }
+
         return contentType;
     }
 
@@ -7003,6 +7007,69 @@ Reason:
             return undefined;
         }
 
+        function disposalError(errors, message) {
+            if (errors.length === 1) {
+                return errors[0];
+            }
+            return new AggregateError(errors, message);
+        }
+
+        async function disposeValues(values, message) {
+            const errors = [];
+            for (const value of values) {
+                try {
+                    await disposeValue(value);
+                } catch (error) {
+                    errors.push(error);
+                }
+            }
+            if (errors.length !== 0) {
+                throw disposalError(errors, message);
+            }
+        }
+
+        function createRootScope() {
+            const resolving = [];
+            const resolvingLifetimes = [];
+            const scope = {
+                context: undefined,
+                get(token) {
+                    return resolve(scope, token);
+                },
+                track(value) {
+                    singletonDisposables.push(value);
+                    return value;
+                },
+                __disposed() {
+                    return false;
+                },
+                __hasScoped() {
+                    return false;
+                },
+                __getScoped() {
+                    return undefined;
+                },
+                __setScoped() {
+                    throw new Error("sloppy: root service scope cannot store scoped services.");
+                },
+                __resolving() {
+                    return resolving;
+                },
+                __resolvingLifetimes() {
+                    return resolvingLifetimes;
+                },
+                __push(token, lifetime) {
+                    resolving.push(token);
+                    resolvingLifetimes.push(lifetime);
+                },
+                __pop() {
+                    resolving.pop();
+                    resolvingLifetimes.pop();
+                },
+            };
+            return Object.freeze(scope);
+        }
+
         function createScope(context) {
             const scoped = new Map();
             const transient = [];
@@ -7023,9 +7090,10 @@ Reason:
                         return;
                     }
                     scopeDisposed = true;
-                    for (const value of [...transient.reverse(), ...Array.from(scoped.values()).reverse()]) {
-                        await disposeValue(value);
-                    }
+                    await disposeValues(
+                        [...transient.reverse(), ...Array.from(scoped.values()).reverse()],
+                        "sloppy: service scope disposal failed.",
+                    );
                 },
                 __disposed() {
                     return scopeDisposed;
@@ -7057,6 +7125,8 @@ Reason:
             return Object.freeze(scope);
         }
 
+        const rootScope = createRootScope();
+
         function resolve(scope, token) {
             validateToken(token);
             if (disposed) {
@@ -7077,13 +7147,13 @@ Reason:
             }
             if (registration.lifetime === "singleton") {
                 if (!registration.initialized) {
-                    scope.__push(token, "singleton");
+                    rootScope.__push(token, "singleton");
                     try {
-                        registration.value = registration.factory(scope);
+                        registration.value = registration.factory(rootScope);
                         singletonDisposables.push(registration.value);
                         registration.initialized = true;
                     } finally {
-                        scope.__pop();
+                        rootScope.__pop();
                     }
                 }
                 return registration.value;
@@ -7125,9 +7195,10 @@ Reason:
                     return;
                 }
                 disposed = true;
-                for (const value of singletonDisposables.reverse()) {
-                    await disposeValue(value);
-                }
+                await disposeValues(
+                    singletonDisposables.reverse(),
+                    "sloppy: service provider disposal failed.",
+                );
             },
         });
     }

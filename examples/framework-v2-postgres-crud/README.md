@@ -12,9 +12,12 @@ redacted connection string managed outside source control. Missing PostgreSQL/li
 configuration must be reported as unavailable diagnostics, not pass evidence.
 
 ```powershell
-$env:Sloppy__Providers__postgres__main__connectionString="postgres://postgres:postgres@localhost:5432/sloppy_test"
+$env:Sloppy__Providers__postgres__main__connectionString="postgres://<USER>:<PASSWORD>@<HOST>:<PORT>/<DB>"
 .\tools\windows\test-live-postgres.ps1
 ```
+
+Provide the real value through the environment on the machine running the live lane. Do
+not commit live credentials or local DSNs to source control.
 
 This is not an ORM, migration system, production database policy, public alpha claim,
 benchmark, package-manager behavior, or Node/Bun/Deno compatibility proof.

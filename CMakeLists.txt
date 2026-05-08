@@ -39,6 +39,24 @@ set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 set(SLOPPY_PACKAGE_ARCHIVE "" CACHE FILEPATH "Optional Sloppy package archive for package lane smoke tests.")
+set(SLOPPYC_CARGO_PROFILE_DEFAULT "debug")
+if(CMAKE_BUILD_TYPE)
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" SLOPPYC_CMAKE_BUILD_TYPE)
+    if(SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "release" OR
+       SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo" OR
+       SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "minsizerel")
+        set(SLOPPYC_CARGO_PROFILE_DEFAULT "release")
+    endif()
+endif()
+set(SLOPPYC_CARGO_PROFILE
+    "${SLOPPYC_CARGO_PROFILE_DEFAULT}"
+    CACHE STRING "Cargo profile used for building and installing sloppyc")
+set(SLOPPYC_CARGO_BUILD_PROFILE_ARGS "")
+if(SLOPPYC_CARGO_PROFILE STREQUAL "release")
+    set(SLOPPYC_CARGO_BUILD_PROFILE_ARGS "--release")
+endif()
+set(SLOPPYC_BUILT_EXECUTABLE
+    "${PROJECT_SOURCE_DIR}/compiler/target/${SLOPPYC_CARGO_PROFILE}/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
 if((SLOPPY_ENABLE_LIBFUZZER OR SLOPPY_ENABLE_ASAN) AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "SLOPPY_ENABLE_LIBFUZZER/SLOPPY_ENABLE_ASAN require a Clang-family C compiler.")
 endif()
@@ -1754,8 +1772,6 @@ if(SLOPPY_ENABLE_TESTS)
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
-        set(SLOPPYC_BUILT_EXECUTABLE
-            "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
         if(SLOPPY_POWERSHELL_EXECUTABLE)
             if(SLOPPY_ENABLE_V8)
                 add_test(
@@ -2370,7 +2386,7 @@ if(SLOPPY_BUILD_COMPILER)
             sloppyc
             ALL
             COMMAND "${CARGO_EXECUTABLE}" build --manifest-path
-                    "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
+                    "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml" ${SLOPPYC_CARGO_BUILD_PROFILE_ARGS}
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/compiler"
             COMMENT "Building sloppyc supported app compiler"
             VERBATIM)
@@ -2383,18 +2399,5 @@ install(TARGETS sloppy RUNTIME DESTINATION bin)
 install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/bootstrap")
 install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/stdlib")
 if(SLOPPY_BUILD_COMPILER AND CARGO_EXECUTABLE)
-    set(SLOPPYC_CARGO_PROFILE_DEFAULT "debug")
-    if(CMAKE_BUILD_TYPE)
-        string(TOLOWER "${CMAKE_BUILD_TYPE}" SLOPPYC_CMAKE_BUILD_TYPE)
-        if(SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "release" OR
-           SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo" OR
-           SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "minsizerel")
-            set(SLOPPYC_CARGO_PROFILE_DEFAULT "release")
-        endif()
-    endif()
-    set(SLOPPYC_CARGO_PROFILE "${SLOPPYC_CARGO_PROFILE_DEFAULT}" CACHE STRING
-        "Cargo profile used for installing sloppyc")
-    set(SLOPPYC_INSTALL_PATH
-        "${PROJECT_SOURCE_DIR}/compiler/target/${SLOPPYC_CARGO_PROFILE}/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
-    install(PROGRAMS "${SLOPPYC_INSTALL_PATH}" DESTINATION bin)
+    install(PROGRAMS "${SLOPPYC_BUILT_EXECUTABLE}" DESTINATION bin)
 endif()

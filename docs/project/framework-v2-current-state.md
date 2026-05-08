@@ -10,7 +10,7 @@ subset and emit deterministic metadata for:
 - `Sloppy.create()` plus `app.get/post/put/patch/delete(...)` route declarations;
 - literal route paths, normalized Plan route patterns, and source spans;
 - implicit route/body binding plus explicit `Route<T>`, `Query<T>`, `Body<T>`,
-  `Header<"name">`, `Service<T>`, and `Config<T>` wrapper metadata;
+  `Header<"name">`, `Service<T>`, and environment-backed `Config<"KEY">` wrapper metadata;
 - `RequestContext`, `SlopRequest`, `SlopResponse`, `CancellationSignal`, and `Deadline`
   context bindings;
 - compiler-inferred `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and

@@ -1,19 +1,62 @@
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, Expression, ForStatementInit, ObjectPropertyKind, Statement,
+    VariableDeclaration,
 };
 use oxc_span::Span;
 use serde_json::{json, Value};
 
 use crate::sloppyc::{ts_type_span, RequestBinding};
 
+pub(crate) struct TypedHandlerSource {
+    pub original_source: String,
+    pub emitted_source: String,
+    pub source_map_line_offset: usize,
+    pub source_map_column_offset: usize,
+}
+
 pub(crate) fn typed_arrow_handler_source(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     source: &str,
     bindings: &[RequestBinding],
-) -> Option<String> {
+) -> Option<TypedHandlerSource> {
     let handler_source = source_slice(source, function.span)?;
     let mut erase_spans = Vec::new();
-    collect_parameter_erase_spans(&function.params, &mut erase_spans);
+    collect_arrow_erase_spans(function, &mut erase_spans);
+    let executable_source =
+        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
+    let wrapper = wrapper_source(&executable_source, bindings);
+    Some(TypedHandlerSource {
+        original_source: handler_source,
+        emitted_source: wrapper.source,
+        source_map_line_offset: wrapper.handler_line_offset,
+        source_map_column_offset: wrapper.handler_column_offset,
+    })
+}
+
+pub(crate) fn typed_function_handler_source(
+    function: &oxc_ast::ast::Function<'_>,
+    source: &str,
+    bindings: &[RequestBinding],
+) -> Option<TypedHandlerSource> {
+    let handler_source = source_slice(source, function.span)?;
+    let mut erase_spans = Vec::new();
+    collect_function_erase_spans(function, &mut erase_spans);
+    let executable_source =
+        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
+    let wrapper = wrapper_source(&executable_source, bindings);
+    Some(TypedHandlerSource {
+        original_source: handler_source,
+        emitted_source: wrapper.source,
+        source_map_line_offset: wrapper.handler_line_offset,
+        source_map_column_offset: wrapper.handler_column_offset,
+    })
+}
+
+fn collect_arrow_erase_spans(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    erase_spans: &mut Vec<Span>,
+) {
+    collect_parameter_erase_spans(&function.params, erase_spans);
     if let Some(type_parameters) = &function.type_parameters {
         erase_spans.push(type_parameters.span);
     }
@@ -21,35 +64,29 @@ pub(crate) fn typed_arrow_handler_source(
         erase_spans.push(return_type.span);
     }
     for statement in &function.body.statements {
-        collect_statement_erase_spans(statement, &mut erase_spans);
+        collect_statement_erase_spans(statement, erase_spans);
     }
-    let executable_source =
-        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
-    Some(wrapper_source(&executable_source, bindings))
 }
 
-pub(crate) fn typed_function_handler_source(
+fn collect_function_erase_spans(
     function: &oxc_ast::ast::Function<'_>,
-    source: &str,
-    bindings: &[RequestBinding],
-) -> Option<String> {
-    let handler_source = source_slice(source, function.span)?;
-    let mut erase_spans = Vec::new();
-    collect_parameter_erase_spans(&function.params, &mut erase_spans);
+    erase_spans: &mut Vec<Span>,
+) {
+    collect_parameter_erase_spans(&function.params, erase_spans);
     if let Some(type_parameters) = &function.type_parameters {
         erase_spans.push(type_parameters.span);
+    }
+    if let Some(this_param) = &function.this_param {
+        erase_spans.push(this_param.span);
     }
     if let Some(return_type) = &function.return_type {
         erase_spans.push(return_type.span);
     }
     if let Some(body) = &function.body {
         for statement in &body.statements {
-            collect_statement_erase_spans(statement, &mut erase_spans);
+            collect_statement_erase_spans(statement, erase_spans);
         }
     }
-    let executable_source =
-        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
-    Some(wrapper_source(&executable_source, bindings))
 }
 
 fn collect_parameter_erase_spans(
@@ -88,11 +125,10 @@ fn collect_statement_erase_spans(statement: &Statement<'_>, erase_spans: &mut Ve
             }
         }
         Statement::VariableDeclaration(statement) => {
-            for declarator in &statement.declarations {
-                if let Some(init) = &declarator.init {
-                    collect_expression_erase_spans(init, erase_spans);
-                }
-            }
+            collect_variable_declaration_erase_spans(statement, erase_spans);
+        }
+        Statement::FunctionDeclaration(function) => {
+            collect_function_erase_spans(function, erase_spans);
         }
         Statement::IfStatement(statement) => {
             collect_expression_erase_spans(&statement.test, erase_spans);
@@ -104,11 +140,7 @@ fn collect_statement_erase_spans(statement: &Statement<'_>, erase_spans: &mut Ve
         Statement::ForStatement(statement) => {
             if let Some(init) = &statement.init {
                 if let ForStatementInit::VariableDeclaration(declaration) = init {
-                    for declarator in &declaration.declarations {
-                        if let Some(init) = &declarator.init {
-                            collect_expression_erase_spans(init, erase_spans);
-                        }
-                    }
+                    collect_variable_declaration_erase_spans(declaration, erase_spans);
                 } else if let Some(expression) = init.as_expression() {
                     collect_expression_erase_spans(expression, erase_spans);
                 }
@@ -141,6 +173,20 @@ fn collect_statement_erase_spans(statement: &Statement<'_>, erase_spans: &mut Ve
     }
 }
 
+fn collect_variable_declaration_erase_spans(
+    declaration: &VariableDeclaration<'_>,
+    erase_spans: &mut Vec<Span>,
+) {
+    for declarator in &declaration.declarations {
+        if let Some(annotation) = &declarator.type_annotation {
+            erase_spans.push(annotation.span);
+        }
+        if let Some(init) = &declarator.init {
+            collect_expression_erase_spans(init, erase_spans);
+        }
+    }
+}
+
 fn collect_expression_erase_spans(expression: &Expression<'_>, erase_spans: &mut Vec<Span>) {
     match expression {
         Expression::CallExpression(call) => {
@@ -154,6 +200,12 @@ fn collect_expression_erase_spans(expression: &Expression<'_>, erase_spans: &mut
         }
         Expression::AwaitExpression(expression) => {
             collect_expression_erase_spans(&expression.argument, erase_spans);
+        }
+        Expression::ArrowFunctionExpression(function) => {
+            collect_arrow_erase_spans(function, erase_spans);
+        }
+        Expression::FunctionExpression(function) => {
+            collect_function_erase_spans(function, erase_spans);
         }
         Expression::BinaryExpression(expression) => {
             collect_expression_erase_spans(&expression.left, erase_spans);
@@ -219,6 +271,12 @@ fn collect_argument_erase_spans(argument: &Argument<'_>, erase_spans: &mut Vec<S
         Argument::AwaitExpression(expression) => {
             collect_expression_erase_spans(&expression.argument, erase_spans);
         }
+        Argument::ArrowFunctionExpression(function) => {
+            collect_arrow_erase_spans(function, erase_spans);
+        }
+        Argument::FunctionExpression(function) => {
+            collect_function_erase_spans(function, erase_spans);
+        }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
@@ -256,6 +314,12 @@ fn collect_array_element_erase_spans(
                 collect_argument_erase_spans(argument, erase_spans);
             }
         }
+        ArrayExpressionElement::ArrowFunctionExpression(function) => {
+            collect_arrow_erase_spans(function, erase_spans);
+        }
+        ArrayExpressionElement::FunctionExpression(function) => {
+            collect_function_erase_spans(function, erase_spans);
+        }
         ArrayExpressionElement::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
@@ -291,7 +355,13 @@ fn erase_spans_from_source(
     Some(output)
 }
 
-fn wrapper_source(handler_source: &str, bindings: &[RequestBinding]) -> String {
+struct WrapperSource {
+    source: String,
+    handler_line_offset: usize,
+    handler_column_offset: usize,
+}
+
+fn wrapper_source(handler_source: &str, bindings: &[RequestBinding]) -> WrapperSource {
     let args = bindings
         .iter()
         .map(|binding| {
@@ -303,9 +373,14 @@ fn wrapper_source(handler_source: &str, bindings: &[RequestBinding]) -> String {
         .collect::<Option<Vec<_>>>()
         .unwrap_or_default()
         .join(", ");
-    format!(
-        "async (ctx) => {{ const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try {{ const __sloppy_typed_handler = {handler_source}; const __sloppy_args = await Promise.all([{args}]); return await __sloppy_typed_handler(...__sloppy_args); }} finally {{ await __sloppy_scope.dispose(); }} }}"
-    )
+    let prefix = "async (ctx) => { const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try { const __sloppy_typed_handler = ";
+    WrapperSource {
+        source: format!(
+            "{prefix}{handler_source}; const __sloppy_args = await Promise.all([{args}]); return await __sloppy_typed_handler(...__sloppy_args); }} finally {{ await __sloppy_scope.dispose(); }} }}"
+        ),
+        handler_line_offset: 0,
+        handler_column_offset: prefix.len(),
+    }
 }
 
 fn binding_descriptor(binding: &RequestBinding) -> Value {

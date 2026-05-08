@@ -64,6 +64,13 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "[\\x00-\\x1F\\x7F]"
+        "contentType must not contain control characters")
+    require_substring("${results_js}" "${required_pattern}" "results.js is missing contentType control-character validation")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing contentType control-character validation")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "kind: \"string\""
         "\"number\""
         "\"boolean\""

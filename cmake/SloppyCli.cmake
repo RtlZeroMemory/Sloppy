@@ -6,7 +6,7 @@ target_compile_features(sloppy PRIVATE c_std_17)
 target_compile_definitions(
     sloppy
     PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}"
-            SLOPPY_COMPILER_BUILD_PATH="${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
+            SLOPPY_COMPILER_BUILD_PATH="${SLOPPYC_BUILT_EXECUTABLE}")
 if(WIN32 AND MSVC)
     # The V8-backed HTTP transport enters JavaScript from a deeper libuv callback stack than
     # --once dispatch. Reserve enough process stack for V8's guard to allow real handler entry.

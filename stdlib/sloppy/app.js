@@ -1216,6 +1216,51 @@ function createServicesBuilder(guard) {
     return Object.freeze(services);
 }
 
+function isPromiseLike(value) {
+    return value !== null && typeof value === "object" && typeof value.then === "function";
+}
+
+function combineCleanupErrors(primary, cleanup) {
+    return new AggregateError([primary, cleanup], "Sloppy cleanup failed after a handler error.");
+}
+
+function cleanupAfterSuccess(result, cleanup) {
+    const cleanupResult = cleanup();
+    if (isPromiseLike(cleanupResult)) {
+        return Promise.resolve(cleanupResult).then(() => result);
+    }
+    return result;
+}
+
+function cleanupAfterFailure(error, cleanup) {
+    try {
+        const cleanupResult = cleanup();
+        if (isPromiseLike(cleanupResult)) {
+            return Promise.resolve(cleanupResult).then(
+                () => {
+                    throw error;
+                },
+                (cleanupError) => {
+                    throw combineCleanupErrors(error, cleanupError);
+                },
+            );
+        }
+    } catch (cleanupError) {
+        throw combineCleanupErrors(error, cleanupError);
+    }
+    throw error;
+}
+
+function finishWithCleanup(result, cleanup) {
+    if (isPromiseLike(result)) {
+        return Promise.resolve(result).then(
+            (value) => cleanupAfterSuccess(value, cleanup),
+            (error) => cleanupAfterFailure(error, cleanup),
+        );
+    }
+    return cleanupAfterSuccess(result, cleanup);
+}
+
 function createServiceProvider(registrations, capabilities) {
     const singletonDisposables = [];
     let providerDisposed = false;
@@ -1234,6 +1279,130 @@ function createServiceProvider(registrations, capabilities) {
             return value.close();
         }
         return undefined;
+    }
+
+    function isPromiseLike(value) {
+        return value !== null && typeof value === "object" && typeof value.then === "function";
+    }
+
+    function disposalError(errors, message) {
+        if (errors.length === 1) {
+            return errors[0];
+        }
+        return new AggregateError(errors, message);
+    }
+
+    function disposeValues(values, message) {
+        const errors = [];
+        const pending = [];
+        for (const value of values) {
+            try {
+                const result = disposeValue(value);
+                if (isPromiseLike(result)) {
+                    pending.push(Promise.resolve(result).catch((error) => {
+                        errors.push(error);
+                    }));
+                }
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+
+        if (pending.length === 0) {
+            if (errors.length !== 0) {
+                throw disposalError(errors, message);
+            }
+            return undefined;
+        }
+
+        return Promise.all(pending).then(() => {
+            if (errors.length !== 0) {
+                throw disposalError(errors, message);
+            }
+            return undefined;
+        });
+    }
+
+    function combineCleanupErrors(primary, cleanup) {
+        return new AggregateError([primary, cleanup], "Sloppy cleanup failed after a handler error.");
+    }
+
+    function cleanupAfterSuccess(result, cleanup) {
+        const cleanupResult = cleanup();
+        if (isPromiseLike(cleanupResult)) {
+            return Promise.resolve(cleanupResult).then(() => result);
+        }
+        return result;
+    }
+
+    function cleanupAfterFailure(error, cleanup) {
+        try {
+            const cleanupResult = cleanup();
+            if (isPromiseLike(cleanupResult)) {
+                return Promise.resolve(cleanupResult).then(
+                    () => {
+                        throw error;
+                    },
+                    (cleanupError) => {
+                        throw combineCleanupErrors(error, cleanupError);
+                    },
+                );
+            }
+        } catch (cleanupError) {
+            throw combineCleanupErrors(error, cleanupError);
+        }
+        throw error;
+    }
+
+    function finishWithCleanup(result, cleanup) {
+        if (isPromiseLike(result)) {
+            return Promise.resolve(result).then(
+                (value) => cleanupAfterSuccess(value, cleanup),
+                (error) => cleanupAfterFailure(error, cleanup),
+            );
+        }
+        return cleanupAfterSuccess(result, cleanup);
+    }
+
+    function createRootScope() {
+        const resolving = [];
+        const resolvingLifetimes = [];
+        const scope = Object.freeze({
+            capabilities,
+            get(token) {
+                return resolve(scope, token);
+            },
+            __disposed() {
+                return false;
+            },
+            __hasScoped() {
+                return false;
+            },
+            __getScoped() {
+                return undefined;
+            },
+            __setScoped() {
+                throw new Error("Sloppy root service scope cannot store scoped services.");
+            },
+            __trackTransient(value) {
+                singletonDisposables.push(value);
+            },
+            __resolving() {
+                return resolving;
+            },
+            __resolvingLifetimes() {
+                return resolvingLifetimes;
+            },
+            __pushResolving(token, lifetime) {
+                resolving.push(token);
+                resolvingLifetimes.push(lifetime);
+            },
+            __popResolving() {
+                resolving.pop();
+                resolvingLifetimes.pop();
+            },
+        });
+        return scope;
     }
 
     function resolve(scope, token) {
@@ -1266,12 +1435,12 @@ function createServiceProvider(registrations, capabilities) {
 
         if (registration.lifetime === "singleton") {
             if (!registration.initialized) {
-                scope.__pushResolving(token, "singleton");
+                rootScope.__pushResolving(token, "singleton");
                 try {
-                    registration.value = registration.factory(scope);
+                    registration.value = registration.factory(rootScope);
                     singletonDisposables.push(registration.value);
                 } finally {
-                    scope.__popResolving();
+                    rootScope.__popResolving();
                 }
                 registration.initialized = true;
             }
@@ -1319,10 +1488,7 @@ function createServiceProvider(registrations, capabilities) {
                 }
                 disposed = true;
                 const values = [...transientValues.reverse(), ...Array.from(scopedValues.values()).reverse()];
-                for (const value of values) {
-                    disposeValue(value);
-                }
-                return undefined;
+                return disposeValues(values, "Sloppy service scope disposal failed.");
             },
             __disposed() {
                 return disposed;
@@ -1358,14 +1524,22 @@ function createServiceProvider(registrations, capabilities) {
         return scope;
     }
 
+    const rootScope = createRootScope();
+
     const provider = Object.freeze({
         get(token) {
-            const scope = provider.createScope();
-            try {
-                return resolve(scope, token);
-            } finally {
-                scope.dispose();
+            validateServiceToken(token);
+            if (providerDisposed) {
+                throw new Error("Sloppy service provider is disposed.");
             }
+            const registration = registrations.get(token);
+            if (registration === undefined) {
+                throw new Error(`Sloppy service '${token}' is not registered.`);
+            }
+            if (registration.lifetime !== "singleton") {
+                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);
+            }
+            return resolve(rootScope, token);
         },
 
         createScope,
@@ -1375,10 +1549,7 @@ function createServiceProvider(registrations, capabilities) {
                 return undefined;
             }
             providerDisposed = true;
-            for (const value of singletonDisposables.reverse()) {
-                disposeValue(value);
-            }
-            return undefined;
+            return disposeValues(singletonDisposables.reverse(), "Sloppy service provider disposal failed.");
         },
     });
 
@@ -1404,14 +1575,9 @@ function createRouteHandler(host, handler) {
         const ownedContext = createHandlerContext(host);
         try {
             const result = handler(ownedContext);
-            if (result !== null && typeof result === "object" && typeof result.then === "function") {
-                return result.finally(() => ownedContext.services.dispose());
-            }
-            ownedContext.services.dispose();
-            return result;
+            return finishWithCleanup(result, () => ownedContext.services.dispose());
         } catch (error) {
-            ownedContext.services.dispose();
-            throw error;
+            return cleanupAfterFailure(error, () => ownedContext.services.dispose());
         }
     };
 }
@@ -1590,11 +1756,30 @@ function createControllerHandler(host, Controller, action) {
     }
 
     return function controllerHandler(context) {
-        const ctx = context ?? createHandlerContext(host);
-        const services = ctx.services ?? host.services.createScope();
+        let ctx = context ?? createHandlerContext(host);
+        let ownsServices = context === undefined || context === null;
+        if (ctx.services === undefined || ctx.services === null) {
+            ctx = Object.freeze({
+                ...ctx,
+                services: host.services.createScope(),
+            });
+            ownsServices = true;
+        }
+        const services = ctx.services;
         const dependencies = inject.map((token) => services.get(token));
         const instance = new Controller(...dependencies);
-        return instance[action](ctx);
+        try {
+            const result = instance[action](ctx);
+            if (ownsServices) {
+                return finishWithCleanup(result, () => services.dispose());
+            }
+            return result;
+        } catch (error) {
+            if (ownsServices) {
+                return cleanupAfterFailure(error, () => services.dispose());
+            }
+            throw error;
+        }
     };
 }
 

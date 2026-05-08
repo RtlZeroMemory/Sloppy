@@ -57,6 +57,10 @@ function resolveContentType(options, defaultContentType) {
         throw new TypeError("Sloppy Results contentType must be a non-empty string.");
     }
 
+    if (/[\x00-\x1F\x7F]/.test(contentType)) {
+        throw new TypeError("Sloppy Results contentType must not contain control characters.");
+    }
+
     return contentType;
 }
 

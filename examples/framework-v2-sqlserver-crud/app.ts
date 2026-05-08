@@ -50,16 +50,14 @@ app.post("/users", async (
     db: SqlServer<"main">,
     ctx: RequestContext,
 ) => {
-    await db.exec(
-        "insert into users (name, email) values (?, ?)",
+    const user = await db.queryOne<UserDto>(
+        "insert into users (name, email) output inserted.id, inserted.name, inserted.email values (?, ?)",
         [input.name, input.email],
         { deadline: ctx.deadline },
     );
-    const user = await db.queryOne<UserDto>(
-        "select top 1 id, name, email from users where email = ? order by id desc",
-        [input.email],
-        { deadline: ctx.deadline },
-    );
+    if (user === null) {
+        throw new Error("SQL Server user insert did not return a row.");
+    }
     return Results.created(`/users/${user.id}`, user);
 }).withName("Users.Create");
 

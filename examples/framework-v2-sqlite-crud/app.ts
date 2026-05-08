@@ -23,20 +23,26 @@ type UserDto = {
 
 const app = Sloppy.create();
 
-async function seedUsers(db) {
-    await db.exec("create table if not exists users (id integer primary key, name text not null, email text not null unique)");
+async function seedUsers(db, deadline) {
     await db.exec(
-        "insert into users (id, name, email) select ?, ?, ? where not exists (select 1 from users where id = ?)",
-        [1, "Ada Lovelace", "ada@example.test", 1],
+        "create table if not exists users (id integer primary key, name text not null, email text not null unique)",
+        [],
+        { deadline },
     );
     await db.exec(
-        "insert into users (id, name, email) select ?, ?, ? where not exists (select 1 from users where id = ?)",
-        [2, "Grace Hopper", "grace@example.test", 2],
+        "insert or ignore into users (id, name, email) values (?, ?, ?)",
+        [1, "Ada Lovelace", "ada@example.test"],
+        { deadline },
+    );
+    await db.exec(
+        "insert or ignore into users (id, name, email) values (?, ?, ?)",
+        [2, "Grace Hopper", "grace@example.test"],
+        { deadline },
     );
 }
 
 app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {
-    await seedUsers(db);
+    await seedUsers(db, ctx.deadline);
     const users = await db.query<UserDto>(
         "select id, name, email from users order by id",
         [],
@@ -50,7 +56,7 @@ app.get("/users/{id:int}", async (
     db: Sqlite<"main">,
     ctx: RequestContext,
 ) => {
-    await seedUsers(db);
+    await seedUsers(db, ctx.deadline);
     const user = await db.queryOne<UserDto>(
         "select id, name, email from users where id = ?",
         [id],
@@ -64,17 +70,20 @@ app.post("/users", async (
     db: Sqlite<"main">,
     ctx: RequestContext,
 ) => {
-    await seedUsers(db);
+    await seedUsers(db, ctx.deadline);
     await db.exec(
-        "insert into users (name, email) values (?, ?)",
+        "insert or ignore into users (name, email) values (?, ?)",
         [input.name, input.email],
         { deadline: ctx.deadline },
     );
     const user = await db.queryOne<UserDto>(
-        "select id, name, email from users where id = last_insert_rowid()",
-        [],
+        "select id, name, email from users where email = ?",
+        [input.email],
         { deadline: ctx.deadline },
     );
+    if (user === null) {
+        throw new Error("SQLite user insert did not return a row.");
+    }
     return Results.created(`/users/${user.id}`, user);
 }).withName("Users.Create");
 

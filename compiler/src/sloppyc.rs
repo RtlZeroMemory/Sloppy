@@ -147,11 +147,14 @@ struct Route {
 #[derive(Debug, Clone)]
 struct Handler {
     source: String,
+    emitted_source: String,
     span: Span,
     is_async: bool,
     runtime_deferred: bool,
     source_name: String,
     source_text: String,
+    source_map_line_offset: usize,
+    source_map_column_offset: usize,
     bindings: Vec<RequestBinding>,
     response: Option<ResponseMetadata>,
     responses: Vec<ResponseMetadata>,
@@ -2663,8 +2666,8 @@ fn extract_expression_statement(
             )));
         }
         let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
-        handler.source = wrap_handler_with_providers_and_helpers(
-            &handler.source,
+        handler.emitted_source = wrap_handler_with_providers_and_helpers(
+            &handler.emitted_source,
             &providers,
             &helper_sources,
             handler.is_async,
@@ -4370,11 +4373,311 @@ fn app_service_registration_call(
         .with_path(path)
         .with_span(call.span));
     };
+    let free_identifiers = service_factory_free_identifiers(factory_argument);
+    if !free_identifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            format!(
+                "service registration '{}' factory captures unsupported identifier '{}'",
+                token,
+                free_identifiers
+                    .iter()
+                    .next()
+                    .map(String::as_str)
+                    .unwrap_or("")
+            ),
+        )
+        .with_path(path)
+        .with_span(argument_span(factory_argument).unwrap_or(call.span))
+        .with_hint("Use an inline factory that only depends on its scope parameter and local values, or lift the service into a runtime-only registration path."));
+    }
     Ok(Some(ServiceRegistration {
         token: token.to_string(),
         lifetime,
         factory_source,
     }))
+}
+
+fn service_factory_free_identifiers(argument: &Argument<'_>) -> BTreeSet<String> {
+    let mut scope = BTreeSet::new();
+    match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            collect_formal_parameter_bindings(&function.params, &mut scope);
+            collect_function_body_bindings(&function.body.statements, &mut scope);
+            let mut free = BTreeSet::new();
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &scope,
+                &mut free,
+            );
+            free
+        }
+        Argument::FunctionExpression(function) => {
+            collect_formal_parameter_bindings(&function.params, &mut scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut scope);
+                let mut free = BTreeSet::new();
+                collect_statement_list_identifier_references(&body.statements, &scope, &mut free);
+                free
+            } else {
+                BTreeSet::new()
+            }
+        }
+        _ => BTreeSet::new(),
+    }
+}
+
+fn collect_formal_parameter_bindings(
+    parameters: &oxc_ast::ast::FormalParameters<'_>,
+    scope: &mut BTreeSet<String>,
+) {
+    for parameter in &parameters.items {
+        collect_binding_roots(&parameter.pattern, scope);
+    }
+}
+
+fn collect_function_body_bindings(statements: &[Statement<'_>], scope: &mut BTreeSet<String>) {
+    for statement in statements {
+        match statement {
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    collect_binding_roots(&declarator.id, scope);
+                }
+            }
+            Statement::FunctionDeclaration(function) => {
+                if let Some(identifier) = &function.id {
+                    scope.insert(identifier.name.as_str().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_statement_list_identifier_references(
+    statements: &[Statement<'_>],
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        collect_statement_identifier_references(statement, scope, free);
+    }
+}
+
+fn collect_statement_identifier_references(
+    statement: &Statement<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match statement {
+        Statement::BlockStatement(block) => {
+            collect_statement_list_identifier_references(&block.body, scope, free);
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_identifier_references(&statement.expression, scope, free);
+        }
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_identifier_references(argument, scope, free);
+            }
+        }
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_identifier_references(init, scope, free);
+                }
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_expression_identifier_references(&statement.test, scope, free);
+            collect_statement_identifier_references(&statement.consequent, scope, free);
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_identifier_references(alternate, scope, free);
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_identifier_references(&statement.argument, scope, free);
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_identifier_references(
+    expression: &Expression<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match expression {
+        Expression::Identifier(identifier) => {
+            let name = identifier.name.as_str();
+            if !scope.contains(name) && !service_factory_allowed_global(name) {
+                free.insert(name.to_string());
+            }
+        }
+        Expression::CallExpression(call) => {
+            collect_expression_identifier_references(&call.callee, scope, free);
+            for argument in &call.arguments {
+                collect_argument_identifier_references(argument, scope, free);
+            }
+        }
+        Expression::NewExpression(expression) => {
+            collect_expression_identifier_references(&expression.callee, scope, free);
+            for argument in &expression.arguments {
+                collect_argument_identifier_references(argument, scope, free);
+            }
+        }
+        Expression::AwaitExpression(expression) => {
+            collect_expression_identifier_references(&expression.argument, scope, free);
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                match property {
+                    ObjectPropertyKind::ObjectProperty(property) => {
+                        collect_expression_identifier_references(&property.value, scope, free);
+                    }
+                    ObjectPropertyKind::SpreadProperty(property) => {
+                        collect_expression_identifier_references(&property.argument, scope, free);
+                    }
+                }
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_identifier_references(element, scope, free);
+            }
+        }
+        Expression::ParenthesizedExpression(expression) => {
+            collect_expression_identifier_references(&expression.expression, scope, free);
+        }
+        Expression::StaticMemberExpression(expression) => {
+            collect_expression_identifier_references(&expression.object, scope, free);
+        }
+        Expression::ComputedMemberExpression(expression) => {
+            collect_expression_identifier_references(&expression.object, scope, free);
+            collect_expression_identifier_references(&expression.expression, scope, free);
+        }
+        Expression::BinaryExpression(expression) => {
+            collect_expression_identifier_references(&expression.left, scope, free);
+            collect_expression_identifier_references(&expression.right, scope, free);
+        }
+        Expression::LogicalExpression(expression) => {
+            collect_expression_identifier_references(&expression.left, scope, free);
+            collect_expression_identifier_references(&expression.right, scope, free);
+        }
+        Expression::ConditionalExpression(expression) => {
+            collect_expression_identifier_references(&expression.test, scope, free);
+            collect_expression_identifier_references(&expression.consequent, scope, free);
+            collect_expression_identifier_references(&expression.alternate, scope, free);
+        }
+        Expression::ArrowFunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            collect_function_body_bindings(&function.body.statements, &mut nested_scope);
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &nested_scope,
+                free,
+            );
+        }
+        Expression::FunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut nested_scope);
+                collect_statement_list_identifier_references(&body.statements, &nested_scope, free);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_argument_identifier_references(
+    argument: &Argument<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match argument {
+        Argument::Identifier(identifier) => {
+            let name = identifier.name.as_str();
+            if !scope.contains(name) && !service_factory_allowed_global(name) {
+                free.insert(name.to_string());
+            }
+        }
+        Argument::ArrowFunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            collect_function_body_bindings(&function.body.statements, &mut nested_scope);
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &nested_scope,
+                free,
+            );
+        }
+        Argument::FunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut nested_scope);
+                collect_statement_list_identifier_references(&body.statements, &nested_scope, free);
+            }
+        }
+        Argument::ObjectExpression(object) => {
+            for property in &object.properties {
+                match property {
+                    ObjectPropertyKind::ObjectProperty(property) => {
+                        collect_expression_identifier_references(&property.value, scope, free);
+                    }
+                    ObjectPropertyKind::SpreadProperty(property) => {
+                        collect_expression_identifier_references(&property.argument, scope, free);
+                    }
+                }
+            }
+        }
+        Argument::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_identifier_references(element, scope, free);
+            }
+        }
+        _ => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_identifier_references(expression, scope, free);
+            }
+        }
+    }
+}
+
+fn collect_array_element_identifier_references(
+    element: &ArrayExpressionElement<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    if let Some(expression) = element.as_expression() {
+        collect_expression_identifier_references(expression, scope, free);
+    }
+}
+
+fn service_factory_allowed_global(name: &str) -> bool {
+    matches!(
+        name,
+        "Array"
+            | "ArrayBuffer"
+            | "Boolean"
+            | "Date"
+            | "Error"
+            | "JSON"
+            | "Map"
+            | "Math"
+            | "Number"
+            | "Object"
+            | "Promise"
+            | "Set"
+            | "String"
+            | "Symbol"
+            | "TypeError"
+            | "Uint8Array"
+            | "WeakMap"
+            | "WeakSet"
+    )
 }
 
 fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapability) {
@@ -4804,8 +5107,8 @@ fn extract_module_function_routes(
                             "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
                         )));
                     }
-                    handler.source = wrap_module_handler_with_providers(
-                        &handler.source,
+                    handler.emitted_source = wrap_module_handler_with_providers(
+                        &handler.emitted_source,
                         &used_providers,
                         handler.is_async,
                     );
@@ -5315,23 +5618,27 @@ fn handler_from_argument(
             {
                 return None;
             }
-            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
                     body_json_schema_argument_spans_arrow(function, &ctx_name, context.schema_names)
                 })
                 .unwrap_or_default();
+            let handler_source = source_slice(context.source, function.span)?;
+            let handler_source = sanitize_handler_schema_references(
+                handler_source,
+                function.span.start,
+                &schema_spans,
+            );
             Some(Handler {
-                source: sanitize_handler_schema_references(
-                    handler_source,
-                    function.span.start,
-                    &schema_spans,
-                ),
+                source: handler_source.clone(),
+                emitted_source: handler_source,
                 span: function.span,
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
                 source_text: context.source.to_string(),
+                source_map_line_offset: 0,
+                source_map_column_offset: 0,
                 bindings: request_bindings_from_arrow(function, context.schema_names),
                 response: response_metadata_from_arrow(function),
                 responses: response_metadata_from_arrow(function).into_iter().collect(),
@@ -5364,7 +5671,6 @@ fn handler_from_argument(
             {
                 return None;
             }
-            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
                     body_json_schema_argument_spans_function(
@@ -5374,17 +5680,22 @@ fn handler_from_argument(
                     )
                 })
                 .unwrap_or_default();
+            let handler_source = source_slice(context.source, function.span)?;
+            let handler_source = sanitize_handler_schema_references(
+                handler_source,
+                function.span.start,
+                &schema_spans,
+            );
             Some(Handler {
-                source: sanitize_handler_schema_references(
-                    handler_source,
-                    function.span.start,
-                    &schema_spans,
-                ),
+                source: handler_source.clone(),
+                emitted_source: handler_source,
                 span: function.span,
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
                 source_text: context.source.to_string(),
+                source_map_line_offset: 0,
+                source_map_column_offset: 0,
                 bindings: request_bindings_from_function(function, context.schema_names),
                 response: response_metadata_from_function(function),
                 responses: response_metadata_from_function(function)
@@ -5417,12 +5728,15 @@ fn typed_framework_handler_from_arrow(
     let handler_source =
         crate::framework_runtime::typed_arrow_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: handler_source,
+        source: handler_source.original_source,
+        emitted_source: handler_source.emitted_source,
         span: function.span,
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
+        source_map_line_offset: handler_source.source_map_line_offset,
+        source_map_column_offset: handler_source.source_map_column_offset,
         bindings,
         response: responses.first().cloned(),
         responses,
@@ -5444,12 +5758,15 @@ fn typed_framework_handler_from_function(
     let handler_source =
         crate::framework_runtime::typed_function_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: handler_source,
+        source: handler_source.original_source,
+        emitted_source: handler_source.emitted_source,
         span: function.span,
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
+        source_map_line_offset: handler_source.source_map_line_offset,
+        source_map_column_offset: handler_source.source_map_column_offset,
         bindings,
         response: responses.first().cloned(),
         responses,
@@ -9088,14 +9405,18 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut mappings = Vec::new();
     let mut handler_generated_starts = Vec::new();
     let mut generated_line = 0usize;
-    let needs_provider_open_helper = app
-        .routes
-        .iter()
-        .any(|route| route.handler.source.contains("__sloppy_open_data_provider"));
-    let needs_framework_arg_helper = app
-        .routes
-        .iter()
-        .any(|route| route.handler.source.contains("__sloppy_framework_arg"));
+    let needs_provider_open_helper = app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppy_open_data_provider")
+    });
+    let needs_framework_arg_helper = app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppy_framework_arg")
+    });
     let queue_service_entries = framework_queue_service_entries(app);
     let needs_framework_services = needs_framework_arg_helper
         || !app.service_registrations.is_empty()
@@ -9397,17 +9718,17 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\") { return scope.track(data.sqlite(dependencyName)); }",
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\" && typeof data.sqlite === \"function\") { return scope.track(data.sqlite(dependencyName)); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\" && data.postgres !== undefined && typeof data.postgres.open === \"function\") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\" && data.sqlserver !== undefined && typeof data.sqlserver.open === \"function\") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
         );
         push_generated_line(
             &mut output,
@@ -9476,6 +9797,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         let prefix = format!("globalThis.__sloppy_handler_{id} = ");
         let handler_start_line = generated_line;
         let handler_start_column = prefix.len();
+        let source_map_start_line = handler_start_line + route.handler.source_map_line_offset;
+        let source_map_start_column = if route.handler.source_map_line_offset == 0 {
+            handler_start_column + route.handler.source_map_column_offset
+        } else {
+            route.handler.source_map_column_offset
+        };
         handler_generated_starts.push(HandlerGeneratedStart {
             handler_id: id,
             generated_line: handler_start_line,
@@ -9485,15 +9812,15 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &route.handler.source_text,
             route.handler.span,
             &route.handler.source,
-            handler_start_line,
-            handler_start_column,
+            source_map_start_line,
+            source_map_start_column,
             source_index_for(app, &route.handler.source_name),
         ));
 
         output.push_str(&prefix);
-        output.push_str(&route.handler.source);
+        output.push_str(&route.handler.emitted_source);
         output.push_str(";\n");
-        generated_line += route.handler.source.matches('\n').count() + 1;
+        generated_line += route.handler.emitted_source.matches('\n').count() + 1;
         push_generated_line(
             &mut output,
             &mut generated_line,
@@ -11795,7 +12122,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects[0].access, "read");
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
 
         let emitted_js = super::emit_app_js(&app);
@@ -11923,11 +12250,11 @@ export default app;
         assert_eq!(app.routes[0].handler.effects.len(), 1);
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("function listUsers()"));
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
         assert!(!app.routes[0].handler.source.contains("uses"));
     }
@@ -11957,7 +12284,7 @@ export default app;
             .any(|effect| effect.access == "write"));
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -11983,7 +12310,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects[0].access, "read");
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -12005,7 +12332,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects.len(), 1);
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -13135,6 +13462,26 @@ export default app;
     }
 
     #[test]
+    fn framework_service_registration_rejects_captured_factory_identifiers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+function makeGreeting() {
+  return { prefix: "hello" };
+}
+const app = Sloppy.create();
+app.services.addScoped("GreetingService", () => makeGreeting());
+app.get("/users", () => Results.ok({ ok: true }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("captured service factory identifiers should be rejected");
+        assert_eq!(
+            diagnostic.code,
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION"
+        );
+        assert!(diagnostic.message.contains("makeGreeting"));
+    }
+
+    #[test]
     fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
         let source = r#"import { Sloppy, Results, Body } from "sloppy";
 type UserCreate = { name: string; email: string };
@@ -13158,6 +13505,86 @@ export default app;
         assert!(!emitted_js
             .source
             .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+    }
+
+    #[test]
+    fn typed_framework_handler_erases_nested_typescript_syntax() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+type UserCreate = { name: string; email: string };
+type UserDto = { id: number; name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
+  const first: UserCreate = input;
+  const mapped = [first].map((item: UserCreate): UserDto => ({
+    id: Number.parseInt("1", 10),
+    name: item.name,
+    email: item.email,
+  }));
+  const loaded = await Promise.all<UserDto>(mapped.map(async (item: UserDto): Promise<UserDto> => {
+    const row: UserDto = await db.queryOne<UserDto>("select id, name, email from users where id = $1", [item.id]);
+    return row;
+  }));
+  function normalize(user: UserDto): UserDto {
+    return user;
+  }
+  return Results.created(`/users/${loaded[0].id}`, normalize(loaded[0]));
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed handler with nested TypeScript syntax should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("const first = input;"));
+        assert!(emitted_js.source.contains("function normalize(user)"));
+        assert!(!emitted_js.source.contains("const first:"));
+        assert!(!emitted_js.source.contains("(item:"));
+        assert!(!emitted_js.source.contains("): UserDto"));
+        assert!(!emitted_js.source.contains("function normalize(user:"));
+        assert!(!emitted_js.source.contains("Promise.all<UserDto>"));
+        assert!(!emitted_js.source.contains("queryOne<UserDto>"));
+    }
+
+    #[test]
+    fn typed_framework_source_maps_point_at_user_handler_source() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>) => {
+  const name: string = input.name;
+  return Results.created(`/users/${name}`, { name });
+});
+export default app;
+"#;
+        let app =
+            extract(std::path::Path::new("app.ts"), source).expect("typed handler should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("input: Body<UserCreate>"));
+        assert!(app.routes[0]
+            .handler
+            .emitted_source
+            .contains("const __sloppy_typed_handler = async (input)"));
+        let handler_start = emitted_js
+            .handler_generated_starts
+            .iter()
+            .find(|start| start.handler_id == 1)
+            .expect("handler start should be recorded");
+        let first_mapping = emitted_js
+            .mappings
+            .iter()
+            .find(|mapping| mapping.generated_line == handler_start.generated_line)
+            .expect("typed handler should have a same-line source map segment");
+        let (original_line, original_column) =
+            super::line_column(source, app.routes[0].handler.span.start);
+        assert!(first_mapping.generated_column > handler_start.generated_column);
+        assert_eq!(first_mapping.original_line, original_line.saturating_sub(1));
+        assert_eq!(
+            first_mapping.original_column,
+            original_column.saturating_sub(1)
+        );
     }
 
     #[test]

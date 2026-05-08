@@ -55,6 +55,9 @@ app.post("/users", async (
         [input.name, input.email],
         { deadline: ctx.deadline },
     );
+    if (user === null) {
+        throw new Error("PostgreSQL user insert did not return a row.");
+    }
     return Results.created(`/users/${user.id}`, user);
 }).withName("Users.Create");
 

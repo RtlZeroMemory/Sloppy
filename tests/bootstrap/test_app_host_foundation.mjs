@@ -913,6 +913,7 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => scope.get("message"), /scope is disposed/);
     assert.equal(app.services.createScope().get("request-id").value, 2);
     assert.equal(app.services.get("message"), "Hello from Sloppy");
+    assertThrowsMessage(() => app.services.get("request-id"), /root service resolution/);
     app.services.get("disposable-singleton");
 
     const fields = { route: "/" };
@@ -981,7 +982,57 @@ async function flushMicrotasks(count = 6) {
 
 {
     const builder = Sloppy.createBuilder();
+    const disposed = [];
+    builder.services.addScoped("async-cleanup", () => ({
+        async dispose() {
+            await Promise.resolve();
+            disposed.push("async-cleanup");
+        },
+    }));
+    const app = builder.build();
+    const scope = app.services.createScope();
+    scope.get("async-cleanup");
+    await scope.dispose();
+    assert.deepEqual(disposed, ["async-cleanup"]);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let secondDisposed = false;
+    builder.services.addScoped("throws-on-dispose", () => ({
+        dispose() {
+            throw new Error("first disposal failed");
+        },
+    }));
+    builder.services.addScoped("still-disposes", () => ({
+        dispose() {
+            secondDisposed = true;
+        },
+    }));
+    const app = builder.build();
+    const scope = app.services.createScope();
+    scope.get("throws-on-dispose");
+    scope.get("still-disposes");
+    assertThrowsMessage(() => scope.dispose(), /first disposal failed/);
+    assert.equal(secondDisposed, true);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let singletonContext;
+    builder.services.addSingleton("root", (scope) => {
+        singletonContext = scope.context;
+        return "root";
+    });
+    const app = builder.build();
+    assert.equal(app.services.get("root"), "root");
+    assert.equal(singletonContext, undefined);
+}
+
+{
+    const builder = Sloppy.createBuilder();
     let disposedScoped = 0;
+    let actionSawServices = false;
 
     builder.services.addScoped("GreetingService", () => ({
         greet(id) {
@@ -1001,7 +1052,8 @@ async function flushMicrotasks(count = 6) {
             this.greeting = greeting;
         }
 
-        get({ route }) {
+        get({ route, services }) {
+            actionSawServices = services !== undefined;
             return Results.ok({ message: this.greeting.greet(route.id ?? "demo") });
         }
     }
@@ -1021,10 +1073,51 @@ async function flushMicrotasks(count = 6) {
     });
     assert.deepEqual(route.handler().body, { message: "hello-demo" });
     assert.equal(disposedScoped, 1);
+    assert.equal(actionSawServices, true);
 
     assertThrowsMessage(() => app.mapController("/bad", UsersController, (bad) => {
         bad.get("/", "missing");
     }), /prototype method/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let disposedScoped = 0;
+    builder.services.addScoped("GreetingService", () => ({
+        dispose() {
+            disposedScoped += 1;
+        },
+    }));
+    const app = builder.build();
+
+    class AsyncController {
+        static inject = ["GreetingService"];
+
+        constructor(greeting) {
+            this.greeting = greeting;
+        }
+
+        async ok({ services }) {
+            assert.equal(services.get("GreetingService"), this.greeting);
+            await Promise.resolve();
+            return Results.ok({ ok: true });
+        }
+
+        async fail() {
+            await Promise.resolve();
+            throw new Error("controller failed");
+        }
+    }
+
+    app.mapController("/async", AsyncController, (routes) => {
+        routes.get("/ok", "ok");
+        routes.get("/fail", "fail");
+    });
+    const routes = app.__getRoutes();
+    assert.deepEqual((await routes[0].handler()).body, { ok: true });
+    assert.equal(disposedScoped, 1);
+    await assert.rejects(routes[1].handler(), /controller failed/);
+    assert.equal(disposedScoped, 2);
 }
 
 {
@@ -1072,7 +1165,8 @@ async function flushMicrotasks(count = 6) {
     builder.services.addTransient("a", (scope) => scope.get("b"));
     builder.services.addTransient("b", (scope) => scope.get("a"));
     const app = builder.build();
-    assertThrowsMessage(() => app.services.get("a"), /circular dependency/);
+    const scope = app.services.createScope();
+    assertThrowsMessage(() => scope.get("a"), /circular dependency/);
 }
 
 {
@@ -1190,6 +1284,8 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.ok("bad", { headers: new Map() }), /plain object/);
     assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
+    assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\r\nx: y" }), /control characters/);
+    assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\0" }), /control characters/);
 }
 
 {
