@@ -99,6 +99,7 @@ static SlStatus sl_sqlsrv_copy_str(SlArena* arena, SlStr src, SlStr* out)
     return sl_status_ok();
 }
 
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
 static SlStatus sl_sqlsrv_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
 {
     void* ptr = NULL;
@@ -124,7 +125,6 @@ static SlStatus sl_sqlsrv_copy_bytes(SlArena* arena, SlBytes src, SlBytes* out)
     return sl_status_ok();
 }
 
-#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
 static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
     void* ptr = NULL;
