@@ -8,7 +8,7 @@ runtime host.
 
 ## Current Output
 
-`sloppyc build <source.js> --out <dir>` emits deterministic artifacts:
+`sloppyc build <source.js|source.ts> --out <dir>` emits deterministic artifacts:
 
 - `app.plan.json`;
 - generated `app.js`;
@@ -22,6 +22,7 @@ normalized so tests and package fixtures do not depend on a developer's checkout
 The current compiler supports a narrow source subset:
 
 - recognized first-party imports from `sloppy` modules;
+- a static source graph rooted at a project entrypoint such as `src/main.ts`;
 - direct app creation and route registration shapes documented in
   `docs/compiler-supported-syntax.md`;
 - inline route handlers that return supported `Results.*` descriptors;
@@ -37,7 +38,7 @@ Node built-ins are not part of the current compiler contract.
 ## Runtime Boundary
 
 The compiler emits artifacts; it does not execute app code. Runtime execution is owned by
-`sloppy run --artifacts` or source-input `sloppy run <source.js>` after compilation. The
+`sloppy run --artifacts` or source-input `sloppy run <source.js|source.ts>` after compilation. The
 compiler does not implement Node package resolution, npm install behavior, or a package
 manager.
 

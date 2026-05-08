@@ -46,11 +46,16 @@ separate source-copy and closure policy before they can be accepted honestly.
 The explicit two-step artifact workflow remains supported:
 
 ```powershell
-sloppyc build app.js --out .sloppy
+sloppy build
+sloppy build src/main.ts
+sloppyc build src/main.ts --out .sloppy
 sloppy run --artifacts .sloppy
 ```
 
-`sloppy run <source.js>` is implemented as a shortcut over the same compiler and artifact
+`sloppy build` compiles source input into Plan-backed artifacts and exits without entering
+V8. `sloppyc build <source> --out <dir>` remains the lower-level compiler/debug command.
+
+`sloppy run <source.js|source.ts>` is implemented as a shortcut over the same compiler and artifact
 runtime path. It invokes `sloppyc build`, writes generated artifacts to
 `.sloppy/cache/dev/source-input`, validates the emitted plan, bundle, and source map, then
 runs those artifacts exactly as `sloppy run --artifacts` would.
@@ -59,15 +64,15 @@ runs those artifacts exactly as `sloppy run --artifacts` would.
 
 ```json
 {
-  "entry": "app.js",
+  "entry": "src/main.ts",
   "outDir": ".sloppy",
   "environment": "Development"
 }
 ```
 
-`entry` is required. `outDir` defaults to `.sloppy`; `environment` defaults to
-`Development`. Unsupported config fields fail clearly in this first project-run config
-slice.
+`entry` is required and must be a relative path inside the project root. `outDir` defaults
+to `.sloppy`; `environment` defaults to `Development`. Unsupported config fields fail
+clearly in this project build/run config slice.
 
 The source-input handoff follows the compiler's existing source support. JavaScript input
 is supported when it matches the documented subset. `.ts` inputs are parsed only for the

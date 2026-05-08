@@ -1,5 +1,5 @@
 {
-  "entry": "app.ts",
+  "entry": "src/main.ts",
   "outDir": ".sloppy",
   "environment": "Development"
 }

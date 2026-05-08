@@ -10,7 +10,9 @@ future optimization candidate reports.
 Implemented commands:
 
 ```powershell
-sloppy run <source.js>
+sloppy build
+sloppy build <source.js|source.ts> [--out <dir>]
+sloppy run <source.js|source.ts>
 sloppy run
 sloppy run --artifacts <dir> [--stdlib <dir>]
            [--environment Development] [--host 127.0.0.1] [--port 5173]
@@ -22,7 +24,15 @@ sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
 ```
 
-`sloppy run <source.js>` invokes `sloppyc build`, writes artifacts to a deterministic
+`sloppy build` reads `sloppy.json`, compiles the configured source entry, emits
+Plan-backed artifacts into `outDir`, validates `app.plan.json`, `app.js`, and
+`app.js.map`, then exits without entering V8. `sloppy build <source.js|source.ts>` uses
+the deterministic source-input cache directory unless `--out <dir>` is supplied.
+`--environment`, `--host`, and `--port` are forwarded consistently with source-input
+compile handoff.
+
+`sloppy run <source.js>` invokes `sloppyc build`. `sloppy run <source.js|source.ts>`
+writes artifacts to a deterministic
 tool-owned output directory, validates `app.plan.json`, `app.js`, and `app.js.map`, then
 enters the same runtime path as `sloppy run --artifacts <dir>`. Runtime execution is still
 dev-only and requires a V8-enabled build. Default non-V8 builds may prove the compiler
@@ -35,16 +45,17 @@ project-run config shape is:
 
 ```json
 {
-  "entry": "app.js",
+  "entry": "src/main.ts",
   "outDir": ".sloppy",
   "environment": "Development"
 }
 ```
 
 `entry` is required and resolves relative to `sloppy.json` in the current directory.
-`outDir` defaults to `.sloppy`. `environment` defaults to `Development` and selects the
+It must be a relative path inside the project root. `outDir` defaults to `.sloppy`.
+`environment` defaults to `Development` and selects the
 `appsettings.{Environment}.json` overlay for source-input compilation. `sloppy.json` is
-project/run configuration only; app configuration lives in `appsettings.json` and
+project build/run configuration only; app configuration lives in `appsettings.json` and
 `appsettings.{Environment}.json`. Unknown fields, invalid JSON, non-string values, and
 missing `entry` fail clearly.
 
@@ -73,10 +84,13 @@ signed/notarized artifacts, package-manager integrations, or auto-updaters.
 Supported forms:
 
 ```powershell
+sloppy build
+sloppy build src/main.ts
+sloppy build src/main.ts --out .sloppy
 sloppy run --artifacts .sloppy
 sloppy run --artifacts .sloppy --stdlib build\windows-dev\lib\sloppy\bootstrap\sloppy
-sloppy run .sloppy --host 127.0.0.1 --port 5173
-sloppy run app.js --environment Development --host 127.0.0.1 --port 5173
+sloppy run
+sloppy run src/main.ts --environment Development --host 127.0.0.1 --port 5173
 sloppy run --artifacts .sloppy --once GET /
 ```
 
@@ -104,15 +118,17 @@ back to the CMake-staged bootstrap root compiled into the binary.
 The explicit artifact path remains supported and is the advanced/debug path:
 
 ```powershell
-sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
+sloppyc build src/main.ts --out .sloppy-main-smoke
 sloppy run --artifacts .sloppy-main-smoke --once GET /
 ```
 
-Source-input app configuration uses this precedence:
+Project-mode app configuration is read from the project root that contains `sloppy.json`.
+Positional source-input app configuration is read next to the source entry. Configuration
+uses this precedence:
 
 1. built-in defaults;
-2. `appsettings.json` next to the source entry;
-3. `appsettings.{Environment}.json` next to the source entry;
+2. `appsettings.json` in the selected config directory;
+3. `appsettings.{Environment}.json` in the selected config directory;
 4. canonical environment variables such as `SLOPPY_SLOPPY__SERVER__PORT`;
 5. selected CLI overrides: `--environment`, `--host`, and `--port`.
 
@@ -129,11 +145,11 @@ future cache-reuse slice must include source/import hashes, compiler/runtime/std
 identity, target platform/engine, environment, and feature/options before claiming stale
 cache correctness.
 
-Current source input follows the compiler's existing JavaScript policy. `.js` and `.mjs`
-can compile when they match the supported source shape. `.ts`/`.mts` are handed to
-`sloppyc` so they fail with the compiler's TypeScript-not-supported diagnostic; there is
-no full TypeScript typechecker, package-manager behavior, `node_modules` resolution, watch
-mode, hot reload, or public alpha claim. This command does not make benchmark/performance
+Current source input follows the compiler's supported Sloppy source subset. `.js`, `.mjs`,
+and supported `.ts` files can compile when they match the documented source shape. `.tsx`,
+`.jsx`, `.cjs`, `.mts`, and `.cts` are rejected as unsupported source input. There is no
+full TypeScript typechecker, package-manager behavior, `node_modules` resolution, watch
+mode, hot reload, or public alpha claim. These commands do not make benchmark/performance
 claims.
 
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
@@ -280,6 +296,8 @@ outputs are Plan metadata only.
 
 `sloppy run <source>` remains a shortcut over compile-to-artifacts followed by the existing
 artifact runtime path. The supported source graph is static and compiler-owned: `"sloppy"`,
-`"sloppy/providers/sqlite"`, and relative app modules under the source root. Unsupported
-bare imports, dynamic imports, Node/npm resolution, `node_modules`, and package-manager
-behavior are rejected rather than emulated.
+documented Sloppy-owned imports, and relative app modules under the source root. `.js`,
+`.mjs`, and supported `.ts` files are the only source graph file extensions. Unsupported
+bare imports, `node:` imports, dynamic imports, remote imports, `.tsx`/`.jsx`/`.cjs`/
+`.mts`/`.cts`, Node/npm resolution, `node_modules`, and package-manager behavior are
+rejected rather than emulated.

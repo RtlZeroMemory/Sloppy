@@ -52,7 +52,7 @@ default, layered Plan-visible config, explicit `ctx` binding helpers, and explic
 
 | Area | ENGINE-01 decision |
 | --- | --- |
-| Source workflow | Supported foundation workflows are `sloppyc build app.js --out .sloppy` followed by `sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173`, plus the source-input dev loop that compiles `sloppy run app.js` / `sloppy run` with `sloppy.json` into the documented cache directory before running artifacts. |
+| Source workflow | Supported foundation workflows are `sloppy build`, `sloppy run`, `sloppy run src/main.ts`, explicit `sloppyc build src/main.ts --out .sloppy`, and `sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173`. Source-input paths compile to artifacts before running. |
 | Direct source run | Supported as a dev-loop compiler handoff for the current compiler subset. It is not a Node/npm loader, package manager, watch mode, hot reload loop, or production server contract. |
 | Public import | Core examples use `import { Sloppy, Results, data } from "sloppy";`. This is a compiler/stdlib contract, not Node/npm resolution. |
 | App API | Current compiler/runtime support uses `Sloppy.create()` plus `map*` calls; post-Core framework target is `app.get/post/put/patch/delete(...)`, `Results`, request context, cancellation signal, and explicit provider imports. |

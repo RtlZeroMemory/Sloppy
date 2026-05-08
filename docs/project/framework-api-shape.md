@@ -8,7 +8,7 @@ stdlib/compiler/runtime already implement every shape below.
 
 | Area | Current proven path | Locked target |
 | --- | --- | --- |
-| Run workflow | `sloppy run app.js`, `sloppy run` through `sloppy.json`, and explicit `sloppy run --artifacts` | Later TypeScript lowering keeps the same compiler/artifact/runtime path. |
+| Run workflow | `sloppy build`, `sloppy run src/main.ts`, `sloppy run` through `sloppy.json`, and explicit `sloppy run --artifacts` | Supported source input keeps the same compiler/artifact/runtime path. |
 | Route API | Current compiler recognizes `app.mapGet/mapPost/...` | Minimal API `app.get/post/put/patch/delete(...)` first. |
 | Modules | Bootstrap module skeleton and single-file compiler subset | Function modules plus relative imports for real apps. |
 | Providers | `data.sqlite("main")` bridge proof | Explicit provider import: `import { sqlite } from "sloppy/providers/sqlite"`. |
@@ -328,7 +328,7 @@ capabilities when statically resolvable.
 Source-input run is implemented for the current JavaScript compiler subset:
 
 ```powershell
-sloppy run app.js
+sloppy run src/main.ts
 sloppy run
 ```
 
@@ -336,7 +336,7 @@ sloppy run
 
 ```json
 {
-  "entry": "app.js",
+  "entry": "src/main.ts",
   "outDir": ".sloppy",
   "environment": "Development"
 }
@@ -346,9 +346,9 @@ Internal flow: compile to `.sloppy/cache/dev/source-input` for positional source
 to configured `outDir` for `sloppy.json`, validate the Plan/bundle/source map, then run
 artifacts. This first source-input slice rebuilds every time; cache reuse is deferred until
 the key includes source/import hashes, compiler/runtime/stdlib identity, target platform/
-engine, environment, and feature/options. `sloppy build`, richer TypeScript input, watch
-mode, package manager behavior, full TS typechecker, and `node_modules` resolution are
-deferred.
+engine, environment, and feature/options. `sloppy build` performs the same compile and
+artifact validation without entering V8. Watch mode, package manager behavior, full TS
+typechecker, and `node_modules` resolution are deferred.
 
 Multi-file framework MVP inputs are supported for the current function-module subset:
 relative imports under the source root, explicit provider import modules, and named

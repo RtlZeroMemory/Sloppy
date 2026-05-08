@@ -40,10 +40,16 @@ The supported development path is narrow but real:
 Compiler/source-input work flows through `sloppyc` and the artifact runtime:
 
 ```powershell
-sloppyc build examples/compiler-hello/app.js --out .sloppy
-sloppy run --artifacts .sloppy
-sloppy run examples/compiler-hello/app.js
+sloppy build
+sloppy run
+sloppy run src/main.ts
+sloppy run --artifacts .sloppy --once GET /health
 ```
+
+The canonical project entrypoint is `src/main.ts` configured by `sloppy.json`.
+`sloppy build` and source-input `sloppy run` compile the supported static source graph
+into Plan-backed artifacts before execution. `sloppyc build <source> --out <dir>` remains
+the lower-level compiler/debug path.
 
 The V8 runtime path requires a resolved V8 SDK and a V8-enabled build. Default
 non-V8 evidence does not prove V8 execution.
