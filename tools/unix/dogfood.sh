@@ -50,10 +50,8 @@ done
 python_bin=""
 if command -v python3 >/dev/null 2>&1; then
   python_bin="python3"
-elif command -v python >/dev/null 2>&1; then
-  python_bin="python"
 else
-  echo "dogfood: python3 or python is required for manifest validation" >&2
+  echo "dogfood: python3 is required for manifest validation" >&2
   exit 1
 fi
 
@@ -101,24 +99,28 @@ else
 fi
 
 if [[ "$json" -eq 1 ]]; then
-  cat <<JSON
-{
-  "schemaVersion": 1,
-  "catalog": "$manifest_path",
-  "results": [
-    {
-      "lane": "source-input",
-      "status": "UNAVAILABLE",
-      "reason": "Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated."
-    },
-    {
-      "lane": "package outside-checkout",
-      "status": "$package_status",
-      "reason": "$package_reason"
-    }
-  ]
-}
-JSON
+  "$python_bin" - "$manifest_path" "$package_status" "$package_reason" <<'PY'
+import json
+import sys
+
+manifest_path, package_status, package_reason = sys.argv[1:4]
+print(json.dumps({
+    "schemaVersion": 1,
+    "catalog": manifest_path,
+    "results": [
+        {
+            "lane": "source-input",
+            "status": "UNAVAILABLE",
+            "reason": "Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated.",
+        },
+        {
+            "lane": "package outside-checkout",
+            "status": package_status,
+            "reason": package_reason,
+        },
+    ],
+}, ensure_ascii=True, indent=2))
+PY
 else
   echo "dogfood: source-input: UNAVAILABLE - Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated."
   echo "dogfood: package outside-checkout: $package_status - $package_reason"
