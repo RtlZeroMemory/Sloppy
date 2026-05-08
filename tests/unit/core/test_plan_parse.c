@@ -590,14 +590,16 @@ static int test_schema_names_must_be_unique(void)
         "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
         "\"displayName\":\"Users.Create\"}],"
         "\"schemas\":["
-        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":[]}},"
-        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":[]}}]}",
+        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":{}}},"
+        "{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\",\"properties\":{}}}]}",
         &plan, &diag, arena_storage, sizeof(arena_storage));
 
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
         return 14;
     }
-    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message, sl_str_from_cstr("duplicate app plan schema name")))
+    {
         return 15;
     }
     return 0;
@@ -620,13 +622,16 @@ static int test_body_schema_references_must_resolve(void)
         "\"bindings\":[{\"kind\":\"body.json\",\"parameter\":\"input\","
         "\"schema\":\"MissingModel\"}]}],"
         "\"schemas\":[{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\","
-        "\"properties\":[]}}]}",
+        "\"properties\":{}}}]}",
         &plan, &diag, arena_storage, sizeof(arena_storage));
 
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
         return 17;
     }
-    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message,
+                      sl_str_from_cstr("app plan route binding references missing schema")))
+    {
         return 18;
     }
     return 0;
