@@ -529,6 +529,10 @@ function createForgedLoweredQuery() {
     assert.deepEqual(rows, [{ id: 1, name: "Ada" }]);
     assert.equal(received[0][1].text, "select id from users where id = ?");
     assert.deepEqual(received[0][1].parameters, [1]);
+    const lowered = sql`select id from users where id = ${3}`;
+    assert.deepEqual(await fakeDb.query(lowered, { deadline: { remainingMs: () => 1000 } }), [
+        { id: 3, name: "Ada" },
+    ]);
 
     const one = await fakeDb.queryOne`select id from users where id = ${2}`;
     assert.deepEqual(one, { id: 2, name: "Ada" });

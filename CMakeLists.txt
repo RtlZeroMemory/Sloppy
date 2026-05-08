@@ -39,6 +39,24 @@ set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 set(SLOPPY_PACKAGE_ARCHIVE "" CACHE FILEPATH "Optional Sloppy package archive for package lane smoke tests.")
+set(SLOPPYC_CARGO_PROFILE_DEFAULT "debug")
+if(CMAKE_BUILD_TYPE)
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" SLOPPYC_CMAKE_BUILD_TYPE)
+    if(SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "release" OR
+       SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo" OR
+       SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "minsizerel")
+        set(SLOPPYC_CARGO_PROFILE_DEFAULT "release")
+    endif()
+endif()
+set(SLOPPYC_CARGO_PROFILE
+    "${SLOPPYC_CARGO_PROFILE_DEFAULT}"
+    CACHE STRING "Cargo profile used for building and installing sloppyc")
+set(SLOPPYC_CARGO_BUILD_PROFILE_ARGS "")
+if(SLOPPYC_CARGO_PROFILE STREQUAL "release")
+    set(SLOPPYC_CARGO_BUILD_PROFILE_ARGS "--release")
+endif()
+set(SLOPPYC_BUILT_EXECUTABLE
+    "${PROJECT_SOURCE_DIR}/compiler/target/${SLOPPYC_CARGO_PROFILE}/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
 if((SLOPPY_ENABLE_LIBFUZZER OR SLOPPY_ENABLE_ASAN) AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "SLOPPY_ENABLE_LIBFUZZER/SLOPPY_ENABLE_ASAN require a Clang-family C compiler.")
 endif()
@@ -501,6 +519,7 @@ endif()
 set(
     SLOPPY_C_LINT_SOURCES
     src/main.c
+    src/cli/sloppyrc.c
     ${SLOPPY_CORE_SOURCES}
     tests/unit/core/test_status.c
     tests/unit/core/test_source_loc.c
@@ -662,20 +681,8 @@ else()
     target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_AVX2=0 SL_STRING_SIMD_AVX2=0)
 endif()
 
-add_executable(sloppy src/main.c)
-target_link_libraries(sloppy PRIVATE sloppy_core)
-target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
-target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
-target_compile_features(sloppy PRIVATE c_std_17)
-target_compile_definitions(
-    sloppy
-    PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}"
-            SLOPPY_COMPILER_BUILD_PATH="${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
-if(WIN32 AND MSVC)
-    # The V8-backed HTTP transport enters JavaScript from a deeper libuv callback stack than
-    # --once dispatch. Reserve enough process stack for V8's guard to allow real handler entry.
-    target_link_options(sloppy PRIVATE "/STACK:8388608")
-endif()
+include(cmake/SloppyCli.cmake)
+include(cmake/SloppyFrameworkExamples.cmake)
 
 add_executable(
     sloppy_bench
@@ -1627,6 +1634,7 @@ if(SLOPPY_ENABLE_TESTS)
             examples.users_api_sqlite.tooling users-api-sqlite examples/users-api-sqlite/app.js
             "users-api-sqlite-runtime.db" "Users.Create" "data.main" "\"findings\""
             "x-slop-capabilities")
+        sloppy_add_framework_v2_compile_example_tests()
     endif()
 
     add_test(
@@ -1764,8 +1772,6 @@ if(SLOPPY_ENABLE_TESTS)
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
-        set(SLOPPYC_BUILT_EXECUTABLE
-            "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
         if(SLOPPY_POWERSHELL_EXECUTABLE)
             if(SLOPPY_ENABLE_V8)
                 add_test(
@@ -2014,6 +2020,14 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy_add_conformance_run_once_test(
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
+            sloppy_add_conformance_run_once_test(
+                conformance.framework_v2_typed_handler.run_once framework-v2-typed-handler
+                tests/integration/framework-v2-typed-handler/app.ts GET /framework/42?active=true
+                "\"id\":42.*\"active\":true.*\"method\":\"GET\".*\"path\":\"/framework/42\"")
+            sloppy_add_conformance_run_once_test(
+                conformance.framework_v2_di_services.run_once framework-v2-di-services
+                tests/integration/framework-v2-di-services/app.ts GET /di/42
+                "\"message\":\"user-42\".*\"counter\":7.*\"stamp\":\"transient\"")
             if(SLOPPY_BUILD_COMPILER)
                 add_test(
                     NAME conformance.hello.source_input_run_once
@@ -2060,6 +2074,7 @@ if(SLOPPY_ENABLE_TESTS)
                 set_tests_properties(conformance.users_api_sqlite.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input;sqlite")
             endif()
+            sloppy_add_framework_v2_v8_example_tests()
             add_test(
                 NAME conformance.users_api_sqlite.localhost_transport
                 COMMAND
@@ -2289,6 +2304,7 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.core_integration.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
+    sloppy_add_framework_v2_static_example_tests()
     set_tests_properties(
         examples.core_integration.api_shape PROPERTIES LABELS
                                                      "CORE-INTEGRATION-01;examples;conformance")
@@ -2370,7 +2386,7 @@ if(SLOPPY_BUILD_COMPILER)
             sloppyc
             ALL
             COMMAND "${CARGO_EXECUTABLE}" build --manifest-path
-                    "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
+                    "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml" ${SLOPPYC_CARGO_BUILD_PROFILE_ARGS}
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/compiler"
             COMMENT "Building sloppyc supported app compiler"
             VERBATIM)
@@ -2383,18 +2399,5 @@ install(TARGETS sloppy RUNTIME DESTINATION bin)
 install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/bootstrap")
 install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/stdlib")
 if(SLOPPY_BUILD_COMPILER AND CARGO_EXECUTABLE)
-    set(SLOPPYC_CARGO_PROFILE_DEFAULT "debug")
-    if(CMAKE_BUILD_TYPE)
-        string(TOLOWER "${CMAKE_BUILD_TYPE}" SLOPPYC_CMAKE_BUILD_TYPE)
-        if(SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "release" OR
-           SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo" OR
-           SLOPPYC_CMAKE_BUILD_TYPE STREQUAL "minsizerel")
-            set(SLOPPYC_CARGO_PROFILE_DEFAULT "release")
-        endif()
-    endif()
-    set(SLOPPYC_CARGO_PROFILE "${SLOPPYC_CARGO_PROFILE_DEFAULT}" CACHE STRING
-        "Cargo profile used for installing sloppyc")
-    set(SLOPPYC_INSTALL_PATH
-        "${PROJECT_SOURCE_DIR}/compiler/target/${SLOPPYC_CARGO_PROFILE}/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
-    install(PROGRAMS "${SLOPPYC_INSTALL_PATH}" DESTINATION bin)
+    install(PROGRAMS "${SLOPPYC_BUILT_EXECUTABLE}" DESTINATION bin)
 endif()

@@ -7,6 +7,7 @@ const LOG_LEVEL_RANK = Object.freeze({
 });
 const MEMORY_SINK_STATE = new WeakMap();
 const MODULE_STATE = new WeakMap();
+const FUNCTION_MODULE_NAME = "__sloppyModuleName";
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
 const DATABASE_ACCESS_MODES = Object.freeze(["read", "write", "readwrite"]);
 const CONFIG_SECRET_INSPECT = Symbol.for("nodejs.util.inspect.custom");
@@ -595,6 +596,18 @@ function validateHandler(handler) {
     }
 }
 
+function validateController(controller) {
+    if (typeof controller !== "function") {
+        throw new TypeError("Sloppy controller must be a constructor function.");
+    }
+}
+
+function validateControllerAction(action) {
+    if (typeof action !== "string" || action.length === 0) {
+        throw new TypeError("Sloppy controller action must be a non-empty string.");
+    }
+}
+
 function validateMetadataOptions(options) {
     if (options === undefined) {
         return undefined;
@@ -1168,6 +1181,19 @@ function createServicesBuilder(guard) {
             });
         },
 
+        addScoped(token, factory) {
+            guard.assertMutable();
+
+            if (typeof factory !== "function") {
+                throw new TypeError("Sloppy scoped service factory must be a function.");
+            }
+
+            return addRegistration(token, {
+                lifetime: "scoped",
+                factory,
+            });
+        },
+
         __snapshot() {
             return new Map(Array.from(registrations.entries(), ([token, registration]) => [
                 token,
@@ -1190,9 +1216,205 @@ function createServicesBuilder(guard) {
     return Object.freeze(services);
 }
 
+function isPromiseLike(value) {
+    return value !== null && typeof value === "object" && typeof value.then === "function";
+}
+
+function combineCleanupErrors(primary, cleanup) {
+    return new AggregateError([primary, cleanup], "Sloppy cleanup failed after a handler error.");
+}
+
+function cleanupAfterSuccess(result, cleanup) {
+    const cleanupResult = cleanup();
+    if (isPromiseLike(cleanupResult)) {
+        return Promise.resolve(cleanupResult).then(() => result);
+    }
+    return result;
+}
+
+function cleanupAfterFailure(error, cleanup) {
+    try {
+        const cleanupResult = cleanup();
+        if (isPromiseLike(cleanupResult)) {
+            return Promise.resolve(cleanupResult).then(
+                () => {
+                    throw error;
+                },
+                (cleanupError) => {
+                    throw combineCleanupErrors(error, cleanupError);
+                },
+            );
+        }
+    } catch (cleanupError) {
+        throw combineCleanupErrors(error, cleanupError);
+    }
+    throw error;
+}
+
+function finishWithCleanup(result, cleanup) {
+    if (isPromiseLike(result)) {
+        return Promise.resolve(result).then(
+            (value) => cleanupAfterSuccess(value, cleanup),
+            (error) => cleanupAfterFailure(error, cleanup),
+        );
+    }
+    return cleanupAfterSuccess(result, cleanup);
+}
+
 function createServiceProvider(registrations, capabilities) {
+    const singletonDisposables = [];
+    let providerDisposed = false;
+
+    function disposeValue(value) {
+        if (value === null || value === undefined) {
+            return undefined;
+        }
+        if (typeof value[Symbol.dispose] === "function") {
+            return value[Symbol.dispose]();
+        }
+        if (typeof value.dispose === "function") {
+            return value.dispose();
+        }
+        if (typeof value.close === "function") {
+            return value.close();
+        }
+        return undefined;
+    }
+
+    function isPromiseLike(value) {
+        return value !== null && typeof value === "object" && typeof value.then === "function";
+    }
+
+    function disposalError(errors, message) {
+        if (errors.length === 1) {
+            return errors[0];
+        }
+        return new AggregateError(errors, message);
+    }
+
+    function disposeValues(values, message) {
+        const errors = [];
+        const pending = [];
+        for (const value of values) {
+            try {
+                const result = disposeValue(value);
+                if (isPromiseLike(result)) {
+                    pending.push(Promise.resolve(result).catch((error) => {
+                        errors.push(error);
+                    }));
+                }
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+
+        if (pending.length === 0) {
+            if (errors.length !== 0) {
+                throw disposalError(errors, message);
+            }
+            return undefined;
+        }
+
+        return Promise.all(pending).then(() => {
+            if (errors.length !== 0) {
+                throw disposalError(errors, message);
+            }
+            return undefined;
+        });
+    }
+
+    function combineCleanupErrors(primary, cleanup) {
+        return new AggregateError([primary, cleanup], "Sloppy cleanup failed after a handler error.");
+    }
+
+    function cleanupAfterSuccess(result, cleanup) {
+        const cleanupResult = cleanup();
+        if (isPromiseLike(cleanupResult)) {
+            return Promise.resolve(cleanupResult).then(() => result);
+        }
+        return result;
+    }
+
+    function cleanupAfterFailure(error, cleanup) {
+        try {
+            const cleanupResult = cleanup();
+            if (isPromiseLike(cleanupResult)) {
+                return Promise.resolve(cleanupResult).then(
+                    () => {
+                        throw error;
+                    },
+                    (cleanupError) => {
+                        throw combineCleanupErrors(error, cleanupError);
+                    },
+                );
+            }
+        } catch (cleanupError) {
+            throw combineCleanupErrors(error, cleanupError);
+        }
+        throw error;
+    }
+
+    function finishWithCleanup(result, cleanup) {
+        if (isPromiseLike(result)) {
+            return Promise.resolve(result).then(
+                (value) => cleanupAfterSuccess(value, cleanup),
+                (error) => cleanupAfterFailure(error, cleanup),
+            );
+        }
+        return cleanupAfterSuccess(result, cleanup);
+    }
+
+    function createRootScope() {
+        const resolving = [];
+        const resolvingLifetimes = [];
+        const scope = Object.freeze({
+            capabilities,
+            get(token) {
+                return resolve(scope, token);
+            },
+            __disposed() {
+                return false;
+            },
+            __hasScoped() {
+                return false;
+            },
+            __getScoped() {
+                return undefined;
+            },
+            __setScoped() {
+                throw new Error("Sloppy root service scope cannot store scoped services.");
+            },
+            __trackTransient(value) {
+                singletonDisposables.push(value);
+            },
+            __resolving() {
+                return resolving;
+            },
+            __resolvingLifetimes() {
+                return resolvingLifetimes;
+            },
+            __pushResolving(token, lifetime) {
+                resolving.push(token);
+                resolvingLifetimes.push(lifetime);
+            },
+            __popResolving() {
+                resolving.pop();
+                resolvingLifetimes.pop();
+            },
+        });
+        return scope;
+    }
+
     function resolve(scope, token) {
         validateServiceToken(token);
+
+        if (providerDisposed) {
+            throw new Error("Sloppy service provider is disposed.");
+        }
+
+        if (scope.__disposed()) {
+            throw new Error("Sloppy service scope is disposed.");
+        }
 
         if (!registrations.has(token)) {
             throw new Error(`Sloppy service '${token}' is not registered.`);
@@ -1200,35 +1422,135 @@ function createServiceProvider(registrations, capabilities) {
 
         const registration = registrations.get(token);
 
+        if (scope.__resolving().includes(token)) {
+            throw new Error(`Sloppy service circular dependency detected: ${[...scope.__resolving(), token].join(" -> ")}.`);
+        }
+
+        if (
+            registration.lifetime === "scoped" &&
+            scope.__resolvingLifetimes().includes("singleton")
+        ) {
+            throw new Error(`Sloppy singleton service cannot depend on scoped service '${token}'.`);
+        }
+
         if (registration.lifetime === "singleton") {
             if (!registration.initialized) {
-                registration.value = registration.factory(scope);
+                rootScope.__pushResolving(token, "singleton");
+                try {
+                    registration.value = registration.factory(rootScope);
+                    singletonDisposables.push(registration.value);
+                } finally {
+                    rootScope.__popResolving();
+                }
                 registration.initialized = true;
             }
 
             return registration.value;
         }
 
-        return registration.factory(scope);
+        if (registration.lifetime === "scoped") {
+            if (!scope.__hasScoped(token)) {
+                scope.__pushResolving(token, "scoped");
+                try {
+                    scope.__setScoped(token, registration.factory(scope));
+                } finally {
+                    scope.__popResolving();
+                }
+            }
+            return scope.__getScoped(token);
+        }
+
+        scope.__pushResolving(token, "transient");
+        try {
+            const value = registration.factory(scope);
+            scope.__trackTransient(value);
+            return value;
+        } finally {
+            scope.__popResolving();
+        }
     }
 
     function createScope() {
+        const scopedValues = new Map();
+        const transientValues = [];
+        const resolving = [];
+        const resolvingLifetimes = [];
+        let disposed = false;
+
         const scope = Object.freeze({
             capabilities,
             get(token) {
                 return resolve(scope, token);
+            },
+            dispose() {
+                if (disposed) {
+                    return undefined;
+                }
+                disposed = true;
+                const values = [...transientValues.reverse(), ...Array.from(scopedValues.values()).reverse()];
+                return disposeValues(values, "Sloppy service scope disposal failed.");
+            },
+            __disposed() {
+                return disposed;
+            },
+            __hasScoped(token) {
+                return scopedValues.has(token);
+            },
+            __getScoped(token) {
+                return scopedValues.get(token);
+            },
+            __setScoped(token, value) {
+                scopedValues.set(token, value);
+            },
+            __trackTransient(value) {
+                transientValues.push(value);
+            },
+            __resolving() {
+                return resolving;
+            },
+            __resolvingLifetimes() {
+                return resolvingLifetimes;
+            },
+            __pushResolving(token, lifetime) {
+                resolving.push(token);
+                resolvingLifetimes.push(lifetime);
+            },
+            __popResolving() {
+                resolving.pop();
+                resolvingLifetimes.pop();
             },
         });
 
         return scope;
     }
 
+    const rootScope = createRootScope();
+
     const provider = Object.freeze({
         get(token) {
-            return resolve(provider.createScope(), token);
+            validateServiceToken(token);
+            if (providerDisposed) {
+                throw new Error("Sloppy service provider is disposed.");
+            }
+            const registration = registrations.get(token);
+            if (registration === undefined) {
+                throw new Error(`Sloppy service '${token}' is not registered.`);
+            }
+            if (registration.lifetime !== "singleton") {
+                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);
+            }
+            return resolve(rootScope, token);
         },
 
         createScope,
+
+        dispose() {
+            if (providerDisposed) {
+                return undefined;
+            }
+            providerDisposed = true;
+            return disposeValues(singletonDisposables.reverse(), "Sloppy service provider disposal failed.");
+        },
     });
 
     return provider;
@@ -1246,7 +1568,17 @@ function createHandlerContext(host) {
 
 function createRouteHandler(host, handler) {
     return function routeHandler(context) {
-        return handler(context ?? createHandlerContext(host));
+        if (context !== undefined && context !== null) {
+            return handler(context);
+        }
+
+        const ownedContext = createHandlerContext(host);
+        try {
+            const result = handler(ownedContext);
+            return finishWithCleanup(result, () => ownedContext.services.dispose());
+        } catch (error) {
+            return cleanupAfterFailure(error, () => ownedContext.services.dispose());
+        }
     };
 }
 
@@ -1382,6 +1714,10 @@ function registerRoute(
     validatePattern(args.pattern);
     validateHandler(args.handler);
 
+    if (routes.some((route) => route.method === method && route.pattern === args.pattern)) {
+        throw new Error(`Sloppy route '${method} ${args.pattern}' is already registered.`);
+    }
+
     const route = {
         method,
         pattern: args.pattern,
@@ -1395,6 +1731,104 @@ function registerRoute(
 
     routes.push(route);
     return createEndpointBuilder(route, assertAppMutable);
+}
+
+function controllerInjectionTokens(controller) {
+    const tokens = controller.inject ?? controller.dependencies ?? [];
+
+    if (!Array.isArray(tokens)) {
+        throw new TypeError("Sloppy controller inject metadata must be an array when provided.");
+    }
+
+    for (const token of tokens) {
+        validateServiceToken(token);
+    }
+
+    return Object.freeze([...tokens]);
+}
+
+function createControllerHandler(host, Controller, action) {
+    const inject = controllerInjectionTokens(Controller);
+    const prototypeMethod = Controller.prototype?.[action];
+
+    if (typeof prototypeMethod !== "function") {
+        throw new TypeError(`Sloppy controller action '${action}' must name a prototype method.`);
+    }
+
+    return function controllerHandler(context) {
+        let ctx = context ?? createHandlerContext(host);
+        let ownsServices = context === undefined || context === null;
+        if (ctx.services === undefined || ctx.services === null) {
+            ctx = Object.freeze({
+                ...ctx,
+                services: host.services.createScope(),
+            });
+            ownsServices = true;
+        }
+        const services = ctx.services;
+        const dependencies = inject.map((token) => services.get(token));
+        const instance = new Controller(...dependencies);
+        try {
+            const result = instance[action](ctx);
+            if (ownsServices) {
+                return finishWithCleanup(result, () => services.dispose());
+            }
+            return result;
+        } catch (error) {
+            if (ownsServices) {
+                return cleanupAfterFailure(error, () => services.dispose());
+            }
+            throw error;
+        }
+    };
+}
+
+function createControllerMapper(
+    routes,
+    host,
+    assertAppMutable,
+    currentModule,
+    prefix,
+    Controller,
+) {
+    validateGroupPrefix(prefix);
+    validateController(Controller);
+
+    function map(method, pattern, action, options) {
+        validateControllerAction(action);
+        return registerRoute(
+            routes,
+            host,
+            assertAppMutable,
+            currentModule,
+            method,
+            composeRoutePattern(prefix, pattern),
+            {
+                ...(options ?? {}),
+                controller: Controller.name || "AnonymousController",
+                action,
+            },
+            createControllerHandler(host, Controller, action),
+        );
+    }
+
+    return Object.freeze({
+        get(pattern, action, options) {
+            return map("GET", pattern, action, options);
+        },
+        post(pattern, action, options) {
+            return map("POST", pattern, action, options);
+        },
+        put(pattern, action, options) {
+            return map("PUT", pattern, action, options);
+        },
+        patch(pattern, action, options) {
+            return map("PATCH", pattern, action, options);
+        },
+        delete(pattern, action, options) {
+            return map("DELETE", pattern, action, options);
+        },
+    });
 }
 
 function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix) {
@@ -1454,9 +1888,62 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
         mapPut: createMapMethod("PUT"),
         mapPatch: createMapMethod("PATCH"),
         mapDelete: createMapMethod("DELETE"),
+        get: createMapMethod("GET"),
+        post: createMapMethod("POST"),
+        put: createMapMethod("PUT"),
+        patch: createMapMethod("PATCH"),
+        delete: createMapMethod("DELETE"),
+        group(childPrefix) {
+            assertAppMutable();
+            return createRouteGroup(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule,
+                composeRoutePattern(groupMetadata.prefix, childPrefix),
+            );
+        },
     };
 
     return Object.freeze(group);
+}
+
+function assertRouteOnlyModule(state) {
+    if (
+        state.dependencies.length !== 0 ||
+        state.capabilityCallbacks.length !== 0 ||
+        state.serviceCallbacks.length !== 0
+    ) {
+        throw new Error(
+            "Sloppy app.useModule only accepts route-only modules; use builder.addModule for dependencies, capabilities, or services.",
+        );
+    }
+}
+
+function functionModuleName(moduleFactory) {
+    return moduleFactory[FUNCTION_MODULE_NAME] ?? moduleFactory.name;
+}
+
+function createRouterGroup(prefix, configure) {
+    validateGroupPrefix(prefix);
+
+    if (configure !== undefined && typeof configure !== "function") {
+        throw new TypeError("Sloppy Router.group configure callback must be a function.");
+    }
+
+    function routerGroup(app) {
+        const group = app.group(prefix);
+        if (configure !== undefined) {
+            configure(group);
+        }
+        return group;
+    }
+
+    Object.defineProperty(routerGroup, FUNCTION_MODULE_NAME, {
+        value: `router:${normalizeGroupPrefix(prefix)}`,
+        enumerable: false,
+    });
+    return Object.freeze(routerGroup);
 }
 
 function createApp(host) {
@@ -1465,6 +1952,7 @@ function createApp(host) {
     const guard = createMutationGuard("app");
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
+    const directModules = new Set();
 
     function assertAppMutable() {
         guard.assertMutable();
@@ -1506,6 +1994,44 @@ function createApp(host) {
                 token: sqliteProviderToken(provider.name),
                 options,
             });
+        },
+
+        useModule(moduleOrFactory) {
+            assertAppMutable();
+
+            const moduleState = getModuleState(moduleOrFactory);
+            if (moduleState !== undefined) {
+                assertRouteOnlyModule(moduleState);
+                if (directModules.has(moduleState.name)) {
+                    throw new Error(`Sloppy module '${moduleState.name}' is already registered.`);
+                }
+                moduleState.finalized = true;
+                directModules.add(moduleState.name);
+                for (const callback of moduleState.routeCallbacks) {
+                    app.__runInModule(moduleState.name, (moduleApp) => {
+                        runModulePhase(moduleState, "routes", callback, moduleApp);
+                    });
+                }
+                return app;
+            }
+
+            if (typeof moduleOrFactory !== "function" || functionModuleName(moduleOrFactory).length === 0) {
+                throw new TypeError(
+                    "Sloppy app.useModule expected a named function module or route-only Sloppy.module.",
+                );
+            }
+            const moduleName = functionModuleName(moduleOrFactory);
+            if (directModules.has(moduleName)) {
+                throw new Error(`Sloppy module '${moduleName}' is already registered.`);
+            }
+            directModules.add(moduleName);
+            app.__runInModule(moduleName, (moduleApp) => {
+                const result = moduleOrFactory(moduleApp);
+                if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                    throw new TypeError("Sloppy function modules must be synchronous.");
+                }
+            });
+            return app;
         },
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
@@ -1573,9 +2099,58 @@ function createApp(host) {
             );
         },
 
+        get(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapGet(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        post(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPost(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        put(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPut(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        patch(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapPatch(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        delete(pattern, optionsOrHandler, maybeHandler) {
+            return app.mapDelete(pattern, optionsOrHandler, maybeHandler);
+        },
+
         mapGroup(prefix) {
             assertAppMutable();
             return createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix);
+        },
+
+        group(prefix) {
+            return app.mapGroup(prefix);
+        },
+
+        mapController(prefix, Controller, configure) {
+            assertAppMutable();
+            const mapper = createControllerMapper(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                prefix,
+                Controller,
+            );
+
+            if (configure === undefined) {
+                return mapper;
+            }
+            if (typeof configure !== "function") {
+                throw new TypeError("Sloppy app.mapController configure callback must be a function.");
+            }
+            configure(mapper);
+            return app;
+        },
+
+        controller(prefix, Controller, configure) {
+            return app.mapController(prefix, Controller, configure);
         },
 
         freeze() {
@@ -1934,4 +2509,8 @@ export const Sloppy = Object.freeze({
     create,
     createBuilder,
     module: createModule,
+});
+
+export const Router = Object.freeze({
+    group: createRouterGroup,
 });

@@ -1,22 +1,63 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;gCAgDmB;;gCAgBG",
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;0LAgDmB;AACnB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;;0LAEsB;AACtB;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA",
   "names": [],
   "sources": [
     "input.ts"
   ],
   "sourcesContent": [
-    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  SecretString,\n  Uuid,\n  PositiveInt,\n  DateTime,\n  Instant,\n  RequestContext,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport type { WorkQueue } from \"sloppy/workers\";\n\n// Fixture invariant: semantic schema extraction and redaction coverage.\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  secretNote: SecretString;\n  tenantId: Uuid;\n  loginCount: PositiveInt;\n  createdAt: DateTime;\n  lastSeenAt: Instant | null;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`,\n    { deadline: ctx.deadline }\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`,\n    { deadline: ctx.deadline, trace, includeDeleted, input }\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
+    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  SecretString,\n  Uuid,\n  PositiveInt,\n  DateTime,\n  Instant,\n  RequestContext,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport { WorkQueue } from \"sloppy/workers\";\n\n// Fixture invariant: semantic schema extraction and redaction coverage.\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  secretNote: SecretString;\n  tenantId: Uuid;\n  loginCount: PositiveInt;\n  createdAt: DateTime;\n  lastSeenAt: Instant | null;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`,\n    { deadline: ctx.deadline }\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`,\n    { deadline: ctx.deadline, trace, includeDeleted, input }\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
   ],
   "version": 3,
   "x_sloppy": {
-    "capabilities": [],
+    "capabilities": [
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 51,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      },
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 52,
+          "path": "input.ts"
+        },
+        "token": "data.audit"
+      },
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 53,
+          "path": "input.ts"
+        },
+        "token": "data.search"
+      },
+      {
+        "access": "enqueue",
+        "kind": "queue",
+        "source": {
+          "column": 3,
+          "line": 54,
+          "path": "input.ts"
+        },
+        "token": "queue.emails"
+      }
+    ],
     "effects": [],
     "handlers": [
       {
         "generated": {
           "column": 33,
-          "line": 7
+          "line": 59
         },
         "id": 1,
         "source": {
@@ -28,7 +69,7 @@
       {
         "generated": {
           "column": 33,
-          "line": 9
+          "line": 75
         },
         "id": 2,
         "source": {
@@ -39,7 +80,48 @@
       }
     ],
     "modules": [],
-    "providers": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "postgres",
+        "source": {
+          "column": 3,
+          "line": 51,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      },
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 3,
+          "line": 52,
+          "path": "input.ts"
+        },
+        "token": "data.audit"
+      },
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlserver",
+        "source": {
+          "column": 3,
+          "line": 53,
+          "path": "input.ts"
+        },
+        "token": "data.search"
+      },
+      {
+        "capabilityKind": "queue",
+        "providerKind": "",
+        "source": {
+          "column": 3,
+          "line": 54,
+          "path": "input.ts"
+        },
+        "token": "queue.emails"
+      }
+    ],
     "routes": [
       {
         "handlerId": 1,
@@ -85,7 +167,7 @@
     ],
     "sourceFiles": [
       {
-        "hash": "sha256:6598d1727e849a035e9c8fe102b892e99d38f72f755c9da3ef465d8d79d0baaf",
+        "hash": "sha256:7c4a70f58fb7cb6db8d0b4df47ba808447c1ce1f668768a5c5d4a7fec87570ec",
         "path": "input.ts"
       }
     ],

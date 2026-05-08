@@ -1,19 +1,58 @@
 {
   "bundle": {
-    "hash": "sha256:fe8478a6f0042863a5f03e86dd0920280bad7f9038cd33a57d5b47e4b8d86c90",
+    "hash": "sha256:6c9f870b3abf9a5592b23ade494b8547d70e17178be06c44a19047e665c816e0",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
-  "capabilities": [],
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "source": {
+        "column": 3,
+        "line": 51,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    },
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.audit",
+      "source": {
+        "column": 3,
+        "line": 52,
+        "path": "input.ts"
+      },
+      "token": "data.audit"
+    },
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.search",
+      "source": {
+        "column": 3,
+        "line": 53,
+        "path": "input.ts"
+      },
+      "token": "data.search"
+    },
+    {
+      "access": "enqueue",
+      "kind": "queue",
+      "source": {
+        "column": 3,
+        "line": 54,
+        "path": "input.ts"
+      },
+      "token": "queue.emails"
+    }
+  ],
   "compilerVersion": "sloppyc-0.8.0",
   "completeness": {
-    "reasons": [
-      {
-        "code": "runtime-only-route",
-        "message": "one or more routes explicitly require runtime-only metadata"
-      }
-    ],
-    "status": "runtime-only"
+    "reasons": [],
+    "status": "complete"
   },
   "configuration": {
     "environment": "Development",
@@ -73,16 +112,113 @@
         "value": 30000
       }
     ],
-    "providers": []
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "Sloppy__Providers__postgres__main__connectionString",
+          "key": "Sloppy:Providers:postgres:main:connectionString",
+          "secret": true,
+          "type": "secret"
+        },
+        {
+          "env": "Sloppy__Providers__sqlite__audit__database",
+          "key": "Sloppy:Providers:sqlite:audit:database",
+          "secret": false,
+          "type": "string"
+        },
+        {
+          "env": "Sloppy__Providers__sqlserver__search__connectionString",
+          "key": "Sloppy:Providers:sqlserver:search:connectionString",
+          "secret": true,
+          "type": "secret"
+        }
+      ]
+    },
+    "providers": [],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:postgres:main:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.ts:51",
+        "secret": true,
+        "source": null,
+        "status": "missing",
+        "type": "secret"
+      },
+      {
+        "key": "Sloppy:Providers:sqlite:audit:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.ts:52",
+        "secret": false,
+        "source": null,
+        "status": "missing",
+        "type": "string"
+      },
+      {
+        "key": "Sloppy:Providers:sqlserver:search:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.ts:53",
+        "secret": true,
+        "source": null,
+        "status": "missing",
+        "type": "secret"
+      }
+    ]
   },
-  "dataProviders": [],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "capabilityKind": "database",
+      "provider": "postgres",
+      "providerKind": "postgres",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 51,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    },
+    {
+      "capability": "data.audit",
+      "capabilityKind": "database",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 52,
+        "path": "input.ts"
+      },
+      "token": "data.audit"
+    },
+    {
+      "capability": "data.search",
+      "capabilityKind": "database",
+      "provider": "sqlserver",
+      "providerKind": "sqlserver",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 53,
+        "path": "input.ts"
+      },
+      "token": "data.search"
+    }
+  ],
   "features": {
     "asyncHandlers": true,
-    "capabilities": false,
-    "dataProviders": false,
+    "capabilities": true,
+    "dataProviders": true,
     "metadataInference": true,
+    "os": true,
     "sourceMaps": true,
-    "strongPlanMetadata": true
+    "strongPlanMetadata": true,
+    "workers": true
   },
   "handlers": [
     {
@@ -90,7 +226,6 @@
       "displayName": "POST /users",
       "exportName": "__sloppy_handler_1",
       "id": 1,
-      "runtimeDispatch": "deferred",
       "source": {
         "column": 20,
         "line": 49,
@@ -102,7 +237,6 @@
       "displayName": "GET /users/{id}",
       "exportName": "__sloppy_handler_2",
       "id": 2,
-      "runtimeDispatch": "deferred",
       "source": {
         "column": 23,
         "line": 65,
@@ -111,6 +245,10 @@
     }
   ],
   "modules": [],
+  "requiredFeatures": [
+    "stdlib.os",
+    "stdlib.workers"
+  ],
   "routes": [
     {
       "bindings": [
@@ -200,13 +338,8 @@
         }
       ],
       "completeness": {
-        "reasons": [
-          {
-            "code": "runtime-only-route",
-            "message": "route explicitly requires runtime-only metadata"
-          }
-        ],
-        "status": "runtime-only"
+        "reasons": [],
+        "status": "complete"
       },
       "handlerId": 1,
       "injections": [
@@ -248,20 +381,6 @@
         "kind": "json",
         "status": 201
       },
-      "responses": [
-        {
-          "bodySchema": "UserDto",
-          "helper": "created",
-          "kind": "json",
-          "partial": false,
-          "source": {
-            "column": 10,
-            "line": 62,
-            "path": "input.ts"
-          },
-          "status": 201
-        }
-      ],
       "source": {
         "column": 1,
         "line": 49,
@@ -351,13 +470,8 @@
         }
       ],
       "completeness": {
-        "reasons": [
-          {
-            "code": "runtime-only-route",
-            "message": "route explicitly requires runtime-only metadata"
-          }
-        ],
-        "status": "runtime-only"
+        "reasons": [],
+        "status": "complete"
       },
       "frameworkPath": "/users/:id",
       "handlerId": 2,
@@ -403,11 +517,6 @@
             "path": "input.ts"
           },
           "status": 404
-        }
-      ],
-      "routeParams": [
-        {
-          "name": "id"
         }
       ],
       "source": {
@@ -530,12 +639,12 @@
   ],
   "sourceFiles": [
     {
-      "hash": "sha256:6598d1727e849a035e9c8fe102b892e99d38f72f755c9da3ef465d8d79d0baaf",
+      "hash": "sha256:7c4a70f58fb7cb6db8d0b4df47ba808447c1ce1f668768a5c5d4a7fec87570ec",
       "path": "input.ts"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:13113c1bce3c2ea9f1654d65dcc7e95f356c760c4f9b438d376ec621e3ae6783",
+    "hash": "sha256:495675b14b7dc173410c2fc00d1d322ade92e44d66fd70a7ca74f9a7eaaf6267",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -548,11 +657,13 @@
     },
     "evidence": {
       "bindings": true,
-      "capabilities": false,
+      "capabilities": true,
       "effects": false,
-      "providers": false,
+      "os": true,
+      "providers": true,
       "routes": true,
-      "sourceGraph": true
+      "sourceGraph": true,
+      "workers": true
     },
     "profile": "compiler-30-strong-plan",
     "version": 1

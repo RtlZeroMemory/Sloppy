@@ -49,6 +49,17 @@ SlHttpResponse sl_http_response_json(uint16_t status, SlBytes body)
     return response;
 }
 
+SlHttpResponse sl_http_response_bytes(uint16_t status, SlStr content_type, SlBytes body)
+{
+    SlHttpResponse response = {0};
+
+    response.status = status;
+    response.kind = SL_HTTP_RESPONSE_BYTES;
+    response.content_type = content_type;
+    response.body = body;
+    return response;
+}
+
 SlHttpResponse sl_http_response_empty(uint16_t status)
 {
     SlHttpResponse response = {0};

@@ -23,6 +23,7 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose_file="$repo_root/tests/live/postgres/compose.yml"
 export SLOPPY_POSTGRES_TEST_URL="${SLOPPY_POSTGRES_TEST_URL:-postgres://sloppy:sloppy@localhost:55432/sloppy_test}"
+export Sloppy__Providers__postgres__main__connectionString="$SLOPPY_POSTGRES_TEST_URL"
 
 if [ "$no_docker" -eq 0 ]; then
   if ! command -v docker >/dev/null 2>&1; then

@@ -19,7 +19,7 @@ import { sql } from "sloppy/data";
 import { Postgres } from "sloppy/providers/postgres";
 import { Sqlite } from "sloppy/providers/sqlite";
 import { SqlServer } from "sloppy/providers/sqlserver";
-import type { WorkQueue } from "sloppy/workers";
+import { WorkQueue } from "sloppy/workers";
 
 // Fixture invariant: semantic schema extraction and redaction coverage.
 type UserCreate = {

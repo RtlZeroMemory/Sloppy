@@ -284,8 +284,21 @@ function isLoweredQuery(value) {
     return value !== null && typeof value === "object" && LOWERED_QUERIES.has(value);
 }
 
+function validateOperationOptions(options, operation) {
+    if (options === undefined) {
+        return;
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError(`Sloppy data ${operation} options must be a plain object.`);
+    }
+}
+
 function normalizeQueryArguments(operation, placeholderStyle, args) {
     if (args.length === 1 && isLoweredQuery(args[0])) {
+        return args[0];
+    }
+    if (args.length === 2 && isLoweredQuery(args[0])) {
+        validateOperationOptions(args[1], operation);
         return args[0];
     }
 
@@ -486,11 +499,19 @@ function normalizeSqliteOperation(operation, args) {
             parameters: validateSqliteParams(args[0].parameters, operation),
         };
     }
+    if (args.length === 2 && isLoweredQuery(args[0])) {
+        validateOperationOptions(args[1], `sqlite.${operation}`);
+        return {
+            text: args[0].text,
+            parameters: validateSqliteParams(args[0].parameters, operation),
+        };
+    }
 
     if (typeof args[0] === "string") {
-        if (args.length > 2) {
-            throw new TypeError(`Sloppy sqlite.${operation} accepts sql and optional params.`);
+        if (args.length > 3) {
+            throw new TypeError(`Sloppy sqlite.${operation} accepts sql, optional params, and optional options.`);
         }
+        validateOperationOptions(args[2], `sqlite.${operation}`);
 
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
@@ -919,11 +940,19 @@ function normalizePostgresOperation(operation, args) {
             parameters: args[0].parameters,
         };
     }
+    if (args.length === 2 && isLoweredQuery(args[0])) {
+        validateOperationOptions(args[1], `postgres.${operation}`);
+        return {
+            text: args[0].text,
+            parameters: args[0].parameters,
+        };
+    }
 
     if (typeof args[0] === "string") {
-        if (args.length > 2) {
-            throw new TypeError(`Sloppy postgres.${operation} accepts sql and optional params.`);
+        if (args.length > 3) {
+            throw new TypeError(`Sloppy postgres.${operation} accepts sql, optional params, and optional options.`);
         }
+        validateOperationOptions(args[2], `postgres.${operation}`);
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
         }
@@ -1139,11 +1168,19 @@ function normalizeSqlServerOperation(operation, args) {
             parameters: args[0].parameters,
         };
     }
+    if (args.length === 2 && isLoweredQuery(args[0])) {
+        validateOperationOptions(args[1], `sqlserver.${operation}`);
+        return {
+            text: args[0].text,
+            parameters: args[0].parameters,
+        };
+    }
 
     if (typeof args[0] === "string") {
-        if (args.length > 2) {
-            throw new TypeError(`Sloppy sqlserver.${operation} accepts sql and optional params.`);
+        if (args.length > 3) {
+            throw new TypeError(`Sloppy sqlserver.${operation} accepts sql, optional params, and optional options.`);
         }
+        validateOperationOptions(args[2], `sqlserver.${operation}`);
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
         }

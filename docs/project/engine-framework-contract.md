@@ -31,6 +31,10 @@ Current implementation evidence remains in the current-state docs and public sta
   compiler/stdlib/source-input path: appsettings overlays, environment selection, canonical
   Sloppy env vars, selected CLI overrides, typed access, `bind`, convention-bound SQLite
   provider config, and Plan-visible redacted metadata.
+- Framework v2 alpha examples now include named source-input, DI, controller, SQLite CRUD,
+  and opt-in PostgreSQL/SQL Server live-lane examples under `examples/framework-v2-*`.
+  Default gates prove only the non-live lanes they run; live-provider examples are not pass
+  evidence unless their explicit live lane runs.
 
 This document defines the required final foundation contract, not the current executable
 surface.
@@ -52,10 +56,10 @@ default, layered Plan-visible config, explicit `ctx` binding helpers, and explic
 | Direct source run | Supported as a dev-loop compiler handoff for the current compiler subset. It is not a Node/npm loader, package manager, watch mode, hot reload loop, or production server contract. |
 | Public import | Core examples use `import { Sloppy, Results, data } from "sloppy";`. This is a compiler/stdlib contract, not Node/npm resolution. |
 | App API | Current compiler/runtime support uses `Sloppy.create()` plus `map*` calls; post-Core framework target is `app.get/post/put/patch/delete(...)`, `Results`, request context, cancellation signal, and explicit provider imports. |
-| Services/modules | Function modules are the first framework modularization target. Controllers, decorators, and full DI are deferred. |
+| Services/modules | Function modules are the first framework modularization target. The bootstrap app supports route-only `app.useModule(...)`, `Router.group(...)`, and explicit controller route mapping with service constructor injection. Decorators, scanning, and package modules are deferred. |
 | HTTP methods | GET, POST, PUT, PATCH, and DELETE are core. OPTIONS is framework-owned for allowed-method/preflight-style responses. HEAD is deferred until its body/metadata policy is explicit. |
 | Body support | JSON and text request bodies are core. Multipart/file upload, streaming uploads, and form binding are deferred. |
-| Results | Text, JSON, status, empty, and problem results are core. Files, streams, redirects, cookies, content negotiation, and filters are deferred. |
+| Results | Text, JSON, bytes, status, empty, and problem results are core. Files, streams, redirects, cookies, content negotiation, and filters are deferred. |
 | Async | Sync handlers and async handlers returning Promises are core. ENGINE-03 covers the bounded V8 owner-thread/microtask policy; ENGINE-12 owns scalable native async completions before Sloppy claims scalable async runtime behavior. |
 | Cancellation | Request cancellation signal and native cancellation token plumbing are required from the first real async/HTTP implementation cut. |
 | Limits/backpressure | Header, target, query, body, request, response, queue, and resource limits are core infrastructure. Exceeding a limit rejects work with diagnostics. |
@@ -183,6 +187,7 @@ Core foundation helpers:
 
 - `Results.text(body, options?)`
 - `Results.json(value, options?)`
+- `Results.bytes(body, options?)`
 - `Results.ok(value?, options?)`
 - `Results.created(location, value?, options?)`
 - `Results.accepted(value?, options?)`
@@ -288,7 +293,7 @@ Backpressure/rejection:
 | JSON body | `application/json` and `application/*+json`, bounded, malformed JSON -> 400, Plan-backed schema validation for supported metadata | broader coercion/custom validation |
 | Text body | bounded UTF-8 text reads | form parsing, streaming bodies |
 | Multipart/upload | unsupported with clear 415/501-style response | file uploads/streaming |
-| Result serialization | text, JSON, empty, problem, status, custom headers | files, streams, redirects, cookies |
+| Result serialization | text, binary bytes, JSON, empty, problem, status, custom headers | files, streams, redirects, cookies |
 | Errors | safe framework problem/error responses with diagnostics | production error page customization |
 | Server lifecycle | localhost dev server plus deterministic `--once` conformance | Kestrel/Nginx replacement, TLS, HTTP/2 |
 

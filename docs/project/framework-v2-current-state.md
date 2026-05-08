@@ -3,43 +3,80 @@
 Status: current-state note for `FRAMEWORK-V2-01` compiler metadata consolidation. GitHub
 issues remain authoritative for live task state.
 
-Framework v2 currently has a compiler/Plan metadata foundation, not full runtime
-integration. The compiler can recognize the supported Minimal API typed-handler subset and
-emit deterministic metadata for:
+Framework v2 currently has compiler/Plan metadata plus bounded runtime integration for the
+supported alpha subset. The compiler can recognize the supported Minimal API typed-handler
+subset and emit deterministic metadata for:
 
 - `Sloppy.create()` plus `app.get/post/put/patch/delete(...)` route declarations;
 - literal route paths, normalized Plan route patterns, and source spans;
 - implicit route/body binding plus explicit `Route<T>`, `Query<T>`, `Body<T>`,
-  `Header<"name">`, `Service<T>`, and `Config<T>` wrapper metadata;
+  `Header<"name">`, `Service<T>`, and environment-backed `Config<"KEY">` wrapper metadata;
 - `RequestContext`, `SlopRequest`, `SlopResponse`, `CancellationSignal`, and `Deadline`
   context bindings;
-- metadata-only `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and
-  `WorkQueue<"name">` injection requirements;
+- compiler-inferred `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and
+  `WorkQueue<"name">` injection requirements, provider requirements, and default
+  capability metadata;
+- literal `app.services.addSingleton/addScoped/addTransient("Token", factory)` registrations
+  for generated Framework v2 service injection;
 - supported TypeScript aliases/interfaces/object literals, optional and nested properties,
   arrays, nullable unions, literal unions, and selected semantic types;
 - password/secret redaction metadata;
 - visible `Results.*` status and response metadata where statically visible.
 
-The generated handler for typed multi-parameter Framework v2 routes remains runtime
-deferred after the validation boundary. The native HTTP dispatch path now consumes
-Plan-backed route/query/header bindings and schema-backed JSON body metadata to return a
-safe `400` validation problem before handler invocation when supported metadata fails.
-Provider parameters and queue parameters are Plan facts only; they do not register native
-providers, create provider handles, perform DI, execute queues, or open SQLite/PostgreSQL/
-SQL Server JavaScript bridges. The provider platform is ready for a future Framework v2
-injection slice because provider metadata, capability references, runtime features, stdlib
-facades, and provider bridge contracts now use one common Db shape; this document is not
-that runtime injection implementation.
+The generated handler for typed multi-parameter Framework v2 routes now uses a compiler-owned
+JavaScript wrapper instead of the previous generated 501 placeholder. The native HTTP
+dispatch path consumes Plan-backed route/query/header bindings and schema-backed JSON body
+metadata to return a safe `400` validation problem before handler invocation when supported
+metadata fails. After that boundary, the wrapper materializes typed route, query, header,
+body, and context arguments and invokes the stripped handler source in the V8 owner-thread
+Promise settlement lane. The generated wrapper also creates one request service scope and
+resolves `Service<T>` from literal source-level service registrations, including singleton,
+scoped, and transient lifetimes plus circular-dependency and singleton-to-scoped diagnostics.
+Bootstrap controller/module APIs now cover route-only `app.useModule(...)`,
+`Router.group(...)`, nested `app.group(...)` route composition, duplicate route diagnostics,
+and explicit `app.mapController(...)` method mapping with constructor injection through the
+same service provider. Provider parameters no longer return fake dependencies: SQLite
+injection opens the existing Plan-backed stdlib/native bridge, and PostgreSQL or SQL
+Server injection materializes configured provider options from compiler-inferred database
+capability metadata and opens the existing bridge with the normal provider connection-string
+environment key. Queue parameters infer `queue.<name>` capabilities and default
+`WorkQueue.create("<name>")` service registrations when the source has not explicitly
+registered that token. `Config<"KEY">` parameters read the matching environment value
+instead of returning placeholders. The
+provider platform is ready for future Framework v2 injection expansion because
+provider metadata, capability references, runtime features, stdlib facades, and provider
+bridge contracts now use one common Db shape.
+
+Named Framework v2 examples now exist for the current evidence split:
+
+- `examples/framework-v2-hello`: executable TypeScript source-input route binding and
+  `Results.ok(...)` response mapping;
+- `examples/framework-v2-validation-errors`: schema-backed body binding metadata and
+  validation/tooling evidence;
+- `examples/framework-v2-explicit-binding`: explicit route/query/header/body/context
+  binding metadata;
+- `examples/framework-v2-di-services`: executable singleton/scoped/transient service
+  injection through a request scope;
+- `examples/framework-v2-controller`: bootstrap controller API shape with explicit method
+  mapping and constructor injection;
+- `examples/framework-v2-sqlite-crud`: V8-gated executable typed SQLite CRUD source-input
+  example with inferred provider injection and `appsettings.json` provider config;
+- `examples/framework-v2-postgres-crud`: opt-in typed PostgreSQL live-lane source shape
+  with inferred provider injection, normal connection-string config, and unavailable-diagnostic
+  boundaries;
+- `examples/framework-v2-sqlserver-crud`: opt-in typed SQL Server live-lane source shape
+  with inferred provider injection, normal connection-string config, and unavailable-diagnostic
+  boundaries.
 
 Still deferred:
 
-- controller/module runtime APIs and constructor injection;
-- typed handler execution after successful runtime validation;
+- compiler extraction for controller classes and decorator/scanning-style controllers;
+- full typed handler breadth beyond the current compiler-emitted wrapper subset;
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
-- provider runtime injection and full provider/DI consumption;
-- broader CRUD/background examples that actually execute through runtime provider and queue
-  integrations;
+- richer config binding beyond environment-backed `Config<"KEY">`;
+- background/queue examples beyond default inferred `WorkQueue<"name">` injection;
+- broader provider/live-lane evidence;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan
   metadata.
 
@@ -54,8 +91,8 @@ Issue-state guide:
 
 Non-claims:
 
-- no full provider runtime integration;
-- no full DI container;
+- no full config object binding runtime beyond environment-backed `Config<"KEY">`;
+- no controller class compiler extraction or decorator/scanning support;
 - no HTTP/TLS runtime scope from this Framework v2 compiler state;
 - no public alpha docs;
 - no benchmark or performance claims;

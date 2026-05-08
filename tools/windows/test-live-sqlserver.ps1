@@ -18,6 +18,7 @@ if (-not (Get-OdbcDriver -Name $driver -ErrorAction SilentlyContinue)) {
     throw "UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server live-provider lane."
 }
 $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING = "Driver={$driver};Server=tcp:127.0.0.1,51433;Database=sloppy_test;UID=sa;PWD=$password;Encrypt=yes;TrustServerCertificate=yes;"
+$env:Sloppy__Providers__sqlserver__main__connectionString = $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING
 
 function Assert-DockerAvailable {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {

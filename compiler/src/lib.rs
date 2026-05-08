@@ -5,6 +5,7 @@ pub mod capability_inference;
 pub mod diagnostic;
 pub mod effects;
 pub mod fixtures;
+mod framework_runtime;
 pub mod graph;
 pub mod module_graph;
 pub mod parser;

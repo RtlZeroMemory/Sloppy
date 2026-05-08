@@ -19,7 +19,8 @@ typedef enum SlHttpResponseKind
     SL_HTTP_RESPONSE_JSON = 1,
     SL_HTTP_RESPONSE_EMPTY = 2,
     SL_HTTP_RESPONSE_PROBLEM = 3,
-    SL_HTTP_RESPONSE_STREAM = 4
+    SL_HTTP_RESPONSE_STREAM = 4,
+    SL_HTTP_RESPONSE_BYTES = 5
 } SlHttpResponseKind;
 
 typedef enum SlHttpResponseConnectionPolicy
@@ -60,6 +61,7 @@ typedef struct SlHttpResponse
 
 SlHttpResponse sl_http_response_text(uint16_t status, SlStr body);
 SlHttpResponse sl_http_response_json(uint16_t status, SlBytes body);
+SlHttpResponse sl_http_response_bytes(uint16_t status, SlStr content_type, SlBytes body);
 SlHttpResponse sl_http_response_empty(uint16_t status);
 SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
 /*

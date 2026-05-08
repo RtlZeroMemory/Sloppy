@@ -147,11 +147,14 @@ struct Route {
 #[derive(Debug, Clone)]
 struct Handler {
     source: String,
+    emitted_source: String,
     span: Span,
     is_async: bool,
     runtime_deferred: bool,
     source_name: String,
     source_text: String,
+    source_map_line_offset: usize,
+    source_map_column_offset: usize,
     bindings: Vec<RequestBinding>,
     response: Option<ResponseMetadata>,
     responses: Vec<ResponseMetadata>,
@@ -164,6 +167,7 @@ struct DatabaseCapability {
     capability_kind: String,
     provider: String,
     config_name: Option<String>,
+    config_key: Option<String>,
     access: String,
     database: Option<String>,
     config_source: Option<String>,
@@ -171,6 +175,13 @@ struct DatabaseCapability {
     source: String,
     span: Span,
     from_provider_use: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ServiceRegistration {
+    token: String,
+    lifetime: &'static str,
+    factory_source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -199,8 +210,10 @@ struct EmittedAppJs {
 #[derive(Debug)]
 struct ExtractedApp {
     uses_data_runtime: bool,
+    uses_sql_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
+    service_registrations: Vec<ServiceRegistration>,
     modules: Vec<FunctionModule>,
     helper_sources: Vec<String>,
     capabilities: Vec<DatabaseCapability>,
@@ -220,21 +233,21 @@ struct ExtractedApp {
 }
 
 #[derive(Debug, Clone)]
-struct RequestBinding {
-    kind: String,
-    name: Option<String>,
-    schema: Option<String>,
-    parameter: Option<String>,
-    type_name: Option<String>,
-    source_name: Option<String>,
-    source_text: Option<String>,
-    span: Option<Span>,
-    wrapper: Option<String>,
-    injection_kind: Option<String>,
-    provider_kind: Option<String>,
-    capability: Option<String>,
-    semantic: Option<String>,
-    redacted: bool,
+pub(crate) struct RequestBinding {
+    pub(crate) kind: String,
+    pub(crate) name: Option<String>,
+    pub(crate) schema: Option<String>,
+    pub(crate) parameter: Option<String>,
+    pub(crate) type_name: Option<String>,
+    pub(crate) source_name: Option<String>,
+    pub(crate) source_text: Option<String>,
+    pub(crate) span: Option<Span>,
+    pub(crate) wrapper: Option<String>,
+    pub(crate) injection_kind: Option<String>,
+    pub(crate) provider_kind: Option<String>,
+    pub(crate) capability: Option<String>,
+    pub(crate) semantic: Option<String>,
+    pub(crate) redacted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -392,6 +405,7 @@ struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
     data_imported: bool,
+    sql_imported: bool,
     schema_imported: bool,
     time_imported: bool,
     fs_imported: bool,
@@ -419,6 +433,7 @@ struct AppState {
     used_modules: Vec<(String, Span)>,
     modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
+    service_registrations: Vec<ServiceRegistration>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
     schema_names: BTreeSet<String>,
@@ -432,6 +447,7 @@ impl AppState {
             sloppy_imported: false,
             results_imported: false,
             data_imported: false,
+            sql_imported: false,
             schema_imported: false,
             time_imported: false,
             fs_imported: false,
@@ -459,6 +475,7 @@ impl AppState {
             used_modules: Vec::new(),
             modules: BTreeMap::new(),
             routes: Vec::new(),
+            service_registrations: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
             schema_names: BTreeSet::new(),
@@ -992,6 +1009,9 @@ impl ConfigurationModel {
         let mut provider_plans = Vec::new();
         let mut requirements = Vec::new();
         for capability in &mut app.capabilities {
+            if capability.capability_kind != "database" {
+                continue;
+            }
             let provider_name = provider_config_name(capability);
             let prefix = format!("Sloppy:Providers:{}:{provider_name}", capability.provider);
             if capability.provider == "sqlite" && capability.database.is_none() {
@@ -1056,7 +1076,10 @@ impl ConfigurationModel {
         let Some((field, value_type, sensitive)) = contract else {
             return Ok(Vec::new());
         };
-        let key = format!("{prefix}:{field}");
+        let key = capability
+            .config_key
+            .clone()
+            .unwrap_or_else(|| format!("{prefix}:{field}"));
         let entry = self.get(&key);
         let status = if capability.database.is_some() || entry.is_some() {
             "present"
@@ -1571,7 +1594,7 @@ fn extract_entry(
         state.routes.extend(module_routes);
     }
 
-    let Some(default_export) = state.default_export else {
+    let Some(default_export) = state.default_export.as_deref() else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_APP",
             "input must export one app as default",
@@ -1580,7 +1603,7 @@ fn extract_entry(
         .with_hint("End the file with: export default app;"));
     };
 
-    if !state.app_vars.contains(&default_export) {
+    if !state.app_vars.contains(default_export) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_APP",
             "default export must reference the extracted Sloppy app",
@@ -1629,6 +1652,7 @@ fn extract_entry(
         }
     }
 
+    add_inferred_framework_capabilities(&mut state);
     coalesce_manual_capability_overrides(&mut state.capabilities);
     apply_inferred_capability_access(&mut state.capabilities, &state.routes);
     validate_provider_effect_registrations(path, &state.routes, &state.capabilities)?;
@@ -1638,10 +1662,10 @@ fn extract_entry(
         if !capability_tokens.insert(capability.token.clone()) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_DUPLICATE_CAPABILITY",
-                "duplicate database capability token",
+                "duplicate capability token",
             )
             .with_path(path)
-            .with_hint("Declare each database capability token once."));
+            .with_hint("Declare each capability token once."));
         }
     }
 
@@ -1651,17 +1675,39 @@ fn extract_entry(
         .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
         .map(|(_, source)| source.clone())
         .collect();
+    let framework_needs_os_runtime = state.routes.iter().any(|route| {
+        route.handler.bindings.iter().any(|binding| {
+            binding.kind == "config"
+                || matches!(
+                    binding.provider_kind.as_deref(),
+                    Some("postgres") | Some("sqlserver")
+                )
+        })
+    });
+    let uses_workers_runtime = state.workers_imported
+        || graph.uses_workers_runtime
+        || state
+            .capabilities
+            .iter()
+            .any(|capability| capability.capability_kind == "queue");
 
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
+            || state.sql_imported
             || state.sqlite_imported
             || !state.app_provider_uses.is_empty()
-            || state
-                .routes
-                .iter()
-                .any(|route| !route.handler.effects.is_empty()),
+            || state.routes.iter().any(|route| {
+                !route.handler.effects.is_empty()
+                    || route
+                        .handler
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.injection_kind.as_deref() == Some("provider"))
+            }),
+        uses_sql_runtime: state.sql_imported,
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        service_registrations: state.service_registrations,
         modules: state.modules.into_values().collect(),
         helper_sources,
         capabilities: state.capabilities,
@@ -1677,9 +1723,9 @@ fn extract_entry(
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
-        uses_os_runtime: state.os_imported || graph.uses_os_runtime,
+        uses_os_runtime: state.os_imported || graph.uses_os_runtime || framework_needs_os_runtime,
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
-        uses_workers_runtime: state.workers_imported || graph.uses_workers_runtime,
+        uses_workers_runtime,
     })
 }
 
@@ -2267,7 +2313,10 @@ fn extract_import(
                 };
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
-                if imported != "sql" || local != "sql" {
+                if imported == "sql" && local == "sql" {
+                    state.sql_imported = true;
+                    state.data_imported = true;
+                } else {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
@@ -2520,6 +2569,13 @@ fn extract_expression_statement(
         return Ok(());
     }
 
+    if let Some(registration) =
+        app_service_registration_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.service_registrations.push(registration);
+        return Ok(());
+    }
+
     let (route_expr, name) = match &statement.expression {
         Expression::CallExpression(call) => match with_name_call(call)? {
             Some((inner, name)) => (inner, Some(name)),
@@ -2610,8 +2666,8 @@ fn extract_expression_statement(
             )));
         }
         let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
-        handler.source = wrap_handler_with_providers_and_helpers(
-            &handler.source,
+        handler.emitted_source = wrap_handler_with_providers_and_helpers(
+            &handler.emitted_source,
             &providers,
             &helper_sources,
             handler.is_async,
@@ -3060,6 +3116,8 @@ fn database_capability_call(
         capability_kind: "database".to_string(),
         provider: provider.to_string(),
         config_name: None,
+        config_key: optional_object_string_property(path, options, "configKey")?
+            .map(ToOwned::to_owned),
         access,
         database,
         config_source: None,
@@ -3904,7 +3962,7 @@ fn key_is_secret_like(key: &str) -> bool {
     lower.contains("password") || lower.contains("secret") || lower.contains("token")
 }
 
-fn ts_type_span(ty: &TSType<'_>) -> Span {
+pub(crate) fn ts_type_span(ty: &TSType<'_>) -> Span {
     match ty {
         TSType::TSAnyKeyword(node) => node.span,
         TSType::TSBigIntKeyword(node) => node.span,
@@ -4184,6 +4242,7 @@ fn sqlite_provider_call_expression(
         capability_kind: "database".to_string(),
         provider: "sqlite".to_string(),
         config_name: Some(name.to_string()),
+        config_key: None,
         access: "readwrite".to_string(),
         database: None,
         config_source: None,
@@ -4247,6 +4306,378 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
         return None;
     };
     Some((identifier.name.as_str().to_string(), identifier.span))
+}
+
+fn app_service_registration_call(
+    path: &Path,
+    source: &str,
+    _source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<ServiceRegistration>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some(chain) = static_member_chain(&call.callee) else {
+        return Ok(None);
+    };
+    if chain.len() != 3 || chain[1] != "services" || !state.app_vars.contains(chain[0]) {
+        return Ok(None);
+    }
+    let lifetime = match chain[2] {
+        "addSingleton" => "singleton",
+        "addScoped" => "scoped",
+        "addTransient" => "transient",
+        _ => return Ok(None),
+    };
+    if call.arguments.len() != 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registrations require a string token and one factory",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let Some(token_argument) = call.arguments.first() else {
+        return Ok(None);
+    };
+    let Some(factory_argument) = call.arguments.get(1) else {
+        return Ok(None);
+    };
+    let token = string_argument(token_argument).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration token must be a string literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(token_argument).unwrap_or(call.span))
+    })?;
+    if !matches!(
+        factory_argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration factory must be an inline function",
+        )
+        .with_path(path)
+        .with_span(argument_span(factory_argument).unwrap_or(call.span)));
+    }
+    let Some(factory_source) =
+        argument_span(factory_argument).and_then(|span| source_slice(source, span))
+    else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            "service registration factory source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    let free_identifiers = service_factory_free_identifiers(factory_argument);
+    if !free_identifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
+            format!(
+                "service registration '{}' factory captures unsupported identifier '{}'",
+                token,
+                free_identifiers
+                    .iter()
+                    .next()
+                    .map(String::as_str)
+                    .unwrap_or("")
+            ),
+        )
+        .with_path(path)
+        .with_span(argument_span(factory_argument).unwrap_or(call.span))
+        .with_hint("Use an inline factory that only depends on its scope parameter and local values, or lift the service into a runtime-only registration path."));
+    }
+    Ok(Some(ServiceRegistration {
+        token: token.to_string(),
+        lifetime,
+        factory_source,
+    }))
+}
+
+fn service_factory_free_identifiers(argument: &Argument<'_>) -> BTreeSet<String> {
+    let mut scope = BTreeSet::new();
+    match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            collect_formal_parameter_bindings(&function.params, &mut scope);
+            collect_function_body_bindings(&function.body.statements, &mut scope);
+            let mut free = BTreeSet::new();
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &scope,
+                &mut free,
+            );
+            free
+        }
+        Argument::FunctionExpression(function) => {
+            collect_formal_parameter_bindings(&function.params, &mut scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut scope);
+                let mut free = BTreeSet::new();
+                collect_statement_list_identifier_references(&body.statements, &scope, &mut free);
+                free
+            } else {
+                BTreeSet::new()
+            }
+        }
+        _ => BTreeSet::new(),
+    }
+}
+
+fn collect_formal_parameter_bindings(
+    parameters: &oxc_ast::ast::FormalParameters<'_>,
+    scope: &mut BTreeSet<String>,
+) {
+    for parameter in &parameters.items {
+        collect_binding_roots(&parameter.pattern, scope);
+    }
+}
+
+fn collect_function_body_bindings(statements: &[Statement<'_>], scope: &mut BTreeSet<String>) {
+    for statement in statements {
+        match statement {
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    collect_binding_roots(&declarator.id, scope);
+                }
+            }
+            Statement::FunctionDeclaration(function) => {
+                if let Some(identifier) = &function.id {
+                    scope.insert(identifier.name.as_str().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_statement_list_identifier_references(
+    statements: &[Statement<'_>],
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        collect_statement_identifier_references(statement, scope, free);
+    }
+}
+
+fn collect_statement_identifier_references(
+    statement: &Statement<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match statement {
+        Statement::BlockStatement(block) => {
+            collect_statement_list_identifier_references(&block.body, scope, free);
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_identifier_references(&statement.expression, scope, free);
+        }
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_identifier_references(argument, scope, free);
+            }
+        }
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_identifier_references(init, scope, free);
+                }
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_expression_identifier_references(&statement.test, scope, free);
+            collect_statement_identifier_references(&statement.consequent, scope, free);
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_identifier_references(alternate, scope, free);
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_identifier_references(&statement.argument, scope, free);
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_identifier_references(
+    expression: &Expression<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match expression {
+        Expression::Identifier(identifier) => {
+            let name = identifier.name.as_str();
+            if !scope.contains(name) && !service_factory_allowed_global(name) {
+                free.insert(name.to_string());
+            }
+        }
+        Expression::CallExpression(call) => {
+            collect_expression_identifier_references(&call.callee, scope, free);
+            for argument in &call.arguments {
+                collect_argument_identifier_references(argument, scope, free);
+            }
+        }
+        Expression::NewExpression(expression) => {
+            collect_expression_identifier_references(&expression.callee, scope, free);
+            for argument in &expression.arguments {
+                collect_argument_identifier_references(argument, scope, free);
+            }
+        }
+        Expression::AwaitExpression(expression) => {
+            collect_expression_identifier_references(&expression.argument, scope, free);
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                match property {
+                    ObjectPropertyKind::ObjectProperty(property) => {
+                        collect_expression_identifier_references(&property.value, scope, free);
+                    }
+                    ObjectPropertyKind::SpreadProperty(property) => {
+                        collect_expression_identifier_references(&property.argument, scope, free);
+                    }
+                }
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_identifier_references(element, scope, free);
+            }
+        }
+        Expression::ParenthesizedExpression(expression) => {
+            collect_expression_identifier_references(&expression.expression, scope, free);
+        }
+        Expression::StaticMemberExpression(expression) => {
+            collect_expression_identifier_references(&expression.object, scope, free);
+        }
+        Expression::ComputedMemberExpression(expression) => {
+            collect_expression_identifier_references(&expression.object, scope, free);
+            collect_expression_identifier_references(&expression.expression, scope, free);
+        }
+        Expression::BinaryExpression(expression) => {
+            collect_expression_identifier_references(&expression.left, scope, free);
+            collect_expression_identifier_references(&expression.right, scope, free);
+        }
+        Expression::LogicalExpression(expression) => {
+            collect_expression_identifier_references(&expression.left, scope, free);
+            collect_expression_identifier_references(&expression.right, scope, free);
+        }
+        Expression::ConditionalExpression(expression) => {
+            collect_expression_identifier_references(&expression.test, scope, free);
+            collect_expression_identifier_references(&expression.consequent, scope, free);
+            collect_expression_identifier_references(&expression.alternate, scope, free);
+        }
+        Expression::ArrowFunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            collect_function_body_bindings(&function.body.statements, &mut nested_scope);
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &nested_scope,
+                free,
+            );
+        }
+        Expression::FunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut nested_scope);
+                collect_statement_list_identifier_references(&body.statements, &nested_scope, free);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_argument_identifier_references(
+    argument: &Argument<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    match argument {
+        Argument::Identifier(identifier) => {
+            let name = identifier.name.as_str();
+            if !scope.contains(name) && !service_factory_allowed_global(name) {
+                free.insert(name.to_string());
+            }
+        }
+        Argument::ArrowFunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            collect_function_body_bindings(&function.body.statements, &mut nested_scope);
+            collect_statement_list_identifier_references(
+                &function.body.statements,
+                &nested_scope,
+                free,
+            );
+        }
+        Argument::FunctionExpression(function) => {
+            let mut nested_scope = scope.clone();
+            collect_formal_parameter_bindings(&function.params, &mut nested_scope);
+            if let Some(body) = &function.body {
+                collect_function_body_bindings(&body.statements, &mut nested_scope);
+                collect_statement_list_identifier_references(&body.statements, &nested_scope, free);
+            }
+        }
+        Argument::ObjectExpression(object) => {
+            for property in &object.properties {
+                match property {
+                    ObjectPropertyKind::ObjectProperty(property) => {
+                        collect_expression_identifier_references(&property.value, scope, free);
+                    }
+                    ObjectPropertyKind::SpreadProperty(property) => {
+                        collect_expression_identifier_references(&property.argument, scope, free);
+                    }
+                }
+            }
+        }
+        Argument::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_identifier_references(element, scope, free);
+            }
+        }
+        _ => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_identifier_references(expression, scope, free);
+            }
+        }
+    }
+}
+
+fn collect_array_element_identifier_references(
+    element: &ArrayExpressionElement<'_>,
+    scope: &BTreeSet<String>,
+    free: &mut BTreeSet<String>,
+) {
+    if let Some(expression) = element.as_expression() {
+        collect_expression_identifier_references(expression, scope, free);
+    }
+}
+
+fn service_factory_allowed_global(name: &str) -> bool {
+    matches!(
+        name,
+        "Array"
+            | "ArrayBuffer"
+            | "Boolean"
+            | "Date"
+            | "Error"
+            | "JSON"
+            | "Map"
+            | "Math"
+            | "Number"
+            | "Object"
+            | "Promise"
+            | "Set"
+            | "String"
+            | "Symbol"
+            | "TypeError"
+            | "Uint8Array"
+            | "WeakMap"
+            | "WeakSet"
+    )
 }
 
 fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapability) {
@@ -4676,8 +5107,8 @@ fn extract_module_function_routes(
                             "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
                         )));
                     }
-                    handler.source = wrap_module_handler_with_providers(
-                        &handler.source,
+                    handler.emitted_source = wrap_module_handler_with_providers(
+                        &handler.emitted_source,
                         &used_providers,
                         handler.is_async,
                     );
@@ -5187,23 +5618,27 @@ fn handler_from_argument(
             {
                 return None;
             }
-            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
                     body_json_schema_argument_spans_arrow(function, &ctx_name, context.schema_names)
                 })
                 .unwrap_or_default();
+            let handler_source = source_slice(context.source, function.span)?;
+            let handler_source = sanitize_handler_schema_references(
+                handler_source,
+                function.span.start,
+                &schema_spans,
+            );
             Some(Handler {
-                source: sanitize_handler_schema_references(
-                    handler_source,
-                    function.span.start,
-                    &schema_spans,
-                ),
+                source: handler_source.clone(),
+                emitted_source: handler_source,
                 span: function.span,
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
                 source_text: context.source.to_string(),
+                source_map_line_offset: 0,
+                source_map_column_offset: 0,
                 bindings: request_bindings_from_arrow(function, context.schema_names),
                 response: response_metadata_from_arrow(function),
                 responses: response_metadata_from_arrow(function).into_iter().collect(),
@@ -5236,7 +5671,6 @@ fn handler_from_argument(
             {
                 return None;
             }
-            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
                     body_json_schema_argument_spans_function(
@@ -5246,17 +5680,22 @@ fn handler_from_argument(
                     )
                 })
                 .unwrap_or_default();
+            let handler_source = source_slice(context.source, function.span)?;
+            let handler_source = sanitize_handler_schema_references(
+                handler_source,
+                function.span.start,
+                &schema_spans,
+            );
             Some(Handler {
-                source: sanitize_handler_schema_references(
-                    handler_source,
-                    function.span.start,
-                    &schema_spans,
-                ),
+                source: handler_source.clone(),
+                emitted_source: handler_source,
                 span: function.span,
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
                 source_text: context.source.to_string(),
+                source_map_line_offset: 0,
+                source_map_column_offset: 0,
                 bindings: request_bindings_from_function(function, context.schema_names),
                 response: response_metadata_from_function(function),
                 responses: response_metadata_from_function(function)
@@ -5286,13 +5725,18 @@ fn typed_framework_handler_from_arrow(
     let bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses = response_metadata_many_from_arrow(function, source_name, source, schema_names);
+    let handler_source =
+        crate::framework_runtime::typed_arrow_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: deferred_framework_handler_source(),
+        source: handler_source.original_source,
+        emitted_source: handler_source.emitted_source,
         span: function.span,
         is_async: function.r#async,
-        runtime_deferred: true,
+        runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
+        source_map_line_offset: handler_source.source_map_line_offset,
+        source_map_column_offset: handler_source.source_map_column_offset,
         bindings,
         response: responses.first().cloned(),
         responses,
@@ -5311,23 +5755,23 @@ fn typed_framework_handler_from_function(
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses =
         response_metadata_many_from_function(function, source_name, source, schema_names);
+    let handler_source =
+        crate::framework_runtime::typed_function_handler_source(function, source, &bindings)?;
     Some(Handler {
-        source: deferred_framework_handler_source(),
+        source: handler_source.original_source,
+        emitted_source: handler_source.emitted_source,
         span: function.span,
         is_async: function.r#async,
-        runtime_deferred: true,
+        runtime_deferred: false,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
+        source_map_line_offset: handler_source.source_map_line_offset,
+        source_map_column_offset: handler_source.source_map_column_offset,
         bindings,
         response: responses.first().cloned(),
         responses,
         effects: Vec::new(),
     })
-}
-
-fn deferred_framework_handler_source() -> String {
-    "() => Results.problem({ status: 501, title: \"Framework v2 runtime dispatch is deferred\" })"
-        .to_string()
 }
 
 fn typed_framework_bindings_from_parameters(
@@ -5495,6 +5939,8 @@ fn explicit_wrapper_binding(
     };
     let name = if wrapper_name == "Service" {
         Some(type_display_name(target_type))
+    } else if wrapper_name == "Config" {
+        type_string_literal_value(target_type).or_else(|| Some(parameter_name.to_string()))
     } else {
         key.as_deref()
             .or(Some(parameter_name))
@@ -6679,6 +7125,76 @@ fn coalesce_manual_capability_overrides(capabilities: &mut Vec<DatabaseCapabilit
     });
 }
 
+fn add_inferred_framework_capabilities(state: &mut AppState) {
+    let mut seen = state
+        .capabilities
+        .iter()
+        .map(|capability| capability.token.clone())
+        .collect::<BTreeSet<_>>();
+
+    for route in &state.routes {
+        for binding in &route.handler.bindings {
+            let Some(injection_kind) = binding.injection_kind.as_deref() else {
+                continue;
+            };
+            let Some(token) = binding.capability.as_deref() else {
+                continue;
+            };
+            if !seen.insert(token.to_string()) {
+                continue;
+            }
+
+            let source_name = binding
+                .source_name
+                .clone()
+                .unwrap_or_else(|| route.handler.source_name.clone());
+            let source = binding
+                .source_text
+                .clone()
+                .unwrap_or_else(|| route.handler.source_text.clone());
+            let span = binding.span.unwrap_or(route.handler.span);
+
+            if injection_kind == "provider" {
+                let Some(provider) = binding.provider_kind.as_deref() else {
+                    continue;
+                };
+                if !database_provider_supported(provider) {
+                    continue;
+                }
+                state.capabilities.push(DatabaseCapability {
+                    token: token.to_string(),
+                    capability_kind: "database".to_string(),
+                    provider: provider.to_string(),
+                    config_name: binding.name.clone(),
+                    config_key: None,
+                    access: "readwrite".to_string(),
+                    database: None,
+                    config_source: None,
+                    source_name,
+                    source,
+                    span,
+                    from_provider_use: false,
+                });
+            } else if injection_kind == "queue" {
+                state.capabilities.push(DatabaseCapability {
+                    token: token.to_string(),
+                    capability_kind: "queue".to_string(),
+                    provider: String::new(),
+                    config_name: binding.name.clone(),
+                    config_key: None,
+                    access: "enqueue".to_string(),
+                    database: None,
+                    config_source: None,
+                    source_name,
+                    source,
+                    span,
+                    from_provider_use: false,
+                });
+            }
+        }
+    }
+}
+
 fn validate_provider_effect_registrations(
     _path: &Path,
     routes: &[Route],
@@ -7061,7 +7577,7 @@ fn response_schema_from_type_arguments(
 fn response_body_argument<'a>(call: &'a CallExpression<'a>) -> Option<&'a Argument<'a>> {
     let (_, helper) = static_member_name(&call.callee)?;
     let index = match helper {
-        "ok" | "json" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
+        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
         "created" | "status" => 1,
         _ => return None,
     };
@@ -7151,6 +7667,7 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         "json" => (200, "json"),
         "text" => (200, "text"),
         "html" => (200, "html"),
+        "bytes" => (200, "bytes"),
         "created" => (201, "json"),
         "accepted" => (202, "json"),
         "noContent" => (204, "none"),
@@ -7823,6 +8340,7 @@ fn results_helper_is_supported(property: &str) -> bool {
         property,
         "text"
             | "html"
+            | "bytes"
             | "json"
             | "ok"
             | "created"
@@ -7848,7 +8366,7 @@ fn results_call_arguments_are_supported(
     }
 
     let argument_count_supported = match property {
-        "text" | "html" => matches!(call.arguments.len(), 1 | 2),
+        "text" | "html" | "bytes" => matches!(call.arguments.len(), 1 | 2),
         "json" | "ok" | "accepted" | "notFound" | "badRequest" => call.arguments.len() <= 2,
         "created" | "status" => (1..=3).contains(&call.arguments.len()),
         "noContent" => call.arguments.is_empty(),
@@ -7856,10 +8374,89 @@ fn results_call_arguments_are_supported(
         _ => false,
     };
 
+    if property == "bytes" {
+        return matches!(call.arguments.len(), 1 | 2)
+            && call
+                .arguments
+                .first()
+                .is_some_and(argument_is_inline_bytes_value)
+            && call.arguments.get(1).is_none_or(|argument| {
+                argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+            });
+    }
+
     argument_count_supported
         && call.arguments.iter().all(|argument| {
             argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
         })
+}
+
+fn argument_is_inline_bytes_value(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::NewExpression(expression) => {
+            matches!(&expression.callee, Expression::Identifier(identifier) if identifier.name == "Uint8Array")
+                && expression.arguments.len() == 1
+                && expression
+                    .arguments
+                    .first()
+                    .is_some_and(argument_is_inline_byte_array)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_bytes_value(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_inline_bytes_value(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::NewExpression(expression) => {
+            matches!(&expression.callee, Expression::Identifier(identifier) if identifier.name == "Uint8Array")
+                && expression.arguments.len() == 1
+                && expression
+                    .arguments
+                    .first()
+                    .is_some_and(argument_is_inline_byte_array)
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_bytes_value(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn argument_is_inline_byte_array(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::ArrayExpression(array) => {
+            array.elements.iter().all(array_element_is_byte_literal)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_byte_array(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_inline_byte_array(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::ArrayExpression(array) => {
+            array.elements.iter().all(array_element_is_byte_literal)
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_byte_array(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn array_element_is_byte_literal(element: &ArrayExpressionElement<'_>) -> bool {
+    let ArrayExpressionElement::NumericLiteral(literal) = element else {
+        return false;
+    };
+    literal.value.is_finite()
+        && literal.value.fract() == 0.0
+        && literal.value >= 0.0
+        && literal.value <= 255.0
 }
 
 fn argument_is_inline_json_safe_value(
@@ -8449,6 +9046,9 @@ fn emit_plan(
             if let Some(database) = &capability.database {
                 provider["database"] = json!(database);
             }
+            if let Some(config_key) = &capability.config_key {
+                provider["configKey"] = json!(config_key);
+            }
             provider
         })
         .collect::<Vec<_>>();
@@ -8457,17 +9057,23 @@ fn emit_plan(
         .capabilities
         .iter()
         .map(|capability| {
-            json!({
+            let mut value = json!({
                 "token": capability.token,
                 "kind": capability.capability_kind,
                 "access": capability.access,
-                "provider": capability.token,
                 "source": source_location_json(
                     &capability.source_name,
                     &capability.source,
                     capability.span
                 )
-            })
+            });
+            if capability.capability_kind == "database" {
+                value["provider"] = json!(capability.token);
+            }
+            if let Some(config_key) = &capability.config_key {
+                value["configKey"] = json!(config_key);
+            }
+            value
         })
         .collect::<Vec<_>>();
 
@@ -8738,15 +9344,92 @@ fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
     })
 }
 
+fn framework_provider_config_entries(app: &ExtractedApp) -> String {
+    let entries = app
+        .capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "database")
+        .map(|capability| {
+            let connection_string_env = capability.config_key.clone().or_else(|| {
+                if matches!(capability.provider.as_str(), "postgres" | "sqlserver") {
+                    Some(config_key_to_env_name(&format!(
+                        "Sloppy:Providers:{}:{}:connectionString",
+                        capability.provider,
+                        provider_config_name(capability)
+                    )))
+                } else {
+                    None
+                }
+            });
+            let value = json!({
+                "providerKind": capability.provider,
+                "access": capability.access,
+                "connectionStringEnv": connection_string_env
+            });
+            format!(
+                "[{}, {}]",
+                serde_json::to_string(&capability.token).unwrap_or_else(|_| "\"\"".to_string()),
+                serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{entries}]")
+}
+
+fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> {
+    let explicit_services = app
+        .service_registrations
+        .iter()
+        .map(|registration| registration.token.clone())
+        .collect::<BTreeSet<_>>();
+    app.capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "queue")
+        .filter(|capability| !explicit_services.contains(&capability.token))
+        .map(|capability| {
+            let name = capability.config_name.clone().unwrap_or_else(|| {
+                capability
+                    .token
+                    .strip_prefix("queue.")
+                    .unwrap_or(&capability.token)
+                    .to_string()
+            });
+            (capability.token.clone(), name)
+        })
+        .collect()
+}
+
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
     let mut mappings = Vec::new();
     let mut handler_generated_starts = Vec::new();
     let mut generated_line = 0usize;
-    let needs_provider_open_helper = app
-        .routes
-        .iter()
-        .any(|route| route.handler.source.contains("__sloppy_open_data_provider"));
+    let needs_provider_open_helper = app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppy_open_data_provider")
+    });
+    let needs_framework_arg_helper = app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppy_framework_arg")
+    });
+    let queue_service_entries = framework_queue_service_entries(app);
+    let needs_framework_services = needs_framework_arg_helper
+        || !app.service_registrations.is_empty()
+        || !queue_service_entries.is_empty();
+    let needs_framework_environment = app.routes.iter().any(|route| {
+        route.handler.bindings.iter().any(|binding| {
+            binding.kind == "config"
+                || matches!(
+                    binding.provider_kind.as_deref(),
+                    Some("postgres") | Some("sqlserver")
+                )
+        })
+    });
 
     push_generated_line(
         &mut output,
@@ -8767,6 +9450,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut runtime_exports = vec!["Results"];
     if app.uses_data_runtime {
         runtime_exports.push("data");
+    }
+    if app.uses_sql_runtime {
+        runtime_exports.push("sql");
     }
     if app.uses_time_runtime {
         runtime_exports.extend([
@@ -8806,12 +9492,17 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_os_runtime {
         runtime_exports.extend(["System", "Environment", "Process", "Signals"]);
+    } else if needs_framework_environment {
+        runtime_exports.push("Environment");
     }
     if app.uses_http_client_runtime {
         runtime_exports.push("HttpClient");
     }
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
+    }
+    if needs_framework_services {
+        runtime_exports.push("__createFrameworkServiceProvider");
     }
     push_generated_line(
         &mut output,
@@ -8821,6 +9512,48 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             runtime_exports.join(", ")
         ),
     );
+    if needs_framework_services {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const __sloppy_framework_services = __createFrameworkServiceProvider();",
+        );
+        for (token, name) in &queue_service_entries {
+            let token = serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string());
+            let name = serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                &format!("__sloppy_framework_services.addSingleton({token}, () => WorkQueue.create({name}));"),
+            );
+        }
+        for registration in &app.service_registrations {
+            let token =
+                serde_json::to_string(&registration.token).unwrap_or_else(|_| "\"\"".to_string());
+            let method = match registration.lifetime {
+                "singleton" => "addSingleton",
+                "scoped" => "addScoped",
+                "transient" => "addTransient",
+                _ => "addTransient",
+            };
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                &format!(
+                    "__sloppy_framework_services.{method}({token}, {});",
+                    registration.factory_source
+                ),
+            );
+        }
+    }
+    if needs_framework_arg_helper {
+        let provider_configs = framework_provider_config_entries(app);
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!("const __sloppy_framework_provider_configs = new Map({provider_configs});"),
+        );
+    }
     if app.uses_data_runtime && needs_provider_open_helper {
         push_generated_line(
             &mut output,
@@ -8839,6 +9572,217 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         );
         push_generated_line(&mut output, &mut generated_line, "}");
     }
+    if needs_framework_arg_helper {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_arg(ctx, scope, binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"context\") { return ctx; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"injection\") { return __sloppy_framework_injection(scope, binding); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"config\") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  let value;");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"route\") { value = ctx.route[binding.name]; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else if (binding.kind === \"query\") { value = ctx.query[binding.name]; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else if (binding.kind === \"header\") { value = ctx.request.headers.get(binding.name); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  else { throw new TypeError(`Sloppy Framework binding kind '${binding.kind}' is not supported.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  return __sloppy_framework_coerce(value, binding);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_coerce(value, binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (value === null || value === undefined) { return value; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const type = String(binding.type || binding.schema || \"\");",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (type.includes(\"boolean\")) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    const normalized = String(value).toLowerCase();",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (normalized === \"true\") { return true; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (normalized === \"false\") { return false; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a boolean value.`);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (type.includes(\"number\") || type.includes(\"PositiveInt\") || type === \"int\") {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    const parsed = Number(value);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (!Number.isFinite(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a numeric value.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if ((type.includes(\"PositiveInt\") || type === \"int\") && !Number.isInteger(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected an integer value.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (type.includes(\"PositiveInt\") && parsed <= 0) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a positive integer value.`); }",
+        );
+        push_generated_line(&mut output, &mut generated_line, "    return parsed;");
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(&mut output, &mut generated_line, "  return value;");
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_injection(scope, binding) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const dependencyName = binding.capability || (binding.name && binding.name.includes(\".\") ? binding.name : `data.${binding.name}`);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"service\") { return scope.get(binding.name); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"queue\") { return scope.get(dependencyName); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlite\" && typeof data.sqlite === \"function\") { return scope.track(data.sqlite(dependencyName)); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"postgres\" && data.postgres !== undefined && typeof data.postgres.open === \"function\") { return scope.track(data.postgres.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.injectionKind === \"provider\" && binding.providerKind === \"sqlserver\" && data.sqlserver !== undefined && typeof data.sqlserver.open === \"function\") { return scope.track(data.sqlserver.open(__sloppy_framework_provider_open_options(binding, dependencyName))); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  throw new Error(`sloppy: ${binding.injectionKind} injection for '${binding.name}' is unavailable in this runtime lane.`);",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_provider_open_options(binding, token) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const config = __sloppy_framework_provider_configs.get(token);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (config === undefined) { throw new Error(`sloppy: provider '${token}' is not configured for Framework injection.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (config.providerKind !== binding.providerKind) { throw new Error(`sloppy: provider '${token}' is configured as ${config.providerKind}, not ${binding.providerKind}.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const key = config.connectionStringEnv;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (typeof key !== \"string\" || key.length === 0) { throw new Error(`sloppy: provider '${token}' does not declare a connection string config key for Framework injection.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  const connectionString = Environment.get(key);",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (typeof connectionString !== \"string\" || connectionString.length === 0) { throw new Error(`sloppy: provider '${token}' requires environment config '${key}'.`); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  return { connectionString, capability: token, access: config.access === \"read\" ? \"read\" : \"readwrite\" };",
+        );
+        push_generated_line(&mut output, &mut generated_line, "}");
+    }
     push_generated_line(&mut output, &mut generated_line, "");
 
     for helper_source in &app.helper_sources {
@@ -8853,6 +9797,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         let prefix = format!("globalThis.__sloppy_handler_{id} = ");
         let handler_start_line = generated_line;
         let handler_start_column = prefix.len();
+        let source_map_start_line = handler_start_line + route.handler.source_map_line_offset;
+        let source_map_start_column = if route.handler.source_map_line_offset == 0 {
+            handler_start_column + route.handler.source_map_column_offset
+        } else {
+            route.handler.source_map_column_offset
+        };
         handler_generated_starts.push(HandlerGeneratedStart {
             handler_id: id,
             generated_line: handler_start_line,
@@ -8862,15 +9812,15 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &route.handler.source_text,
             route.handler.span,
             &route.handler.source,
-            handler_start_line,
-            handler_start_column,
+            source_map_start_line,
+            source_map_start_column,
             source_index_for(app, &route.handler.source_name),
         ));
 
         output.push_str(&prefix);
-        output.push_str(&route.handler.source);
+        output.push_str(&route.handler.emitted_source);
         output.push_str(";\n");
-        generated_line += route.handler.source.matches('\n').count() + 1;
+        generated_line += route.handler.emitted_source.matches('\n').count() + 1;
         push_generated_line(
             &mut output,
             &mut generated_line,
@@ -9476,8 +10426,10 @@ mod tests {
 
         let mut app = super::ExtractedApp {
             uses_data_runtime: true,
+            uses_sql_runtime: false,
             source_files: Vec::new(),
             routes: Vec::new(),
+            service_registrations: Vec::new(),
             modules: Vec::new(),
             helper_sources: Vec::new(),
             capabilities: vec![super::DatabaseCapability {
@@ -9485,6 +10437,7 @@ mod tests {
                 capability_kind: "database".to_string(),
                 provider: "sqlite".to_string(),
                 config_name: Some("main".to_string()),
+                config_key: None,
                 access: "readwrite".to_string(),
                 database: None,
                 config_source: None,
@@ -10756,15 +11709,17 @@ app.mapGet("/bad", () => Results.badRequest({ error: "bad" }));
 app.mapGet("/status", () => Results.status(202, { accepted: true }));
 app.mapGet("/problem", () => Results.problem("broken"));
 app.mapGet("/html", () => Results.html("<p>ok</p>"));
+app.mapGet("/bytes", () => Results.bytes(new Uint8Array([0, 65, 255]), { contentType: "application/x-test" }));
 export default app;
 "#;
         let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
-        assert_eq!(app.routes.len(), 9);
+        assert_eq!(app.routes.len(), 10);
         assert_eq!(app.routes[0].pattern, "/ok");
         assert_eq!(app.routes[1].pattern, "/empty");
         assert_eq!(app.routes[2].pattern, "/created");
         assert_eq!(app.routes[7].pattern, "/problem");
         assert_eq!(app.routes[8].pattern, "/html");
+        assert_eq!(app.routes[9].pattern, "/bytes");
     }
 
     #[test]
@@ -11167,7 +12122,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects[0].access, "read");
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
 
         let emitted_js = super::emit_app_js(&app);
@@ -11295,11 +12250,11 @@ export default app;
         assert_eq!(app.routes[0].handler.effects.len(), 1);
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("function listUsers()"));
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
         assert!(!app.routes[0].handler.source.contains("uses"));
     }
@@ -11329,7 +12284,7 @@ export default app;
             .any(|effect| effect.access == "write"));
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -11355,7 +12310,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects[0].access, "read");
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -11377,7 +12332,7 @@ export default app;
         assert_eq!(app.routes[0].handler.effects.len(), 1);
         assert!(app.routes[0]
             .handler
-            .source
+            .emitted_source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
     }
 
@@ -11875,6 +12830,54 @@ export default app;
         .expect("plan should emit");
         let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
         assert!(value.get("requiredFeatures").is_none());
+    }
+
+    #[test]
+    fn typed_framework_queue_injection_infers_capability_and_default_service() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import type { WorkQueue } from "sloppy/workers";
+const app = Sloppy.create();
+app.post("/emails", async (emails: WorkQueue<"emails">) => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed queue injection should extract");
+        assert!(app.uses_workers_runtime);
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "queue.emails"
+                && capability.capability_kind == "queue"
+                && capability.access == "enqueue"
+        }));
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "__sloppy_framework_services.addSingleton(\"queue.emails\", () => WorkQueue.create(\"emails\"));"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.workers"])
+        );
+        assert_eq!(
+            value["capabilities"][0],
+            serde_json::json!({
+                "access": "enqueue",
+                "kind": "queue",
+                "source": {
+                    "column": 28,
+                    "line": 4,
+                    "path": "app.ts"
+                },
+                "token": "queue.emails"
+            })
+        );
     }
 
     #[test]
@@ -12456,6 +13459,186 @@ export default app;
         assert_eq!(binding.wrapper.as_deref(), Some("Service"));
         assert_eq!(binding.injection_kind.as_deref(), Some("service"));
         assert_eq!(binding.name.as_deref(), Some("UserService"));
+    }
+
+    #[test]
+    fn framework_service_registration_rejects_captured_factory_identifiers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+function makeGreeting() {
+  return { prefix: "hello" };
+}
+const app = Sloppy.create();
+app.services.addScoped("GreetingService", () => makeGreeting());
+app.get("/users", () => Results.ok({ ok: true }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("captured service factory identifiers should be rejected");
+        assert_eq!(
+            diagnostic.code,
+            "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION"
+        );
+        assert!(diagnostic.message.contains("makeGreeting"));
+    }
+
+    #[test]
+    fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", (input: Body<UserCreate>) => Results.created(`/users/${input.email}`, {
+  name: input.name,
+  email: input.email,
+}));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed body handler should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const __sloppy_args = await Promise.all(["));
+        assert!(emitted_js.source.contains("ctx.request.json()"));
+        assert!(emitted_js
+            .source
+            .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
+        assert!(!emitted_js
+            .source
+            .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+    }
+
+    #[test]
+    fn typed_framework_handler_erases_nested_typescript_syntax() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+type UserCreate = { name: string; email: string };
+type UserDto = { id: number; name: string; email: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>, db: Postgres<"main">) => {
+  const first: UserCreate = input;
+  const mapped = [first].map((item: UserCreate): UserDto => ({
+    id: Number.parseInt("1", 10),
+    name: item.name,
+    email: item.email,
+  }));
+  const loaded = await Promise.all<UserDto>(mapped.map(async (item: UserDto): Promise<UserDto> => {
+    const row: UserDto = await db.queryOne<UserDto>("select id, name, email from users where id = $1", [item.id]);
+    return row;
+  }));
+  function normalize(user: UserDto): UserDto {
+    return user;
+  }
+  return Results.created(`/users/${loaded[0].id}`, normalize(loaded[0]));
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed handler with nested TypeScript syntax should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("const first = input;"));
+        assert!(emitted_js.source.contains("function normalize(user)"));
+        assert!(!emitted_js.source.contains("const first:"));
+        assert!(!emitted_js.source.contains("(item:"));
+        assert!(!emitted_js.source.contains("): UserDto"));
+        assert!(!emitted_js.source.contains("function normalize(user:"));
+        assert!(!emitted_js.source.contains("Promise.all<UserDto>"));
+        assert!(!emitted_js.source.contains("queryOne<UserDto>"));
+    }
+
+    #[test]
+    fn typed_framework_source_maps_point_at_user_handler_source() {
+        let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type UserCreate = { name: string };
+const app = Sloppy.create();
+app.post("/users", async (input: Body<UserCreate>) => {
+  const name: string = input.name;
+  return Results.created(`/users/${name}`, { name });
+});
+export default app;
+"#;
+        let app =
+            extract(std::path::Path::new("app.ts"), source).expect("typed handler should extract");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("input: Body<UserCreate>"));
+        assert!(app.routes[0]
+            .handler
+            .emitted_source
+            .contains("const __sloppy_typed_handler = async (input)"));
+        let handler_start = emitted_js
+            .handler_generated_starts
+            .iter()
+            .find(|start| start.handler_id == 1)
+            .expect("handler start should be recorded");
+        let first_mapping = emitted_js
+            .mappings
+            .iter()
+            .find(|mapping| mapping.generated_line == handler_start.generated_line)
+            .expect("typed handler should have a same-line source map segment");
+        let (original_line, original_column) =
+            super::line_column(source, app.routes[0].handler.span.start);
+        assert!(first_mapping.generated_column > handler_start.generated_column);
+        assert_eq!(first_mapping.original_line, original_line.saturating_sub(1));
+        assert_eq!(
+            first_mapping.original_column,
+            original_column.saturating_sub(1)
+        );
+    }
+
+    #[test]
+    fn typed_framework_provider_injection_uses_configured_provider_options() {
+        let source = r#"import { Sloppy, Results, RequestContext } from "sloppy";
+import { sql } from "sloppy/data";
+import { Postgres } from "sloppy/providers/postgres";
+import { Sqlite } from "sloppy/providers/sqlite";
+import { SqlServer } from "sloppy/providers/sqlserver";
+const app = Sloppy.create();
+app.get("/users", async (pg: Postgres<"main">, sqlite: Sqlite<"audit">, sqlserver: SqlServer<"search">, ctx: RequestContext) => {
+  await sqlite.exec(sql`create table if not exists audit(id integer)`, { deadline: ctx.deadline });
+  return Results.ok({ ok: true });
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed provider injection should extract");
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.main"
+                && capability.capability_kind == "database"
+                && capability.provider == "postgres"
+                && capability.config_name.as_deref() == Some("main")
+        }));
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.audit"
+                && capability.capability_kind == "database"
+                && capability.provider == "sqlite"
+                && capability.config_name.as_deref() == Some("audit")
+        }));
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.search"
+                && capability.capability_kind == "database"
+                && capability.provider == "sqlserver"
+                && capability.config_name.as_deref() == Some("search")
+        }));
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "\"connectionStringEnv\":\"Sloppy__Providers__postgres__main__connectionString\""
+        ));
+        assert!(emitted_js.source.contains(
+            "\"connectionStringEnv\":\"Sloppy__Providers__sqlserver__search__connectionString\""
+        ));
+        assert!(emitted_js
+            .source
+            .contains("data.postgres.open(__sloppy_framework_provider_open_options"));
+        assert!(emitted_js
+            .source
+            .contains("data.sqlserver.open(__sloppy_framework_provider_open_options"));
+        assert!(emitted_js.source.contains("data.sqlite(dependencyName)"));
+        assert!(!emitted_js.source.contains("data.postgres.open({ provider:"));
+        assert!(!emitted_js
+            .source
+            .contains("data.sqlserver.open({ provider:"));
     }
 
     #[test]

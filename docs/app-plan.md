@@ -50,12 +50,24 @@ schema-backed JSON body metadata to fail invalid requests with a safe `400`
 middleware, modules, arbitrary imports, custom validators, and full TypeScript semantics
 remain outside the current source subset.
 
-Typed Framework v2 handler metadata is compiler/Plan-first. When the compiler sees a typed
-multi-parameter handler that the current runtime cannot execute directly, it emits
-`handlers[].runtimeDispatch: "deferred"` and a generated handler that returns a 501 problem
-descriptor. That is an honest runtime boundary: the Plan metadata may be complete for route,
-binding, schema, injection, and response facts while typed handler execution, DI/provider
-resolution, and full response writing remain separate implementation lanes.
+Typed Framework v2 handler metadata is compiler/Plan-first. For the current supported
+typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after
+native Plan-backed validation and materializes typed route, query, header, body, and context
+arguments from the request context. The wrapper creates one request service scope per
+handler call. Literal `app.services.addSingleton/addScoped/addTransient("Token", factory)`
+registrations in the source-input subset are emitted into the generated artifact, and
+`Service<T>` parameters resolve through that scope with singleton, scoped, transient,
+circular-dependency, and singleton-to-scoped diagnostics.
+
+Provider injection opens provider handles through the existing stdlib/native bridge where
+available: SQLite uses Plan-backed provider tokens, while PostgreSQL and SQL Server
+materialize configured provider options from inferred database capability metadata and the
+normal provider config key before opening the active bridge. Queue injection materializes an
+inferred `queue.<name>` capability and, unless the source explicitly registers that token,
+adds a default request-scope service registration backed by `WorkQueue.create("<name>")`.
+`Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
+TypeScript lowering, controller
+constructor injection, and broader response writing remain separate implementation lanes.
 
 ## Server Config Metadata
 
@@ -93,8 +105,19 @@ metadata must not be presented as complete OS-sandbox evidence unless a scoped
 implementation and evidence lane prove it.
 
 Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
-`SqlServer<"main">` are represented as injection/capability requirements in route metadata.
-They do not register or execute native database providers by themselves.
+`SqlServer<"main">` are represented as route injections and inferred Plan
+provider/capability requirements. The normal case does not require
+`builder.capabilities.addDatabase(...)` or `app.use(sqlite(...))` boilerplate:
+`Postgres<"main">` implies `postgres/main` plus `data.main`,
+`Sqlite<"main">` implies `sqlite/main` plus `data.main`, and
+`SqlServer<"main">` implies `sqlserver/main` plus `data.main`. `WorkQueue<"emails">`
+implies a `queue.emails` capability. Runtime injection depends on normal provider config
+and the active provider bridge for the current lane. PostgreSQL and SQL Server typed
+injection use the inferred config keys
+`Sloppy:Providers:postgres:<name>:connectionString` and
+`Sloppy:Providers:sqlserver:<name>:connectionString`; SQLite uses
+`Sloppy:Providers:sqlite:<name>:database` unless inline/manual provider metadata is used
+for an explicit policy override.
 
 Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
 config references, or secret-source references.
