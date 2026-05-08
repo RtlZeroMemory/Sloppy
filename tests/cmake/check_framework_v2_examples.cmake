@@ -108,6 +108,14 @@ function(reject_substring haystack needle description)
 endfunction()
 
 file(READ "${example_root}/framework-v2-sqlite-crud/app.ts" sqlite_app)
+require_file("${example_root}/framework-v2-sqlite-crud/appsettings.json")
+file(READ "${example_root}/framework-v2-sqlite-crud/appsettings.json" sqlite_config)
+require_substring(
+    "${sqlite_config}" "\"Providers\""
+    "Framework v2 SQLite example is missing normal provider config")
+require_substring(
+    "${sqlite_config}" "\":memory:\""
+    "Framework v2 SQLite example is missing local SQLite database config")
 foreach(required_pattern IN ITEMS
         "Sqlite<\"main\">"
         "Body<UserCreate>"
@@ -126,6 +134,8 @@ foreach(required_pattern IN ITEMS
         "Framework v2 SQLite example is missing expected CRUD shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
+        "capabilities.addDatabase"
+        "app.use("
         "app.provider("
         "ctx.request.json"
         "ctx.route.")
@@ -136,8 +146,6 @@ endforeach()
 
 file(READ "${example_root}/framework-v2-postgres-crud/app.ts" postgres_app)
 foreach(required_pattern IN ITEMS
-        "provider: \"postgres\""
-        "configKey: \"SLOPPY_POSTGRES_TEST_URL\""
         "Postgres<\"main\">"
         "Body<UserCreate>"
         "Route<PositiveInt>"
@@ -152,6 +160,8 @@ foreach(required_pattern IN ITEMS
         "Framework v2 PostgreSQL example is missing expected live-lane shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
+        "capabilities.addDatabase"
+        "app.use("
         "app.provider("
         "ctx.request.json"
         "ctx.route.")
@@ -162,8 +172,6 @@ endforeach()
 
 file(READ "${example_root}/framework-v2-sqlserver-crud/app.ts" sqlserver_app)
 foreach(required_pattern IN ITEMS
-        "provider: \"sqlserver\""
-        "configKey: \"SLOPPY_SQLSERVER_TEST_CONNECTION_STRING\""
         "SqlServer<\"main\">"
         "Body<UserCreate>"
         "Route<PositiveInt>"
@@ -178,6 +186,8 @@ foreach(required_pattern IN ITEMS
         "Framework v2 SQL Server example is missing expected live-lane shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
+        "capabilities.addDatabase"
+        "app.use("
         "app.provider("
         "ctx.request.json"
         "ctx.route.")

@@ -21,15 +21,7 @@ type UserDto = {
     email: string;
 };
 
-const builder = Sloppy.createBuilder();
-
-builder.capabilities.addDatabase("data.main", {
-    provider: "sqlite",
-    access: "readwrite",
-    database: ":memory:",
-});
-
-const app = builder.build();
+const app = Sloppy.create();
 
 async function seedUsers(db) {
     await db.exec("create table if not exists users (id integer primary key, name text not null, email text not null unique)");

@@ -13,8 +13,9 @@ subset and emit deterministic metadata for:
   `Header<"name">`, `Service<T>`, and `Config<T>` wrapper metadata;
 - `RequestContext`, `SlopRequest`, `SlopResponse`, `CancellationSignal`, and `Deadline`
   context bindings;
-- metadata-only `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and
-  `WorkQueue<"name">` injection requirements;
+- compiler-inferred `Postgres<"name">`, `Sqlite<"name">`, `SqlServer<"name">`, and
+  `WorkQueue<"name">` injection requirements, provider requirements, and default
+  capability metadata;
 - literal `app.services.addSingleton/addScoped/addTransient("Token", factory)` registrations
   for generated Framework v2 service injection;
 - supported TypeScript aliases/interfaces/object literals, optional and nested properties,
@@ -36,10 +37,12 @@ Bootstrap controller/module APIs now cover route-only `app.useModule(...)`,
 and explicit `app.mapController(...)` method mapping with constructor injection through the
 same service provider. Provider parameters no longer return fake dependencies: SQLite
 injection opens the existing Plan-backed stdlib/native bridge, and PostgreSQL or SQL
-Server injection materializes configured provider options from the database capability
-metadata and opens the existing bridge with the configured connection-string environment
-key. Queue parameters resolve through the same request service scope, and `Config<"KEY">`
-parameters read the matching environment value instead of returning placeholders. The
+Server injection materializes configured provider options from compiler-inferred database
+capability metadata and opens the existing bridge with the normal provider connection-string
+environment key. Queue parameters infer `queue.<name>` capabilities and default
+`WorkQueue.create("<name>")` service registrations when the source has not explicitly
+registered that token. `Config<"KEY">` parameters read the matching environment value
+instead of returning placeholders. The
 provider platform is ready for future Framework v2 injection expansion because
 provider metadata, capability references, runtime features, stdlib facades, and provider
 bridge contracts now use one common Db shape.
@@ -57,12 +60,12 @@ Named Framework v2 examples now exist for the current evidence split:
 - `examples/framework-v2-controller`: bootstrap controller API shape with explicit method
   mapping and constructor injection;
 - `examples/framework-v2-sqlite-crud`: V8-gated executable typed SQLite CRUD source-input
-  example with provider injection;
+  example with inferred provider injection and `appsettings.json` provider config;
 - `examples/framework-v2-postgres-crud`: opt-in typed PostgreSQL live-lane source shape
-  with provider injection, connection-string config, and unavailable-diagnostic
+  with inferred provider injection, normal connection-string config, and unavailable-diagnostic
   boundaries;
 - `examples/framework-v2-sqlserver-crud`: opt-in typed SQL Server live-lane source shape
-  with provider injection, connection-string config, and unavailable-diagnostic
+  with inferred provider injection, normal connection-string config, and unavailable-diagnostic
   boundaries.
 
 Still deferred:
@@ -72,7 +75,7 @@ Still deferred:
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
 - richer config binding beyond environment-backed `Config<"KEY">`;
-- background/queue examples beyond service-registered `WorkQueue<"name">` injection;
+- background/queue examples beyond default inferred `WorkQueue<"name">` injection;
 - broader provider/live-lane evidence;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan
   metadata.

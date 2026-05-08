@@ -21,15 +21,7 @@ type UserDto = {
     email: string;
 };
 
-const builder = Sloppy.createBuilder();
-
-builder.capabilities.addDatabase("data.main", {
-    provider: "postgres",
-    access: "readwrite",
-    configKey: "SLOPPY_POSTGRES_TEST_URL",
-});
-
-const app = builder.build();
+const app = Sloppy.create();
 
 app.get("/users", async (db: Postgres<"main">, ctx: RequestContext) => {
     const users = await db.query<UserDto>(

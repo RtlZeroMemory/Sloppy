@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $composeFile = Join-Path $repoRoot "tests\live\postgres\compose.yml"
 $env:SLOPPY_POSTGRES_TEST_URL = "postgres://sloppy:sloppy@localhost:55432/sloppy_test"
+$env:Sloppy__Providers__postgres__main__connectionString = $env:SLOPPY_POSTGRES_TEST_URL
 
 function Assert-DockerAvailable {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {

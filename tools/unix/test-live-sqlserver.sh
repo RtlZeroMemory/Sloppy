@@ -29,6 +29,7 @@ password="Sloppy_Strong_Passw0rd!"
 if [ -z "${SLOPPY_SQLSERVER_TEST_CONNECTION_STRING:-}" ]; then
   export SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=tcp:127.0.0.1,51433;Database=sloppy_test;UID=sa;PWD=$password;Encrypt=yes;TrustServerCertificate=yes;"
 fi
+export Sloppy__Providers__sqlserver__main__connectionString="$SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"
 
 if [ "$no_docker" -eq 0 ]; then
   if ! command -v docker >/dev/null 2>&1; then

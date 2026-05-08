@@ -61,10 +61,11 @@ circular-dependency, and singleton-to-scoped diagnostics.
 
 Provider injection opens provider handles through the existing stdlib/native bridge where
 available: SQLite uses Plan-backed provider tokens, while PostgreSQL and SQL Server
-materialize configured provider options from database capability metadata and a
-connection-string environment key before opening the active bridge. Queue injection
-resolves service-registered `WorkQueue<"name">` handles through the request service scope,
-and `Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
+materialize configured provider options from inferred database capability metadata and the
+normal provider config key before opening the active bridge. Queue injection materializes an
+inferred `queue.<name>` capability and, unless the source explicitly registers that token,
+adds a default request-scope service registration backed by `WorkQueue.create("<name>")`.
+`Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
 TypeScript lowering, controller
 constructor injection, and broader response writing remain separate implementation lanes.
 
@@ -104,12 +105,19 @@ metadata must not be presented as complete OS-sandbox evidence unless a scoped
 implementation and evidence lane prove it.
 
 Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
-`SqlServer<"main">` are represented as injection/capability requirements in route metadata.
-They do not register native database providers by themselves. Runtime injection depends on
-matching provider/capability metadata and the active provider bridge for the current lane.
-PostgreSQL and SQL Server typed injection require capability metadata with a connection
-string config key, such as `configKey: "SLOPPY_POSTGRES_TEST_URL"` or
-`configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING"`.
+`SqlServer<"main">` are represented as route injections and inferred Plan
+provider/capability requirements. The normal case does not require
+`builder.capabilities.addDatabase(...)` or `app.use(sqlite(...))` boilerplate:
+`Postgres<"main">` implies `postgres/main` plus `data.main`,
+`Sqlite<"main">` implies `sqlite/main` plus `data.main`, and
+`SqlServer<"main">` implies `sqlserver/main` plus `data.main`. `WorkQueue<"emails">`
+implies a `queue.emails` capability. Runtime injection depends on normal provider config
+and the active provider bridge for the current lane. PostgreSQL and SQL Server typed
+injection use the inferred config keys
+`Sloppy:Providers:postgres:<name>:connectionString` and
+`Sloppy:Providers:sqlserver:<name>:connectionString`; SQLite uses
+`Sloppy:Providers:sqlite:<name>:database` unless inline/manual provider metadata is used
+for an explicit policy override.
 
 Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
 config references, or secret-source references.

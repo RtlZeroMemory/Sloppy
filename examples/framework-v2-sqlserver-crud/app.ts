@@ -21,15 +21,7 @@ type UserDto = {
     email: string;
 };
 
-const builder = Sloppy.createBuilder();
-
-builder.capabilities.addDatabase("data.main", {
-    provider: "sqlserver",
-    access: "readwrite",
-    configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
-});
-
-const app = builder.build();
+const app = Sloppy.create();
 
 app.get("/users", async (db: SqlServer<"main">, ctx: RequestContext) => {
     const users = await db.query<UserDto>(

@@ -2,10 +2,11 @@
 
 Status: V8-gated executable Framework v2 SQLite source-input example.
 
-This example uses typed `Body<T>` and `Route<T>` bindings, Plan-backed SQLite provider
-injection, semantic request types, and the native SQLite bridge through V8. It is
-intentionally small: list users, fetch one user, and create a user with
-`Results.created`.
+This example uses typed `Body<T>` and `Route<T>` bindings, compiler-inferred SQLite
+provider metadata from `Sqlite<"main">`, semantic request types, and the native SQLite
+bridge through V8. `appsettings.json` supplies the normal provider config for the
+inferred `sqlite/main` provider. It is intentionally small: list users, fetch one user,
+and create a user with `Results.created`.
 
 ```powershell
 .\build\windows-relwithdebinfo\sloppy.exe run examples/framework-v2-sqlite-crud/app.ts --once GET /users

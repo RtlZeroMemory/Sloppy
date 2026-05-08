@@ -384,8 +384,9 @@ Hardened examples now cover the supported shapes:
 - Initialize only what Plan requires.
 - Package only what app references where feasible.
 
-No SQLite import/use means no SQLite provider metadata, no SQLite capability metadata, no
-SQLite JS bridge registration, and no SQLite package dependency claim.
+No typed SQLite parameter, explicit SQLite provider import/use, or manual SQLite capability
+metadata means no SQLite provider metadata, no SQLite capability metadata, no SQLite JS
+bridge registration, and no SQLite package dependency claim.
 
 ## Non-Goals
 
@@ -403,10 +404,12 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 ## ENGINE-14 Implementation Note
 
 The framework MVP function-module shape is supported at source level by the compiler-owned
-subset: `app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, and literal
-`group.get/post/put/patch/delete(...)` registrations are resolved, analyzed, and lowered into
-the existing Plan and classic artifact path. The bootstrap stdlib now exposes the route
-module, nested group, and explicit controller APIs for direct app-host tests as well.
+subset: typed provider parameters such as `Sqlite<"main">`, explicit
+`app.use(sqlite(...))` provider registration for policy examples, `app.useModule(usersModule)`,
+`app.group(...)`, and literal `group.get/post/put/patch/delete(...)` registrations are
+resolved, analyzed, and lowered into the existing Plan and classic artifact path. The
+bootstrap stdlib now exposes the route module, nested group, and explicit controller APIs
+for direct app-host tests as well.
 Decorators, package scanning, arbitrary class/object inference, and broader controller
 discovery remain separate framework tasks.
 COMPILER-30.E adds compiler metadata for supported config reads, schema declarations, request
