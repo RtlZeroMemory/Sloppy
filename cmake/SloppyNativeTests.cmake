@@ -337,4 +337,3 @@
                 "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
                 "${PROJECT_SOURCE_DIR}")
     endif()
-

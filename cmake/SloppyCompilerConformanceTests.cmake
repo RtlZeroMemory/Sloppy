@@ -260,4 +260,3 @@
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.rejects_environment_with_artifacts
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
-

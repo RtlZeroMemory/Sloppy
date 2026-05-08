@@ -456,4 +456,3 @@
         set_tests_properties(sloppy.run.duplicate_handler_registration
                              PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
-

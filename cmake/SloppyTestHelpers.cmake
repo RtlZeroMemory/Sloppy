@@ -76,4 +76,3 @@
         sloppy_apply_warnings(${target_name})
         sloppy_apply_sanitizers(${target_name})
     endfunction()
-

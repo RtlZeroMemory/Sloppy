@@ -136,4 +136,3 @@
             conformance.package.windows_outside_checkout
             PROPERTIES LABELS "conformance;package;outside-checkout")
     endif()
-
