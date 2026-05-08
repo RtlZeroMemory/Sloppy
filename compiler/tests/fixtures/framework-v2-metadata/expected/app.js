@@ -5,7 +5,7 @@ if (__sloppyRuntime === undefined) {
 const { Results, data, sql, System, Environment, Process, Signals, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;
 const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
-const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"SLOPPY_POSTGRES_TEST_URL","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"SLOPPY_SQLSERVER_TEST_CONNECTION_STRING","providerKind":"sqlserver"}]]);
+const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","providerKind":"sqlserver"}]]);
 function __sloppy_framework_arg(ctx, scope, binding) {
   if (binding.kind === "body.json") { return ctx.request.json(); }
   if (binding.kind === "context") { return ctx; }

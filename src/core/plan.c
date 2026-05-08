@@ -57,6 +57,7 @@ bool sl_plan_capability_kind_supported(SlStr kind)
     return sl_str_equal(kind, sl_str_from_cstr("database")) ||
            sl_str_equal(kind, sl_str_from_cstr("filesystem")) ||
            sl_str_equal(kind, sl_str_from_cstr("network")) ||
+           sl_str_equal(kind, sl_str_from_cstr("queue")) ||
            sl_str_equal(kind, sl_str_from_cstr("os")) ||
            sl_str_equal(kind, sl_str_from_cstr("env")) ||
            sl_str_equal(kind, sl_str_from_cstr("process")) ||
@@ -85,6 +86,11 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
         return sl_str_equal(access, sl_str_from_cstr("connect")) ||
                sl_str_equal(access, sl_str_from_cstr("listen")) ||
                sl_str_equal(access, sl_str_from_cstr("connect-listen"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("queue"))) {
+        return sl_str_equal(access, sl_str_from_cstr("enqueue")) ||
+               sl_str_equal(access, sl_str_from_cstr("process")) ||
+               sl_str_equal(access, sl_str_from_cstr("readwrite"));
     }
     if (sl_str_equal(kind, sl_str_from_cstr("os"))) {
         return sl_str_equal(access, sl_str_from_cstr("info"));

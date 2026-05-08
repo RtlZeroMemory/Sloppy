@@ -1006,6 +1006,9 @@ impl ConfigurationModel {
         let mut provider_plans = Vec::new();
         let mut requirements = Vec::new();
         for capability in &mut app.capabilities {
+            if capability.capability_kind != "database" {
+                continue;
+            }
             let provider_name = provider_config_name(capability);
             let prefix = format!("Sloppy:Providers:{}:{provider_name}", capability.provider);
             if capability.provider == "sqlite" && capability.database.is_none() {
@@ -1588,7 +1591,7 @@ fn extract_entry(
         state.routes.extend(module_routes);
     }
 
-    let Some(default_export) = state.default_export else {
+    let Some(default_export) = state.default_export.as_deref() else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_APP",
             "input must export one app as default",
@@ -1597,7 +1600,7 @@ fn extract_entry(
         .with_hint("End the file with: export default app;"));
     };
 
-    if !state.app_vars.contains(&default_export) {
+    if !state.app_vars.contains(default_export) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_APP",
             "default export must reference the extracted Sloppy app",
@@ -1646,6 +1649,7 @@ fn extract_entry(
         }
     }
 
+    add_inferred_framework_capabilities(&mut state);
     coalesce_manual_capability_overrides(&mut state.capabilities);
     apply_inferred_capability_access(&mut state.capabilities, &state.routes);
     validate_provider_effect_registrations(path, &state.routes, &state.capabilities)?;
@@ -1655,10 +1659,10 @@ fn extract_entry(
         if !capability_tokens.insert(capability.token.clone()) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_DUPLICATE_CAPABILITY",
-                "duplicate database capability token",
+                "duplicate capability token",
             )
             .with_path(path)
-            .with_hint("Declare each database capability token once."));
+            .with_hint("Declare each capability token once."));
         }
     }
 
@@ -1677,6 +1681,12 @@ fn extract_entry(
                 )
         })
     });
+    let uses_workers_runtime = state.workers_imported
+        || graph.uses_workers_runtime
+        || state
+            .capabilities
+            .iter()
+            .any(|capability| capability.capability_kind == "queue");
 
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
@@ -1712,7 +1722,7 @@ fn extract_entry(
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
         uses_os_runtime: state.os_imported || graph.uses_os_runtime || framework_needs_os_runtime,
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
-        uses_workers_runtime: state.workers_imported || graph.uses_workers_runtime,
+        uses_workers_runtime,
     })
 }
 
@@ -6798,6 +6808,76 @@ fn coalesce_manual_capability_overrides(capabilities: &mut Vec<DatabaseCapabilit
     });
 }
 
+fn add_inferred_framework_capabilities(state: &mut AppState) {
+    let mut seen = state
+        .capabilities
+        .iter()
+        .map(|capability| capability.token.clone())
+        .collect::<BTreeSet<_>>();
+
+    for route in &state.routes {
+        for binding in &route.handler.bindings {
+            let Some(injection_kind) = binding.injection_kind.as_deref() else {
+                continue;
+            };
+            let Some(token) = binding.capability.as_deref() else {
+                continue;
+            };
+            if !seen.insert(token.to_string()) {
+                continue;
+            }
+
+            let source_name = binding
+                .source_name
+                .clone()
+                .unwrap_or_else(|| route.handler.source_name.clone());
+            let source = binding
+                .source_text
+                .clone()
+                .unwrap_or_else(|| route.handler.source_text.clone());
+            let span = binding.span.unwrap_or(route.handler.span);
+
+            if injection_kind == "provider" {
+                let Some(provider) = binding.provider_kind.as_deref() else {
+                    continue;
+                };
+                if !database_provider_supported(provider) {
+                    continue;
+                }
+                state.capabilities.push(DatabaseCapability {
+                    token: token.to_string(),
+                    capability_kind: "database".to_string(),
+                    provider: provider.to_string(),
+                    config_name: binding.name.clone(),
+                    config_key: None,
+                    access: "readwrite".to_string(),
+                    database: None,
+                    config_source: None,
+                    source_name,
+                    source,
+                    span,
+                    from_provider_use: false,
+                });
+            } else if injection_kind == "queue" {
+                state.capabilities.push(DatabaseCapability {
+                    token: token.to_string(),
+                    capability_kind: "queue".to_string(),
+                    provider: String::new(),
+                    config_name: binding.name.clone(),
+                    config_key: None,
+                    access: "enqueue".to_string(),
+                    database: None,
+                    config_source: None,
+                    source_name,
+                    source,
+                    span,
+                    from_provider_use: false,
+                });
+            }
+        }
+    }
+}
+
 fn validate_provider_effect_registrations(
     _path: &Path,
     routes: &[Route],
@@ -8664,13 +8744,15 @@ fn emit_plan(
                 "token": capability.token,
                 "kind": capability.capability_kind,
                 "access": capability.access,
-                "provider": capability.token,
                 "source": source_location_json(
                     &capability.source_name,
                     &capability.source,
                     capability.span
                 )
             });
+            if capability.capability_kind == "database" {
+                value["provider"] = json!(capability.token);
+            }
             if let Some(config_key) = &capability.config_key {
                 value["configKey"] = json!(config_key);
             }
@@ -8978,6 +9060,29 @@ fn framework_provider_config_entries(app: &ExtractedApp) -> String {
     format!("[{entries}]")
 }
 
+fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> {
+    let explicit_services = app
+        .service_registrations
+        .iter()
+        .map(|registration| registration.token.clone())
+        .collect::<BTreeSet<_>>();
+    app.capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "queue")
+        .filter(|capability| !explicit_services.contains(&capability.token))
+        .map(|capability| {
+            let name = capability.config_name.clone().unwrap_or_else(|| {
+                capability
+                    .token
+                    .strip_prefix("queue.")
+                    .unwrap_or(&capability.token)
+                    .to_string()
+            });
+            (capability.token.clone(), name)
+        })
+        .collect()
+}
+
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
     let mut mappings = Vec::new();
@@ -8991,8 +9096,10 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         .routes
         .iter()
         .any(|route| route.handler.source.contains("__sloppy_framework_arg"));
-    let needs_framework_services =
-        needs_framework_arg_helper || !app.service_registrations.is_empty();
+    let queue_service_entries = framework_queue_service_entries(app);
+    let needs_framework_services = needs_framework_arg_helper
+        || !app.service_registrations.is_empty()
+        || !queue_service_entries.is_empty();
     let needs_framework_environment = app.routes.iter().any(|route| {
         route.handler.bindings.iter().any(|binding| {
             binding.kind == "config"
@@ -9090,6 +9197,15 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut generated_line,
             "const __sloppy_framework_services = __createFrameworkServiceProvider();",
         );
+        for (token, name) in &queue_service_entries {
+            let token = serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string());
+            let name = serde_json::to_string(name).unwrap_or_else(|_| "\"\"".to_string());
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                &format!("__sloppy_framework_services.addSingleton({token}, () => WorkQueue.create({name}));"),
+            );
+        }
         for registration in &app.service_registrations {
             let token =
                 serde_json::to_string(&registration.token).unwrap_or_else(|_| "\"\"".to_string());
@@ -12390,6 +12506,54 @@ export default app;
     }
 
     #[test]
+    fn typed_framework_queue_injection_infers_capability_and_default_service() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import type { WorkQueue } from "sloppy/workers";
+const app = Sloppy.create();
+app.post("/emails", async (emails: WorkQueue<"emails">) => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed queue injection should extract");
+        assert!(app.uses_workers_runtime);
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "queue.emails"
+                && capability.capability_kind == "queue"
+                && capability.access == "enqueue"
+        }));
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "__sloppy_framework_services.addSingleton(\"queue.emails\", () => WorkQueue.create(\"emails\"));"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.workers"])
+        );
+        assert_eq!(
+            value["capabilities"][0],
+            serde_json::json!({
+                "access": "enqueue",
+                "kind": "queue",
+                "source": {
+                    "column": 28,
+                    "line": 4,
+                    "path": "app.ts"
+                },
+                "token": "queue.emails"
+            })
+        );
+    }
+
+    #[test]
     fn sloppy_codec_import_emits_plan_required_feature() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
@@ -13003,11 +13167,7 @@ import { sql } from "sloppy/data";
 import { Postgres } from "sloppy/providers/postgres";
 import { Sqlite } from "sloppy/providers/sqlite";
 import { SqlServer } from "sloppy/providers/sqlserver";
-const builder = Sloppy.createBuilder();
-builder.capabilities.addDatabase("data.main", { provider: "postgres", access: "readwrite", configKey: "SLOPPY_POSTGRES_TEST_URL" });
-builder.capabilities.addDatabase("data.audit", { provider: "sqlite", access: "readwrite", database: ":memory:" });
-builder.capabilities.addDatabase("data.search", { provider: "sqlserver", access: "readwrite", configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING" });
-const app = builder.build();
+const app = Sloppy.create();
 app.get("/users", async (pg: Postgres<"main">, sqlite: Sqlite<"audit">, sqlserver: SqlServer<"search">, ctx: RequestContext) => {
   await sqlite.exec(sql`create table if not exists audit(id integer)`, { deadline: ctx.deadline });
   return Results.ok({ ok: true });
@@ -13016,13 +13176,31 @@ export default app;
 "#;
         let app = extract(std::path::Path::new("app.ts"), source)
             .expect("typed provider injection should extract");
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.main"
+                && capability.capability_kind == "database"
+                && capability.provider == "postgres"
+                && capability.config_name.as_deref() == Some("main")
+        }));
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.audit"
+                && capability.capability_kind == "database"
+                && capability.provider == "sqlite"
+                && capability.config_name.as_deref() == Some("audit")
+        }));
+        assert!(app.capabilities.iter().any(|capability| {
+            capability.token == "data.search"
+                && capability.capability_kind == "database"
+                && capability.provider == "sqlserver"
+                && capability.config_name.as_deref() == Some("search")
+        }));
         let emitted_js = super::emit_app_js(&app);
-        assert!(emitted_js
-            .source
-            .contains("\"connectionStringEnv\":\"SLOPPY_POSTGRES_TEST_URL\""));
-        assert!(emitted_js
-            .source
-            .contains("\"connectionStringEnv\":\"SLOPPY_SQLSERVER_TEST_CONNECTION_STRING\""));
+        assert!(emitted_js.source.contains(
+            "\"connectionStringEnv\":\"Sloppy__Providers__postgres__main__connectionString\""
+        ));
+        assert!(emitted_js.source.contains(
+            "\"connectionStringEnv\":\"Sloppy__Providers__sqlserver__search__connectionString\""
+        ));
         assert!(emitted_js
             .source
             .contains("data.postgres.open(__sloppy_framework_provider_open_options"));

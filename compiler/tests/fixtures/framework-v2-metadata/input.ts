@@ -44,25 +44,7 @@ type UserDto = {
   name: string;
 };
 
-const builder = Sloppy.createBuilder();
-builder.capabilities.addDatabase("data.main", {
-  provider: "postgres",
-  access: "readwrite",
-  configKey: "SLOPPY_POSTGRES_TEST_URL",
-});
-builder.capabilities.addDatabase("data.audit", {
-  provider: "sqlite",
-  access: "readwrite",
-  database: ":memory:",
-});
-builder.capabilities.addDatabase("data.search", {
-  provider: "sqlserver",
-  access: "readwrite",
-  configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
-});
-const app = builder.build();
-
-app.services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
+const app = Sloppy.create();
 
 app.post("/users", async (
   input: UserCreate,
