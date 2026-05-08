@@ -49,7 +49,7 @@ The V8 runtime path requires a resolved V8 SDK and a V8-enabled build. Default
 non-V8 evidence does not prove V8 execution.
 
 ```powershell
-.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
 .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo

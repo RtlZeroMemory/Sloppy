@@ -14,8 +14,10 @@ pass evidence.
 
 ## V8 SDK and Runtime
 
-- Contributors should not have to build V8 on the happy path once hosted SDK artifacts
-  exist.
+- Windows x64 contributors can provision the pinned SDK with `tools/windows/fetch-v8.ps1`
+  or `tools/windows/resolve-v8-sdk.ps1 -Fetch`.
+- Linux and macOS V8 SDK artifacts are still planned; those lanes must not be reported as
+  pass evidence until matching artifacts are built and validated.
 - Default package smoke does not prove V8 execution.
 - V8 SDK headers and import libraries are not bundled in default packages.
 - V8 runtime files are bundled only when the package was explicitly built with matching
@@ -34,7 +36,7 @@ pass evidence.
 
 ## Deferred Release Work
 
-- Hosted public V8 SDK artifact source and retention policy.
+- Linux/macOS hosted V8 SDK artifacts and retention policy.
 - Signing, notarization, installers, and package-manager distribution.
 - Final public alpha release notes after the readiness gate accepts the evidence.
 - Final alpha verification and product-mode cutover.

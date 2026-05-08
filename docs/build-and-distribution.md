@@ -48,9 +48,14 @@ dependencies with stable statuses: `found`, `missing`, `wrong version`,
 
 V8 SDK resolution is explicit and mode-aware: `OFF` disables SDK validation, `AUTO`
 reports a compatible SDK when present without counting absence as V8 evidence, and
-`REQUIRED` fails when the SDK is missing, wrong, or corrupt. `SLOPPY_V8_ROOT` is an
-advanced override, not the happy path. Rust dependencies are owned by the `compiler/`
-project. JavaScript dependencies are not a package-manager surface for Sloppy apps.
+`REQUIRED` fails when the SDK is missing, wrong, or corrupt. Windows x64 has a pinned,
+checksum-validated SDK artifact source; `tools/windows/fetch-v8.ps1` downloads it into
+`.sdeps/v8/_downloads`, extracts `.sdeps/v8/windows-x64`, and validates the SDK layout
+before it can be used. `tools/windows/resolve-v8-sdk.ps1 -Fetch` and
+`tools/windows/dev.ps1 configure -EnableV8` use that source when no compatible local SDK
+is found. Linux and macOS SDK artifacts remain planned. `SLOPPY_V8_ROOT` is an advanced
+override, not the happy path. Rust dependencies are owned by the `compiler/` project.
+JavaScript dependencies are not a package-manager surface for Sloppy apps.
 
 ## Packages
 
