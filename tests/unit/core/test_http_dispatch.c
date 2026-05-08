@@ -1043,6 +1043,125 @@ static int test_plan_backed_route_query_header_validation_returns_problem(void)
     return 0;
 }
 
+static int test_plan_backed_nullable_required_body_field_must_be_present(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    property_nodes[1].nullable = true;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 36\r\n\r\n"
+                      "{\"name\":\"Ada\",\"password\":\"longpass\"}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 146;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        sl_engine_destroy(engine);
+        return 147;
+    }
+
+    if (expect_body_contains(result.response.body, "\"body.email\"") != 0 ||
+        expect_body_contains(result.response.body, "Ada") == 0 ||
+        expect_body_contains(result.response.body, "longpass") == 0)
+    {
+        sl_engine_destroy(engine);
+        return 148;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_manual_dispatch_ignores_stale_route_index_for_validation(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute routes[2] = {0};
+    SlPlanRequestBinding stale_binding = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/admin");
+    routes[0].handler_id = 1U;
+    routes[0].bindings = &stale_binding;
+    routes[0].binding_count = 1U;
+    stale_binding.kind = SL_PLAN_REQUEST_BINDING_HEADER;
+    stale_binding.parameter = sl_str_from_cstr("trace");
+    stale_binding.name = sl_str_from_cstr("x-trace-id");
+    stale_binding.type = sl_str_from_cstr("string");
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/users");
+    routes[1].handler_id = 1U;
+    plan.routes = routes;
+    plan.route_count = 2U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        parse_pattern(&arena, "/users", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 149;
+    }
+
+    route.method = SL_HTTP_METHOD_GET;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    route.route_index = 0U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag);
+    if (sl_status_code(status) != SL_STATUS_UNSUPPORTED || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 150;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_route_params_may_match_but_are_not_required_by_dispatch(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -1221,6 +1340,8 @@ int main(void)
         {test_missing_plan_handler_fails_before_engine_call},
         {test_plan_backed_body_validation_returns_problem_before_handler_call},
         {test_plan_backed_route_query_header_validation_returns_problem},
+        {test_plan_backed_nullable_required_body_field_must_be_present},
+        {test_manual_dispatch_ignores_stale_route_index_for_validation},
         {test_route_params_may_match_but_are_not_required_by_dispatch},
         {test_conformance_smoke_default_http_cases},
     };

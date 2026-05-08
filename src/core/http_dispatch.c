@@ -151,6 +151,45 @@ static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* ou
                                                  : sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
 
+static bool sl_http_dispatch_plan_route_matches_binding(const SlPlanRoute* route,
+                                                        const SlHttpRouteBinding* binding)
+{
+    SlHttpMethod method = SL_HTTP_METHOD_UNKNOWN;
+
+    if (route == NULL || binding == NULL || binding->pattern == NULL ||
+        route->handler_id != binding->handler_id)
+    {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_http_dispatch_method_from_plan(route->method, &method)) ||
+        method != binding->method)
+    {
+        return false;
+    }
+    return sl_str_equal(route->pattern, binding->pattern->source);
+}
+
+static const SlPlanRoute* sl_http_dispatch_find_validation_route(const SlPlan* plan,
+                                                                 const SlHttpRouteBinding* binding)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || binding == NULL) {
+        return NULL;
+    }
+    if (binding->route_index < plan->route_count &&
+        sl_http_dispatch_plan_route_matches_binding(&plan->routes[binding->route_index], binding))
+    {
+        return &plan->routes[binding->route_index];
+    }
+    for (index = 0U; index < plan->route_count; index += 1U) {
+        if (sl_http_dispatch_plan_route_matches_binding(&plan->routes[index], binding)) {
+            return &plan->routes[index];
+        }
+    }
+    return NULL;
+}
+
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)
 {
     return sl_http_dispatch_write_diag(
@@ -785,6 +824,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
 {
     const SlHttpRouteBinding* binding = NULL;
     const SlPlanHandler* handler = NULL;
+    const SlPlanRoute* validation_route = NULL;
     SlRouteMatch route_match = {0};
     SlHttpQuery query = {0};
     SlHttpRequestContext request_context = {0};
@@ -868,9 +908,10 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.query_params = query.params;
     request_context.query_param_count = query.param_count;
 
-    if (binding->route_index < plan->route_count) {
-        status = sl_request_validation_validate(arena, plan, &plan->routes[binding->route_index],
-                                                &request_context, out_result, out_diag);
+    validation_route = sl_http_dispatch_find_validation_route(plan, binding);
+    if (validation_route != NULL) {
+        status = sl_request_validation_validate(arena, plan, validation_route, &request_context,
+                                                out_result, out_diag);
         if (!sl_status_is_ok(status) || out_result->kind != SL_ENGINE_RESULT_NONE) {
             return status;
         }

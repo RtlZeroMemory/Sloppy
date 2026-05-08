@@ -459,8 +459,20 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        if (child == NULL || yyjson_is_null(child)) {
-            if (!property->schema->optional && !property->schema->nullable) {
+        if (child == NULL) {
+            if (!property->schema->optional) {
+                status = sl_request_validation_add_issue(
+                    state, child_path,
+                    sl_request_validation_literal("Field is required.",
+                                                  sizeof("Field is required.") - 1U));
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+            }
+            continue;
+        }
+        if (yyjson_is_null(child)) {
+            if (!property->schema->nullable) {
                 status = sl_request_validation_add_issue(
                     state, child_path,
                     sl_request_validation_literal("Field is required.",
