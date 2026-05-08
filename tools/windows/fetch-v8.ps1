@@ -147,7 +147,7 @@ if ([string]::IsNullOrWhiteSpace($SourceArchive) -and [string]::IsNullOrWhiteSpa
 New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
 $archivePath = ""
 if (-not [string]::IsNullOrWhiteSpace($SourceArchive)) {
-    $archivePath = [System.IO.Path]::GetFullPath($SourceArchive)
+    $archivePath = Resolve-RepoPath $SourceArchive
     if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
         throw "V8 SDK source archive was not found: $archivePath"
     }
