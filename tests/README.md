@@ -9,7 +9,10 @@ primitives and diagnostics behavior. The `bootstrap.stdlib.assets` CTest check v
 that bootstrap stdlib assets exist in source and are copied into the build support-data
 layout.
 The `bootstrap.stdlib.api_shape` CTest check statically verifies the tiny bootstrap
-`Results`, `schema`, `data`, `sql`, and `Sloppy` API shape. When `node` is available, CTest also registers
+`Results`, `schema`, `data`, `sql`, and `Sloppy` API shape. When `node` is available,
+CTest also registers `bootstrap.stdlib.import_graph`, which imports each bootstrap ESM
+leaf and selected internal helper modules to catch broken split-module paths without
+claiming Node compatibility. When `node` is available, CTest also registers
 `bootstrap.stdlib.app_host_foundation`, which executes the ESM stdlib and verifies the
 bootstrap builder/app freeze model, config, logging, services, route groups, result helper
 descriptors, schema validation, route context, and `Sloppy.create()` consistency. This test

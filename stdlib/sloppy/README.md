@@ -23,7 +23,14 @@ stdlib/sloppy/
   os.js
   workers.js
   internal/
+    capabilities.js
+    config.js
     intrinsics.js
+    logging.js
+    modules.js
+    routes.js
+    services.js
+    shared.js
     runtime-classic.js
   bootstrap.manifest.json
 ```
@@ -43,6 +50,10 @@ lib/sloppy/bootstrap/sloppy/
   route registration, route-only `app.useModule(...)`, explicit controller mapping, group
   metadata, config/log/services/capabilities facades, structural freeze behavior, and debug
   snapshots.
+- `internal/capabilities.js`, `internal/config.js`, `internal/logging.js`,
+  `internal/modules.js`, `internal/routes.js`, `internal/services.js`, and
+  `internal/shared.js` hold app-host implementation helpers. They are staged bootstrap
+  assets, not public import targets.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; descriptors do not write responses by themselves.
 - `schema.js` provides the current validation metadata skeleton for strings, numbers,
@@ -73,8 +84,8 @@ lib/sloppy/bootstrap/sloppy/
 - public handler registration APIs;
 - full compiler extraction or arbitrary import rewriting;
 - ORM, migrations, or schema-management behavior for database providers;
-- nested route groups, middleware, automatic validation/request binding, module packages,
-  native plugins, or full app lifecycle integration;
+- middleware, automatic validation/request binding, module packages, native plugins, or
+  full app lifecycle integration;
 - config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
   logging sinks, request-scoped service lifetimes, disposal hooks, async factories, or
   typed DI tokens.

@@ -832,9 +832,22 @@ async function flushMicrotasks(count = 6) {
     assert.equal(auth.tokenTtlMinutes, 60);
     assert.equal(auth.issuer, "sloppy-tests");
     assert.equal(auth.audience, "api");
+    assert.deepEqual(builder.config.bind("Optional", {
+        enabled: {
+            type: "boolean",
+            required: false,
+        },
+    }), {});
     assertThrowsMessage(() => builder.config.bind("Auth", { missing: { type: "string", required: true } }), /required/);
     assertThrowsMessage(() => builder.config.bind("Auth", { jwtSecret: { type: "secret", default: "unsafe" } }), /literal default/);
     assertThrowsMessage(() => builder.config.bind("Feature", { mode: { type: "string", enum: ["safe"] } }), /declared values/);
+    builder.config.addObject({
+        Unsafe: {
+            constructor: "blocked",
+        },
+    });
+    assertThrowsMessage(() => builder.config.bind("Unsafe"), /not supported/);
+    assertThrowsMessage(() => builder.config.getObject("Unsafe"), /not supported/);
     assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);
@@ -919,13 +932,15 @@ async function flushMicrotasks(count = 6) {
     const fields = { route: "/" };
     app.log.debug("filtered", fields);
     app.log.info("hello", fields);
+    fields.route = "/mutated";
     assert.equal(memorySink.entries().length, 1);
     assert.deepEqual(memorySink.entries()[0], {
         level: "info",
         message: "hello",
-        fields,
+        fields: { route: "/" },
     });
-    assert.equal(memorySink.entries()[0].fields, fields);
+    assert.notEqual(memorySink.entries()[0].fields, fields);
+    assert.equal(Object.isFrozen(memorySink.entries()[0].fields), true);
 
     app.mapGet("/", ({ config, log, services }) => {
         log.info("handler", { route: "/" });
@@ -1043,6 +1058,29 @@ async function flushMicrotasks(count = 6) {
 
 {
     const builder = Sloppy.createBuilder();
+    const disposalOrder = [];
+    builder.services.addTransient("transient", () => ({
+        dispose() {
+            disposalOrder.push("transient");
+        },
+    }));
+    builder.services.addScoped("scoped", (scope) => {
+        scope.get("transient");
+        return {
+            dispose() {
+                disposalOrder.push("scoped");
+            },
+        };
+    });
+    const app = builder.build();
+    const scope = app.services.createScope();
+    scope.get("scoped");
+    scope.dispose();
+    assert.deepEqual(disposalOrder, ["scoped", "transient"]);
+}
+
+{
+    const builder = Sloppy.createBuilder();
     let disposedScoped = 0;
     let actionSawServices = false;
 
@@ -1090,6 +1128,36 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => app.mapController("/bad", UsersController, (bad) => {
         bad.get("/", "missing");
     }), /prototype method/);
+
+    app.mapController("/api/", UsersController, (api) => {
+        api.get("/status", "get");
+    });
+    assert.equal(app.__getRoutes()[1].pattern, "/api/status");
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let disposedScoped = 0;
+    builder.services.addScoped("GreetingService", () => ({
+        dispose() {
+            disposedScoped += 1;
+        },
+    }));
+    const app = builder.build();
+
+    class FailingController {
+        static inject = ["GreetingService", "MissingService"];
+
+        get() {
+            return Results.ok({});
+        }
+    }
+
+    app.mapController("/failing", FailingController, (routes) => {
+        routes.get("/", "get");
+    });
+    assertThrowsMessage(() => app.__getRoutes()[0].handler(), /not registered/);
+    assert.equal(disposedScoped, 1);
 }
 
 {

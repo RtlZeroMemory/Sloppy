@@ -12,17 +12,30 @@ function assertThrowsMessage(fn, expected) {
 {
     assert.equal(typeof Sloppy.module, "function");
 
+    const metadata = {
+        owner: "tests",
+        tags: ["bootstrap"],
+    };
     const users = Sloppy.module("users")
         .dependsOn("data")
-        .metadata("owner", "tests")
+        .metadata("details", metadata)
         .services(() => {})
         .routes(() => {});
+    metadata.owner = "mutated";
+    metadata.tags.push("changed");
 
     assert.equal(users.name, "users");
     assert.deepEqual(users.dependencies, ["data"]);
     assert.equal(users.__debug().services, 1);
     assert.equal(users.__debug().routes, 1);
-    assert.deepEqual(users.__debug().metadata, { owner: "tests" });
+    assert.deepEqual(users.__debug().metadata, {
+        details: {
+            owner: "tests",
+            tags: ["bootstrap"],
+        },
+    });
+    assert.equal(Object.isFrozen(users.__debug().metadata.details), true);
+    assert.equal(Object.isFrozen(users.__debug().metadata.details.tags), true);
     assert.deepEqual(Object.getOwnPropertySymbols(users), []);
     assertThrowsMessage(() => Sloppy.module(""), /non-empty string/);
     assertThrowsMessage(() => Sloppy.module("Users"), /lowercase/);

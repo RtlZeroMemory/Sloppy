@@ -83,6 +83,12 @@
 
     if(NODE_EXECUTABLE)
         add_test(
+            NAME bootstrap.stdlib.import_graph
+            COMMAND
+                "${CMAKE_COMMAND}" -E env
+                "SLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" "${NODE_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_import_graph.mjs")
+        add_test(
             NAME bootstrap.stdlib.app_host_foundation
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
@@ -114,7 +120,7 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
         set_tests_properties(
-            bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
+            bootstrap.stdlib.import_graph bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers
             bootstrap.stdlib.codec_properties
