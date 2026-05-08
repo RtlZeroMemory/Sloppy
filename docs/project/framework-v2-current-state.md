@@ -36,10 +36,11 @@ Bootstrap controller/module APIs now cover route-only `app.useModule(...)`,
 and explicit `app.mapController(...)` method mapping with constructor injection through the
 same service provider. Provider parameters no longer return fake dependencies: SQLite
 injection opens the existing Plan-backed stdlib/native bridge, and PostgreSQL or SQL
-Server injection attempts the provider bridge and reports the existing
-provider/config/live-lane error honestly when the lane is unavailable. Queue and
-`Config<T>` parameters still fail explicitly until their runtime lanes can materialize
-them. The provider platform is ready for future Framework v2 injection expansion because
+Server injection materializes configured provider options from the database capability
+metadata and opens the existing bridge with the configured connection-string environment
+key. Queue parameters resolve through the same request service scope, and `Config<"KEY">`
+parameters read the matching environment value instead of returning placeholders. The
+provider platform is ready for future Framework v2 injection expansion because
 provider metadata, capability references, runtime features, stdlib facades, and provider
 bridge contracts now use one common Db shape.
 
@@ -55,12 +56,14 @@ Named Framework v2 examples now exist for the current evidence split:
   injection through a request scope;
 - `examples/framework-v2-controller`: bootstrap controller API shape with explicit method
   mapping and constructor injection;
-- `examples/framework-v2-sqlite-crud`: V8-gated executable SQLite CRUD source-input
-  example;
-- `examples/framework-v2-postgres-crud`: opt-in PostgreSQL live-lane source shape with
-  deadline propagation and unavailable-diagnostic boundaries;
-- `examples/framework-v2-sqlserver-crud`: opt-in SQL Server live-lane source shape with
-  deadline propagation and unavailable-diagnostic boundaries.
+- `examples/framework-v2-sqlite-crud`: V8-gated executable typed SQLite CRUD source-input
+  example with provider injection;
+- `examples/framework-v2-postgres-crud`: opt-in typed PostgreSQL live-lane source shape
+  with provider injection, connection-string config, and unavailable-diagnostic
+  boundaries;
+- `examples/framework-v2-sqlserver-crud`: opt-in typed SQL Server live-lane source shape
+  with provider injection, connection-string config, and unavailable-diagnostic
+  boundaries.
 
 Still deferred:
 
@@ -68,8 +71,9 @@ Still deferred:
 - full typed handler breadth beyond the current compiler-emitted wrapper subset;
 - full binding/coercion breadth beyond Plan-backed route/query/header scalars and JSON body
   schema validation;
-- queue injection, `Config<T>` injection, and broader provider/live-lane evidence;
-- background/queue examples that execute through runtime queue integrations;
+- richer config binding beyond environment-backed `Config<"KEY">`;
+- background/queue examples beyond service-registered `WorkQueue<"name">` injection;
+- broader provider/live-lane evidence;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan
   metadata.
 
@@ -84,7 +88,7 @@ Issue-state guide:
 
 Non-claims:
 
-- no queue or config injection runtime;
+- no full config object binding runtime beyond environment-backed `Config<"KEY">`;
 - no controller class compiler extraction or decorator/scanning support;
 - no HTTP/TLS runtime scope from this Framework v2 compiler state;
 - no public alpha docs;

@@ -6,16 +6,16 @@ Status: bootstrap result helper set implemented; bounded run consumes supported
 Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object with
 `Results.ok(...)`, `Results.created(...)`, `Results.accepted(...)`,
 `Results.noContent(...)`, `Results.notFound(...)`, `Results.badRequest(...)`,
-`Results.status(...)`, `Results.problem(...)`, `Results.text(...)`, `Results.json(...)`,
-`Results.html(...)`, and `Results.bytes(...)`.
+`Results.status(...)`, `Results.problem(...)`, `Results.text(...)`, `Results.json(...)`, and
+`Results.html(...)`.
 
 Purpose: document current result descriptor helpers and the future path where handler
 return values become native response descriptors.
 
 Current target contract:
 
-- core helpers are `text`, `json`, `bytes`, `ok`, `created`, `accepted`, `noContent`,
-  `notFound`, `badRequest`, `problem`, and `status`;
+- core helpers are `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
+  `badRequest`, `problem`, and `status`;
 - supported descriptors become native HTTP responses through the V8 bridge;
 - custom headers are supported only through `options.headers` on supported descriptors;
 - unsupported descriptors fail with diagnostics and a safe framework error response;
@@ -66,9 +66,6 @@ Implemented helpers:
 - `Results.text(body, options?)` returns a text descriptor.
 - `Results.json(value, options?)` returns a JSON descriptor without stringifying `value`.
 - `Results.html(body, options?)` returns an HTML descriptor.
-- `Results.bytes(body, options?)` returns a binary descriptor from an `ArrayBuffer` or
-  `ArrayBufferView`. It copies the byte range and uses
-  `application/octet-stream` unless `options.contentType` is a non-empty string.
 
 `Results.text(body, options?)` shape:
 
@@ -106,9 +103,8 @@ There is no header normalization class.
 
 Implemented in the dev run path now:
 
-- `text`, `html`, `bytes`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
+- `text`, `html`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
   `badRequest`, `status`, and `problem` descriptors;
-- binary body preservation for `Results.bytes(...)`, including embedded NUL and high bytes;
 - `200`, `201`, `202`, `204`, `400`, `404`, `405`, `413`, `415`, `500`, and `501`
   response status writing;
 - JSON body serialization through V8 `JSON.stringify` for JSON/problem descriptors;
@@ -122,9 +118,8 @@ Implemented in the dev run path now:
   `500` response.
 
 Conformance coverage verifies `Results.text` through the executable hello example,
-`Results.json` through the executable request-context example, `Results.bytes` through
-V8-gated binary descriptor conversion, and an invalid descriptor through a V8-gated
-checked-in artifact fixture that must return a safe dev `500`.
+`Results.json` through the executable request-context example, and an invalid descriptor
+through a V8-gated checked-in artifact fixture that must return a safe dev `500`.
 
 Unsupported result descriptor kinds fail safely with a dev `500` response. Streaming,
 files, redirects, cookies, content negotiation, and header normalization beyond

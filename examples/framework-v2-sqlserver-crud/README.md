@@ -4,8 +4,8 @@ Status: opt-in live-lane Framework v2 SQL Server example with honest unavailable
 diagnostics when the local ODBC lane is not configured.
 
 This example documents the Plan-visible Framework v2 shape for SQL Server CRUD-style
-handlers and passes request deadlines into provider calls where the live provider/runtime
-lane supports them.
+handlers: typed `Body<T>` and `Route<T>` bindings, provider injection through
+`SqlServer<"main">`, semantic request types, and deadline propagation into provider calls.
 
 It is not part of default CI. Run it only with a local SQL Server test database,
 Microsoft ODBC Driver 18 for SQL Server, and a redacted connection string managed outside

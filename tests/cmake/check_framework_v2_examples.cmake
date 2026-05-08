@@ -41,12 +41,15 @@ foreach(example_name IN ITEMS
     require_file("${example_root}/${example_name}/app.ts")
 endforeach()
 
+foreach(example_name IN ITEMS framework-v2-controller)
+    require_file("${example_root}/${example_name}/app.js")
+endforeach()
+
 foreach(example_name IN ITEMS
-        framework-v2-controller
         framework-v2-sqlite-crud
         framework-v2-postgres-crud
         framework-v2-sqlserver-crud)
-    require_file("${example_root}/${example_name}/app.js")
+    require_file("${example_root}/${example_name}/app.ts")
 endforeach()
 
 file(READ "${example_root}/framework-v2-hello/app.ts" hello_app)
@@ -97,41 +100,90 @@ foreach(required_pattern IN ITEMS
         "Framework v2 controller example is missing expected controller shape")
 endforeach()
 
-file(READ "${example_root}/framework-v2-sqlite-crud/app.js" sqlite_app)
+function(reject_substring haystack needle description)
+    string(FIND "${haystack}" "${needle}" found_index)
+    if(NOT found_index EQUAL -1)
+        message(FATAL_ERROR "${description}: ${needle}")
+    endif()
+endfunction()
+
+file(READ "${example_root}/framework-v2-sqlite-crud/app.ts" sqlite_app)
 foreach(required_pattern IN ITEMS
-        "from \"sloppy/providers/sqlite\""
-        "sqlite(\"main\", { database: \":memory:\" })"
-        "app.provider(\"sqlite:main\")"
-        "db.query("
-        "db.queryOne("
+        "Sqlite<\"main\">"
+        "Body<UserCreate>"
+        "Route<PositiveInt>"
+        "input.name"
+        "input.email"
+        "db.query<"
+        "db.queryOne<"
         "db.exec("
-        "Results.problem"
+        "{ deadline: ctx.deadline }"
+        "Results.ok"
+        "Results.notFound"
         "Results.created")
     require_substring(
         "${sqlite_app}" "${required_pattern}"
         "Framework v2 SQLite example is missing expected CRUD shape")
 endforeach()
+foreach(rejected_pattern IN ITEMS
+        "app.provider("
+        "ctx.request.json"
+        "ctx.route.")
+    reject_substring(
+        "${sqlite_app}" "${rejected_pattern}"
+        "Framework v2 SQLite example must not use manual ctx/provider style")
+endforeach()
 
-file(READ "${example_root}/framework-v2-postgres-crud/app.js" postgres_app)
+file(READ "${example_root}/framework-v2-postgres-crud/app.ts" postgres_app)
 foreach(required_pattern IN ITEMS
         "provider: \"postgres\""
-        "app.provider(\"postgres:main\")"
+        "configKey: \"SLOPPY_POSTGRES_TEST_URL\""
+        "Postgres<\"main\">"
+        "Body<UserCreate>"
+        "Route<PositiveInt>"
+        "input.name"
+        "input.email"
         "{ deadline: ctx.deadline }"
+        "Results.created"
+        "Results.ok"
         "Results.notFound")
     require_substring(
         "${postgres_app}" "${required_pattern}"
         "Framework v2 PostgreSQL example is missing expected live-lane shape")
 endforeach()
+foreach(rejected_pattern IN ITEMS
+        "app.provider("
+        "ctx.request.json"
+        "ctx.route.")
+    reject_substring(
+        "${postgres_app}" "${rejected_pattern}"
+        "Framework v2 PostgreSQL example must not use manual ctx/provider style")
+endforeach()
 
-file(READ "${example_root}/framework-v2-sqlserver-crud/app.js" sqlserver_app)
+file(READ "${example_root}/framework-v2-sqlserver-crud/app.ts" sqlserver_app)
 foreach(required_pattern IN ITEMS
         "provider: \"sqlserver\""
-        "app.provider(\"sqlserver:main\")"
+        "configKey: \"SLOPPY_SQLSERVER_TEST_CONNECTION_STRING\""
+        "SqlServer<\"main\">"
+        "Body<UserCreate>"
+        "Route<PositiveInt>"
+        "input.name"
+        "input.email"
         "{ deadline: ctx.deadline }"
+        "Results.created"
+        "Results.ok"
         "Results.notFound")
     require_substring(
         "${sqlserver_app}" "${required_pattern}"
         "Framework v2 SQL Server example is missing expected live-lane shape")
+endforeach()
+foreach(rejected_pattern IN ITEMS
+        "app.provider("
+        "ctx.request.json"
+        "ctx.route.")
+    reject_substring(
+        "${sqlserver_app}" "${rejected_pattern}"
+        "Framework v2 SQL Server example must not use manual ctx/provider style")
 endforeach()
 
 foreach(example_name IN LISTS framework_examples)

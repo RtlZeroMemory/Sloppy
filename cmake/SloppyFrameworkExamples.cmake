@@ -25,7 +25,13 @@ function(sloppy_add_framework_v2_compile_example_tests)
         examples/framework-v2-di-services/app.ts)
     sloppy_add_conformance_compile_test(
         conformance.framework_v2_sqlite_crud.compile_artifacts framework-v2-sqlite-crud
-        examples/framework-v2-sqlite-crud/app.js)
+        examples/framework-v2-sqlite-crud/app.ts)
+    sloppy_add_conformance_compile_test(
+        conformance.framework_v2_postgres_crud.compile_artifacts framework-v2-postgres-crud
+        examples/framework-v2-postgres-crud/app.ts)
+    sloppy_add_conformance_compile_test(
+        conformance.framework_v2_sqlserver_crud.compile_artifacts framework-v2-sqlserver-crud
+        examples/framework-v2-sqlserver-crud/app.ts)
 
     sloppy_add_example_tooling_test(
         examples.framework_v2_hello.tooling framework-v2-hello
@@ -45,8 +51,8 @@ function(sloppy_add_framework_v2_compile_example_tests)
         "x-slop-completeness")
     sloppy_add_example_tooling_test(
         examples.framework_v2_sqlite_crud.tooling framework-v2-sqlite-crud
-        examples/framework-v2-sqlite-crud/app.js "data.main" "Users.Create" "data.main"
-        "\"findings\"" "x-slop-capabilities")
+        examples/framework-v2-sqlite-crud/app.ts "data.main" "injection:main"
+        "No inferred route capabilities" "\"findings\"" "x-slop-capabilities")
 endfunction()
 
 function(sloppy_add_framework_v2_v8_example_tests)
@@ -64,7 +70,7 @@ function(sloppy_add_framework_v2_v8_example_tests)
         "\"message\":\"user-42\".*\"counter\":7.*\"stamp\":\"transient\"")
     sloppy_add_conformance_run_once_test(
         conformance.framework_v2_sqlite_crud.run_once framework-v2-sqlite-crud
-        examples/framework-v2-sqlite-crud/app.js GET /users "Ada Lovelace")
+        examples/framework-v2-sqlite-crud/app.ts GET /users "Ada Lovelace")
 
     if(SLOPPY_BUILD_COMPILER)
         add_test(
@@ -92,7 +98,7 @@ function(sloppy_add_framework_v2_v8_example_tests)
                 "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
                 "-DSLOPPY_CASE=framework-v2-sqlite-crud-v8"
-                "-DSLOPPY_SOURCE=examples/framework-v2-sqlite-crud/app.js"
+                "-DSLOPPY_SOURCE=examples/framework-v2-sqlite-crud/app.ts"
                 "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
                 "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
                 "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P

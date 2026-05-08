@@ -368,10 +368,11 @@ Hardened examples now cover the supported shapes:
   scoped, and transient lifetimes.
 - `examples/framework-v2-controller`: bootstrap explicit controller mapping and
   constructor injection shape.
-- `examples/framework-v2-sqlite-crud`: V8-gated source-input SQLite CRUD execution.
+- `examples/framework-v2-sqlite-crud`: V8-gated typed source-input SQLite CRUD execution
+  through provider injection.
 - `examples/framework-v2-postgres-crud` and `examples/framework-v2-sqlserver-crud`:
-  opt-in live-lane provider examples with unavailable diagnostics kept separate from
-  default evidence.
+  typed opt-in live-lane provider-injection examples with connection-string config and
+  unavailable diagnostics kept separate from default evidence.
 - Older examples such as `examples/hello-minimal`, `examples/users-api-sqlite`,
   `examples/configured-api`, `examples/modules-api`, and `examples/validation-errors`
   remain compatibility/evidence fixtures for the earlier source-input shape.
