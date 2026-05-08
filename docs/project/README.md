@@ -37,6 +37,7 @@ Use these documents when implementing or reviewing current behavior:
 - `docs/project/http-transport-runtime-architecture.md`
 - `docs/project/framework-api-shape.md`
 - `docs/project/framework-v2-current-state.md`
+- `docs/project/physical-modularity-current-state.md`
 - `docs/project/engine-19-conformance-matrix.md`
 - `docs/project/main-evidence.md`
 - `docs/project/alpha-infra-readiness.md`

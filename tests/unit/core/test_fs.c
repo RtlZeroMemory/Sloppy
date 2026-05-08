@@ -239,8 +239,7 @@ static int test_watch_directory_and_file_events(void)
     unsigned char tiny_storage[8];
     SlStr dir = sl_str_from_cstr("./sloppy-fs-watch");
     SlStr file = sl_str_from_cstr("./sloppy-fs-watch/item.txt");
-    SlStr long_file = sl_str_from_cstr(
-        "./sloppy-fs-watch/this-is-a-long-event-name-for-retry.txt");
+    SlStr long_file = sl_str_from_cstr("./sloppy-fs-watch/this-is-a-long-event-name-for-retry.txt");
     SlStr sibling_file = sl_str_from_cstr("./sloppy-fs-watch/z.txt");
     SlStr missing_file = sl_str_from_cstr("./sloppy-fs-watch/missing.txt");
     SlFsWatchOptions directory_options = {.directory = true, .queue_capacity = 4U};
@@ -267,8 +266,8 @@ static int test_watch_directory_and_file_events(void)
     if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_write_file(long_file,
-                                       sl_bytes_from_parts((const unsigned char*)"long", 4U),
-                                       false, NULL),
+                                       sl_bytes_from_parts((const unsigned char*)"long", 4U), false,
+                                       NULL),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_watch_next(directory_watch, &tiny_arena, &event, NULL),
                       SL_STATUS_OUT_OF_MEMORY) != 0 ||

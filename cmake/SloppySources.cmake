@@ -1,5 +1,5 @@
 set(
-    SLOPPY_CORE_SOURCES
+    SLOPPY_CORE_KERNEL_SOURCES
     src/core/status.c
     src/core/source_loc.c
     src/core/string.c
@@ -19,8 +19,6 @@ set(
     src/core/crypto_noncrypto_hash.c
     src/core/fs.c
     src/core/os.c
-    src/platform/crypto_password_sodium.c
-    src/platform/libuv/net_tcp_libuv.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -37,16 +35,32 @@ set(
     src/core/plan.c
     src/core/plan_parse.c
     src/core/runtime_contract.c
-    src/core/diagnostics.c
+    src/core/diagnostics.c)
+
+set(
+    SLOPPY_DATA_SOURCES
     src/data/common.c
     src/data/postgres.c
     src/data/sqlserver.c
-    src/data/sqlite.c
-    src/engine/engine.c
+    src/data/sqlite.c)
+
+set(SLOPPY_ENGINE_SOURCES src/engine/engine.c)
+
+set(
+    SLOPPY_PLATFORM_COMMON_SOURCES
+    src/platform/crypto_password_sodium.c
+    src/platform/libuv/net_tcp_libuv.c
     src/platform/libuv/async_backend_libuv.c
     src/platform/libuv/http_transport_libuv.c
     src/platform/libuv/process.c
     src/platform/libuv/thread.c)
+
+set(
+    SLOPPY_CORE_SOURCES
+    ${SLOPPY_CORE_KERNEL_SOURCES}
+    ${SLOPPY_DATA_SOURCES}
+    ${SLOPPY_ENGINE_SOURCES}
+    ${SLOPPY_PLATFORM_COMMON_SOURCES})
 
 if(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
     list(APPEND SLOPPY_CORE_SOURCES src/core/bytes_simd_sse2.c src/core/string_simd_sse2.c)
@@ -56,29 +70,27 @@ if(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE)
 endif()
 
 if(WIN32)
-    list(
-        APPEND
-        SLOPPY_CORE_SOURCES
+    set(
+        SLOPPY_PLATFORM_SYSTEM_SOURCES
         src/platform/win32/time.c
         src/platform/win32/fs_win32.c
         src/platform/win32/net_local_win32.c
         src/platform/win32/crypto_win32.c
         src/platform/win32/os_win32.c)
 else()
-    list(
-        APPEND
-        SLOPPY_CORE_SOURCES
+    set(
+        SLOPPY_PLATFORM_SYSTEM_SOURCES
         src/platform/posix/time.c
         src/platform/posix/fs_posix.c
         src/platform/posix/net_local_posix.c
         src/platform/posix/crypto_posix.c
         src/platform/posix/os_posix.c)
 endif()
+list(APPEND SLOPPY_CORE_SOURCES ${SLOPPY_PLATFORM_SYSTEM_SOURCES})
 
 if(SLOPPY_ENABLE_V8)
-    list(
-        APPEND
-        SLOPPY_CORE_SOURCES
+    set(
+        SLOPPY_V8_SOURCES
         src/engine/v8/engine_v8.cc
         src/engine/v8/async_scheduler.cc
         src/engine/v8/http_bridge.cc
@@ -95,6 +107,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_sqlite.cc
         src/engine/v8/intrinsics_postgres.cc
         src/engine/v8/intrinsics_sqlserver.cc)
+    list(APPEND SLOPPY_CORE_SOURCES ${SLOPPY_V8_SOURCES})
 endif()
 
 set(

@@ -6,7 +6,7 @@ This example demonstrates Sloppy's first public app shape using the current sour
 bootstrap stdlib:
 
 ```js
-import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
+import { Sloppy, Results } from "sloppy";
 
 const builder = Sloppy.createBuilder();
 
@@ -36,7 +36,7 @@ What works today:
 - `.withName("Hello.Index")` stores the route name for the bootstrap shape.
 - Route handlers can receive a minimal context with `services`, `config`, and `log`.
 - `Results.text("Hello from Sloppy")` creates a frozen text result descriptor.
-- CTest statically verifies this example imports the current stdlib path and uses the
+- CTest statically verifies this example imports the public Sloppy facade and uses the
   expected public API shape.
 
 What does not work yet:
@@ -45,8 +45,8 @@ What does not work yet:
 - This example does not emit `app.plan.json`.
 - This source-stdlib example is not a `sloppy run --artifacts` app.
 - There is no `app.run` or `app.listen` yet.
-- The bare import `import { Sloppy, Results } from "sloppy";` is future compiler/runtime
-  module-resolution behavior, not something this repository supports today.
+- Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
+  use the Sloppy facade import shape that `sloppyc` recognizes.
 
 Future intended workflow:
 

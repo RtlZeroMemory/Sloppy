@@ -1,4 +1,4 @@
-import { Sloppy, data, sql } from "../../stdlib/sloppy/index.js";
+import { Sloppy, data, sql } from "sloppy";
 
 export const DataModule = Sloppy.module("data")
     .capabilities((caps) => {

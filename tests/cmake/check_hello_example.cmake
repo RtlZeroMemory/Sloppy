@@ -23,7 +23,7 @@ function(require_substring haystack needle description)
 endfunction()
 
 foreach(required_pattern IN ITEMS
-        "import { Sloppy, Results } from \"../../stdlib/sloppy/index.js\";"
+        "import { Sloppy, Results } from \"sloppy\";"
         "const builder = Sloppy.createBuilder();"
         "builder.config.addObject"
         "builder.logging.addMemorySink();"
@@ -44,7 +44,7 @@ foreach(required_pattern IN ITEMS
         "not a `sloppy run --artifacts` app"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "bare import"
+        "Sloppy facade import"
         "planned only")
     require_substring(
         "${hello_readme_md}" "${required_pattern}"
