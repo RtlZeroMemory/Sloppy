@@ -16,6 +16,40 @@ static SlStatus sl_os_win32_copy_cstr(SlArena* arena, const char* value, SlOwned
     return sl_str_copy_to_arena(arena, sl_str_from_cstr(value == NULL ? "" : value), out);
 }
 
+static SlStatus sl_os_win32_copy_nul(SlArena* arena, SlStr value, char** out)
+{
+    size_t alloc_size = 0U;
+    void* memory = NULL;
+    SlStatus status;
+
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+
+    status = sl_str_validate_no_nul(value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_add_size(value.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (value.length != 0U) {
+        memcpy(memory, value.ptr, value.length);
+    }
+    ((char*)memory)[value.length] = '\0';
+
+    *out = (char*)memory;
+    return sl_status_ok();
+}
+
 static SlStr sl_os_win32_arch(void)
 {
 #if defined(_M_X64) || defined(__x86_64__)
@@ -571,13 +605,11 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         return status;
     }
     if (!sl_str_is_empty(options->cwd)) {
-        SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
+        status = sl_os_win32_copy_nul(arena, options->cwd, &cwd);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        cwd = owned.ptr;
         attributes = GetFileAttributesA(cwd);
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0U)
         {
@@ -841,13 +873,11 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         return status;
     }
     if (!sl_str_is_empty(options->cwd)) {
-        SlOwnedStr owned = {0};
         DWORD attributes = 0U;
-        status = sl_str_copy_to_arena_cstr(arena, options->cwd, &owned);
+        status = sl_os_win32_copy_nul(arena, options->cwd, &cwd);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        cwd = owned.ptr;
         attributes = GetFileAttributesA(cwd);
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0U)
         {

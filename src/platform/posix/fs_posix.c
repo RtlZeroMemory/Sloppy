@@ -831,6 +831,7 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
         return sl_fs_posix_status(errno);
     }
     lock->path = native;
+    sl_owned_str_rebind(&lock->path);
     lock->closed = false;
     *out_lock = lock;
     return sl_status_ok();
@@ -843,8 +844,9 @@ SlStatus sl_fs_platform_release_lock(SlFsFileLock* lock, SlDiag* out_diag)
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     close(lock->fd);
-    if (lock->path.ptr != NULL) {
-        (void)unlink(lock->path.ptr);
+    SlStr path = sl_owned_str_as_view(lock->path);
+    if (path.ptr != NULL) {
+        (void)unlink(path.ptr);
     }
     lock->closed = true;
     lock->fd = -1;

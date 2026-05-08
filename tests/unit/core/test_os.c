@@ -976,39 +976,54 @@ static int test_process_run_suite(const char* self_path)
 {
     int result = test_process_run_captures_explicit_argv(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_run_captures_explicit_argv failed: %d\n", result);
         return result;
     }
     result = test_process_windows_path_lookup(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_windows_path_lookup failed: %d\n", result);
         return result;
     }
     result = test_process_run_timeout_is_distinct(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_run_timeout_is_distinct failed: %d\n", result);
         return result;
     }
     result = test_process_run_negative_paths(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_run_negative_paths failed: %d\n", result);
         return result;
     }
     result = test_process_run_env_override_and_strict_grant(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_run_env_override_and_strict_grant failed: %d\n", result);
         return result;
     }
-    return test_process_run_capture_bound(self_path);
+    result = test_process_run_capture_bound(self_path);
+    if (result != 0) {
+        fprintf(stderr, "test_process_run_capture_bound failed: %d\n", result);
+    }
+    return result;
 }
 
 static int test_process_start_suite(const char* self_path)
 {
     int result = test_process_start_streams_and_wait(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_start_streams_and_wait failed: %d\n", result);
         return result;
     }
     result = test_process_start_stdin_pipe(self_path);
     if (result != 0) {
+        fprintf(stderr, "test_process_start_stdin_pipe failed: %d\n", result);
         return result;
     }
 
-    return test_process_start_timeout_kill_cancel_and_stale(self_path);
+    result = test_process_start_timeout_kill_cancel_and_stale(self_path);
+    if (result != 0) {
+        fprintf(stderr, "test_process_start_timeout_kill_cancel_and_stale failed: %d\n", result);
+    }
+    return result;
 }
 
 int main(int argc, char** argv)

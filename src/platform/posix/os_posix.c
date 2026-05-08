@@ -237,22 +237,35 @@ static void sl_os_posix_sleep_poll(void)
 
 static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
 {
-    SlOwnedStr owned = {0};
+    size_t alloc_size = 0U;
+    void* memory = NULL;
     SlStatus status;
 
-    if (out == NULL) {
+    if (arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = NULL;
 
-    status = sl_str_copy_to_arena_cstr(arena, value, &owned);
+    status = sl_str_validate_no_nul(value);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (owned.ptr == NULL) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+
+    status = sl_checked_add_size(value.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    *out = owned.ptr;
+
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (value.length != 0U) {
+        memcpy(memory, value.ptr, value.length);
+    }
+    ((char*)memory)[value.length] = '\0';
+
+    *out = (char*)memory;
     return sl_status_ok();
 }
 
