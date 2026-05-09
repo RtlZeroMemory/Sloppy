@@ -840,7 +840,6 @@ function Get-BridgeWorkloads {
             expectedStatus = 200
             expectedBody = "bench-agent"
             expectedContentType = "text/plain"
-            skipOnSloppy = "live source-input runtime header facade returns 500; native V8 bridge microbench covers header lookup"
         },
         @{ id = "bridge.request.post_json"; method = "POST"; path = "/bridge/body"; body = '{"bench":true}'; expectedStatus = 200; expectedBody = '{"received":true}'; expectedContentType = "application/json" },
         @{ id = "bridge.async.immediate"; method = "GET"; path = "/bridge/async"; expectedStatus = 200; expectedBody = "async"; expectedContentType = "text/plain" }
@@ -1009,6 +1008,17 @@ function New-SloppyBenchApp {
         environment = "Development"
     } | ConvertTo-Json | ForEach-Object {
         Write-BenchUtf8File (Join-Path $ProjectDir "sloppy.json") $_
+    }
+    if ($SuiteName -eq "concurrency") {
+        @{
+            Sloppy = @{
+                Server = @{
+                    MaxConnections = 64
+                }
+            }
+        } | ConvertTo-Json -Depth 4 | ForEach-Object {
+            Write-BenchUtf8File (Join-Path $ProjectDir "appsettings.json") $_
+        }
     }
 
     $lines = New-Object System.Collections.Generic.List[string]

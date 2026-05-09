@@ -101,6 +101,24 @@ typedef struct SlPlanRequestBinding
     bool redacted;
 } SlPlanRequestBinding;
 
+extern const SlPlanRequestBinding sl_plan_route_empty_bindings_sentinel;
+
+#define SL_PLAN_ROUTE_EMPTY_BINDINGS (&sl_plan_route_empty_bindings_sentinel)
+
+static inline bool sl_plan_route_has_bindings(const SlPlanRoute* route)
+{
+    return route != NULL &&
+           (route->binding_count != 0U || route->bindings == SL_PLAN_ROUTE_EMPTY_BINDINGS);
+}
+
+static inline void sl_plan_route_mark_bindings_empty(SlPlanRoute* route)
+{
+    if (route != NULL) {
+        route->bindings = SL_PLAN_ROUTE_EMPTY_BINDINGS;
+        route->binding_count = 0U;
+    }
+}
+
 typedef enum SlPlanSchemaKind
 {
     SL_PLAN_SCHEMA_UNKNOWN = 0,

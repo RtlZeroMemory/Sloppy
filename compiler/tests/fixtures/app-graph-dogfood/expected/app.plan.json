@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:75747328c73e844acb83df435db42053422036c446d2bad5e1c5e1990547f0d3",
+    "hash": "sha256:4c81f91d13959e79d996b3153bb93652aff744f39cdecd8f8a0d036d8f977481",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -592,6 +592,7 @@
       ]
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -652,6 +653,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -711,6 +713,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -770,6 +773,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"

@@ -18,6 +18,8 @@
 #include "sloppy/container.h"
 #include "sloppy/http.h"
 
+const SlPlanRequestBinding sl_plan_route_empty_bindings_sentinel = {0};
+
 static bool sl_plan_token_equal(SlStr left, SlStr right)
 {
     return !sl_str_is_empty(left) && sl_str_equal(left, right);
@@ -367,6 +369,10 @@ static SlStatus sl_plan_intern_bindings(SlArena* arena, SlInternTable* table, Sl
     SlStatus status;
 
     if (route->binding_count == 0U) {
+        if (sl_plan_route_has_bindings(route)) {
+            sl_plan_route_mark_bindings_empty(route);
+            return sl_status_ok();
+        }
         route->bindings = NULL;
         return sl_status_ok();
     }

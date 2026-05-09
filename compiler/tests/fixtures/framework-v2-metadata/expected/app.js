@@ -2,7 +2,7 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Results, data, sql, System, Environment, Process, Signals, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;
+const { Results, data, sql, System, Environment, Process, ProcessHandle, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;
 const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
 const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","connectionStringKey":"Sloppy:Providers:postgres:main:connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","connectionStringKey":"Sloppy:Providers:sqlserver:search:connectionString","providerKind":"sqlserver"}]]);

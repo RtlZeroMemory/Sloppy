@@ -4,6 +4,13 @@
     const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
     const BYTES_CONTENT_TYPE = "application/octet-stream";
     const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
+    const FAST_RESULT_KIND = "__sloppyFastResult";
+    const FAST_JSON_TEXT = "__sloppyJsonText";
+    const FAST_TEXT_OK = 1;
+    const FAST_NO_CONTENT = 2;
+    const FAST_JSON = 3;
+    const FAST_CREATED = 4;
+    const FAST_JSON_MAX_LENGTH = 256;
 
     function resolveStatus(options, defaultStatus) {
         const status = options?.status ?? defaultStatus;
@@ -204,7 +211,25 @@
         return contentType;
     }
 
-    function createResult(kind, body, contentType, options, defaultStatus, extra) {
+    function maybeFastJsonText(body) {
+        if (body !== null && typeof body === "object") {
+            return undefined;
+        }
+
+        let jsonText;
+
+        try {
+            jsonText = body === undefined ? "null" : JSON.stringify(body);
+        } catch {
+            return undefined;
+        }
+
+        return typeof jsonText === "string" && jsonText.length <= FAST_JSON_MAX_LENGTH
+            ? jsonText
+            : undefined;
+    }
+
+    function createResult(kind, body, contentType, options, defaultStatus, extra, fast) {
         const descriptor = {
             __sloppyResult: true,
             kind,
@@ -218,8 +243,32 @@
             descriptor.body = body;
         }
 
+        if (fast !== undefined) {
+            Object.defineProperty(descriptor, FAST_RESULT_KIND, {
+                value: fast.kind,
+            });
+            if (fast.jsonText !== undefined) {
+                Object.defineProperty(descriptor, FAST_JSON_TEXT, {
+                    value: fast.jsonText,
+                });
+            }
+        }
+
         return Object.freeze(descriptor);
     }
+
+    const TEXT_OK_RESULT = createResult("text", "ok", TEXT_CONTENT_TYPE, undefined, 200, undefined, {
+        kind: FAST_TEXT_OK,
+    });
+    const NO_CONTENT_RESULT = createResult(
+        "empty",
+        undefined,
+        undefined,
+        undefined,
+        204,
+        undefined,
+        { kind: FAST_NO_CONTENT },
+    );
 
     function requireSqliteBridge() {
         const bridge = globalThis.__sloppy?.data?.sqlite;
@@ -558,10 +607,23 @@ Operation:
 
     const Results = Object.freeze({
         text(body, options) {
-            return createResult("text", String(body), TEXT_CONTENT_TYPE, options, 200);
+            const value = String(body);
+            if (options === undefined && value === "ok") {
+                return TEXT_OK_RESULT;
+            }
+            return createResult("text", value, TEXT_CONTENT_TYPE, options, 200);
         },
         json(value, options) {
-            return createResult("json", value, JSON_CONTENT_TYPE, options, 200);
+            const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+            return createResult(
+                "json",
+                value,
+                JSON_CONTENT_TYPE,
+                options,
+                200,
+                undefined,
+                jsonText === undefined ? undefined : { kind: FAST_JSON, jsonText },
+            );
         },
         html(body, options) {
             return createResult("html", String(body), HTML_CONTENT_TYPE, options, 200);
@@ -576,27 +638,40 @@ Operation:
             );
         },
         ok(value, options) {
-            return createResult("json", value, JSON_CONTENT_TYPE, options, 200);
+            const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+            return createResult(
+                "json",
+                value,
+                JSON_CONTENT_TYPE,
+                options,
+                200,
+                undefined,
+                jsonText === undefined ? undefined : { kind: FAST_JSON, jsonText },
+            );
         },
         created(location, value, options) {
             if (typeof location !== "string" || location.length === 0) {
                 throw new TypeError("Sloppy Results.created location must be a non-empty string.");
             }
 
+            const mergedOptions = { status: 201, ...options };
+            const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+
             return createResult(
                 "json",
                 value,
                 JSON_CONTENT_TYPE,
-                { status: 201, ...options },
+                mergedOptions,
                 201,
                 { location },
+                jsonText === undefined ? undefined : { kind: FAST_CREATED, jsonText },
             );
         },
         accepted(value, options) {
             return createResult("json", value, JSON_CONTENT_TYPE, { status: 202, ...options }, 202);
         },
         noContent() {
-            return createResult("empty", undefined, undefined, undefined, 204);
+            return NO_CONTENT_RESULT;
         },
         notFound(valueOrProblem, options) {
             return createResult(

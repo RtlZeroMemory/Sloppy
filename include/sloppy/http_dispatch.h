@@ -32,6 +32,14 @@ typedef struct SlHttpRouteBinding
     size_t route_index;
 } SlHttpRouteBinding;
 
+typedef struct SlHttpRouteCandidateBucket
+{
+    SlHttpMethod method;
+    SlStr first_static_segment;
+    const SlHttpRouteBinding** routes;
+    size_t route_count;
+} SlHttpRouteCandidateBucket;
+
 /*
  * Borrowed route binding table.
  *
@@ -47,6 +55,8 @@ typedef struct SlHttpDispatchTable
     size_t exact_route_bucket_count;
     const SlHttpRouteBinding* param_routes;
     size_t param_route_count;
+    const SlHttpRouteCandidateBucket* param_route_buckets;
+    size_t param_route_bucket_count;
 } SlHttpDispatchTable;
 
 /*
@@ -105,9 +115,10 @@ SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
  * - missing/non-callable/throwing JavaScript handlers fail through the existing engine
  *   diagnostic path.
  *
- * Route parameters, query parameters, headers, and JSON/text body policy are materialized
- * into the request context passed to JavaScript. Route parameter values are strings;
- * `{id:int}` validates matching but does not coerce the JS value to a number.
+ * Route parameters and query parameters are materialized only when Plan binding metadata
+ * says the handler needs them, with older/partial Plans kept fail-open. Body policy still
+ * validates supported request body shapes before JavaScript execution. Route parameter values
+ * are strings; `{id:int}` validates matching but does not coerce the JS value to a number.
  */
 SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                        const SlHttpDispatchTable* dispatch_table,

@@ -36,9 +36,36 @@ pub(crate) fn emit_plan(
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
     let emits_app_metadata =
         !app.schemas.is_empty() || !app.config_reads.is_empty() || app.uses_health;
+    let route_completeness_values = app
+        .routes
+        .iter()
+        .map(|route| {
+            route_completeness(&RouteCompletenessInput {
+                has_response_metadata: route.handler.response.is_some(),
+                body_json_without_schema: route
+                    .handler
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.kind == "body.json" && binding.schema.is_none()),
+                missing_provider_registration: route.handler.effects.iter().any(|effect| {
+                    !app.capabilities.iter().any(|capability| {
+                        capability.token == effect.provider
+                            && capability.capability_kind == effect.capability_kind
+                            && capability.provider == effect.provider_kind
+                    })
+                }),
+                runtime_only: route.handler.runtime_deferred,
+            })
+        })
+        .collect::<Vec<_>>();
+    let app_completeness = plan_completeness(&route_completeness_values);
+    let emits_binding_metadata = |index: usize, route: &crate::graph::Route| {
+        !route.handler.bindings.is_empty()
+            || route_completeness_values[index].status.as_str() == "complete"
+    };
     let emits_metadata = emits_app_metadata
-        || app.routes.iter().any(|route| {
-            !route.handler.bindings.is_empty()
+        || app.routes.iter().enumerate().any(|(index, route)| {
+            emits_binding_metadata(index, route)
                 || route.handler.response.is_some()
                 || !route.handler.responses.is_empty()
                 || route.handler.runtime_deferred
@@ -71,30 +98,6 @@ pub(crate) fn emit_plan(
             handler
         })
         .collect::<Vec<_>>();
-
-    let route_completeness_values = app
-        .routes
-        .iter()
-        .map(|route| {
-            route_completeness(&RouteCompletenessInput {
-                has_response_metadata: route.handler.response.is_some(),
-                body_json_without_schema: route
-                    .handler
-                    .bindings
-                    .iter()
-                    .any(|binding| binding.kind == "body.json" && binding.schema.is_none()),
-                missing_provider_registration: route.handler.effects.iter().any(|effect| {
-                    !app.capabilities.iter().any(|capability| {
-                        capability.token == effect.provider
-                            && capability.capability_kind == effect.capability_kind
-                            && capability.provider == effect.provider_kind
-                    })
-                }),
-                runtime_only: route.handler.runtime_deferred,
-            })
-        })
-        .collect::<Vec<_>>();
-    let app_completeness = plan_completeness(&route_completeness_values);
 
     let routes = app
         .routes
@@ -170,14 +173,14 @@ pub(crate) fn emit_plan(
                 }
             }
             let emits_route_metadata = emits_app_metadata
-                || !route.handler.bindings.is_empty()
+                || emits_binding_metadata(index, route)
                 || route.handler.response.is_some()
                 || !route.handler.responses.is_empty()
                 || !route.handler.effects.is_empty()
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.cors.is_some();
-            if !route.handler.bindings.is_empty() {
+            if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route
                     .handler
                     .bindings

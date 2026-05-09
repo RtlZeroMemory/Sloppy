@@ -8880,6 +8880,11 @@ fn collect_statement_request_bindings(
     bindings: &mut Vec<RequestBinding>,
 ) {
     match statement {
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+            }
+        }
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
                 collect_expression_request_bindings(argument, ctx_name, schema_names, bindings);
@@ -8893,7 +8898,115 @@ fn collect_statement_request_bindings(
                 bindings,
             );
         }
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_request_bindings(init, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(
+                &statement.consequent,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_request_bindings(alternate, ctx_name, schema_names, bindings);
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_request_bindings(
+                &statement.argument,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Statement::DoWhileStatement(statement) => {
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+        }
+        Statement::WhileStatement(statement) => {
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForStatement(statement) => {
+            if let Some(init) = &statement.init {
+                collect_for_init_request_bindings(init, ctx_name, schema_names, bindings);
+            }
+            if let Some(test) = &statement.test {
+                collect_expression_request_bindings(test, ctx_name, schema_names, bindings);
+            }
+            if let Some(update) = &statement.update {
+                collect_expression_request_bindings(update, ctx_name, schema_names, bindings);
+            }
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForInStatement(statement) => {
+            collect_expression_request_bindings(&statement.right, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForOfStatement(statement) => {
+            collect_expression_request_bindings(&statement.right, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::SwitchStatement(statement) => {
+            collect_expression_request_bindings(
+                &statement.discriminant,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            for case in &statement.cases {
+                if let Some(test) = &case.test {
+                    collect_expression_request_bindings(test, ctx_name, schema_names, bindings);
+                }
+                for statement in &case.consequent {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        Statement::TryStatement(statement) => {
+            for statement in &statement.block.body {
+                collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+            }
+            if let Some(handler) = &statement.handler {
+                for statement in &handler.body.body {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+            if let Some(finalizer) = &statement.finalizer {
+                for statement in &finalizer.body {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+        }
         _ => {}
+    }
+}
+
+fn collect_for_init_request_bindings(
+    init: &ForStatementInit<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+    bindings: &mut Vec<RequestBinding>,
+) {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_request_bindings(init, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        _ => {
+            if let Some(expression) = init.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -8910,10 +9023,20 @@ fn collect_expression_request_bindings(
         Expression::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
             }
             for argument in &call.arguments {
                 collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
+        }
+        Expression::AwaitExpression(expression) => {
+            collect_expression_request_bindings(
+                &expression.argument,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
@@ -8940,8 +9063,54 @@ fn collect_expression_request_bindings(
                 bindings,
             );
         }
-        Expression::StaticMemberExpression(member) => {
+        Expression::StaticMemberExpression(member)
+            if static_member_chain(expression)
+                .is_none_or(|chain| chain.first() != Some(&ctx_name)) =>
+        {
             collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
+        }
+        Expression::StaticMemberExpression(_) => {}
+        Expression::ComputedMemberExpression(member) => {
+            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &member.expression,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::BinaryExpression(expression) => {
+            collect_expression_request_bindings(&expression.left, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::LogicalExpression(expression) => {
+            collect_expression_request_bindings(&expression.left, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::ConditionalExpression(expression) => {
+            collect_expression_request_bindings(&expression.test, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.consequent,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            collect_expression_request_bindings(
+                &expression.alternate,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         _ => {}
     }
@@ -8957,6 +9126,8 @@ fn collect_argument_request_bindings(
         Argument::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
             }
             for argument in &call.arguments {
                 collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
@@ -8979,10 +9150,16 @@ fn collect_argument_request_bindings(
                 collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
-        Argument::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
+        Argument::StaticMemberExpression(_) => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
         }
-        _ => {}
+        _ => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -8996,6 +9173,11 @@ fn collect_array_element_request_bindings(
         ArrayExpressionElement::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
+            }
+            for argument in &call.arguments {
+                collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
@@ -9015,7 +9197,11 @@ fn collect_array_element_request_bindings(
                 collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
-        _ => {}
+        _ => {
+            if let Some(expression) = element.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -9023,12 +9209,22 @@ fn request_binding_from_expression(
     expression: &Expression<'_>,
     ctx_name: &str,
 ) -> Option<RequestBinding> {
+    if matches!(expression, Expression::Identifier(identifier) if identifier.name.as_str() == ctx_name)
+    {
+        return Some(context_request_binding());
+    }
+
     let chain = static_member_chain(expression)?;
     if chain.len() == 3 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
     {
+        let name = if chain[1] == "header" {
+            header_facade_binding_name(chain[2])
+        } else {
+            chain[2].to_string()
+        };
         return Some(RequestBinding {
             kind: chain[1].to_string(),
-            name: Some(chain[2].to_string()),
+            name: Some(name),
             schema: None,
             parameter: None,
             type_name: None,
@@ -9043,7 +9239,52 @@ fn request_binding_from_expression(
             redacted: false,
         });
     }
+    if chain.len() == 2 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
+    {
+        return Some(context_request_binding());
+    }
+    if chain.len() >= 2 && chain[0] == ctx_name {
+        return Some(context_request_binding());
+    }
     None
+}
+
+fn context_request_binding() -> RequestBinding {
+    RequestBinding {
+        kind: "context".to_string(),
+        name: Some("RequestContext".to_string()),
+        schema: None,
+        parameter: None,
+        type_name: Some("RequestContext".to_string()),
+        source_name: None,
+        source_text: None,
+        span: None,
+        wrapper: None,
+        injection_kind: None,
+        provider_kind: None,
+        capability: None,
+        semantic: None,
+        redacted: false,
+    }
+}
+
+fn header_facade_binding_name(property: &str) -> String {
+    let mut output = String::with_capacity(property.len());
+    let mut previous_was_lower_or_digit = false;
+
+    for ch in property.chars() {
+        if ch.is_ascii_uppercase() {
+            if !output.is_empty() && previous_was_lower_or_digit {
+                output.push('-');
+            }
+            output.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = false;
+        } else {
+            output.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        }
+    }
+    output
 }
 
 fn request_binding_from_call(
@@ -9052,6 +9293,9 @@ fn request_binding_from_call(
     schema_names: &BTreeSet<String>,
 ) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
+    if chain.len() >= 2 && chain[0] == ctx_name && chain[1] == "request" {
+        return Some(context_request_binding());
+    }
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" {
         let schema = body_binding_schema(call, chain[2], schema_names)?;
         return Some(RequestBinding {
@@ -9141,6 +9385,11 @@ fn collect_statement_schema_argument_spans(
     spans: &mut Vec<Span>,
 ) {
     match statement {
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_statement_schema_argument_spans(statement, ctx_name, schema_names, spans);
+            }
+        }
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
                 collect_expression_schema_argument_spans(argument, ctx_name, schema_names, spans);
@@ -9154,7 +9403,155 @@ fn collect_statement_schema_argument_spans(
                 spans,
             );
         }
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_schema_argument_spans(init, ctx_name, schema_names, spans);
+                }
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.test,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_statement_schema_argument_spans(
+                &statement.consequent,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_schema_argument_spans(alternate, ctx_name, schema_names, spans);
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.argument,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Statement::DoWhileStatement(statement) => {
+            collect_statement_schema_argument_spans(&statement.body, ctx_name, schema_names, spans);
+            collect_expression_schema_argument_spans(
+                &statement.test,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Statement::WhileStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.test,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_statement_schema_argument_spans(&statement.body, ctx_name, schema_names, spans);
+        }
+        Statement::ForStatement(statement) => {
+            if let Some(init) = &statement.init {
+                collect_for_init_schema_argument_spans(init, ctx_name, schema_names, spans);
+            }
+            if let Some(test) = &statement.test {
+                collect_expression_schema_argument_spans(test, ctx_name, schema_names, spans);
+            }
+            if let Some(update) = &statement.update {
+                collect_expression_schema_argument_spans(update, ctx_name, schema_names, spans);
+            }
+            collect_statement_schema_argument_spans(&statement.body, ctx_name, schema_names, spans);
+        }
+        Statement::ForInStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.right,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_statement_schema_argument_spans(&statement.body, ctx_name, schema_names, spans);
+        }
+        Statement::ForOfStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.right,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_statement_schema_argument_spans(&statement.body, ctx_name, schema_names, spans);
+        }
+        Statement::SwitchStatement(statement) => {
+            collect_expression_schema_argument_spans(
+                &statement.discriminant,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            for case in &statement.cases {
+                if let Some(test) = &case.test {
+                    collect_expression_schema_argument_spans(test, ctx_name, schema_names, spans);
+                }
+                for statement in &case.consequent {
+                    collect_statement_schema_argument_spans(
+                        statement,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
+                }
+            }
+        }
+        Statement::TryStatement(statement) => {
+            for statement in &statement.block.body {
+                collect_statement_schema_argument_spans(statement, ctx_name, schema_names, spans);
+            }
+            if let Some(handler) = &statement.handler {
+                for statement in &handler.body.body {
+                    collect_statement_schema_argument_spans(
+                        statement,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
+                }
+            }
+            if let Some(finalizer) = &statement.finalizer {
+                for statement in &finalizer.body {
+                    collect_statement_schema_argument_spans(
+                        statement,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
+                }
+            }
+        }
         _ => {}
+    }
+}
+
+fn collect_for_init_schema_argument_spans(
+    init: &ForStatementInit<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+    spans: &mut Vec<Span>,
+) {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_schema_argument_spans(init, ctx_name, schema_names, spans);
+                }
+            }
+        }
+        _ => {
+            if let Some(expression) = init.as_expression() {
+                collect_expression_schema_argument_spans(expression, ctx_name, schema_names, spans);
+            }
+        }
     }
 }
 
@@ -9168,10 +9565,25 @@ fn collect_expression_schema_argument_spans(
         Expression::CallExpression(call) => {
             if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
+            } else {
+                collect_expression_schema_argument_spans(
+                    &call.callee,
+                    ctx_name,
+                    schema_names,
+                    spans,
+                );
             }
             for argument in &call.arguments {
                 collect_argument_schema_argument_spans(argument, ctx_name, schema_names, spans);
             }
+        }
+        Expression::AwaitExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.argument,
+                ctx_name,
+                schema_names,
+                spans,
+            );
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
@@ -9198,6 +9610,136 @@ fn collect_expression_schema_argument_spans(
                 spans,
             );
         }
+        Expression::StaticMemberExpression(member)
+            if static_member_chain(expression)
+                .is_none_or(|chain| chain.first() != Some(&ctx_name)) =>
+        {
+            collect_expression_schema_argument_spans(&member.object, ctx_name, schema_names, spans);
+        }
+        Expression::StaticMemberExpression(_) => {}
+        Expression::ComputedMemberExpression(member) => {
+            collect_expression_schema_argument_spans(&member.object, ctx_name, schema_names, spans);
+            collect_expression_schema_argument_spans(
+                &member.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::BinaryExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.left,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_expression_schema_argument_spans(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::LogicalExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.left,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_expression_schema_argument_spans(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::ConditionalExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.test,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_expression_schema_argument_spans(
+                &expression.consequent,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+            collect_expression_schema_argument_spans(
+                &expression.alternate,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::SequenceExpression(expression) => {
+            for expression in &expression.expressions {
+                collect_expression_schema_argument_spans(expression, ctx_name, schema_names, spans);
+            }
+        }
+        Expression::TaggedTemplateExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.tag,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::UnaryExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.argument,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::YieldExpression(expression) => {
+            if let Some(argument) = &expression.argument {
+                collect_expression_schema_argument_spans(argument, ctx_name, schema_names, spans);
+            }
+        }
+        Expression::AssignmentExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::TSAsExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::TSSatisfiesExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::TSNonNullExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
+        Expression::TSInstantiationExpression(expression) => {
+            collect_expression_schema_argument_spans(
+                &expression.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
+        }
         _ => {}
     }
 }
@@ -9212,6 +9754,13 @@ fn collect_argument_schema_argument_spans(
         Argument::CallExpression(call) => {
             if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
+            } else {
+                collect_expression_schema_argument_spans(
+                    &call.callee,
+                    ctx_name,
+                    schema_names,
+                    spans,
+                );
             }
             for argument in &call.arguments {
                 collect_argument_schema_argument_spans(argument, ctx_name, schema_names, spans);
@@ -9234,7 +9783,16 @@ fn collect_argument_schema_argument_spans(
                 collect_array_element_schema_argument_spans(element, ctx_name, schema_names, spans);
             }
         }
-        _ => {}
+        Argument::StaticMemberExpression(_) => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_schema_argument_spans(expression, ctx_name, schema_names, spans);
+            }
+        }
+        _ => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_schema_argument_spans(expression, ctx_name, schema_names, spans);
+            }
+        }
     }
 }
 
@@ -9248,6 +9806,16 @@ fn collect_array_element_schema_argument_spans(
         ArrayExpressionElement::CallExpression(call) => {
             if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
+            } else {
+                collect_expression_schema_argument_spans(
+                    &call.callee,
+                    ctx_name,
+                    schema_names,
+                    spans,
+                );
+            }
+            for argument in &call.arguments {
+                collect_argument_schema_argument_spans(argument, ctx_name, schema_names, spans);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
@@ -9267,7 +9835,11 @@ fn collect_array_element_schema_argument_spans(
                 collect_array_element_schema_argument_spans(element, ctx_name, schema_names, spans);
             }
         }
-        _ => {}
+        _ => {
+            if let Some(expression) = element.as_expression() {
+                collect_expression_schema_argument_spans(expression, ctx_name, schema_names, spans);
+            }
+        }
     }
 }
 

@@ -69,6 +69,8 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "expired";
     case SL_V8_HTTP_STRING_GET:
         return "get";
+    case SL_V8_HTTP_STRING_HEADER:
+        return "header";
     case SL_V8_HTTP_STRING_HEADERS:
         return "headers";
     case SL_V8_HTTP_STRING_ID:
@@ -133,6 +135,10 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "isEnabled";
     case SL_V8_HTTP_STRING_FOR_CATEGORY:
         return "forCategory";
+    case SL_V8_HTTP_STRING_FAST_RESULT:
+        return "__sloppyFastResult";
+    case SL_V8_HTTP_STRING_FAST_JSON_TEXT:
+        return "__sloppyJsonText";
     case SL_V8_HTTP_STRING_COUNT:
     default:
         return nullptr;
@@ -1130,6 +1136,64 @@ bool http_v8_collect_headers(const SlHttpRequestHead* request, std::vector<HttpV
         }
     }
 
+    return true;
+}
+
+std::string http_v8_header_facade_property_name(const std::string& header_name)
+{
+    std::string property;
+    bool uppercase_next = false;
+
+    property.reserve(header_name.size());
+    for (char ch : header_name) {
+        if (ch == '-') {
+            uppercase_next = !property.empty();
+            continue;
+        }
+        if (uppercase_next && ch >= 'a' && ch <= 'z') {
+            property.push_back(static_cast<char>(ch - 'a' + 'A'));
+        }
+        else {
+            property.push_back(ch);
+        }
+        uppercase_next = false;
+    }
+
+    return property;
+}
+
+bool http_v8_make_header_facade(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                const SlHttpRequestHead* request, v8::Local<v8::Object>* out)
+{
+    std::vector<HttpV8HeaderEntry> header_entries;
+
+    if (isolate == nullptr || out == nullptr || !http_v8_collect_headers(request, &header_entries))
+    {
+        return false;
+    }
+
+    v8::Local<v8::Object> facade = v8::Object::New(isolate);
+
+    for (const HttpV8HeaderEntry& entry : header_entries) {
+        std::string property_name = http_v8_header_facade_property_name(entry.name);
+        v8::Local<v8::String> key;
+        v8::Local<v8::String> value;
+
+        if (!sl_status_is_ok(
+                http_v8_to_local_string(isolate, http_v8_str_from_string(property_name), &key)) ||
+            !sl_status_is_ok(
+                http_v8_to_local_string(isolate, http_v8_str_from_string(entry.value), &value)) ||
+            !facade->Set(context, key, value).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+
+    if (!facade->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
+        return false;
+    }
+
+    *out = facade;
     return true;
 }
 
@@ -2132,6 +2196,212 @@ bool http_v8_stringify_json(v8::Local<v8::Context> context, v8::Local<v8::Value>
     return true;
 }
 
+typedef enum HttpV8FastResultKind
+{
+    HTTP_V8_FAST_RESULT_NONE = 0,
+    HTTP_V8_FAST_RESULT_TEXT_OK = 1,
+    HTTP_V8_FAST_RESULT_NO_CONTENT = 2,
+    HTTP_V8_FAST_RESULT_JSON = 3,
+    HTTP_V8_FAST_RESULT_CREATED = 4
+} HttpV8FastResultKind;
+
+bool http_v8_get_optional_int32_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                             v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                             int32_t* out)
+{
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr || !http_v8_get_value_property_key(isolate, context, object, name, &value)) {
+        return false;
+    }
+    if (value->IsUndefined() || value->IsNull()) {
+        *out = 0;
+        return true;
+    }
+    if (!value->IsInt32()) {
+        return false;
+    }
+
+    *out = value.As<v8::Int32>()->Value();
+    return true;
+}
+
+bool http_v8_property_is_undefined_or_null(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                           v8::Local<v8::Object> object, SlV8HttpStringKey name)
+{
+    v8::Local<v8::Value> value;
+
+    return http_v8_get_value_property_key(isolate, context, object, name, &value) &&
+           (value->IsUndefined() || value->IsNull());
+}
+
+bool http_v8_string_property_equals(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                    const char* expected)
+{
+    v8::Local<v8::Value> value;
+
+    if (expected == nullptr ||
+        !http_v8_get_value_property_key(isolate, context, object, name, &value) ||
+        !value->IsString())
+    {
+        return false;
+    }
+
+    return http_v8_value_to_string(isolate, value) == expected;
+}
+
+SlStatus http_v8_copy_fast_json_text(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                     SlArena* arena, v8::Local<v8::Object> object, SlBytes* out)
+{
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = {};
+    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_FAST_JSON_TEXT,
+                                        &value))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (!value->IsString()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return http_v8_copy_value_bytes(isolate, arena, value, out);
+}
+
+bool http_v8_fast_content_type_matches(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                       v8::Local<v8::Object> object, const char* expected)
+{
+    return http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_CONTENT_TYPE,
+                                          expected);
+}
+
+bool http_v8_fast_result_has_no_custom_headers(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                               v8::Local<v8::Object> object)
+{
+    return http_v8_property_is_undefined_or_null(isolate, context, object,
+                                                 SL_V8_HTTP_STRING_HEADERS);
+}
+
+SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                         SlEngine* engine, SlArena* arena,
+                                         v8::Local<v8::Object> object, SlEngineResult* out_result,
+                                         bool* out_handled)
+{
+    static const char* const kTextContentType = "text/plain; charset=utf-8";
+    static const char* const kJsonContentType = "application/json; charset=utf-8";
+    int32_t fast_kind = 0;
+    uint16_t status_code = 0U;
+    SlStatus status;
+
+    (void)engine;
+    if (out_handled == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_handled = false;
+    if (!http_v8_get_optional_int32_property_key(isolate, context, object,
+                                                 SL_V8_HTTP_STRING_FAST_RESULT, &fast_kind) ||
+        fast_kind == HTTP_V8_FAST_RESULT_NONE)
+    {
+        return sl_status_ok();
+    }
+    if (!http_v8_get_object_status(isolate, context, object, &status_code) ||
+        !http_v8_fast_result_has_no_custom_headers(isolate, context, object))
+    {
+        return sl_status_ok();
+    }
+
+    if (fast_kind == HTTP_V8_FAST_RESULT_TEXT_OK) {
+        if (status_code != 200U ||
+            !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
+                                            "text") ||
+            !http_v8_fast_content_type_matches(isolate, context, object, kTextContentType) ||
+            !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_BODY_RESULT,
+                                            "ok"))
+        {
+            return sl_status_ok();
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_TEXT;
+        out_result->text = sl_str_from_cstr("ok");
+        out_result->response = sl_http_response_text(200U, out_result->text);
+        *out_handled = true;
+        return sl_status_ok();
+    }
+
+    if (fast_kind == HTTP_V8_FAST_RESULT_NO_CONTENT) {
+        if (status_code != 204U ||
+            !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
+                                            "empty") ||
+            !http_v8_property_is_undefined_or_null(isolate, context, object,
+                                                   SL_V8_HTTP_STRING_CONTENT_TYPE))
+        {
+            return sl_status_ok();
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->response = sl_http_response_empty(204U);
+        *out_handled = true;
+        return sl_status_ok();
+    }
+
+    if (fast_kind == HTTP_V8_FAST_RESULT_JSON || fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
+        SlBytes bytes = {nullptr, 0U};
+
+        if ((fast_kind == HTTP_V8_FAST_RESULT_JSON && status_code != 200U) ||
+            (fast_kind == HTTP_V8_FAST_RESULT_CREATED && status_code != 201U) ||
+            !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
+                                            "json") ||
+            !http_v8_fast_content_type_matches(isolate, context, object, kJsonContentType))
+        {
+            return sl_status_ok();
+        }
+
+        status = http_v8_copy_fast_json_text(isolate, context, arena, object, &bytes);
+        if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
+            return sl_status_ok();
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_JSON;
+        out_result->response = sl_http_response_json(status_code, bytes);
+        if (fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
+            bool has_location = false;
+            std::string location;
+            SlSlice header_storage = {nullptr, 0U, sizeof(SlHttpHeader)};
+            SlHttpHeader* header = nullptr;
+
+            status = http_v8_get_optional_string_property(
+                isolate, context, object, SL_V8_HTTP_STRING_LOCATION, &has_location, &location);
+            if (!sl_status_is_ok(status) || !has_location || !http_v8_header_value_safe(location)) {
+                return sl_status_ok();
+            }
+
+            status = sl_arena_array_alloc(arena, 1U, sizeof(SlHttpHeader), alignof(SlHttpHeader),
+                                          &header_storage);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            header = static_cast<SlHttpHeader*>(header_storage.ptr);
+            status = http_v8_copy_response_header(arena, "Location", location, header);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            out_result->response.headers = header;
+            out_result->response.header_count = 1U;
+        }
+        *out_handled = true;
+        return sl_status_ok();
+    }
+
+    return sl_status_ok();
+}
+
 } // namespace
 
 bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -2139,17 +2409,18 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                     v8::Local<v8::Object>* out)
 {
     v8::Local<v8::Object> ctx = v8::Object::New(isolate);
-    v8::Local<v8::Object> route = v8::Object::New(isolate);
-    v8::Local<v8::Object> query = v8::Object::New(isolate);
-    v8::Local<v8::Object> request = v8::Object::New(isolate);
-    v8::Local<v8::Object> body_object = v8::Object::New(isolate);
-    v8::Local<v8::Object> connection = v8::Object::New(isolate);
+    v8::Local<v8::Object> route;
+    v8::Local<v8::Object> query;
+    v8::Local<v8::Object> request;
+    v8::Local<v8::Object> body_object;
+    v8::Local<v8::Object> connection;
     v8::Local<v8::Object> logger;
     v8::Local<v8::Object> body_prototype;
     v8::Local<v8::Object> request_prototype;
     v8::Local<v8::Value> body_bytes_value = v8::Undefined(isolate);
     v8::Local<v8::String> body_kind_value;
     v8::Local<v8::Object> headers;
+    v8::Local<v8::Object> header_facade;
     v8::Local<v8::Object> signal;
     size_t index = 0U;
     SlStr method = sl_str_empty();
@@ -2159,168 +2430,257 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     if (request_context == nullptr || request_context->request == nullptr || out == nullptr) {
         return false;
     }
-    method = http_v8_request_method_name(request_context->request->method);
-    if (sl_str_is_empty(method)) {
+    if (request_context->needs_request) {
+        method = http_v8_request_method_name(request_context->request->method);
+        if (sl_str_is_empty(method)) {
+            return false;
+        }
+    }
+
+    if (request_context->needs_route_params) {
+        route = v8::Object::New(isolate);
+        for (index = 0U; index < request_context->route_param_count; index += 1U) {
+            const SlRouteParam* param = &request_context->route_params[index];
+            v8::Local<v8::String> key;
+            v8::Local<v8::String> value;
+            if (!sl_status_is_ok(http_v8_to_local_string(isolate, param->name, &key)) ||
+                !sl_status_is_ok(http_v8_to_local_string(isolate, param->value, &value)) ||
+                !route->Set(context, key, value).FromMaybe(false))
+            {
+                return false;
+            }
+        }
+    }
+
+    if (request_context->needs_query_params) {
+        query = v8::Object::New(isolate);
+        for (index = 0U; index < request_context->query_param_count; index += 1U) {
+            const SlHttpQueryParam* param = &request_context->query_params[index];
+            v8::Local<v8::String> key;
+            v8::Local<v8::String> value;
+            if (!sl_status_is_ok(http_v8_to_local_string(isolate, param->name, &key)) ||
+                !sl_status_is_ok(http_v8_to_local_string(isolate, param->value, &value)) ||
+                !query->Set(context, key, value).FromMaybe(false))
+            {
+                return false;
+            }
+        }
+    }
+
+    if (request_context->needs_signal &&
+        !http_v8_make_signal_object(isolate, context, request_context->cancellation, &signal))
+    {
         return false;
     }
-
-    for (index = 0U; index < request_context->route_param_count; index += 1U) {
-        const SlRouteParam* param = &request_context->route_params[index];
-        v8::Local<v8::String> key;
-        v8::Local<v8::String> value;
-        if (!sl_status_is_ok(http_v8_to_local_string(isolate, param->name, &key)) ||
-            !sl_status_is_ok(http_v8_to_local_string(isolate, param->value, &value)) ||
-            !route->Set(context, key, value).FromMaybe(false))
-        {
-            return false;
-        }
-    }
-
-    for (index = 0U; index < request_context->query_param_count; index += 1U) {
-        const SlHttpQueryParam* param = &request_context->query_params[index];
-        v8::Local<v8::String> key;
-        v8::Local<v8::String> value;
-        if (!sl_status_is_ok(http_v8_to_local_string(isolate, param->name, &key)) ||
-            !sl_status_is_ok(http_v8_to_local_string(isolate, param->value, &value)) ||
-            !query->Set(context, key, value).FromMaybe(false))
-        {
-            return false;
-        }
-    }
-
-    if (!http_v8_make_signal_object(isolate, context, request_context->cancellation, &signal) ||
+    if (request_context->needs_headers && request_context->needs_request &&
         !http_v8_make_header_bag(isolate, context, request_context->request, &headers))
     {
         return false;
     }
+    if (request_context->needs_header_facade &&
+        !http_v8_make_header_facade(isolate, context, request_context->request, &header_facade))
+    {
+        return false;
+    }
 
-    request_id = std::to_string(request_context->request_id);
-    connection_id = std::to_string(request_context->connection_id);
-    if (!http_v8_make_logger_object(
+    if (request_context->needs_metadata || request_context->needs_log ||
+        request_context->needs_request)
+    {
+        request_id = std::to_string(request_context->request_id);
+    }
+    if (request_context->needs_connection) {
+        connection_id = std::to_string(request_context->connection_id);
+    }
+    if (request_context->needs_log &&
+        !http_v8_make_logger_object(
             isolate, context, sl_str_from_cstr("request"), http_v8_str_from_string(request_id),
             request_context->route_name, request_context->route_pattern, &logger))
     {
         return false;
     }
-    if (request_context->request->body.length != 0U) {
-        v8::Local<v8::Uint8Array> body_bytes;
-        if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
+    if (request_context->needs_body) {
+        if (request_context->request->body.length != 0U) {
+            v8::Local<v8::Uint8Array> body_bytes;
+            if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
+                return false;
+            }
+            body_bytes_value = body_bytes;
+        }
+        if (!sl_status_is_ok(http_v8_to_local_string(
+                isolate, http_v8_request_body_kind_name(request_context->body_kind),
+                &body_kind_value)))
+        {
             return false;
         }
-        body_bytes_value = body_bytes;
     }
-    if (!sl_status_is_ok(http_v8_to_local_string(
-            isolate, http_v8_request_body_kind_name(request_context->body_kind), &body_kind_value)))
+
+    if (request_context->needs_body) {
+        body_object = v8::Object::New(isolate);
+        if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_BODY,
+                                      &body_prototype) ||
+            !body_object->SetPrototype(context, body_prototype).FromMaybe(false) ||
+            !http_v8_set_bool_property_key(isolate, context, body_object,
+                                           SL_V8_HTTP_STRING_CONSUMED, false) ||
+            !http_v8_set_private_value(isolate, context, body_object,
+                                       SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
+                                       v8::Boolean::New(isolate, false)) ||
+            !http_v8_set_string_property_key(
+                isolate, context, body_object, SL_V8_HTTP_STRING_KIND,
+                http_v8_request_body_kind_name(request_context->body_kind)) ||
+            !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY,
+                                       v8::Undefined(isolate)) ||
+            !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                       body_kind_value) ||
+            !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                       body_bytes_value))
+        {
+            return false;
+        }
+    }
+
+    if (request_context->needs_request) {
+        request = v8::Object::New(isolate);
+        if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_REQUEST,
+                                      &request_prototype) ||
+            !request->SetPrototype(context, request_prototype).FromMaybe(false) ||
+            !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
+                                             http_v8_str_from_string(request_id)) ||
+            !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_METHOD,
+                                             method) ||
+            !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_SCHEME,
+                                             request_context->scheme) ||
+            !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PROTOCOL,
+                                             request_context->protocol) ||
+            !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PATH,
+                                             request_context->request->path) ||
+            !http_v8_set_string_property_key(isolate, context, request,
+                                             SL_V8_HTTP_STRING_QUERY_STRING,
+                                             request_context->query_string) ||
+            !http_v8_set_string_property_key(isolate, context, request,
+                                             SL_V8_HTTP_STRING_RAW_TARGET,
+                                             request_context->request->raw_target))
+        {
+            return false;
+        }
+
+        if (request_context->needs_headers &&
+            !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_HEADERS,
+                                             headers))
+        {
+            return false;
+        }
+        if (request_context->needs_body) {
+            if (!http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_BODY,
+                                                 body_object) ||
+                !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                           body_bytes_value) ||
+                !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,
+                                           v8::Undefined(isolate)) ||
+                !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                           body_kind_value))
+            {
+                return false;
+            }
+        }
+    }
+
+    if (request_context->needs_connection) {
+        connection = v8::Object::New(isolate);
+        if (!http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_ID,
+                                             http_v8_str_from_string(connection_id)) ||
+            !http_v8_set_string_property_key(isolate, context, connection,
+                                             SL_V8_HTTP_STRING_PROTOCOL,
+                                             sl_str_from_cstr("http")) ||
+            !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SCHEME,
+                                             request_context->scheme) ||
+            !http_v8_set_bool_property_key(
+                isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
+                sl_str_equal(request_context->scheme, sl_str_from_cstr("https"))))
+        {
+            return false;
+        }
+    }
+
+    if (request_context->needs_metadata &&
+        (!http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_NAME,
+                                          request_context->route_name) ||
+         !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_PATTERN,
+                                          request_context->route_pattern) ||
+         !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST_ID,
+                                          http_v8_str_from_string(request_id))))
     {
         return false;
     }
-
-    if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_BODY, &body_prototype) ||
-        !body_object->SetPrototype(context, body_prototype).FromMaybe(false) ||
-        !http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_REQUEST,
-                                  &request_prototype) ||
-        !request->SetPrototype(context, request_prototype).FromMaybe(false) ||
-        !http_v8_set_bool_property_key(isolate, context, body_object, SL_V8_HTTP_STRING_CONSUMED,
-                                       false) ||
-        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
-                                   v8::Boolean::New(isolate, false)) ||
-        !http_v8_set_string_property_key(
-            isolate, context, body_object, SL_V8_HTTP_STRING_KIND,
-            http_v8_request_body_kind_name(request_context->body_kind)) ||
-        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY,
-                                   v8::Undefined(isolate)) ||
-        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
-                                   body_kind_value) ||
-        !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
-                                   body_bytes_value))
+    if (request_context->needs_route_params &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE, route))
     {
         return false;
     }
-
-    if (!http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_ID,
-                                         http_v8_str_from_string(connection_id)) ||
-        !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_PROTOCOL,
-                                         sl_str_from_cstr("http")) ||
-        !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SCHEME,
-                                         request_context->scheme) ||
-        !http_v8_set_bool_property_key(
-            isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
-            sl_str_equal(request_context->scheme, sl_str_from_cstr("https"))))
+    if (request_context->needs_query_params &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_QUERY, query))
     {
         return false;
     }
-
-    if (!http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_NAME,
-                                         request_context->route_name) ||
-        !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_PATTERN,
-                                         request_context->route_pattern) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
-                                         http_v8_str_from_string(request_id)) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_METHOD,
-                                         method) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_SCHEME,
-                                         request_context->scheme) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PROTOCOL,
-                                         request_context->protocol) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PATH,
-                                         request_context->request->path) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_QUERY_STRING,
-                                         request_context->query_string) ||
-        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_RAW_TARGET,
-                                         request_context->request->raw_target) ||
-        !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_HEADERS,
-                                         headers) ||
-        !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_BODY,
-                                         body_object) ||
-        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_BYTES,
-                                   body_bytes_value) ||
-        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,
-                                   v8::Undefined(isolate)) ||
-        !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_KIND,
-                                   body_kind_value) ||
-        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE, route) ||
-        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_QUERY, query) ||
-        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST,
-                                         request) ||
+    if (request_context->needs_request &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST, request))
+    {
+        return false;
+    }
+    if (request_context->needs_connection &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_CONNECTION,
-                                         connection) ||
-        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_SIGNAL, signal) ||
-        !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST_ID,
-                                         http_v8_str_from_string(request_id)) ||
+                                         connection))
+    {
+        return false;
+    }
+    if (request_context->needs_signal &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_SIGNAL, signal))
+    {
+        return false;
+    }
+    if (request_context->needs_log &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_LOG, logger))
     {
         return false;
     }
-
-    if (!sl_str_is_empty(request_context->content_type)) {
-        if (!http_v8_set_string_property_key(isolate, context, request,
-                                             SL_V8_HTTP_STRING_CONTENT_TYPE,
-                                             request_context->content_type))
-        {
-            return false;
-        }
-    }
-    else if (!http_v8_set_null_property_key(isolate, context, request,
-                                            SL_V8_HTTP_STRING_CONTENT_TYPE))
-    {
-        return false;
-    }
-    if (request_context->has_content_length) {
-        if (!http_v8_set_uint64_property_key(isolate, context, request,
-                                             SL_V8_HTTP_STRING_CONTENT_LENGTH,
-                                             request_context->content_length))
-        {
-            return false;
-        }
-    }
-    else if (!http_v8_set_null_property_key(isolate, context, request,
-                                            SL_V8_HTTP_STRING_CONTENT_LENGTH))
+    if (request_context->needs_header_facade &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_HEADER,
+                                         header_facade))
     {
         return false;
     }
 
-    if (sl_cancellation_token_reason(request_context->cancellation) ==
-        SL_CANCELLATION_REASON_DEADLINE_EXCEEDED)
+    if (request_context->needs_request) {
+        if (!sl_str_is_empty(request_context->content_type)) {
+            if (!http_v8_set_string_property_key(isolate, context, request,
+                                                 SL_V8_HTTP_STRING_CONTENT_TYPE,
+                                                 request_context->content_type))
+            {
+                return false;
+            }
+        }
+        else if (!http_v8_set_null_property_key(isolate, context, request,
+                                                SL_V8_HTTP_STRING_CONTENT_TYPE))
+        {
+            return false;
+        }
+        if (request_context->has_content_length) {
+            if (!http_v8_set_uint64_property_key(isolate, context, request,
+                                                 SL_V8_HTTP_STRING_CONTENT_LENGTH,
+                                                 request_context->content_length))
+            {
+                return false;
+            }
+        }
+        else if (!http_v8_set_null_property_key(isolate, context, request,
+                                                SL_V8_HTTP_STRING_CONTENT_LENGTH))
+        {
+            return false;
+        }
+    }
+
+    if (request_context->needs_signal &&
+        sl_cancellation_token_reason(request_context->cancellation) ==
+            SL_CANCELLATION_REASON_DEADLINE_EXCEEDED)
     {
         v8::Local<v8::Object> deadline = v8::Object::New(isolate);
         if (!http_v8_set_bool_property_key(isolate, context, deadline, SL_V8_HTTP_STRING_EXPIRED,
@@ -2331,7 +2691,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
             return false;
         }
     }
-    else if (!http_v8_set_null_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_DEADLINE)) {
+    else if (request_context->needs_signal &&
+             !http_v8_set_null_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_DEADLINE))
+    {
         return false;
     }
 
@@ -2372,6 +2734,13 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                             sizeof("JavaScript handler returned an unsupported result type") - 1U),
             http_v8_literal("Result descriptors must include __sloppyResult: true.",
                             sizeof("Result descriptors must include __sloppyResult: true.") - 1U));
+    }
+
+    bool fast_result_handled = false;
+    SlStatus fast_result_status = http_v8_try_convert_fast_result(
+        isolate, context, engine, arena, object, out_result, &fast_result_handled);
+    if (!sl_status_is_ok(fast_result_status) || fast_result_handled) {
+        return fast_result_status;
     }
 
     SlStr kind = sl_str_empty();

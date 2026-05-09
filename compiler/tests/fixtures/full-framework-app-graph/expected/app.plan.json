@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:e49dd0d381dce22eb9bb83d54e446790c4c043b5f496a60bec152af352b56d8b",
+    "hash": "sha256:e89504df24d39e532a7f3fcf4755d97f3b4a014e49df286197c7c5cf18c2ac1b",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -804,6 +804,7 @@
       ]
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -909,6 +910,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1013,6 +1015,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1117,6 +1120,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1186,6 +1190,7 @@
       ]
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1226,6 +1231,7 @@
       ]
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1307,6 +1313,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1388,6 +1395,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1469,6 +1477,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1550,6 +1559,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -1631,6 +1641,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"

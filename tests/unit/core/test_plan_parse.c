@@ -640,6 +640,65 @@ static int test_body_schema_references_must_resolve(void)
     return 0;
 }
 
+static int test_empty_bindings_marks_route_metadata_available(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Home\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,"
+        "\"bindings\":[]}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 19;
+    }
+    if (plan.route_count != 1U || !sl_plan_route_has_bindings(&plan.routes[0]) ||
+        plan.routes[0].binding_count != 0U ||
+        plan.routes[0].bindings != SL_PLAN_ROUTE_EMPTY_BINDINGS)
+    {
+        return 20;
+    }
+    return 0;
+}
+
+static int test_route_middleware_marks_context_needs_conservative(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Home\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,"
+        "\"bindings\":[],\"middleware\":[{\"kind\":\"requestLogging\","
+        "\"sequence\":0}]}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 96;
+    }
+    if (plan.route_count != 1U || !sl_plan_route_has_bindings(&plan.routes[0]) ||
+        plan.routes[0].binding_count != 1U ||
+        plan.routes[0].bindings[0].kind != SL_PLAN_REQUEST_BINDING_CONTEXT)
+    {
+        return 97;
+    }
+    return 0;
+}
+
 static int test_invalid_fixture_matrix(void)
 {
     static const InvalidFixtureCase cases[] = {
@@ -899,6 +958,16 @@ int main(void)
     }
 
     result = test_body_schema_references_must_resolve();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_empty_bindings_marks_route_metadata_available();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_route_middleware_marks_context_needs_conservative();
     if (result != 0) {
         return result;
     }
