@@ -1,8 +1,7 @@
 # Filesystem Streams Example
 
-This is a filesystem FileHandle/stream example.
-`FileHandle` exposes Sloppy-owned async iteration helpers without claiming Node stream
-compatibility:
+This filesystem example shows Sloppy-owned `FileHandle` async iteration helpers.
+Node-style stream APIs are separate from this example.
 
 ```js
 import { Directory, File } from "sloppy/fs";

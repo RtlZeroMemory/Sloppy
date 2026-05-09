@@ -33,7 +33,7 @@ The server prints:
 
 ```text
 Sloppy dev server listening on http://127.0.0.1:5173
-Bounded development server: HTTP/1.1, no middleware, no production-edge claim.
+Bounded development server: HTTP/1.1, local development only.
 ```
 
 When source input is used, artifacts are emitted first (default `.sloppy/cache/dev/source-input`).

@@ -10,8 +10,8 @@ a separate worker-owned V8 isolate and settles its Promise on the owning isolate
 `Worker.start()` loads an explicit worker module, invokes exported functions through copied
 messages, and exposes no raw native handles.
 
-This is correctness and lifecycle evidence, not a benchmark or throughput claim. Default
-non-V8 gates still do not prove V8 isolate execution; report the V8 lane separately.
+The current tests cover correctness and lifecycle behavior. Throughput and
+worker-isolate execution are reported through their own benchmark and V8 lanes.
 
 ## Public API
 
@@ -64,8 +64,9 @@ payloads fail deterministically without including payload values in diagnostics.
 
 The V8 bridge copies input as serialized text into the worker isolate and copies serialized
 results back before owner-thread settlement. Worker modules use Sloppy-owned source files with
-`export function`, `export async function`, or `export const` exports; this is not Node
-`worker_threads`, Web Worker compatibility, or package-manager resolution.
+`export function`, `export async function`, or `export const` exports. Node
+`worker_threads`, Web Worker compatibility, and package resolution are separate
+compatibility tracks.
 
 Resource limits are scoped to bounded queues, payload/result byte caps, module source caps,
 and `memoryLimitMb` validation. Exceeding those limits fails with

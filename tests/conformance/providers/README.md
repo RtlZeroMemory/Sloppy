@@ -1,10 +1,9 @@
 # Provider Conformance
 
-This directory records the provider matrix and evidence lane contract.
+This directory records the provider matrix and validation lane contract.
 Provider conformance is one shared Db contract with provider-specific deltas called out
-explicitly. A default pass is not live-provider evidence, a V8 pass is not native live
-evidence, and skipped or unavailable lanes must stay visible as skipped or unavailable.
-Benchmark output is never correctness evidence.
+explicitly. Default, V8, native live, and live-provider lanes are reported
+separately. Benchmark output is measurement data, not correctness coverage.
 
 ## Common Contract
 
@@ -19,7 +18,7 @@ driver dependencies.
 
 ## Registered Lanes
 
-| Lane | Command | Evidence |
+| Lane | Command | Coverage |
 | --- | --- | --- |
 | Common native contract | `ctest -R conformance.data.common_contract --output-on-failure` | DbValue, statement, row-set, execute-result, and redaction contract. |
 | SQLite default native | `ctest -R conformance.sqlite.native_provider --output-on-failure` | Embedded `:memory:` and temp-file provider behavior without Docker. |
@@ -33,19 +32,18 @@ driver dependencies.
 `tools/windows/test-live-providers.ps1` and `tools/unix/test-live-providers.sh` run
 `postgres`, `sqlserver`, or `all` provider live lanes intentionally. Missing Docker,
 missing ODBC drivers, missing connection-string environment, or driver async
-unavailability must be reported as `UNAVAILABLE` or CTest `SKIPPED`; they are not pass
-evidence.
+unavailability must be reported as `UNAVAILABLE` or CTest `SKIPPED`; in prose, describe
+that lane as skipped rather than passed.
 
 ## Provider-Specific Deltas
 
 - SQLite uses `SERIALIZED_BLOCKING`, `?` placeholders, no connection pool, and explicit
   text/blob encodings for JSON/date/time/timestamp/instant-like values.
 - PostgreSQL uses `TRUE_ASYNC`, `$1` placeholders, nonblocking libpq, bounded pooling,
-  scalar arrays where supported, and Docker-backed live evidence for external behavior.
+  scalar arrays where supported, and Docker-backed live lanes for external behavior.
 - SQL Server uses `TRUE_ASYNC` only when ODBC async connection/statement mode completes,
   `?` placeholders, bounded pooling, and an honest unavailable result for drivers that do
   not advance async ODBC operations.
 
-No provider conformance lane proves ORM behavior, migrations, production readiness,
-Node/Bun/Deno compatibility, package readiness, benchmark claims, or public release
-readiness.
+ORM behavior, migrations, hosted operations, package distribution, benchmark
+reports, and release readiness are separate work.

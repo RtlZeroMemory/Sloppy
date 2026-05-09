@@ -1,5 +1,5 @@
 name: Review
-description: Review, verification, or project ceremony task.
+description: Review or verification work.
 title: "REVIEW: "
 labels: ["type:review", "status:ready"]
 body:

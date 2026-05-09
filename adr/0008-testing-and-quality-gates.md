@@ -27,7 +27,7 @@ modules exist.
 
 ## Alternatives Considered
 
-- Add tests after the MVP: rejected because the MVP is not throwaway.
+- Add tests after the foundation slice: rejected because foundation code is not throwaway.
 - Only rely on integration tests: rejected because memory/resource bugs need narrower tests.
 
 ## Follow-up Tasks

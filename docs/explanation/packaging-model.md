@@ -1,24 +1,47 @@
-# Packaging Model
+# Build And Distribution
 
-Sloppy packaging is an evidence tool today, not a release claim.
+## Purpose
 
-`tools/windows/package.ps1` encodes that position directly:
+This document explains what Sloppy build/distribution lanes currently mean, and
+where their current boundaries are.
 
-- package README text says "experimental development artifact, not a public
-  release";
-- manifest sets `releaseKind` to `dry-run`;
-- package includes runtime/compiler binaries, stdlib assets, examples, and
-  docs;
+## Build Model
+
+`tools/windows/dev.ps1` is the canonical Windows wrapper. It separates lanes by
+intent:
+
+- `doctor` checks dependency/tooling readiness;
+- `configure`, `build`, and `test` drive the local build lane;
+- `lint` and `format-check` enforce code/doc standards;
+- `package` and `test-package` are separate artifact lanes;
+- V8 mode is explicit (`OFF`, `AUTO`, `REQUIRED`) and independent from default
+  non-V8 builds.
+
+This keeps default build success separate from V8, provider, and release lanes.
+
+## Distribution Model
+
+`tools/windows/package.ps1` creates an experimental local package with a dry-run
+manifest contract.
+
+Current packaging behavior is explicit:
+
+- package text marks artifacts as experimental development builds;
+- runtime/compiler binaries and source-controlled assets are bundled;
 - V8 SDK headers/import libraries are excluded;
-- optional V8 runtime files are included only when explicitly requested.
+- optional V8 runtime binaries are included only by explicit opt-in;
+- checksum and manifest files are produced for artifact verification.
 
-The separation of lanes matters:
+## Verification Boundaries
 
-- source build proves checkout buildability;
-- package smoke proves outside-checkout layout/startup behavior;
-- npm dry-run packaging is a distribution wrapper for Sloppy itself, not
-  `node_modules` support for Sloppy apps.
+Build/distribution validation must stay lane-specific:
 
-That is the current product boundary: packaging exists to make runtime artifacts
-portable and testable, while keeping unsupported release/compatibility claims out
-of band.
+- default build/test success is separate from V8 runtime execution;
+- package creation is separate from public distribution readiness;
+- presence of optional runtime files is separate from feature conformance;
+- npm dry-run packaging installs the runtime, not app-level npm dependencies.
+
+## Current Scope
+
+Current build/distribution work is focused on internal packaging and validation.
+Release publishing hardening and JavaScript-runtime compatibility are separate work.

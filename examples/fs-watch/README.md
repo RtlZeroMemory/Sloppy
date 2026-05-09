@@ -2,7 +2,7 @@
 
 This is a filesystem watch example.
 The current watch API is resource-backed, bounded, and non-recursive. It reports
-create/modify/delete/overflow events without claiming Node `fs.watch` semantics:
+create/modify/delete/overflow events while keeping Node `fs.watch` semantics separate:
 
 ```js
 import { Directory, File } from "sloppy/fs";

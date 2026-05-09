@@ -111,5 +111,5 @@ Compiler output:
 
 ## Boundaries
 
-The CLI has no package manager, no npm resolution, and no Node compatibility.
+The CLI does not include a package manager or npm-style dependency resolution.
 Source input is limited to the documented Sloppy compiler subset.

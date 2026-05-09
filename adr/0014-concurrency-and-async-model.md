@@ -44,12 +44,12 @@ backpressure carefully.
   unsafe and hard to reason about.
 - Fully synchronous request handling: rejected because Sloppy must support many in-flight
   I/O-bound requests.
-- Multiple isolates from day one: rejected because the single-worker model should be proven
+- Multiple isolates from day one: rejected because the single-worker model should be validaten
   before multicore scaling is added.
 
 ## Follow-up Tasks
 
-- `docs/concurrency.md`.
+- `docs/internals/async-runtime.md`.
 - Event loop abstraction.
 - V8 owner-thread enforcement.
 - Promise settlement tests.

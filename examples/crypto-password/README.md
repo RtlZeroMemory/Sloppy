@@ -13,6 +13,9 @@ const shouldUpgrade = await Password.needsRehash(encodedHash);
 
 Password hashing is async in the public API and offloaded from the V8 owner thread in the
 V8 lane. Password values must not be logged, printed, placed in diagnostics, or committed to
-goldens. This example has no synchronous password hashing API,
-no custom password hashing algorithm, no WebCrypto/Node/Bun compatibility promise,
-no package-manager behavior, no public release claim, and no benchmark claim.
+goldens.
+
+## Limitations
+
+This example uses Sloppy's password API as provided. It does not define a custom
+password hashing algorithm.

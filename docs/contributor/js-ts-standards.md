@@ -46,7 +46,7 @@ These standards govern:
 - Keep public modules small and stable.
 
 Node may appear only in test infrastructure when the docs say the test is an execution
-convenience and not a Node compatibility claim.
+convenience.
 
 ## Runtime Contract Discipline
 
@@ -134,12 +134,12 @@ Rules:
 
 - Every public helper gets behavior tests.
 - Tests verify documented behavior, not incidental current structure.
-- Examples must not overclaim runtime support.
+- Examples should describe runtime support directly and precisely.
 - JS tests should run in the existing V8 harness when module loading supports the scenario.
 - Static tests are acceptable only when the execution harness does not support modules yet;
   the docs must say why the test is static.
 - Optional Node-based ESM tests may exist as bootstrap test infrastructure only. They must
-  not imply Node compatibility, npm support, or package-manager behavior.
+  not be presented as application-level runtime or npm dependency support.
 - Generated artifact golden tests must be deterministic.
 
 Static scanners are lint gates. They are not substitutes for behavior tests.

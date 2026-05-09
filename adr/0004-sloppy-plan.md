@@ -29,7 +29,7 @@ optimized.
 - Discover everything at runtime: rejected because it weakens validation and native
   dispatch.
 - Generate C route code: deferred because it adds build complexity before the plan contract
-  is proven.
+  is validaten.
 
 ## Follow-up Tasks
 

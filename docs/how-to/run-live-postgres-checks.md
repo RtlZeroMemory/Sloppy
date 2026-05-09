@@ -2,6 +2,9 @@
 
 Run the opt-in PostgreSQL live-provider test lane on Windows.
 
+This lane is for live PostgreSQL provider execution. It is separate from
+compiler metadata checks, default native tests, and non-live framework examples.
+
 ## Prerequisites
 
 - Docker CLI available (unless using `-NoDocker`).
@@ -33,6 +36,8 @@ ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.post
 ## Expected Result
 
 - CTest reports passing results for the matched PostgreSQL live-provider tests.
+- Matched tests include native live checks and V8 bridge live checks when the
+  V8-enabled preset is available.
 - Docker mode starts and tears down `tests/live/postgres/compose.yml`.
 
 ## Common Failures

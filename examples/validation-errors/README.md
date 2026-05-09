@@ -21,12 +21,16 @@ Route:
 
 - `POST /users`
 
-The example proves schema declaration extraction, `ctx.body.json(UserCreate)` request body
+The example demonstrates schema declaration extraction, `ctx.body.json(UserCreate)` request body
 metadata, validation problem OpenAPI components, explicit partial/known metadata reporting,
 and the request shape consumed by the native Plan-backed validation foundation.
 `invalid-user.http` is a documentation fixture for the intended invalid request shape.
 
 The native runtime now has a bounded Plan-backed validation path for route/query/header
-scalars and schema-backed JSON request bodies. This directory still does not prove typed
-handler execution, provider/DI integration, custom validators, native JSON fast paths,
-public release readiness, or production HTTP behavior.
+scalars and schema-backed JSON request bodies.
+
+## Limitations
+
+This example focuses on validation metadata and Plan-backed request validation. Typed
+handler execution, provider/DI integration, custom validators, native JSON fast paths, and
+broader HTTP features are outside this slice.

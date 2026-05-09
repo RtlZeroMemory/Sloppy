@@ -1,61 +1,79 @@
-# Diagnostics Reference
+# Diagnostics
 
-Diagnostics are emitted by compiler, runtime, Plan parser, and CLI tooling.
+## Purpose
 
-## Compiler Diagnostics (`sloppyc`)
+Diagnostics are Sloppy's user-visible contract for failure. They should identify the
+failing subsystem, point at the relevant source or artifact location when available, avoid
+secret disclosure, and remain stable enough for tests and tooling.
 
-- Code format: `SLOPPYC_E_*`
-- Include source path/span data when available.
-- Rendered by `sloppyc` on compile failure.
+## Model
 
-Common categories:
+A diagnostic can include:
 
-- unsupported input/import/route/handler shapes
-- invalid typed binding signatures
-- configuration read/parse/type errors
-- metadata emission errors
+- stable code;
+- severity;
+- primary message;
+- optional primary source span;
+- related spans;
+- hints;
+- source frames supplied at render time;
+- JSON rendering for machine-readable lanes.
 
-## Plan Parser Diagnostics
+Diagnostics are data first. Text rendering and JSON rendering are views over the same
+contract.
 
-Plan fixture coverage in `tests/golden/plan` includes parser diagnostic codes such as:
+## Current Coverage
 
-- `SLOPPY_E_MALFORMED_JSON`
-- `SLOPPY_E_INVALID_PLAN_VERSION`
-- `SLOPPY_E_INVALID_PLAN_FIELD`
-- `SLOPPY_E_DUPLICATE_HANDLER_ID`
-- `SLOPPY_E_INVALID_ROUTE_PATTERN`
+Implemented diagnostic coverage includes:
 
-## Runtime/Provider Diagnostics
+- core diagnostic builder and renderers;
+- source-frame rendering when matching source text is supplied;
+- JSON diagnostic rendering with stable field order;
+- Plan parse and validation failures;
+- compiler parse/validation diagnostics and source-map metadata;
+- route parsing and matching errors;
+- HTTP parser, backend, transport, request body, response writer, and timeout diagnostics;
+- capability denial and provider metadata diagnostics;
+- V8 exception mapping and source-map primary-span remapping in V8-gated lanes;
+- app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
+- golden snapshots for representative negative paths.
 
-Current runtime/provider errors include redacted sensitive fields for connection strings, passwords, tokens, and similar secret-bearing values.
+The CLI does not yet expose one universal diagnostic-format switch for every command and
+error path.
 
-Examples from tests:
+## Invariants
 
-- unavailable provider feature gates
-- cancelled/deadline-exceeded provider operations
-- closed-resource and nested-transaction errors
+- Codes are stable once they are covered by tests or public docs.
+- Messages should describe the contract violation, not internal implementation trivia.
+- Hints should recommend a safe next action without promising unsupported features.
+- Diagnostics must not expose secrets, tokens, raw provider connection strings, private
+  keys, request bodies marked as sensitive, or native pointers.
+- V8 exceptions and panics must not cross the ABI boundary unsafely.
+- Optional evidence lanes must not be described as default evidence.
 
-## CLI Command Output Shapes
+## Source Locations
 
-`routes`, `capabilities`, `doctor`, and `audit` support text and JSON output.
+Compiler and source-input diagnostics should prefer author-source spans. Runtime artifact
+diagnostics should use Plan/bundle/source-map spans where validated metadata is available.
+When a span cannot be trusted, the diagnostic should say what failed without inventing a
+location.
 
-Current `doctor`/`audit` severity/status values in golden outputs:
+## Redaction
 
-- `ok`
-- `warn`
-- `error`
-- `note`
+Redaction is required for environment/config secrets, provider connection strings,
+passphrases, private keys, tokens, and any field explicitly marked as secret. Tests should
+cover both the presence of useful context and the absence of the secret value.
 
-## openapi Command Output
+## Evidence
 
-`sloppy openapi` emits an OpenAPI 3.0.3 document with Sloppy-specific extension fields such as:
+Diagnostics need negative-path tests. Good evidence includes malformed inputs, unsupported
+syntax, missing files, invalid metadata, capability denial, provider failure, cancellation,
+timeout, shutdown, and V8-gated exception cases where applicable. Goldens are semantic
+contracts, not output dumps.
 
-- `x-slop-openapi-policy`
-- `x-slop-completeness`
-- `x-slop-capabilities`
-- `x-slop-optimization-candidates`
-- partial markers when schema data is unknown
+## Deferred Work
 
-## Redaction Rules
-
-CLI and provider surfaces apply redaction before writing diagnostics and JSON outputs. Secret-bearing configuration/provider values are represented as `<redacted>`.
+Deferred diagnostics work includes localization, richer structured categories and fix-it
+metadata, IDE/protocol integration, broader CLI JSON output plumbing, and more complete
+cross-lane coverage for V8, live providers, package verification, stress, and benchmark
+evidence.

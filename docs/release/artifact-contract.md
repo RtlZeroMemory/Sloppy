@@ -1,12 +1,12 @@
 # Release Artifact Contract
 
-This is the current source contract for the RELEASE-DIST-01 alpha packaging dry-run. It is
-not a public release announcement.
+This is the current source contract for the RELEASE-DIST-01 alpha packaging
+dry-run.
 
-GitHub Release archives are the canonical artifacts. npm packages are convenience
-installers for the Sloppy runtime only; they do not add npm package imports, `node_modules`
-resolution, Node built-ins, CommonJS compatibility, or package-manager behavior to Sloppy
-apps.
+GitHub Release archives are the canonical artifacts. npm packages are
+convenience installers for the Sloppy runtime. Sloppy apps still run through Sloppy-managed artifacts;
+package imports, `node_modules`, Node built-ins, and CommonJS compatibility are
+separate design areas.
 
 ## Archives
 
@@ -69,5 +69,5 @@ run `node-gyp`, build V8, or download V8 in `postinstall`.
 
 User-facing wording:
 
-> npm is a convenient way to install the Sloppy runtime. It does not mean Sloppy apps can
-> import arbitrary npm packages.
+> npm is a convenient way to install the Sloppy runtime. Sloppy apps still use
+> Sloppy's artifact model rather than arbitrary npm package imports.

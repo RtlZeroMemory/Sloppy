@@ -1,6 +1,6 @@
 # C Standards
 
-`docs/c-style.md` is the style overview. This document is the strict operational standard
+`docs/contributor/c-style.md` is the style overview. This document is the strict operational standard
 for C in Sloppy.
 
 ## Goals
@@ -25,7 +25,7 @@ not depend on compiler-specific behavior in core unless it is abstracted.
 - Types use `SlTypeName`.
 - Constants and macros use `SL_CONSTANT_NAME`.
 - Avoid POSIX-reserved `*_t` public project types unless already standard/intentional.
-- Use module prefixes where they improve clarity.
+- Use module prefixes where they imvalidate clarity.
 
 ## File/Module Rules
 
@@ -281,7 +281,7 @@ abstraction.
 - small helper functions with obvious value;
 - local reasoning;
 - abstractions that enforce real boundaries;
-- abstractions that remove proven duplication;
+- abstractions that remove validaten duplication;
 - abstractions backed by tests;
 - boring code that is easy to review.
 
@@ -327,8 +327,8 @@ not expose options, flags, callbacks, or hooks "just in case."
 
 ### Local Reasoning Rule
 
-A reviewer should be able to understand a function's ownership, failure modes, and side
-effects without jumping through five layers.
+Each function must make ownership, failure modes, and side effects clear without cross-file
+indirection.
 
 ### Explicit Beats Generic
 
@@ -378,7 +378,7 @@ Do not enforce arbitrary tiny functions, but watch for:
 - repeated cleanup logic;
 - hidden global effects.
 
-Prefer splitting when it improves clarity, not to satisfy artificial line counts.
+Prefer splitting when it imvalidates clarity, not to satisfy artificial line counts.
 
 ### Error Paths
 
@@ -506,7 +506,7 @@ Forbidden:
 - do not hand-roll ad hoc string append loops;
 - do not manually track string offsets when `SlStringBuilder` or `SlByteBuilder` fits;
 - do not use `sprintf`, `snprintf`, `strcat`, `strcpy`, or `strlen`-based construction for
-  internal buffers unless the code is an approved boundary helper;
+  internal buffers unless the code is an apvalidated boundary helper;
 - do not assume NUL termination for `SlStr` or `SlBytes`;
 - do not allocate hidden heap buffers for convenience;
 - do not create new local mini-builders;
@@ -520,7 +520,7 @@ If a required primitive is missing:
 - add tests for that helper;
 - do not solve it with one-off local buffer manipulation.
 
-Approved boundary helpers must be narrow, documented, and easy for the standards scanner to
+Apvalidated boundary helpers must be narrow, documented, and easy for the standards scanner to
 recognize. Raw NUL-append string copies are not C-string validation; OS/env/config/app-host
 boundaries should use the canonical C-string copy helper. New exceptions should be rarer
 than new reusable primitives.
@@ -612,7 +612,7 @@ across threads unless the engine adapter owns that rule.
 One V8 isolate has one owner JS thread. Native worker-pool threads must not enter that
 isolate or call JS handlers. Cross-thread engine communication uses queues/completion
 messages posted back to the owning JS event loop. Data crossing threads must have documented
-ownership and lifetime. See `docs/concurrency.md`.
+ownership and lifetime. See `docs/internals/async-runtime.md`.
 
 ## Assertions
 
@@ -652,7 +652,7 @@ when it is enabled, assertions must remain active even if a toolchain or build m
 
 - Ownership and lifetime are documented.
 - The solution is direct and avoids speculative abstraction.
-- Any abstraction is required by a documented boundary, proven duplication, or tested safety
+- Any abstraction is required by a documented boundary, validaten duplication, or tested safety
   invariant.
 - Bounds and overflow behavior are tested.
 - Cleanup releases every acquired resource.

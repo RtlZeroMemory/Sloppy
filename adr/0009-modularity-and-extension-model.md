@@ -49,5 +49,5 @@ module behavior.
 
 - Add module plan fixtures before module extraction.
 - Implement deterministic module ordering and cycle diagnostics.
-- Keep native plugin ABI future-only until static first-party providers prove the boundary.
+- Keep native plugin ABI future-only until static first-party providers validate the boundary.
 - Keep compiler plugins restricted and metadata-focused when introduced.

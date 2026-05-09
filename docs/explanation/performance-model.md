@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Performance is Sloppy's credibility layer. Developer ergonomics is the main product wedge,
-but the app-host model should also remove avoidable framework overhead from common backend
-paths.
+Performance is part of Sloppy's credibility. Developer ergonomics is the main
+product wedge, but the app-host model should also remove avoidable framework
+overhead from common backend paths.
 
-Sloppy must not claim to be faster than Bun, Node, Deno, or any framework universally
-without measurements. Performance claims require benchmarks.
+Performance comparisons need measured benchmark reports. Until those reports
+exist, docs should describe design intent and measured local results only.
 
 ## Scope
 
@@ -20,34 +20,32 @@ This document covers:
 - planned benchmark suite;
 - implementation tasks and acceptance criteria.
 
-## Non-Goals
+## Current Boundaries
 
-The current pre-alpha docs do not:
+The current pre-alpha docs focus on model and harness work:
 
-- make public performance claims;
-- define release-blocking performance regression gates;
-- optimize unsupported runtime paths;
-- trade away diagnostics, resource safety, or portability for early microbenchmarks.
+- release-blocking performance regression gates are not defined yet;
+- unsupported runtime paths are not optimization targets;
+- diagnostics, resource safety, and portability stay ahead of early
+  microbenchmarks.
 
 ## Current Phase
 
-Performance strategy and benchmark harness scaffolding exist. Benchmark list or smoke
-checks prove that the harness runs; they do not prove runtime performance or support public
-performance claims. Measured Release benchmark evidence must name the command, build,
+Performance strategy and benchmark harness scaffolding exist. Benchmark list or
+smoke checks validate that the harness starts and can select benchmarks. A
+measured Release benchmark report must name the command, build,
 hardware/context, workload, and output.
 
-Optional SIMD backends may change which implementation a benchmark exercises. That does
-not make benchmark smoke a performance claim; measured reports must still identify the
-preset, compiler, platform, configured `SLOPPY_ENABLE_SIMD` mode, and configured
-`SLOPPY_SIMD_LEVEL`.
+Optional SIMD backends may change which implementation a benchmark exercises.
+Measured reports still need to identify the preset, compiler, platform,
+configured `SLOPPY_ENABLE_SIMD` mode, and configured `SLOPPY_SIMD_LEVEL`.
 
 The V8 bridge has an internal benchmark group behind `sloppy_bench --include-v8`. It exists
 to answer engineering questions about JS-to-native calls, native-to-JS Promise settlement,
 HTTP result conversion, request-context materialization, header lookup/materialization, and
 body byte/text transfer. The group also includes an in-process HTTP flow benchmark for
 complete request parsing, route dispatch, registered V8 handler entry, and JSON result
-conversion. It is not an HTTP server throughput benchmark and must not be reported as
-public runtime performance.
+conversion. HTTP server throughput needs a separate workload and report.
 
 ## Future Phase
 
@@ -65,7 +63,7 @@ Sloppy can win where a native app host removes framework overhead:
 - common results can use native fast paths;
 - permissions and services fail at startup instead of on the hot path.
 
-This is not a promise that every benchmark is faster than every other runtime.
+This is a design direction, not a universal benchmark result.
 
 ## Hot-Path Design Choices
 
@@ -97,7 +95,7 @@ path work.
 
 Future benchmarks should measure many pending I/O-bound requests without assuming
 thread-per-request behavior, plus worker/isolates scaling once multicore execution exists.
-See `docs/concurrency.md`.
+See `docs/internals/async-runtime.md`.
 
 ## Lifecycle Impact
 
@@ -121,10 +119,10 @@ Request execution should then be:
 
 ## Benchmark Policy
 
-No performance claim without a benchmark.
+Performance comparisons require benchmark data.
 
-Benchmark list/smoke output only proves that the harness builds, starts, and exposes the
-expected benchmark names. It is never performance evidence.
+Benchmark list/smoke output only validates that the harness builds, starts, and
+exposes the expected benchmark names. It is not a runtime measurement.
 
 Each benchmark report must record:
 
@@ -161,11 +159,11 @@ Initial candidates:
 - idle memory;
 - memory under load.
 
-Current V8 bridge benchmark names use `v8.bridge.*` and `v8.startup.*`. The benchmark
-group is internal evidence for bridge optimization PRs; benchmark smoke in CI only proves
-the V8 benchmark can be selected and run with tiny iteration counts.
+Current V8 bridge benchmark names use `v8.bridge.*` and `v8.startup.*`. The
+benchmark group supports bridge optimization work; benchmark smoke in CI only
+checks selection and tiny iteration execution.
 
-Benchmark names should use `bench_<path_or_claim>`, for example
+Benchmark names should use `bench_<path_or_topic>`, for example
 `bench_route_match_static`.
 
 ## Internal Architecture
@@ -178,7 +176,7 @@ tests/benchmarks/
   bench_plan_load.*
   bench_route_match.*
   bench_handler_dispatch.*
-docs/performance.md
+docs/explanation/performance-model.md
 ```
 
 The benchmark harness should remain separate from correctness tests. A benchmark smoke test
@@ -208,7 +206,7 @@ Correctness tests remain separate and must pass before benchmark results matter.
 
 ## Quality Gates
 
-- no marketing/performance claim without linked benchmark data;
+- performance comparisons link to benchmark data;
 - benchmark code must not weaken normal correctness gates;
 - benchmark output must include commit/build metadata;
 - provider benchmarks must skip with a clear reason when environment is unavailable.
@@ -230,7 +228,7 @@ The first benchmark harness is accepted when:
 - it builds with the normal developer workflow;
 - it can run a trivial benchmark locally;
 - output records commit/build/platform metadata;
-- docs explain that results are not product claims yet;
+- docs explain the measured scope and limits of the results;
 - CI either runs a smoke mode or documents why it is deferred.
 
 ## Open Questions

@@ -15,8 +15,7 @@ try {
 }
 ```
 
-`Secret.dispose()` is best-effort cleanup of Sloppy-owned buffers, not a guarantee that
-prior JavaScript string copies, engine internals, operating-system paging, or crash dumps
-are erased. The example does not print secret material and
-does not claim timing-proof behavior from deterministic tests. It has
-no package-manager behavior, no public release claim, and no benchmark claim.
+`Secret.dispose()` is best-effort cleanup of Sloppy-owned buffers. Prior JavaScript string
+copies, engine internals, OS paging, or crash dumps may still contain data. The example
+avoids printing secret material. Deterministic tests verify API behavior, not side-channel
+resistance.

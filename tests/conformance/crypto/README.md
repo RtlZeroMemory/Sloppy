@@ -1,6 +1,6 @@
 # Crypto Conformance
 
-This directory is the evidence index.
+This directory is the validation index.
 Crypto conformance is split by lane:
 
 - default native vectors: `core.crypto` covers OS-random API shape, UUID v4 text shape,
@@ -17,18 +17,19 @@ Crypto conformance is split by lane:
   for Random, Hash, Hmac, Password, ConstantTime, and Secret usage, and rejects obvious
   WebCrypto/Node/Bun, package-manager, benchmark, weak-random, secret-printing, or
   NonCryptoHash-in-security-example wording;
-- bootstrap JavaScript stdlib evidence: `bootstrap.stdlib.app_host_foundation` executes
+- bootstrap JavaScript stdlib coverage: `bootstrap.stdlib.app_host_foundation` executes
   the ESM stdlib with deterministic native-hook fakes and verifies the `Random`, `Hash`,
   `Hmac`, `Password`, `ConstantTime`, `Secret`, and `NonCryptoHash` public surface;
-- compiler/tooling evidence: Rust compiler tests cover `sloppy/crypto` import activation
+- compiler/tooling coverage: Rust compiler tests cover `sloppy/crypto` import activation
   for `stdlib.crypto` plus the bounded static doctor warning for visible
   `NonCryptoHash.xxHash64` use in security-looking contexts;
-- V8-gated evidence: `conformance.v8.runtime_bridge` covers active `__sloppy.crypto`
+- V8-gated coverage: `conformance.v8.runtime_bridge` covers active `__sloppy.crypto`
   registration, SHA/HMAC/random/constant-time smoke, password offload owner-thread
   settlement, inactive-feature gating, and `NonCryptoHash` smoke when a V8 SDK is
   configured.
 
-This is not randomness-quality proof, password cracking-cost proof, timing-proof evidence,
-security proof for non-cryptographic hashes, public release documentation, WebCrypto/Node/Bun
-compatibility, package-manager behavior, custom crypto algorithm evidence, weak-random
-fallback evidence, benchmark evidence, or unrelated filesystem/network/process behavior.
+Randomness-quality analysis, password cracking-cost analysis, timing validation,
+security validation for non-cryptographic hashes, release docs,
+WebCrypto/Node/Bun compatibility, package-manager behavior, custom crypto
+algorithms, weak-random fallback behavior, benchmark reports, and unrelated
+filesystem/network/process behavior are separate work.

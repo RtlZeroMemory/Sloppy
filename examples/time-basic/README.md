@@ -10,5 +10,9 @@ await Time.delay(250);
 const summary = await Time.timeout((signal) => loadUserSummary({ signal }), { afterMs: 1000 });
 ```
 
-The Time API is async-first and Promise-friendly. It has no Node timer compatibility
-promise, is not a cron parser, has no package-manager behavior, and makes no benchmark claims.
+The Time API is async-first and Promise-friendly.
+
+## Limitations
+
+This example is limited to delay and timeout behavior. Cron-style scheduling is
+covered separately.

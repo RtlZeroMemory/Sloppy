@@ -33,4 +33,5 @@ Still deferred:
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.
 
-The current source of truth is `docs/data-providers.md`.
+The current public provider reference is `docs/reference/providers.md`; runtime
+implementation invariants are in `docs/internals/provider-runtime.md`.

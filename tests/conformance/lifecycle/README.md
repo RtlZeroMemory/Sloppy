@@ -19,5 +19,6 @@ CTest aliases:
 - `conformance.foundation.resource_lifecycle`
 - `conformance.foundation.app_host_lifecycle`
 
-These aliases do not claim production monitoring, live provider operation counters, V8
-execution, long stress/torture, or benchmark behavior.
+These aliases cover lifecycle metadata. Production monitoring, live provider
+operation counters, V8 execution, long stress/torture, and benchmark behavior
+use separate lanes.

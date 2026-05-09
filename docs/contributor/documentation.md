@@ -3,6 +3,8 @@
 Current docs must come from current code, tests, scripts, examples, and command
 output actually produced in this repository.
 
+The repository-wide policy is [Documentation Policy](../documentation-policy.md).
+
 Use the page type that matches the reader need:
 
 - Tutorial: guided learning with a working result.
@@ -16,7 +18,7 @@ Do:
 
 - update docs when behavior or workflow changes;
 - include concrete commands and expected outcomes;
-- keep claims aligned with evidence lanes;
+- keep status statements aligned with validation lanes;
 - delete stale pages and duplicated planning material.
 
 Do not:
@@ -24,5 +26,5 @@ Do not:
 - add `Type:` or `Status:` metadata lines;
 - keep prompt transcripts or planning dumps as current docs;
 - use fake examples;
-- claim production/readiness/performance/compatibility states not proven by
-  current evidence.
+- describe production/readiness/performance/compatibility states beyond the
+  validation currently available.

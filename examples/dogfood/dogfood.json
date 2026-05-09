@@ -63,7 +63,7 @@
       "requiresPackage": true,
       "requiresV8": false,
       "defaultMissingPackageResult": "SKIPPED",
-      "evidence": "Package-mode dogfood runs only when an archive path is supplied; missing package input is skipped, not pass evidence."
+      "evidence": "Package-mode dogfood runs only when an archive path is supplied; missing package input is reported as skipped."
     },
     {
       "id": "http-app",

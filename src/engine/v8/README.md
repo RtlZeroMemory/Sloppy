@@ -31,8 +31,8 @@ Rules:
   `engine_v8.cc`.
 - `engine_v8_internal.h` is private to this directory. It exposes the V8 backend shape and
   resource table to sibling intrinsic modules without making V8 a public runtime type.
-- No Node compatibility, package-manager behavior, inspector, snapshots, or raw native
-  handle exposure belongs in this directory.
+- Node compatibility, package-manager behavior, inspector, snapshots, and raw
+  native handle exposure are separate work and do not belong in this directory.
 - Missing feature paths must report stable diagnostics instead of fake-success fallbacks.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the
   process lifetime because runtime shutdown semantics are not yet defined.

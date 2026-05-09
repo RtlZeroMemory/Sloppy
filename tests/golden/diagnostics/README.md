@@ -1,7 +1,7 @@
 # Diagnostic Golden Fixtures
 
 These fixtures pin deterministic diagnostic renderer output for the default non-V8 lane.
-They cover stable text, JSON, source-frame, and redaction behavior without claiming V8,
+They cover stable text, JSON, source-frame, and redaction behavior while keeping separate V8,
 live-provider, package, stress, or benchmark evidence.
 
 | Fixture | Lane | Category | Coverage |

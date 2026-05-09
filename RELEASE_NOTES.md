@@ -1,12 +1,12 @@
 # Release Notes
 
-These notes are for manual artifact dry-runs. They are not public release notes
-until the readiness gate accepts the evidence.
+These notes are for manual artifact dry-runs. Hosted release notes are prepared
+after the readiness gate accepts the validation report.
 
 ## Release Type
 
 - Package kind: manual dry-run artifact package.
-- Public release: not created.
+- GitHub release: not created.
 - Signing/notarization/installers: not included.
 
 ## Evidence Summary
@@ -36,22 +36,23 @@ Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or
 
 ## Deferred
 
-- Public GitHub release.
+- GitHub release publishing.
 - Hosted V8 SDK artifact publication for every supported platform.
 - Signing, notarization, installers, and package-manager wrappers.
-- npm publish and public registry metadata.
-- Final public documentation.
+- npm publish and registry metadata.
+- Final product documentation.
 - Final verification.
 
 ## Known Limitations
 
 See `docs/release/KNOWN_LIMITATIONS.md`.
 
-## No-Claims Confirmation
+## Boundary Confirmation
 
-- No public release claim.
-- No production-readiness claim.
-- No benchmark or performance claim.
-- No Node, Bun, or Deno compatibility claim.
-- No npm app dependency support or `node_modules` resolution claim.
-- No fake V8, package, provider, or platform readiness claim.
+- Dry-run output stays separate from GitHub release publishing.
+- Production readiness is tracked separately.
+- Benchmark and performance wording requires measured benchmark reports.
+- Node, Bun, and Deno compatibility are separate design tracks.
+- npm launcher packages install the runtime; app dependency support and
+  `node_modules` resolution are separate work.
+- V8, package, provider, and platform readiness are reported by their own lanes.

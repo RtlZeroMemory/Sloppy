@@ -2,7 +2,7 @@
 
 Documentation is part of Sloppy's correctness story. A change is incomplete if
 the next reader is sent to stale behavior, old task history, or unsupported
-product claims.
+product statements.
 
 ## Source Of Truth
 
@@ -21,7 +21,8 @@ state.
   status.
 - Explanation: architecture, design reasoning, and mental models.
 - Contributor: build, test, package, review, release, and docs operations.
-- Internals: implementation boundaries, lifecycles, invariants, and evidence.
+- Internals: implementation boundaries, lifecycles, invariants, and validation
+  context.
 
 The directory is the page type. Do not add visible metadata lines to tell the
 reader what they are reading; make the title, introduction, and structure do
@@ -31,7 +32,7 @@ that work.
 
 Delete stale execution transcripts, issue snapshots, task copies, duplicate
 planning layers, dry status pages, fake examples, and docs that cannot be
-verified against current implementation evidence.
+verified against the current implementation.
 
 Archive only rare material with durable historical value. Archives must not be
 linked as current truth.
@@ -45,9 +46,8 @@ Behavior, API, module-boundary, diagnostic, CLI, example, or workflow changes
 must update the relevant docs and tests. Tests should verify documented intent,
 not accidental current output.
 
-## No-Claims Policy
+## Accuracy Policy
 
-Do not claim production readiness, public release availability, performance
-superiority, package readiness, provider readiness, Node/Bun/Deno compatibility,
-npm application dependency support, or complete platform support without exact
-source docs and evidence.
+State what works today in plain language. If you make major availability,
+performance, or compatibility statements, back them with the exact source docs
+and checks run in the same change.

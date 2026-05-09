@@ -19,6 +19,12 @@ Supported fields:
 
 Unknown fields are rejected.
 
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `entry` | string | yes | none | Source file to compile from the project root. |
+| `outDir` | string | no | `.sloppy` | Output directory for generated artifacts. |
+| `environment` | string | no | `Development` | Environment name used during source-input build. |
+
 ## Size and Encoding Limits
 
 - maximum file bytes: `8192`

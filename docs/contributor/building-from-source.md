@@ -1,7 +1,9 @@
 # Building From Source
 
 Sloppy is cross-platform by design. Windows x64 is the most complete validated
-local contributor lane today.
+local contributor lane today. These instructions are for contributors working
+inside the repository. Product tutorials assume an installed or extracted
+`sloppy` executable instead.
 
 ## Windows x64 Default Lane
 
@@ -53,7 +55,9 @@ Use `.\tools\windows\dev.ps1 help` for command options and parameter details.
 
 ## Unix Lane
 
-Unix wrappers use the same command shape where implemented:
+Unix wrappers use the same command shape where implemented. Linux x64 is the
+active Unix target for local package/runtime work; macOS support is still less
+validated than the Windows lane.
 
 ```sh
 ./tools/unix/bootstrap.sh
@@ -81,4 +85,4 @@ Never commit real credentials.
 For each lane, report one of `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
 `DEFERRED`, or `NOT RUN`.
 
-Never claim success for a command you did not run.
+Never report success for a command you did not run.

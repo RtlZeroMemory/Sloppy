@@ -2,10 +2,10 @@
 
 Use these standards as the contract for code review and CI:
 
-- [C standards](../c-standards.md): safety and API rules.
-- [C style](../c-style.md): formatting and naming conventions.
-- [JavaScript and TypeScript standards](../js-ts-standards.md): stdlib/examples/tools behavior contract.
-- [Rust standards](../rust-standards.md): compiler/tooling rules.
+- [C standards](c-standards.md): safety and API rules.
+- [C style](c-style.md): formatting and naming conventions.
+- [JavaScript and TypeScript standards](js-ts-standards.md): stdlib/examples/tools behavior contract.
+- [Rust standards](rust-standards.md): compiler/tooling rules.
 
 Core boundaries:
 

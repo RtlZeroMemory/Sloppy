@@ -11,9 +11,11 @@ Automation-specific operating rules are documented in
 - [Building from source](docs/contributor/building-from-source.md)
 - [Development scripts](docs/contributor/dev-scripts.md)
 - [Testing](docs/contributor/testing.md)
+- [Testing inventory](docs/contributor/testing-inventory.md)
 - [Quality gates](docs/contributor/quality-gates.md)
 - [Coding standards](docs/contributor/coding-standards.md)
 - [Documentation policy](docs/contributor/documentation.md)
+- [Development workflow](docs/contributor/development-workflow.md)
 - [Review playbook](docs/contributor/review-playbook.md)
 
 ## Local Setup (Windows x64)
@@ -57,15 +59,15 @@ Use only these lane statuses in PR evidence:
 - `DEFERRED`
 - `NOT RUN`
 
-Skipped optional lanes are not pass evidence. Separate non-V8, V8, package,
-live-provider, stress, and benchmark lanes when reporting.
+If you skip an optional lane, report it clearly as not run. Report non-V8, V8, package,
+live-provider, stress, and benchmark lanes separately.
 
 ## Documentation Expectations
 
 - Write for readers, not for planning ceremony.
 - Keep docs aligned with current implementation evidence.
 - Keep Diataxis page intent clear (tutorial/how-to/reference/explanation).
-- Avoid stale planning language and unsupported claims.
+- Avoid stale planning language and unsupported statements.
 
 ## PR Checklist
 

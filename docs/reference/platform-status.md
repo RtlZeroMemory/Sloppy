@@ -11,6 +11,16 @@ Compiler-emitted plans currently target:
 
 `sloppy run` checks these target fields and rejects unsupported targets.
 
+## Status Table
+
+| Surface | Current state | Validation lane |
+| --- | --- | --- |
+| Windows x64 local development | Most complete local lane. | Default Windows checks and V8-enabled Windows checks. |
+| Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
+| macOS local development | Product target, less complete in the current local lane. | Unix script checks where available. |
+| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-gated checks. |
+| Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Live-provider checks. |
+
 ## V8 Execution Gate
 
 - Handler execution requires a V8-enabled runtime build.
@@ -18,7 +28,7 @@ Compiler-emitted plans currently target:
 
 ## Provider Live Checks
 
-Default local checks are not live-provider passes by default.
+Default local checks do not start live database services by default.
 
 Examples from doctor output:
 
@@ -30,7 +40,8 @@ Examples from doctor output:
 - Canonical contributor workflow scripts are under `tools/windows`.
 - Unix scripts exist under `tools/unix`, but this does not change the current runtime target enforcement described above.
 
-## Non-Claims
+## Current Limits
 
-- No claim that all runtime/provider/package lanes are fully validated on every OS.
-- No claim that non-`windows-x64` Plan targets run through current `sloppy run`.
+- Runtime/provider/package lanes are not fully validated on every OS yet.
+- Current `sloppy run` target enforcement is still centered on `windows-x64`
+  Plan targets.

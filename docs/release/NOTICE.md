@@ -6,5 +6,5 @@ workflow artifacts.
 
 Dry-run packages may include native runtime libraries restored by vcpkg or
 provided by the host build environment. The exact package notice must be
-regenerated from the package manifest and bundled runtime file list before any
-public release.
+regenerated from the package manifest and bundled runtime file list before
+publishing.

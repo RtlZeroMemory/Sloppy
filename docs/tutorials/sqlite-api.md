@@ -45,8 +45,10 @@ From `examples/users-api-sqlite/`:
 
 Equivalent CLI shape: `sloppy build` then `sloppy run --once GET /users`.
 
-Expected response body is JSON and contains seeded users. The exact header order
-can vary, but the body should contain rows like:
+## Expected Output
+
+The response body is JSON and contains seeded users. The exact header order can
+vary, but the body should contain rows like:
 
 ```json
 [{"id":1,"name":"Ada Lovelace","email":"ada@example.test"},{"id":2,"name":"Grace Hopper","email":"grace@example.test"}]

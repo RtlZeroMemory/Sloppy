@@ -7,5 +7,8 @@ inject a clock explicitly.
 `Time.delay` or `Time.timeout` lets tests advance time deterministically with
 `clock.advanceBy(ms)`.
 
-Fake clocks do not mutate global timers for ordinary apps. `Time.fakeClock` does not mutate global timers.
-This example is not benchmark evidence and does not claim public release readiness.
+Fake clocks do not mutate global timers for ordinary apps.
+
+## Limitations
+
+This example focuses on deterministic fake-clock behavior for tests.

@@ -35,8 +35,8 @@ Parser behavior:
 - Compiler-generated executable provider bridge is sqlite-only.
 - Live provider checks are opt-in and environment-dependent.
 
-## Non-Claims
+## Current Limits
 
-- No production-readiness guarantee.
-- No Node/npm `node_modules` compatibility contract.
-- No cross-platform parity guarantee for every runtime lane in default local checks.
+- Production hardening is still future work.
+- Application dependency workflows are still future work.
+- Default local checks do not provide full cross-platform parity coverage.

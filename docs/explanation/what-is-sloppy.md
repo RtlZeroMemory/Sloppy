@@ -22,5 +22,6 @@ Current source shows this boundary explicitly:
 - `src/core/app_host.c` validates startup invariants before request execution.
 - `src/engine/v8/*` keeps V8 internals isolated behind Sloppy-owned APIs.
 
-Sloppy is intentionally not claiming Node, Bun, Deno, `node_modules`, production
-readiness, or package-manager app dependency behavior.
+Sloppy currently runs Sloppy-built artifacts. Node-style dependency resolution,
+`node_modules`, production operations, and package-manager app dependencies are
+separate future design areas.

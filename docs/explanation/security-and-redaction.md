@@ -1,7 +1,7 @@
 # Security And Redaction Model
 
 Sloppy's current security model is boundary-first and diagnostics-first. It is
-not an OS sandbox and it does not claim production hardening.
+not an OS sandbox and should be treated as pre-hardening.
 
 Current boundaries include:
 

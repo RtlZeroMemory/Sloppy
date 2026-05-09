@@ -19,5 +19,6 @@ const deadline = Deadline.after(1000);
 const users = await File.readJson("./tmp/users.json", { deadline });
 ```
 
-The read uses a Time deadline option. It does not claim preemptive native filesystem
-interruption, Node `fs` compatibility, or public sync filesystem APIs.
+The read uses a Time deadline option. Deadline handling is cooperative; it does not
+preempt in-flight native filesystem calls. This example also focuses on Sloppy APIs rather
+than Node-style `fs` compatibility or sync APIs.

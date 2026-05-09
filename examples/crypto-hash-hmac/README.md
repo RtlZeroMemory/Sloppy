@@ -13,6 +13,5 @@ const ok = await Hmac.verifySha256(signingKey, payload, signature);
 ```
 
 HMAC verification uses the constant-time comparison path. The example keeps the
-non-cryptographic hash namespace out of security-shaped code. It has no WebCrypto,
-Node crypto, or Bun compatibility promise, no package-manager behavior, no public release
-claim, no benchmark claim, and no custom crypto algorithm.
+non-cryptographic hash namespace out of security-shaped code and does not define
+a custom crypto algorithm.

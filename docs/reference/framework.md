@@ -12,7 +12,7 @@ Provider descriptor registration currently has one runtime module:
 import { sqlite } from "sloppy/providers/sqlite";
 ```
 
-Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...>`, `RequestContext`, `Service<T>`, `Config<...>`, `Sqlite<...>`, `Postgres<...>`, and `SqlServer<...>` are compile-time extraction shapes, not Node-compatibility claims.
+Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...>`, `RequestContext`, `Service<T>`, `Config<...>`, `Sqlite<...>`, `Postgres<...>`, and `SqlServer<...>` are compile-time extraction shapes used by `sloppyc`.
 
 ## Sloppy Object
 
@@ -71,6 +71,37 @@ Provider descriptor name validation:
 
 Merged provider options at `app.use(...)` must satisfy current sqlite checks, including non-empty `database`.
 
+Only SQLite descriptors are currently accepted by `app.use(...)`. PostgreSQL and
+SQL Server appear through typed injection and runtime data APIs, not through
+`app.use(postgres(...))` or `app.use(sqlserver(...))` descriptor modules.
+
+## Static Provider Handles
+
+The current static provider handle syntax is:
+
+```ts
+const db = app.provider("sqlite:main");
+```
+
+This path is generated for SQLite provider handles. Non-SQLite static provider
+handles are rejected by the compiler-generated provider bridge path with
+`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` rather than silently becoming live
+PostgreSQL or SQL Server execution.
+
+## Typed Provider Injection
+
+Framework v2 typed handlers can ask for provider parameters:
+
+```ts
+app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {
+  return Results.json(await db.query("select id, name from users"));
+});
+```
+
+`Sqlite<"...">`, `Postgres<"...">`, and `SqlServer<"...">` are compile-time
+metadata markers. Runtime execution depends on the active V8 bridge, provider
+configuration, and live-provider dependencies for PostgreSQL and SQL Server.
+
 ## Mutation And Lifecycle Errors
 
 Common enforced errors:
@@ -85,5 +116,7 @@ Common enforced errors:
 ## Limits
 
 - `app.use(...)` provider validation is currently sqlite-only.
+- `app.provider("sqlite:main")` is the current static provider handle path; non-SQLite static handles are diagnostic-only.
+- Typed PostgreSQL and SQL Server injection is not default evidence for live database execution.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` remains V8-gated.

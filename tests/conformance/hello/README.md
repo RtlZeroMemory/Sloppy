@@ -24,5 +24,5 @@ sloppy run --artifacts <artifacts> --once GET /
 
 Expected output: an HTTP response whose body contains `Hello from Sloppy`.
 
-Gated requirements: execution requires a V8-enabled build. The default non-V8 suite proves
+Gated requirements: execution requires a V8-enabled build. The default non-V8 suite validates
 compile/artifact determinism and the clear V8-disabled diagnostic, not handler execution.

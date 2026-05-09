@@ -12,5 +12,4 @@ const crc = Checksums.crc32(bytes);
 
 CRC32 is not authentication, attacker-resistant integrity, a signature, HMAC, password
 utility, or cryptographic hash. Use the appropriate `sloppy/crypto` primitive for
-security-shaped code, including the password-hash API for passwords. This example has
-no package-manager behavior, no benchmark claim, and no public release claim.
+security-shaped code, including the password-hash API for passwords.

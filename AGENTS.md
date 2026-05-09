@@ -26,7 +26,7 @@ workflow guidance in `CONTRIBUTING.md` and `docs/contributor/*`.
 ## Documentation Contract
 
 Current docs must come from current code/tests/scripts/examples and commands
-actually run. Old docs are discovery input, not proof.
+actually run. Old docs are discovery input, not validation.
 
 Use Diataxis structure by reader need:
 
@@ -37,8 +37,8 @@ Use Diataxis structure by reader need:
 - `contributor`: operational contributor workflows.
 - `internals`: boundaries, invariants, lifecycle.
 
-Do not add fake examples, dry status pages, or unsupported readiness/performance
-claims.
+Do not add fake examples, dry status pages, or unsupported
+readiness/performance status statements.
 
 ## Evidence Lane Contract
 
@@ -51,7 +51,7 @@ PR evidence tables must use only:
 - `DEFERRED`
 - `NOT RUN`
 
-Skipped optional gates are not pass claims.
+Report skipped optional gates under their own status.
 
 ## Implementation Contract for Reviewers
 

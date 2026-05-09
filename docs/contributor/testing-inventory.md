@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document maps the repository's active test surfaces. `docs/testing-strategy.md`
+This document maps the repository's active test surfaces. `docs/contributor/testing.md`
 defines testing principles and evidence lanes; this file is the operational inventory for
 where those lanes live.
 
@@ -21,8 +21,9 @@ Typical entrypoints:
 .\tools\windows\dev.ps1 lint
 ```
 
-The default lane does not prove optional V8 execution, live providers, production HTTP,
-package release readiness, sanitizer/stress/torture lanes, or benchmark claims.
+The default lane covers the default preset. Optional V8 execution, live
+providers, production HTTP, package release readiness, sanitizer/stress/torture
+lanes, and benchmark comparisons are separate.
 
 ## Compiler And Plan Lane
 
@@ -32,9 +33,9 @@ fixtures live under `tests/golden/plan/`, `tests/fixtures/run/`, and related int
 directories.
 
 Compiler tests must verify documented source behavior, unsupported syntax diagnostics,
-path normalization, deterministic output, and generated metadata. They must not claim
-general TypeScript lowering, Node resolution, npm package behavior, or final Framework v2
-support.
+path normalization, deterministic output, and generated metadata. General
+TypeScript lowering, Node resolution, npm package behavior, and final Framework
+v2 support are tracked separately.
 
 ## V8-Gated Lane
 
@@ -42,7 +43,7 @@ V8-gated tests cover the optional engine bridge: smoke execution, registered han
 request context/result conversion, bounded Promise settlement, SQLite bridge behavior,
 source-map exception remapping, and owner-thread invariants.
 
-V8-gated evidence is separate from the default lane. A default pass is not V8 evidence.
+V8-gated coverage is separate from the default lane.
 
 ## Source-Input Lane
 
@@ -51,20 +52,21 @@ that declares lane, mode, source path, config inputs, expected Plan semantics, d
 diagnostics, required features, platform/dependency requirements, V8 requirements, and
 expected exit behavior.
 
-Source-input tests should prove that `sloppy run <source.js>` and compiler-owned artifact
-generation share the same documented contract.
+Source-input tests should validate that `sloppy run <source.js>` and
+compiler-owned artifact generation share the same documented contract.
 
 ## Package Lane
 
-Package fixtures live under `tests/fixtures/package/`. They prove package layout and
-outside-checkout behavior for the current experimental package artifacts. They do not prove
-release readiness, installer behavior, hosted distribution, or public release status.
+Package fixtures live under `tests/fixtures/package/`. They validate package
+layout and outside-checkout behavior for the current experimental package
+artifacts. Release readiness, installer behavior, hosted distribution, and
+release publishing status use separate release lanes.
 
 ## Public And Example Checks
 
-Example checks verify that checked-in examples remain structurally aligned with current
-source contracts and avoid unsupported claims. Public docs remain pre-alpha and
-unpublished; their tests should guard boundaries rather than expand tutorial scope.
+Example checks keep checked-in examples structurally aligned with current source
+contracts. Public docs remain pre-alpha; their tests guard boundaries rather
+than expand tutorial scope.
 
 ## Golden Policy
 
@@ -77,6 +79,7 @@ hint/redaction, cleanup, and rollback behavior where applicable.
 Optional lanes include V8-gated, source-input, package outside-checkout, platform-specific,
 dependency-backed, live-network/live-provider, advanced static analysis, fuzz/property,
 stress/torture, sanitizer/memory-safety, and benchmark evidence. Skipped optional lanes
-are not pass evidence.
+must be reported as not run.
 
-Benchmark smoke proves that the harness runs. It does not prove performance.
+Benchmark smoke validates that the harness runs. Performance comparisons need
+measured benchmark reports.

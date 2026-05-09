@@ -1,7 +1,7 @@
 # Tutorial: Build Your First Sloppy API
 
-This tutorial starts from a clean folder and builds the same app shape used by
-`examples/hello-minimal`.
+This tutorial starts from a clean folder outside the repository and builds the
+same app shape used by `examples/hello-minimal`.
 
 You will build two routes:
 
@@ -10,31 +10,24 @@ You will build two routes:
 
 ## Prerequisites
 
-Build a V8-enabled Sloppy binary from the repository root:
+- `sloppy` is installed or extracted locally and available on `PATH`.
+- The installed runtime can execute handlers. On Windows source builds, that
+  means a V8-enabled build.
 
 ```powershell
-.\tools\windows\resolve-v8-sdk.ps1
-.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
-.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+sloppy --version
 ```
 
-If V8 SDK resolution fails, treat that as an environment blocker and fix it
-before continuing.
-
-Set a shell variable for the built runtime. The rest of the tutorial uses this
-absolute path so the project can live outside the repository checkout.
-
-```powershell
-$repo = (Get-Location).Path
-$sloppy = Join-Path $repo "build\windows-relwithdebinfo\sloppy.exe"
-```
+If you are contributing from a checkout instead of using an installed runtime,
+build first with [Building from source](../contributor/building-from-source.md)
+and put the built `sloppy` on `PATH`.
 
 ## Create The Project
 
 Create a new project folder:
 
 ```powershell
-$project = Join-Path $repo ".sloppy-tutorial\hello-api"
+$project = Join-Path $HOME "sloppy-tutorial\hello-api"
 New-Item -ItemType Directory -Force -Path (Join-Path $project "src") | Out-Null
 Set-Location $project
 ```
@@ -105,10 +98,8 @@ export default app;
 From the project directory, run:
 
 ```powershell
-& $sloppy build
+sloppy build
 ```
-
-Equivalent CLI shape: `sloppy build`.
 
 Expected output files:
 
@@ -124,10 +115,8 @@ Expected output files:
 From the project directory, run:
 
 ```powershell
-& $sloppy run --artifacts .sloppy --once GET /hello/Ada
+sloppy run --artifacts .sloppy --once GET /hello/Ada
 ```
-
-Equivalent CLI shape: `sloppy run --artifacts .sloppy --once GET /hello/Ada`.
 
 Expected response body:
 
@@ -142,14 +131,3 @@ Expected response body:
 the handler.
 
 The runtime executes the emitted artifacts.
-
-## Evidence Boundaries
-
-Default evidence (non-V8 build):
-
-- `build` and artifact emission are covered.
-- Handler execution is expected to fail with `requires V8-enabled build`.
-
-V8-gated evidence:
-
-- The successful hello response (`{"hello":"Ada"}`) is execution evidence.

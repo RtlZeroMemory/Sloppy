@@ -1,6 +1,6 @@
 # Cross-API Conformance Foundation
 
-This directory indexes cross-API conformance scenarios. The goal is to prove shared
+This directory indexes cross-API conformance scenarios. The goal is to validate shared
 runtime primitives and denial/error semantics across implemented APIs, not to implement
 missing APIs merely to make a matrix green.
 

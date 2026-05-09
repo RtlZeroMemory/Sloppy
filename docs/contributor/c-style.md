@@ -6,16 +6,16 @@ This document defines the C rules for Sloppy runtime code. It is meant to be enf
 review and quality gates.
 
 For strict operational rules, scanner expectations, and phase acceptance criteria, see
-`docs/c-standards.md`. This file is the style overview; `docs/c-standards.md` is the
+`docs/contributor/c-standards.md`. This file is the style overview; `docs/contributor/c-standards.md` is the
 enforcement-oriented standard.
 
 Simplicity is part of the style. Sloppy prefers boring, direct C with visible ownership and
 error paths over generic systems, speculative extension points, macro DSLs, and
 abstraction-heavy ceremony. See the Simplicity and Anti-Overengineering section in
-`docs/c-standards.md`.
+`docs/contributor/c-standards.md`.
 
 Comments should explain rationale, ownership, lifetime, invariants, and boundary
-assumptions, not obvious syntax. See `docs/c-standards.md#comments-and-rationale`.
+assumptions, not obvious syntax. See `docs/contributor/c-standards.md#comments-and-rationale`.
 
 ## Scope
 
@@ -171,7 +171,7 @@ Prefer capability and platform abstraction APIs over platform macros in core mod
 portability, and high-signal bug checks. The enforceable advanced-analysis baseline is the
 repo-wide `sloppy_memory_analysis` target over configured native sources, unit tests, fuzz
 seed-replay targets, and benchmark harnesses in the current compile database. Generic
-style-noise checks stay out unless a scoped task proves they catch a Sloppy invariant.
+style-noise checks stay out unless a scoped task validates they catch a Sloppy invariant.
 
 New warnings should be fixed or explicitly documented. CI treats warnings as failures for
 configured gates. `NOLINT` suppressions require `sloppy-analysis-suppress: #issue reason;

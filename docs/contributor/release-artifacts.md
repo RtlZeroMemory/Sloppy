@@ -25,7 +25,7 @@ Local checks:
 
 Policy reminders:
 
-- package checks are lane evidence, not release-readiness evidence;
+- package checks validate the package lane only;
 - dry-run workflow is manual (`workflow_dispatch`) and read-only;
 - checksum and archive verification must stay in the release lane;
 - package smoke is outside-checkout validation.

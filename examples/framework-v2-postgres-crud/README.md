@@ -1,24 +1,70 @@
 # Framework v2 PostgreSQL CRUD Example
 
-This is an opt-in live-lane Framework v2 PostgreSQL example.
-This example documents the Plan-visible Framework v2 shape for PostgreSQL CRUD-style
-handlers: typed `Body<T>` and `Route<T>` bindings, compiler-inferred `postgres/main`
-provider metadata from `Postgres<"main">`, semantic request types, and SQL operation
-options that pass `ctx.signal`/`ctx.deadline` for Slop-side pre-dispatch cancellation and
-deadline checks. Provider-specific libpq cancellation for already-running queries remains
-separate provider/runtime work and is not claimed by this example.
+## What This Demonstrates
 
-It is not part of default CI. Run it only with a local PostgreSQL test database and a
-redacted connection string managed outside source control. Missing PostgreSQL/libpq/live
-configuration must be reported as unavailable diagnostics, not pass evidence.
+This example shows the Framework v2 shape for a users API backed by PostgreSQL:
+
+- typed `Body<T>` and `Route<T>` handler parameters;
+- `Postgres<"main">` typed provider injection;
+- PostgreSQL placeholders (`$1`, `$2`);
+- request `signal` and `deadline` passed to database calls;
+- `Results.ok`, `Results.notFound`, and `Results.created`.
+
+## Status
+
+This is an opt-in live-provider example. It needs a PostgreSQL service and
+provider connection string at runtime.
+
+## Requirements
+
+- A V8-enabled `sloppy` runtime.
+- A PostgreSQL test database with a `users` table.
+- `Sloppy__Providers__postgres__main__connectionString` set in the environment.
+
+Example table shape:
+
+```sql
+create table users (
+  id serial primary key,
+  name text not null,
+  email text not null unique
+);
+```
+
+## Run Command
+
+Use the live PostgreSQL lane:
 
 ```powershell
-$env:Sloppy__Providers__postgres__main__connectionString="postgres://<USER>:<PASSWORD>@<HOST>:<PORT>/<DB>"
+$env:Sloppy__Providers__postgres__main__connectionString = "postgres://<user>:<password>@<host>:<port>/<db>"
 .\tools\windows\test-live-postgres.ps1
 ```
 
-Provide the real value through the environment on the machine running the live lane. Do
-not commit live credentials or local DSNs to source control.
+## Expected Result
 
-This is not an ORM, migration system, production database policy, public release claim,
-benchmark, package-manager behavior, or Node/Bun/Deno compatibility proof.
+The live lane runs the PostgreSQL native and bridge tests selected by:
+
+```powershell
+ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.postgres\.live_provider|conformance\.postgres\.(native_live|bridge_live)"
+```
+
+With the table and connection string configured, `GET /users` returns JSON rows
+from the PostgreSQL database.
+
+## What To Inspect
+
+- `app.ts`: `Postgres<"main">` injection and PostgreSQL SQL statements.
+- Generated `.sloppy/app.plan.json`: inferred `postgres/main` provider metadata.
+- `docs/how-to/run-live-postgres-checks.md`: live-lane setup.
+
+## Limitations
+
+Schema setup is manual for this example. It depends on a working live PostgreSQL
+service and valid credentials.
+
+## Related Docs
+
+- `docs/reference/providers.md`
+- `docs/reference/framework.md`
+- `docs/how-to/run-live-postgres-checks.md`
+- `docs/explanation/provider-runtime-model.md`

@@ -25,8 +25,9 @@ archive.
 Use only these statuses in PR evidence tables: `PASS`, `FAIL`, `SKIPPED`,
 `UNAVAILABLE`, `DEFERRED`, and `NOT RUN`.
 
-Skipped optional gates are not pass claims. A default non-V8 pass is not V8,
-package, live-provider, stress, sanitizer, fuzz, or benchmark evidence.
+Report skipped optional gates under their own status. A default non-V8 pass is
+separate from V8, package, live-provider, stress, sanitizer, fuzz, and
+benchmark lanes.
 
 Name each lane separately when it matters:
 
@@ -44,8 +45,7 @@ Name each lane separately when it matters:
 - sanitizer/memory-safety
 - benchmark
 
-Benchmark evidence is measurement evidence only. It is never correctness
-evidence.
+Benchmark output is measurement data only. It is never correctness coverage.
 
 ## PR Bodies
 

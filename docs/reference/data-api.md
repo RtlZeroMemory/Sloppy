@@ -112,10 +112,11 @@ Definition methods:
 - `query`, `queryOne`, `exec`
 - optional transaction hooks or transaction handler
 
-Fake-provider evidence is not live database evidence.
+Fake-provider tests validate runtime shape only. Live database behavior uses the
+provider live lanes.
 
 ## Limits
 
 - No ORM/migration API in this surface.
 - No prepared statement handle API in sqlite surface.
-- No claim of automatic retry/pool tuning beyond exposed bounded options.
+- Automatic retry/pool tuning is limited to the exposed bounded options.

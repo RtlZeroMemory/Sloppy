@@ -63,7 +63,7 @@ Rules:
   only when they do not replace AST understanding.
 - Do not execute arbitrary JavaScript during compilation.
 - Do not perform package-manager resolution.
-- Do not assume Node compatibility.
+- Do not assume Node-style runtime behavior.
 - Do not use best-effort partial extraction that silently drops routes or handlers.
 - Every supported syntax shape must have fixture tests.
 - Every rejected syntax shape should have diagnostics tests.
@@ -105,7 +105,7 @@ Rules:
   output directory.
 - Protect against writing outside the requested output directory.
 - Do not perform hidden writes outside the specified output directory.
-- Do not add a global cache unless a future EPIC scopes it.
+- Do not add a global cache unless a scoped task adopts and tests it.
 
 ## Testing
 
@@ -126,7 +126,7 @@ cargo test --manifest-path compiler/Cargo.toml
 
 ## Anti-Overengineering for Rust
 
-Forbidden unless a future scoped EPIC explicitly adopts and tests the behavior:
+Forbidden unless a scoped task explicitly adopts and tests the behavior:
 
 - plugin framework;
 - async runtime;

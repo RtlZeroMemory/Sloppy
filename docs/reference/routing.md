@@ -66,6 +66,6 @@ Compiler extraction currently enforces:
 
 ## Limits
 
-- No Node router compatibility claim.
+- No Node-style router behavior contract.
 - No middleware/filter pipeline contract in this layer.
 - No package-manager route plugin model.

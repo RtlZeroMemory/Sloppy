@@ -8,7 +8,7 @@ Accepted.
 
 The project name is Sloppy and the repository is Slop. The branding deliberately jokes about
 AI slop, but the implementation goal is the opposite: small scope, serious engineering, and
-no intentionally throwaway MVP layers.
+no intentionally throwaway foundation layers.
 
 Sloppy is a TypeScript application runtime, not a compatibility clone of an existing
 JavaScript runtime.
@@ -19,8 +19,8 @@ Sloppy will use the public identity "AI-slop branding, zero-slop architecture." 
 will be an app-host runtime with custom Sloppy APIs inspired by ASP.NET Core Minimal API
 semantics.
 
-Sloppy will not define itself as a Node, Bun, Deno, or Express clone. Compatibility layers
-may be explored later only as explicit layers.
+Sloppy will not define itself as a clone of an existing JavaScript runtime or web framework.
+Compatibility layers may be explored later only as explicit layers.
 
 ## Consequences
 
@@ -38,6 +38,6 @@ inherited by default from Node-compatible platforms.
 ## Follow-up Tasks
 
 - Keep README and product docs aligned with "AI-slop branding, zero-slop architecture."
-- Reject feature proposals that turn Sloppy into a Node/Bun/Deno compatibility clone by
-  default.
+- Reject feature proposals that turn Sloppy into a general JavaScript runtime compatibility
+  clone by default.
 - Ensure public API examples emphasize app-host ergonomics.

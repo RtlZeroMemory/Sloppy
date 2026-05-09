@@ -12,19 +12,19 @@ The `bootstrap.stdlib.api_shape` CTest check statically verifies the tiny bootst
 `Results`, `schema`, `data`, `sql`, and `Sloppy` API shape. When `node` is available,
 CTest also registers `bootstrap.stdlib.import_graph`, which imports each bootstrap ESM
 leaf and selected internal helper modules to catch broken split-module paths without
-claiming Node compatibility. When `node` is available, CTest also registers
+depending on Node compatibility. When `node` is available, CTest also registers
 `bootstrap.stdlib.app_host_foundation`, which executes the ESM stdlib and verifies the
 bootstrap builder/app freeze model, config, logging, services, route groups, result helper
 descriptors, schema validation, route context, and `Sloppy.create()` consistency. This test
-is not a Node compatibility claim.
+uses Node only as a bootstrap ESM host.
 When `node` is available, CTest also registers `bootstrap.stdlib.modules`, which executes
 the ESM stdlib and verifies `Sloppy.module`, `builder.addModule`, dependency ordering,
-module diagnostics, route/service attribution, and module debug metadata. This test is not
-a Node compatibility claim.
+module diagnostics, route/service attribution, and module debug metadata. This test uses
+Node only as a bootstrap ESM host.
 When `node` is available, CTest also registers `bootstrap.stdlib.data_foundation`, which
 executes the ESM stdlib and verifies database capability metadata, query template lowering,
 fake data provider behavior, transaction callback semantics, and module/service
-integration. This test is not a Node compatibility claim.
+integration. This test uses Node only as a bootstrap ESM host.
 CTest also registers `data.sqlite.provider`, which executes the native SQLite provider
 against `:memory:` databases and covers open/close, exec/query/queryOne, parameter binding,
 transactions, and diagnostics.

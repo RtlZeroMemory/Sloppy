@@ -39,4 +39,4 @@ source through separate tooling.
 - Keep Windows presets and CI green first.
 - Keep core runtime portable and platform-specific APIs isolated.
 - Define V8 SDK manifest and `SLOPPY_V8_ROOT` layout before adding V8 code.
-- Revisit additional engines only after the V8 boundary is proven.
+- Revisit additional engines only after the V8 boundary is validaten.

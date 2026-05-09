@@ -76,6 +76,6 @@ Compiler rejects unsupported shapes with `SLOPPYC_E_*` diagnostics and source sp
 
 ## Limits
 
-- No full TypeScript typechecker claim.
+- Full TypeScript typechecking is outside the current validation surface.
 - No automatic reflection for arbitrary external schema libraries.
 - No decorator-based validation pipeline.

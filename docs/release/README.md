@@ -1,12 +1,11 @@
 # Release Artifact Policy
 
 This directory holds release artifact policy and dry-run validation inputs.
-It is not public release documentation.
+Hosted release notes and publish instructions are prepared separately.
 
 Release dry-runs may build packages, verify checksums, upload workflow
-artifacts, and record evidence. They must not create a public GitHub release,
-sign or notarize artifacts, publish package-manager metadata, or claim
-production readiness.
+artifacts, and record validation output. Publishing, signing/notarization, and
+package-manager metadata are separate release steps.
 
 GitHub Release archives are the canonical future distribution artifacts. npm
 packages are launcher packages around tested archive contents only. They must

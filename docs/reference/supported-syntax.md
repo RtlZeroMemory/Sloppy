@@ -1,103 +1,92 @@
-# Supported Syntax Reference
+# Compiler Supported Syntax Reference
 
-This page describes the current Sloppy source subset accepted by `sloppyc`.
+This page is compiler-specific (`sloppyc`) and lists enforced source-shape rules.
 
-## File Extensions
+## Input and Parse
 
-Accepted entry/module extensions:
+- Entry and module files must use `.js`, `.mjs`, or `.ts`.
+- Parse failures return `SLOPPYC_E_PARSE`.
+- Unsupported extension returns `SLOPPYC_E_UNSUPPORTED_INPUT`.
 
-- `.js`
-- `.mjs`
-- `.ts`
+## Required Sloppy Imports
 
-Rejected examples include `.jsx`, `.tsx`, `.cjs`, `.mts`, `.cts`.
+Compiler input must import:
 
-## Import Specifiers
+- `Sloppy` from `"sloppy"`
+- `Results` from `"sloppy"`
 
-### Supported module specifiers
+These imports must be named and unaliased in current compiler subset.
+
+## Supported Import Modules
+
+Compiler-recognized modules:
 
 - `"sloppy"`
-- `"sloppy/data"`
-- `"sloppy/providers/sqlite"`
-- `"sloppy/providers/postgres"`
-- `"sloppy/providers/sqlserver"`
-- `"sloppy/fs"`
-- `"sloppy/time"`
-- `"sloppy/crypto"`
-- `"sloppy/codec"`
-- `"sloppy/net"`
-- `"sloppy/os"`
-- `"sloppy/workers"`
-- relative imports (`./...`, `../...`) that stay within source root
+- `"sloppy/data"` (`sql`)
+- `"sloppy/providers/sqlite"` (`sqlite`, `Sqlite`)
+- `"sloppy/providers/postgres"` (`Postgres`)
+- `"sloppy/providers/sqlserver"` (`SqlServer`)
+- `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`
+- relative imports constrained to source root
 
-### Unsupported import behavior
+Unsupported specifiers/import names fail with:
 
-- dynamic import (`import(...)`) is rejected
-- non-listed bare specifiers are rejected
-- import aliasing for supported names is rejected in compiler subset
-- default/namespace import forms for these surfaces are rejected
+- `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`
+- `SLOPPYC_E_UNSUPPORTED_IMPORT`
 
-## Route Registration Syntax
+Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
 
-Supported route methods:
+## Route Extraction Rules
 
-- `mapGet` / `get`
-- `mapPost` / `post`
-- `mapPut` / `put`
-- `mapPatch` / `patch`
-- `mapDelete` / `delete`
+Route declarations must be top-level statements on app/group receivers.
 
-Unsupported route method forms:
+Route methods:
 
-- computed route methods (for example `app[method](...)`)
-- unsupported verb helpers (`head`, `options`, unknown `map*`)
+- GET, POST, PUT, PATCH, DELETE (`map*` and plain verb forms)
 
-## Route Pattern Grammar
+Common route failures:
 
-Allowed:
+- `SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE`
+- `SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD`
+- `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`
+- `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`
+- `SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN`
+
+## Pattern Rules
+
+Compiler-enforced route grammar:
 
 - `/`
-- static segments: `/users`
-- parameter segments: `{id}`, `{id:str}`, `{id:int}`
-- framework `:name` segments normalize to `{name}`
+- static segments without braces
+- `{name}`, `{name:str}`, `{name:int}`
 
-Rejected:
+Normalization:
 
-- pattern not starting with `/`
-- trailing `/` (except root `/`)
-- duplicate slash `//`
-- stray braces in static segments
-- unknown parameter kind (only `str` and `int`)
+- framework `:name` is normalized to `{name}` before validation
 
-## Handler Shape (non-typed route handlers)
+## Handler Diagnostics
 
-Accepted baseline:
+Representative handler diagnostics:
 
-- zero parameters, or one simple identifier context parameter
-- direct supported `Results.*` return shape
+- `SLOPPYC_E_UNSUPPORTED_HANDLER`
+- `SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS`
+- `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`
+- `SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE`
+- `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY`
 
-Rejected examples:
+## Typed Handler Binding Diagnostics
 
-- destructuring/default/rest parameters
-- closed-over unsupported values in `Results.*` payloads
-- unsupported async handler bodies (outside supported direct return extraction)
+Representative typed-binding diagnostics:
 
-## TypeScript-Typed Handler Subset
+- `SLOPPYC_E_UNSUPPORTED_HEADER_BINDING`
+- `SLOPPYC_E_DYNAMIC_PROVIDER_NAME`
+- `SLOPPYC_E_UNKNOWN_INJECTION_MARKER`
+- `SLOPPYC_E_UNRESOLVED_TYPE`
+- `SLOPPYC_E_MULTIPLE_BODY_BINDINGS`
+- `SLOPPYC_E_ROUTE_BINDING_MISMATCH`
+- `SLOPPYC_E_UNBOUND_ROUTE_PARAMETER`
+- `SLOPPYC_E_AMBIGUOUS_BINDING`
 
-Typed parameter wrappers currently supported:
+## Provider Bridge Limitation
 
-- `Body<T>`
-- `Query<T>`
-- `Route<T>`
-- `Header<"name", T>`
-- `Service<T>`
-- `Config<T>`
-- provider markers `Postgres<"...">`, `Sqlite<"...">`, `SqlServer<"...">`
-- context markers `RequestContext`, `SlopRequest`, `SlopResponse`, `CancellationSignal`, `Deadline`
-
-Key typed limits:
-
-- provider generic name must be string literal
-- one body binding per handler
-- route parameter names must be bound by handler signature
-- unresolved schema/body types are rejected
+Compiler metadata recognizes sqlite/postgres/sqlserver providers, but generated executable provider bridge is currently sqlite-only. Non-sqlite provider handler execution is rejected with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.

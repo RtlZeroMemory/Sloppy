@@ -15,9 +15,9 @@ Run from the repository root:
 .\build\windows-relwithdebinfo\sloppy.exe run examples/hello-minimal/src/main.ts --once GET /hello/Ada
 ```
 
-The example proves `sloppy run`, `sloppy.json`, a TypeScript-extension source file in the
-supported JavaScript subset, route binding, and explicit `Results.text`/`Results.json`
-helpers.
+The example demonstrates `sloppy run`, `sloppy.json`, a TypeScript-extension
+source file in the supported JavaScript subset, route binding, and explicit
+`Results.text`/`Results.json` helpers.
 
 Routes:
 
@@ -32,6 +32,7 @@ Expected tooling after building artifacts:
 ..\..\build\windows-relwithdebinfo\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
-This example requires V8 for execution. It does not prove runtime request validation,
-Node/npm/package-manager behavior, public release readiness, production HTTP edge behavior,
-or performance.
+## Limitations
+
+This example requires V8 for handler execution and covers only the two routes
+shown above.

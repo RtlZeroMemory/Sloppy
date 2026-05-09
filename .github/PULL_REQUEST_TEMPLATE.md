@@ -10,9 +10,9 @@ Describe the coherent building block this PR delivers.
 
 ## Implementation Contract for Reviewers
 
-Reviewers must compare this PR against the task contract, source docs, and
-explicit non-goals. For large PRs, list the expected behavior that landed and
-the behavior that remains out of scope.
+Reviewers compare this PR against the task contract and source docs. For large
+PRs, list the expected behavior that landed and the behavior that remains out of
+scope.
 
 ## Test Intent
 
@@ -27,8 +27,8 @@ the behavior that remains out of scope.
 ## Evidence Lane Report
 
 Allowed statuses are exactly: PASS, FAIL, SKIPPED, UNAVAILABLE, DEFERRED, NOT RUN.
-Skipped optional gates are not pass claims.
-Benchmark evidence is never correctness evidence.
+Report skipped optional gates as skipped, unavailable, deferred, or not run.
+Benchmark results are separate from correctness results.
 
 | Lane | Status | Commands or reason |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Benchmark evidence is never correctness evidence.
 ## Skipped or unavailable lanes
 
 List each skipped, unavailable, deferred, or not-run lane with the exact reason.
-Do not describe a skipped optional lane as pass evidence.
+Give each skipped, unavailable, deferred, or not-run lane its own reason.
 
 ## Validation
 
@@ -73,13 +73,13 @@ run.
 - [ ] Optional V8/package/live-provider/advanced-static/fuzz/stress/sanitizer/benchmark lanes are separate.
 - [ ] No generated/build artifacts staged.
 - [ ] No real secrets in tests, docs, examples, or goldens.
-- [ ] No public release, production-readiness, or benchmark/performance claims.
+- [ ] Release, production-readiness, and benchmark/performance wording matches the validation run.
 - [ ] No OS APIs outside `src/platform/*`.
 - [ ] No OS-specific headers outside platform directories.
 - [ ] No V8 types outside `src/engine/v8/*`.
 - [ ] No raw native pointers exposed to JavaScript.
 - [ ] No package-manager scope.
-- [ ] No Node compatibility assumptions.
+- [ ] Node compatibility assumptions were checked against current docs.
 - [ ] No future-phase product implementation unless explicitly scoped.
 - [ ] Platform-specific tooling was placed under the correct `tools/<platform>/` directory.
 - [ ] Cross-platform behavior was documented or explicitly deferred.

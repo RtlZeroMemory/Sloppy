@@ -1,9 +1,7 @@
 # SQL Server Basic Example
 
-This is a static API-shape example for the SQL Server provider.
-
-It shows the intended module/capability/service registration shape, ODBC `?`
-query-template lowering, a simple bounded pool option, transaction usage, and the
+This example demonstrates SQL Server provider wiring: module/capability setup,
+ODBC `?` query-template lowering, a bounded pool option, transaction usage, and the
 SQL Server doctor helper shape.
 
 Current limitations:
@@ -19,7 +17,7 @@ Current limitations:
 - unsupported drivers report SQL Server async-driver unavailability instead of falling
   back to a blocking pool and calling it true async;
 - TLS/auth hardening, table-valued parameters, bulk copy, richer date/time mapping, and
-  production pooling policy remain separate provider-hardening work.
+  advanced pooling policies remain separate provider-hardening work.
 
 Native live provider tests are opt-in:
 

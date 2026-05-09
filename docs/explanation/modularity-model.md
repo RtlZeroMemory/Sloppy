@@ -27,8 +27,8 @@ distribution, dynamic plugin behavior, or Framework v2.
 | Engine backends | V8 and future engines | internal |
 | Runtime backends | event loop/platform/protocol implementations | internal |
 
-Native plugins are not the starting point. They should wait until app modules, provider
-contracts, feature activation, and package boundaries are proven.
+Native plugins are not the starting point. They should wait until app modules,
+provider contracts, feature activation, and package boundaries are settled.
 
 ## Module Graph Rules
 

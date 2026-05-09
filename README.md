@@ -1,39 +1,56 @@
 # Sloppy
 
-Sloppy is a pre-alpha TypeScript backend app runtime and app-host.
+Sloppy is a pre-alpha TypeScript backend application runtime and app host.
 
-It compiles supported source into artifacts (`app.plan.json`, `app.js`,
-`app.js.map`), validates those artifacts, and executes handlers through the
-native runtime.
+It takes supported TypeScript or JavaScript app source, compiles it into Sloppy
+artifacts, validates the app graph, and runs request handlers through the native
+runtime.
 
-Core pieces:
+## Why It Exists
 
-- C runtime kernel for Plan loading, routing, diagnostics, providers, and platform IO.
-- Isolated C++ V8 bridge for handler execution.
-- Rust `sloppyc` compiler built on Oxc.
+Backend runtimes usually make the application graph a side effect of executing
+framework code. Sloppy makes that graph an artifact. Routes, handlers,
+providers, capabilities, diagnostics, and runtime limits are extracted into a
+Plan before execution so tooling and the host can reason about the app directly.
 
-## Build From Source (Windows x64)
+## What Is Different
 
-```powershell
-.\tools\windows\bootstrap.ps1
-.\tools\windows\dev.ps1 doctor
-.\tools\windows\dev.ps1 configure
-.\tools\windows\dev.ps1 build
-.\tools\windows\dev.ps1 test
-```
+- `sloppyc` compiles source into `app.plan.json`, `app.js`, and `app.js.map`.
+- `sloppy` runs either source input or prebuilt artifacts.
+- The C runtime kernel owns Plan loading, routing, diagnostics, providers, and
+  platform IO.
+- The V8 bridge is isolated under the engine boundary instead of leaking V8
+  types through the runtime.
+- Sloppy uses its own app-host model rather than a Node, Bun, Deno, npm, or
+  `node_modules` compatibility layer.
 
-To run handler code, use the V8-enabled lane:
+## Current Status
 
-```powershell
-.\tools\windows\resolve-v8-sdk.ps1
-.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
-.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
-.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
-```
+Sloppy is pre-alpha. Windows x64 is the most complete validated local
+development lane today. Linux and macOS remain product targets, but their local
+developer lanes are less complete.
+
+Runtime handler execution requires a V8-enabled build or package. Provider,
+package, live-database, benchmark, and platform work each has its own check
+lane.
+
+## Install Or Try
+
+If `sloppy` is already on your `PATH`, start with the tutorial:
+
+- [Tutorial: Build your first Sloppy API](docs/tutorials/first-api.md)
+
+Local archive installs are covered here:
+
+- [Install Sloppy](docs/how-to/install-sloppy.md)
+
+Contributors building from the repository should use:
+
+- [Building from source](docs/contributor/building-from-source.md)
 
 ## First App
 
-From `examples/hello-minimal/src/main.ts`:
+Create `src/main.ts`:
 
 ```ts
 import { Sloppy, Results } from "sloppy";
@@ -47,10 +64,16 @@ app.get("/hello/{name}", (ctx) => Results.json({ hello: ctx.route.name }))
 export default app;
 ```
 
-Run one request (V8-enabled build):
+Build artifacts:
 
 ```powershell
-.\build\windows-relwithdebinfo\sloppy.exe run examples\hello-minimal\src\main.ts --once GET /hello/Ada
+sloppy build
+```
+
+Run one request:
+
+```powershell
+sloppy run --artifacts .sloppy --once GET /hello/Ada
 ```
 
 Expected body:
@@ -59,11 +82,55 @@ Expected body:
 {"hello":"Ada"}
 ```
 
-Guided walkthrough: [Tutorial: Build your first Sloppy API](docs/tutorials/first-api.md).
+## Project Structure
+
+Important repository areas:
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | C runtime kernel, app host, platform boundary, data providers, and V8 bridge integration points. |
+| `compiler/` | Rust `sloppyc` compiler built around Oxc parsing and Sloppy artifact emission. |
+| `stdlib/sloppy/` | JavaScript bootstrap/runtime support library and public framework surface. |
+| `examples/` | Runnable or compile-checked application examples. |
+| `tests/` | Native, conformance, source-input, package, and fixture tests. |
+| `tools/` | Windows and Unix contributor scripts. |
+| `docs/` | Product, contributor, and internals documentation. |
+
+## Current Boundaries
+
+- Production hardening is still future work.
+- Runtime handler execution is V8-gated.
+- Package archives are local/experimental distribution artifacts.
+- The npm launcher package is not a general application dependency manager.
+- Third-party app package resolution is outside the current runtime surface.
+- V8, package, live-provider, stress, fuzz, and benchmark work use separate
+  checks from the default non-V8 lane.
+
+## Docs
+
+- [Documentation home](docs/README.md)
+- [Tutorials](docs/tutorials/)
+- [How-to guides](docs/how-to/)
+- [Reference](docs/reference/)
+- [Explanation](docs/explanation/)
+- [Contributor docs](docs/contributor/)
+- [Internals](docs/internals/)
+- [Glossary](docs/glossary.md)
+
+## Contributor Workflow
+
+Human contributor guide:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Agent-specific operating rules:
+
+- [AGENTS.md](AGENTS.md)
+- [AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md)
 
 ## Command Map
 
-`sloppy` app-host and metadata commands:
+Runtime and metadata commands:
 
 ```text
 sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--environment <name>] [--host <host>] [--port <port>]
@@ -86,29 +153,6 @@ sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--ho
 `sloppy build --artifacts ...` is rejected.
 
 Full details: [CLI reference](docs/reference/cli.md).
-
-## Docs Map
-
-- [Docs home](docs/README.md)
-- [Tutorials](docs/tutorials/)
-- [How-to guides](docs/how-to/)
-- [Reference](docs/reference/)
-- [Explanation](docs/explanation/)
-- [Contributor docs](docs/contributor/)
-- [Internals](docs/internals/)
-
-## Boundaries
-
-- Sloppy is pre-alpha and not production-ready.
-- Runtime handler execution requires a V8-enabled build.
-- Source input is compiled to artifacts before execution.
-- Third-party package import resolution is outside the current runtime surface.
-- Optional or skipped lanes are not pass evidence.
-
-## Contributing
-
-Human workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
-Automation workflow: [AGENTS.md](AGENTS.md), [AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md)
 
 ## License
 
