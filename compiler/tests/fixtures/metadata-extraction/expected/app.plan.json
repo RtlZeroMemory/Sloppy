@@ -209,7 +209,7 @@
         },
         {
           "kind": "header",
-          "name": "userAgent",
+          "name": "user-agent",
           "schema": null
         },
         {
@@ -238,6 +238,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"

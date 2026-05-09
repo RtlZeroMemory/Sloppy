@@ -80,6 +80,7 @@
     "asyncHandlers": false,
     "capabilities": false,
     "dataProviders": false,
+    "metadataInference": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -99,6 +100,13 @@
   "modules": [],
   "routes": [
     {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "code",
+          "schema": null
+        }
+      ],
       "completeness": {
         "reasons": [
           {
@@ -140,7 +148,7 @@
       "unknownRequiredFeatures": "rejected"
     },
     "evidence": {
-      "bindings": false,
+      "bindings": true,
       "capabilities": false,
       "effects": false,
       "providers": false,

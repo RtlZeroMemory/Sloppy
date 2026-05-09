@@ -139,6 +139,7 @@
   "modules": [],
   "routes": [
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -159,6 +160,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
@@ -233,6 +235,7 @@
       }
     },
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"

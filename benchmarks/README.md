@@ -127,8 +127,8 @@ The local runtime engine uses semantically equivalent HTTP workloads where pract
   compact-prefix app. Do not compare compact-prefix entries against generated-table
   entries as apples-to-apples measurements.
 - `bridge`: Sloppy-only V8/result/request-context workloads. Source-input header
-  facade coverage is reported as `SKIPPED` until the live runtime path can execute it;
-  native V8 bridge microbenchmarks still cover header lookup.
+  facade coverage exercises the live runtime path, while native V8 bridge microbenchmarks
+  still cover lower-level header lookup.
 - `concurrency`: fixed concurrent HTTP batches against `/health`, JSON, route parameter,
   and POST workloads. Latency is reported as concurrent batch wall time, with `wallMs`,
   `concurrency`, and measured batch count included per workload.

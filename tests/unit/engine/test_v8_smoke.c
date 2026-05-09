@@ -154,6 +154,15 @@ static SlHttpRequestContext test_request_context(const SlHttpRequestHead* reques
 
     context.request = request;
     context.scheme = sl_str_from_cstr("http");
+    context.needs_route_params = true;
+    context.needs_query_params = true;
+    context.needs_headers = true;
+    context.needs_body = true;
+    context.needs_request = true;
+    context.needs_connection = true;
+    context.needs_signal = true;
+    context.needs_log = true;
+    context.needs_metadata = true;
     return context;
 }
 
@@ -3194,6 +3203,191 @@ static int test_request_context_preserves_empty_header_lookup(void)
     return 0;
 }
 
+static int test_request_context_header_facade_is_opt_in(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpHeader headers[2];
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+
+    headers[0].name = sl_str_from_cstr("Host");
+    headers[0].value = sl_str_from_cstr("example");
+    headers[1].name = sl_str_from_cstr("User-Agent");
+    headers[1].value = sl_str_from_cstr("sloppy-test");
+    request.headers = headers;
+    request.header_count = 2U;
+    context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 410;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 411;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-header-facade.js"),
+                          sl_str_from_cstr("globalThis.sloppy_header_facade = function (ctx) {"
+                                           "  return typeof ctx.header === 'undefined'"
+                                           "    ? 'missing' : ctx.header.userAgent;"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 412;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_header_facade"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 413;
+    }
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("missing")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 414;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    context.needs_header_facade = true;
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_header_facade"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 415;
+    }
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("sloppy-test")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 416;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_request_context_metadata_objects_are_opt_in(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlRouteParam route_params[1] = {
+        {sl_str_from_cstr("id"), sl_str_from_cstr("123"), SL_ROUTE_PARAM_STRING},
+    };
+    SlHttpRequestContext context = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 431;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 432;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-context-lazy-metadata.js"),
+                          sl_str_from_cstr(
+                              "globalThis.sloppy_context_metadata = function (ctx) {"
+                              "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                              "    contentType: 'application/json; charset=utf-8',"
+                              "    body: { request: typeof ctx.request, log: typeof ctx.log,"
+                              "      connection: typeof ctx.connection, signal: typeof ctx.signal,"
+                              "      requestId: typeof ctx.requestId } };"
+                              "};"
+                              "globalThis.sloppy_context_route_only = function (ctx) {"
+                              "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                              "    contentType: 'application/json; charset=utf-8',"
+                              "    body: { id: ctx.route.id, request: typeof ctx.request,"
+                              "      log: typeof ctx.log } };"
+                              "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 433;
+    }
+
+    context = test_request_context(&request);
+    context.needs_route_params = false;
+    context.needs_query_params = false;
+    context.needs_headers = false;
+    context.needs_body = false;
+    context.needs_request = false;
+    context.needs_connection = false;
+    context.needs_signal = false;
+    context.needs_log = false;
+    context.needs_metadata = false;
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_context_metadata"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 434;
+    }
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"request\":\"undefined\",\"log\":\"undefined\","
+                           "\"connection\":\"undefined\",\"signal\":\"undefined\","
+                           "\"requestId\":\"undefined\"}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 435;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    context.route_params = route_params;
+    context.route_param_count = 1U;
+    context.needs_route_params = true;
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_context_route_only"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 436;
+    }
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"id\":\"123\",\"request\":\"undefined\","
+                                                 "\"log\":\"undefined\"}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 437;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_request_context_preserves_binary_body_bytes(void)
 {
     unsigned char engine_storage[8192];
@@ -3533,6 +3727,125 @@ static int test_result_descriptor_copies_headers_and_location(void)
     {
         sl_engine_destroy(engine);
         return 84;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_result_descriptor_fast_paths_cover_common_results(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 441;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 442;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-result-fast-paths.js"),
+                sl_str_from_cstr("function fast(descriptor, kind, jsonText) {"
+                                 "  Object.defineProperty(descriptor, '__sloppyFastResult',"
+                                 "    { value: kind });"
+                                 "  if (jsonText !== undefined) {"
+                                 "    Object.defineProperty(descriptor, '__sloppyJsonText',"
+                                 "      { value: jsonText });"
+                                 "  }"
+                                 "  return Object.freeze(descriptor);"
+                                 "}"
+                                 "globalThis.sloppy_fast_text = function () {"
+                                 "  return fast({ __sloppyResult: true, kind: 'text', status: 200,"
+                                 "    contentType: 'text/plain; charset=utf-8', headers: undefined,"
+                                 "    body: 'ok' }, 1);"
+                                 "};"
+                                 "globalThis.sloppy_fast_json = function () {"
+                                 "  return fast({ __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json; charset=utf-8',"
+                                 "    headers: undefined, body: undefined }, 3, '{\"ok\":true}');"
+                                 "};"
+                                 "globalThis.sloppy_fast_created = function () {"
+                                 "  return fast({ __sloppyResult: true, kind: 'json', status: 201,"
+                                 "    contentType: 'application/json; charset=utf-8',"
+                                 "    headers: undefined, location: '/items/1',"
+                                 "    body: undefined }, 4, '{\"id\":1}');"
+                                 "};"
+                                 "globalThis.sloppy_fast_no_content = function () {"
+                                 "  return fast({ __sloppyResult: true, kind: 'empty', status: 204,"
+                                 "    contentType: undefined, headers: undefined }, 2);"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 443;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fast_text"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("ok")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 444;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fast_json"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"ok\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 445;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fast_created"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON || result.response.status != 201U ||
+        result.response.header_count != 1U ||
+        expect_response_header(&result.response, "Location", "/items/1") != 0 ||
+        expect_bytes_equal(result.response.body, "{\"id\":1}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 446;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fast_no_content"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || result.response.status != 204U ||
+        result.response.body.length != 0U || result.response.content_type.length != 0U)
+    {
+        sl_engine_destroy(engine);
+        return 447;
     }
 
     sl_engine_destroy(engine);
@@ -5652,6 +5965,16 @@ int main(int argc, char** argv)
         return result;
     }
 
+    result = test_request_context_header_facade_is_opt_in();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_metadata_objects_are_opt_in();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_request_context_preserves_binary_body_bytes();
     if (result != 0) {
         return result;
@@ -5673,6 +5996,11 @@ int main(int argc, char** argv)
     }
 
     result = test_result_descriptor_copies_headers_and_location();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_fast_paths_cover_common_results();
     if (result != 0) {
         return result;
     }

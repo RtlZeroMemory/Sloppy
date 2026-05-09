@@ -2089,6 +2089,13 @@ async function flushMicrotasks(count = 6) {
     assert.equal(Results.noContent().status, 204);
     assert.equal(Results.noContent().kind, "empty");
     assert.equal(Object.prototype.hasOwnProperty.call(Results.noContent(), "body"), false);
+    assert.equal(Results.text("ok"), Results.text("ok"));
+    assert.notEqual(Results.text("ok", { status: 201 }), Results.text("ok"));
+    assert.equal(Results.noContent(), Results.noContent());
+    assert.equal(Results.json({ ok: true }).__sloppyJsonText, '{"ok":true}');
+    assert.equal(Object.prototype.propertyIsEnumerable.call(Results.json({ ok: true }), "__sloppyJsonText"), false);
+    assert.equal(Results.created("/users/1", { id: 1 }).__sloppyJsonText, '{"id":1}');
+    assert.equal(Results.json({ ok: true }, { headers: { "x-test": "1" } }).__sloppyJsonText, undefined);
     assert.equal(Results.notFound().status, 404);
     assert.equal(Results.notFound().kind, "json");
     assert.equal(Results.badRequest({ error: "bad" }).status, 400);

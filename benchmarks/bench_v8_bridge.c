@@ -122,6 +122,15 @@ sl_bench_v8_request_context(const SlHttpRequestHead* request, const SlRouteParam
     context.query_params = query_params;
     context.query_param_count = query_param_count;
     context.body_kind = body_kind;
+    context.needs_route_params = true;
+    context.needs_query_params = true;
+    context.needs_headers = true;
+    context.needs_body = true;
+    context.needs_request = true;
+    context.needs_connection = true;
+    context.needs_signal = true;
+    context.needs_log = true;
+    context.needs_metadata = true;
     return context;
 }
 

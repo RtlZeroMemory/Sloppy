@@ -6,9 +6,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $benchScript = Join-Path $RepoRoot "tools/windows/bench.ps1"
+$localBenchScript = Join-Path $RepoRoot "tools/windows/local-bench.ps1"
 $stderrPath = Join-Path $env:TEMP ("sloppy-bench-json-stderr-{0}.log" -f ([Guid]::NewGuid()))
 $localRuntimeOut = Join-Path $env:TEMP ("sloppy-local-runtime-bench-{0}.json" -f ([Guid]::NewGuid()))
 $localRuntimeStderr = Join-Path $env:TEMP ("sloppy-local-runtime-bench-stderr-{0}.log" -f ([Guid]::NewGuid()))
+$generatedSloppyProject = Join-Path $env:TEMP ("sloppy-generated-bench-app-{0}" -f ([Guid]::NewGuid()))
 
 try {
     Push-Location $RepoRoot
@@ -54,10 +56,53 @@ try {
     if ($first.id -notlike "concurrency.*") {
         throw "local runtime benchmark result did not come from the concurrency suite"
     }
+
+    New-Item -ItemType Directory -Force -Path $generatedSloppyProject | Out-Null
+    $localBenchSource = Get-Content -LiteralPath $localBenchScript -Raw
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($localBenchSource, [ref]$tokens, [ref]$parseErrors)
+    if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
+        throw "local-bench.ps1 has parse errors"
+    }
+
+    $writeFileFunction = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq "Write-BenchUtf8File"
+        }, $true)
+    $newAppFunction = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq "New-SloppyBenchApp"
+        }, $true)
+    if ($null -eq $writeFileFunction -or $null -eq $newAppFunction) {
+        throw "local benchmark app generator functions are missing"
+    }
+
+    $escapedProject = $generatedSloppyProject.Replace("'", "''")
+    $generatorScript = @(
+        '$Utf8NoBomEncoding = [System.Text.UTF8Encoding]::new($false)'
+        $writeFileFunction.Extent.Text
+        $newAppFunction.Extent.Text
+        "New-SloppyBenchApp -ProjectDir '$escapedProject' -SuiteName 'concurrency' -RouteCount 0"
+    ) -join [Environment]::NewLine
+    . ([scriptblock]::Create($generatorScript))
+
+    $appsettingsPath = Join-Path $generatedSloppyProject "appsettings.json"
+    if (-not (Test-Path -LiteralPath $appsettingsPath)) {
+        throw "generated Sloppy benchmark app is missing appsettings.json"
+    }
+    $appsettings = Get-Content -LiteralPath $appsettingsPath -Raw | ConvertFrom-Json
+    $maxConnections = [int]$appsettings.Sloppy.Server.MaxConnections
+    if ($maxConnections -lt 32) {
+        throw "generated Sloppy benchmark app MaxConnections must cover the concurrency suite"
+    }
 }
 finally {
     Pop-Location
     Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $localRuntimeOut -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $localRuntimeStderr -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $generatedSloppyProject -Recurse -Force -ErrorAction SilentlyContinue
 }

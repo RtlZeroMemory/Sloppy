@@ -802,6 +802,7 @@ static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val
     if (bindings == NULL || yyjson_is_null(bindings)) {
         return sl_status_ok();
     }
+    out->has_bindings = true;
     if (!yyjson_is_arr(bindings)) {
         return sl_plan_parse_field_diag(
             ctx,
@@ -834,6 +835,27 @@ static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val
 
     out->bindings = parsed;
     out->binding_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_route_middleware(SlPlanParseContext* ctx, yyjson_val* route,
+                                               SlPlanRoute* out)
+{
+    yyjson_val* middleware = yyjson_obj_get(route, "middleware");
+
+    if (middleware == NULL || yyjson_is_null(middleware)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(middleware)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("route middleware must be a JSON array",
+                                  sizeof("route middleware must be a JSON array") - 1U));
+    }
+
+    out->has_middleware = yyjson_arr_size(middleware) != 0U;
     return sl_status_ok();
 }
 
@@ -892,6 +914,11 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
     }
 
     status = sl_plan_parse_optional_string(ctx, value, "name", true, &out->name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_route_middleware(ctx, value, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -8880,6 +8880,11 @@ fn collect_statement_request_bindings(
     bindings: &mut Vec<RequestBinding>,
 ) {
     match statement {
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+            }
+        }
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
                 collect_expression_request_bindings(argument, ctx_name, schema_names, bindings);
@@ -8888,6 +8893,33 @@ fn collect_statement_request_bindings(
         Statement::ExpressionStatement(statement) => {
             collect_expression_request_bindings(
                 &statement.expression,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_request_bindings(init, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(
+                &statement.consequent,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_request_bindings(alternate, ctx_name, schema_names, bindings);
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_request_bindings(
+                &statement.argument,
                 ctx_name,
                 schema_names,
                 bindings,
@@ -8910,10 +8942,20 @@ fn collect_expression_request_bindings(
         Expression::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
             }
             for argument in &call.arguments {
                 collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
+        }
+        Expression::AwaitExpression(expression) => {
+            collect_expression_request_bindings(
+                &expression.argument,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
@@ -8941,7 +8983,57 @@ fn collect_expression_request_bindings(
             );
         }
         Expression::StaticMemberExpression(member) => {
+            if static_member_chain(expression).is_none_or(|chain| chain.first() != Some(&ctx_name))
+            {
+                collect_expression_request_bindings(
+                    &member.object,
+                    ctx_name,
+                    schema_names,
+                    bindings,
+                );
+            }
+        }
+        Expression::ComputedMemberExpression(member) => {
             collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &member.expression,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::BinaryExpression(expression) => {
+            collect_expression_request_bindings(&expression.left, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::LogicalExpression(expression) => {
+            collect_expression_request_bindings(&expression.left, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.right,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+        }
+        Expression::ConditionalExpression(expression) => {
+            collect_expression_request_bindings(&expression.test, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(
+                &expression.consequent,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            collect_expression_request_bindings(
+                &expression.alternate,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         _ => {}
     }
@@ -8957,6 +9049,8 @@ fn collect_argument_request_bindings(
         Argument::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
             }
             for argument in &call.arguments {
                 collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
@@ -8979,10 +9073,16 @@ fn collect_argument_request_bindings(
                 collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
-        Argument::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
+        Argument::StaticMemberExpression(_) => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
         }
-        _ => {}
+        _ => {
+            if let Some(expression) = argument.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -8996,6 +9096,11 @@ fn collect_array_element_request_bindings(
         ArrayExpressionElement::CallExpression(call) => {
             if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
+            } else {
+                collect_expression_request_bindings(&call.callee, ctx_name, schema_names, bindings);
+            }
+            for argument in &call.arguments {
+                collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
@@ -9015,7 +9120,11 @@ fn collect_array_element_request_bindings(
                 collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
-        _ => {}
+        _ => {
+            if let Some(expression) = element.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -9023,12 +9132,22 @@ fn request_binding_from_expression(
     expression: &Expression<'_>,
     ctx_name: &str,
 ) -> Option<RequestBinding> {
+    if matches!(expression, Expression::Identifier(identifier) if identifier.name.as_str() == ctx_name)
+    {
+        return Some(context_request_binding());
+    }
+
     let chain = static_member_chain(expression)?;
     if chain.len() == 3 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
     {
+        let name = if chain[1] == "header" {
+            header_facade_binding_name(chain[2])
+        } else {
+            chain[2].to_string()
+        };
         return Some(RequestBinding {
             kind: chain[1].to_string(),
-            name: Some(chain[2].to_string()),
+            name: Some(name),
             schema: None,
             parameter: None,
             type_name: None,
@@ -9043,7 +9162,48 @@ fn request_binding_from_expression(
             redacted: false,
         });
     }
+    if chain.len() == 2 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
+    {
+        return None;
+    }
+    if chain.len() >= 2 && chain[0] == ctx_name {
+        return Some(context_request_binding());
+    }
     None
+}
+
+fn context_request_binding() -> RequestBinding {
+    RequestBinding {
+        kind: "context".to_string(),
+        name: Some("RequestContext".to_string()),
+        schema: None,
+        parameter: None,
+        type_name: Some("RequestContext".to_string()),
+        source_name: None,
+        source_text: None,
+        span: None,
+        wrapper: None,
+        injection_kind: None,
+        provider_kind: None,
+        capability: None,
+        semantic: None,
+        redacted: false,
+    }
+}
+
+fn header_facade_binding_name(property: &str) -> String {
+    let mut output = String::with_capacity(property.len());
+    for ch in property.chars() {
+        if ch.is_ascii_uppercase() {
+            if !output.is_empty() {
+                output.push('-');
+            }
+            output.push(ch.to_ascii_lowercase());
+        } else {
+            output.push(ch.to_ascii_lowercase());
+        }
+    }
+    output
 }
 
 fn request_binding_from_call(
@@ -9052,6 +9212,9 @@ fn request_binding_from_call(
     schema_names: &BTreeSet<String>,
 ) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
+    if chain.len() >= 2 && chain[0] == ctx_name && chain[1] == "request" {
+        return Some(context_request_binding());
+    }
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" {
         let schema = body_binding_schema(call, chain[2], schema_names)?;
         return Some(RequestBinding {

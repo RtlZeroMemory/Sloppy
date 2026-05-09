@@ -145,6 +145,7 @@
   "modules": [],
   "routes": [
     {
+      "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"

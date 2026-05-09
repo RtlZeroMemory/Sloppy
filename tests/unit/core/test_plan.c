@@ -251,8 +251,15 @@ static int test_plan_metadata_interns_stable_strings(void)
     SlPlanRequestBinding bindings[1] = {
         {SL_PLAN_REQUEST_BINDING_BODY_JSON, sl_str_from_cstr("input"), sl_str_from_cstr("input"),
          sl_str_from_cstr("UserCreate"), sl_str_from_cstr("Body<UserCreate>"), false}};
-    SlPlanRoute routes[1] = {{sl_str_from_cstr("GET"), sl_str_from_cstr("/"), 1U,
-                              sl_str_from_cstr("home"), bindings, 1U}};
+    SlPlanRoute routes[1] = {{
+        .bindings = bindings,
+        .binding_count = 1U,
+        .method = sl_str_from_cstr("GET"),
+        .pattern = sl_str_from_cstr("/"),
+        .name = sl_str_from_cstr("home"),
+        .handler_id = 1U,
+        .has_bindings = true,
+    }};
     SlPlanSchemaNode property_node = {.kind = SL_PLAN_SCHEMA_STRING,
                                       .validation = sl_str_from_cstr("email")};
     SlPlanSchemaProperty properties[1] = {{sl_str_from_cstr("email"), &property_node}};

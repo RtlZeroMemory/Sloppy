@@ -3,6 +3,13 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const BYTES_CONTENT_TYPE = "application/octet-stream";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
+const FAST_RESULT_KIND = "__sloppyFastResult";
+const FAST_JSON_TEXT = "__sloppyJsonText";
+const FAST_TEXT_OK = 1;
+const FAST_NO_CONTENT = 2;
+const FAST_JSON = 3;
+const FAST_CREATED = 4;
+const FAST_JSON_MAX_LENGTH = 256;
 
 function resolveStatus(options) {
     const status = options?.status ?? 200;
@@ -139,7 +146,21 @@ function resolveContentType(options, defaultContentType) {
     return contentType;
 }
 
-function createResult(kind, body, contentType, options, extra) {
+function maybeFastJsonText(body) {
+    let jsonText;
+
+    try {
+        jsonText = body === undefined ? "null" : JSON.stringify(body);
+    } catch {
+        return undefined;
+    }
+
+    return typeof jsonText === "string" && jsonText.length <= FAST_JSON_MAX_LENGTH
+        ? jsonText
+        : undefined;
+}
+
+function createResult(kind, body, contentType, options, extra, fast) {
     const descriptor = {
         __sloppyResult: true,
         kind,
@@ -153,8 +174,26 @@ function createResult(kind, body, contentType, options, extra) {
         descriptor.body = body;
     }
 
+    if (fast !== undefined) {
+        Object.defineProperty(descriptor, FAST_RESULT_KIND, {
+            value: fast.kind,
+        });
+        if (fast.jsonText !== undefined) {
+            Object.defineProperty(descriptor, FAST_JSON_TEXT, {
+                value: fast.jsonText,
+            });
+        }
+    }
+
     return Object.freeze(descriptor);
 }
+
+const TEXT_OK_RESULT = createResult("text", "ok", TEXT_CONTENT_TYPE, undefined, undefined, {
+    kind: FAST_TEXT_OK,
+});
+const NO_CONTENT_RESULT = createResult("empty", undefined, undefined, { status: 204 }, undefined, {
+    kind: FAST_NO_CONTENT,
+});
 
 function normalizeProblem(problemOrMessage, status) {
     if (problemOrMessage === undefined) {
@@ -182,11 +221,23 @@ function normalizeProblem(problemOrMessage, status) {
 }
 
 function text(body, options) {
-    return createResult("text", String(body), TEXT_CONTENT_TYPE, options);
+    const value = String(body);
+    if (options === undefined && value === "ok") {
+        return TEXT_OK_RESULT;
+    }
+    return createResult("text", value, TEXT_CONTENT_TYPE, options);
 }
 
 function json(value, options) {
-    return createResult("json", value, JSON_CONTENT_TYPE, options);
+    const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+    return createResult(
+        "json",
+        value,
+        JSON_CONTENT_TYPE,
+        options,
+        undefined,
+        jsonText === undefined ? undefined : { kind: FAST_JSON, jsonText },
+    );
 }
 
 function html(body, options) {
@@ -198,7 +249,15 @@ function bytes(body, options) {
 }
 
 function ok(value, options) {
-    return createResult("json", value, JSON_CONTENT_TYPE, options);
+    const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+    return createResult(
+        "json",
+        value,
+        JSON_CONTENT_TYPE,
+        options,
+        undefined,
+        jsonText === undefined ? undefined : { kind: FAST_JSON, jsonText },
+    );
 }
 
 function created(location, value, options) {
@@ -207,12 +266,16 @@ function created(location, value, options) {
     }
     assertHeaderValueSafe(location, "created location");
 
+    const mergedOptions = { status: 201, ...options };
+    const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
+
     return createResult(
         "json",
         value,
         JSON_CONTENT_TYPE,
-        { status: 201, ...options },
+        mergedOptions,
         { location },
+        jsonText === undefined ? undefined : { kind: FAST_CREATED, jsonText },
     );
 }
 
@@ -221,7 +284,7 @@ function accepted(value, options) {
 }
 
 function noContent() {
-    return createResult("empty", undefined, undefined, { status: 204 });
+    return NO_CONTENT_RESULT;
 }
 
 function notFound(valueOrProblem, options) {

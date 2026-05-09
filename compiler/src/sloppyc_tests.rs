@@ -2069,6 +2069,8 @@ export default app;
     assert_eq!(plan["schemas"][0]["name"], "UserCreate");
     assert_eq!(plan["configReads"][0]["key"], "Sloppy:Server:Host");
     assert_eq!(plan["routes"][0]["bindings"][0]["kind"], "route");
+    assert_eq!(plan["routes"][0]["bindings"][2]["kind"], "header");
+    assert_eq!(plan["routes"][0]["bindings"][2]["name"], "user-agent");
     assert_eq!(plan["routes"][0]["response"]["helper"], "json");
     assert_eq!(plan["features"]["metadataInference"], true);
 }

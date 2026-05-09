@@ -242,8 +242,8 @@ static bool sl_run_artifact_file_path(char* buffer, size_t capacity, const char*
     return sl_run_join_path(buffer, capacity, dir, sl_cli_span_cstr(leaf));
 }
 
-static int sl_run_read_file(SlRunApp* app, const char* path, unsigned char* buffer,
-                            size_t capacity, SlBytes* out)
+static int sl_run_read_file(SlRunApp* app, const char* path, unsigned char* buffer, size_t capacity,
+                            SlBytes* out)
 {
     if (app == NULL) {
         return 1;
@@ -401,8 +401,7 @@ static bool sl_run_plan_config_parse_log_level(yyjson_val* value, SlLogLevel* ou
     return out != NULL && sl_status_is_ok(sl_log_level_from_str(text, out));
 }
 
-static bool sl_run_plan_config_parse_log_console_format(yyjson_val* value,
-                                                        SlLogConsoleFormat* out)
+static bool sl_run_plan_config_parse_log_console_format(yyjson_val* value, SlLogConsoleFormat* out)
 {
     if (out == NULL || value == NULL || !yyjson_is_str(value)) {
         return false;
@@ -920,8 +919,8 @@ static void sl_run_write_command_message(const char* command_name, const char* m
     sl_cli_write_cstr(stderr, message);
 }
 
-static void sl_run_print_command_diag(const char* command_name, const char* message,
-                                      SlArena* arena, const SlDiag* diag)
+static void sl_run_print_command_diag(const char* command_name, const char* message, SlArena* arena,
+                                      const SlDiag* diag)
 {
     sl_cli_write_cstr(stderr, sl_run_command_name_or_default(command_name));
     sl_cli_write_cstr(stderr, ": ");
@@ -1020,8 +1019,7 @@ static int sl_run_setup_logging(SlRunApp* app)
     if (app->config_has_logging_file_path) {
         status = sl_log_file_sink_create(&app->logging_arena,
                                          sl_str_from_cstr(app->config_logging_file_path),
-                                         SL_LOG_DEFAULT_FILE_BUFFER_BYTES,
-                                         &app->logging_file_sink);
+                                         SL_LOG_DEFAULT_FILE_BUFFER_BYTES, &app->logging_file_sink);
         if (sl_status_is_ok(status)) {
             status = sl_log_runtime_add_sink(app->logging, app->logging_file_sink);
         }
@@ -1262,9 +1260,9 @@ static int sl_run_prepare_routes(SlRunApp* app)
     SlStatus status;
 
     if (app->plan.route_count > SL_RUN_MAX_ROUTES) {
-        sl_cli_write_cstr(
-            stderr, "sloppy run: app.plan.json contains more routes than the dev runtime can "
-                    "materialize\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: app.plan.json contains more routes than the dev runtime can "
+                          "materialize\n");
         return 1;
     }
 
@@ -1395,8 +1393,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
 }
 
 static int sl_run_load_artifacts(const char* artifacts_path, const char* command_name,
-                                 SlRunApp* app,
-                                 bool validate_runtime_features)
+                                 SlRunApp* app, bool validate_runtime_features)
 {
     char plan_path[1024];
     char app_js_path[1024];
@@ -1434,8 +1431,8 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
             &app->lifecycle, app->app_cleanups,
             sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), &diag)))
     {
-        sl_run_print_command_diag(command_name, "failed to start app lifecycle: ",
-                                  &app->engine_arena, &diag);
+        sl_run_print_command_diag(command_name,
+                                  "failed to start app lifecycle: ", &app->engine_arena, &diag);
         return 1;
     }
 
@@ -1461,8 +1458,7 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
     if (!sl_run_join_path(source_map_path, sizeof(source_map_path), artifacts_path,
                           sl_run_str_span(app->plan.source_map.path)))
     {
-        sl_run_write_command_message(command_name,
-                                     "invalid source map path in app.plan.json\n");
+        sl_run_write_command_message(command_name, "invalid source map path in app.plan.json\n");
         return 1;
     }
 
@@ -1481,8 +1477,7 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         return 1;
     }
     if (!sl_run_hash_matches(app->plan.source_map.hash, source_map)) {
-        sl_run_write_command_message(command_name,
-                                     "source map hash mismatch in app.plan.json\n");
+        sl_run_write_command_message(command_name, "source map hash mismatch in app.plan.json\n");
         return 1;
     }
     app->app_js_bytes = app_js;
@@ -1978,9 +1973,54 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     return config;
 }
 
+static bool sl_run_transport_arena_size(const SlHttpTransportConfig* config, size_t* out_bytes)
+{
+    enum
+    {
+        SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
+        SL_RUN_TRANSPORT_STORAGE_BLOCKS =
+            (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
+        SL_RUN_TRANSPORT_STORAGE_BYTES =
+            SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
+    };
+    size_t connection_units = SL_RUN_MAX_CLIENTS;
+    size_t rounded_units = 0U;
+    size_t block_count = 0U;
+
+    if (config == NULL || out_bytes == NULL) {
+        return false;
+    }
+    if (config->connection_capacity > connection_units) {
+        connection_units = config->connection_capacity;
+    }
+    if (connection_units > SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS) {
+        return false;
+    }
+    if (!sl_status_is_ok(
+            sl_checked_add_size(connection_units, SL_RUN_MAX_CLIENTS - 1U, &rounded_units)))
+    {
+        return false;
+    }
+    block_count = rounded_units / SL_RUN_MAX_CLIENTS;
+    if (!sl_status_is_ok(sl_checked_mul_size(SL_RUN_TRANSPORT_ARENA_BYTES, block_count, out_bytes)))
+    {
+        return false;
+    }
+    return *out_bytes <= SL_RUN_TRANSPORT_STORAGE_BYTES;
+}
+
 static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 {
-    unsigned char transport_storage[SL_RUN_TRANSPORT_ARENA_BYTES];
+    enum
+    {
+        SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
+        SL_RUN_TRANSPORT_STORAGE_BLOCKS =
+            (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
+        SL_RUN_TRANSPORT_STORAGE_BYTES =
+            SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
+    };
+    static unsigned char transport_storage[SL_RUN_TRANSPORT_STORAGE_BYTES];
+    size_t transport_storage_bytes = 0U;
     SlArena transport_arena = {0};
     SlHttpTransportServer server = {0};
     SlHttpTransportConfig config = sl_run_transport_config(host, port, app);
@@ -1988,8 +2028,14 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     SlStatus status;
     int result = 0;
 
+    if (!sl_run_transport_arena_size(&config, &transport_storage_bytes)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: dev server MaxConnections exceeds bounded storage\n");
+        return 1;
+    }
+
     if (!sl_status_is_ok(
-            sl_arena_init(&transport_arena, transport_storage, sizeof(transport_storage))))
+            sl_arena_init(&transport_arena, transport_storage, transport_storage_bytes)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server storage\n");
         return 1;

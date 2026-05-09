@@ -72,12 +72,14 @@ typedef struct SlPlanHandler
 
 typedef struct SlPlanRoute
 {
-    SlStr method;
-    SlStr pattern;
-    SlHandlerId handler_id;
-    SlStr name;
     const struct SlPlanRequestBinding* bindings;
     size_t binding_count;
+    SlStr method;
+    SlStr pattern;
+    SlStr name;
+    SlHandlerId handler_id;
+    bool has_bindings;
+    bool has_middleware;
 } SlPlanRoute;
 
 typedef enum SlPlanRequestBindingKind
