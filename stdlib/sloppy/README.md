@@ -16,6 +16,7 @@ stdlib/sloppy/
   data.js
   fs.js
   net.js
+  problem-details.js
   time.js
   codec.js
   crypto.js
@@ -42,7 +43,8 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Current Surface
 
-- `index.js` re-exports the app-host facade, result helpers, schema helpers, provider
+- `index.js` re-exports the app-host facade, result helpers, problem detail defaults,
+  schema helpers, provider
   facades, and core API namespaces.
 - `app.js` provides the bootstrap builder/app/module surface used by examples and tests:
   `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, `Router.group(...)`,
@@ -55,6 +57,8 @@ lib/sloppy/bootstrap/sloppy/
   assets, not public import targets.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; descriptors do not write responses by themselves.
+- `problem-details.js` provides `ProblemDetails.defaults(...)` descriptors for safe
+  route-handler error responses.
 - `schema.js` provides the current validation metadata surface for strings, numbers,
   booleans, and object shapes.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose

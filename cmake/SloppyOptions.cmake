@@ -153,6 +153,7 @@ set(
     crypto.js
     net.js
     os.js
+    problem-details.js
     time.js
     workers.js
     index.js

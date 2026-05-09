@@ -208,6 +208,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_os_runtime: false,
         uses_http_client_runtime: false,
         uses_workers_runtime: false,
+        problem_details: None,
     };
     config
         .apply_to_app(&mut app)
@@ -1530,6 +1531,33 @@ export default app;
     assert_eq!(app.routes[7].pattern, "/problem");
     assert_eq!(app.routes[8].pattern, "/html");
     assert_eq!(app.routes[9].pattern, "/bytes");
+}
+
+#[test]
+fn problem_details_defaults_wraps_compiled_handler_errors() {
+    let source = r#"import { Sloppy, Results, ProblemDetails } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/boom", () => Results.text("ok"));
+app.use(ProblemDetails.defaults());
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert!(app.problem_details.is_some());
+    assert_eq!(app.problem_details.as_ref().unwrap().detail, "never");
+    assert!(app.routes[0].handler.is_async);
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("SLOPPY_E_HANDLER_ERROR"));
+    assert!(app.routes[0]
+        .handler
+        .responses
+        .iter()
+        .any(|response| response.helper == "problem" && response.status == 500));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ProblemDetails"));
+    assert!(emitted_js.source.contains("Internal Server Error"));
 }
 
 #[test]

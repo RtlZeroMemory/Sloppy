@@ -17,6 +17,7 @@ import {
     NamedPipe,
     NonCryptoHash,
     Password,
+    ProblemDetails,
     Random,
     Router,
     Results,
@@ -1368,6 +1369,42 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\0" }), /control characters/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x1F" }), /control characters/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x7F" }), /control characters/);
+}
+
+{
+    const defaults = ProblemDetails.defaults();
+    assert.deepEqual(defaults, {
+        __sloppyProblemDetails: true,
+        detail: "never",
+    });
+    assert.equal(Object.isFrozen(defaults), true);
+    assertThrowsMessage(() => ProblemDetails.defaults(null), /plain object/);
+    assertThrowsMessage(() => ProblemDetails.defaults({ detail: "sometimes" }), /detail policy/);
+
+    const app = Sloppy.create();
+    app.use(ProblemDetails.defaults());
+    app.get("/boom", () => {
+        throw new Error("SECRET_TOKEN_SHOULD_NOT_LEAK");
+    });
+    const response = app.__getRoutes()[0].handler();
+    assert.equal(response.kind, "problem");
+    assert.equal(response.status, 500);
+    assert.equal(response.body.status, 500);
+    assert.equal(response.body.title, "Internal Server Error");
+    assert.equal(response.body.code, "SLOPPY_E_HANDLER_ERROR");
+    assert.equal(JSON.stringify(response.body).includes("SECRET_TOKEN_SHOULD_NOT_LEAK"), false);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({ Sloppy: { Environment: "Development" } });
+    const app = builder.build();
+    app.use(ProblemDetails.defaults({ detail: "development" }));
+    app.get("/boom", async () => {
+        throw new Error("dev detail");
+    });
+    const response = await app.__getRoutes()[0].handler();
+    assert.equal(response.body.detail, "dev detail");
 }
 
 {

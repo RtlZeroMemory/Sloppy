@@ -54,6 +54,17 @@ Helper-specific checks:
 - `Results.problem(object)` -> `{ status, ...object }`
 - non-string/non-object problem values throw.
 
+Problem results use `application/problem+json; charset=utf-8`. Sloppy's current
+safe handler-error shape is:
+
+```json
+{"status":500,"title":"Internal Server Error","code":"SLOPPY_E_HANDLER_ERROR"}
+```
+
+`ProblemDetails.defaults()` uses that shape for thrown or rejected route handler
+errors when installed on the app. The default policy does not include exception
+messages in the response body.
+
 ## Limits
 
 - Descriptor API only; not a streaming writer API.

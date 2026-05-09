@@ -5,6 +5,7 @@ set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
+set(problem_details_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/problem-details.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
 set(capabilities_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/capabilities.js")
@@ -16,7 +17,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -29,6 +30,7 @@ file(READ "${codec_source}" codec_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
+file(READ "${problem_details_source}" problem_details_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
 file(READ "${capabilities_source}" capabilities_js)
@@ -232,6 +234,16 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "const DETAIL_POLICIES = new Set"
+        "function validateDetailPolicy(value)"
+        "defaults(options)"
+        "__sloppyProblemDetails: true"
+        "detail:"
+        "Object.freeze")
+    require_substring("${problem_details_js}" "${required_pattern}" "problem-details.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "addDatabase(token, options)"
         "capability token already declared"
         "capability token is not declared"
@@ -362,6 +374,7 @@ foreach(required_pattern IN ITEMS
         "services,"
         "build()"
         "create()"
+        "function safeProblemDetails(error, descriptor, config)"
         "mapGet(pattern, optionsOrHandler, maybeHandler)"
         "mapPost(pattern, optionsOrHandler, maybeHandler)"
         "mapPut(pattern, optionsOrHandler, maybeHandler)"
@@ -381,7 +394,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

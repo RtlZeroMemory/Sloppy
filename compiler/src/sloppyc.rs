@@ -240,6 +240,12 @@ struct ExtractedApp {
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
     uses_workers_runtime: bool,
+    problem_details: Option<ProblemDetailsDescriptor>,
+}
+
+#[derive(Debug, Clone)]
+struct ProblemDetailsDescriptor {
+    detail: String,
 }
 
 #[derive(Debug, Clone)]
@@ -427,6 +433,7 @@ struct AppState {
     os_imported: bool,
     http_client_imported: bool,
     workers_imported: bool,
+    problem_details_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -449,6 +456,7 @@ struct AppState {
     schema_names: BTreeSet<String>,
     config_reads: Vec<ConfigReadMetadata>,
     default_export: Option<String>,
+    problem_details: Option<ProblemDetailsDescriptor>,
 }
 
 impl AppState {
@@ -469,6 +477,7 @@ impl AppState {
             os_imported: false,
             http_client_imported: false,
             workers_imported: false,
+            problem_details_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -491,6 +500,7 @@ impl AppState {
             schema_names: BTreeSet::new(),
             config_reads: Vec::new(),
             default_export: None,
+            problem_details: None,
         }
     }
 }
@@ -1077,6 +1087,10 @@ fn extract_entry(
         }
     }
 
+    if let Some(descriptor) = state.problem_details.as_ref() {
+        apply_problem_details_to_routes(path, &mut state.routes, descriptor)?;
+    }
+
     let helper_sources = state
         .helper_sources
         .iter()
@@ -1134,6 +1148,7 @@ fn extract_entry(
         uses_os_runtime: state.os_imported || graph.uses_os_runtime || framework_needs_os_runtime,
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_workers_runtime,
+        problem_details: state.problem_details.clone(),
     })
 }
 
@@ -1760,6 +1775,7 @@ fn extract_import(
             match (imported, local) {
                 ("Sloppy", "Sloppy") => state.sloppy_imported = true,
                 ("Results", "Results") => state.results_imported = true,
+                ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
                 ("data", "data") => state.data_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -1778,6 +1794,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
         name,
         "Sloppy"
             | "Results"
+            | "ProblemDetails"
             | "data"
             | "schema"
             | "Email"
@@ -1969,6 +1986,11 @@ fn extract_expression_statement(
         app_use_provider_call(path, source, source_name, &statement.expression, state)?
     {
         add_sqlite_provider_capability(state, provider);
+        return Ok(());
+    }
+
+    if let Some(descriptor) = app_use_problem_details_call(path, &statement.expression, state)? {
+        state.problem_details = Some(descriptor);
         return Ok(());
     }
 
@@ -3021,6 +3043,133 @@ fn app_use_provider_call(
         }
     }
     Ok(Some(provider))
+}
+
+fn app_use_problem_details_call(
+    path: &Path,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<ProblemDetailsDescriptor>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    if property != "use" || !state.app_vars.contains(receiver) {
+        return Ok(None);
+    }
+    let Some(Argument::CallExpression(descriptor_call)) = call.arguments.first() else {
+        return Ok(None);
+    };
+    if call.arguments.len() != 1 {
+        return Ok(None);
+    }
+    let Some((descriptor, method)) = static_member_name(&descriptor_call.callee) else {
+        return Ok(None);
+    };
+    if descriptor != "ProblemDetails" || method != "defaults" {
+        return Ok(None);
+    }
+    if !state.problem_details_imported {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            "ProblemDetails.defaults() requires importing ProblemDetails from \"sloppy\"",
+        )
+        .with_path(path)
+        .with_span(descriptor_call.span));
+    }
+    if descriptor_call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_PROBLEM_DETAILS",
+            "ProblemDetails.defaults accepts at most one options object",
+        )
+        .with_path(path)
+        .with_span(descriptor_call.span));
+    }
+    let mut detail = "never".to_string();
+    if let Some(argument) = descriptor_call.arguments.first() {
+        let Some(object) = object_argument(argument) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_PROBLEM_DETAILS",
+                "ProblemDetails.defaults options must be an object literal",
+            )
+            .with_path(path)
+            .with_span(argument_span(argument).unwrap_or(descriptor_call.span)));
+        };
+        if let Some(value) = object_string_property_value(object, "detail") {
+            if value != "never" && value != "development" && value != "always" {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_PROBLEM_DETAILS",
+                    "ProblemDetails detail policy must be \"never\", \"development\", or \"always\"",
+                )
+                .with_path(path)
+                .with_span(object.span));
+            }
+            detail = value.to_string();
+        }
+    }
+    Ok(Some(ProblemDetailsDescriptor { detail }))
+}
+
+const PROBLEM_DETAILS_WRAPPER_PREFIX: &str = "async function(ctx) { try { return await (";
+
+fn wrap_handler_with_problem_details(source: &str, detail: &str) -> String {
+    let detail_branch = match detail {
+        "always" => "true",
+        "development" => "(String((ctx && ctx.config && typeof ctx.config.get === \"function\") ? (ctx.config.get(\"Sloppy:Environment\") ?? \"\") : \"\")).toLowerCase() === \"development\"",
+        _ => "false",
+    };
+    format!(
+        "{prefix}{source})(ctx); }} catch (error) {{ const __sloppy_problem = {{ status: 500, title: \"Internal Server Error\", code: \"SLOPPY_E_HANDLER_ERROR\" }}; if ({detail_branch}) {{ __sloppy_problem.detail = String((error && error.message) ?? error); }} return Results.problem(__sloppy_problem, {{ status: 500 }}); }} }}",
+        prefix = PROBLEM_DETAILS_WRAPPER_PREFIX,
+    )
+}
+
+fn apply_problem_details_to_routes(
+    path: &Path,
+    routes: &mut [Route],
+    descriptor: &ProblemDetailsDescriptor,
+) -> Result<(), Diagnostic> {
+    for route in routes {
+        route.handler.emitted_source =
+            wrap_handler_with_problem_details(&route.handler.emitted_source, &descriptor.detail);
+        route.handler.is_async = true;
+        // The wrapper prepends a single-line prefix; shift the column offset
+        // so source-map mappings still anchor on the original handler body.
+        route.handler.source_map_column_offset = route
+            .handler
+            .source_map_column_offset
+            .checked_add(PROBLEM_DETAILS_WRAPPER_PREFIX.len())
+            .ok_or_else(|| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INTERNAL_OFFSET_OVERFLOW",
+                    "ProblemDetails wrapper produced a source-map offset that overflows usize",
+                )
+                .with_path(path)
+                .with_span(route.handler.span)
+            })?;
+        let problem_response = ResponseMetadata {
+            helper: "problem".to_string(),
+            status: 500,
+            kind: "problem".to_string(),
+            body_schema: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            partial: true,
+        };
+        let already_has_problem = route.handler.responses.iter().any(|response| {
+            response.helper == "problem" && response.status == 500 && response.kind == "problem"
+        });
+        if !already_has_problem {
+            route.handler.responses.push(problem_response.clone());
+        }
+        if route.handler.response.is_none() {
+            route.handler.response = Some(problem_response);
+        }
+    }
+    Ok(())
 }
 
 fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<(String, Span)> {
@@ -7583,6 +7732,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     );
     push_generated_line(&mut output, &mut generated_line, "}");
     let mut runtime_exports = vec!["Results"];
+    if app.problem_details.is_some() {
+        runtime_exports.push("ProblemDetails");
+    }
     if app.uses_data_runtime {
         runtime_exports.push("data");
     }

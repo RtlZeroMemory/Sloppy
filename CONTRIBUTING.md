@@ -50,6 +50,9 @@ present blocked checks as successful checks.
 
 ## Evidence Reporting
 
+Contributor docs call this the Evidence Reporting model. Use it to keep the
+Implementation Contract for Reviewers tied to commands that actually ran.
+
 Use these statuses when reporting PR validation:
 
 - `PASS`
