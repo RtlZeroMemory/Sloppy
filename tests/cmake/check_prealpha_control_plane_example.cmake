@@ -40,6 +40,7 @@ function(require_token haystack token description)
 endfunction()
 
 file(READ "${example_main}" main_source)
+file(READ "${example_dir}/src/routes/health.js" health_source)
 file(READ "${example_dir}/src/routes/projects.js" projects_source)
 file(READ "${example_dir}/src/routes/apps.js" apps_source)
 file(READ "${example_dir}/src/routes/builds.js" builds_source)
@@ -48,7 +49,7 @@ file(READ "${example_dir}/src/routes/diagnostics.js" diagnostics_source)
 file(READ "${example_readme}" readme_source)
 
 foreach(required_pattern IN ITEMS
-        "import { ProblemDetails, Results, Sloppy } from \"sloppy\";"
+        "import { ProblemDetails, Sloppy } from \"sloppy\";"
         "import { sqlite } from \"sloppy/providers/sqlite\";"
         "Sloppy.create()"
         "ProblemDetails.defaults()"
@@ -62,6 +63,17 @@ foreach(required_pattern IN ITEMS
         "export default app;")
     require_token("${main_source}" "${required_pattern}"
                   "prealpha-control-plane main source is missing expected app-host shape")
+endforeach()
+
+foreach(route_source IN ITEMS
+        "${health_source}"
+        "${projects_source}"
+        "${apps_source}"
+        "${builds_source}"
+        "${deployments_source}"
+        "${diagnostics_source}")
+    require_token("${route_source}" "import { Results } from \"sloppy\";"
+                  "prealpha-control-plane route module is missing file-local Results import")
 endforeach()
 
 foreach(required_pattern IN ITEMS
