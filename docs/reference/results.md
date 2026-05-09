@@ -39,12 +39,16 @@ Optional extra fields:
 Shared option checks:
 
 - `status` must be an integer in `100..999`.
-- `headers` must be a plain object when provided.
+- `headers` must be a plain object when provided. Header names must use safe HTTP
+  token characters and cannot be runtime-managed names such as `Content-Type`,
+  `Content-Length`, `Connection`, `Transfer-Encoding`, or `Keep-Alive`. Header
+  values must be strings without control characters other than horizontal tab.
 - `contentType` (when used) must be a non-empty string with no control characters.
 
 Helper-specific checks:
 
-- `Results.created(location, ...)` requires non-empty string `location`.
+- `Results.created(location, ...)` requires a non-empty safe header value string
+  for `location`.
 - `Results.bytes(body, ...)` accepts `ArrayBuffer` or any typed-array/DataView (`ArrayBuffer.isView` path).
 
 ## Problem Result Normalization

@@ -23,6 +23,67 @@ function isPlainObject(value) {
     return prototype === Object.prototype || prototype === null;
 }
 
+function isHeaderNameChar(value) {
+    return (value >= "A" && value <= "Z") ||
+        (value >= "a" && value <= "z") ||
+        (value >= "0" && value <= "9") ||
+        value === "!" ||
+        value === "#" ||
+        value === "$" ||
+        value === "%" ||
+        value === "&" ||
+        value === "'" ||
+        value === "*" ||
+        value === "+" ||
+        value === "-" ||
+        value === "." ||
+        value === "^" ||
+        value === "_" ||
+        value === "`" ||
+        value === "|" ||
+        value === "~";
+}
+
+function isHeaderNameSafe(name) {
+    if (name.length === 0) {
+        return false;
+    }
+
+    for (const ch of name) {
+        if (!isHeaderNameChar(ch)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function isManagedResponseHeader(name) {
+    const lowered = name.toLowerCase();
+    return lowered === "connection" ||
+        lowered === "content-type" ||
+        lowered === "content-length" ||
+        lowered === "transfer-encoding" ||
+        lowered === "keep-alive";
+}
+
+function isHeaderValueSafe(value) {
+    for (let index = 0; index < value.length; index += 1) {
+        const code = value.charCodeAt(index);
+        if ((code < 0x20 && code !== 0x09) || code === 0x7F) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function assertHeaderValueSafe(value, label) {
+    if (typeof value !== "string" || !isHeaderValueSafe(value)) {
+        throw new TypeError(`Sloppy Results ${label} must be a safe HTTP header value.`);
+    }
+}
+
 function copyHeaders(options) {
     const headers = options?.headers;
 
@@ -34,7 +95,21 @@ function copyHeaders(options) {
         throw new TypeError("Sloppy Results headers must be a plain object when provided.");
     }
 
-    return Object.freeze({ ...headers });
+    const copied = {};
+    for (const [name, value] of Object.entries(headers)) {
+        if (!isHeaderNameSafe(name) || isManagedResponseHeader(name)) {
+            throw new TypeError("Sloppy Results headers must use safe unmanaged HTTP header names.");
+        }
+        assertHeaderValueSafe(value, `header '${name}'`);
+        Object.defineProperty(copied, name, {
+            value,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+        });
+    }
+
+    return Object.freeze(copied);
 }
 
 function copyBytes(value) {
@@ -130,6 +205,7 @@ function created(location, value, options) {
     if (typeof location !== "string" || location.length === 0) {
         throw new TypeError("Sloppy Results.created location must be a non-empty string.");
     }
+    assertHeaderValueSafe(location, "created location");
 
     return createResult(
         "json",

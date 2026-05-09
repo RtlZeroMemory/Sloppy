@@ -124,8 +124,11 @@ return Results.ok(data, {
 ```
 
 - `status` — override the helper's default status code.
-- `headers` — added to the response. Header names are normalized to
-  lowercase; later writes override earlier ones.
+- `headers` — extra response headers. Names must be valid HTTP tokens; values
+  must be strings without control characters (horizontal tab is allowed).
+  Runtime-managed headers — `Content-Type`, `Content-Length`, `Connection`,
+  `Transfer-Encoding`, `Keep-Alive` — are rejected; set `contentType`
+  instead. Invalid names or values throw a `TypeError`.
 - `contentType` — override the helper's default `Content-Type`. The runtime
   still adds `; charset=utf-8` for textual content where appropriate.
 
