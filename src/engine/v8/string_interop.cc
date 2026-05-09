@@ -67,33 +67,45 @@ bool sl_v8_std_string_from_value(v8::Isolate* isolate, v8::Local<v8::Value> valu
 SlStatus sl_v8_string_from_value_copy_to_arena(v8::Isolate* isolate, SlArena* arena,
                                                v8::Local<v8::Value> value, SlStr* out)
 {
-    std::string value_text;
-
-    if (arena == nullptr || out == nullptr) {
+    if (isolate == nullptr || arena == nullptr || out == nullptr || value.IsEmpty()) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (!sl_v8_std_string_from_value(isolate, value, &value_text)) {
+    v8::String::Utf8Value utf8(isolate, value);
+    if (*utf8 == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return sl_v8_std_string_copy_to_arena(arena, value_text, out);
+    return sl_str_copy_view_to_arena(
+        arena, sl_str_from_parts(*utf8, static_cast<size_t>(utf8.length())), out);
 }
 
 SlStatus sl_v8_string_value_copy_bytes_to_arena(v8::Isolate* isolate, SlArena* arena,
                                                 v8::Local<v8::Value> value, SlBytes* out)
 {
-    std::string value_text;
+    SlOwnedBytes copied = {};
+    SlStatus status;
 
-    if (arena == nullptr || out == nullptr) {
+    if (isolate == nullptr || arena == nullptr || out == nullptr || value.IsEmpty()) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (!sl_v8_std_string_from_value(isolate, value, &value_text)) {
+    v8::String::Utf8Value utf8(isolate, value);
+    if (*utf8 == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return sl_v8_std_string_copy_bytes_to_arena(arena, value_text, out);
+    status =
+        sl_bytes_copy_to_arena(arena,
+                               sl_bytes_from_parts(reinterpret_cast<const unsigned char*>(*utf8),
+                                                   static_cast<size_t>(utf8.length())),
+                               &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = sl_owned_bytes_as_view(copied);
+    return sl_status_ok();
 }
 
 SlStatus sl_v8_std_string_copy_to_arena(SlArena* arena, const std::string& src, SlStr* out)

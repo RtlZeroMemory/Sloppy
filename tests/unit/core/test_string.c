@@ -99,8 +99,10 @@ static int test_hashing(void)
     const char same_embedded[] = {'a', '\0', 'b'};
     SlStr embedded_str = sl_str_from_parts(embedded, sizeof(embedded));
     SlStr same_embedded_str = sl_str_from_parts(same_embedded, sizeof(same_embedded));
+    SlStr hello_str = sl_str_from_cstr("hello");
     uint64_t hash = 0U;
     uint64_t same_hash = 0U;
+    uint64_t hello_hash = 0U;
     uint64_t sentinel_hash = 123U;
 
     if (expect_status(sl_str_hash(embedded_str, &hash), SL_STATUS_OK) != 0 ||
@@ -108,6 +110,12 @@ static int test_hashing(void)
         hash != same_hash)
     {
         return 10;
+    }
+
+    if (expect_status(sl_str_hash(hello_str, &hello_hash), SL_STATUS_OK) != 0 ||
+        hello_hash != UINT64_C(0x26c7827d889f6da3))
+    {
+        return 13;
     }
 
     if (expect_status(sl_str_hash(sl_str_from_parts(NULL, 1U), &sentinel_hash),

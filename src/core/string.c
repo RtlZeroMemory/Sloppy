@@ -12,8 +12,8 @@
 
 #include "sloppy/checked_math.h"
 
-#define SL_STR_FNV1A_OFFSET 14695981039346656037ULL
-#define SL_STR_FNV1A_PRIME 1099511628211ULL
+#include <xxhash.h>
+
 #define SL_STR_WORD_ALIGNMENT _Alignof(uint64_t)
 #define SL_STR_WORD_SIZE sizeof(uint64_t)
 
@@ -357,19 +357,15 @@ void sl_owned_str_rebind(SlOwnedStr* str)
 
 SlStatus sl_str_hash(SlStr str, uint64_t* out_hash)
 {
-    uint64_t hash = SL_STR_FNV1A_OFFSET;
-    size_t index = 0U;
+    static const char empty = '\0';
+    const void* data = NULL;
 
     if (out_hash == NULL || !sl_str_has_valid_storage(str)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    for (index = 0U; index < str.length; index += 1U) {
-        hash ^= (uint64_t)(unsigned char)str.ptr[index];
-        hash *= SL_STR_FNV1A_PRIME;
-    }
-
-    *out_hash = hash;
+    data = str.length == 0U ? (const void*)&empty : (const void*)str.ptr;
+    *out_hash = (uint64_t)XXH64(data, str.length, 0U);
     return sl_status_ok();
 }
 

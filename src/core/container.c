@@ -48,7 +48,12 @@ static SlStatus sl_container_storage_size(size_t count, size_t elem_size, size_t
 
 static void* sl_container_item_at(unsigned char* items, size_t elem_size, size_t index)
 {
-    return items + (index * elem_size);
+    size_t offset = 0U;
+
+    if (items == NULL || !sl_status_is_ok(sl_checked_mul_size(index, elem_size, &offset))) {
+        return NULL;
+    }
+    return items + offset;
 }
 
 SlSlice sl_slice_empty(size_t elem_size)
@@ -215,6 +220,9 @@ SlStatus sl_fixed_vec_push(SlFixedVec* vec, const void* item, void** out_item)
     }
 
     slot = sl_container_item_at(vec->items, vec->elem_size, vec->count);
+    if (slot == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     sl_container_copy(slot, item, vec->elem_size);
     vec->count += 1U;
     if (out_item != NULL) {
@@ -238,6 +246,9 @@ SlStatus sl_fixed_vec_push_zero(SlFixedVec* vec, void** out_item)
     }
 
     slot = sl_container_item_at(vec->items, vec->elem_size, vec->count);
+    if (slot == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     sl_container_zero(slot, vec->elem_size);
     vec->count += 1U;
     if (out_item != NULL) {
@@ -249,13 +260,18 @@ SlStatus sl_fixed_vec_push_zero(SlFixedVec* vec, void** out_item)
 bool sl_fixed_vec_pop(SlFixedVec* vec, void* out_item)
 {
     void* slot = NULL;
+    size_t last_index = 0U;
 
     if (vec == NULL || vec->count == 0U || vec->items == NULL || vec->elem_size == 0U) {
         return false;
     }
 
-    vec->count -= 1U;
-    slot = sl_container_item_at(vec->items, vec->elem_size, vec->count);
+    last_index = vec->count - 1U;
+    slot = sl_container_item_at(vec->items, vec->elem_size, last_index);
+    if (slot == NULL) {
+        return false;
+    }
+    vec->count = last_index;
     if (out_item != NULL) {
         sl_container_copy(out_item, slot, vec->elem_size);
     }
@@ -381,6 +397,9 @@ SlStatus sl_ring_queue_push(SlRingQueue* queue, const void* item)
     }
 
     slot = sl_container_item_at(queue->items, queue->elem_size, queue->tail);
+    if (slot == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     sl_container_copy(slot, item, queue->elem_size);
     queue->tail = (queue->tail + 1U) % queue->capacity;
     queue->count += 1U;
@@ -398,6 +417,9 @@ bool sl_ring_queue_peek_front(const SlRingQueue* queue, void* out_item)
     }
 
     slot = sl_container_item_at(queue->items, queue->elem_size, queue->head);
+    if (slot == NULL) {
+        return false;
+    }
     sl_container_copy(out_item, slot, queue->elem_size);
     return true;
 }
@@ -413,6 +435,9 @@ bool sl_ring_queue_discard_front(SlRingQueue* queue)
     }
 
     slot = sl_container_item_at(queue->items, queue->elem_size, queue->head);
+    if (slot == NULL) {
+        return false;
+    }
     sl_container_zero(slot, queue->elem_size);
     queue->head = (queue->head + 1U) % queue->capacity;
     queue->count -= 1U;
@@ -440,6 +465,9 @@ bool sl_ring_queue_pop_back(SlRingQueue* queue, void* out_item)
 
     tail = (queue->tail + queue->capacity - 1U) % queue->capacity;
     slot = sl_container_item_at(queue->items, queue->elem_size, tail);
+    if (slot == NULL) {
+        return false;
+    }
     sl_container_copy(out_item, slot, queue->elem_size);
     sl_container_zero(slot, queue->elem_size);
     queue->tail = tail;

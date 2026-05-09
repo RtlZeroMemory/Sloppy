@@ -16,6 +16,7 @@
 #include <yyjson.h>
 
 #define SL_REQUEST_VALIDATION_MAX_ISSUES 8U
+#define SL_REQUEST_VALIDATION_MAX_JSON_DEPTH 50U
 #define SL_REQUEST_VALIDATION_PROBLEM_INITIAL 256U
 #define SL_REQUEST_VALIDATION_PROBLEM_MAX 4096U
 
@@ -442,7 +443,8 @@ static bool sl_request_validation_parse_bool(SlStr value, bool* out)
 
 static SlStatus sl_request_validation_validate_json_value(SlRequestValidationState* state,
                                                           const SlPlanSchemaNode* schema,
-                                                          yyjson_val* value, SlStr path);
+                                                          yyjson_val* value, SlStr path,
+                                                          size_t depth);
 
 static SlStatus sl_request_validation_validate_string(SlRequestValidationState* state,
                                                       const SlPlanSchemaNode* schema, SlStr value,
@@ -475,7 +477,7 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
 
 static SlStatus sl_request_validation_validate_object(SlRequestValidationState* state,
                                                       const SlPlanSchemaNode* schema,
-                                                      yyjson_val* value, SlStr path)
+                                                      yyjson_val* value, SlStr path, size_t depth)
 {
     size_t index = 0U;
     SlStatus status;
@@ -523,8 +525,8 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
             }
             continue;
         }
-        status =
-            sl_request_validation_validate_json_value(state, property->schema, child, child_path);
+        status = sl_request_validation_validate_json_value(state, property->schema, child,
+                                                           child_path, depth + 1U);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -535,7 +537,7 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
 
 static SlStatus sl_request_validation_validate_array(SlRequestValidationState* state,
                                                      const SlPlanSchemaNode* schema,
-                                                     yyjson_val* value, SlStr path)
+                                                     yyjson_val* value, SlStr path, size_t depth)
 {
     yyjson_val* item = NULL;
     yyjson_arr_iter iter;
@@ -562,7 +564,8 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_request_validation_validate_json_value(state, schema->items, item, item_path);
+        status = sl_request_validation_validate_json_value(state, schema->items, item, item_path,
+                                                           depth + 1U);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -609,12 +612,20 @@ static SlStatus sl_request_validation_validate_literal_union(SlRequestValidation
 
 static SlStatus sl_request_validation_validate_json_value(SlRequestValidationState* state,
                                                           const SlPlanSchemaNode* schema,
-                                                          yyjson_val* value, SlStr path)
+                                                          yyjson_val* value, SlStr path,
+                                                          size_t depth)
 {
     SlStatus status;
 
     if (state == NULL || schema == NULL || value == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (depth > SL_REQUEST_VALIDATION_MAX_JSON_DEPTH) {
+        return sl_request_validation_add_issue(
+            state, path,
+            sl_request_validation_literal("JSON body exceeds maximum validation depth.",
+                                          sizeof("JSON body exceeds maximum validation depth.") -
+                                              1U));
     }
 
     if (yyjson_is_null(value)) {
@@ -629,7 +640,7 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
 
     switch (schema->kind) {
     case SL_PLAN_SCHEMA_OBJECT:
-        return sl_request_validation_validate_object(state, schema, value, path);
+        return sl_request_validation_validate_object(state, schema, value, path, depth);
     case SL_PLAN_SCHEMA_STRING:
         if (!yyjson_is_str(value)) {
             return sl_request_validation_add_issue(
@@ -670,7 +681,7 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
         }
         return sl_status_ok();
     case SL_PLAN_SCHEMA_ARRAY:
-        return sl_request_validation_validate_array(state, schema, value, path);
+        return sl_request_validation_validate_array(state, schema, value, path, depth);
     case SL_PLAN_SCHEMA_LITERAL_UNION:
         return sl_request_validation_validate_literal_union(state, schema, value, path);
     case SL_PLAN_SCHEMA_LITERAL:
@@ -864,7 +875,7 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
 
     root = yyjson_doc_get_root(doc);
     status = sl_request_validation_validate_json_value(state, &schema->definition, root,
-                                                       sl_str_from_cstr("body"));
+                                                       sl_str_from_cstr("body"), 0U);
     yyjson_doc_free(doc);
     return status;
 }

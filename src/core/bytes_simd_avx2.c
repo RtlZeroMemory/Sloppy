@@ -10,6 +10,9 @@
 
 #include <immintrin.h>
 #include <stdint.h>
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
 
 static __m256i sl_avx2_loadu_256(const unsigned char* ptr)
 {
@@ -18,15 +21,19 @@ static __m256i sl_avx2_loadu_256(const unsigned char* ptr)
 
 static size_t sl_avx2_first_mask_index(uint32_t mask)
 {
-    int offset = 0;
-
-    for (offset = 0; offset < 32; offset += 1) {
-        if ((mask & (UINT32_C(1) << offset)) != 0U) {
-            return (size_t)offset;
-        }
+    if (mask == 0U) {
+        return 32U;
     }
 
-    return 32U;
+#if defined(_MSC_VER) && !defined(__clang__)
+    {
+        unsigned long index = 0UL;
+        (void)_BitScanForward(&index, mask);
+        return (size_t)index;
+    }
+#else
+    return (size_t)__builtin_ctz(mask);
+#endif
 }
 
 SlStatus sl_bytes_find_avx2(SlBytes bytes, unsigned char needle, SlBytesFindResult* out)

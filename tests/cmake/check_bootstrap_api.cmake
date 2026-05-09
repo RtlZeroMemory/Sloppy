@@ -315,6 +315,8 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "function registerRoute("
         "function createRouteGroup("
+        "getInheritedMiddleware = () => []"
+        "getCorsPolicy = () => null"
         "function createRouterGroup(prefix, configure)"
         "function normalizeCorsPolicy(policy)"
         "function createCorsPreflightHandler(state)"
