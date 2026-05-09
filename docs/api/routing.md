@@ -22,10 +22,9 @@ app.delete(pattern, handler)
 `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and `mapDelete` are aliases — same
 behavior, longer name.
 
-`HEAD` and `OPTIONS` are not supported as registrable verbs and the
-runtime does not answer them automatically — incoming HEAD or OPTIONS
-requests get `405 Method Not Allowed`. CORS preflight handling is
-upcoming framework work, not implemented today.
+`HEAD` and `OPTIONS` are not directly registrable verbs. `OPTIONS` is
+auto-installed by [`app.useCors(policy)`](cors.md) for preflight; otherwise
+incoming `HEAD`/`OPTIONS` requests get `405 Method Not Allowed`.
 
 ## Route patterns
 
@@ -157,7 +156,6 @@ Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 
 ## What's not supported yet
 
-- Automatic OPTIONS / preflight responses, CORS — upcoming framework work
 - HEAD handling
 - Streaming or chunked request bodies
 - `multipart/form-data` and file uploads

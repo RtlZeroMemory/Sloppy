@@ -1,6 +1,11 @@
 import { defineFunctionModuleName } from "./modules.js";
+import { Results } from "../results.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
 import { isPlainObject } from "./shared.js";
+
+const ROUTE_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const PREFLIGHT_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 
 function validatePattern(pattern) {
     if (typeof pattern !== "string" || pattern.length === 0 || !pattern.startsWith("/")) {
@@ -48,6 +53,75 @@ function orderedMiddlewareFunctions(entries) {
         .map((entry) => entry.fn);
 }
 
+function middlewareMetadata(middleware) {
+    return Object.freeze({
+        count: middleware.length,
+    });
+}
+
+function invokeMiddlewarePipeline(context, middleware, terminal) {
+    let index = -1;
+
+    function dispatch(nextIndex) {
+        if (nextIndex <= index) {
+            throw new Error("Sloppy middleware next() must not be called more than once.");
+        }
+
+        index = nextIndex;
+        const current = middleware[nextIndex];
+        if (current === undefined) {
+            return terminal();
+        }
+
+        let nextCalled = false;
+        let downstreamPromise;
+        function next() {
+            if (nextCalled) {
+                throw new Error("Sloppy middleware next() must not be called more than once.");
+            }
+
+            nextCalled = true;
+            const downstream = dispatch(nextIndex + 1);
+            downstreamPromise = Promise.resolve(downstream);
+            return downstream;
+        }
+
+        const middlewareReturn = current(context, next);
+        if (!nextCalled) {
+            return middlewareReturn;
+        }
+
+        return Promise.resolve(middlewareReturn).then(
+            (value) => downstreamPromise.then(() => value),
+            (error) => downstreamPromise.then(
+                () => {
+                    throw error;
+                },
+                () => {
+                    throw error;
+                },
+            ),
+        );
+    }
+
+    return dispatch(0);
+}
+
+function handleRouteError(host, error) {
+    if (typeof host.handleError !== "function") {
+        throw error;
+    }
+    return host.handleError(error);
+}
+
+function finishRouteError(host, error, cleanup) {
+    try {
+        return finishWithCleanup(handleRouteError(host, error), cleanup);
+    } catch (handledError) {
+        return cleanupAfterFailure(handledError, cleanup);
+    }
+}
+
 function validateController(controller) {
     if (typeof controller !== "function") {
         throw new TypeError("Sloppy controller must be a constructor function.");
@@ -84,6 +158,242 @@ function validateName(name, subject) {
     }
 }
 
+function validateHeaderToken(value, subject) {
+    if (typeof value !== "string" || !HEADER_TOKEN_PATTERN.test(value)) {
+        throw new TypeError(`Sloppy CORS ${subject} must be an HTTP token string.`);
+    }
+}
+
+function normalizeStringList(value, subject, { lower = false } = {}) {
+    if (value === undefined) {
+        return Object.freeze([]);
+    }
+
+    const values = Array.isArray(value) ? value : [value];
+    const normalized = [];
+
+    for (const current of values) {
+        if (typeof current !== "string" || current.length === 0 || /[\x00-\x1F\x7F]/u.test(current)) {
+            throw new TypeError(`Sloppy CORS ${subject} entries must be non-empty strings without control characters.`);
+        }
+        normalized.push(lower ? current.toLowerCase() : current);
+    }
+
+    return Object.freeze([...new Set(normalized)]);
+}
+
+function normalizeTokenList(value, subject) {
+    const values = normalizeStringList(value, subject);
+    for (const current of values) {
+        validateHeaderToken(current, subject);
+    }
+    return values;
+}
+
+function normalizeCorsMethods(value) {
+    const methods = normalizeStringList(value, "methods").map((method) => method.toUpperCase());
+
+    for (const method of methods) {
+        if (!PREFLIGHT_METHODS.has(method)) {
+            throw new TypeError("Sloppy CORS methods must be supported HTTP methods.");
+        }
+    }
+
+    return Object.freeze([...new Set(methods)]);
+}
+
+function normalizeCorsPolicy(policy) {
+    if (!isPlainObject(policy)) {
+        throw new TypeError("Sloppy app.useCors policy must be a plain object.");
+    }
+
+    const origins = normalizeStringList(policy.origins ?? policy.origin, "origins");
+    if (origins.length === 0) {
+        throw new TypeError("Sloppy CORS origins must include at least one origin or '*'.");
+    }
+
+    const allowAnyOrigin = origins.includes("*");
+    if (allowAnyOrigin && origins.length !== 1) {
+        throw new TypeError("Sloppy CORS '*' origin cannot be combined with other origins.");
+    }
+
+    const credentials = policy.credentials === true;
+    if (allowAnyOrigin && credentials) {
+        throw new TypeError("Sloppy CORS credentials require explicit origins.");
+    }
+
+    const maxAgeSeconds = policy.maxAgeSeconds ?? policy.maxAge;
+    if (maxAgeSeconds !== undefined && (!Number.isInteger(maxAgeSeconds) || maxAgeSeconds < 0)) {
+        throw new TypeError("Sloppy CORS maxAgeSeconds must be a non-negative integer.");
+    }
+
+    const headers = normalizeTokenList(policy.headers ?? policy.allowHeaders, "headers")
+        .map((header) => header.toLowerCase());
+    const exposedHeaders = normalizeTokenList(policy.exposedHeaders ?? policy.exposeHeaders, "exposedHeaders");
+
+    return Object.freeze({
+        origins,
+        allowAnyOrigin,
+        methods: normalizeCorsMethods(policy.methods),
+        headers: Object.freeze([...new Set(headers)]),
+        exposedHeaders,
+        credentials,
+        maxAgeSeconds,
+    });
+}
+
+function snapshotCorsPolicy(policy) {
+    if (policy === null) {
+        return undefined;
+    }
+
+    return Object.freeze({
+        origins: policy.origins,
+        methods: policy.methods,
+        headers: policy.headers,
+        exposedHeaders: policy.exposedHeaders,
+        credentials: policy.credentials,
+        maxAgeSeconds: policy.maxAgeSeconds,
+    });
+}
+
+function getRequestHeader(context, name) {
+    const headers = context?.request?.headers;
+    if (headers === undefined || headers === null) {
+        return undefined;
+    }
+
+    if (typeof headers.get === "function") {
+        return headers.get(name) ?? headers.get(name.toLowerCase()) ?? undefined;
+    }
+
+    if (isPlainObject(headers)) {
+        const lower = name.toLowerCase();
+        for (const [key, value] of Object.entries(headers)) {
+            if (key.toLowerCase() === lower) {
+                return value;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function allowedOrigin(policy, origin) {
+    if (typeof origin !== "string" || origin.length === 0) {
+        return undefined;
+    }
+
+    if (policy.allowAnyOrigin) {
+        return "*";
+    }
+
+    return policy.origins.includes(origin) ? origin : undefined;
+}
+
+function mergeVary(existing, value) {
+    if (existing === undefined || existing.length === 0) {
+        return value;
+    }
+
+    const tokens = existing.split(",").map((token) => token.trim().toLowerCase());
+    return tokens.includes(value.toLowerCase()) ? existing : `${existing}, ${value}`;
+}
+
+function appendCorsHeaders(result, policy, context) {
+    if (policy === null) {
+        return result;
+    }
+
+    const origin = getRequestHeader(context, "origin");
+    const allowed = allowedOrigin(policy, origin);
+    if (allowed === undefined) {
+        return result;
+    }
+
+    const headers = {
+        ...(isPlainObject(result?.headers) ? result.headers : {}),
+        "Access-Control-Allow-Origin": allowed,
+    };
+
+    if (!policy.allowAnyOrigin) {
+        headers.Vary = mergeVary(headers.Vary, "Origin");
+    }
+    if (policy.credentials) {
+        headers["Access-Control-Allow-Credentials"] = "true";
+    }
+    if (policy.exposedHeaders.length !== 0) {
+        headers["Access-Control-Expose-Headers"] = policy.exposedHeaders.join(", ");
+    }
+
+    return Object.freeze({
+        ...result,
+        headers: Object.freeze(headers),
+    });
+}
+
+function finishWithCors(result, policy, context) {
+    if (result !== null && typeof result === "object" && typeof result.then === "function") {
+        return Promise.resolve(result).then((value) => appendCorsHeaders(value, policy, context));
+    }
+
+    return appendCorsHeaders(result, policy, context);
+}
+
+function requestedHeadersAllowed(policy, requestedHeaders) {
+    if (typeof requestedHeaders !== "string" || requestedHeaders.length === 0) {
+        return true;
+    }
+
+    const requested = requestedHeaders
+        .split(",")
+        .map((header) => header.trim().toLowerCase())
+        .filter((header) => header.length !== 0);
+
+    return requested.every((header) => policy.headers.includes(header));
+}
+
+function createCorsPreflightHandler(state) {
+    return function corsPreflightHandler(context) {
+        const origin = getRequestHeader(context, "origin");
+        const allowed = allowedOrigin(state.policy, origin);
+        const requestedMethod = getRequestHeader(context, "access-control-request-method")?.toUpperCase();
+        const requestedHeaders = getRequestHeader(context, "access-control-request-headers");
+        const methods = state.policy.methods.length === 0 ? Array.from(state.methods) : state.policy.methods;
+
+        if (
+            allowed === undefined ||
+            !methods.includes(requestedMethod) ||
+            !requestedHeadersAllowed(state.policy, requestedHeaders)
+        ) {
+            return Results.status(403);
+        }
+
+        const headers = {
+            "Access-Control-Allow-Origin": allowed,
+            "Access-Control-Allow-Methods": methods.join(", "),
+        };
+
+        if (!state.policy.allowAnyOrigin) {
+            headers.Vary = "Origin, Access-Control-Request-Method, Access-Control-Request-Headers";
+        }
+        if (state.policy.credentials) {
+            headers["Access-Control-Allow-Credentials"] = "true";
+        }
+        if (state.policy.headers.length !== 0) {
+            headers["Access-Control-Allow-Headers"] = state.policy.headers.join(", ");
+        }
+        if (state.policy.maxAgeSeconds !== undefined) {
+            headers["Access-Control-Max-Age"] = String(state.policy.maxAgeSeconds);
+        }
+
+        return Results.status(204, undefined, { headers });
+    };
+}
+
+
+
+
 function createHandlerContext(host) {
     return Object.freeze({
         services: host.services.createScope(),
@@ -94,80 +404,7 @@ function createHandlerContext(host) {
     });
 }
 
-function handleRouteError(host, error) {
-    if (typeof host.handleError !== "function") {
-        throw error;
-    }
-    return host.handleError(error);
-}
-
-function finishRouteError(host, error, cleanup) {
-    try {
-        return finishWithCleanup(handleRouteError(host, error), cleanup);
-    } catch (handledError) {
-        return cleanupAfterFailure(handledError, cleanup);
-    }
-}
-
-function invokeMiddlewarePipeline(context, middleware, terminal) {
-    let index = -1;
-
-    function dispatch(nextIndex) {
-        if (nextIndex <= index) {
-            throw new Error("Sloppy middleware next() must not be called more than once.");
-        }
-
-        index = nextIndex;
-        const current = middleware[nextIndex];
-        if (current === undefined) {
-            return terminal();
-        }
-
-        let nextCalled = false;
-        let downstreamPromise;
-        function next() {
-            if (nextCalled) {
-                throw new Error("Sloppy middleware next() must not be called more than once.");
-            }
-
-            nextCalled = true;
-            const downstream = dispatch(nextIndex + 1);
-            downstreamPromise = Promise.resolve(downstream);
-            return downstream;
-        }
-
-        const middlewareReturn = current(context, next);
-        if (!nextCalled) {
-            return middlewareReturn;
-        }
-
-        // Fail closed: a middleware that calls next() must chain its return
-        // value to downstream completion. Awaiting downstreamPromise here keeps
-        // the request scope alive until downstream settles, even if the
-        // middleware ignored the next() return value.
-        return Promise.resolve(middlewareReturn).then(
-            (value) => downstreamPromise.then(() => value),
-            (error) => downstreamPromise.then(
-                () => {
-                    throw error;
-                },
-                () => {
-                    throw error;
-                },
-            ),
-        );
-    }
-
-    return dispatch(0);
-}
-
-function middlewareMetadata(middleware) {
-    return Object.freeze({
-        count: middleware.length,
-    });
-}
-
-function createRouteHandler(host, handler, middleware) {
+function createRouteHandler(host, handler, middleware = [], corsPolicy = null) {
     return function routeHandler(context) {
         if (context !== undefined && context !== null) {
             try {
@@ -177,9 +414,12 @@ function createRouteHandler(host, handler, middleware) {
                     () => handler(context),
                 );
                 if (result !== null && typeof result === "object" && typeof result.then === "function") {
-                    return Promise.resolve(result).catch((error) => handleRouteError(host, error));
+                    return Promise.resolve(result).then(
+                        (value) => finishWithCors(value, corsPolicy, context),
+                        (error) => handleRouteError(host, error),
+                    );
                 }
-                return result;
+                return finishWithCors(result, corsPolicy, context);
             } catch (error) {
                 return handleRouteError(host, error);
             }
@@ -194,11 +434,17 @@ function createRouteHandler(host, handler, middleware) {
             );
             if (result !== null && typeof result === "object" && typeof result.then === "function") {
                 return Promise.resolve(result).then(
-                    (value) => finishWithCleanup(value, () => ownedContext.services.dispose()),
+                    (value) => finishWithCleanup(
+                        finishWithCors(value, corsPolicy, ownedContext),
+                        () => ownedContext.services.dispose(),
+                    ),
                     (error) => finishRouteError(host, error, () => ownedContext.services.dispose()),
                 );
             }
-            return finishWithCleanup(result, () => ownedContext.services.dispose());
+            return finishWithCleanup(
+                finishWithCors(result, corsPolicy, ownedContext),
+                () => ownedContext.services.dispose(),
+            );
         } catch (error) {
             return finishRouteError(host, error, () => ownedContext.services.dispose());
         }
@@ -220,6 +466,16 @@ function snapshotMetadata(metadata) {
 
     if (Array.isArray(snapshot.tags)) {
         snapshot.tags = Object.freeze([...snapshot.tags]);
+    }
+    if (snapshot.cors !== undefined) {
+        const { state, ...cors } = snapshot.cors;
+        snapshot.cors = Object.freeze({
+            ...cors,
+            origins: Object.freeze([...(cors.origins ?? [])]),
+            methods: Object.freeze([...(cors.methods ?? [])]),
+            headers: Object.freeze([...(cors.headers ?? [])]),
+            exposedHeaders: Object.freeze([...(cors.exposedHeaders ?? [])]),
+        });
     }
 
     return Object.freeze(snapshot);
@@ -331,12 +587,16 @@ function registerRoute(
     maybeHandler,
     metadataBase,
     middleware = [],
+    corsPolicy = null,
 ) {
     const args = normalizeMapArguments(pattern, optionsOrHandler, maybeHandler);
 
     assertAppMutable();
     validatePattern(args.pattern);
     validateHandler(args.handler);
+    if (!ROUTE_METHODS.has(method)) {
+        throw new TypeError("Sloppy route method is not supported by bootstrap registration.");
+    }
     for (const current of middleware) {
         validateMiddlewareEntry(current);
     }
@@ -349,17 +609,86 @@ function registerRoute(
     const route = {
         method,
         pattern: args.pattern,
-        handler: createRouteHandler(host, args.handler, Object.freeze(orderedMiddleware)),
+        handler: createRouteHandler(host, args.handler, Object.freeze(orderedMiddleware), corsPolicy),
         name: null,
         metadata: {
             ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
             ...((currentModule !== null) ? { module: currentModule } : {}),
             middleware: middlewareMetadata(orderedMiddleware),
+            ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
         },
     };
 
     routes.push(route);
+    if (corsPolicy !== null) {
+        registerCorsPreflightRoute(routes, host, assertAppMutable, args.pattern, method, corsPolicy);
+    }
     return createEndpointBuilder(route, assertAppMutable);
+}
+
+function corsPoliciesEqual(a, b) {
+    if (a === b) {
+        return true;
+    }
+    if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
+        return false;
+    }
+    if (
+        a.allowAnyOrigin !== b.allowAnyOrigin ||
+        a.credentials !== b.credentials ||
+        a.maxAgeSeconds !== b.maxAgeSeconds
+    ) {
+        return false;
+    }
+    const arraysEqual = (left, right) => {
+        if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+            return false;
+        }
+        for (let index = 0; index < left.length; index += 1) {
+            if (left[index] !== right[index]) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return (
+        arraysEqual(a.origins, b.origins) &&
+        arraysEqual(a.methods, b.methods) &&
+        arraysEqual(a.headers, b.headers) &&
+        arraysEqual(a.exposedHeaders, b.exposedHeaders)
+    );
+}
+
+function registerCorsPreflightRoute(routes, host, assertAppMutable, pattern, method, corsPolicy) {
+    const existing = routes.find((route) => route.method === "OPTIONS" &&
+        route.pattern === pattern &&
+        route.metadata?.cors?.preflight === true);
+
+    if (existing !== undefined) {
+        if (!corsPoliciesEqual(existing.metadata.cors.state.policy, corsPolicy)) {
+            throw new Error(`Sloppy CORS preflight route '${pattern}' already has a different policy.`);
+        }
+        existing.metadata.cors.state.methods.add(method);
+        return;
+    }
+
+    const state = {
+        policy: corsPolicy,
+        methods: new Set([method]),
+    };
+    routes.push({
+        method: "OPTIONS",
+        pattern,
+        handler: createRouteHandler(host, createCorsPreflightHandler(state)),
+        name: null,
+        metadata: {
+            cors: {
+                ...snapshotCorsPolicy(corsPolicy),
+                preflight: true,
+                state,
+            },
+        },
+    });
 }
 
 function controllerInjectionTokens(controller) {
@@ -420,6 +749,7 @@ function createControllerMapper(
     prefix,
     Controller,
     middleware = [],
+    getCorsPolicy = () => null,
 ) {
     const normalizedPrefix = normalizeGroupPrefix(prefix);
     validateController(Controller);
@@ -441,6 +771,7 @@ function createControllerMapper(
             createControllerHandler(host, Controller, action),
             undefined,
             middleware,
+            getCorsPolicy(),
         );
     }
 
@@ -471,6 +802,7 @@ function createRouteGroup(
     prefix,
     getInheritedMiddleware = () => [],
     nextMiddlewareSequence = () => 0,
+    getCorsPolicy = () => null,
 ) {
     const groupMetadata = {
         prefix: normalizeGroupPrefix(prefix),
@@ -497,6 +829,7 @@ function createRouteGroup(
                     name: groupMetadata.name,
                 },
                 [...getInheritedMiddleware(), ...groupMiddleware],
+                getCorsPolicy(),
             );
         };
     }
@@ -553,6 +886,7 @@ function createRouteGroup(
                 composeRoutePattern(groupMetadata.prefix, childPrefix),
                 () => [...getInheritedMiddleware(), ...groupMiddleware],
                 nextMiddlewareSequence,
+                getCorsPolicy,
             );
         },
     };
@@ -584,6 +918,7 @@ export {
     createControllerMapper,
     createRouteGroup,
     createRouterGroup,
+    normalizeCorsPolicy,
     registerRoute,
     snapshotRoute,
 };

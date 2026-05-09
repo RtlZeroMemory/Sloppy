@@ -1094,6 +1094,134 @@ async function flushMicrotasks(count = 6) {
 }
 
 {
+    function requestHeaders(values) {
+        return {
+            get(name) {
+                const lower = name.toLowerCase();
+                for (const [key, value] of Object.entries(values)) {
+                    if (key.toLowerCase() === lower) {
+                        return value;
+                    }
+                }
+                return undefined;
+            },
+        };
+    }
+
+    const app = Sloppy.create();
+    app.useCors({
+        origins: ["https://app.example"],
+        headers: ["x-requested-with"],
+        exposedHeaders: ["x-total-count"],
+        credentials: true,
+        maxAgeSeconds: 600,
+    });
+    app.get("/items", () => Results.json([], { headers: { "x-total-count": "0" } }));
+    app.post("/items", () => Results.created("/items/1", { id: 1 }));
+
+    const routes = app.__getRoutes();
+    const getItems = routes.find((route) => route.method === "GET" && route.pattern === "/items");
+    const postItems = routes.find((route) => route.method === "POST" && route.pattern === "/items");
+    const preflight = routes.find((route) => route.method === "OPTIONS" && route.pattern === "/items");
+    assert.equal(routes.length, 3);
+    assert.equal(getItems.metadata.cors.credentials, true);
+    assert.deepEqual(getItems.metadata.cors.origins, ["https://app.example"]);
+    assert.equal(preflight.metadata.cors.preflight, true);
+
+    const actual = getItems.handler({
+        request: {
+            headers: requestHeaders({ Origin: "https://app.example" }),
+        },
+    });
+    assert.equal(actual.headers["Access-Control-Allow-Origin"], "https://app.example");
+    assert.equal(actual.headers["Access-Control-Allow-Credentials"], "true");
+    assert.equal(actual.headers["Access-Control-Expose-Headers"], "x-total-count");
+    assert.equal(actual.headers.Vary, "Origin");
+    assert.equal(actual.headers["x-total-count"], "0");
+
+    const deniedActual = postItems.handler({
+        request: {
+            headers: requestHeaders({ Origin: "https://evil.example" }),
+        },
+    });
+    assert.equal(deniedActual.headers, undefined);
+
+    const allowedPreflight = preflight.handler({
+        request: {
+            headers: requestHeaders({
+                Origin: "https://app.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "X-Requested-With",
+            }),
+        },
+    });
+    assert.equal(allowedPreflight.status, 204);
+    assert.equal(allowedPreflight.headers["Access-Control-Allow-Origin"], "https://app.example");
+    assert.equal(allowedPreflight.headers["Access-Control-Allow-Methods"], "GET, POST");
+    assert.equal(allowedPreflight.headers["Access-Control-Allow-Headers"], "x-requested-with");
+    assert.equal(allowedPreflight.headers["Access-Control-Max-Age"], "600");
+
+    const deniedPreflight = preflight.handler({
+        request: {
+            headers: requestHeaders({
+                Origin: "https://app.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Authorization",
+            }),
+        },
+    });
+    assert.equal(deniedPreflight.status, 403);
+
+    const wildcardApp = Sloppy.create();
+    wildcardApp.useCors({ origins: "*" });
+    wildcardApp.get("/public", () => Results.ok({ ok: true }));
+    const wildcard = wildcardApp.__getRoutes()[0].handler({
+        request: {
+            headers: requestHeaders({ Origin: "https://any.example" }),
+        },
+    });
+    assert.equal(wildcard.headers["Access-Control-Allow-Origin"], "*");
+    assert.equal(wildcard.headers.Vary, undefined);
+
+    assertThrowsMessage(() => Sloppy.create().useCors({}), /origins/);
+    assertThrowsMessage(() => Sloppy.create().useCors({ origins: "*", credentials: true }), /credentials/);
+    assertThrowsMessage(() => Sloppy.create().useCors({ origins: "https://app.example", headers: ["bad header"] }), /HTTP token/);
+    assertThrowsMessage(() => Sloppy.create().useCors({ origins: "https://app.example", methods: ["TRACE"] }), /methods/);
+
+    {
+        const sharedApp = Sloppy.create();
+        sharedApp.useCors({ origins: ["https://app.example"], methods: ["GET"] });
+        sharedApp.get("/items", () => Results.ok({}));
+        sharedApp.useCors({ origins: ["https://app.example"], methods: ["GET"] });
+        sharedApp.post("/items", () => Results.ok({}));
+        const optionsRoute = sharedApp.__getRoutes().find(
+            (route) => route.method === "OPTIONS" && route.pattern === "/items",
+        );
+        assert.notEqual(optionsRoute, undefined);
+    }
+
+    {
+        class UsersController {
+            list() {
+                return Results.ok([]);
+            }
+            create() {
+                return Results.ok({});
+            }
+        }
+        const lateCors = Sloppy.create();
+        const mapper = lateCors.mapController("/users", UsersController);
+        lateCors.useCors({ origins: ["https://app.example"] });
+        mapper.get("/", "list");
+        const userRoute = lateCors.__getRoutes().find(
+            (route) => route.method === "GET" && route.pattern === "/users",
+        );
+        assert.notEqual(userRoute.metadata.cors, undefined);
+        assert.deepEqual(userRoute.metadata.cors.origins, ["https://app.example"]);
+    }
+}
+
+{
     const builder = Sloppy.createBuilder();
     let secondDisposed = false;
     builder.services.addScoped("throws-on-dispose", () => ({

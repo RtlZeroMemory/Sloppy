@@ -27,7 +27,8 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 | API | Behavior |
 | --- | --- |
 | `config`, `log`, `services`, `capabilities` | Built providers. |
-| `use(value)` | Accepts middleware functions, worker resources, Sloppy provider descriptors, and `ProblemDetails.defaults()` error handling descriptors. Current provider kind accepted by app validation: `sqlite`. |
+| `use(providerOrWorker)` | Accepts worker resources and Sloppy provider descriptors. Current provider kind accepted by app validation: `sqlite`. |
+| `useCors(policy)` | Registers an app-host CORS policy for subsequently registered routes and generated preflight handlers. |
 | `useModule(moduleOrFactory)` | Accepts route-only `Sloppy.module(...)` or named synchronous function modules. |
 | `mapGet/mapPost/mapPut/mapPatch/mapDelete` | Route registration methods. |
 | `get/post/put/patch/delete` | Aliases for `map*`. |
@@ -53,31 +54,37 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 - Route-only module descriptors can be used directly with `app.useModule(...)`.
 - Function modules must be named and synchronous.
 
-## Middleware And Endpoint Filters
+## CORS Policies
 
-Bootstrap app-host middleware uses this shape:
+Bootstrap app-host CORS uses this shape:
 
 ```ts
-app.use(async (ctx, next) => {
-  const result = await next();
-  return result;
+app.useCors({
+  origins: ["https://app.example"],
+  headers: ["content-type", "authorization"],
+  exposedHeaders: ["x-total-count"],
+  credentials: true,
+  maxAgeSeconds: 600,
 });
 ```
 
 Current behavior:
 
-- `app.use(fn)` registers global middleware for routes registered after the middleware.
-- `group.use(fn)` registers group-local middleware for routes registered in that group.
-- Middleware runs in registration order before the handler.
-- Middleware can short-circuit by returning a `Results.*` descriptor without calling `next()`.
-- Async middleware and async handlers are supported.
-- The app-host-created request service scope is disposed after the final middleware or
-  handler result settles.
-- Route snapshots expose `metadata.middleware.count` for tooling and tests.
+- `app.useCors(policy)` applies to routes registered after the policy call.
+- `origins` is required and accepts an origin string, an origin array, or `"*"`.
+- `credentials: true` requires explicit origins.
+- `methods` can override the preflight `Access-Control-Allow-Methods` value; otherwise
+  the app-host derives methods from registered routes with the same pattern.
+- `headers` lists request headers allowed during preflight.
+- `exposedHeaders` writes `Access-Control-Expose-Headers` on actual responses.
+- `maxAgeSeconds` writes `Access-Control-Max-Age` on successful preflight responses.
+- Actual route responses receive CORS headers only when the request has an allowed
+  `Origin` header.
+- The bootstrap app-host creates `OPTIONS` preflight routes for CORS-enabled patterns.
 
-Middleware currently runs in the bootstrap app-host route handler path. Compiler
-extraction and emitted Plan metadata will gain first-class middleware lowering in a
-separate compiler/runtime slice.
+CORS currently runs in the bootstrap app-host route handler path. Compiler
+extraction and emitted Plan metadata for CORS policies will be added in a separate
+compiler/runtime slice.
 
 ## Provider Descriptors In Framework Registration
 
