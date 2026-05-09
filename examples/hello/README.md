@@ -18,6 +18,8 @@ builder.services.addSingleton("message", () => "Hello from Sloppy");
 
 const app = builder.build();
 
+app.log.info("hello example configured", { example: "hello" });
+
 app.mapGet("/", ({ services }) => Results.text(services.get("message")))
     .withName("Hello.Index");
 
@@ -31,6 +33,7 @@ What to inspect:
 - `builder.logging.addMemorySink()` installs a deterministic in-memory log sink.
 - `builder.services.addSingleton(...)` registers a string-token singleton service.
 - `builder.build()` creates an in-memory app facade and freezes builder mutation.
+- `app.log.info(...)` writes a structured application event into the configured sink.
 - `app.mapGet("/", handler)` records a conceptual GET route.
 - `.withName("Hello.Index")` stores the route name for the bootstrap shape.
 - Route handlers can receive a minimal context with `services`, `config`, and `log`.

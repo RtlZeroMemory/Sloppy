@@ -38,7 +38,7 @@ function requestPath(context) {
 }
 
 function requestRoute(context) {
-    const route = context?.routePattern ?? context?.route?.pattern;
+    const route = context?.routePattern;
     return typeof route === "string" && route.length !== 0 ? route : undefined;
 }
 

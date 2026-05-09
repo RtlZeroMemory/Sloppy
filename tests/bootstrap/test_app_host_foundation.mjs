@@ -860,6 +860,10 @@ async function flushMicrotasks(count = 6) {
 
     const memorySink = builder.logging.addMemorySink();
     builder.logging.setMinimumLevel("info");
+    builder.logging.setQueueCapacity(8);
+    builder.logging.addRedactionKey("customSecret");
+    builder.logging.writeTo.console({ format: "jsonl" });
+    builder.logging.writeTo.file({ path: "logs/app.jsonl" });
     assertThrowsMessage(() => builder.logging.setMinimumLevel("verbose"), /log level/);
 
     let singletonCalls = 0;
@@ -946,6 +950,30 @@ async function flushMicrotasks(count = 6) {
     });
     assert.notEqual(memorySink.entries()[0].fields, fields);
     assert.equal(Object.isFrozen(memorySink.entries()[0].fields), true);
+    assert.equal(app.log.isEnabled("debug"), false);
+    assert.equal(app.log.isEnabled("info"), true);
+
+    const userLog = app.log.forCategory("users");
+    userLog.warn("loaded user", {
+        id: 7,
+        ok: true,
+        token: "SECRET_TOKEN_SHOULD_NOT_APPEAR",
+        customSecret: "SECRET_CUSTOM_SHOULD_NOT_APPEAR",
+        empty: null,
+    });
+    assert.equal(memorySink.entries().length, 2);
+    assert.equal(memorySink.entries()[1].category, "users");
+    assert.deepEqual(memorySink.entries()[1].fields, {
+        id: 7,
+        ok: true,
+        token: "[REDACTED]",
+        customSecret: "[REDACTED]",
+        empty: null,
+    });
+    assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_TOKEN_SHOULD_NOT_APPEAR"), false);
+    assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_CUSTOM_SHOULD_NOT_APPEAR"), false);
+    assertThrowsMessage(() => app.log.info("bad", { nested: {} }), /fields support/);
+    assertThrowsMessage(() => app.log.info("bad", { tooMany: 1, a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1, h: 1 }), /at most 8/);
 
     app.mapGet("/", ({ config, log, services }) => {
         log.info("handler", { route: "/" });

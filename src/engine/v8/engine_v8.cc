@@ -79,6 +79,7 @@ void sl_v8_reset_http_bridge_caches(SlV8Engine* backend)
     for (v8::Global<v8::Function>& value : backend->http_functions) {
         value.Reset();
     }
+    backend->http_log_noop_function.Reset();
     for (v8::Global<v8::Object>& value : backend->http_prototypes) {
         value.Reset();
     }
@@ -1183,6 +1184,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->filesystem_policy = options == nullptr ? nullptr : options->filesystem_policy;
+    backend->logging = options == nullptr ? nullptr : options->logging;
     backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
     backend->has_runtime_features = options != nullptr && options->runtime_features != nullptr;
     if (backend->has_runtime_features) {

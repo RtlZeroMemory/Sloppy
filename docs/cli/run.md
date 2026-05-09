@@ -85,6 +85,31 @@ preflight detail, or request-scope cleanup without entering V8.
 `--artifacts` and a positional source path are mutually exclusive — pick
 one.
 
+## Logging Config
+
+`sloppy run` creates the native logging runtime from Plan/config metadata.
+Console logging is enabled by default. Configure it in `appsettings.json`:
+
+```json5
+{
+  "logging": {
+    "minimumLevel": "info",
+    "queueCapacity": 64,
+    "console": {
+      "enabled": true,
+      "format": "pretty"
+    },
+    "file": {
+      "path": "app.jsonl",
+      "format": "jsonl"
+    }
+  }
+}
+```
+
+Supported console formats are `pretty` and `jsonl`. The file sink writes JSONL
+only, opens in append mode, and expects the parent directory to exist.
+
 ## Examples
 
 ```
@@ -110,9 +135,10 @@ sloppy run --environment Staging
 2. If source input, invoke `sloppyc build` and write artifacts.
 3. Read `app.plan.json`, validate schema, hashes, and required features.
 4. Stage the bootstrap stdlib.
-5. Initialize the V8 isolate and engine bridge.
-6. Evaluate the artifact bundle and register handlers.
-7. Build the route table and start the listener (or run the `--once`
+5. Initialize the native logging runtime.
+6. Initialize the V8 isolate and engine bridge.
+7. Evaluate the artifact bundle and register handlers.
+8. Build the route table and start the listener (or run the `--once`
    request).
 
 If any step fails the runtime exits with a diagnostic and a non-zero status.
@@ -120,7 +146,7 @@ If any step fails the runtime exits with a diagnostic and a non-zero status.
 ## Shutdown
 
 `Ctrl+C` (SIGINT) requests shutdown. The runtime stops accepting new
-connections and exits. Production-style graceful drain (long timeouts,
-in-flight connection completion, signaled load-balancer drain) is not
-implemented today — terminate behind a reverse proxy that handles
-connection draining for that.
+connections, flushes configured logging sinks, and exits. Production-style
+graceful drain (long timeouts, in-flight connection completion, signaled
+load-balancer drain) is not implemented today — terminate behind a reverse proxy
+that handles connection draining for that.

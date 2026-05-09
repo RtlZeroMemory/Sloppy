@@ -9,6 +9,7 @@
 #include "sloppy/fs.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
+#include "sloppy/logging.h"
 #include "sloppy/plan.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -69,6 +70,12 @@ typedef struct SlEngineOptions
      * the bridge without Plan-driven startup validation.
      */
     const SlRuntimeFeatureSet* runtime_features;
+    /*
+     * Optional borrowed structured logging runtime. When supplied, V8 request-context
+     * loggers submit bounded SlLogEvent records into this runtime. The caller owns startup,
+     * flush, and shutdown and must keep the runtime alive for the engine lifetime.
+     */
+    SlLogRuntime* logging;
     /*
      * Optional borrowed compiler source-map bytes used by V8 diagnostics to remap generated
      * app.js locations back to author source. The bytes must outlive the engine. When provided,

@@ -51,6 +51,8 @@ typedef struct SlHttpRequestContext
     bool has_content_length;
     const SlRouteParam* route_params;
     size_t route_param_count;
+    SlStr route_name;
+    SlStr route_pattern;
     const SlHttpQueryParam* query_params;
     size_t query_param_count;
     SlHttpRequestBodyKind body_kind;

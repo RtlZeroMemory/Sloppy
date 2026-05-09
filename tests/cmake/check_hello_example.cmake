@@ -29,6 +29,7 @@ foreach(required_pattern IN ITEMS
         "builder.logging.addMemorySink();"
         "builder.services.addSingleton(\"message\", () => \"Hello from Sloppy\");"
         "const app = builder.build();"
+        "app.log.info(\"hello example configured\", { example: \"hello\" });"
         "app.mapGet(\"/\", ({ services }) => Results.text(services.get(\"message\")))"
         ".withName(\"Hello.Index\")"
         "export default app;")
@@ -44,6 +45,7 @@ foreach(required_pattern IN ITEMS
         "Runtime Command"
         "`sloppy run --artifacts` currently runs emitted artifacts"
         "`sloppyc` route extraction and `app.plan.json` emission"
+        "`app.log.info(...)` writes a structured application event"
         "Sloppy facade import"
         "future user-facing shape for this example")
     require_substring(

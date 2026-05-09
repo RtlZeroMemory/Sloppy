@@ -41,7 +41,11 @@ Trusted values are accepted only when they are safe HTTP header values. Unsafe o
 empty values are ignored and the middleware generates a new ID.
 
 `RequestLogging.defaults()` writes through `ctx.log.info(...)` with the message
-`request completed`. The default fields are:
+`request completed`. In the bootstrap app-host this writes to the configured
+builder sinks. In the native `sloppy run` path, `ctx.log` writes into the native
+logging queue and the configured native sinks receive the event.
+
+The default fields are:
 
 - `method`
 - `path`
@@ -76,7 +80,22 @@ await app.__getRoutes()[0].handler();
 sink.entries()[0].fields.requestId; // "req-1"
 ```
 
+Native request contexts also expose `ctx.requestId`, `ctx.routeName`, and
+`ctx.routePattern` for direct handler logging. `ctx.route` remains route
+parameters:
+
+```ts
+app.get("/users/{id:int}", (ctx) => {
+    ctx.log.forCategory("users").info("user fetched", {
+        userId: ctx.route.id,
+        requestId: ctx.requestId,
+        route: ctx.routePattern,
+    });
+    return Results.json({ id: ctx.route.id });
+});
+```
+
 Current request logging records one structured metadata entry per app-host
-request. Tracing and metrics are separate observability features. Production
-logging sinks are future work; for now, use the memory sink in tests and the
-existing logger surface in app code.
+request. Tracing and metrics are separate observability features. Native
+console and JSONL file sinks are available through `sloppy run` config; the
+memory sink remains the deterministic test sink.

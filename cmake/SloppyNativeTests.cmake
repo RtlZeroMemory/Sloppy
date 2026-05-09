@@ -71,6 +71,10 @@
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
     sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
                            tests/unit/core/test_os.c)
+    sloppy_add_c_unit_test(core_logging_structured core.logging.structured
+                           tests/unit/core/test_logging.c)
+    add_test(NAME stress.logging.structured COMMAND $<TARGET_FILE:core_logging_structured> --stress)
+    set_tests_properties(stress.logging.structured PROPERTIES LABELS "stress;logging")
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
@@ -311,6 +315,13 @@
     set_tests_properties(
         benchmarks.sloppy_bench.smoke_json
         PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
+
+    add_test(
+        NAME benchmarks.sloppy_bench.logging_smoke_json
+        COMMAND sloppy_bench --smoke --format json --bench logging.enabled.five_fields)
+    set_tests_properties(
+        benchmarks.sloppy_bench.logging_smoke_json
+        PROPERTIES PASS_REGULAR_EXPRESSION "\"name\": \"logging.enabled.five_fields\"")
 
     if(SLOPPY_ENABLE_V8)
         add_test(

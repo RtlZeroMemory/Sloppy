@@ -19,6 +19,7 @@ set(
     src/core/crypto_noncrypto_hash.c
     src/core/fs.c
     src/core/os.c
+    src/core/logging.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -133,6 +134,7 @@ set(
     tests/unit/core/test_crypto.c
     tests/unit/core/test_fs.c
     tests/unit/core/test_os.c
+    tests/unit/core/test_logging.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
@@ -166,6 +168,7 @@ set(
     benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_logging.c
     benchmarks/bench_memory.c)
 
 if(CMAKE_CXX_COMPILER)

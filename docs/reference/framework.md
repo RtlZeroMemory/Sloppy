@@ -262,6 +262,35 @@ out of the default log entry.
 Compiler input that installs it with `app.use(...)` fails with
 `SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`.
 
+## Logging
+
+The app logger and request logger support:
+
+| API | Behavior |
+| --- | --- |
+| `trace/debug/info/warn/error(message, fields?)` | Writes a structured event when the level is enabled. |
+| `isEnabled(level)` | Checks the current minimum level. |
+| `forCategory(name)` | Returns a category logger that keeps the same request metadata. |
+
+Field objects are shallow and bounded. Supported field values are `null`,
+booleans, finite numbers, and strings. Unsupported values are rejected rather
+than recursively stringified.
+
+Builder logging APIs:
+
+| API | Behavior |
+| --- | --- |
+| `setMinimumLevel(level)` | Sets the bootstrap app-host minimum level. |
+| `setQueueCapacity(count)` | Records bounded queue capacity intent for logging descriptors. |
+| `addRedactionKey(key)` | Adds an app-specific sensitive field key. |
+| `addMemorySink(options?)` | Adds a deterministic in-memory sink for tests. |
+| `writeTo.console(options?)` | Records a console sink descriptor with `pretty` or `jsonl` format. |
+| `writeTo.file(options)` | Records a JSONL file sink descriptor. |
+
+The native `sloppy run` path creates its runtime logger from Plan/config
+metadata. It supports minimum level, queue capacity, console sink settings, and
+JSONL file sink settings from `appsettings.json` / environment-derived config.
+
 ## Static Provider Handles
 
 The current static provider handle syntax is:
@@ -339,9 +368,9 @@ Options:
 - Health checks currently register bootstrap route-table entries. Deployment
   health policy, authentication, and load-balancer integration are separate
   framework/deployment areas.
-- Request ID and request logging helpers run in the bootstrap app-host middleware
-  path. Compiler extraction and emitted Plan metadata for those helpers are separate
-  framework work.
+- Request ID and request logging helpers run in the bootstrap app-host
+  middleware path. Native request contexts also expose runtime-generated
+  `ctx.requestId` for `sloppy run`.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` requires V8.
 - ProblemDetails currently provides safe global handler-error mapping. Production error

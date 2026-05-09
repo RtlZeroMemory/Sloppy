@@ -14,6 +14,7 @@
 
 #include "sloppy/features.h"
 #include "sloppy/async_backend.h"
+#include "sloppy/logging.h"
 #include "sloppy/provider_executor.h"
 #include "sloppy/resource.h"
 
@@ -54,6 +55,7 @@ typedef enum SlV8HttpStringKey
     SL_V8_HTTP_STRING_JSON,
     SL_V8_HTTP_STRING_KIND,
     SL_V8_HTTP_STRING_LOCATION,
+    SL_V8_HTTP_STRING_LOG,
     SL_V8_HTTP_STRING_METHOD,
     SL_V8_HTTP_STRING_PATH,
     SL_V8_HTTP_STRING_PROTOCOL,
@@ -62,7 +64,10 @@ typedef enum SlV8HttpStringKey
     SL_V8_HTTP_STRING_RAW_TARGET,
     SL_V8_HTTP_STRING_REASON,
     SL_V8_HTTP_STRING_REQUEST,
+    SL_V8_HTTP_STRING_REQUEST_ID,
     SL_V8_HTTP_STRING_ROUTE,
+    SL_V8_HTTP_STRING_ROUTE_NAME,
+    SL_V8_HTTP_STRING_ROUTE_PATTERN,
     SL_V8_HTTP_STRING_SCHEME,
     SL_V8_HTTP_STRING_SECURE,
     SL_V8_HTTP_STRING_SIGNAL,
@@ -70,6 +75,13 @@ typedef enum SlV8HttpStringKey
     SL_V8_HTTP_STRING_STATUS,
     SL_V8_HTTP_STRING_TEXT,
     SL_V8_HTTP_STRING_THROW_IF_ABORTED,
+    SL_V8_HTTP_STRING_TRACE,
+    SL_V8_HTTP_STRING_DEBUG,
+    SL_V8_HTTP_STRING_INFO,
+    SL_V8_HTTP_STRING_WARN,
+    SL_V8_HTTP_STRING_ERROR,
+    SL_V8_HTTP_STRING_IS_ENABLED,
+    SL_V8_HTTP_STRING_FOR_CATEGORY,
     SL_V8_HTTP_STRING_COUNT
 } SlV8HttpStringKey;
 
@@ -81,6 +93,10 @@ typedef enum SlV8HttpPrivateKey
     SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
     SL_V8_HTTP_PRIVATE_BODY_KIND,
     SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT,
+    SL_V8_HTTP_PRIVATE_LOG_CATEGORY,
+    SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID,
+    SL_V8_HTTP_PRIVATE_LOG_ROUTE_NAME,
+    SL_V8_HTTP_PRIVATE_LOG_ROUTE_PATTERN,
     SL_V8_HTTP_PRIVATE_REASON,
     SL_V8_HTTP_PRIVATE_COUNT
 } SlV8HttpPrivateKey;
@@ -96,6 +112,13 @@ typedef enum SlV8HttpFunctionKey
     SL_V8_HTTP_FUNCTION_REQUEST_JSON,
     SL_V8_HTTP_FUNCTION_REQUEST_TEXT,
     SL_V8_HTTP_FUNCTION_SIGNAL_THROW_IF_ABORTED,
+    SL_V8_HTTP_FUNCTION_LOG_TRACE,
+    SL_V8_HTTP_FUNCTION_LOG_DEBUG,
+    SL_V8_HTTP_FUNCTION_LOG_INFO,
+    SL_V8_HTTP_FUNCTION_LOG_WARN,
+    SL_V8_HTTP_FUNCTION_LOG_ERROR,
+    SL_V8_HTTP_FUNCTION_LOG_IS_ENABLED,
+    SL_V8_HTTP_FUNCTION_LOG_FOR_CATEGORY,
     SL_V8_HTTP_FUNCTION_COUNT
 } SlV8HttpFunctionKey;
 
@@ -105,6 +128,7 @@ typedef enum SlV8HttpPrototypeKey
     SL_V8_HTTP_PROTOTYPE_HEADERS,
     SL_V8_HTTP_PROTOTYPE_REQUEST,
     SL_V8_HTTP_PROTOTYPE_SIGNAL,
+    SL_V8_HTTP_PROTOTYPE_LOGGER,
     SL_V8_HTTP_PROTOTYPE_COUNT
 } SlV8HttpPrototypeKey;
 
@@ -117,6 +141,7 @@ struct SlV8Engine
     std::array<v8::Global<v8::String>, SL_V8_HTTP_STRING_COUNT> http_strings = {};
     std::array<v8::Global<v8::Private>, SL_V8_HTTP_PRIVATE_COUNT> http_private_keys = {};
     std::array<v8::Global<v8::Function>, SL_V8_HTTP_FUNCTION_COUNT> http_functions = {};
+    v8::Global<v8::Function> http_log_noop_function;
     std::array<v8::Global<v8::Object>, SL_V8_HTTP_PROTOTYPE_COUNT> http_prototypes = {};
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
@@ -125,6 +150,7 @@ struct SlV8Engine
     const SlPlan* plan = nullptr;
     const SlCapabilityRegistry* capabilities = nullptr;
     const SlFsPolicy* filesystem_policy = nullptr;
+    SlLogRuntime* logging = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};
     bool has_runtime_features = false;

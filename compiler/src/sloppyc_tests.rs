@@ -113,6 +113,18 @@ fn keep_alive_environment_override_keys_are_canonicalized() {
         "Sloppy:Server:Tls:Passphrase"
     );
     assert_eq!(
+        canonical_config_key("SLOPPY:LOGGING:MINIMUMLEVEL"),
+        "Sloppy:Logging:MinimumLevel"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:LOGGING:CONSOLE:FORMAT"),
+        "Sloppy:Logging:Console:Format"
+    );
+    assert_eq!(
+        canonical_config_key("SLOPPY:LOGGING:FILE:PATH"),
+        "Sloppy:Logging:File:Path"
+    );
+    assert_eq!(
         canonical_config_key("SLOPPY:PROVIDERS:POSTGRES:MAIN:CONNECTIONSTRING"),
         "Sloppy:Providers:postgres:MAIN:connectionString"
     );

@@ -446,6 +446,7 @@ function createHandlerContext(host, routeInfo) {
         config: host.config,
         log: host.log,
         route: {},
+        routeName: routeInfo.name ?? "",
         routePattern: routeInfo.pattern,
         request: createDefaultRequest(routeInfo),
     };
@@ -462,6 +463,9 @@ function decorateProvidedContext(host, context, routeInfo) {
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};
+    }
+    if (nextContext.routeName === undefined) {
+        nextContext.routeName = routeInfo.name ?? "";
     }
     if (nextContext.routePattern === undefined) {
         nextContext.routePattern = routeInfo.pattern;

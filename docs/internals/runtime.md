@@ -18,14 +18,15 @@ diagnostic and a non-zero exit.
 5. validate Plan                        plan_parse.c + app_host.c
 6. stage bootstrap stdlib               src/core/app_host.c
 7. activate required features           src/core/features.c
-8. initialize engine bridge             src/engine/engine.c → v8/*
-9. evaluate generated bundle            src/engine/v8/engine_v8.cc
-10. register handlers                   bridge intrinsics
-11. build native route table            src/core/route.c
-12. accept work (--once or listener)    src/platform/libuv/*
+8. initialize logging runtime           src/core/logging.c
+9. initialize engine bridge             src/engine/engine.c -> v8/*
+10. evaluate generated bundle           src/engine/v8/engine_v8.cc
+11. register handlers                   bridge intrinsics
+12. build native route table            src/core/route.c
+13. accept work (--once or listener)    src/platform/libuv/*
 ```
 
-After step 12 the runtime is in steady state. Shutdown reverses 11→1
+After step 13 the runtime is in steady state. Shutdown reverses 12->1
 in cleanup order.
 
 ## Plan validation
@@ -71,6 +72,24 @@ commands run without V8 present.
 
 V8 invariants are documented in [v8-bridge.md](v8-bridge.md).
 
+## Logging Runtime
+
+`src/core/logging.c` owns structured event construction, redaction, bounded
+queueing, sink fan-out, flushing, and shutdown. `sloppy run` creates one
+logging runtime before the engine bridge is initialized and passes it through
+`SlEngineOptions`.
+
+Current native sinks:
+
+- memory sink for deterministic tests and bridge inspection;
+- console sink with pretty or JSONL formatting;
+- JSONL file sink with append mode, buffering, explicit flush, and shutdown
+  close.
+
+Events are copied into fixed-size native storage before queue admission. The
+request path uses non-blocking enqueue with bounded capacity and drop counters.
+Redaction is applied before events reach sinks.
+
 ## Request dispatch
 
 The transport layer (`src/platform/libuv/http_transport_libuv.c`)
@@ -105,6 +124,7 @@ app scope dispose:
   drain pending request scopes
   shutdown provider runtime
   shutdown engine bridge
+  flush and shutdown logging runtime
   release app arena
 ```
 
