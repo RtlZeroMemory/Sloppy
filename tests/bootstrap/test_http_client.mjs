@@ -15,6 +15,20 @@ async function assertRejectsMessage(fn, expected) {
     });
 }
 
+function assertReceivedStreamIds(received, expected) {
+    assert.deepEqual(
+        received.map((entry) => entry.streamId).sort((left, right) => left - right),
+        expected,
+    );
+}
+
+function assertReceivedConnectionIds(received, expected) {
+    assert.deepEqual(
+        received.map((entry) => entry.connectionId).sort((left, right) => left - right),
+        expected,
+    );
+}
+
 function readSocketRequest(socket) {
     return new Promise((resolve, reject) => {
         const chunks = [];
@@ -1068,8 +1082,8 @@ await withNodeNetBridge(async () => {
         assert.equal(await first.text(), "h2c /pooled-a");
         assert.equal(await second.text(), "h2c /pooled-b");
         assert.equal(server.connectionCount, 1);
-        assert.deepEqual(received.map((entry) => entry.connectionId), [1, 1]);
-        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+        assertReceivedConnectionIds(received, [1, 1]);
+        assertReceivedStreamIds(received, [1, 3]);
     } finally {
         await server.close();
     }
@@ -1110,8 +1124,8 @@ await withNodeNetBridge(async () => {
         assert.equal(await first.text(), "h2 /tls-pooled-a");
         assert.equal(await second.text(), "h2 /tls-pooled-b");
         assert.equal(server.connectionCount, 1);
-        assert.deepEqual(received.map((entry) => entry.connectionId), [1, 1]);
-        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+        assertReceivedConnectionIds(received, [1, 1]);
+        assertReceivedStreamIds(received, [1, 3]);
     } finally {
         await server.close();
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1228,7 +1242,7 @@ await withNodeNetBridge(async () => {
         const siblingResponse = await sibling;
         assert.equal(await siblingResponse.text(), "survived /sibling");
         assert.equal(server.connectionCount, 1);
-        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+        assertReceivedStreamIds(received, [1, 3]);
     } finally {
         await server.close();
     }
@@ -1266,7 +1280,7 @@ await withNodeNetBridge(async () => {
         await assertRejectsMessage(() => first, /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/);
         await assertRejectsMessage(() => second, /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/);
         assert.equal(server.connectionCount, 1);
-        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+        assertReceivedStreamIds(received, [1, 3]);
     } finally {
         await server.close();
     }

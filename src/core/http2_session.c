@@ -236,6 +236,9 @@ static SlStatus sl_http2_session_normalize_config(const SlHttp2SessionConfig* in
     if (config.initial_window_size > 0x7fffffffU) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (config.max_concurrent_streams > SL_HTTP2_SESSION_CLOSED_STREAM_TRACK) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
 
     *out = config;
     return sl_status_ok();

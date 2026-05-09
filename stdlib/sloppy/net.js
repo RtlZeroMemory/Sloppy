@@ -1506,6 +1506,19 @@ class HttpConnectionPool {
         }
     }
 
+    _dropHttp2Record(originKey, entry, record) {
+        if (record.timer !== undefined) {
+            clearTimeout(record.timer);
+            record.timer = undefined;
+        }
+        const index = entry.sessions.indexOf(record);
+        if (index >= 0) {
+            entry.sessions.splice(index, 1);
+            entry.total = Math.max(0, entry.total - 1);
+        }
+        this._pruneHttp2(originKey, entry);
+    }
+
     _findReusableHttp2Session(entry) {
         for (const record of entry.sessions) {
             if (!record.session.closed && record.session.acceptsStreams) {
@@ -1542,15 +1555,7 @@ class HttpConnectionPool {
         entry.pending = connect().then((session) => {
             const record = { session, timer: undefined };
             entry.sessions.push(record);
-            session.onClose(() => {
-                if (record.timer !== undefined) {
-                    clearTimeout(record.timer);
-                    record.timer = undefined;
-                }
-                entry.sessions = entry.sessions.filter((candidate) => candidate !== record);
-                entry.total = Math.max(0, entry.total - 1);
-                this._pruneHttp2(originKey, entry);
-            });
+            session.onClose(() => this._dropHttp2Record(originKey, entry, record));
             return session;
         });
         try {
@@ -1586,15 +1591,7 @@ class HttpConnectionPool {
         const record = { session, timer: undefined };
         entry.total += 1;
         entry.sessions.push(record);
-        session.onClose(() => {
-            if (record.timer !== undefined) {
-                clearTimeout(record.timer);
-                record.timer = undefined;
-            }
-            entry.sessions = entry.sessions.filter((candidate) => candidate !== record);
-            entry.total = Math.max(0, entry.total - 1);
-            this._pruneHttp2(originKey, entry);
-        });
+        session.onClose(() => this._dropHttp2Record(originKey, entry, record));
         return session;
     }
 
@@ -1610,13 +1607,14 @@ class HttpConnectionPool {
             return;
         }
         if (session.closed) {
-            this._pruneHttp2(originKey, entry);
+            this._dropHttp2Record(originKey, entry, record);
             return;
         }
         if (session.activeStreamCount > 0) {
             return;
         }
         if (this._options.idleTimeoutMs === 0) {
+            this._dropHttp2Record(originKey, entry, record);
             session.close().catch(() => {});
             return;
         }
@@ -1624,7 +1622,7 @@ class HttpConnectionPool {
             clearTimeout(record.timer);
         }
         record.timer = setTimeout(() => {
-            record.timer = undefined;
+            this._dropHttp2Record(originKey, entry, record);
             session.close().catch(() => {});
         }, this._options.idleTimeoutMs);
     }
@@ -3392,7 +3390,6 @@ class Http2ClientSession {
         this._streams = new Map();
         this._nextStreamId = 1;
         this._peerMaxFrameSize = HTTP2_DEFAULT_MAX_FRAME_SIZE;
-        this._peerMaxHeaderListSize = Infinity;
         this._pendingHeaderStream = 0;
         this._writeQueue = Promise.resolve();
         this._closeListeners = new Set();
@@ -3576,11 +3573,11 @@ class Http2ClientSession {
             this._pending = http2Concat([this._pending, chunk]);
         }
         const frame = parseHttp2FrameHeader(this._pending, 0);
-        if (frame.length > this._peerMaxFrameSize) {
+        if (frame.length > HTTP2_DEFAULT_MAX_FRAME_SIZE) {
             throw httpClientError(
                 "HttpClientMalformedResponseError",
                 "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
-                "HTTP/2 peer frame exceeded the current max frame size.",
+                "HTTP/2 peer frame exceeded the local max frame size.",
             );
         }
         while (this._pending.byteLength < 9 + frame.length) {
@@ -3673,8 +3670,6 @@ class Http2ClientSession {
                     );
                 }
                 this._peerMaxFrameSize = value;
-            } else if (id === HTTP2_SETTING_MAX_HEADER_LIST_SIZE) {
-                this._peerMaxHeaderListSize = value;
             }
         }
         await this._write(http2Frame(HTTP2_FRAME_SETTINGS, HTTP2_FLAG_ACK, 0));
@@ -3741,10 +3736,7 @@ class Http2ClientSession {
 
         const blockEndedStream = stream.headerBlockEndsStream;
         const decoded = hpackDecodeHeaders(http2Concat(stream.headerBlocks), this._dynamicTable);
-        const parsed = parseHttp2Headers(
-            decoded,
-            Math.min(stream.request.maxHeaderBytes, this._peerMaxHeaderListSize),
-        );
+        const parsed = parseHttp2Headers(decoded, stream.request.maxHeaderBytes);
         if (parsed.status >= 100 && parsed.status < 200) {
             if (blockEndedStream) {
                 throw httpClientError(
@@ -4242,7 +4234,7 @@ async function sendHttpAutoTlsRequestOnce(request, pool, lifecycle) {
         }
     }
 
-    const session = new Http2ClientSession(transport.connection, undefined, originKey);
+    const session = new Http2ClientSession(transport.connection, pool, originKey);
     try {
         await session.start();
         if (pool !== undefined) {

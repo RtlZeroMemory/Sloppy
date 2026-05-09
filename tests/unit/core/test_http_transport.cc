@@ -4134,9 +4134,16 @@ static int serve_http2_h2c(const char* port_file)
             result = 4;
             goto cleanup;
         }
-        std::fprintf(file, "http://127.0.0.1:%u/\n",
-                     sl_http_transport_server_bound_port(&server));
-        std::fclose(file);
+        int write_result = std::fprintf(file, "http://127.0.0.1:%u/\n",
+                                        sl_http_transport_server_bound_port(&server));
+        int flush_result = std::fflush(file);
+        int close_result = std::fclose(file);
+        if (write_result < 0 || flush_result != 0 || close_result != 0)
+        {
+            std::remove(port_file);
+            result = 4;
+            goto cleanup;
+        }
     }
     std::printf("http://127.0.0.1:%u/\n", sl_http_transport_server_bound_port(&server));
     std::fflush(stdout);

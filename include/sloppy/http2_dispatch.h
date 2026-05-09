@@ -45,6 +45,8 @@ typedef struct SlHttp2DispatchStream
     bool complete_pending;
     SlHttp2HeaderList headers;
     SlByteBuilder body;
+    SlArenaMark body_mark;
+    bool body_mark_valid;
 } SlHttp2DispatchStream;
 
 typedef struct SlHttp2ServerDispatcher

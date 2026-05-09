@@ -101,7 +101,40 @@ run_curl_http2() {
     evidence "http2.curl" "UNAVAILABLE" "curl was built without HTTP/2 support"
     return
   fi
-  run_optional_tool "http2.curl" "curl" --http2 --fail --silent --show-error "$url"
+  if [[ -z "$url" ]]; then
+    evidence "http2.curl" "SKIPPED" "provide --url to run curl against a live HTTP/2 endpoint"
+    return
+  fi
+  curl_scheme="$(python3 - "$url" <<'PY'
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+if u.scheme not in ("http", "https") or not u.hostname:
+    raise SystemExit(1)
+print(u.scheme)
+PY
+)" || {
+    evidence "http2.curl" "FAIL" "malformed --url: $url"
+    exit 1
+  }
+  curl_args=(--fail --silent --show-error --output /dev/null --write-out "%{http_version}")
+  if [[ "$curl_scheme" == "http" ]]; then
+    curl_args+=(--http2-prior-knowledge)
+  else
+    curl_args+=(--http2)
+  fi
+  if curl_version="$(curl "${curl_args[@]}" "$url")"; then
+    :
+  else
+    code=$?
+    evidence "http2.curl" "FAIL" "curl exited with code $code"
+    exit "$code"
+  fi
+  if [[ "$curl_version" != "2" ]]; then
+    evidence "http2.curl" "FAIL" "curl negotiated HTTP/$curl_version"
+    exit 1
+  fi
+  evidence "http2.curl" "PASS" "curl negotiated HTTP/2"
 }
 
 build_dir="$repo_root/build/$(host_preset)"
