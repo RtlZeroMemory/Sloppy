@@ -4,6 +4,7 @@ Generate an OpenAPI document from a Plan.
 
 ```
 sloppy openapi --plan <path> [--output <path>]
+sloppy openapi --artifacts <dir> [--output <path>]
 ```
 
 Without `--output`, the document prints to stdout. With `--output <file>`,
@@ -14,6 +15,7 @@ The output is **JSON**, not YAML. The filename is up to you, but the
 content is always JSON.
 
 `<path>` is an `app.plan.json` file or a directory containing one.
+`--artifacts <dir>` is equivalent to `--plan <dir>/app.plan.json`.
 
 ## What it produces
 
@@ -111,6 +113,7 @@ if you need richer output.
 ```
 sloppy openapi --plan .sloppy/app.plan.json
 sloppy openapi --plan .sloppy --output openapi.json
+sloppy openapi --artifacts .sloppy --output openapi.json
 ```
 
 ## Tips

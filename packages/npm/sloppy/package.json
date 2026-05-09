@@ -1,0 +1,24 @@
+{
+  "name": "@rtlzeromemory/sloppy",
+  "version": "0.1.0-alpha.0",
+  "description": "Sloppy runtime launcher. npm installs Sloppy itself; it does not add npm package support to Sloppy apps.",
+  "license": "SEE LICENSE IN LICENSE",
+  "bin": {
+    "sloppy": "bin/sloppy.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
+  "optionalDependencies": {
+    "@rtlzeromemory/sloppy-win32-x64": "0.1.0-alpha.0",
+    "@rtlzeromemory/sloppy-linux-x64": "0.1.0-alpha.0"
+  },
+  "publishConfig": {
+    "tag": "alpha",
+    "access": "public"
+  }
+}

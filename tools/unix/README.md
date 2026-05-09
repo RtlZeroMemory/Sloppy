@@ -101,11 +101,13 @@ The Unix dogfood script validates the shared catalog and can run package-mode sm
 TAR archive is supplied. Positive source-input and pre-alpha control-plane execution remain
 V8-gated and must be reported separately from this static Unix lane.
 
-`tools/unix/dev.sh npm-dry-run` currently reports unavailable instead of faking a Unix npm
-package generator. The committed npm package metadata is platform-neutral, but the local
-dry-run generator in this PR is the Windows `tools/windows/npm-dry-run.ps1` path. A Unix
-generator should reuse tested archive contents and preserve the native-install-script
-policy before being reported as available.
+`tools/unix/dev.sh npm-dry-run --package-path artifacts/packages/sloppy-linux-x64.tar.gz`
+stages `@rtlzeromemory/sloppy` plus the matching Linux x64 GNU platform package from a tested archive.
+It runs `npm pack --dry-run`, creates local tarballs, and can run the launcher smoke path
+without publishing packages. macOS npm staging is deferred until hosted package proof exists.
+`tools/unix/dev.sh test-install --package-path ...` verifies
+`sloppy create`, `sloppy build`, `sloppy package`, and `sloppy run --once` from an
+extracted archive.
 
 Provider live lanes have POSIX wrappers for machines that already have the matching CMake
 preset configured and the required service dependencies installed:

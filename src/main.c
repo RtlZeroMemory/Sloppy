@@ -34,6 +34,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 1024U
@@ -74,6 +75,8 @@
 #define SL_RUN_LOGGING_ARENA_BYTES 262144U
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_PATH_MAX_BYTES 1024U
+#define SL_CREATE_ARENA_BYTES 65536U
+#define SL_PACKAGE_MANIFEST_BYTES 1024U
 #define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
@@ -92,6 +95,8 @@
 #include "cli/cli_common.inc"
 #include "cli/cli_metadata.inc"
 #include "cli/cli_run.inc"
+#include "cli/cli_create.inc"
+#include "cli/cli_package.inc"
 #include "cli/cli_lookup.inc"
 #include "cli/cli_routes.inc"
 #include "cli/cli_doctor.inc"
@@ -132,6 +137,12 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "build") == 0) {
         return sl_cli_command_build(&options);
+    }
+    if (strcmp(options.command, "package") == 0) {
+        return sl_cli_command_package(&options);
+    }
+    if (strcmp(options.command, "create") == 0) {
+        return sl_cli_command_create(&options);
     }
     if (strcmp(options.command, "doctor") == 0) {
         return sl_cli_command_doctor(&options);

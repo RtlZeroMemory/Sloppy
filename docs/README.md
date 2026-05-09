@@ -11,7 +11,7 @@ labelled *experimental* are still moving.
 ## Get started
 
 - [Install](install.md) — get the `sloppy` CLI on your machine
-- [Quickstart](quickstart.md) — build and run a two-route API in five minutes
+- [Quickstart](quickstart.md) — create, build, run, and package a two-route API
 
 ## Reference
 

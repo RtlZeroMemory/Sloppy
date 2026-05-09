@@ -5,7 +5,7 @@ registered after the call. It also auto-registers an `OPTIONS` preflight route
 for each subsequent path.
 
 ```ts
-import { Sloppy, Results } from "sloppy";
+import { Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 

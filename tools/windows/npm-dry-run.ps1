@@ -77,12 +77,25 @@ function Get-PlatformPackageName {
 
     $triplet = [string]$Manifest.platformTriplet
     switch ($triplet) {
-        "windows-x64" { return "runtime-win32-x64" }
-        "linux-x64" { return "runtime-linux-x64-gnu" }
-        "macos-arm64" { return "runtime-darwin-arm64" }
-        "macos-x64" { return "runtime-darwin-x64" }
+        "windows-x64" { return "sloppy-win32-x64" }
+        "linux-x64" { return "sloppy-linux-x64" }
+        "macos-arm64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
+        "macos-x64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
         default { throw "Unsupported npm platform package triplet in manifest: $triplet" }
     }
+}
+
+function Get-NpmTarballName {
+    param([object]$PackageJson)
+
+    $name = [string]$PackageJson.name
+    $version = [string]$PackageJson.version
+    $fileName = $name
+    if ($fileName.StartsWith("@")) {
+        $fileName = $fileName.Substring(1)
+    }
+    $fileName = $fileName -replace "/", "-"
+    return "$fileName-$version.tgz"
 }
 
 function Assert-NoNativeInstallScripts {
@@ -156,14 +169,14 @@ try {
         throw "Archive manifest packageRoot does not match the extracted archive root."
     }
 
-    $runtimeStage = Join-Path $stageRoot "runtime"
-    Copy-DirectoryContents -Source (Join-Path $Root "packages/npm/runtime") -Destination $runtimeStage
+    $runtimeStage = Join-Path $stageRoot "sloppy"
+    Copy-DirectoryContents -Source (Join-Path $Root "packages/npm/sloppy") -Destination $runtimeStage
 
     $platformPackageDirectoryName = Get-PlatformPackageName -Manifest $manifest
     $platformSkeleton = Join-Path $Root "packages/npm/$platformPackageDirectoryName"
     $platformStage = Join-Path $stageRoot $platformPackageDirectoryName
     Copy-DirectoryContents -Source $platformSkeleton -Destination $platformStage
-    foreach ($entry in @("bin", "stdlib", "examples", "docs", "manifest.json", "LICENSE", "README.md")) {
+    foreach ($entry in @("bin", "stdlib", "templates", "examples", "docs", "manifest.json", "LICENSE", "README.md")) {
         $source = Join-Path $packageRoot $entry
         if (-not (Test-Path -LiteralPath $source)) {
             throw "Archive package is missing npm platform package content: $entry"
@@ -181,8 +194,8 @@ try {
 
     $runtimePackageJson = Get-Content -LiteralPath (Join-Path $runtimeStage "package.json") -Raw | ConvertFrom-Json
     $platformPackageJson = Get-Content -LiteralPath (Join-Path $platformStage "package.json") -Raw | ConvertFrom-Json
-    $runtimeTarballName = "sloppy-runtime-$($runtimePackageJson.version).tgz"
-    $platformTarballName = ($platformPackageDirectoryName -replace '^runtime-', 'sloppy-runtime-') + "-$($platformPackageJson.version).tgz"
+    $runtimeTarballName = Get-NpmTarballName -PackageJson $runtimePackageJson
+    $platformTarballName = Get-NpmTarballName -PackageJson $platformPackageJson
     $runtimeTarball = @(Get-ChildItem -LiteralPath $tarballRoot -Filter $runtimeTarballName -File | Select-Object -First 1)
     $platformTarball = @(Get-ChildItem -LiteralPath $tarballRoot -Filter $platformTarballName -File | Select-Object -First 1)
     if ($runtimeTarball.Count -eq 0 -or $platformTarball.Count -eq 0) {
@@ -192,15 +205,35 @@ try {
     if (-not $SkipInstallSmoke) {
         $installRoot = Join-Path $tempRoot "install"
         New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
-        Invoke-Native $npm.Source @("install", "--prefix", $installRoot, "--ignore-scripts", $runtimeTarball[0].FullName, $platformTarball[0].FullName)
-        $launcher = Join-Path $installRoot "node_modules/@sloppy/runtime/bin/sloppy.js"
+        Invoke-Native $npm.Source @("install", "--prefix", $installRoot, $runtimeTarball[0].FullName, $platformTarball[0].FullName)
+        $launcher = Join-Path $installRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($launcher, "--version") -WorkingDirectory $installRoot
         Invoke-Native $node.Source @($launcher, "doctor") -WorkingDirectory $installRoot
 
+        $createRoot = Join-Path $tempRoot "created-work"
+        New-Item -ItemType Directory -Force -Path $createRoot | Out-Null
+        Invoke-Native $node.Source @($launcher, "create", "tmp-npm-app", "--template", "minimal-api") -WorkingDirectory $createRoot
+        $createdApp = Join-Path $createRoot "tmp-npm-app"
+        Invoke-Native $node.Source @($launcher, "build") -WorkingDirectory $createdApp
+        Push-Location $createdApp
+        try {
+            $runOutput = & $node.Source $launcher "run" "--once" "GET" "/health" 2>&1 | Out-String
+            $runExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+        if ($runExit -eq 0) {
+            if ($runOutput -notmatch "ok") {
+                throw "npm dry-run create/build/run smoke did not return /health ok.`n$runOutput"
+            }
+        } elseif ($runOutput -notmatch "requires V8-enabled build") {
+            throw "npm dry-run create/build/run smoke failed unexpectedly.`n$runOutput"
+        }
+
         $missingRoot = Join-Path $tempRoot "missing-platform"
         New-Item -ItemType Directory -Force -Path $missingRoot | Out-Null
-        Invoke-Native $npm.Source @("install", "--prefix", $missingRoot, "--ignore-scripts", "--omit=optional", $runtimeTarball[0].FullName)
-        $missingLauncher = Join-Path $missingRoot "node_modules/@sloppy/runtime/bin/sloppy.js"
+        Invoke-Native $npm.Source @("install", "--prefix", $missingRoot, "--omit=optional", $runtimeTarball[0].FullName)
+        $missingLauncher = Join-Path $missingRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($missingLauncher, "--version") -WorkingDirectory $missingRoot -AllowedExitCodes @(1)
         $oldPlatform = $env:SLOPPY_RUNTIME_PLATFORM
         try {
@@ -214,8 +247,8 @@ try {
     [ordered]@{
         kind = "sloppy-npm-dry-run"
         packageArchive = $archivePath
-        rootPackage = "@sloppy/runtime"
-        platformPackage = "@sloppy/$platformPackageDirectoryName"
+        rootPackage = "@rtlzeromemory/sloppy"
+        platformPackage = [string]$platformPackageJson.name
         publishTag = $PublishTag
         nativeInstallScripts = $false
         nodeGyp = $false

@@ -241,6 +241,21 @@
     add_test(NAME sloppy.cli.help_includes_run COMMAND "$<TARGET_FILE:sloppy>" --help)
     set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")
 
+    add_test(NAME sloppy.cli.help_includes_create COMMAND "$<TARGET_FILE:sloppy>" --help)
+    set_tests_properties(sloppy.cli.help_includes_create
+                         PROPERTIES PASS_REGULAR_EXPRESSION "sloppy create")
+
+    if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
+        add_test(
+            NAME sloppy.cli.create_package_command
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_create_package_command.cmake")
+        set_tests_properties(sloppy.cli.create_package_command PROPERTIES LABELS "cli;source-input")
+    endif()
+
     add_test(
         NAME docs.main_contract
         COMMAND

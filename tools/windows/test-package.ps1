@@ -410,6 +410,7 @@ try {
     $expectedManifest = [ordered]@{
         name = "sloppy"
         containsStdlib = $true
+        containsTemplates = $true
         containsV8Sdk = $false
     }
     if ($null -ne $metadata -and $null -ne $metadata.expectedManifest) {
@@ -451,7 +452,7 @@ try {
             throw "Package smoke missing required package file: $requiredFile"
         }
     }
-    $requiredDirectories = @("bin", "stdlib", "stdlib/sloppy", "examples", "docs")
+    $requiredDirectories = @("bin", "stdlib", "stdlib/sloppy", "templates", "examples", "docs")
     if ($null -ne $metadata -and $null -ne $metadata.requiredDirectories) {
         $requiredDirectories = @($metadata.requiredDirectories)
     }

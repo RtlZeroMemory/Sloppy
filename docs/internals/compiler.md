@@ -91,6 +91,11 @@ call sites. The report records phase timings, source counters, and artifact
 sizes without changing normal compiler output. Timing collection is opt-in and
 intended for local benchmark evidence.
 
+Import validation is file-local. The entry file must import `Sloppy` from
+`"sloppy"`. A file imports `Results` only when handlers in that same file call
+`Results.*`; registering a child function module does not require the entry file
+to import `Results`.
+
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
 results; they do not link to the compiler library.

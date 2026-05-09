@@ -64,6 +64,14 @@ repository.
 
 ## How to run one
 
+For a new project, prefer a template:
+
+```powershell
+sloppy create my-api --template minimal-api
+cd my-api
+sloppy run --once GET /health
+```
+
 Most curated examples have a `README.md` and a single source file. To run one
 through the dev path:
 

@@ -154,10 +154,13 @@ typedef struct SlCliOptions
 {
     const char* command;
     char executable_path[SL_RUN_PATH_MAX_BYTES];
+    char plan_path_storage[SL_RUN_PATH_MAX_BYTES];
     const char* plan_path;
     const char* output_path;
     const char* input_path;
     const char* out_dir;
+    const char* create_name;
+    const char* create_template;
     const char* artifacts_path;
     const char* stdlib_path;
     const char* host;
@@ -170,5 +173,7 @@ typedef struct SlCliOptions
     bool port_explicit;
     bool environment_explicit;
     bool out_explicit;
+    bool create_force;
+    bool create_no_git;
     bool help;
 } SlCliOptions;

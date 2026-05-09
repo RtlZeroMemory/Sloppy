@@ -1,4 +1,4 @@
-import { Results, Sloppy } from "sloppy";
+import { Sloppy } from "sloppy";
 import { healthModule } from "./modules/health.module.ts";
 import { usersModule } from "./modules/users.module.ts";
 

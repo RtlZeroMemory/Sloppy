@@ -80,7 +80,7 @@ resolve_vcpkg_toolchain_arg() {
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH] [--enable-v8] [--v8-root DIR]
+Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH] [--enable-v8] [--v8-root DIR] [--require-v8-runtime]
 
 Commands:
   doctor        Validate required Unix host tools and optional dependency status.
@@ -91,14 +91,17 @@ Commands:
   format-check  Run Rust format check when rustfmt is available.
   package       Build an experimental local tar.gz package.
   test-package  Extract a package outside the checkout and run smoke checks.
+  test-install  Verify create/build/package/run from an extracted archive.
   build-v8      Build/package the pinned Sloppy-owned Linux x64 V8 SDK.
-  npm-dry-run   Unavailable on Unix in this PR; use tools/windows/npm-dry-run.ps1 or hosted follow-up.
+  npm-dry-run   Generate npm launcher/platform tarballs from a package archive.
   dogfood      Run or report dogfood/example evidence.
   clean         Remove the selected build directory.
   help          Print this help.
 
 Use --enable-v8 for the Linux V8 build/package lane after tools/unix/dev.sh build-v8
 or an extracted Sloppy-owned SDK has populated .sdeps/v8/linux-x64.
+Use --require-v8-runtime with test-package or test-install to require live V8
+execution instead of accepting the documented non-V8 run --once failure path.
 USAGE
 }
 
@@ -243,6 +246,34 @@ test_package() {
   "$repo_root/tools/unix/test-package.sh" "${args[@]}"
 }
 
+test_install() {
+  local resolved="$package_path"
+  if [[ -z "$resolved" ]]; then
+    resolved="$(ls -t "$repo_root"/artifacts/packages/sloppy-*.tar.gz 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "$resolved" ]]; then
+    echo "sloppy dev: no Unix package archive found; run tools/unix/dev.sh package or pass --package-path." >&2
+    exit 1
+  fi
+  local args=(--package-path "$resolved")
+  if [[ "$require_v8_runtime" -eq 1 ]]; then
+    args+=(--require-v8-runtime)
+  fi
+  "$repo_root/tools/unix/test-install.sh" "${args[@]}"
+}
+
+npm_dry_run() {
+  local resolved="$package_path"
+  if [[ -z "$resolved" ]]; then
+    resolved="$(ls -t "$repo_root"/artifacts/packages/sloppy-*.tar.gz 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "$resolved" ]]; then
+    echo "sloppy dev: no Unix package archive found; run tools/unix/dev.sh package or pass --package-path." >&2
+    exit 1
+  fi
+  "$repo_root/tools/unix/npm-dry-run.sh" --package-path "$resolved"
+}
+
 dogfood_repo() {
   local args=()
   if [[ -n "$package_path" ]]; then
@@ -262,11 +293,9 @@ case "$command_name" in
   clean) clean ;;
   package) package_repo ;;
   test-package) test_package ;;
+  test-install) test_install ;;
   build-v8) build_v8 ;;
-  npm-dry-run)
-    echo "sloppy dev: npm-dry-run is unavailable in tools/unix/dev.sh in this dry-run PR. Generate npm tarballs from tested archives with tools/windows/npm-dry-run.ps1, or add a Unix implementation in a follow-up." >&2
-    exit 2
-    ;;
+  npm-dry-run) npm_dry_run ;;
   dogfood) dogfood_repo ;;
   *)
     echo "sloppy dev: unknown command '$command_name'. Run tools/unix/dev.sh help for the command contract." >&2

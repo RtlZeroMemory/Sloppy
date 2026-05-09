@@ -4,9 +4,11 @@ Run security and policy checks against a Plan. Read-only; doesn't enter V8.
 
 ```
 sloppy audit --plan <path> [--format text|json]
+sloppy audit --artifacts <dir> [--format text|json]
 ```
 
 `<path>` is an `app.plan.json` file or a directory containing one.
+`--artifacts <dir>` is equivalent to `--plan <dir>/app.plan.json`.
 
 ## What it checks
 

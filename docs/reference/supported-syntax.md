@@ -8,14 +8,18 @@ This page is compiler-specific (`sloppyc`) and lists enforced source-shape rules
 - Parse failures return `SLOPPYC_E_PARSE`.
 - Unsupported extension returns `SLOPPYC_E_UNSUPPORTED_INPUT`.
 
-## Required Sloppy Imports
+## Sloppy Imports
 
-Compiler input must import:
+Compiler entry input must import:
 
 - `Sloppy` from `"sloppy"`
-- `Results` from `"sloppy"`
 
-These imports must be named and unaliased in current compiler subset.
+Files that contain route handlers calling `Results.*` must also import
+`Results` from `"sloppy"` in that same file. A thin entry file that only creates
+the app and registers function modules can import `Sloppy` alone; child route
+modules import `Results` when their handlers use it.
+
+These imports must be named and unaliased in the current compiler subset.
 
 ## Supported Import Modules
 

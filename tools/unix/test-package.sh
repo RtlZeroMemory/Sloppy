@@ -222,7 +222,7 @@ for required_file in README.md LICENSE docs/KNOWN_LIMITATIONS.md docs/LICENSES.m
     exit 1
   }
 done
-for required_directory in bin stdlib stdlib/sloppy examples docs; do
+for required_directory in bin stdlib stdlib/sloppy templates examples docs; do
   [[ -d "$package_root/$required_directory" ]] || {
     echo "Package smoke missing required package directory: $required_directory" >&2
     exit 1

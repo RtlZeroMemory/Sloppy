@@ -210,11 +210,12 @@ case "$output_dir" in
 esac
 stage_root="$output_root/stage/$package_name"
 rm -rf "$stage_root"
-mkdir -p "$stage_root/bin" "$stage_root/stdlib" "$stage_root/examples" "$stage_root/docs"
+mkdir -p "$stage_root/bin" "$stage_root/stdlib" "$stage_root/templates" "$stage_root/examples" "$stage_root/docs"
 
 cp "$sloppy_bin" "$stage_root/bin/sloppy"
 cp "$sloppyc_bin" "$stage_root/bin/sloppyc"
 cp -R "$repo_root/stdlib/sloppy" "$stage_root/stdlib/sloppy"
+cp -R "$repo_root/templates/." "$stage_root/templates/"
 cp -R "$repo_root/examples/." "$stage_root/examples/"
 cp "$repo_root/LICENSE.md" "$stage_root/LICENSE"
 cat > "$stage_root/docs/KNOWN_LIMITATIONS.md" <<'LIMITATIONS'
@@ -358,6 +359,7 @@ cat > "$stage_root/manifest.json" <<JSON
   "containsV8Runtime": $contains_v8_runtime,
   "containsV8Sdk": false,
   "containsStdlib": true,
+  "containsTemplates": true,
   "containsExamples": true,
   "containsNativeRuntimeDependencies": $contains_native_runtime_dependencies,
   "knownLimitations": "docs/KNOWN_LIMITATIONS.md",

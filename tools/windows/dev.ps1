@@ -55,6 +55,7 @@ function Write-DevHelp {
     Write-Host "  format-check  Run C/C++ and Rust format checks."
     Write-Host "  package       Build an experimental local package archive."
     Write-Host "  test-package  Extract a package outside the checkout and run smoke checks."
+    Write-Host "  test-install  Verify create/build/package/run from an extracted archive."
     Write-Host "  npm-dry-run   Generate npm launcher/platform tarballs from a package archive."
     Write-Host "  dogfood       Run or report dogfood/example evidence."
     Write-Host "  analyze       Run the advanced static-analysis target."
@@ -684,6 +685,24 @@ function Invoke-TestPackage {
     )
 }
 
+function Invoke-TestInstall {
+    $script = Join-Path $PSScriptRoot "test-install.ps1"
+    $resolvedPackage = Resolve-PackagePath
+    $nativeArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $script,
+        "-PackagePath",
+        $resolvedPackage
+    )
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+        $nativeArgs += "-RequireV8Runtime"
+    }
+    Invoke-Native "powershell" $nativeArgs
+}
+
 function Invoke-NpmDryRun {
     $script = Join-Path $PSScriptRoot "npm-dry-run.ps1"
     $nativeArgs = @(
@@ -745,6 +764,7 @@ switch ($Command) {
     "lint" { Invoke-Lint }
     "package" { Invoke-Package }
     "test-package" { Invoke-TestPackage }
+    "test-install" { Invoke-TestInstall }
     "npm-dry-run" { Invoke-NpmDryRun }
     "dogfood" { Invoke-Dogfood }
     "analyze" { Invoke-Analyze }

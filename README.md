@@ -21,7 +21,7 @@ app.get("/hello/{name}", (ctx) =>
 export default app;
 ```
 
-```
+```text
 $ sloppy run src/main.ts --once GET /hello/Ada
 HTTP/1.1 200 OK
 content-type: application/json; charset=utf-8
@@ -42,8 +42,8 @@ Closer to **ASP.NET Core Minimal APIs** than to Express middleware soup.
 
 ## Install
 
-Public release archives aren't published yet. The two supported paths
-today are:
+Public release archives and npm packages aren't published yet. The supported
+local paths today are:
 
 - **Build from source** — full instructions in
   [docs/contributor/building-from-source.md](docs/contributor/building-from-source.md).
@@ -52,25 +52,18 @@ today are:
 - **Build a local archive** — `.\tools\windows\dev.ps1 package` produces a per-platform
   archive under `artifacts/packages/` that can be extracted and put on
   `PATH`. See [docs/install.md](docs/install.md).
+- **Run the local npm proof** — `.\tools\windows\dev.ps1 npm-dry-run` or
+  `./tools/unix/dev.sh npm-dry-run --package-path ...` stages
+  `@rtlzeromemory/sloppy` and a matching platform package from a tested
+  archive, then installs and smokes the local tarballs without publishing.
 
-Public release artifacts (GitHub Releases, npm launcher) are upcoming
-pre-alpha distribution work.
+Public GitHub Release artifacts and npm publication are gated release work.
 
 ## A first app
 
-```
-mkdir hello && cd hello
-mkdir src
-```
-
-`sloppy.json`:
-
-```json
-{
-  "entry": "src/main.ts",
-  "outDir": ".sloppy",
-  "environment": "Development"
-}
+```sh
+sloppy create hello --template minimal-api
+cd hello
 ```
 
 `src/main.ts`:
@@ -90,14 +83,15 @@ export default app;
 
 Build, then run a single request:
 
-```
+```sh
 sloppy build
 sloppy run --artifacts .sloppy --once GET /hello/Ada
+sloppy package
 ```
 
 Or start a server bound to `127.0.0.1:5173`:
 
-```
+```sh
 sloppy run
 ```
 
@@ -112,8 +106,9 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 - A compiler that extracts route, handler, capability, and
   framework-metadata into a deterministic Plan.
 - An HTTP/1.1 server with bounded keep-alive and opt-in TLS.
-- CLI introspection: `sloppy routes`, `sloppy capabilities`, `sloppy doctor`,
-  `sloppy audit`, `sloppy openapi`.
+- CLI app workflow and introspection: `sloppy create`, `sloppy build`,
+  `sloppy run`, `sloppy package`, `sloppy routes`, `sloppy capabilities`,
+  `sloppy doctor`, `sloppy audit`, `sloppy openapi`.
 - A V8 bridge isolated under `src/engine/v8/` with explicit ownership
   rules.
 
@@ -127,7 +122,7 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 - OpenAPI is generated from current Plan metadata. Security schemes, richer
   response schemas, CORS, middleware, request IDs, request logging, and
   controller behavior are outside emitted OpenAPI metadata today.
-- Public release distribution (GitHub Release archives, npm launcher).
+- Public release distribution (GitHub Release archives, npm publication).
 - Cross-platform polish: Windows x64 is the most validated lane.
 - npm app dependency support — Sloppy apps don't import `node_modules`
   packages, see [why](docs/about/why-no-node-modules.md).

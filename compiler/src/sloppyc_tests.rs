@@ -4,11 +4,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, Statement};
+use oxc_parser::Parser;
+use oxc_span::SourceType;
+
 use super::{
-    canonical_config_key, checksum_security_context_visible, command_from_args,
-    config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract, help_text,
-    noncrypto_hash_security_context_visible, redact_config_value, route_pattern_supported,
-    CliCommand, CompileOptions, ConfigurationModel,
+    arrow_requires_results_import, canonical_config_key, checksum_security_context_visible,
+    command_from_args, config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract,
+    help_text, noncrypto_hash_security_context_visible, redact_config_value,
+    route_pattern_supported, CliCommand, CompileOptions, ConfigurationModel,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -24,6 +29,28 @@ fn extract_temp_input(root: &Path, source: &str) -> Result<super::ExtractedApp, 
     let input = root.join("input.js");
     fs::write(&input, source).expect("fixture input should be writable");
     extract(&input, source)
+}
+
+fn parsed_arrow_requires_results_import(handler_source: &str) -> bool {
+    let allocator = Allocator::default();
+    let source = format!("const handler = {handler_source};");
+    let parsed = Parser::new(&allocator, &source, SourceType::mjs()).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "handler fixture should parse: {:?}",
+        parsed.errors
+    );
+    let Statement::VariableDeclaration(declaration) = &parsed.program.body[0] else {
+        panic!("fixture should declare a handler");
+    };
+    let init = declaration.declarations[0]
+        .init
+        .as_ref()
+        .expect("handler declaration should have an initializer");
+    let Expression::ArrowFunctionExpression(function) = init else {
+        panic!("handler fixture should be an arrow function");
+    };
+    arrow_requires_results_import(function)
 }
 
 #[test]
@@ -1384,6 +1411,250 @@ export default app;
 }
 
 #[test]
+fn results_import_detection_uses_handler_ast() {
+    assert!(parsed_arrow_requires_results_import(
+        "() => Results.json({ ok: true })"
+    ));
+    assert!(parsed_arrow_requires_results_import(
+        "() => Results .json({ ok: true })"
+    ));
+    assert!(parsed_arrow_requires_results_import(
+        "() => Results/*comment*/.json({ ok: true })"
+    ));
+    assert!(parsed_arrow_requires_results_import(
+        "() => Results?.json({ ok: true })"
+    ));
+    assert!(!parsed_arrow_requires_results_import(
+        "() => \"Results.json\""
+    ));
+    assert!(!parsed_arrow_requires_results_import(
+        "() => notResults.json({ ok: true })"
+    ));
+    assert!(!parsed_arrow_requires_results_import(
+        "() => ({ notResults: \"Results.json\" })"
+    ));
+}
+
+#[test]
+fn entry_without_results_import_can_use_results_in_function_module() {
+    let root = fixture_temp_dir("module-only-entry-without-results");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module-only entry should extract");
+
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert_eq!(app.routes[0].module.as_deref(), Some("usersModule"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn direct_results_handler_requires_results_import_in_same_file() {
+    let root = fixture_temp_dir("direct-results-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/health", () => Results.json({ ok: true }));
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("direct Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn direct_results_handler_with_space_requires_results_import() {
+    let root = fixture_temp_dir("direct-results-space-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/health", () => Results .json({ ok: true }));
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("direct Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn direct_results_handler_with_comment_requires_results_import() {
+    let root = fixture_temp_dir("direct-results-comment-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/health", () => Results/*comment*/.json({ ok: true }));
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("direct Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_results_handler_requires_results_import_in_same_file() {
+    let root = fixture_temp_dir("middleware-results-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results.status(401));
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("middleware Results usage should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_results_handler_with_comment_requires_results_import() {
+    let root = fixture_temp_dir("middleware-results-comment-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results /* comment */ .status(401));
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("middleware Results usage should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_string_mentioning_results_does_not_require_results_import() {
+    let root = fixture_temp_dir("middleware-results-string-no-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => {
+  const text = "Results.status";
+  // Results.status(401) should not affect import validation.
+  return next();
+});
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("middleware string/comment mention should not require Results import");
+    assert_eq!(app.routes.len(), 1);
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_results_handler_with_import_compiles() {
+    let root = fixture_temp_dir("middleware-results-with-import");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results.status(401));
+app.get("/health", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("middleware Results import should compile");
+    assert_eq!(app.routes.len(), 1);
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_results_handler_requires_module_results_import() {
+    let root = fixture_temp_dir("module-results-requires-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("module Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("same source file"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_results_import_is_not_source_order_dependent() {
+    let root = fixture_temp_dir("module-results-import-after-export");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+
+import { Results } from "sloppy";
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("module Results import should be honored regardless of source order");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users");
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn rejects_invalid_composed_function_module_route_pattern() {
     let root = fixture_temp_dir("invalid-module-route-pattern");
     let modules = root.join("modules");
@@ -1613,6 +1884,25 @@ export default app;
     assert_eq!(app.routes[7].pattern, "/problem");
     assert_eq!(app.routes[8].pattern, "/html");
     assert_eq!(app.routes[9].pattern, "/bytes");
+}
+
+#[test]
+fn accepts_template_literal_result_arguments_from_context() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/apps/{id}/builds", (ctx) => Results.created(`/apps/${ctx.route.id}/builds/b_002`, {
+  appId: ctx.route.id,
+  status: "queued"
+}));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("context-only template literal result should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .source
+        .contains("`/apps/${ctx.route.id}/builds/b_002`"));
 }
 
 #[test]

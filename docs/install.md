@@ -1,8 +1,8 @@
 # Install
 
-Public release archives aren't published yet. There are two supported
-ways to get a working `sloppy` CLI today: build from source, or build a
-local archive and extract it.
+Public release archives and npm packages aren't published yet. There are
+three supported local paths today: build from source, build a local archive
+and extract it, or run the local npm packaging proof from a tested archive.
 
 ## Build from source
 
@@ -55,13 +55,62 @@ $env:Path = "$HOME\.sloppy\sloppy-windows-x64\bin;$env:Path"
 sloppy --version
 ```
 
-`dev.ps1 test-package` smokes the archive from outside the checkout so
-you can confirm the layout is good before publishing.
+The archive includes `bin/`, `stdlib/`, `templates/`, selected docs/examples,
+and `manifest.json`. The templates are used by `sloppy create` after install.
 
-> Local archives are pre-alpha distribution. Linux archives can be
-> built from source; macOS and arm64 archives still need work. Public
-> GitHub Release archives and an npm launcher package are upcoming
-> distribution work, not yet published.
+`dev.ps1 test-package` smokes the archive from outside the checkout so
+you can confirm the layout is good before publishing. `dev.ps1 test-install`
+extracts the archive, puts `bin/` on `PATH`, runs `sloppy --version`,
+`sloppy doctor`, `sloppy create`, `sloppy build`, `sloppy package`, and a
+`sloppy run --once` smoke.
+
+> Local archives are pre-alpha distribution. Linux archives can be built from
+> source and smoked with `tools/unix/test-install.sh`; macOS and arm64 archives
+> still need hosted proof before they are user-facing. Public GitHub Release
+> archives and npm packages are not published by this PR.
+
+## Local npm package proof
+
+The npm package name prepared by the repository is `@rtlzeromemory/sloppy`.
+It is a launcher package for Sloppy itself, not npm dependency support for
+Sloppy apps. The root package currently references only the platform packages
+that this alpha workflow builds, tests, and publishes:
+
+- `@rtlzeromemory/sloppy-win32-x64`
+- `@rtlzeromemory/sloppy-linux-x64`
+
+The root package resolves the installed platform package and runs the packaged
+`sloppy` binary. Platform packages are staged from already-built archives and
+must include `bin/`, `stdlib/`, `templates/`, `manifest.json`, and license/readme
+files.
+
+macOS npm platform packages remain future work until hosted package proof exists.
+
+Local proof on Windows:
+
+```powershell
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 npm-dry-run
+```
+
+Local proof on Linux:
+
+```sh
+./tools/unix/dev.sh package
+./tools/unix/dev.sh npm-dry-run --package-path artifacts/packages/sloppy-linux-x64.tar.gz
+```
+
+Those dry-runs create local tarballs under `artifacts/npm/tarballs/`, install
+them into a temp prefix, run the launcher, scaffold a minimal app, build it,
+and smoke `/health`. They do not publish to npm.
+
+When alpha packages are actually published, the intended user command is:
+
+```sh
+npm install -g @rtlzeromemory/sloppy
+```
+
+Until then, install from source or from a local archive.
 
 ## V8 and handler execution
 
@@ -88,10 +137,12 @@ needs the V8 lane.
 sloppy --version
 sloppyc --version
 sloppy --help
+sloppy create tmp-api --template minimal-api
 ```
 
 Both binaries should print a version. `sloppy --help` lists every
-command. `sloppy doctor` reports environment health.
+command. `sloppy doctor` reports environment health. `sloppy create` proves
+the installed templates are discoverable.
 
 ## Common pitfalls
 

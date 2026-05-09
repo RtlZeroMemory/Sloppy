@@ -71,7 +71,7 @@ function Get-Sha256Hex {
 
 function Test-ReleaseTemplates {
     $contractText = Read-RequiredText -Relative "docs/release/artifact-contract.md"
-    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@sloppy/runtime", "Sloppy apps still run through Sloppy-managed artifacts")) {
+    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@rtlzeromemory/sloppy", "Sloppy apps still run through Sloppy-managed artifacts")) {
         Assert-TextContains -Text $contractText -Needle $needle -Message "Artifact contract doc missing required wording: $needle"
     }
 
@@ -81,8 +81,14 @@ function Test-ReleaseTemplates {
         $match = @($contract.archiveMatrix | Where-Object { $_.archiveName -eq $archiveName })
         Assert-True ($match.Count -eq 1) "Artifact contract missing archive '$archiveName'."
     }
-    Assert-True ($contract.npmPackages.root -eq "@sloppy/runtime") "Artifact contract must name @sloppy/runtime."
+    Assert-True ($contract.npmPackages.root -eq "@rtlzeromemory/sloppy") "Artifact contract must name @rtlzeromemory/sloppy."
     Assert-True ($contract.npmPackages.publishTag -eq "alpha") "Artifact contract npm publishTag must be alpha."
+    Assert-True ($contract.npmPackages.publishWorkflow -eq ".github/workflows/npm-publish.yml") "Artifact contract must name the npm publish workflow."
+
+    $npmPublishWorkflow = Read-RequiredText -Relative ".github/workflows/npm-publish.yml"
+    foreach ($needle in @("id-token: write", "publish-alpha", "npm publish", "--provenance", "Trusted Publishing")) {
+        Assert-TextContains -Text $npmPublishWorkflow -Needle $needle -Message "npm publish workflow missing required publishing guard: $needle"
+    }
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
     Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."
@@ -124,7 +130,7 @@ function Test-ReleaseTemplates {
 function Test-ReleaseTextHygiene {
     foreach ($relative in @(
         "LICENSE.md",
-        "packages/npm/runtime/LICENSE",
+        "packages/npm/sloppy/LICENSE",
         "docs/release/README.md",
         "docs/release/KNOWN_LIMITATIONS.md",
         "docs/release/LICENSES.md",
@@ -250,17 +256,19 @@ function Test-NpmPackagePolicy {
     $packagesRoot = Join-Path $Root "packages/npm"
     Assert-True (Test-Path -LiteralPath $packagesRoot -PathType Container) "npm package root is missing: packages/npm"
     $expectedPackages = @(
-        "runtime",
-        "runtime-win32-x64",
-        "runtime-linux-x64-gnu",
-        "runtime-darwin-arm64",
-        "runtime-darwin-x64"
+        "sloppy",
+        "sloppy-win32-x64",
+        "sloppy-linux-x64"
     )
     foreach ($package in $expectedPackages) {
         $packageJsonPath = Join-Path $packagesRoot "$package/package.json"
         Assert-True (Test-Path -LiteralPath $packageJsonPath -PathType Leaf) "npm package missing package.json for $package."
         $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
         Assert-True ($packageJson.publishConfig.tag -eq "alpha") "npm package $package must use alpha publishConfig tag."
+        if ($package -ne "sloppy") {
+            $files = @($packageJson.files)
+            Assert-True ($files -contains "templates/") "npm platform package $package must include templates/ for sloppy create."
+        }
         if ($null -ne $packageJson.scripts) {
             foreach ($property in $packageJson.scripts.PSObject.Properties) {
                 Assert-True (-not ($property.Name -match '^(preinstall|install|postinstall|prepare)$')) "npm package $package must not define install lifecycle script '$($property.Name)'."
@@ -269,16 +277,21 @@ function Test-NpmPackagePolicy {
         }
     }
 
-    $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "runtime/package.json") -Raw | ConvertFrom-Json
-    Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "runtime/LICENSE") -PathType Leaf) "Root npm runtime package must include a LICENSE file matching its license metadata."
-    foreach ($dependency in @("@sloppy/runtime-win32-x64", "@sloppy/runtime-linux-x64-gnu", "@sloppy/runtime-darwin-arm64", "@sloppy/runtime-darwin-x64")) {
+    $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "sloppy/package.json") -Raw | ConvertFrom-Json
+    Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/LICENSE") -PathType Leaf) "Root npm package must include a LICENSE file matching its license metadata."
+    foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64")) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
-        Assert-True ($null -ne $property) "Root npm runtime package missing optional dependency '$dependency'."
+        Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
+    }
+    foreach ($dependency in @("@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
+        $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
+        Assert-True ($null -eq $property) "Root npm package must not reference unproved macOS package '$dependency'."
     }
 
-    $launcher = Read-RequiredText -Relative "packages/npm/runtime/bin/sloppy.js"
+    $launcher = Read-RequiredText -Relative "packages/npm/sloppy/bin/sloppy.js"
     Assert-TextContains -Text $launcher -Needle "resolvePlatformPackage" -Message "npm launcher must resolve platform package."
     Assert-TextContains -Text $launcher -Needle "is not installed" -Message "npm launcher must fail clearly when platform package is missing."
+    Assert-TextContains -Text $launcher -Needle "SLOPPY_SLOPPYC" -Message "npm launcher must expose packaged sloppyc to sloppy build/package."
 }
 
 function Invoke-SelfTest {

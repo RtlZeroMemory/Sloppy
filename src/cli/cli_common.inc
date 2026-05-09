@@ -25,6 +25,14 @@ static bool sl_cli_span_empty(SlCliSpan span)
     return span.ptr == NULL || span.length == 0U;
 }
 
+static bool sl_cli_command_accepts_artifacts_plan(const char* command)
+{
+    return command != NULL &&
+           (strcmp(command, "routes") == 0 || strcmp(command, "capabilities") == 0 ||
+            strcmp(command, "doctor") == 0 || strcmp(command, "audit") == 0 ||
+            strcmp(command, "openapi") == 0);
+}
+
 static bool sl_cli_span_equal(SlCliSpan left, SlCliSpan right)
 {
     return sl_str_equal(sl_cli_span_str(left), sl_cli_span_str(right));
@@ -43,6 +51,82 @@ static bool sl_cli_copy_cstr(char* buffer, size_t capacity, const char* value)
     return sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
            sl_status_is_ok(sl_string_builder_append_cstr(&builder, value)) &&
            sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
+}
+
+static bool sl_cli_join_leaf(char* buffer, size_t capacity, const char* dir, const char* leaf)
+{
+    SlStringBuilder builder = {0};
+    SlStr dir_str = sl_str_from_cstr(dir);
+    SlStr leaf_str = sl_str_from_cstr(leaf);
+    SlStr joined = {0};
+    bool needs_separator = true;
+    SlStatus status;
+
+    if (buffer == NULL || capacity == 0U || dir == NULL || dir[0] == '\0' || leaf == NULL ||
+        leaf[0] == '\0')
+    {
+        return false;
+    }
+
+    needs_separator =
+        dir_str.ptr[dir_str.length - 1U] != '/' && dir_str.ptr[dir_str.length - 1U] != '\\';
+
+    status = sl_string_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status) ||
+        !sl_status_is_ok(sl_string_builder_append_str(&builder, dir_str)))
+    {
+        return false;
+    }
+    if (needs_separator &&
+        !sl_status_is_ok(sl_string_builder_append_char(&builder, SL_PATH_SEPARATOR)))
+    {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_string_builder_append_str(&builder, leaf_str))) {
+        return false;
+    }
+
+    status = sl_string_builder_view_with_nul(&builder, &joined);
+    return sl_status_is_ok(status) && joined.ptr == buffer;
+}
+
+static bool sl_cli_set_plan_path(SlCliOptions* out, const char* path)
+{
+    SlFsStat stat = {0};
+
+    if (out == NULL || path == NULL || path[0] == '\0') {
+        return false;
+    }
+
+    if (sl_status_is_ok(sl_fs_stat(sl_str_from_cstr(path), &stat, NULL)) && stat.exists &&
+        stat.kind == SL_FS_NODE_DIRECTORY)
+    {
+        if (!sl_cli_join_leaf(out->plan_path_storage, sizeof(out->plan_path_storage), path,
+                              "app.plan.json"))
+        {
+            return false;
+        }
+        out->plan_path = out->plan_path_storage;
+        return true;
+    }
+
+    out->plan_path = path;
+    return true;
+}
+
+static bool sl_cli_set_artifacts_plan_path(SlCliOptions* out, const char* path)
+{
+    if (out == NULL || path == NULL || path[0] == '\0') {
+        return false;
+    }
+    if (!sl_cli_join_leaf(out->plan_path_storage, sizeof(out->plan_path_storage), path,
+                          "app.plan.json"))
+    {
+        return false;
+    }
+    out->artifacts_path = path;
+    out->plan_path = out->plan_path_storage;
+    return true;
 }
 
 static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpan span)
@@ -127,26 +211,31 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
+    printf("  sloppy create <name> [--template minimal-api|full-api|dogfood] [--force]\n");
+    printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("  sloppy package [source.js|source.mjs|source.ts] [--out <dir>]\n");
+    printf("                 [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("                 [--format text|json]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
     printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("             [--once METHOD TARGET]\n");
-    printf("  sloppy routes --plan <path> [--format text|json]\n");
-    printf("  sloppy capabilities --plan <path> [--format text|json]\n");
-    printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
-    printf("  sloppy audit --plan <path> [--format text|json]\n");
-    printf("  sloppy openapi --plan <path> [--output <path>]\n");
+    printf("  sloppy routes --plan <path>|--artifacts <dir> [--format text|json]\n");
+    printf("  sloppy capabilities --plan <path>|--artifacts <dir> [--format text|json]\n");
+    printf("  sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]\n");
+    printf("  sloppy audit --plan <path>|--artifacts <dir> [--format text|json]\n");
+    printf("  sloppy openapi --plan <path>|--artifacts <dir> [--output <path>]\n");
 }
 
 static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
-        printf("Usage: sloppy routes --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy routes --plan <path>|--artifacts <dir> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "capabilities") == 0) {
-        printf("Usage: sloppy capabilities --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy capabilities --plan <path>|--artifacts <dir> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "run") == 0) {
@@ -168,16 +257,36 @@ static void sl_cli_print_command_help(const char* command)
         printf("--artifacts is not accepted for build; build never enters V8.\n");
         return;
     }
+    if (strcmp(command, "package") == 0) {
+        printf("Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>]\n");
+        printf("                      [--environment Development] [--host 127.0.0.1]\n");
+        printf("                      [--port 5173] [--format text|json]\n");
+        printf("\n");
+        printf("Compiles source input and writes a directory app package under .sloppy/package/ "
+               "or <out>/package/.\n");
+        printf("This is an app artifact package, not a runtime release archive.\n");
+        printf("--format json and --json print the package path and artifact directory.\n");
+        return;
+    }
+    if (strcmp(command, "create") == 0) {
+        printf("Usage: sloppy create <name> [--template minimal-api|full-api|dogfood]\n");
+        printf("                     [--force] [--no-git] [--format text|json]\n");
+        printf("\n");
+        printf("Copies a built-in project template into a new local app directory.\n");
+        printf("--force copies template files over existing files; it does not delete stale files.\n");
+        printf("--no-git is reserved for future git initialization; template files still copy.\n");
+        return;
+    }
     if (strcmp(command, "doctor") == 0) {
-        printf("Usage: sloppy doctor [--plan <path>] [--format text|json]\n");
+        printf("Usage: sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]\n");
         return;
     }
     if (strcmp(command, "audit") == 0) {
-        printf("Usage: sloppy audit --plan <path> [--format text|json]\n");
+        printf("Usage: sloppy audit --plan <path>|--artifacts <dir> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "openapi") == 0) {
-        printf("Usage: sloppy openapi --plan <path> [--output <path>]\n");
+        printf("Usage: sloppy openapi --plan <path>|--artifacts <dir> [--output <path>]\n");
         return;
     }
     sl_cli_print_help();
@@ -329,16 +438,22 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
 
 static int sl_cli_parse_build_path_option(char** argv, int* index, SlCliOptions* out)
 {
+    const char* command_name = out->command != NULL ? out->command : "build";
+
     if (strcmp(argv[*index], "--artifacts") == 0) {
+        sl_cli_write_cstr(stderr, "sloppy ");
+        sl_cli_write_cstr(stderr, command_name);
         sl_cli_write_cstr(stderr,
-                          "sloppy build: --artifacts is not supported; build compiles source "
-                          "input only\n");
+                          ": --artifacts is not supported; this command compiles source input "
+                          "only\n");
         return -1;
     }
 
     if (argv[*index][0] != '-') {
         if (out->input_path != NULL) {
-            sl_cli_write_cstr(stderr, "sloppy build: accepts at most one source input\n");
+            sl_cli_write_cstr(stderr, "sloppy ");
+            sl_cli_write_cstr(stderr, command_name);
+            sl_cli_write_cstr(stderr, ": accepts at most one source input\n");
             return -1;
         }
         out->input_path = argv[*index];
@@ -352,16 +467,21 @@ static int sl_cli_parse_build_path_option(char** argv, int* index, SlCliOptions*
 static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     int path_result = 0;
+    const char* command_name = NULL;
 
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
-        strcmp(out->command, "build") != 0)
+        (strcmp(out->command, "build") != 0 && strcmp(out->command, "package") != 0))
     {
         return 0;
     }
 
+    command_name = out->command != NULL ? out->command : "build";
+
     if (strcmp(argv[*index], "--out") == 0) {
         if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
-            sl_cli_write_cstr(stderr, "sloppy build: --out requires a directory\n");
+            sl_cli_write_cstr(stderr, "sloppy ");
+            sl_cli_write_cstr(stderr, command_name);
+            sl_cli_write_cstr(stderr, ": --out requires a directory\n");
             return -1;
         }
         out->out_dir = argv[*index + 1];
@@ -372,7 +492,9 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
 
     if (strcmp(argv[*index], "--host") == 0) {
         if (*index + 1 >= argc) {
-            sl_cli_write_cstr(stderr, "sloppy build: --host requires an IPv4 address\n");
+            sl_cli_write_cstr(stderr, "sloppy ");
+            sl_cli_write_cstr(stderr, command_name);
+            sl_cli_write_cstr(stderr, ": --host requires an IPv4 address\n");
             return -1;
         }
         out->host = argv[*index + 1];
@@ -383,7 +505,9 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
 
     if (strcmp(argv[*index], "--environment") == 0) {
         if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
-            sl_cli_write_cstr(stderr, "sloppy build: --environment requires a name\n");
+            sl_cli_write_cstr(stderr, "sloppy ");
+            sl_cli_write_cstr(stderr, command_name);
+            sl_cli_write_cstr(stderr, ": --environment requires a name\n");
             return -1;
         }
         out->environment = argv[*index + 1];
@@ -394,7 +518,9 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
 
     if (strcmp(argv[*index], "--port") == 0) {
         if (*index + 1 >= argc || !sl_cli_parse_port(argv[*index + 1], &out->port)) {
-            sl_cli_write_cstr(stderr, "sloppy build: --port requires a value from 1 to 65535\n");
+            sl_cli_write_cstr(stderr, "sloppy ");
+            sl_cli_write_cstr(stderr, command_name);
+            sl_cli_write_cstr(stderr, ": --port requires a value from 1 to 65535\n");
             return -1;
         }
         out->port_explicit = true;
@@ -410,6 +536,49 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
     return 0;
 }
 
+static int sl_cli_parse_create_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
+        strcmp(out->command, "create") != 0)
+    {
+        return 0;
+    }
+
+    if (strcmp(argv[*index], "--template") == 0) {
+        if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy create: --template requires a template name\n");
+            return -1;
+        }
+        out->create_template = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--force") == 0) {
+        out->create_force = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--no-git") == 0) {
+        out->create_no_git = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (argv[*index][0] != '-') {
+        if (out->create_name != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy create: accepts exactly one project name\n");
+            return -1;
+        }
+        out->create_name = argv[*index];
+        *index += 1;
+        return 1;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL) {
@@ -418,6 +587,12 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
 
     if (strcmp(argv[*index], "--help") == 0 || strcmp(argv[*index], "-h") == 0) {
         out->help = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--json") == 0) {
+        out->format = SL_CLI_FORMAT_JSON;
         *index += 1;
         return 1;
     }
@@ -446,7 +621,33 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
             sl_cli_write_error_with_value("sloppy: ", argv[*index], " requires a path\n");
             return -1;
         }
-        out->plan_path = argv[*index + 1];
+        if (out->plan_path != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy: expected only one --plan or --artifacts path\n");
+            return -1;
+        }
+        if (!sl_cli_set_plan_path(out, argv[*index + 1])) {
+            sl_cli_write_cstr(stderr, "sloppy: metadata path is too long\n");
+            return -1;
+        }
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--artifacts") == 0 &&
+        sl_cli_command_accepts_artifacts_plan(out->command))
+    {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy: --artifacts requires a directory\n");
+            return -1;
+        }
+        if (out->plan_path != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy: expected only one --plan or --artifacts path\n");
+            return -1;
+        }
+        if (!sl_cli_set_artifacts_plan_path(out, argv[*index + 1])) {
+            sl_cli_write_cstr(stderr, "sloppy: artifacts path is too long\n");
+            return -1;
+        }
         *index += 2;
         return 1;
     }
@@ -513,6 +714,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         }
 
         run_parse = sl_cli_parse_run_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
+        if (run_parse > 0) {
+            continue;
+        }
+
+        run_parse = sl_cli_parse_create_option(argc, argv, &index, out);
         if (run_parse < 0) {
             return 1;
         }

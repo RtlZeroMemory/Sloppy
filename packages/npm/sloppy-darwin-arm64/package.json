@@ -1,0 +1,10 @@
+{
+  "name": "@rtlzeromemory/sloppy-darwin-arm64",
+  "version": "0.1.0-alpha.0",
+  "description": "Unpublished macOS arm64 Sloppy runtime package template for future hosted package proof.",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin/", "stdlib/", "templates/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"]
+}

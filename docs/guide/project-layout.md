@@ -105,8 +105,8 @@ under `src/`:
 ```ts
 // src/main.ts
 import { Sloppy } from "sloppy";
-import { usersModule } from "./users";
-import { ordersModule } from "./orders";
+import { usersModule } from "./users.ts";
+import { ordersModule } from "./orders.ts";
 
 const app = Sloppy.create();
 app.useModule(usersModule);
@@ -117,13 +117,16 @@ export default app;
 
 ```ts
 // src/users.ts
-import { Sloppy, Results } from "sloppy";
+import { Results } from "sloppy";
 
-export const usersModule = Sloppy.module("users")
-    .routes((app) => {
-        app.get("/users/{id:int}", (ctx) => Results.ok({ id: ctx.route.id }));
-    });
+export function usersModule(app) {
+    app.get("/users/{id:int}", (ctx) => Results.ok({ id: ctx.route.id }));
+}
 ```
+
+Imports are file-local. `main.ts` does not import `Results` unless it contains
+handlers that call `Results.*`; route modules import `Results` for their own
+handlers.
 
 For a larger current example, see `examples/prealpha-control-plane/`:
 

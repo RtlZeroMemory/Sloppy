@@ -256,6 +256,7 @@ Remove-Item -LiteralPath $PackageRoot -Recurse -Force -ErrorAction SilentlyConti
 New-Item -ItemType Directory -Force -Path $PackageRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "bin") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "stdlib") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "templates") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "examples") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "docs") | Out-Null
 
@@ -263,6 +264,7 @@ Copy-RequiredFile -Source $SloppyExe -Destination (Join-Path $PackageRoot "bin/s
 Copy-RequiredFile -Source $SloppycExe -Destination (Join-Path $PackageRoot "bin/sloppyc.exe")
 Copy-NativeRuntimeDependencies -BuildDirectory $BuildDir -Destination (Join-Path $PackageRoot "bin") -PackageConfiguration $Configuration
 Copy-DirectoryContents -Source (Join-Path $Root "stdlib/sloppy") -Destination (Join-Path $PackageRoot "stdlib/sloppy")
+Copy-DirectoryContents -Source (Join-Path $Root "templates") -Destination (Join-Path $PackageRoot "templates")
 Copy-DirectoryContents -Source (Join-Path $Root "examples") -Destination (Join-Path $PackageRoot "examples")
 Copy-RequiredFile -Source (Join-Path $Root "LICENSE.md") -Destination (Join-Path $PackageRoot "LICENSE")
 Write-PackageReadme -Path (Join-Path $PackageRoot "README.md")
@@ -357,6 +359,7 @@ $manifest = [ordered]@{
     containsV8Runtime = $containsV8Runtime
     containsV8Sdk = $false
     containsStdlib = $true
+    containsTemplates = $true
     containsExamples = $containsExamples
     containsNativeRuntimeDependencies = $true
     knownLimitations = "docs/KNOWN_LIMITATIONS.md"

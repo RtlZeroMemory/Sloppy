@@ -6,13 +6,13 @@
     {
       "id": "windows-archive",
       "status": "NOT RUN",
-      "requiredEvidence": ["package", "test-package", "sloppy --version", "sloppy doctor", "sloppyc --version", "prebuilt artifact smoke"],
+      "requiredEvidence": ["package", "test-package", "test-install", "sloppy create", "sloppy build", "sloppy package", "sloppy --version", "sloppy doctor", "sloppyc --version", "prebuilt artifact smoke"],
       "notes": "Filled by local/CI evidence in the release-dist PR body."
     },
     {
       "id": "linux-archive",
       "status": "NOT RUN",
-      "requiredEvidence": ["Linux source build", "Linux package", "outside-checkout smoke", "external app build", "runtime execution or explicit V8 blocker"],
+      "requiredEvidence": ["Linux source build", "Linux package", "outside-checkout smoke", "test-install", "sloppy create", "external app build", "runtime execution or explicit V8 blocker"],
       "notes": "Linux x64 is required. Fill package/source smoke evidence in the PR body. V8 runtime-user support requires the Sloppy-owned Linux x64 SDK plus require-v8 package smoke."
     },
     {
@@ -30,14 +30,14 @@
     {
       "id": "npm-root-launcher",
       "status": "NOT RUN",
-      "requiredEvidence": ["npm pack dry-run", "local tarball install", "sloppy --version", "sloppy doctor", "missing platform diagnostic", "unsupported platform diagnostic"],
+      "requiredEvidence": ["npm pack dry-run", "local tarball install", "sloppy --version", "sloppy doctor", "sloppy create", "sloppy build", "missing platform diagnostic", "unsupported platform diagnostic"],
       "notes": "npm is a runtime installer only."
     },
     {
       "id": "npm-platform-packages",
       "status": "NOT RUN",
       "requiredEvidence": ["platform package generated from archive contents", "npm pack dry-run", "no native install scripts", "alpha dist-tag policy"],
-      "notes": "Platform packages must not independently build Sloppy."
+      "notes": "Windows x64 and Linux x64 GNU are the current npm platform package set. Platform packages must not independently build Sloppy. macOS npm packages are deferred until hosted package proof exists."
     },
     {
       "id": "v8-package-lane",

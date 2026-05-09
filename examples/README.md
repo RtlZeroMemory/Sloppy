@@ -6,6 +6,12 @@ hand. Fixture examples are small source shapes kept stable by tests.
 Run commands from the repository root unless a row says otherwise. `sloppy run`
 handler execution requires a V8-enabled build.
 
+For a new app, use the packaged templates instead of copying an example:
+
+```powershell
+sloppy create my-api --template minimal-api
+```
+
 ## Example Inventory
 
 | Example | Status | Command | What it proves | Requirements / expected result |

@@ -94,8 +94,8 @@ package/test-package path:
 The dry-run writes ignored output under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or publish a GitHub release.
 
-npm package dry-runs generate `@sloppy/runtime` and the matching platform package from an
-already-built archive:
+npm package dry-runs generate `@rtlzeromemory/sloppy` and the matching Windows platform package
+from an already-built archive. macOS npm staging is deferred until hosted package proof exists:
 
 ```powershell
 .\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip
@@ -104,6 +104,12 @@ already-built archive:
 The npm package path is an installer/launcher for Sloppy itself. It does not add npm app
 dependency support, `node_modules` resolution, `node-gyp`, native postinstall builds, or V8
 downloads during install.
+
+Install smoke checks the end-user CLI path from an extracted archive:
+
+```powershell
+.\tools\windows\dev.ps1 test-install -PackagePath artifacts\packages\sloppy-windows-x64.zip
+```
 
 Dogfood evidence is cataloged in `examples/dogfood/dogfood.json` and can be
 reported through:

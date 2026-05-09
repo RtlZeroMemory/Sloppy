@@ -293,7 +293,13 @@ struct CorsPolicy {
 struct ControllerDescriptor {
     source_name: String,
     source_text: String,
-    methods: BTreeMap<String, Span>,
+    methods: BTreeMap<String, ControllerMethodDescriptor>,
+}
+
+#[derive(Debug, Clone)]
+struct ControllerMethodDescriptor {
+    span: Span,
+    requires_results_import: bool,
 }
 
 struct HealthRouteSpec<'a> {
@@ -340,6 +346,7 @@ struct AppState {
     unsupported_import_name: Option<(String, Span)>,
     unsupported_import_specifier: Option<(String, Span)>,
     dynamic_import: Option<Span>,
+    results_required_span: Option<Span>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, RouteGroupState>,
@@ -391,6 +398,7 @@ impl AppState {
             unsupported_import_name: None,
             unsupported_import_specifier: None,
             dynamic_import: None,
+            results_required_span: None,
             app_vars: BTreeSet::new(),
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
@@ -1000,18 +1008,18 @@ fn extract_entry(
         .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", or \"sloppy/workers\"."));
     }
 
-    if !state.sloppy_imported || !state.results_imported {
+    if !state.sloppy_imported {
         let hint = if state.unsupported_import_alias {
-            "Import without aliases: import { Sloppy, Results } from \"sloppy\";"
+            "Import without aliases: import { Sloppy } from \"sloppy\";"
         } else {
-            "Use: import { Sloppy, Results } from \"sloppy\";"
+            "Use: import { Sloppy } from \"sloppy\";"
         };
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT",
             if state.unsupported_import_alias {
-                "input must import Sloppy and Results from \"sloppy\" without aliases"
+                "input must import Sloppy from \"sloppy\" without aliases"
             } else {
-                "input must import Sloppy and Results from \"sloppy\""
+                "input must import Sloppy from \"sloppy\""
             },
         )
         .with_path(path)
@@ -1019,6 +1027,12 @@ fn extract_entry(
     }
 
     let module_graph_start = Instant::now();
+    if !state.results_imported {
+        if let Some(span) = state.results_required_span {
+            return Err(missing_results_import_diagnostic(path, span));
+        }
+    }
+
     for (local_name, span) in state.used_modules.clone() {
         let Some(imported) = state
             .imported_modules
@@ -1542,6 +1556,74 @@ fn validate_module_sloppy_import(
         }
     }
     Ok(())
+}
+
+fn validate_module_sloppy_root_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<bool, Diagnostic> {
+    let Some(specifiers) = &import.specifiers else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    };
+    if specifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    }
+
+    let mut results_imported = false;
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                "unsupported import specifier \"sloppy\"",
+            )
+            .with_path(path)
+            .with_span(import.source.span));
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if imported == "Testing" {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+                "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+            )
+            .with_path(path)
+            .with_span(specifier.span)
+            .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+        }
+        if !sloppy_root_import_name_supported(imported) || imported != local {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("unsupported sloppy import \"{imported}\""),
+            )
+            .with_path(path)
+            .with_span(specifier.span)
+            .with_hint("Use documented unaliased imports from \"sloppy\"."));
+        }
+        if imported == "Results" {
+            results_imported = true;
+        }
+    }
+    Ok(results_imported)
+}
+
+fn missing_results_import_diagnostic(path: &Path, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_UNSUPPORTED_IMPORT",
+        "route handlers that call Results must import Results from \"sloppy\" in the same source file",
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Add `import { Results } from \"sloppy\";` to the file that contains the handler.")
 }
 
 fn validate_module_sloppy_time_import(
@@ -2083,7 +2165,15 @@ fn extract_class_declaration(
                     continue;
                 }
                 if let Some(name) = property_key_name(&method.key) {
-                    methods.insert(name.to_string(), method.value.span);
+                    methods.insert(
+                        name.to_string(),
+                        ControllerMethodDescriptor {
+                            span: method.value.span,
+                            requires_results_import: function_requires_results_import(
+                                &method.value,
+                            ),
+                        },
+                    );
                 }
             }
             ClassElement::PropertyDefinition(property) => {
@@ -2175,6 +2265,14 @@ fn extract_expression_statement(
     if let Some(routes) =
         app_map_controller_call(path, source, source_name, &statement.expression, state)?
     {
+        if state.results_required_span.is_none() {
+            state.results_required_span = routes.iter().find_map(|route| {
+                route
+                    .handler
+                    .requires_results_import
+                    .then_some(route.handler.span)
+            });
+        }
         state.routes.extend(routes);
         return Ok(());
     }
@@ -2282,6 +2380,9 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
+    if handler.requires_results_import && state.results_required_span.is_none() {
+        state.results_required_span = Some(handler.span);
+    }
     if !handler.effects.is_empty() {
         let providers = providers_used_by_effects(&state.provider_bindings, &handler.effects);
         if let Some((name, binding)) = providers
@@ -3708,10 +3809,16 @@ fn middleware_from_argument(
     source: &str,
     source_name: &str,
     argument: &Argument<'_>,
-    state: &AppState,
+    state: &mut AppState,
 ) -> Result<FrameworkMiddleware, Diagnostic> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
+            if arrow_requires_results_import(function)
+                && !state.results_imported
+                && state.results_required_span.is_none()
+            {
+                state.results_required_span = Some(function.span);
+            }
             validate_middleware_arrow(path, function, state)?;
             let source_text = source_slice(source, function.span).ok_or_else(|| {
                 Diagnostic::new(
@@ -3731,6 +3838,12 @@ fn middleware_from_argument(
             })
         }
         Argument::FunctionExpression(function) => {
+            if function_requires_results_import(function)
+                && !state.results_imported
+                && state.results_required_span.is_none()
+            {
+                state.results_required_span = Some(function.span);
+            }
             validate_middleware_function(path, function, state)?;
             let source_text = source_slice(source, function.span).ok_or_else(|| {
                 Diagnostic::new(
@@ -4274,7 +4387,7 @@ fn app_map_controller_call(
             .with_path(path)
             .with_span(statement.span));
         };
-        let Some(method_span) = controller.methods.get(action).copied() else {
+        let Some(controller_method) = controller.methods.get(action).cloned() else {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_CONTROLLER",
                 format!("controller action '{action}' must name a prototype method"),
@@ -4297,13 +4410,14 @@ fn app_map_controller_call(
         tags.extend(fluent_metadata.tags);
         let middleware = route_middleware_metadata(&state.middleware);
         let cors = state.cors_policy.clone();
-        let handler_source = source_slice(&controller.source_text, method_span)
+        let handler_source = source_slice(&controller.source_text, controller_method.span)
             .unwrap_or_else(|| format!("{controller_name}.{action}"));
         let emitted_source = controller_handler_source(controller_name, action);
         let mut handler = Handler {
             source: handler_source.clone(),
             emitted_source,
-            span: method_span,
+            span: controller_method.span,
+            requires_results_import: controller_method.requires_results_import,
             is_async: true,
             runtime_deferred: false,
             source_name: controller.source_name.clone(),
@@ -4620,6 +4734,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
                 source: "app.useCors(...)".to_string(),
                 emitted_source: handler_source,
                 span: route.handler.span,
+                requires_results_import: false,
                 is_async: true,
                 runtime_deferred: false,
                 source_name: route.handler.source_name.clone(),
@@ -5326,6 +5441,7 @@ fn health_route(
                 .unwrap_or_else(|| "app.mapHealthChecks()".to_string()),
             emitted_source: handler_source,
             span,
+            requires_results_import: false,
             is_async: true,
             runtime_deferred: false,
             source_name: source_name.to_string(),
@@ -5936,107 +6052,110 @@ fn extract_relative_module(
     let mut exports = BTreeMap::<String, Vec<Route>>::new();
     let mut duplicate_exports = BTreeSet::<String>::new();
     let extract_start = Instant::now();
+    let mut module_results_imported = false;
     for statement in &parsed.program.body {
-        match statement {
-            Statement::ImportDeclaration(import) => {
-                let import_source = import.source.value.as_str();
-                if import_source == "sloppy" {
-                    continue;
-                }
-                if import_source == "sloppy/time" {
-                    validate_module_sloppy_time_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_time_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/crypto" {
-                    validate_module_sloppy_crypto_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_crypto_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/codec" {
-                    validate_module_sloppy_codec_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_codec_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/net" {
-                    validate_module_sloppy_net_import(&imported.path, import)?;
-                    if let Some(specifiers) = &import.specifiers {
-                        for specifier in specifiers {
-                            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) =
-                                specifier
-                            {
-                                if import_specifier_is_runtime_value(import, specifier) {
-                                    let imported_name = specifier.imported.name().as_str();
-                                    mark_sloppy_net_runtime_usage(
-                                        &mut graph.uses_net_runtime,
-                                        &mut graph.uses_http_client_runtime,
-                                        imported_name,
-                                    );
-                                }
-                            }
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        let import_source = import.source.value.as_str();
+        if import_source == "sloppy" {
+            module_results_imported |= validate_module_sloppy_root_import(&imported.path, import)?;
+            continue;
+        }
+        if import_source == "sloppy/time" {
+            validate_module_sloppy_time_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_time_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/crypto" {
+            validate_module_sloppy_crypto_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_crypto_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/codec" {
+            validate_module_sloppy_codec_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_codec_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/net" {
+            validate_module_sloppy_net_import(&imported.path, import)?;
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
+                        if import_specifier_is_runtime_value(import, specifier) {
+                            let imported_name = specifier.imported.name().as_str();
+                            mark_sloppy_net_runtime_usage(
+                                &mut graph.uses_net_runtime,
+                                &mut graph.uses_http_client_runtime,
+                                imported_name,
+                            );
                         }
                     }
-                    continue;
-                }
-                if import_source == "sloppy/os" {
-                    validate_module_sloppy_os_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_os_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/workers" {
-                    validate_module_sloppy_workers_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_workers_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source.starts_with("./") || import_source.starts_with("../") {
-                    let nested = resolve_relative_import(&imported.path, import_source)
-                        .ok_or_else(|| {
-                            Diagnostic::new(
-                                "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
-                                format!(
-                                    "relative import \"{import_source}\" could not be resolved"
-                                ),
-                            )
-                            .with_path(&imported.path)
-                            .with_span(import.source.span)
-                        })?;
-                    if graph.visiting.contains(&nested) {
-                        return Err(Diagnostic::new(
-                            "SLOPPYC_E_CIRCULAR_IMPORT",
-                            "circular relative imports are not supported",
-                        )
-                        .with_path(&imported.path)
-                        .with_span(import.source.span));
-                    }
-                    if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
-                        return Err(Diagnostic::new(
-                            "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
-                            "relative imports must stay within the source root",
-                        )
-                        .with_path(&imported.path)
-                        .with_span(import.source.span));
-                    }
-                    continue;
-                }
-                if import_source != "sloppy/providers/sqlite" {
-                    return Err(Diagnostic::new(
-                        "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-                        format!("unsupported import specifier \"{import_source}\""),
-                    )
-                    .with_path(&imported.path)
-                    .with_span(import.source.span));
                 }
             }
+            continue;
+        }
+        if import_source == "sloppy/os" {
+            validate_module_sloppy_os_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_os_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/workers" {
+            validate_module_sloppy_workers_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_workers_runtime = true;
+            }
+            continue;
+        }
+        if import_source.starts_with("./") || import_source.starts_with("../") {
+            let nested =
+                resolve_relative_import(&imported.path, import_source).ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+                        format!("relative import \"{import_source}\" could not be resolved"),
+                    )
+                    .with_path(&imported.path)
+                    .with_span(import.source.span)
+                })?;
+            if graph.visiting.contains(&nested) {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_CIRCULAR_IMPORT",
+                    "circular relative imports are not supported",
+                )
+                .with_path(&imported.path)
+                .with_span(import.source.span));
+            }
+            if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
+                    "relative imports must stay within the source root",
+                )
+                .with_path(&imported.path)
+                .with_span(import.source.span));
+            }
+            continue;
+        }
+        if import_source != "sloppy/providers/sqlite" {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                format!("unsupported import specifier \"{import_source}\""),
+            )
+            .with_path(&imported.path)
+            .with_span(import.source.span));
+        }
+    }
+
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::ImportDeclaration(_) => {}
             Statement::ExportNamedDeclaration(export) => {
                 let Some(Declaration::FunctionDeclaration(function)) = &export.declaration else {
                     return Err(Diagnostic::new(
@@ -6062,6 +6181,17 @@ fn extract_relative_module(
                     export_name,
                     function,
                 )?;
+                if !module_results_imported {
+                    if let Some(route) = routes
+                        .iter()
+                        .find(|route| route.handler.requires_results_import)
+                    {
+                        return Err(missing_results_import_diagnostic(
+                            &imported.path,
+                            route.handler.span,
+                        ));
+                    }
+                }
                 if exports.insert(export_name.to_string(), routes).is_some() {
                     duplicate_exports.insert(export_name.to_string());
                 }
@@ -6998,6 +7128,7 @@ fn handler_from_argument(
                 source: handler_source.clone(),
                 emitted_source: handler_source,
                 span: function.span,
+                requires_results_import: arrow_requires_results_import(function),
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
@@ -7055,6 +7186,7 @@ fn handler_from_argument(
                 source: handler_source.clone(),
                 emitted_source: handler_source,
                 span: function.span,
+                requires_results_import: function_requires_results_import(function),
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
@@ -7070,6 +7202,274 @@ fn handler_from_argument(
             })
         }
         _ => None,
+    }
+}
+
+fn arrow_requires_results_import(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
+    function
+        .body
+        .statements
+        .iter()
+        .any(statement_requires_results_import)
+}
+
+fn function_requires_results_import(function: &oxc_ast::ast::Function<'_>) -> bool {
+    function.body.as_ref().is_some_and(|body| {
+        body.statements
+            .iter()
+            .any(statement_requires_results_import)
+    })
+}
+
+fn statement_requires_results_import(statement: &Statement<'_>) -> bool {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().any(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+            })
+        }
+        Statement::ReturnStatement(statement) => statement
+            .argument
+            .as_ref()
+            .is_some_and(expression_requires_results_import),
+        Statement::ExpressionStatement(statement) => {
+            expression_requires_results_import(&statement.expression)
+        }
+        Statement::BlockStatement(block) => {
+            block.body.iter().any(statement_requires_results_import)
+        }
+        Statement::IfStatement(statement) => {
+            expression_requires_results_import(&statement.test)
+                || statement_requires_results_import(&statement.consequent)
+                || statement
+                    .alternate
+                    .as_ref()
+                    .is_some_and(|alternate| statement_requires_results_import(alternate))
+        }
+        Statement::DoWhileStatement(statement) => {
+            statement_requires_results_import(&statement.body)
+                || expression_requires_results_import(&statement.test)
+        }
+        Statement::WhileStatement(statement) => {
+            expression_requires_results_import(&statement.test)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForStatement(statement) => {
+            statement
+                .init
+                .as_ref()
+                .is_some_and(for_init_requires_results_import)
+                || statement
+                    .test
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+                || statement
+                    .update
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForInStatement(statement) => {
+            expression_requires_results_import(&statement.right)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForOfStatement(statement) => {
+            expression_requires_results_import(&statement.right)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::SwitchStatement(statement) => {
+            expression_requires_results_import(&statement.discriminant)
+                || statement.cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(expression_requires_results_import)
+                        || case
+                            .consequent
+                            .iter()
+                            .any(statement_requires_results_import)
+                })
+        }
+        Statement::TryStatement(statement) => {
+            statement
+                .block
+                .body
+                .iter()
+                .any(statement_requires_results_import)
+                || statement.handler.as_ref().is_some_and(|handler| {
+                    handler
+                        .body
+                        .body
+                        .iter()
+                        .any(statement_requires_results_import)
+                })
+                || statement.finalizer.as_ref().is_some_and(|finalizer| {
+                    finalizer.body.iter().any(statement_requires_results_import)
+                })
+        }
+        Statement::ThrowStatement(statement) => {
+            expression_requires_results_import(&statement.argument)
+        }
+        _ => false,
+    }
+}
+
+fn for_init_requires_results_import(init: &ForStatementInit<'_>) -> bool {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().any(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+            })
+        }
+        ForStatementInit::CallExpression(call) => call_requires_results_import(call),
+        ForStatementInit::ParenthesizedExpression(parenthesized) => {
+            expression_requires_results_import(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_requires_results_import(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::CallExpression(call) => call_requires_results_import(call),
+        Expression::NewExpression(expression) => {
+            expression_requires_results_import(&expression.callee)
+                || expression
+                    .arguments
+                    .iter()
+                    .any(argument_requires_results_import)
+        }
+        Expression::AwaitExpression(expression) => {
+            expression_requires_results_import(&expression.argument)
+        }
+        Expression::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .any(array_element_requires_results_import),
+        Expression::ObjectExpression(object) => {
+            object.properties.iter().any(|property| match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    expression_requires_results_import(&property.value)
+                }
+                ObjectPropertyKind::SpreadProperty(property) => {
+                    expression_requires_results_import(&property.argument)
+                }
+            })
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_requires_results_import(&parenthesized.expression)
+        }
+        Expression::StaticMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+        }
+        Expression::ComputedMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+                || expression_requires_results_import(&member.expression)
+        }
+        Expression::ChainExpression(chain) => {
+            chain_element_requires_results_import(&chain.expression)
+        }
+        Expression::BinaryExpression(expression) => {
+            expression_requires_results_import(&expression.left)
+                || expression_requires_results_import(&expression.right)
+        }
+        Expression::LogicalExpression(expression) => {
+            expression_requires_results_import(&expression.left)
+                || expression_requires_results_import(&expression.right)
+        }
+        Expression::ConditionalExpression(expression) => {
+            expression_requires_results_import(&expression.test)
+                || expression_requires_results_import(&expression.consequent)
+                || expression_requires_results_import(&expression.alternate)
+        }
+        Expression::SequenceExpression(expression) => expression
+            .expressions
+            .iter()
+            .any(expression_requires_results_import),
+        Expression::TaggedTemplateExpression(expression) => {
+            expression_requires_results_import(&expression.tag)
+        }
+        Expression::UnaryExpression(expression) => {
+            expression_requires_results_import(&expression.argument)
+        }
+        Expression::UpdateExpression(_) => false,
+        Expression::YieldExpression(expression) => expression
+            .argument
+            .as_ref()
+            .is_some_and(expression_requires_results_import),
+        Expression::AssignmentExpression(expression) => {
+            expression_requires_results_import(&expression.right)
+        }
+        Expression::ArrowFunctionExpression(function) => arrow_requires_results_import(function),
+        Expression::FunctionExpression(function) => function_requires_results_import(function),
+        Expression::TSAsExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSSatisfiesExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSNonNullExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSInstantiationExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        _ => false,
+    }
+}
+
+fn call_requires_results_import(call: &CallExpression<'_>) -> bool {
+    expression_requires_results_import(&call.callee)
+        || call.arguments.iter().any(argument_requires_results_import)
+}
+
+fn argument_requires_results_import(argument: &Argument<'_>) -> bool {
+    argument
+        .as_expression()
+        .is_some_and(expression_requires_results_import)
+}
+
+fn array_element_requires_results_import(element: &ArrayExpressionElement<'_>) -> bool {
+    element
+        .as_expression()
+        .is_some_and(expression_requires_results_import)
+}
+
+fn chain_element_requires_results_import(element: &ChainElement<'_>) -> bool {
+    match element {
+        ChainElement::CallExpression(call) => call_requires_results_import(call),
+        ChainElement::StaticMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+        }
+        ChainElement::ComputedMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+                || expression_requires_results_import(&member.expression)
+        }
+        ChainElement::PrivateFieldExpression(member) => {
+            expression_requires_results_import(&member.object)
+        }
+        ChainElement::TSNonNullExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+    }
+}
+
+fn member_object_is_results(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::Identifier(identifier) => identifier.name.as_str() == "Results",
+        Expression::ParenthesizedExpression(parenthesized) => {
+            member_object_is_results(&parenthesized.expression)
+        }
+        _ => false,
     }
 }
 
@@ -7096,6 +7496,7 @@ fn typed_framework_handler_from_arrow(
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
         span: function.span,
+        requires_results_import: arrow_requires_results_import(function),
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),
@@ -7126,6 +7527,7 @@ fn typed_framework_handler_from_function(
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
         span: function.span,
+        requires_results_import: function_requires_results_import(function),
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),
@@ -9181,6 +9583,9 @@ fn argument_is_inline_json_safe_value(
         | Argument::NumericLiteral(_)
         | Argument::BooleanLiteral(_)
         | Argument::NullLiteral(_) => true,
+        Argument::TemplateLiteral(template) => template.expressions.iter().all(|expression| {
+            expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        }),
         Argument::ArrayExpression(array) => array.elements.iter().all(|element| {
             array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
         }),
@@ -9260,6 +9665,9 @@ fn expression_is_inline_json_safe_value(
         | Expression::NumericLiteral(_)
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_) => true,
+        Expression::TemplateLiteral(template) => template.expressions.iter().all(|expression| {
+            expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        }),
         Expression::ArrayExpression(array) => array.elements.iter().all(|element| {
             array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
         }),
