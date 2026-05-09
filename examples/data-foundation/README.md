@@ -15,24 +15,25 @@ What works today:
 - `sql` and provider methods lower placeholders to `?` by default.
 - fake transactions record begin/commit/rollback behavior for tests.
 
-Current limitations:
+Current product state:
 
-- this source-stdlib example is not executed with `sloppy run --artifacts`;
-- `sloppyc` does not compile this example yet;
-- `app.plan.json` is not emitted for this example;
-- the current bounded `sloppy run` path does not load this source-stdlib data example;
-- the real SQLite provider is covered by native C tests, but this example still uses a fake
-  JavaScript provider;
-- PostgreSQL and SQL Server have separate provider examples, but this example deliberately
-  stays on the fake JavaScript provider;
-- no database connection is opened;
-- no SQL is executed;
-- filesystem and network capabilities are not enforced;
-- migrations and ORM behavior are not part of Sloppy's provider surface;
-- real native SQL execution, pooling, and true-async external providers are covered by
-  provider-specific SQLite/PostgreSQL/SQL Server examples and
-  tests;
-- bare `"sloppy"` imports are the current source shape for this example.
+- This source-stdlib example is a checked-in API-shape fixture.
+- `sloppy run --artifacts` currently runs emitted artifacts such as
+  `examples/compiler-hello`.
+- `sloppyc` compilation and `app.plan.json` emission for this data shape are future
+  source-extraction work.
+- The bounded `sloppy run` path currently loads generated artifacts, not this
+  source-stdlib data example.
+- The real SQLite provider is covered by native C tests. This example uses a fake
+  JavaScript provider so the metadata and callback shape stay inspectable.
+- PostgreSQL and SQL Server have separate provider examples. This example stays on the
+  fake JavaScript provider.
+- The fake provider records calls only; it opens no database connection and executes no SQL.
+- Filesystem and network capability enforcement belong to their provider/runtime lanes.
+- Migrations and ORM behavior are separate application-framework features.
+- Native SQL execution, pooling, and true-async external providers are covered by
+  provider-specific SQLite/PostgreSQL/SQL Server examples and tests.
+- Bare `"sloppy"` imports are the current source shape for this example.
 
 See `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`
 for provider registration shapes.

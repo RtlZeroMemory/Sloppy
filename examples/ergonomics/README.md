@@ -20,19 +20,23 @@ What works today:
 - CTest statically verifies this example imports the current stdlib path and uses the
   expected API shape.
 
-Current limitations:
+Current product state:
 
-- This source-stdlib example is documentation-first and is not executed with `sloppy run --artifacts`.
-- `sloppyc` compilation and route-group/schema extraction are still pending for this shape.
-- `app.plan.json` is not emitted for this example yet.
-- The current bounded `sloppy run` path does not load this source shape, materialize a request
-  context, or parse request bodies/query values for it.
-- Route params are not passed by the native HTTP runtime into JavaScript handler context
-  yet; this example uses `route.id ?? "demo"` to stay honest in bootstrap mode.
-- Validation metadata is not wired to automatic `400` responses yet.
+- This source-stdlib example is documentation-first and checked by CTest as an API-shape
+  fixture.
+- `sloppy run --artifacts` currently runs emitted artifacts such as
+  `examples/compiler-hello`.
+- `sloppyc` compilation, route-group/schema extraction, and `app.plan.json` emission for
+  this broader builder shape are future source-extraction work.
+- The bounded `sloppy run` path currently loads generated artifacts. Source-shape loading,
+  request-context materialization, and request body/query parsing for this example belong
+  to later app-host runtime work.
+- Native HTTP route parameters reach JavaScript handler context in later runtime work; this
+  example uses `route.id ?? "demo"` to stay honest in bootstrap mode.
+- Validation metadata currently remains route metadata. Automatic `400` responses belong
+  to a later validation pipeline.
 - OpenAPI generation is planned separately.
-- `app.run` and `app.listen` are not available yet.
+- `app.run` and `app.listen` belong to later app-host runtime work.
 
-Until compiler extraction, app-plan emission, ESM bootstrap loading, and HTTP serving land,
-this directory remains a checked-in documentation and fixture example rather than a runnable
-application host.
+This directory remains a checked-in documentation and fixture example for the current
+application host shape.

@@ -38,12 +38,14 @@ What to inspect:
 - CTest statically verifies this example imports the public Sloppy facade and uses the
   expected public API shape.
 
-Current limitations:
+Current product state:
 
-- `sloppyc` does not compile this example or extract routes from it yet.
-- `app.plan.json` is not emitted for this example.
-- This source-stdlib example is not executed with `sloppy run --artifacts`.
-- `app.run` and `app.listen` are not available yet.
+- This source-stdlib example is a checked-in API-shape fixture.
+- `sloppy run --artifacts` currently runs emitted artifacts such as
+  `examples/compiler-hello`.
+- `sloppyc` route extraction and `app.plan.json` emission for this broader builder shape
+  are future source-extraction work.
+- `app.run` and `app.listen` belong to later app-host runtime work.
 - Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
   use the Sloppy facade import shape that `sloppyc` recognizes.
 
@@ -53,7 +55,5 @@ Runtime Command:
 sloppy run examples/hello/app.js
 ```
 
-That command is not the current execution path for this example. Until compiler extraction,
-ESM bootstrap loading, app-plan emission for this broader source shape, and V8 bootstrap
-loading land, this directory remains an API-shape/documentation example. Use
-`examples/compiler-hello/` for the current `sloppy run --artifacts` path.
+That command is future user-facing shape for this example. The current emitted-artifact
+runtime path is `examples/compiler-hello/`.

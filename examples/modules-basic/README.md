@@ -17,12 +17,16 @@ What to inspect:
 - inspect routes with `app.__getRoutes()`;
 - inspect module debug metadata with `app.__debug().modules`.
 
-Current limitations:
+Current product state:
 
-- this source-stdlib example is not executed with `sloppy run --artifacts`;
-- `sloppyc` does not compile this example yet;
-- `app.plan.json` is not emitted for this example;
-- the current bounded `sloppy run` path does not load this source-stdlib module example;
-- the `data` module is not a real data provider;
-- module package loading and native plugins are outside this example;
-- bare `"sloppy"` imports are the current source shape for this example.
+- This source-stdlib example is a checked-in API-shape fixture.
+- `sloppy run --artifacts` currently runs emitted artifacts such as
+  `examples/compiler-hello`.
+- `sloppyc` compilation and `app.plan.json` emission for this module shape are future
+  source-extraction work.
+- The bounded `sloppy run` path currently loads generated artifacts, not this
+  source-stdlib module example.
+- The `data` module is an in-memory service example. Real providers are covered by the
+  provider examples and data API tests.
+- Module package loading and native plugins belong to later module/package work.
+- Bare `"sloppy"` imports are the current source shape for this example.
