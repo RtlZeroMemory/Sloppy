@@ -1,6 +1,4 @@
-<p align="center">
-    <img width="909" height="584" alt="SLOPPY2" src="https://github.com/user-attachments/assets/38e7450b-51a1-4cba-951e-77dc4fb66ba6" /> 
-</p>
+<img width="1267" height="370" alt="SLOPPY" src="https://github.com/user-attachments/assets/5741c460-6617-4a70-92e0-0e00c4579a4d" />
 
 # Sloppy
 
