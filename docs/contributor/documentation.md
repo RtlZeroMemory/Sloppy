@@ -28,7 +28,7 @@ finding at review.
   hedge.
 - Examples are runnable. `sloppy build` and `sloppy run` mean what
   they mean — don't paste pseudo-commands.
-- Avoid `Status: pre-alpha skeleton` headers and other meta-prefaces.
+- Avoid `Status: pre-alpha draft` headers and other meta-prefaces.
   The directory and the title carry that information.
 
 ## What not to do

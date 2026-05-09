@@ -7,7 +7,7 @@ through HTTP.
 Prerequisites: you've done the [Quickstart](../quickstart.md), `sloppy` is
 on your `PATH`, and your build executes handlers (V8 enabled).
 
-## 1. Project skeleton
+## 1. Project layout
 
 ```sh
 mkdir users-api && cd users-api

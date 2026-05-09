@@ -17,7 +17,7 @@ content is always JSON.
 
 ## What it produces
 
-A minimal OpenAPI 3 skeleton in JSON form:
+A minimal OpenAPI 3 document in JSON form:
 
 - One `paths` entry per declared route.
 - Path parameters extracted from `{name}` / `{name:str}` / `{name:int}`

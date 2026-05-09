@@ -52,6 +52,15 @@ Every PR runs:
 
 A PR can't merge with any required lane skipped, stale, or red.
 
+Use these statuses in PR reports: `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
+`DEFERRED`, `NOT RUN`.
+
+Use these evidence lane names exactly when they apply: default non-V8,
+compiler/Plan, V8-gated, source-input, package outside-checkout,
+platform-specific, dependency-backed, live-network/live-provider,
+advanced static analysis, fuzz/property, stress/torture,
+sanitizer/memory-safety, and benchmark.
+
 ## Optional lanes
 
 These run on demand or when labels/inputs select them:

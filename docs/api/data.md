@@ -195,7 +195,7 @@ const app = Sloppy.createBuilder().addModule(PostgresModule).build();
 ```
 
 The query API is identical (`query`, `queryOne`, `exec`, `transaction`),
-including the `sql\`...\`` template — the provider switches placeholder
+including the `sql\`...\`` template - the provider switches parameter
 style under the hood.
 
 PostgreSQL-specific value wrappers worth knowing:
