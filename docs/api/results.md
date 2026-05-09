@@ -84,6 +84,33 @@ return Results.problem("Database is down");
 Calling `Results.problem()` with no argument produces
 `{ title: "Sloppy problem", status: 500 }`.
 
+### Default error responses
+
+Install `ProblemDetails.defaults()` once on the app to wrap every route in a
+catch that returns a safe `500 application/problem+json` body whenever a
+handler throws or rejects:
+
+```ts
+import { Sloppy, ProblemDetails, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.use(ProblemDetails.defaults());
+
+app.get("/boom", () => { throw new Error("internal failure"); });
+```
+
+The thrown `/boom` handler returns:
+
+```json
+{"status":500,"title":"Internal Server Error","code":"SLOPPY_E_HANDLER_ERROR"}
+```
+
+The default body never includes the exception message. Pass
+`ProblemDetails.defaults({ detail: "development" })` to include it only when
+`Sloppy:Environment` is `Development`, or `{ detail: "always" }` to include it
+in every environment. Explicit `Results.problem(...)` descriptors are passed
+through untouched.
+
 ## Options
 
 Every helper takes a final options object:

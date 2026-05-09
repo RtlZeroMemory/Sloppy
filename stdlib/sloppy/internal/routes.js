@@ -62,10 +62,6 @@ function validateName(name, subject) {
     }
 }
 
-
-
-
-
 function createHandlerContext(host) {
     return Object.freeze({
         services: host.services.createScope(),
@@ -76,18 +72,47 @@ function createHandlerContext(host) {
     });
 }
 
+function handleRouteError(host, error) {
+    if (typeof host.handleError !== "function") {
+        throw error;
+    }
+    return host.handleError(error);
+}
+
+function finishRouteError(host, error, cleanup) {
+    try {
+        return finishWithCleanup(handleRouteError(host, error), cleanup);
+    } catch (handledError) {
+        return cleanupAfterFailure(handledError, cleanup);
+    }
+}
+
 function createRouteHandler(host, handler) {
     return function routeHandler(context) {
         if (context !== undefined && context !== null) {
-            return handler(context);
+            try {
+                const result = handler(context);
+                if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                    return Promise.resolve(result).catch((error) => handleRouteError(host, error));
+                }
+                return result;
+            } catch (error) {
+                return handleRouteError(host, error);
+            }
         }
 
         const ownedContext = createHandlerContext(host);
         try {
             const result = handler(ownedContext);
+            if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                return Promise.resolve(result).then(
+                    (value) => finishWithCleanup(value, () => ownedContext.services.dispose()),
+                    (error) => finishRouteError(host, error, () => ownedContext.services.dispose()),
+                );
+            }
             return finishWithCleanup(result, () => ownedContext.services.dispose());
         } catch (error) {
-            return cleanupAfterFailure(error, () => ownedContext.services.dispose());
+            return finishRouteError(host, error, () => ownedContext.services.dispose());
         }
     };
 }

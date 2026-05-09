@@ -53,3 +53,27 @@ globalThis.__sloppy_register_handler(6, function (ctx) {
     secondReadError,
   });
 });
+
+globalThis.__sloppy_register_handler(7, async function () {
+  try {
+    throw new Error("SECRET_TOKEN_SHOULD_NOT_LEAK");
+  } catch {
+    return Results.problem({
+      status: 500,
+      title: "Internal Server Error",
+      code: "SLOPPY_E_HANDLER_ERROR",
+    }, { status: 500 });
+  }
+});
+
+globalThis.__sloppy_register_handler(8, async function () {
+  try {
+    await Promise.reject(new Error("ASYNC_SECRET_SHOULD_NOT_LEAK"));
+  } catch {
+    return Results.problem({
+      status: 500,
+      title: "Internal Server Error",
+      code: "SLOPPY_E_HANDLER_ERROR",
+    }, { status: 500 });
+  }
+});

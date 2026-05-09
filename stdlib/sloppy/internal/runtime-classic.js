@@ -647,6 +647,22 @@ Operation:
         },
     });
 
+    const ProblemDetails = Object.freeze({
+        defaults(options) {
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy ProblemDetails.defaults options must be a plain object.");
+            }
+            const detail = options?.detail ?? "never";
+            if (detail !== "never" && detail !== "development" && detail !== "always") {
+                throw new TypeError("Sloppy ProblemDetails detail policy must be never, development, or always.");
+            }
+            return Object.freeze({
+                __sloppyProblemDetails: true,
+                detail,
+            });
+        },
+    });
+
     function sqlite(name) {
         const bridge = requireSqliteBridge();
         return createSqliteConnection(bridge, bridge.open({
@@ -7205,6 +7221,7 @@ Reason:
 
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
+        ProblemDetails,
         Random,
         Hash,
         Hmac,

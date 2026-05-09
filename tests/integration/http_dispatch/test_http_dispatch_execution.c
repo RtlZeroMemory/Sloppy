@@ -238,7 +238,12 @@ static int dispatch_single_route_expect(
         return 5;
     }
 
-    if (expected_diag_code != SL_DIAG_NONE && diag.code != expected_diag_code) {
+    if (expected_diag_code == SL_DIAG_NONE) {
+        if (diag.code != SL_DIAG_NONE) {
+            sl_engine_destroy(engine);
+            return 7;
+        }
+    } else if (diag.code != expected_diag_code) {
         sl_engine_destroy(engine);
         return 6;
     }
@@ -352,6 +357,36 @@ static int test_context_metadata_and_bytes_body_reach_v8_handler(void)
     return 0;
 }
 
+static int test_problem_details_wrapped_sync_error_returns_safe_problem(void)
+{
+    if (dispatch_single_route_expect("GET /problem-sync HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/problem-sync", 7U, SL_STATUS_OK,
+                                     SL_ENGINE_RESULT_ERROR, NULL,
+                                     "{\"status\":500,\"title\":\"Internal Server "
+                                     "Error\",\"code\":\"SLOPPY_E_HANDLER_ERROR\"}",
+                                     SL_DIAG_NONE) != 0)
+    {
+        return 55;
+    }
+
+    return 0;
+}
+
+static int test_problem_details_wrapped_async_error_returns_safe_problem(void)
+{
+    if (dispatch_single_route_expect("GET /problem-async HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/problem-async", 8U, SL_STATUS_OK,
+                                     SL_ENGINE_RESULT_ERROR, NULL,
+                                     "{\"status\":500,\"title\":\"Internal Server "
+                                     "Error\",\"code\":\"SLOPPY_E_HANDLER_ERROR\"}",
+                                     SL_DIAG_NONE) != 0)
+    {
+        return 56;
+    }
+
+    return 0;
+}
+
 static int test_lifecycle_context_metadata_reaches_v8_handler(void)
 {
     unsigned char engine_storage[TEST_ARENA_SIZE];
@@ -458,6 +493,16 @@ int main(void)
     }
 
     result = test_context_metadata_and_bytes_body_reach_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_problem_details_wrapped_sync_error_returns_safe_problem();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_problem_details_wrapped_async_error_returns_safe_problem();
     if (result != 0) {
         return result;
     }

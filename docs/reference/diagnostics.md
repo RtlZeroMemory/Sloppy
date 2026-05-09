@@ -36,6 +36,8 @@ Implemented diagnostic coverage includes:
 - capability denial and provider metadata diagnostics;
 - V8 exception mapping and source-map primary-span remapping in V8-enabled runs;
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
+- safe `application/problem+json` responses for Plan-backed request validation and
+  `ProblemDetails.defaults()` handler failures;
 - golden snapshots for representative negative paths.
 
 The CLI does not yet expose one universal diagnostic-format switch for every command and
@@ -48,6 +50,8 @@ error path.
 - Hints should recommend a safe next action without promising unsupported features.
 - Diagnostics must not expose secrets, tokens, raw provider connection strings, private
   keys, request bodies marked as sensitive, or native pointers.
+- ProblemDetails handler-error responses must not expose thrown exception messages unless
+  an explicit development/detail policy enables them in a supported path.
 - V8 exceptions and panics must not cross the ABI boundary unsafely.
 - Optional checks should be listed separately from the default build/test result.
 

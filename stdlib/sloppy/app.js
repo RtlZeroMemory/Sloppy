@@ -23,6 +23,7 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
+import { Results } from "./results.js";
 
 function validateProviderDescriptor(provider) {
     if (!isPlainObject(provider) || provider.__sloppyProvider !== true) {
@@ -34,6 +35,27 @@ function validateProviderDescriptor(provider) {
     if (typeof provider.name !== "string" || provider.name.length === 0) {
         throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");
     }
+}
+
+function isProblemDetailsDescriptor(value) {
+    return isPlainObject(value) && value.__sloppyProblemDetails === true;
+}
+
+function safeProblemDetails(error, descriptor, config) {
+    const environment = String(config.get("Sloppy:Environment", config.get("Environment", "")));
+    const includeDetail = descriptor.detail === "always" ||
+        (descriptor.detail === "development" && environment.toLowerCase() === "development");
+    const problem = {
+        status: 500,
+        title: "Internal Server Error",
+        code: "SLOPPY_E_HANDLER_ERROR",
+    };
+
+    if (includeDetail) {
+        problem.detail = String(error?.message ?? error);
+    }
+
+    return Results.problem(problem, { status: 500 });
 }
 
 function isWorkerResource(resource) {
@@ -71,6 +93,16 @@ function createApp(host) {
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
     const directModules = new Set();
+    let problemDetails = null;
+    const routeHost = {
+        ...host,
+        handleError(error) {
+            if (problemDetails === null) {
+                throw error;
+            }
+            return safeProblemDetails(error, problemDetails, host.config);
+        },
+    };
 
     function assertAppMutable() {
         guard.assertMutable();
@@ -88,6 +120,10 @@ function createApp(host) {
 
         use(provider) {
             assertAppMutable();
+            if (isProblemDetailsDescriptor(provider)) {
+                problemDetails = provider;
+                return app;
+            }
             if (isWorkerResource(provider)) {
                 if (workerResources.includes(provider)) {
                     return provider;
@@ -155,7 +191,7 @@ function createApp(host) {
         mapGet(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "GET",
@@ -168,7 +204,7 @@ function createApp(host) {
         mapPost(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "POST",
@@ -181,7 +217,7 @@ function createApp(host) {
         mapPut(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "PUT",
@@ -194,7 +230,7 @@ function createApp(host) {
         mapPatch(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "PATCH",
@@ -207,7 +243,7 @@ function createApp(host) {
         mapDelete(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "DELETE",
@@ -239,7 +275,7 @@ function createApp(host) {
 
         mapGroup(prefix) {
             assertAppMutable();
-            return createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix);
+            return createRouteGroup(routes, routeHost, assertAppMutable, getCurrentModule, prefix);
         },
 
         group(prefix) {
@@ -250,7 +286,7 @@ function createApp(host) {
             assertAppMutable();
             const mapper = createControllerMapper(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 prefix,

@@ -4,7 +4,7 @@ This page documents the current JavaScript framework surface from `stdlib/sloppy
 
 ## Imports
 
-Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`, `schema`, `data`, `sql`).
+Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`, `ProblemDetails`, `schema`, `data`, `sql`).
 
 Provider descriptor registration currently has one runtime module:
 
@@ -27,7 +27,7 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 | API | Behavior |
 | --- | --- |
 | `config`, `log`, `services`, `capabilities` | Built providers. |
-| `use(providerOrWorker)` | Accepts worker resources and Sloppy provider descriptors. Current provider kind accepted by app validation: `sqlite`. |
+| `use(providerOrWorkerOrProblemDetails)` | Accepts worker resources, Sloppy provider descriptors, and `ProblemDetails.defaults()` error handling descriptors. Current provider kind accepted by app validation: `sqlite`. |
 | `useModule(moduleOrFactory)` | Accepts route-only `Sloppy.module(...)` or named synchronous function modules. |
 | `mapGet/mapPost/mapPut/mapPatch/mapDelete` | Route registration methods. |
 | `get/post/put/patch/delete` | Aliases for `map*`. |
@@ -113,6 +113,32 @@ Common enforced errors:
 - singleton resolving scoped dependency
 - root service resolution for non-singleton services
 
+## ProblemDetails
+
+`ProblemDetails.defaults(options?)` returns an app-level error handling descriptor:
+
+```ts
+import { Sloppy, ProblemDetails } from "sloppy";
+
+const app = Sloppy.create();
+app.use(ProblemDetails.defaults());
+```
+
+When installed, synchronous thrown handler errors and async rejected handler errors are
+converted to `500` problem responses with this safe body:
+
+```json
+{"status":500,"title":"Internal Server Error","code":"SLOPPY_E_HANDLER_ERROR"}
+```
+
+Options:
+
+| Option | Behavior |
+| --- | --- |
+| `detail: "never"` | Default. Do not include exception details. |
+| `detail: "development"` | Include details only in the stdlib app path when `Sloppy:Environment` or `Environment` is `Development`. |
+| `detail: "always"` | Include details in the stdlib app path. Use only for local diagnostics. |
+
 ## Limits
 
 - `app.use(...)` provider validation is currently sqlite-only.
@@ -121,3 +147,5 @@ Common enforced errors:
   execution.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` requires V8.
+- ProblemDetails currently provides safe global handler-error mapping. Production error
+  policy, request logging, and exception taxonomy are separate framework areas.

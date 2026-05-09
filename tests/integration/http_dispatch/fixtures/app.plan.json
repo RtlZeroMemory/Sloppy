@@ -47,6 +47,16 @@
       "id": 6,
       "exportName": "__sloppy_handler_6",
       "displayName": "Http.ContextBytes"
+    },
+    {
+      "id": 7,
+      "exportName": "__sloppy_handler_7",
+      "displayName": "Http.ProblemDetailsSync"
+    },
+    {
+      "id": 8,
+      "exportName": "__sloppy_handler_8",
+      "displayName": "Http.ProblemDetailsAsync"
     }
   ]
 }
