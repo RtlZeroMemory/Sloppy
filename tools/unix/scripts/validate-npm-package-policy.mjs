@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-const fs = require("node:fs");
+import fs from "node:fs";
 
 const [packageJsonPath] = process.argv.slice(2);
 if (!packageJsonPath) {

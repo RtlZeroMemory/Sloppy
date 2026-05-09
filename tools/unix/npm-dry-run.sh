@@ -149,7 +149,13 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
   run_output="$(cd "$created_app" && node "$launcher" run --once GET /health 2>&1)"
   run_status=$?
   set -e
-  if [[ "$run_status" -ne 0 && "$run_output" != *"requires V8-enabled build"* ]]; then
+  if [[ "$run_status" -eq 0 ]]; then
+    if [[ "$run_output" != *"ok"* ]]; then
+      echo "npm launcher run smoke did not return /health ok." >&2
+      echo "$run_output" >&2
+      exit 1
+    fi
+  elif [[ "$run_output" != *"requires V8-enabled build"* ]]; then
     echo "npm launcher run smoke failed unexpectedly." >&2
     echo "$run_output" >&2
     exit 1

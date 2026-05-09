@@ -58,6 +58,23 @@ if(NOT EXISTS "${default_project_dir}/.gitignore")
     message(FATAL_ERROR "sloppy create without --no-git did not copy .gitignore")
 endif()
 
+set(occupied_file_name "occupied-file")
+file(WRITE "${work_dir}/${occupied_file_name}" "already here\n")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${occupied_file_name}" --template minimal-api
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE occupied_create_result
+    OUTPUT_VARIABLE occupied_create_stdout
+    ERROR_VARIABLE occupied_create_stderr)
+
+if(occupied_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create unexpectedly succeeded for an existing file destination")
+endif()
+if(NOT occupied_create_stderr MATCHES "destination exists")
+    message(FATAL_ERROR "sloppy create existing-file failure was not a destination diagnostic\nstdout:\n${occupied_create_stdout}\nstderr:\n${occupied_create_stderr}")
+endif()
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" build
     WORKING_DIRECTORY "${project_dir}"

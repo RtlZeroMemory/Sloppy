@@ -410,6 +410,7 @@ try {
     $expectedManifest = [ordered]@{
         name = "sloppy"
         containsStdlib = $true
+        containsTemplates = $true
         containsV8Sdk = $false
     }
     if ($null -ne $metadata -and $null -ne $metadata.expectedManifest) {

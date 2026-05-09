@@ -3,7 +3,7 @@
 Compile source input and write a directory app package under `.sloppy/package/`
 by default, or under `<out>/package/` for explicit source output.
 
-```
+```sh
 sloppy package [source.js|source.mjs|source.ts] [--out <dir>]
                [--environment <name>] [--host <ip>] [--port <n>]
                [--format text|json]
@@ -16,7 +16,7 @@ a Sloppy runtime release archive.
 
 **Project mode** (no positional argument):
 
-```
+```sh
 sloppy package
 ```
 
@@ -25,7 +25,7 @@ artifacts, then writes `<outDir>/package/`.
 
 **Explicit source**:
 
-```
+```sh
 sloppy package src/main.ts --out dist
 ```
 
@@ -33,7 +33,7 @@ Compiles the supplied source and writes `dist/package/`.
 
 ## Output
 
-```
+```text
 <out>/package/
   manifest.json
   artifacts/
@@ -61,7 +61,7 @@ without a positional source is rejected so the project contract stays explicit.
 
 ## Examples
 
-```
+```sh
 # Package the current project.
 sloppy package
 
@@ -74,7 +74,7 @@ sloppy package --format json
 
 Inspect the packaged Plan with other CLI commands:
 
-```
+```sh
 sloppy routes --plan .sloppy/package/artifacts/app.plan.json
 sloppy openapi --artifacts .sloppy/package/artifacts --output openapi.json
 ```

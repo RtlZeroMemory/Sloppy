@@ -2,18 +2,19 @@
 
 List the routes a Plan declares. Read-only; doesn't enter V8.
 
-```
+```sh
 sloppy routes --plan <path> [--format text|json]
 ```
 
-`<path>` points to either an `app.plan.json` file directly, or to a
-directory containing one (e.g. `.sloppy/`).
+Use `--plan <path>` for either an `app.plan.json` file directly or a directory
+containing one (e.g. `.sloppy/`). Use `--artifacts <dir>` as the equivalent
+artifact-directory alias.
 
 ## Output
 
 **Text** (default):
 
-```
+```text
 $ sloppy routes --plan .sloppy/app.plan.json
 GET    /health           handler=1 name=Health.Get
 GET    /hello/{name}     handler=2 name=Hello.Get
@@ -24,7 +25,7 @@ by source order (matching the runtime's match precedence).
 
 **JSON**:
 
-```
+```text
 $ sloppy routes --plan .sloppy/app.plan.json --format json
 [
   { "method": "GET", "pattern": "/health", "handlerId": 1, "name": "Health.Get" },

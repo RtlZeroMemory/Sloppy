@@ -217,6 +217,7 @@ static void sl_cli_print_help(void)
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("  sloppy package [source.js|source.mjs|source.ts] [--out <dir>]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("                 [--format text|json]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
     printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("             [--once METHOD TARGET]\n");
@@ -259,11 +260,12 @@ static void sl_cli_print_command_help(const char* command)
     if (strcmp(command, "package") == 0) {
         printf("Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>]\n");
         printf("                      [--environment Development] [--host 127.0.0.1]\n");
-        printf("                      [--port 5173]\n");
+        printf("                      [--port 5173] [--format text|json]\n");
         printf("\n");
         printf("Compiles source input and writes a directory app package under .sloppy/package/ "
                "or <out>/package/.\n");
         printf("This is an app artifact package, not a runtime release archive.\n");
+        printf("--format json and --json print the package path and artifact directory.\n");
         return;
     }
     if (strcmp(command, "create") == 0) {

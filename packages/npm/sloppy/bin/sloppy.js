@@ -27,9 +27,11 @@ function main() {
   const platformBin = path.join(packageRoot, "bin");
   const executable = path.join(platformBin, process.platform === "win32" ? "sloppy.exe" : "sloppy");
   const sloppyc = path.join(platformBin, process.platform === "win32" ? "sloppyc.exe" : "sloppyc");
+  const pathKey = Object.keys(process.env).find((key) => /^path$/i.test(key)) || "PATH";
+  const currentPath = process.env[pathKey] || "";
   const childEnv = {
     ...process.env,
-    PATH: `${platformBin}${path.delimiter}${process.env.PATH || ""}`,
+    [pathKey]: `${platformBin}${path.delimiter}${currentPath}`,
     SLOPPY_SLOPPYC: process.env.SLOPPY_SLOPPYC || sloppyc
   };
   const result = spawnSync(executable, process.argv.slice(2), { stdio: "inherit", env: childEnv });

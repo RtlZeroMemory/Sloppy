@@ -46,10 +46,27 @@ static bool sl_create_destination_is_empty(const char* path)
     unsigned char arena_storage[SL_CREATE_ARENA_BYTES];
     SlArena arena = {0};
     SlFsDirectoryList list = {0};
+    SlFsStat stat = {0};
     SlStatus status;
+    bool exists = false;
 
-    if (!sl_create_directory_exists(path)) {
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+
+    status = sl_fs_exists(sl_str_from_cstr(path), &exists, NULL);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+    if (!exists) {
         return true;
+    }
+    status = sl_fs_stat(sl_str_from_cstr(path), &stat, NULL);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+    if (stat.kind != SL_FS_NODE_DIRECTORY) {
+        return false;
     }
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));

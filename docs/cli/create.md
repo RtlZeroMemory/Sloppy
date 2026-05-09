@@ -2,7 +2,7 @@
 
 Copy a built-in project template into a new local app directory.
 
-```
+```sh
 sloppy create <name> [--template minimal-api|full-api|dogfood]
                      [--force] [--no-git] [--format text|json]
 ```
@@ -21,7 +21,7 @@ through `node_modules` is not part of the alpha track.
 
 ## Examples
 
-```
+```sh
 sloppy create my-api
 sloppy create my-api --template full-api
 sloppy create my-api --template dogfood
@@ -30,7 +30,7 @@ sloppy create my-api --format json
 
 Then:
 
-```
+```sh
 cd my-api
 sloppy build
 sloppy run --once GET /health

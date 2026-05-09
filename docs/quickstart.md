@@ -19,7 +19,7 @@ cd hello-api
 
 That creates this layout:
 
-```
+```text
 hello-api/
   .gitignore
   sloppy.json
@@ -76,13 +76,13 @@ That's the whole app:
 
 ## 4. Build
 
-```
+```sh
 sloppy build
 ```
 
 This compiles `src/main.ts` and writes:
 
-```
+```text
 .sloppy/
   app.plan.json   # the application Plan
   app.js          # the generated bundle
@@ -97,7 +97,7 @@ if you're curious — it's deterministic JSON.
 `--once` runs a single synthetic request and exits, which is the easiest way
 to smoke-test handlers without leaving an HTTP server running:
 
-```
+```sh
 sloppy run --artifacts .sloppy --once GET /hello/Ada
 ```
 
@@ -110,19 +110,19 @@ Expected response body:
 You can also point `run` directly at source — it compiles first, then runs
 the artifacts:
 
-```
+```sh
 sloppy run src/main.ts --once GET /hello/Ada
 ```
 
 ## 6. Package the app
 
-```
+```sh
 sloppy package
 ```
 
 This validates the generated artifacts and writes:
 
-```
+```text
 .sloppy/package/
   manifest.json
   artifacts/
@@ -135,20 +135,20 @@ This validates the generated artifacts and writes:
 
 Drop `--once` to start a real HTTP server bound to `127.0.0.1:5173`:
 
-```
+```sh
 sloppy run --artifacts .sloppy
 ```
 
 Hit it from another shell:
 
-```
+```sh
 curl http://127.0.0.1:5173/hello/Ada
 curl http://127.0.0.1:5173/health
 ```
 
 `Ctrl+C` shuts it down. Override the bind address with `--host` and `--port`:
 
-```
+```sh
 sloppy run --artifacts .sloppy --host 0.0.0.0 --port 8080
 ```
 

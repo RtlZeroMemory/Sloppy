@@ -21,7 +21,7 @@ app.get("/hello/{name}", (ctx) =>
 export default app;
 ```
 
-```
+```text
 $ sloppy run src/main.ts --once GET /hello/Ada
 HTTP/1.1 200 OK
 content-type: application/json; charset=utf-8
@@ -61,7 +61,7 @@ Public GitHub Release artifacts and npm publication are gated release work.
 
 ## A first app
 
-```
+```sh
 sloppy create hello --template minimal-api
 cd hello
 ```
@@ -83,7 +83,7 @@ export default app;
 
 Build, then run a single request:
 
-```
+```sh
 sloppy build
 sloppy run --artifacts .sloppy --once GET /hello/Ada
 sloppy package
@@ -91,7 +91,7 @@ sloppy package
 
 Or start a server bound to `127.0.0.1:5173`:
 
-```
+```sh
 sloppy run
 ```
 

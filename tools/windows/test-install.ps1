@@ -82,6 +82,7 @@ try {
 
         Invoke-Captured -File $sloppy -Arguments @("--version") -WorkingDirectory $workRoot | Out-Null
         Invoke-Captured -File $sloppy -Arguments @("doctor") -WorkingDirectory $workRoot | Out-Null
+        Invoke-Captured -File $sloppyc -Arguments @("--version") -WorkingDirectory $workRoot | Out-Null
         $create = Invoke-Captured -File $sloppy -Arguments @("create", "install-app", "--template", "minimal-api", "--format", "json") -WorkingDirectory $workRoot
         if ($create.Stdout -notmatch '"created":true') {
             throw "sloppy create did not report JSON success: $($create.Stdout)"
@@ -95,6 +96,10 @@ try {
         if ($RequireV8Runtime) {
             if ($run.ExitCode -ne 0 -or $run.Stdout -notmatch "ok") {
                 throw "V8-required install smoke did not return /health ok.`nstdout:`n$($run.Stdout)`nstderr:`n$($run.Stderr)"
+            }
+        } elseif ($run.ExitCode -eq 0) {
+            if ($run.Stdout -notmatch "ok") {
+                throw "Install smoke returned success without /health ok.`nstdout:`n$($run.Stdout)`nstderr:`n$($run.Stderr)"
             }
         } elseif ($run.ExitCode -ne 0 -and $run.Stderr -notmatch "requires V8-enabled build") {
             throw "Non-V8 install smoke failed for an unexpected reason.`nstdout:`n$($run.Stdout)`nstderr:`n$($run.Stderr)"

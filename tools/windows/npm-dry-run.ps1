@@ -215,7 +215,20 @@ try {
         Invoke-Native $node.Source @($launcher, "create", "tmp-npm-app", "--template", "minimal-api") -WorkingDirectory $createRoot
         $createdApp = Join-Path $createRoot "tmp-npm-app"
         Invoke-Native $node.Source @($launcher, "build") -WorkingDirectory $createdApp
-        Invoke-Native $node.Source @($launcher, "run", "--once", "GET", "/health") -WorkingDirectory $createdApp -AllowedExitCodes @(0, 1)
+        Push-Location $createdApp
+        try {
+            $runOutput = & $node.Source $launcher "run" "--once" "GET" "/health" 2>&1 | Out-String
+            $runExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+        if ($runExit -eq 0) {
+            if ($runOutput -notmatch "ok") {
+                throw "npm dry-run create/build/run smoke did not return /health ok.`n$runOutput"
+            }
+        } elseif ($runOutput -notmatch "requires V8-enabled build") {
+            throw "npm dry-run create/build/run smoke failed unexpectedly.`n$runOutput"
+        }
 
         $missingRoot = Join-Path $tempRoot "missing-platform"
         New-Item -ItemType Directory -Force -Path $missingRoot | Out-Null

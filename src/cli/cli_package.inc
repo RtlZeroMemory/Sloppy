@@ -83,6 +83,21 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
     return 0;
 }
 
+static void sl_package_cleanup_partial(const char* package_dir)
+{
+    SlStatus status;
+
+    if (package_dir == NULL || package_dir[0] == '\0') {
+        return;
+    }
+
+    status = sl_fs_delete_directory(sl_str_from_cstr(package_dir), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy package: warning: failed to clean partial package: ",
+                                      package_dir, "\n");
+    }
+}
+
 static int sl_package_copy_artifacts(const char* out_dir, const char* package_dir,
                                      const SlRunApp* app)
 {
@@ -119,10 +134,16 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         sl_package_copy_artifact_leaf(out_dir, artifacts_dir,
                                       sl_run_str_span(app->plan.source_map.path)) != 0)
     {
+        sl_package_cleanup_partial(package_dir);
         return 1;
     }
 
-    return sl_package_write_manifest(package_dir, "artifacts");
+    if (sl_package_write_manifest(package_dir, "artifacts") != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+
+    return 0;
 }
 
 static int sl_cli_command_package(const SlCliOptions* options)
