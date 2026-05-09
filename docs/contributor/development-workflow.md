@@ -33,7 +33,7 @@ One coherent change per PR. Examples of good shape:
 
 - "core bytes view overflow guards + tests"
 - "provider redaction coverage + docs"
-- "CORS middleware skeleton (no behavior yet)"
+- "CORS middleware contract (no behavior yet)"
 
 Examples of bad shape:
 

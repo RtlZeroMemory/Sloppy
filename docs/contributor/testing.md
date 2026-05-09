@@ -35,6 +35,13 @@ Every lane is reported separately. A passing default lane doesn't
 imply a passing V8 lane, and a benchmark smoke isn't a performance
 claim.
 
+Use only `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`, `DEFERRED`, or `NOT RUN`
+when reporting test evidence. Use these lane names in PR evidence when
+they apply: default non-V8, compiler/Plan, V8-gated, source-input,
+package outside-checkout, platform-specific, dependency-backed,
+live-network/live-provider, advanced static analysis, fuzz/property,
+stress/torture, sanitizer/memory-safety, and benchmark.
+
 ## Where to put a test
 
 ```text
