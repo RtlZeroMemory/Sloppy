@@ -260,6 +260,7 @@ try {
 
     Write-Host "npm dry-run completed without publishing packages."
     Write-Host "npm tarballs: $tarballRoot"
+    $global:LASTEXITCODE = 0
 } finally {
     if ($KeepTemp) {
         Write-Host "Keeping npm dry-run temp directory: $tempRoot"
