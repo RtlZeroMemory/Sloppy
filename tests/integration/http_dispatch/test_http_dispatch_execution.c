@@ -243,7 +243,8 @@ static int dispatch_single_route_expect(
             sl_engine_destroy(engine);
             return 7;
         }
-    } else if (diag.code != expected_diag_code) {
+    }
+    else if (diag.code != expected_diag_code) {
         sl_engine_destroy(engine);
         return 6;
     }
