@@ -36,9 +36,11 @@ tools/windows/bench.ps1 -Suite http -Runtime sloppy,node,bun,deno
 ```
 
 It records host metadata, runtime versions, warmup/sample counts, and
-structured JSON results. Missing comparator runtimes are reported as
-unavailable. Use those reports to compare branches on the same machine,
-not to rank Sloppy publicly.
+structured JSON results. HTTP workloads include process-level CPU and
+memory counters when the child process exposes them, and a separate
+`concurrency` suite exercises fixed concurrent request batches. Missing
+comparator runtimes are reported as unavailable. Use those reports to
+compare branches on the same machine, not to rank Sloppy publicly.
 
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy

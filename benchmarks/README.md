@@ -107,6 +107,9 @@ The local runtime engine uses semantically equivalent HTTP workloads where pract
 - `bridge`: Sloppy-only V8/result/request-context workloads. Source-input header
   facade coverage is reported as `SKIPPED` until the live runtime path can execute it;
   native V8 bridge microbenchmarks still cover header lookup.
+- `concurrency`: fixed concurrent HTTP batches against `/health`, JSON, route parameter,
+  and POST workloads. Latency is reported as concurrent batch wall time, with `wallMs`,
+  `concurrency`, and measured batch count included per workload.
 - `middleware`: Sloppy-only middleware, ProblemDetails, CORS, and health workloads.
 - `sqlite`: reserved for the stable SQLite/provider bridge path; unavailable cases are
   reported instead of simulated.
@@ -122,6 +125,13 @@ default test failure.
 Response correctness is part of every measured HTTP workload: status, body, and relevant
 content type are checked before a request contributes latency data. Broken responses are
 reported as failed benchmark entries, not as measurements.
+
+HTTP workload entries also include process-level CPU and memory snapshots for the measured
+window when the child process exposes them. CPU is reported as elapsed processor time, and
+memory is reported from the operating-system process counters. Small runs can show coarse
+CPU increments or zero deltas on Windows. `allocations` and `bytesCopied` remain
+reserved/null until Sloppy exposes allocator-level counters; process memory is not an
+allocation-rate measurement.
 
 ## Output
 
@@ -146,7 +156,8 @@ Local runtime JSON uses `schemaVersion: 1`. Each report includes:
 - Runtime path, version, availability, and unavailable reason.
 - Suite/runtime selection, warmup count, request count, and timeout.
 - Per-workload status, correctness details, p50/p95/p99 latency, throughput, startup time,
-  error count, and reserved allocation/copying fields.
+  error count, process CPU/memory counters where available, and reserved allocation/copying
+  fields.
 
 Use compare mode to compare two reports from the same machine and similar load conditions.
 Do not compare a laptop run against a CI VM or a dirty Debug build against a clean Release

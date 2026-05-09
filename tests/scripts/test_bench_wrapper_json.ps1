@@ -25,7 +25,7 @@ try {
         throw "missing benchmark results"
     }
 
-    & $benchScript -Suite bridge -Runtime node -WarmupRequests 0 -Requests 1 -Out $localRuntimeOut
+    & $benchScript -Suite concurrency -Runtime node -WarmupRequests 0 -Requests 1 -Out $localRuntimeOut
     if ($LASTEXITCODE -ne 0) {
         throw "bench.ps1 local runtime JSON smoke failed with exit code $LASTEXITCODE"
     }
@@ -43,6 +43,14 @@ try {
     $first = $localParsed.benchmarks | Select-Object -First 1
     if ([string]::IsNullOrWhiteSpace($first.id) -or [string]::IsNullOrWhiteSpace($first.status)) {
         throw "local runtime benchmark result is missing id/status"
+    }
+    foreach ($field in @("cpu", "memory", "allocations", "bytesCopied")) {
+        if ($first.PSObject.Properties.Name -notcontains $field) {
+            throw "local runtime benchmark result is missing $field"
+        }
+    }
+    if ($first.id -notlike "concurrency.*") {
+        throw "local runtime benchmark result did not come from the concurrency suite"
     }
 }
 finally {

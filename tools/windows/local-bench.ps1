@@ -1,5 +1,5 @@
 param(
-    [string[]]$Suite = @("http", "route", "bridge", "startup"),
+    [string[]]$Suite = @("http", "route", "bridge", "concurrency", "startup"),
     [string[]]$Runtime = @("sloppy", "node", "bun", "deno"),
     [string]$Out,
     [string[]]$Compare = @(),
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
-$AllowedSuites = @("http", "route", "bridge", "middleware", "sqlite", "startup")
+$AllowedSuites = @("http", "route", "bridge", "concurrency", "middleware", "sqlite", "startup")
 $AllowedRuntimes = @("sloppy", "node", "bun", "deno")
 $Utf8NoBomEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -185,6 +185,9 @@ function New-BenchResult {
         [double[]]$LatenciesMs = @(),
         [int]$Errors = 0,
         [Nullable[double]]$StartupMs = $null,
+        [Nullable[double]]$RequestsPerSecond = $null,
+        [switch]$SuppressThroughput,
+        [hashtable]$Profile = $null,
         [hashtable]$Correctness = $null,
         [hashtable]$Extra = $null
     )
@@ -204,6 +207,12 @@ function New-BenchResult {
             $rps = [Math]::Round($LatenciesMs.Count / $totalSeconds, 2)
         }
     }
+    if ($SuppressThroughput) {
+        $rps = $null
+    }
+    elseif ($null -ne $RequestsPerSecond) {
+        $rps = [Math]::Round([double]$RequestsPerSecond, 2)
+    }
 
     $result = [ordered]@{
         id = $Id
@@ -219,6 +228,8 @@ function New-BenchResult {
         requestsPerSecond = $rps
         errorCount = $Errors
         startupMs = $StartupMs
+        cpu = $(if ($null -ne $Profile -and $Profile.ContainsKey("cpu")) { $Profile.cpu } else { $null })
+        memory = $(if ($null -ne $Profile -and $Profile.ContainsKey("memory")) { $Profile.memory } else { $null })
         allocations = $null
         bytesCopied = $null
         correctness = $(if ($null -eq $Correctness) {
@@ -326,6 +337,106 @@ function Stop-BenchProcess {
     }
 }
 
+function Get-BenchExceptionMessage {
+    param([Exception]$Exception)
+
+    if ($null -eq $Exception) {
+        return "request failed"
+    }
+    $parts = @($Exception.Message)
+    $inner = $Exception.InnerException
+    while ($null -ne $inner) {
+        if (-not [string]::IsNullOrWhiteSpace($inner.Message)) {
+            $parts += $inner.Message
+        }
+        $inner = $inner.InnerException
+    }
+    return ($parts | Select-Object -Unique) -join "; inner="
+}
+
+function Get-BenchProcessSnapshot {
+    param($Process)
+
+    if ($null -eq $Process) {
+        return $null
+    }
+    try {
+        if ($Process.HasExited) {
+            return $null
+        }
+        $Process.Refresh()
+        return [ordered]@{
+            totalProcessorMs = [Math]::Round($Process.TotalProcessorTime.TotalMilliseconds, 4)
+            userProcessorMs = [Math]::Round($Process.UserProcessorTime.TotalMilliseconds, 4)
+            privilegedProcessorMs = [Math]::Round($Process.PrivilegedProcessorTime.TotalMilliseconds, 4)
+            workingSetBytes = $Process.WorkingSet64
+            peakWorkingSetBytes = $Process.PeakWorkingSet64
+            privateMemoryBytes = $Process.PrivateMemorySize64
+            pagedMemoryBytes = $Process.PagedMemorySize64
+            peakPagedMemoryBytes = $Process.PeakPagedMemorySize64
+            virtualMemoryBytes = $Process.VirtualMemorySize64
+            peakVirtualMemoryBytes = $Process.PeakVirtualMemorySize64
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-BenchMetricDelta {
+    param(
+        [object]$Before,
+        [object]$After,
+        [string]$Key
+    )
+
+    if ($null -eq $Before -or $null -eq $After) {
+        return $null
+    }
+    if (-not $Before.Contains($Key) -or -not $After.Contains($Key)) {
+        return $null
+    }
+    return [Math]::Round(([double]$After[$Key] - [double]$Before[$Key]), 4)
+}
+
+function Get-BenchProcessProfile {
+    param(
+        [object]$Before,
+        [object]$After,
+        [int]$MeasuredRequests
+    )
+
+    if ($null -eq $Before -or $null -eq $After) {
+        return $null
+    }
+
+    $cpuTotalMs = Get-BenchMetricDelta $Before $After "totalProcessorMs"
+    $cpuUserMs = Get-BenchMetricDelta $Before $After "userProcessorMs"
+    $cpuPrivilegedMs = Get-BenchMetricDelta $Before $After "privilegedProcessorMs"
+    $cpuMsPerRequest = $null
+    if ($null -ne $cpuTotalMs -and $MeasuredRequests -gt 0) {
+        $cpuMsPerRequest = [Math]::Round($cpuTotalMs / $MeasuredRequests, 4)
+    }
+
+    return @{
+        cpu = [ordered]@{
+            totalMs = $cpuTotalMs
+            userMs = $cpuUserMs
+            privilegedMs = $cpuPrivilegedMs
+            msPerRequest = $cpuMsPerRequest
+        }
+        memory = [ordered]@{
+            workingSetBytes = $After["workingSetBytes"]
+            privateMemoryBytes = $After["privateMemoryBytes"]
+            pagedMemoryBytes = $After["pagedMemoryBytes"]
+            virtualMemoryBytes = $After["virtualMemoryBytes"]
+            peakWorkingSetBytes = $After["peakWorkingSetBytes"]
+            peakPagedMemoryBytes = $After["peakPagedMemoryBytes"]
+            peakVirtualMemoryBytes = $After["peakVirtualMemoryBytes"]
+        }
+    }
+}
+
 function Get-BenchProcessFailureDetails {
     param(
         [string]$WorkingDirectory,
@@ -400,6 +511,31 @@ function Invoke-BenchHttpRequest {
     }
 }
 
+function New-BenchHttpRequestMessage {
+    param(
+        [hashtable]$Workload,
+        [string]$BaseUrl
+    )
+
+    $request = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::new($Workload.method),
+        "$BaseUrl$($Workload.path)"
+    )
+    if ($null -ne $Workload.body) {
+        $request.Content = [System.Net.Http.StringContent]::new(
+            $Workload.body,
+            [System.Text.Encoding]::UTF8,
+            "application/json"
+        )
+    }
+    if ($Workload.headers) {
+        foreach ($header in $Workload.headers.Keys) {
+            $request.Headers.TryAddWithoutValidation($header, [string]$Workload.headers[$header]) | Out-Null
+        }
+    }
+    return $request
+}
+
 function Wait-BenchServerReady {
     param(
         [System.Net.Http.HttpClient]$Client,
@@ -457,6 +593,173 @@ function Test-BenchResponse {
     return $null
 }
 
+function Invoke-ConcurrentHttpBatch {
+    param(
+        [System.Net.Http.HttpClient]$Client,
+        [string]$BaseUrl,
+        [hashtable]$Workload,
+        [int]$Count
+    )
+
+    $requests = @()
+    $tasks = @()
+    $errors = 0
+    $firstError = $null
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+
+    try {
+        for ($index = 0; $index -lt $Count; $index += 1) {
+            $request = New-BenchHttpRequestMessage $Workload $BaseUrl
+            $requests += $request
+            $tasks += $Client.SendAsync($request)
+        }
+
+        try {
+            [System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]$tasks)
+        }
+        catch {
+        }
+
+        for ($index = 0; $index -lt $tasks.Count; $index += 1) {
+            $task = $tasks[$index]
+            if ($task.IsFaulted) {
+                $errors += 1
+                if ($null -eq $firstError) {
+                    if ($task.Exception -and $task.Exception.InnerException) {
+                        $firstError = Get-BenchExceptionMessage $task.Exception.InnerException
+                    }
+                    else {
+                        $firstError = "concurrent request failed"
+                    }
+                }
+                continue
+            }
+            if ($task.IsCanceled) {
+                $errors += 1
+                if ($null -eq $firstError) {
+                    $firstError = "concurrent request was canceled"
+                }
+                continue
+            }
+
+            $response = $null
+            try {
+                $response = $task.GetAwaiter().GetResult()
+                $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                $contentType = $null
+                if ($null -ne $response.Content.Headers.ContentType) {
+                    $contentType = $response.Content.Headers.ContentType.ToString()
+                }
+                $check = Test-BenchResponse $Workload @{
+                    status = [int]$response.StatusCode
+                    body = $body
+                    contentType = $contentType
+                }
+                if ($null -ne $check) {
+                    $errors += 1
+                    if ($null -eq $firstError) {
+                        $firstError = $check
+                    }
+                }
+            }
+            catch {
+                $errors += 1
+                if ($null -eq $firstError) {
+                    $firstError = Get-BenchExceptionMessage $_.Exception
+                }
+            }
+            finally {
+                if ($null -ne $response) {
+                    $response.Dispose()
+                }
+            }
+        }
+    }
+    catch {
+        $errors += $Count
+        if ($null -eq $firstError) {
+            $firstError = Get-BenchExceptionMessage $_.Exception
+        }
+    }
+    finally {
+        $watch.Stop()
+        foreach ($request in $requests) {
+            $request.Dispose()
+        }
+    }
+
+    return [ordered]@{
+        elapsedMs = $watch.Elapsed.TotalMilliseconds
+        errors = $errors
+        firstError = $firstError
+    }
+}
+
+function Invoke-ConcurrentHttpWorkload {
+    param(
+        [System.Net.Http.HttpClient]$Client,
+        [string]$BaseUrl,
+        [hashtable]$Workload,
+        $Process,
+        [int]$Warmup,
+        [int]$Measured
+    )
+
+    $concurrency = [int]$Workload.concurrency
+    if ($concurrency -lt 1) {
+        $concurrency = 1
+    }
+
+    $errors = 0
+    $firstError = $null
+    $latencies = @()
+    $remainingWarmup = $Warmup
+    while ($remainingWarmup -gt 0) {
+        $batchSize = [Math]::Min($concurrency, $remainingWarmup)
+        $batch = Invoke-ConcurrentHttpBatch $Client $BaseUrl $Workload $batchSize
+        $errors += $batch.errors
+        if ($null -eq $firstError -and $null -ne $batch.firstError) {
+            $firstError = $batch.firstError
+        }
+        $remainingWarmup -= $batchSize
+    }
+
+    $profileBefore = Get-BenchProcessSnapshot $Process
+    $wall = [System.Diagnostics.Stopwatch]::StartNew()
+    $remainingMeasured = $Measured
+    $measuredBatches = 0
+    while ($remainingMeasured -gt 0) {
+        $batchSize = [Math]::Min($concurrency, $remainingMeasured)
+        $batch = Invoke-ConcurrentHttpBatch $Client $BaseUrl $Workload $batchSize
+        $measuredBatches += 1
+        if ($batch.errors -eq 0) {
+            $latencies += $batch.elapsedMs
+        }
+        $errors += $batch.errors
+        if ($null -eq $firstError -and $null -ne $batch.firstError) {
+            $firstError = $batch.firstError
+        }
+        $remainingMeasured -= $batchSize
+    }
+    $wall.Stop()
+    $profileAfter = Get-BenchProcessSnapshot $Process
+
+    $rps = $null
+    if ($wall.Elapsed.TotalMilliseconds -gt 0 -and $Measured -gt 0) {
+        $rps = $Measured / ($wall.Elapsed.TotalMilliseconds / 1000.0)
+    }
+
+    return [ordered]@{
+        latencies = [double[]]$latencies
+        errors = $errors
+        firstError = $firstError
+        wallMs = [Math]::Round($wall.Elapsed.TotalMilliseconds, 4)
+        measuredBatches = $measuredBatches
+        requestsPerSecond = $rps
+        profile = Get-BenchProcessProfile $profileBefore $profileAfter $Measured
+    }
+}
+
 function Get-HttpWorkloads {
     return @(
         @{ id = "http.health"; method = "GET"; path = "/health"; expectedStatus = 200; expectedBody = "ok"; expectedContentType = "text/plain" },
@@ -464,6 +767,15 @@ function Get-HttpWorkloads {
         @{ id = "http.route_param"; method = "GET"; path = "/hello/Ada"; expectedStatus = 200; expectedBody = '{"hello":"Ada"}'; expectedContentType = "application/json" },
         @{ id = "http.query"; method = "GET"; path = "/query?x=1&y=2"; expectedStatus = 200; expectedBody = '{"x":"1","y":"2"}'; expectedContentType = "application/json" },
         @{ id = "http.post_json"; method = "POST"; path = "/echo"; body = '{"n":1}'; expectedStatus = 200; expectedBody = '{"received":true}'; expectedContentType = "application/json" }
+    )
+}
+
+function Get-ConcurrencyWorkloads {
+    return @(
+        @{ id = "concurrency.health.4"; method = "GET"; path = "/health"; concurrency = 4; expectedStatus = 200; expectedBody = "ok"; expectedContentType = "text/plain" },
+        @{ id = "concurrency.json.16"; method = "GET"; path = "/json"; concurrency = 16; expectedStatus = 200; expectedBody = '{"ok":true}'; expectedContentType = "application/json" },
+        @{ id = "concurrency.route_param.16"; method = "GET"; path = "/hello/Ada"; concurrency = 16; expectedStatus = 200; expectedBody = '{"hello":"Ada"}'; expectedContentType = "application/json" },
+        @{ id = "concurrency.post_json.32"; method = "POST"; path = "/echo"; body = '{"n":1}'; concurrency = 32; expectedStatus = 200; expectedBody = '{"received":true}'; expectedContentType = "application/json" }
     )
 }
 
@@ -842,30 +1154,47 @@ function Invoke-HttpSuiteForRuntime {
                 continue
             }
 
+            if ($SuiteName -eq "concurrency" -or $workload.concurrency) {
+                $measurement = Invoke-ConcurrentHttpWorkload $client $baseUrl $workload $process $WarmupRequests $Requests
+                $status = $(if ($measurement.errors -eq 0) { "PASS" } else { "FAIL" })
+                $reason = $(if ($measurement.errors -eq 0) { $null } else { $measurement.firstError })
+                $results += New-BenchResult `
+                    $workload.id `
+                    $SuiteName `
+                    $RuntimeName `
+                    $status `
+                    $reason `
+                    $WarmupRequests `
+                    $Requests `
+                    -LatenciesMs $measurement.latencies `
+                    -Errors $measurement.errors `
+                    -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
+                    -RequestsPerSecond $measurement.requestsPerSecond `
+                    -SuppressThroughput:($measurement.errors -ne 0) `
+                    -Profile $measurement.profile `
+                    -Correctness @{ checked = $true; status = $status; details = $(if ($measurement.errors -eq 0) { "status, content-type, and body validated" } else { $measurement.firstError }) } `
+                    -Extra @{
+                        concurrency = [int]$workload.concurrency
+                        wallMs = $measurement.wallMs
+                        measuredBatches = $measurement.measuredBatches
+                        latencyModel = "concurrent batch wall time"
+                        routeCount = $(if ($workload.routeCount) { $workload.routeCount } else { $null })
+                    }
+                continue
+            }
+
             $latencies = @()
             $errors = 0
             $firstError = $null
-            $headers = $workload.headers
-
+            $profileBefore = $null
             for ($iteration = 0; $iteration -lt ($WarmupRequests + $Requests); $iteration += 1) {
+                if ($iteration -eq $WarmupRequests) {
+                    $profileBefore = Get-BenchProcessSnapshot $process
+                }
+                $request = $null
+                $response = $null
                 try {
-                    $request = [System.Net.Http.HttpRequestMessage]::new(
-                        [System.Net.Http.HttpMethod]::new($workload.method),
-                        "$baseUrl$($workload.path)"
-                    )
-                    if ($null -ne $workload.body) {
-                        $request.Content = [System.Net.Http.StringContent]::new(
-                            $workload.body,
-                            [System.Text.Encoding]::UTF8,
-                            "application/json"
-                        )
-                    }
-                    if ($headers) {
-                        foreach ($header in $headers.Keys) {
-                            $request.Headers.TryAddWithoutValidation($header, [string]$headers[$header]) | Out-Null
-                        }
-                    }
-
+                    $request = New-BenchHttpRequestMessage $workload $baseUrl
                     $watch = [System.Diagnostics.Stopwatch]::StartNew()
                     $response = $client.SendAsync($request).GetAwaiter().GetResult()
                     $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
@@ -892,11 +1221,21 @@ function Invoke-HttpSuiteForRuntime {
                 catch {
                     $errors += 1
                     if ($null -eq $firstError) {
-                        $firstError = $_.Exception.Message
+                        $firstError = Get-BenchExceptionMessage $_.Exception
+                    }
+                }
+                finally {
+                    if ($null -ne $response) {
+                        $response.Dispose()
+                    }
+                    if ($null -ne $request) {
+                        $request.Dispose()
                     }
                 }
             }
 
+            $profileAfter = Get-BenchProcessSnapshot $process
+            $profile = Get-BenchProcessProfile $profileBefore $profileAfter $latencies.Count
             $status = $(if ($errors -eq 0) { "PASS" } else { "FAIL" })
             $reason = $(if ($errors -eq 0) { $null } else { $firstError })
             $results += New-BenchResult `
@@ -910,6 +1249,7 @@ function Invoke-HttpSuiteForRuntime {
                 -LatenciesMs $latencies `
                 -Errors $errors `
                 -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
+                -Profile $profile `
                 -Correctness @{ checked = $true; status = $status; details = $(if ($errors -eq 0) { "status, content-type, and body validated" } else { $firstError }) } `
                 -Extra @{ routeCount = $(if ($workload.routeCount) { $workload.routeCount } else { $null }) }
         }
@@ -1141,6 +1481,11 @@ foreach ($suiteName in $selectedSuites) {
     elseif ($suiteName -eq "bridge") {
         foreach ($runtimeName in $selectedRuntimes) {
             $allResults += Invoke-HttpSuiteForRuntime $runtimeName $runtimeInfo[$runtimeName] "bridge" (Get-BridgeWorkloads)
+        }
+    }
+    elseif ($suiteName -eq "concurrency") {
+        foreach ($runtimeName in $selectedRuntimes) {
+            $allResults += Invoke-HttpSuiteForRuntime $runtimeName $runtimeInfo[$runtimeName] "concurrency" (Get-ConcurrencyWorkloads)
         }
     }
     elseif ($suiteName -eq "middleware") {
