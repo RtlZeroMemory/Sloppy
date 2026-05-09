@@ -66,6 +66,10 @@ mapped error responses like 404). It is non-zero only on internal
 failures (parse, V8 init, target validation).
 
 `--once` doesn't open a listener, so `--host` and `--port` are ignored.
+It currently creates a minimal synthetic request from only the method and
+target. There are no CLI flags yet for request headers or body bytes. Use the
+app test host for handler tests that need JSON bodies, request headers, CORS
+preflight detail, or request-scope cleanup without entering V8.
 
 ## Flags
 

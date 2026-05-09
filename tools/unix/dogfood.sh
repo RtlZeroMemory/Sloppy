@@ -55,7 +55,7 @@ else
   exit 1
 fi
 
-"$python_bin" - "$manifest_path" hello-artifact hello-source-input package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-v2-app <<'PY'
+"$python_bin" - "$manifest_path" hello-artifact hello-source-input prealpha-control-plane package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-v2-app <<'PY'
 import json
 import sys
 
@@ -114,6 +114,11 @@ print(json.dumps({
             "reason": "Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated.",
         },
         {
+            "lane": "prealpha-control-plane",
+            "status": "UNAVAILABLE",
+            "reason": "Unix static dogfood validates the catalog only; positive project-mode execution remains V8-gated.",
+        },
+        {
             "lane": "package outside-checkout",
             "status": package_status,
             "reason": package_reason,
@@ -123,6 +128,7 @@ print(json.dumps({
 PY
 else
   echo "dogfood: source-input: UNAVAILABLE - Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated."
+  echo "dogfood: prealpha-control-plane: UNAVAILABLE - Unix static dogfood validates the catalog only; positive project-mode execution remains V8-gated."
   echo "dogfood: package outside-checkout: $package_status - $package_reason"
   echo "dogfood harness completed."
 fi

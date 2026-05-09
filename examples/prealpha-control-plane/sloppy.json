@@ -1,0 +1,5 @@
+{
+  "entry": "src/main.js",
+  "outDir": ".sloppy",
+  "environment": "Development"
+}

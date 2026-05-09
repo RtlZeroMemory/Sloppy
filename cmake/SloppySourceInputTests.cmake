@@ -124,6 +124,20 @@
             set_tests_properties(sloppy.build.project_config_multifile_non_v8
                                  PROPERTIES LABELS "source-input")
             add_test(
+                NAME sloppy.build.prealpha_control_plane_project_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_COMMAND=build" "-DSLOPPY_CASE=prealpha-control-plane-build-non-v8"
+                    "-DSLOPPY_PROJECT_FIXTURE=examples/prealpha-control-plane"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
+                    "-DSLOPPY_EXPECTED_PLAN=Projects.List"
+                    "-DSLOPPY_EXPECTED_SOURCE_MAP=projects.js" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.build.prealpha_control_plane_project_non_v8
+                                 PROPERTIES LABELS "source-input;dogfood;sqlite")
+            add_test(
                 NAME sloppy.build.source_input_non_v8
                 COMMAND
                     "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
@@ -166,6 +180,22 @@
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.project_config_multifile_non_v8
                                  PROPERTIES LABELS "source-input")
+            add_test(
+                NAME sloppy.run.prealpha_control_plane_project_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=prealpha-control-plane-run-non-v8"
+                    "-DSLOPPY_PROJECT_FIXTURE=examples/prealpha-control-plane"
+                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/projects?owner=runtime"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
+                    "-DSLOPPY_EXPECTED_PLAN=Projects.List"
+                    "-DSLOPPY_EXPECTED_SOURCE_MAP=projects.js" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.prealpha_control_plane_project_non_v8
+                                 PROPERTIES LABELS "source-input;dogfood;sqlite")
         endif()
 
         add_test(
@@ -538,6 +568,24 @@
                         "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
                 set_tests_properties(conformance.users_api_sqlite.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input;sqlite")
+                add_test(
+                    NAME conformance.prealpha_control_plane.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=prealpha-control-plane-v8"
+                        "-DSLOPPY_PROJECT_FIXTURE=examples/prealpha-control-plane"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/projects?owner=runtime"
+                        "-DSLOPPY_EXPECTED_OUTPUT=Compiler Platform"
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
+                        "-DSLOPPY_EXPECTED_PLAN=Projects.List"
+                        "-DSLOPPY_EXPECTED_SOURCE_MAP=projects.js" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(
+                    conformance.prealpha_control_plane.source_input_run_once
+                    PROPERTIES LABELS "conformance;v8;source-input;dogfood;sqlite")
             endif()
             sloppy_add_framework_v2_v8_example_tests()
             add_test(

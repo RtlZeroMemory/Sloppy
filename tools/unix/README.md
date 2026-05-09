@@ -98,8 +98,8 @@ tools/unix/dev.sh dogfood
 ```
 
 The Unix dogfood script validates the shared catalog and can run package-mode smoke when a
-TAR archive is supplied. Positive source-input execution remains V8-gated and must be
-reported separately from this static Unix lane.
+TAR archive is supplied. Positive source-input and pre-alpha control-plane execution remain
+V8-gated and must be reported separately from this static Unix lane.
 
 `tools/unix/dev.sh npm-dry-run` currently reports unavailable instead of faking a Unix npm
 package generator. The committed npm package metadata is platform-neutral, but the local

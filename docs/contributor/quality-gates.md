@@ -28,6 +28,16 @@ For runtime/compiler/V8-adjacent work, also run the V8 lane:
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
+Dogfood evidence is a separate wrapper over existing lanes:
+
+```powershell
+.\tools\windows\dev.ps1 dogfood
+```
+
+Without V8 it must report V8-required dogfood lanes as `UNAVAILABLE` after
+verifying compile/diagnostic behavior. With `-EnableV8`, the same wrapper may
+record `PASS` for V8-gated hello and pre-alpha control-plane execution.
+
 ## Mandatory CI lanes
 
 Every PR runs:
@@ -50,6 +60,7 @@ These run on demand or when labels/inputs select them:
 | -------------------- | --------------------------------------------------------------- |
 | V8-gated             | Required for runtime/compiler/V8-adjacent PRs                   |
 | Source-input         | Triggered by source-input fixture changes                       |
+| Dogfood              | App/example proof catalog; wraps source-input, V8, and package evidence |
 | Package outside-checkout | `package-smoke` / `full-ci` label, or `workflow_dispatch`   |
 | Live PostgreSQL      | `live-postgres` / `live-providers` / `full-ci` label            |
 | Live SQL Server      | `live-sqlserver` / `live-providers` / `full-ci` label           |

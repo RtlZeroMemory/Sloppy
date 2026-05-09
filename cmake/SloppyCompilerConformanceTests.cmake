@@ -55,6 +55,9 @@
             conformance.users_api_sqlite.compile_artifacts users-api-sqlite
             examples/users-api-sqlite/app.js)
         sloppy_add_conformance_compile_test(
+            conformance.prealpha_control_plane.compile_artifacts prealpha-control-plane
+            examples/prealpha-control-plane/src/main.js)
+        sloppy_add_conformance_compile_test(
             conformance.source_map.compile_artifacts source-map
             compiler/tests/fixtures/source-map/input.js)
         sloppy_add_conformance_rejected_test(
@@ -124,6 +127,10 @@
             examples.users_api_sqlite.tooling users-api-sqlite examples/users-api-sqlite/app.js
             "users-api-sqlite-runtime.db" "Users.Create" "data.main" "\"findings\""
             "x-slop-capabilities")
+        sloppy_add_example_tooling_test(
+            examples.prealpha_control_plane.tooling prealpha-control-plane
+            examples/prealpha-control-plane/src/main.js "prealpha-control-plane.db"
+            "Projects.List" "data.main" "\"findings\"" "x-slop-capabilities")
         sloppy_add_framework_v2_compile_example_tests()
     endif()
 

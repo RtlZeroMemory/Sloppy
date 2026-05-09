@@ -15,6 +15,7 @@
     "FAIL",
     "SKIPPED",
     "UNAVAILABLE",
+    "DEFERRED",
     "NOT RUN"
   ],
   "scenarios": [
@@ -53,6 +54,25 @@
       "requiresV8": true,
       "defaultNonV8Result": "UNAVAILABLE",
       "evidence": "Source-input compile/diagnostic behavior is validated by the fixture harness; positive handler execution requires a V8-enabled build."
+    },
+    {
+      "id": "prealpha-control-plane",
+      "feature": "app host dogfood",
+      "status": "v8-gated",
+      "lane": "project source-input",
+      "project": "examples/prealpha-control-plane",
+      "source": "examples/prealpha-control-plane/src/main.js",
+      "once": {
+        "method": "GET",
+        "target": "/projects?owner=runtime"
+      },
+      "stdoutContains": [
+        "Compiler Platform"
+      ],
+      "requiresCompiler": true,
+      "requiresV8": true,
+      "defaultNonV8Result": "UNAVAILABLE",
+      "evidence": "The app host proof suite imports the same route modules through Testing.createHost; CMake source-input lanes verify project-mode artifacts, CLI inspection, non-V8 diagnostics, and V8-gated once execution."
     },
     {
       "id": "package-hello-artifact",

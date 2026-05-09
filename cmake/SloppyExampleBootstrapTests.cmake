@@ -33,6 +33,10 @@
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlite_basic_example.cmake")
     add_test(
+        NAME examples.prealpha_control_plane.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_prealpha_control_plane_example.cmake")
+    add_test(
         NAME examples.postgres_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_postgres_basic_example.cmake")
@@ -93,6 +97,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
         add_test(
+            NAME bootstrap.stdlib.prealpha_control_plane_dogfood
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_prealpha_control_plane_dogfood.mjs")
+        add_test(
             NAME bootstrap.stdlib.modules
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_modules.mjs")
         add_test(
@@ -120,7 +128,8 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
         set_tests_properties(
-            bootstrap.stdlib.import_graph bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
+            bootstrap.stdlib.import_graph bootstrap.stdlib.app_host_foundation
+            bootstrap.stdlib.prealpha_control_plane_dogfood bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers
             bootstrap.stdlib.codec_properties
