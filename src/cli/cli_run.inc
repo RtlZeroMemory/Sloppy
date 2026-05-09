@@ -6,12 +6,13 @@
  */
 typedef struct SlRunApp
 {
-    unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
-    unsigned char metadata_json_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char plan_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char metadata_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
-    unsigned char app_js_storage[SL_RUN_FILE_MAX_BYTES];
-    unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
-    unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];
+    unsigned char app_js_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char file_read_storage[SL_RUN_FILE_READ_ARENA_BYTES];
+    unsigned char plan_arena_storage[SL_RUN_PLAN_ARENA_BYTES];
+    unsigned char route_arena_storage[SL_RUN_ROUTE_ARENA_BYTES];
     unsigned char engine_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char logging_arena_storage[SL_RUN_LOGGING_ARENA_BYTES];
     SlScopeCleanup app_cleanups[SL_RUN_APP_SCOPE_MAX_CLEANUPS];
@@ -66,6 +67,14 @@ typedef struct SlRunApp
     bool config_has_logging_console_format;
     bool config_has_logging_file_path;
 } SlRunApp;
+
+static SlRunApp sl_run_command_app_storage;
+
+static SlRunApp* sl_run_command_app(void)
+{
+    sl_run_command_app_storage = (SlRunApp){0};
+    return &sl_run_command_app_storage;
+}
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
 
@@ -233,12 +242,18 @@ static bool sl_run_artifact_file_path(char* buffer, size_t capacity, const char*
     return sl_run_join_path(buffer, capacity, dir, sl_cli_span_cstr(leaf));
 }
 
-static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
+static int sl_run_read_file(SlRunApp* app, const char* path, unsigned char* buffer,
+                            size_t capacity, SlBytes* out)
 {
-    return sl_read_file_with_messages(path, buffer, capacity, out,
-                                      "sloppy run: artifact path not found: ",
-                                      "sloppy run: artifact file is empty or too large: ",
-                                      "sloppy run: artifact file read failed: ");
+    if (app == NULL) {
+        return 1;
+    }
+
+    return sl_read_file_with_storage(path, buffer, capacity, app->file_read_storage,
+                                     sizeof(app->file_read_storage), out,
+                                     "sloppy run: artifact path not found: ",
+                                     "sloppy run: artifact file is empty or too large: ",
+                                     "sloppy run: artifact file read failed: ");
 }
 
 static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size_t capacity,
@@ -1042,7 +1057,7 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     SlDiag diag = {0};
     SlStatus status;
 
-    if (sl_run_read_file(plan_path, app->plan_json_storage, sizeof(app->plan_json_storage),
+    if (sl_run_read_file(app, plan_path, app->plan_json_storage, sizeof(app->plan_json_storage),
                          &json) != 0)
     {
         return 1;
@@ -1451,12 +1466,12 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         return 1;
     }
 
-    if (sl_run_read_file(app_js_path, app->app_js_storage, sizeof(app->app_js_storage), &app_js) !=
-        0)
+    if (sl_run_read_file(app, app_js_path, app->app_js_storage, sizeof(app->app_js_storage),
+                         &app_js) != 0)
     {
         return 1;
     }
-    if (sl_run_read_file(source_map_path, app->metadata_json_storage,
+    if (sl_run_read_file(app, source_map_path, app->metadata_json_storage,
                          sizeof(app->metadata_json_storage), &source_map) != 0)
     {
         return 1;
@@ -2341,7 +2356,7 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
 static int sl_cli_command_build(const SlCliOptions* options)
 {
     SlSloppyRunConfig config = {0};
-    SlRunApp app = {0};
+    SlRunApp* app = NULL;
     const char* source_path = NULL;
     const char* out_dir = NULL;
     const char* environment = NULL;
@@ -2351,6 +2366,7 @@ static int sl_cli_command_build(const SlCliOptions* options)
     if (options == NULL) {
         return 1;
     }
+    app = sl_run_command_app();
 
     if (options->input_path == NULL) {
         if (options->out_explicit) {
@@ -2386,8 +2402,8 @@ static int sl_cli_command_build(const SlCliOptions* options)
         return 1;
     }
 
-    result = sl_run_load_artifacts(out_dir, "sloppy build", &app, false);
-    if (sl_run_shutdown_app(&app) != 0 && result == 0) {
+    result = sl_run_load_artifacts(out_dir, "sloppy build", app, false);
+    if (sl_run_shutdown_app(app) != 0 && result == 0) {
         result = 1;
     }
     return result;
@@ -2395,14 +2411,23 @@ static int sl_cli_command_build(const SlCliOptions* options)
 
 static int sl_cli_command_run(const SlCliOptions* options)
 {
-    SlRunApp app = {0};
-    const char* artifacts_path = options->artifacts_path;
-    const char* stdlib_path = options->stdlib_path;
-    const char* run_host = options->host;
-    uint16_t run_port = options->port;
+    SlRunApp* app = NULL;
+    const char* artifacts_path = NULL;
+    const char* stdlib_path = NULL;
+    const char* run_host = NULL;
+    uint16_t run_port = 0U;
     char source_artifacts_path[SL_RUN_PATH_MAX_BYTES];
     char package_stdlib_path[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
+
+    if (options == NULL) {
+        return 1;
+    }
+    app = sl_run_command_app();
+    artifacts_path = options->artifacts_path;
+    stdlib_path = options->stdlib_path;
+    run_host = options->host;
+    run_port = options->port;
 
     if (options->environment_explicit && artifacts_path == NULL && options->input_path != NULL &&
         !sl_run_source_input_extension_supported(options->input_path))
@@ -2452,25 +2477,25 @@ static int sl_cli_command_run(const SlCliOptions* options)
         }
     }
 
-    if (sl_run_load_app(artifacts_path, stdlib_path, &app) != 0) {
-        (void)sl_run_shutdown_app(&app);
+    if (sl_run_load_app(artifacts_path, stdlib_path, app) != 0) {
+        (void)sl_run_shutdown_app(app);
         return 1;
     }
 
     if (options->once_method != NULL) {
-        result = sl_run_once(&app, options->once_method, options->once_target);
+        result = sl_run_once(app, options->once_method, options->once_target);
     }
     else {
-        if (!options->host_explicit && app.config_has_host) {
-            run_host = app.config_host;
+        if (!options->host_explicit && app->config_has_host) {
+            run_host = app->config_host;
         }
-        if (!options->port_explicit && app.config_has_port) {
-            run_port = app.config_port;
+        if (!options->port_explicit && app->config_has_port) {
+            run_port = app->config_port;
         }
-        result = sl_run_server(&app, run_host, run_port);
+        result = sl_run_server(app, run_host, run_port);
     }
 
-    if (sl_run_shutdown_app(&app) != 0 && result == 0) {
+    if (sl_run_shutdown_app(app) != 0 && result == 0) {
         result = 1;
     }
     return result;
