@@ -61,14 +61,19 @@ That trade is intentional.
 
 ## TLS
 
-Inbound TLS exists as opt-in plumbing through OpenSSL. Configuration
-keys live under the `sloppy:server:tls:*` namespace
-(`enabled`, `certificatePath`, `privateKeyPath`); environment variable
-form is `SLOPPY__SERVER__TLS__ENABLED`, etc.
+Inbound TLS exists as opt-in plumbing through OpenSSL. Configuration keys live
+under the `sloppy:server:tls:*` namespace (`enabled`, `certificatePath`,
+`privateKeyPath`); environment variable form is
+`SLOPPY__SERVER__TLS__ENABLED`, etc.
 
-Out of scope today: ALPN selection beyond HTTP/1.1, mTLS, custom
-certificate verification, and HSTS hardening. For production you'll
-generally want a reverse proxy in front handling TLS termination.
+Outbound `HttpClient` HTTPS requests also use OpenSSL through a private V8
+bridge. The public API accepts trust-store and client-certificate path options,
+but diagnostics redact those paths and any private-key passphrase.
+
+Out of scope today: ALPN selection beyond HTTP/1.1, server-side mTLS,
+custom certificate verifier callbacks, OCSP stapling, and HSTS hardening. For
+production you'll generally want a reverse proxy in front handling TLS
+termination.
 
 ## Reporting issues
 

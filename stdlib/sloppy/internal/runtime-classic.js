@@ -4655,7 +4655,7 @@ Reason:
 
     function normalizeHttpTlsOptions(value, operation) {
         if (value === undefined) {
-            return undefined;
+            return Object.freeze({});
         }
         if (!isPlainObject(value)) {
             throw httpClientError(
@@ -4683,10 +4683,7 @@ Reason:
                 );
             }
         }
-        throw httpClientError(
-            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-            "HTTP client TLS options require a configured TLS backend; no custom TLS fallback is available.",
-        );
+        return Object.freeze({ ...value });
     }
 
     function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
@@ -4913,18 +4910,12 @@ Reason:
         if (schemeEnd <= 0) {
             throw httpClientError(
                 "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-                `${operation} requires an absolute http:// URL or a baseUrl-relative path.`,
+                `${operation} requires an absolute http:// or https:// URL or a baseUrl-relative path.`,
             );
         }
         const scheme = url.slice(0, schemeEnd).toLowerCase();
-        if (scheme === "https") {
-            throw httpClientError(
-                "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-                "HTTPS requires a configured TLS backend; no custom TLS fallback is available.",
-            );
-        }
-        if (scheme !== "http") {
-            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} supports http:// URLs only.`);
+        if (scheme !== "http" && scheme !== "https") {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} supports http:// and https:// URLs only.`);
         }
 
         const rest = url.slice(schemeEnd + 3);
@@ -4987,8 +4978,9 @@ Reason:
             );
         }
 
-        const port = parseHttpPort(portText, operation) ?? 80;
-        const headerPort = port === 80 ? "" : `:${port}`;
+        const defaultPort = scheme === "https" ? 443 : 80;
+        const port = parseHttpPort(portText, operation) ?? defaultPort;
+        const headerPort = port === defaultPort ? "" : `:${port}`;
         const resolvedHostHeader = `${hostHeader}${headerPort}`;
         if (hasHttpControlChars(resolvedHostHeader) || hasHttpControlChars(target)) {
             throw httpClientError(
@@ -5558,7 +5550,10 @@ Reason:
         appendHttpHeaders(headers, requestObject.headers, operation);
         const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
         const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
-        normalizeHttpTlsOptions(requestObject.tls, operation);
+        const tls = normalizeHttpTlsOptions(
+            requestObject.tls === undefined ? baseOptions?.tls : requestObject.tls,
+            operation,
+        );
         const maxRequestBytes =
             parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
             HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -5601,6 +5596,7 @@ Reason:
             maxResponseBytes,
             redirects,
             network,
+            tls,
             operation,
             expiresAtMs,
         });
@@ -5631,6 +5627,15 @@ Reason:
 
     function mapHttpTransportError(error) {
         const message = String(error?.message ?? error);
+        if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH", "HTTP client TLS hostname verification failed.", { cause: error });
+        }
+        if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED", "HTTP client TLS certificate validation failed.", { cause: error });
+        }
+        if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE", "HTTP client TLS backend is unavailable.", { cause: error });
+        }
         if (message.includes("SLOPPY_E_NET_DNS_FAILURE")) {
             return httpClientError("SLOPPY_E_HTTP_CLIENT_DNS_FAILED", "HTTP client DNS resolution failed.", { cause: error });
         }
@@ -5641,6 +5646,13 @@ Reason:
             return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.", { cause: error });
         }
         return httpClientError("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED", "HTTP client transport operation failed.", { cause: error });
+    }
+
+    function httpClientTlsUnavailableError() {
+        return httpClientError(
+            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+            "HTTPS requires the private outbound TLS bridge.",
+        );
     }
 
     function httpErrorMessageChain(error) {
@@ -5677,12 +5689,27 @@ Reason:
             if (remainingMs <= 0) {
                 throw httpRequestTimeoutError();
             }
-            return await TcpClient.connect({
+            const bridge = sloppyNativeNet("request");
+            const connectOptions = {
                 host: request.url.host,
                 port: request.url.port,
                 timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
                 noDelay: true,
-            });
+            };
+            if (request.url.scheme === "https") {
+                if (typeof bridge.connectTls !== "function") {
+                    throw httpClientTlsUnavailableError();
+                }
+                return new TcpConnection(
+                    bridge,
+                    await bridge.connectTls({
+                        ...connectOptions,
+                        serverName: request.url.host,
+                        tls: request.tls,
+                    }),
+                );
+            }
+            return new TcpConnection(bridge, await bridge.connect(connectOptions));
         };
 
         for (let attempt = 0; attempt < 2; attempt += 1) {

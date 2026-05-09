@@ -1178,7 +1178,7 @@ function normalizeHttpPoolOptions(value, operation) {
 
 function normalizeHttpTlsOptions(value, operation) {
     if (value === undefined) {
-        return undefined;
+        return Object.freeze({});
     }
     if (!isPlainObject(value)) {
         throw httpClientError(
@@ -1210,11 +1210,7 @@ function normalizeHttpTlsOptions(value, operation) {
             );
         }
     }
-    throw httpClientError(
-        "HttpClientTlsUnavailableError",
-        "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-        "HTTP client TLS options require a configured TLS backend; no custom TLS fallback is available.",
-    );
+    return Object.freeze({ ...value });
 }
 
 function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
@@ -1475,22 +1471,15 @@ function parseAbsoluteHttpUrl(url, operation) {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} requires an absolute http:// URL or a baseUrl-relative path.`,
+            `${operation} requires an absolute http:// or https:// URL or a baseUrl-relative path.`,
         );
     }
     const scheme = url.slice(0, schemeEnd).toLowerCase();
-    if (scheme === "https") {
-        throw httpClientError(
-            "HttpClientTlsUnavailableError",
-            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-            "HTTPS requires a configured TLS backend; no custom TLS fallback is available.",
-        );
-    }
-    if (scheme !== "http") {
+    if (scheme !== "http" && scheme !== "https") {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} supports http:// URLs only.`,
+            `${operation} supports http:// and https:// URLs only.`,
         );
     }
 
@@ -1565,8 +1554,9 @@ function parseAbsoluteHttpUrl(url, operation) {
         );
     }
 
-    const port = parseHttpPort(portText, operation) ?? 80;
-    const headerPort = port === 80 ? "" : `:${port}`;
+    const defaultPort = scheme === "https" ? 443 : 80;
+    const port = parseHttpPort(portText, operation) ?? defaultPort;
+    const headerPort = port === defaultPort ? "" : `:${port}`;
     const resolvedHostHeader = `${hostHeader}${headerPort}`;
     if (hasHttpControlChars(resolvedHostHeader) || hasHttpControlChars(target)) {
         throw httpClientError(
@@ -2304,7 +2294,10 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
     appendHttpHeaders(headers, requestObject.headers, operation);
     const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
     const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
-    normalizeHttpTlsOptions(requestObject.tls, operation);
+    const tls = normalizeHttpTlsOptions(
+        requestObject.tls === undefined ? baseOptions?.tls : requestObject.tls,
+        operation,
+    );
     const maxRequestBytes =
         parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
         HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -2352,6 +2345,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
         maxResponseBytes,
         redirects,
         network,
+        tls,
         operation,
         expiresAtMs,
     });
@@ -2382,6 +2376,30 @@ function serializeHttpRequest(request, keepAlive = false) {
 
 function mapHttpTransportError(error) {
     const message = String(error?.message ?? error);
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH")) {
+        return httpClientError(
+            "HttpClientTlsHostnameMismatchError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH",
+            "HTTP client TLS hostname verification failed.",
+            { cause: error },
+        );
+    }
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED")) {
+        return httpClientError(
+            "HttpClientTlsCertificateValidationError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED",
+            "HTTP client TLS certificate validation failed.",
+            { cause: error },
+        );
+    }
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE")) {
+        return httpClientError(
+            "HttpClientTlsUnavailableError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+            "HTTP client TLS backend is unavailable.",
+            { cause: error },
+        );
+    }
     if (message.includes("SLOPPY_E_NET_DNS_FAILURE")) {
         return httpClientError(
             "HttpClientDnsError",
@@ -2411,6 +2429,14 @@ function mapHttpTransportError(error) {
         "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
         "HTTP client transport operation failed.",
         { cause: error },
+    );
+}
+
+function httpClientTlsUnavailableError() {
+    return httpClientError(
+        "HttpClientTlsUnavailableError",
+        "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+        "HTTPS requires the private outbound TLS bridge.",
     );
 }
 
@@ -2448,12 +2474,27 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
         if (remainingMs <= 0) {
             throw httpRequestTimeoutError();
         }
-        return await TcpClient.connect({
+        const bridge = requireNetBridge();
+        const connectOptions = {
             host: request.url.host,
             port: request.url.port,
             timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
             noDelay: true,
-        });
+        };
+        if (request.url.scheme === "https") {
+            if (typeof bridge.connectTls !== "function") {
+                throw httpClientTlsUnavailableError();
+            }
+            return new TcpConnection(
+                bridge,
+                await bridge.connectTls({
+                    ...connectOptions,
+                    serverName: request.url.host,
+                    tls: request.tls,
+                }),
+            );
+        }
+        return new TcpConnection(bridge, await bridge.connect(connectOptions));
     };
 
     for (let attempt = 0; attempt < 2; attempt += 1) {

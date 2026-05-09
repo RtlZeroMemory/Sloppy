@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import tls from "node:tls";
 
 import { CancellationController, Deadline, HttpClient } from "../../stdlib/sloppy/index.js";
 
@@ -86,6 +91,193 @@ function startHttpServer(handler) {
     });
 }
 
+function derLength(length) {
+    if (length < 128) {
+        return Buffer.from([length]);
+    }
+    const bytes = [];
+    let remaining = length;
+    while (remaining > 0) {
+        bytes.unshift(remaining & 0xff);
+        remaining >>= 8;
+    }
+    return Buffer.from([0x80 | bytes.length, ...bytes]);
+}
+
+function der(tag, ...parts) {
+    const content = Buffer.concat(parts);
+    return Buffer.concat([Buffer.from([tag]), derLength(content.length), content]);
+}
+
+function derSequence(...parts) {
+    return der(0x30, ...parts);
+}
+
+function derSet(...parts) {
+    return der(0x31, ...parts);
+}
+
+function derExplicit(index, ...parts) {
+    return der(0xa0 + index, ...parts);
+}
+
+function derContextPrimitive(index, bytes) {
+    return der(0x80 | index, Buffer.from(bytes));
+}
+
+function derInteger(value) {
+    let bytes;
+    if (Buffer.isBuffer(value)) {
+        bytes = Buffer.from(value);
+    } else {
+        bytes = [];
+        let remaining = value;
+        do {
+            bytes.unshift(remaining & 0xff);
+            remaining >>= 8;
+        } while (remaining > 0);
+        bytes = Buffer.from(bytes);
+    }
+    while (bytes.length > 1 && bytes[0] === 0 && (bytes[1] & 0x80) === 0) {
+        bytes = bytes.subarray(1);
+    }
+    if ((bytes[0] & 0x80) !== 0) {
+        bytes = Buffer.concat([Buffer.from([0]), bytes]);
+    }
+    return der(0x02, bytes);
+}
+
+function derBoolean(value) {
+    return der(0x01, Buffer.from([value ? 0xff : 0]));
+}
+
+function derNull() {
+    return der(0x05);
+}
+
+function derBitString(bytes, unusedBits = 0) {
+    return der(0x03, Buffer.from([unusedBits]), Buffer.from(bytes));
+}
+
+function derOctetString(bytes) {
+    return der(0x04, Buffer.from(bytes));
+}
+
+function derUtf8String(value) {
+    return der(0x0c, Buffer.from(value, "utf8"));
+}
+
+function derGeneralizedTime(date) {
+    const stamp = date.toISOString().replace(/[-:]|\.\d{3}|T/g, "");
+    return der(0x18, Buffer.from(stamp, "ascii"));
+}
+
+function base128(value) {
+    const bytes = [value & 0x7f];
+    let remaining = value >> 7;
+    while (remaining > 0) {
+        bytes.unshift(0x80 | (remaining & 0x7f));
+        remaining >>= 7;
+    }
+    return bytes;
+}
+
+function derOid(value) {
+    const parts = value.split(".").map((part) => Number.parseInt(part, 10));
+    const bytes = [parts[0] * 40 + parts[1]];
+    for (const part of parts.slice(2)) {
+        bytes.push(...base128(part));
+    }
+    return der(0x06, Buffer.from(bytes));
+}
+
+function pem(label, bytes) {
+    const base64 = Buffer.from(bytes).toString("base64");
+    const lines = base64.match(/.{1,64}/g) ?? [];
+    return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----\n`;
+}
+
+function createTestTlsMaterial() {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        publicExponent: 0x10001,
+    });
+    const now = Date.now();
+    const algorithm = derSequence(derOid("1.2.840.113549.1.1.11"), derNull());
+    const name = derSequence(
+        derSet(derSequence(derOid("2.5.4.3"), derUtf8String("localhost"))),
+    );
+    const validity = derSequence(
+        derGeneralizedTime(new Date(now - 24 * 60 * 60 * 1000)),
+        derGeneralizedTime(new Date(now + 10 * 365 * 24 * 60 * 60 * 1000)),
+    );
+    const subjectAltName = derSequence(
+        derContextPrimitive(2, Buffer.from("localhost", "ascii")),
+        derContextPrimitive(7, Buffer.from([127, 0, 0, 1])),
+    );
+    const extensions = derExplicit(
+        3,
+        derSequence(
+            derSequence(
+                derOid("2.5.29.19"),
+                derBoolean(true),
+                derOctetString(derSequence(derBoolean(true))),
+            ),
+            derSequence(derOid("2.5.29.17"), derOctetString(subjectAltName)),
+        ),
+    );
+    const serial = crypto.randomBytes(16);
+    serial[0] &= 0x7f;
+    const tbsCertificate = derSequence(
+        derExplicit(0, derInteger(2)),
+        derInteger(serial),
+        algorithm,
+        name,
+        validity,
+        name,
+        publicKey.export({ type: "spki", format: "der" }),
+        extensions,
+    );
+    const signature = crypto.sign("sha256", tbsCertificate, privateKey);
+    const certificate = derSequence(tbsCertificate, algorithm, derBitString(signature));
+
+    return {
+        cert: pem("CERTIFICATE", certificate),
+        key: privateKey.export({ type: "pkcs8", format: "pem" }),
+    };
+}
+
+function startHttpsServer(handler, tlsMaterial) {
+    let nextConnectionId = 1;
+    const server = tls.createServer(
+        { key: tlsMaterial.key, cert: tlsMaterial.cert },
+        async (socket) => {
+            const connectionId = nextConnectionId;
+            nextConnectionId += 1;
+            socket.on("error", () => {});
+            try {
+                const request = await readSocketRequest(socket);
+                const response = await handler(request, { connectionId });
+                socket.end(response);
+            } catch {
+                socket.destroy();
+            }
+        },
+    );
+
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            const address = server.address();
+            resolve({
+                url: `https://127.0.0.1:${address.port}`,
+                close: () => new Promise((done) => server.close(done)),
+            });
+        });
+    });
+}
+
 function startPersistentHttpServer(handler) {
     let nextConnectionId = 1;
     const sockets = new Set();
@@ -158,48 +350,104 @@ function createNodeNetBridge() {
         return handle;
     }
 
+    function loadTlsMaterial(tlsOptions) {
+        const ca = [];
+        for (const key of ["caPath", "caBundlePath", "trustStorePath"]) {
+            if (tlsOptions?.[key] !== undefined) {
+                ca.push(fs.readFileSync(tlsOptions[key], "utf8"));
+            }
+        }
+        return ca.length === 0 ? undefined : ca;
+    }
+
+    function tlsServerName(value) {
+        return net.isIP(value) === 0 ? value : undefined;
+    }
+
+    function mapSocketError(error) {
+        if (error?.code === "ERR_TLS_CERT_ALTNAME_INVALID") {
+            return new Error(`SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH: ${error.message}`);
+        }
+        if (
+            error?.code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+            error?.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" ||
+            error?.code === "SELF_SIGNED_CERT_IN_CHAIN"
+        ) {
+            return new Error(
+                `SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED: ${error.message}`,
+            );
+        }
+        return new Error(`SLOPPY_E_NET_CONNECT_FAILED: ${error.message}`);
+    }
+
+    function attachSocketHandlers(socket, handle, reject) {
+        socket.once("error", (error) => {
+            const mapped = mapSocketError(error);
+            if (handles.has(handle.id)) {
+                for (const waiter of handle.waiters.splice(0)) {
+                    waiter.reject(mapped);
+                }
+            }
+            reject(mapped);
+        });
+        socket.on("data", (chunk) => {
+            handle.chunks.push(new Uint8Array(chunk));
+            resolveRead(handle);
+        });
+        socket.on("end", () => {
+            handle.ended = true;
+            for (const waiter of handle.waiters.splice(0)) {
+                waiter.reject(new Error("SLOPPY_E_NET_CONNECTION_CLOSED"));
+            }
+        });
+    }
+
+    function connectSocket(options, socketFactory, readyEvent) {
+        return new Promise((resolve, reject) => {
+            if (options.host === "dns.invalid") {
+                reject(new Error("SLOPPY_E_NET_DNS_FAILURE: deterministic test host"));
+                return;
+            }
+            const id = nextId;
+            nextId += 1;
+            const socket = socketFactory();
+            const handle = {
+                id,
+                socket,
+                chunks: [],
+                waiters: [],
+                ended: false,
+            };
+            attachSocketHandlers(socket, handle, reject);
+            socket.once(readyEvent, () => {
+                handles.set(id, handle);
+                resolve({ id });
+            });
+        });
+    }
+
     return {
         connect(options) {
-            return new Promise((resolve, reject) => {
-                if (options.host === "dns.invalid") {
-                    reject(new Error("SLOPPY_E_NET_DNS_FAILURE: deterministic test host"));
-                    return;
-                }
-                const socket = net.createConnection({ host: options.host, port: options.port });
-                const id = nextId;
-                nextId += 1;
-                const handle = {
-                    id,
-                    socket,
-                    chunks: [],
-                    waiters: [],
-                    ended: false,
-                };
+            return connectSocket(
+                options,
+                () => net.createConnection({ host: options.host, port: options.port }),
+                "connect",
+            );
+        },
 
-                socket.once("connect", () => {
-                    handles.set(id, handle);
-                    resolve({ id });
-                });
-                socket.once("error", (error) => {
-                    const mapped = new Error(`SLOPPY_E_NET_CONNECT_FAILED: ${error.message}`);
-                    if (handles.has(handle.id)) {
-                        for (const waiter of handle.waiters.splice(0)) {
-                            waiter.reject(mapped);
-                        }
-                    }
-                    reject(mapped);
-                });
-                socket.on("data", (chunk) => {
-                    handle.chunks.push(new Uint8Array(chunk));
-                    resolveRead(handle);
-                });
-                socket.on("end", () => {
-                    handle.ended = true;
-                    for (const waiter of handle.waiters.splice(0)) {
-                        waiter.reject(new Error("SLOPPY_E_NET_CONNECTION_CLOSED"));
-                    }
-                });
-            });
+        connectTls(options) {
+            return connectSocket(
+                options,
+                () =>
+                    tls.connect({
+                        host: options.host,
+                        port: options.port,
+                        servername: tlsServerName(options.serverName),
+                        ca: loadTlsMaterial(options.tls),
+                        rejectUnauthorized: options.tls?.insecureSkipVerify !== true,
+                    }),
+                "secureConnect",
+            );
         },
 
         write(handleRef, bytes) {
@@ -816,22 +1064,47 @@ await withNodeNetBridge(async () => {
     }
 });
 
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-tls-"));
+    const trustStorePath = path.join(tempDir, "localhost-cert.pem");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    let observed;
+    const server = await startHttpsServer((request) => {
+        observed = request;
+        return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 8\r\n\r\nsecureok";
+    }, tlsMaterial);
+
+    try {
+        const verified = await HttpClient.get(`${server.url}/verified`, {
+            tls: { trustStorePath },
+        });
+        assert.equal(await verified.text(), "secureok");
+        assert.equal(observed.method, "GET");
+        assert.equal(observed.target, "/verified");
+
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/untrusted`),
+            /SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED/,
+        );
+
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            tls: { insecureSkipVerify: true },
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const insecure = await client.head("/metadata");
+        assert.equal(insecure.status, 200);
+        assert.deepEqual(await insecure.bytes(), new Uint8Array(0));
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
 await assertRejectsMessage(
     () => HttpClient.get("https://127.0.0.1/"),
-    /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
-);
-
-await assertRejectsMessage(
-    async () => HttpClient.create({ tls: { caPath: "C:\\secret\\ca.pem" } }),
-    /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
-);
-
-await assertRejectsMessage(
-    () =>
-        HttpClient.get("http://127.0.0.1/", {
-            tls: { clientPrivateKeyPath: "C:\\secret\\key.pem" },
-        }),
-    /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
+    /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
 );
 
 await assertRejectsMessage(

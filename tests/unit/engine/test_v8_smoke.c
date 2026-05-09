@@ -1728,7 +1728,8 @@ static int test_net_intrinsic_namespace_is_registered(void)
                 engine, sl_str_from_cstr("v8-net-active.js"),
                 sl_str_from_cstr("globalThis.sloppy_net_active = function () {"
                                  "  const n = globalThis.__sloppy.net;"
-                                 "  const names = ['connect', 'listen', 'accept', 'write',"
+                                 "  const names = ['connect', 'connectTls', 'listen', 'accept',"
+                                 "    'write',"
                                  "    'read', 'readLine', 'readUntil', 'close', 'abort',"
                                  "    'closeListener', 'abortListener', 'connectLocal',"
                                  "    'listenLocal', 'acceptLocal', 'writeLocal', 'readLocal',"
@@ -1874,6 +1875,7 @@ static int test_http_client_feature_activates_net_intrinsic_namespace(void)
                 sl_str_from_cstr("globalThis.sloppy_http_client_net_bridge = function () {"
                                  "  const n = globalThis.__sloppy.net;"
                                  "  return n && typeof n.connect === 'function' &&"
+                                 "    typeof n.connectTls === 'function' &&"
                                  "    typeof n.write === 'function' &&"
                                  "    typeof n.readUntil === 'function' &&"
                                  "    typeof n.close === 'function'"

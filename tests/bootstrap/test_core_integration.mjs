@@ -312,7 +312,7 @@ try {
 
     await assertRejectsCode(
         HttpClient.get("https://127.0.0.1/"),
-        "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+        "SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE",
     );
 
     const queue = WorkQueue.create("core-integration-backpressure", {

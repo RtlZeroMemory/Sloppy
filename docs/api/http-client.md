@@ -1,7 +1,7 @@
 # HTTP Client
 
-`HttpClient` is the experimental cleartext HTTP/1.1 outbound client exposed
-from `sloppy` and `sloppy/net`.
+`HttpClient` is the experimental HTTP/1.1 outbound client exposed from
+`sloppy` and `sloppy/net`.
 
 ```ts
 import { HttpClient } from "sloppy";
@@ -11,6 +11,7 @@ Use method helpers for common requests:
 
 ```ts
 const response = await HttpClient.get("http://api.internal/health");
+const secure = await HttpClient.get("https://api.internal/health");
 const created = await HttpClient.postJson("http://api.internal/items", { name: "test" });
 const updated = await HttpClient.put("http://api.internal/items/1", { text: "value" });
 const metadata = await HttpClient.head("http://api.internal/items/1");
@@ -55,13 +56,16 @@ produce an empty body.
 ## Current Boundaries
 
 - `http://` URLs are supported over the runtime TCP bridge.
-- `https://` URLs fail closed with
-  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`; outbound TLS, trust-store
-  configuration, custom CA bundles, and client certificates are not implemented
-  in this lane.
-- `tls` options are validated for shape and then fail closed with
-  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` until a real outbound TLS
-  backend exists. TLS paths and passphrases are not echoed in diagnostics.
+- `https://` URLs use the private outbound TLS bridge when the runtime exposes
+  it. Missing bridge support fails closed with
+  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`.
+- `tls` accepts string path options `caPath`, `caBundlePath`,
+  `trustStorePath`, `clientCertificatePath`, `clientPrivateKeyPath`, and
+  `clientPrivateKeyPassphrase`, plus boolean `insecureSkipVerify`.
+  Certificate validation failures use
+  `SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED`; hostname
+  mismatches use `SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH`. TLS paths and
+  passphrases are not echoed in diagnostics.
 - Request bodies are bounded before dispatch. Use `maxRequestBytes` and
   `maxResponseBytes` for per-call limits.
 - Cross-origin redirects strip sensitive headers by default and can be denied

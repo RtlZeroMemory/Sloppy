@@ -19,7 +19,7 @@ configuration, services, validation, or data access.
 - [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper
-- [HTTP Client](http-client.md) — outbound cleartext HTTP/1.1 requests
+- [HTTP Client](http-client.md) — outbound HTTP/1.1 requests over HTTP or HTTPS
 - [Services](services.md) — singleton/scoped/transient DI, disposal
 - [Config](config.md) — `addObject`, typed getters, secrets, binding
 - [Logging](logging.md) — levels, sinks
