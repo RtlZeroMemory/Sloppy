@@ -16,6 +16,12 @@ import { sqlite } from "sloppy/providers/sqlite";
 
 Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...>`, `RequestContext`, `Service<T>`, `Config<...>`, `Sqlite<...>`, `Postgres<...>`, and `SqlServer<...>` are compile-time extraction shapes used by `sloppyc`.
 
+`sloppyc` does not compile every app-host feature on this page. Middleware,
+CORS, RequestId, RequestLogging, Testing, and controller mapping are bootstrap
+app-host surfaces today. In compiler input, they fail closed with specific
+diagnostics until AppGraph, Plan, and generated artifacts can encode the same
+behavior.
+
 ## Sloppy Object
 
 | API | Behavior |
@@ -88,6 +94,9 @@ Current behavior:
 CORS currently runs in the bootstrap app-host route handler path. Compiler
 extraction and emitted Plan metadata for CORS policies will be added in a separate
 compiler/runtime slice.
+
+In compiler input, `app.useCors(...)` is rejected with
+`SLOPPYC_E_UNSUPPORTED_CORS`.
 
 ## Provider Descriptors In Framework Registration
 
@@ -180,6 +189,13 @@ Check return details and thrown error messages are intentionally omitted from
 the health response. Detailed failure logging belongs in the logging and
 diagnostics surfaces.
 
+For source-input builds, `sloppyc` extracts literal
+`app.mapHealthChecks(...)` calls. The compiler emits three generated GET
+handlers and adds route-level Plan metadata with the health endpoint kind and
+selected check names. Health paths and check metadata must be static literals
+in compiler input.
+Health check functions that capture module-level locals are rejected.
+
 ## Request IDs
 
 `RequestId.defaults(options?)` returns app-host middleware that assigns one request ID
@@ -210,6 +226,10 @@ Options:
 Trusted incoming values must be non-empty HTTP header values without control
 characters. Invalid incoming values are ignored and a generated ID is used instead.
 
+`RequestId.defaults(...)` runs only in the bootstrap app-host path today.
+Compiler input that installs it with `app.use(...)` fails with
+`SLOPPYC_E_UNSUPPORTED_REQUEST_ID`.
+
 ## Request Logging
 
 `RequestLogging.defaults(options?)` returns app-host middleware that writes one
@@ -237,6 +257,10 @@ Options:
 Request logging records metadata only. It does not log request bodies or request
 headers. Authorization, cookie, API key, and proxy authorization header values stay
 out of the default log entry.
+
+`RequestLogging.defaults(...)` runs only in the bootstrap app-host path today.
+Compiler input that installs it with `app.use(...)` fails with
+`SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`.
 
 ## Static Provider Handles
 
@@ -275,6 +299,10 @@ Common enforced errors:
 - circular service dependencies
 - singleton resolving scoped dependency
 - root service resolution for non-singleton services
+
+The source-input compiler emits literal `app.services.*` and
+`builder.services.*` registrations into generated artifacts when the factory is
+an inline non-capturing function.
 
 ## ProblemDetails
 
@@ -341,3 +369,7 @@ const response = await host.get("/hello/Ada");
 Use `sloppy run --once` for compiled artifacts, Plan validation, native
 dispatch, V8 handler execution, generated typed bindings, provider bridges, and
 package/runtime layout checks.
+
+Do not import `Testing` from compiler input. `sloppyc` rejects that import with
+`SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`; use it from JavaScript tests around the
+app-host surface.

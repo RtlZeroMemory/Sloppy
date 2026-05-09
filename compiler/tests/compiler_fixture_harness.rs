@@ -46,6 +46,35 @@ fn library_api_builds_current_hello_fixture() {
 }
 
 #[test]
+fn library_api_builds_app_graph_dogfood_fixture() {
+    let root = manifest_dir();
+    let input = root.join("tests/fixtures/app-graph-dogfood/input.ts");
+    let out_dir = temp_output("library-api-app-graph-dogfood");
+    remove_dir_if_present(&out_dir);
+
+    let output = compile_file(&input, &out_dir, &CompileOptions::default())
+        .expect("app graph dogfood should compile");
+
+    assert_eq!(
+        output.plan.contents,
+        fs::read_to_string(root.join("tests/fixtures/app-graph-dogfood/expected/app.plan.json"))
+            .expect("expected plan should be readable")
+    );
+    assert_eq!(
+        output.bundle.contents,
+        fs::read_to_string(root.join("tests/fixtures/app-graph-dogfood/expected/app.js"))
+            .expect("expected bundle should be readable")
+    );
+    assert_eq!(
+        output.source_map.contents,
+        fs::read_to_string(root.join("tests/fixtures/app-graph-dogfood/expected/app.js.map"))
+            .expect("expected source map should be readable")
+    );
+
+    remove_dir_if_present(&out_dir);
+}
+
+#[test]
 fn library_api_returns_source_located_invalid_input_diagnostic() {
     let root = manifest_dir();
     let input = root.join("tests/fixtures/computed-method/input.js");

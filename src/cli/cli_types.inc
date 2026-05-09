@@ -24,6 +24,8 @@ typedef struct SlCliRoute
     SlCliSpan name;
     SlCliSpan module;
     SlCliSpan capability;
+    SlCliSpan tags[SL_CLI_MAX_ROUTE_TAGS];
+    size_t tag_count;
     SlCliSpan completeness;
     SlCliSpan source_path;
     uint64_t source_line;

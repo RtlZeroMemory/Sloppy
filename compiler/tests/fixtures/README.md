@@ -5,14 +5,15 @@ The checked-in fixture tree intentionally preserves the existing fixture names s
 compiler behavior and artifact goldens remain byte-stable. The harness treats each fixture
 as one of these categories:
 
-- success: fixtures with `input.js` and `expected/app.plan.json`, `expected/app.js`, and
-  `expected/app.js.map`;
+- success: fixtures with `input.js` or `input.ts` and `expected/app.plan.json`,
+  `expected/app.js`, and `expected/app.js.map`;
 - rejection: fixtures with `expected-diagnostics.txt`;
 - diagnostics: rejected fixtures with source-located compiler diagnostics;
 - golden artifacts: success fixture expected files;
 - source maps: success fixtures with `expected/app.js.map`;
 - compiler inference coverage: realistic supported apps, partial completeness,
-  provider-kind database metadata, function-module source graph entries, and invalid
+  provider-kind database metadata, function-module source graph entries, route
+  tags, health metadata, full AppGraph framework extraction, and invalid
   provider/effect shapes.
 
 Fixtures may contain multiple source files under fixture-local subdirectories, such as
@@ -23,3 +24,8 @@ The provider fixtures are intentionally not SQLite-only. Generated provider exec
 covered by provider-specific V8 bridge lanes, and Plan metadata uses `capabilityKind` and `providerKind`
 so PostgreSQL, SQL Server, and later non-database providers do not get forced into a
 hardcoded SQLite model.
+
+Rejected framework-surface fixtures are part of the contract. Middleware, CORS,
+RequestId, RequestLogging, controller mapping, Testing imports, and captured
+health checks must fail with explicit diagnostics until compiler artifacts can
+represent those behaviors honestly.

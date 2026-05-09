@@ -423,6 +423,7 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
                                           const SlCliRoute* route)
 {
     bool first = true;
+    size_t tag_index = 0U;
 
     sl_cli_json_escape_lower(out, route->method);
     sl_cli_write_cstr(out, ": {");
@@ -430,6 +431,15 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"operationId\": ");
         sl_cli_json_escape(out, route->name);
+    }
+    if (route->tag_count > 0U) {
+        sl_cli_openapi_emit_field_prefix(out, &first);
+        sl_cli_write_cstr(out, "\"tags\": [");
+        for (tag_index = 0U; tag_index < route->tag_count; tag_index += 1U) {
+            sl_cli_write_cstr(out, tag_index == 0U ? "" : ", ");
+            sl_cli_json_escape(out, route->tags[tag_index]);
+        }
+        sl_cli_write_cstr(out, "]");
     }
     if (!sl_cli_span_empty(route->source_path)) {
         sl_cli_openapi_emit_field_prefix(out, &first);

@@ -48,6 +48,9 @@ Current generated provider bridge support is SQLite-only. Compiler fixtures
 show that non-SQLite static provider handles such as `postgres:analytics`
 produce the unsupported provider bridge diagnostic.
 
+The compiler emits this diagnostic before generated artifacts can imply a live
+PostgreSQL or SQL Server static handle path.
+
 ## Framework V2 Typed Injection
 
 Typed provider parameters are compiler-recognized metadata shapes:
@@ -68,6 +71,10 @@ Current behavior by provider:
 
 When documenting PostgreSQL or SQL Server, name the typed-injection/runtime API
 surface and the runtime path being used.
+
+Generated typed provider wrappers read connection-string environment variables
+at request time. They do not embed connection-string values in `app.js` or
+`app.plan.json`.
 
 ## Runtime Open Contracts
 

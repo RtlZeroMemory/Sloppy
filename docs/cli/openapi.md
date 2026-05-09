@@ -24,8 +24,8 @@ A minimal OpenAPI 3 document in JSON form:
   patterns.
 - Method names mapped to OpenAPI operations.
 - Route names from `.withName(...)` become operation IDs.
-- Tags from `app.group(...).withTags(...)` and route-level tags
-  propagate.
+- Tags from `app.group(...).withTags(...)`, route metadata options, and
+  route-level tags propagate.
 
 ```json
 {
@@ -97,6 +97,8 @@ suitable for diffing.
   `x-slop-partial`).
 - Security schemes.
 - Servers or external-docs metadata.
+- Middleware, CORS, RequestId, RequestLogging, and controller behavior that the
+  current compiler rejects before Plan emission.
 
 This is enough for documentation and for sanity-checking that an API
 change matches the public contract. Pipe it into a fuller OpenAPI tool

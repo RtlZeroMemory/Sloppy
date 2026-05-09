@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-health-captured-check/input.js:6:39: SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS: health check captures unsupported identifier 'ready'
+  --> <compiler>/tests/fixtures/unsupported-health-captured-check/input.js:6:39
+   |
+6 |   checks: [{ name: "captured", check: () => ready }]
+   |                                       ^^^^^^^^^^^
+hint: Use inline health checks that only depend on their optional context parameter and local values.
