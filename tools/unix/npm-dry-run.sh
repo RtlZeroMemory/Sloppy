@@ -6,6 +6,7 @@ package_path=""
 output_dir="artifacts/npm"
 skip_install_smoke=0
 keep_temp=0
+require_v8_runtime=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -21,13 +22,17 @@ while [[ $# -gt 0 ]]; do
       skip_install_smoke=1
       shift
       ;;
+    --require-v8-runtime)
+      require_v8_runtime=1
+      shift
+      ;;
     --keep-temp)
       keep_temp=1
       shift
       ;;
     -h|--help)
       cat <<'USAGE'
-Usage: tools/unix/npm-dry-run.sh --package-path PATH [--output-dir DIR] [--skip-install-smoke]
+Usage: tools/unix/npm-dry-run.sh --package-path PATH [--output-dir DIR] [--skip-install-smoke] [--require-v8-runtime]
 
 Stages @rtlzeromemory/sloppy plus the matching platform package from a tested
 release archive, runs npm pack --dry-run, creates local tarballs, and optionally
@@ -166,6 +171,10 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
       echo "$run_output" >&2
       exit 1
     fi
+  elif [[ "$require_v8_runtime" -eq 1 ]]; then
+    echo "npm launcher run smoke required V8 runtime execution." >&2
+    echo "$run_output" >&2
+    exit 1
   elif [[ "$run_output" != *"requires V8-enabled build"* ]]; then
     echo "npm launcher run smoke failed unexpectedly." >&2
     echo "$run_output" >&2
@@ -197,10 +206,11 @@ const summary = {
   postinstallBuildOrDownload: false,
   npmPublished: false,
   tarballDirectory: process.argv[4],
-  installSmokeRun: process.argv[5] === "true"
+  installSmokeRun: process.argv[5] === "true",
+  requireV8Runtime: process.argv[6] === "true"
 };
 fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2) + "\n");
-' "$output_root/summary.json" "$package_path" "@rtlzeromemory/$platform_package_dir" "$tarball_root" "$([[ "$skip_install_smoke" -eq 0 ]] && echo true || echo false)"
+' "$output_root/summary.json" "$package_path" "@rtlzeromemory/$platform_package_dir" "$tarball_root" "$([[ "$skip_install_smoke" -eq 0 ]] && echo true || echo false)" "$([[ "$require_v8_runtime" -eq 1 ]] && echo true || echo false)"
 
 echo "npm dry-run completed without publishing packages."
 echo "npm tarballs: $tarball_root"

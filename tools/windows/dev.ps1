@@ -641,6 +641,12 @@ function Invoke-Package {
         "-Configuration",
         (Get-PackageConfiguration)
     )
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+        $nativeArgs += "-IncludeV8Runtime"
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $nativeArgs += @("-V8Root", $V8Root)
+        }
+    }
     Invoke-Native "powershell" $nativeArgs
 }
 
@@ -672,7 +678,7 @@ function Invoke-TestPackage {
         (Resolve-Path -LiteralPath $PackageMetadataPath).Path
     }
 
-    Invoke-Native "powershell" @(
+    $nativeArgs = @(
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -683,6 +689,10 @@ function Invoke-TestPackage {
         "-MetadataPath",
         $metadata
     )
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+        $nativeArgs += "-RequireV8Runtime"
+    }
+    Invoke-Native "powershell" $nativeArgs
 }
 
 function Invoke-TestInstall {
@@ -714,6 +724,9 @@ function Invoke-NpmDryRun {
     )
     if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
         $nativeArgs += @("-PackagePath", (Resolve-Path -LiteralPath $PackagePath).Path)
+    }
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+        $nativeArgs += "-RequireV8Runtime"
     }
     Invoke-Native "powershell" $nativeArgs
 }

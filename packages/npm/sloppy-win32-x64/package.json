@@ -1,6 +1,6 @@
 {
   "name": "@rtlzeromemory/sloppy-win32-x64",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Windows x64 Sloppy runtime package generated from a tested release archive.",
   "license": "SEE LICENSE IN LICENSE",
   "os": ["win32"],

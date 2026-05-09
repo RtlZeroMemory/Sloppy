@@ -4,6 +4,7 @@ param(
     [ValidateSet("alpha")]
     [string]$PublishTag = "alpha",
     [switch]$SkipInstallSmoke,
+    [switch]$RequireV8Runtime,
     [switch]$KeepTemp
 )
 
@@ -242,6 +243,8 @@ try {
             if ($runOutput -notmatch "ok") {
                 throw "npm dry-run create/build/run smoke did not return /health ok.`n$runOutput"
             }
+        } elseif ($RequireV8Runtime) {
+            throw "npm dry-run required V8 runtime execution, but run failed.`n$runOutput"
         } elseif ($runOutput -notmatch "requires V8-enabled build") {
             throw "npm dry-run create/build/run smoke failed unexpectedly.`n$runOutput"
         }
@@ -272,6 +275,7 @@ try {
         npmPublished = $false
         tarballDirectory = $tarballRoot
         installSmokeRun = (-not $SkipInstallSmoke)
+        requireV8Runtime = [bool]$RequireV8Runtime
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot "summary.json") -Encoding ASCII
 
     Write-Host "npm dry-run completed without publishing packages."

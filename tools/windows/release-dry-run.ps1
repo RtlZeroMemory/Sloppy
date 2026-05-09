@@ -3,6 +3,9 @@ param(
     [string]$OutputDir = "artifacts/packages",
     [switch]$SkipPackage,
     [switch]$SkipSmoke,
+    [switch]$IncludeV8Runtime,
+    [switch]$RequireV8Runtime,
+    [string]$V8Root = "",
     [string]$SummaryPath = "artifacts/release-dry-run/windows-summary.json"
 )
 
@@ -57,7 +60,7 @@ Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Fil
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 
 if (-not $SkipPackage) {
-    Invoke-Native $powerShellExe @(
+    $packageArgs = @(
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -68,6 +71,13 @@ if (-not $SkipPackage) {
         "-OutputDir",
         $packageDir
     )
+    if ($IncludeV8Runtime -or $RequireV8Runtime) {
+        $packageArgs += "-IncludeV8Runtime"
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $packageArgs += @("-V8Root", $V8Root)
+        }
+    }
+    Invoke-Native $powerShellExe $packageArgs
 }
 
 $packagePath = ""
@@ -85,7 +95,11 @@ if (-not $SkipSmoke) {
     if ([string]::IsNullOrWhiteSpace($packagePath)) {
         throw "release dry-run could not find a package archive under $packageDir."
     }
-    Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "test-package", "-PackagePath", $packagePath)
+    $smokeArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "test-package", "-PackagePath", $packagePath)
+    if ($RequireV8Runtime) {
+        $smokeArgs += "-EnableV8"
+    }
+    Invoke-Native $powerShellExe $smokeArgs
 }
 
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
@@ -101,6 +115,8 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $summaryFile) | Ou
     checksumPath = Join-Path $packageDir "SHA256SUMS.txt"
     packageBuilt = (-not $SkipPackage)
     packageSmokeRun = (-not $SkipSmoke)
+    includeV8Runtime = [bool]($IncludeV8Runtime -or $RequireV8Runtime)
+    requireV8Runtime = [bool]$RequireV8Runtime
     publicReleaseCreated = $false
     secretsRequired = $false
     startedAtUtc = $startedAt.ToString("o")

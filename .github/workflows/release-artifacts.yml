@@ -134,14 +134,14 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ inputs.run_package_smoke }}" -ne "true") {
-            .\tools\windows\release-dry-run.ps1 -Preset windows-release -SkipSmoke
+            .\tools\windows\release-dry-run.ps1 -Preset windows-relwithdebinfo -RequireV8Runtime -SkipSmoke
           } else {
-            .\tools\windows\release-dry-run.ps1 -Preset windows-release
+            .\tools\windows\release-dry-run.ps1 -Preset windows-relwithdebinfo -RequireV8Runtime
           }
 
       - name: npm launcher dry-run from Windows archive
         shell: pwsh
-        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip
+        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip -RequireV8Runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -248,6 +248,10 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Build Linux V8 SDK
+        shell: bash
+        run: tools/unix/dev.sh build-v8
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -255,7 +259,7 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          args=(--preset linux-clang)
+          args=(--preset linux-clang --require-v8-runtime)
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
@@ -263,7 +267,7 @@ jobs:
 
       - name: npm launcher dry-run from Linux archive
         shell: bash
-        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-linux-x64.tar.gz
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-linux-x64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'

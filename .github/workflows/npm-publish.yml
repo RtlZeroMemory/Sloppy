@@ -106,17 +106,25 @@ jobs:
           node "$launcher" --version
           node "$launcher" doctor
           mkdir -p "$temp_root/work"
-          (cd "$temp_root/work" && node "$launcher" create tmp-app --template minimal-api)
-          (cd "$temp_root/work/tmp-app" && node "$launcher" build)
-          set +e
-          run_output="$(cd "$temp_root/work/tmp-app" && node "$launcher" run --once GET /health 2>&1)"
-          run_status=$?
-          set -e
-          if [[ "$run_status" -ne 0 && "$run_output" != *"requires V8-enabled build"* ]]; then
-            echo "Local npm smoke failed unexpectedly." >&2
-            echo "$run_output" >&2
-            exit 1
-          fi
+          for template in minimal-api full-api dogfood; do
+            app="${template}-app"
+            (cd "$temp_root/work" && node "$launcher" create "$app" --template "$template")
+            test -f "$temp_root/work/$app/.gitignore"
+            test ! -e "$temp_root/work/$app/gitignore"
+            (cd "$temp_root/work/$app" && node "$launcher" build)
+            (cd "$temp_root/work/$app" && node "$launcher" routes --artifacts .sloppy --format json >/tmp/${template}-routes.json)
+            (cd "$temp_root/work/$app" && node "$launcher" doctor --artifacts .sloppy)
+            run_output="$(cd "$temp_root/work/$app" && node "$launcher" run --once GET /health)"
+            if [[ "$run_output" != *"ok"* ]]; then
+              echo "Local npm smoke did not return /health ok for $template." >&2
+              echo "$run_output" >&2
+              exit 1
+            fi
+            mkdir -p "$temp_root/work/$app/.sloppy/package"
+            printf stale > "$temp_root/work/$app/.sloppy/package/stale.txt"
+            (cd "$temp_root/work/$app" && node "$launcher" package --format json >/tmp/${template}-package.json)
+            test ! -e "$temp_root/work/$app/.sloppy/package/stale.txt"
+          done
 
       - name: npm publish dry-run
         if: ${{ inputs.publish != true }}
