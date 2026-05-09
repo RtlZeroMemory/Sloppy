@@ -5,6 +5,8 @@
 #include <string.h>
 
 #define TEST_ARENA_SIZE 65536U
+#define TEST_STRINGIFY_IMPL(value) #value
+#define TEST_STRINGIFY(value) TEST_STRINGIFY_IMPL(value)
 #define DEEP_JSON_TEN_OPEN "[[[[[[[[[["
 #define DEEP_JSON_TEN_CLOSE "]]]]]]]]]]"
 #define DEEP_JSON_MAX_DEPTH_BODY                                                                   \
@@ -12,14 +14,14 @@
         "["                                                                                        \
         "]" DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE        \
             DEEP_JSON_TEN_CLOSE
-#define DEEP_JSON_MAX_DEPTH_BODY_LENGTH 102U
+#define DEEP_JSON_MAX_DEPTH_BODY_LENGTH 102
 #define DEEP_JSON_BODY                                                                             \
     DEEP_JSON_TEN_OPEN DEEP_JSON_TEN_OPEN DEEP_JSON_TEN_OPEN DEEP_JSON_TEN_OPEN DEEP_JSON_TEN_OPEN \
         "["                                                                                        \
         "0"                                                                                        \
         "]" DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE DEEP_JSON_TEN_CLOSE        \
             DEEP_JSON_TEN_CLOSE
-#define DEEP_JSON_BODY_LENGTH 103U
+#define DEEP_JSON_BODY_LENGTH 103
 
 static int expect_true(bool condition)
 {
@@ -1223,11 +1225,11 @@ static int test_plan_backed_body_validation_rejects_excessive_json_depth(void)
         init_arena(&arena, storage, sizeof(storage)) != 0 ||
         init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         create_noop_engine(&engine_arena, &engine) != 0 ||
-        parse_request(
-            &arena,
-            "POST /deep HTTP/1.1\r\nHost: example\r\n"
-            "Content-Type: application/json\r\nContent-Length: 103\r\n\r\n" DEEP_JSON_BODY,
-            &request) != 0 ||
+        parse_request(&arena,
+                      "POST /deep HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: " TEST_STRINGIFY(
+                          DEEP_JSON_BODY_LENGTH) "\r\n\r\n" DEEP_JSON_BODY,
+                      &request) != 0 ||
         expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
@@ -1294,8 +1296,8 @@ static int test_plan_backed_body_validation_accepts_max_json_depth(void)
         create_noop_engine(&engine_arena, &engine) != 0 ||
         parse_request(&arena,
                       "POST /deep HTTP/1.1\r\nHost: example\r\n"
-                      "Content-Type: application/json\r\nContent-Length: "
-                      "102\r\n\r\n" DEEP_JSON_MAX_DEPTH_BODY,
+                      "Content-Type: application/json\r\nContent-Length: " TEST_STRINGIFY(
+                          DEEP_JSON_MAX_DEPTH_BODY_LENGTH) "\r\n\r\n" DEEP_JSON_MAX_DEPTH_BODY,
                       &request) != 0 ||
         expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
     {
@@ -1306,8 +1308,7 @@ static int test_plan_backed_body_validation_accepts_max_json_depth(void)
     if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
                                                     &request, &result, &diag),
                       SL_STATUS_UNSUPPORTED) != 0 ||
-        result.kind == SL_ENGINE_RESULT_ERROR || diag.code == SL_DIAG_REQUEST_VALIDATION_FAILED ||
-        result.response.status == 400U)
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
     {
         sl_engine_destroy(engine);
         return 158;
