@@ -154,6 +154,8 @@ set(
     net.js
     os.js
     problem-details.js
+    request-id.js
+    request-logging.js
     time.js
     workers.js
     index.js

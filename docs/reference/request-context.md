@@ -12,9 +12,14 @@ Default context (when handler is called without explicit context) includes:
 - `capabilities`
 - `config`
 - `log`
+- `request` with app-host method/path metadata when the route wrapper knows it
 - `route` (empty object by default)
+- `routePattern`
+- `requestId` when `RequestId.defaults()` middleware is installed before the handler
 
 If a caller provides context, handler receives that context instead.
+The app-host decorates missing `config`, `log`, `capabilities`, `request`, and
+route-pattern metadata so middleware can observe the same request shape.
 
 ## Compiler-Typed Context Bindings (`sloppyc`)
 

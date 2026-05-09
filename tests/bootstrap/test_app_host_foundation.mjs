@@ -19,6 +19,8 @@ import {
     Password,
     ProblemDetails,
     Random,
+    RequestId,
+    RequestLogging,
     Router,
     Results,
     Secret,
@@ -2078,6 +2080,276 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\0" }), /control characters/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x1F" }), /control characters/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\x7F" }), /control characters/);
+}
+
+{
+    function requestHeaders(values) {
+        return {
+            get(name) {
+                const lower = name.toLowerCase();
+                for (const [key, value] of Object.entries(values)) {
+                    if (key.toLowerCase() === lower) {
+                        return value;
+                    }
+                }
+                return undefined;
+            },
+        };
+    }
+
+    const app = Sloppy.create();
+    app.use(RequestId.defaults({ generator: () => "req-test-1" }));
+    app.get("/hello", (ctx) => Results.json({ requestId: ctx.requestId }));
+    const response = await app.__getRoutes()[0].handler();
+    assert.equal(response.body.requestId, "req-test-1");
+    assert.equal(response.headers["x-request-id"], "req-test-1");
+
+    const ignoredIncoming = Sloppy.create();
+    ignoredIncoming.use(RequestId.defaults({ generator: () => "req-generated" }));
+    ignoredIncoming.get("/incoming", (ctx) => Results.json({ requestId: ctx.requestId }));
+    assert.equal(
+        (await ignoredIncoming.__getRoutes()[0].handler({
+            request: { headers: requestHeaders({ "x-request-id": "client-id" }) },
+        })).body.requestId,
+        "req-generated",
+    );
+
+    const trustedIncoming = Sloppy.create();
+    trustedIncoming.use(RequestId.defaults({
+        trustIncoming: true,
+        generator: () => "req-fallback",
+    }));
+    trustedIncoming.get("/trusted", (ctx) => Results.json({ requestId: ctx.requestId }));
+    assert.equal(
+        (await trustedIncoming.__getRoutes()[0].handler({
+            request: { headers: requestHeaders({ "X-Request-ID": "client-id" }) },
+        })).body.requestId,
+        "client-id",
+    );
+    assert.equal(
+        (await trustedIncoming.__getRoutes()[0].handler({
+            request: { headers: requestHeaders({ "x-request-id": "bad\r\nvalue" }) },
+        })).body.requestId,
+        "req-fallback",
+    );
+
+    const noHeader = Sloppy.create();
+    noHeader.use(RequestId.defaults({
+        responseHeader: false,
+        generator: () => "req-no-header",
+    }));
+    noHeader.get("/no-header", (ctx) => Results.json({ requestId: ctx.requestId }));
+    assert.equal((await noHeader.__getRoutes()[0].handler()).headers, undefined);
+
+    let middlewareRequestId;
+    const downstream = Sloppy.create();
+    downstream.use(RequestId.defaults({ generator: () => "req-same" }));
+    downstream.use((ctx, next) => {
+        middlewareRequestId = ctx.requestId;
+        return next();
+    });
+    downstream.get("/same", (ctx) => Results.json({ requestId: ctx.requestId }));
+    assert.equal((await downstream.__getRoutes()[0].handler()).body.requestId, "req-same");
+    assert.equal(middlewareRequestId, "req-same");
+
+    assertThrowsMessage(() => RequestId.defaults(null), /plain object/);
+    assertThrowsMessage(() => RequestId.defaults({ header: "bad header" }), /safe unmanaged/);
+    assertThrowsMessage(() => RequestId.defaults({ header: "Content-Type" }), /safe unmanaged/);
+    assertThrowsMessage(() => RequestId.defaults({ responseHeader: "yes" }), /boolean/);
+    assertThrowsMessage(() => RequestId.defaults({ trustIncoming: "yes" }), /boolean/);
+    assertThrowsMessage(() => RequestId.defaults({ generator: "req" }), /function/);
+    await assertRejectsMessage(
+        async () => {
+            const bad = Sloppy.create();
+            bad.use(RequestId.defaults({ generator: () => "bad\nid" }));
+            bad.get("/bad", () => Results.text("bad"));
+            await bad.__getRoutes()[0].handler();
+        },
+        /safe non-empty/,
+    );
+    await assertRejectsMessage(
+        async () => {
+            const bad = Sloppy.create();
+            bad.use(RequestId.defaults({ generator: () => undefined }));
+            bad.get("/bad", () => Results.text("bad"));
+            await bad.__getRoutes()[0].handler();
+        },
+        /safe non-empty/,
+    );
+}
+
+{
+    function requestHeaders(values) {
+        return {
+            get(name) {
+                const lower = name.toLowerCase();
+                for (const [key, value] of Object.entries(values)) {
+                    if (key.toLowerCase() === lower) {
+                        return value;
+                    }
+                }
+                return undefined;
+            },
+        };
+    }
+
+    const builder = Sloppy.createBuilder();
+    const sink = builder.logging.addMemorySink();
+    const app = builder.build();
+    app.use(RequestId.defaults({ generator: () => "req-log-1" }));
+    app.use(RequestLogging.defaults());
+    app.get("/items/{id:int}", (ctx) => Results.status(202, { requestId: ctx.requestId }));
+    const response = await app.__getRoutes()[0].handler({
+        route: { id: "7" },
+        request: {
+            method: "GET",
+            path: "/items/7",
+            rawTarget: "/items/7?debug=true",
+            headers: requestHeaders({}),
+        },
+    });
+    assert.equal(response.status, 202);
+    assert.equal(sink.entries().length, 1);
+    assert.equal(sink.entries()[0].level, "info");
+    assert.equal(sink.entries()[0].message, "request completed");
+    assert.equal(sink.entries()[0].fields.method, "GET");
+    assert.equal(sink.entries()[0].fields.path, "/items/7?debug=true");
+    assert.equal(sink.entries()[0].fields.route, "/items/{id:int}");
+    assert.equal(sink.entries()[0].fields.status, 202);
+    assert.equal(sink.entries()[0].fields.requestId, "req-log-1");
+    assert.equal(Number.isInteger(sink.entries()[0].fields.durationMs), true);
+
+    const shortBuilder = Sloppy.createBuilder();
+    const shortSink = shortBuilder.logging.addMemorySink();
+    const short = shortBuilder.build();
+    short.use(RequestId.defaults({ generator: () => "req-short" }));
+    short.use(RequestLogging.defaults({ includeDuration: false }));
+    short.use(() => Results.status(418, { short: true }));
+    short.get("/short", () => Results.ok({ unreachable: true }));
+    assert.equal((await short.__getRoutes()[0].handler()).status, 418);
+    assert.deepEqual(shortSink.entries()[0].fields, {
+        method: "GET",
+        path: "/short",
+        status: 418,
+        route: "/short",
+        requestId: "req-short",
+    });
+
+    const errorBuilder = Sloppy.createBuilder();
+    const errorSink = errorBuilder.logging.addMemorySink();
+    const errorApp = errorBuilder.build();
+    errorApp.use(ProblemDetails.defaults());
+    errorApp.use(RequestId.defaults({ generator: () => "req-error" }));
+    errorApp.use(RequestLogging.defaults({ includeDuration: false }));
+    errorApp.get("/boom", () => {
+        throw new Error("SECRET_VALUE_SHOULD_NOT_LEAK");
+    });
+    const errorResponse = await errorApp.__getRoutes()[0].handler();
+    assert.equal(errorResponse.status, 500);
+    assert.equal(errorResponse.headers["x-request-id"], "req-error");
+    assert.equal(errorSink.entries()[0].fields.status, 500);
+    assert.equal(errorSink.entries()[0].fields.requestId, "req-error");
+    assert.equal(JSON.stringify(errorSink.entries()).includes("SECRET_VALUE_SHOULD_NOT_LEAK"), false);
+
+    const safeBuilder = Sloppy.createBuilder();
+    const safeSink = safeBuilder.logging.addMemorySink();
+    const safeApp = safeBuilder.build();
+    safeApp.use(RequestId.defaults({ generator: () => "req-safe" }));
+    safeApp.use(RequestLogging.defaults({ includeDuration: false }));
+    safeApp.get("/safe", () => Results.ok({ ok: true }));
+    await safeApp.__getRoutes()[0].handler({
+        request: {
+            method: "GET",
+            path: "/safe",
+            headers: requestHeaders({
+                authorization: "Bearer SECRET",
+                cookie: "session=SECRET",
+                "x-api-key": "SECRET",
+                "proxy-authorization": "Basic SECRET",
+            }),
+        },
+    });
+    const safeLog = JSON.stringify(safeSink.entries()[0]);
+    assert.equal(safeLog.includes("SECRET"), false);
+    assert.equal(safeLog.includes("authorization"), false);
+    assert.equal(safeLog.includes("cookie"), false);
+    assert.equal(safeLog.includes("x-api-key"), false);
+
+    const healthBuilder = Sloppy.createBuilder();
+    const healthSink = healthBuilder.logging.addMemorySink();
+    const healthApp = healthBuilder.build();
+    healthApp.use(RequestId.defaults({ generator: () => "req-health" }));
+    healthApp.use(RequestLogging.defaults({ includeDuration: false }));
+    healthApp.mapHealthChecks();
+    await healthApp.__getRoutes().find((route) => route.pattern === "/health").handler();
+    assert.equal(healthSink.entries()[0].fields.path, "/health");
+    assert.equal(healthSink.entries()[0].fields.status, 200);
+
+    const corsBuilder = Sloppy.createBuilder();
+    const corsSink = corsBuilder.logging.addMemorySink();
+    const corsApp = corsBuilder.build();
+    corsApp.use(RequestId.defaults({ generator: () => "req-cors" }));
+    corsApp.use(RequestLogging.defaults({ includeDuration: false }));
+    corsApp.useCors({ origins: ["https://app.example"], headers: ["x-requested-with"] });
+    corsApp.get("/cors", () => Results.ok({ ok: true }));
+    const preflight = corsApp.__getRoutes().find((route) => route.method === "OPTIONS");
+    const corsResponse = await preflight.handler({
+        request: {
+            headers: requestHeaders({
+                Origin: "https://app.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-requested-with",
+            }),
+        },
+    });
+    assert.equal(corsResponse.status, 204);
+    assert.equal(corsSink.entries()[0].fields.method, "OPTIONS");
+    assert.equal(corsSink.entries()[0].fields.path, "/cors");
+    assert.equal(corsSink.entries()[0].fields.status, 204);
+
+    const lateCorsBuilder = Sloppy.createBuilder();
+    const lateCorsSink = lateCorsBuilder.logging.addMemorySink();
+    const lateCorsApp = lateCorsBuilder.build();
+    lateCorsApp.useCors({ origins: ["https://app.example"] });
+    lateCorsApp.get("/shared-cors", () => Results.ok({ ok: true }));
+    lateCorsApp.use(RequestId.defaults({ generator: () => "req-late-cors" }));
+    lateCorsApp.use(RequestLogging.defaults({ includeDuration: false }));
+    lateCorsApp.post("/shared-cors", () => Results.ok({ ok: true }));
+    const latePreflight = lateCorsApp.__getRoutes().find((route) =>
+        route.method === "OPTIONS" && route.pattern === "/shared-cors");
+    const lateCorsResponse = await latePreflight.handler({
+        request: {
+            headers: requestHeaders({
+                Origin: "https://app.example",
+                "Access-Control-Request-Method": "POST",
+            }),
+        },
+    });
+    assert.equal(lateCorsResponse.status, 204);
+    assert.equal(lateCorsResponse.headers["x-request-id"], "req-late-cors");
+    assert.equal(lateCorsSink.entries()[0].fields.method, "OPTIONS");
+    assert.equal(lateCorsSink.entries()[0].fields.path, "/shared-cors");
+    assert.equal(lateCorsSink.entries()[0].fields.requestId, "req-late-cors");
+
+    const noReqIdBuilder = Sloppy.createBuilder();
+    const noReqIdSink = noReqIdBuilder.logging.addMemorySink();
+    const noReqIdApp = noReqIdBuilder.build();
+    noReqIdApp.use(RequestId.defaults({ generator: () => "req-noid" }));
+    noReqIdApp.use(RequestLogging.defaults({ includeDuration: false, includeRequestId: false }));
+    noReqIdApp.get("/hidden", () => Results.ok({ ok: true }));
+    await noReqIdApp.__getRoutes()[0].handler();
+    assert.deepEqual(noReqIdSink.entries()[0].fields, {
+        method: "GET",
+        path: "/hidden",
+        status: 200,
+        route: "/hidden",
+    });
+    assert.equal(Object.hasOwn(noReqIdSink.entries()[0].fields, "requestId"), false);
+
+    assertThrowsMessage(() => RequestLogging.defaults(null), /plain object/);
+    assertThrowsMessage(() => RequestLogging.defaults({ includeRoute: "yes" }), /boolean/);
+    assertThrowsMessage(() => RequestLogging.defaults({ includeDuration: "yes" }), /boolean/);
+    assertThrowsMessage(() => RequestLogging.defaults({ includeRequestId: "yes" }), /boolean/);
 }
 
 {

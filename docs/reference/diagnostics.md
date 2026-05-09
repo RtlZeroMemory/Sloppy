@@ -38,6 +38,7 @@ Implemented diagnostic coverage includes:
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
 - safe `application/problem+json` responses for Plan-backed request validation and
   `ProblemDetails.defaults()` handler failures;
+- structured app-host request log entries through the existing logger and memory sink;
 - golden snapshots for representative negative paths.
 
 The CLI does not yet expose one universal diagnostic-format switch for every command and
@@ -67,6 +68,11 @@ location.
 Redaction is required for environment/config secrets, provider connection strings,
 passphrases, private keys, tokens, and any field explicitly marked as secret. Tests should
 cover both the presence of useful context and the absence of the secret value.
+
+Request logging records request metadata only: method, path or target, status,
+route pattern, request ID, and duration. It does not log request bodies or request
+headers by default, so authorization, cookie, API key, proxy authorization, provider
+error, and connection-string values stay out of the request log entry.
 
 ## Test Coverage
 

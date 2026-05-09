@@ -4,7 +4,9 @@ This page documents the current JavaScript framework surface from `stdlib/sloppy
 
 ## Imports
 
-Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`, `ProblemDetails`, `Testing`, `schema`, `data`, `sql`).
+Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`,
+`ProblemDetails`, `RequestId`, `RequestLogging`, `Testing`, `schema`, `data`, and
+`sql`).
 
 Provider descriptor registration currently has one runtime module:
 
@@ -178,6 +180,64 @@ Check return details and thrown error messages are intentionally omitted from
 the health response. Detailed failure logging belongs in the logging and
 diagnostics surfaces.
 
+## Request IDs
+
+`RequestId.defaults(options?)` returns app-host middleware that assigns one request ID
+to each request:
+
+```ts
+import { RequestId } from "sloppy";
+
+app.use(RequestId.defaults());
+```
+
+Default behavior:
+
+- generated IDs use a stable `req-<number>` format;
+- incoming request IDs are ignored;
+- `ctx.requestId` is available to later middleware and handlers;
+- the response receives an `x-request-id` header.
+
+Options:
+
+| Option | Behavior |
+| --- | --- |
+| `header` | Header name to read/write. Default: `x-request-id`. Must be a safe unmanaged HTTP header name. |
+| `responseHeader` | Writes the response header when `true`. Default: `true`. |
+| `trustIncoming` | Uses a safe incoming header value when `true`. Default: `false`. |
+| `generator` | Function used to generate IDs. Useful for deterministic tests. |
+
+Trusted incoming values must be non-empty HTTP header values without control
+characters. Invalid incoming values are ignored and a generated ID is used instead.
+
+## Request Logging
+
+`RequestLogging.defaults(options?)` returns app-host middleware that writes one
+structured log entry when the request completes:
+
+```ts
+import { RequestId, RequestLogging } from "sloppy";
+
+app.use(RequestId.defaults());
+app.use(RequestLogging.defaults());
+```
+
+The entry message is `request completed`. Fields include the request method, path
+or target, status, route pattern when known, request ID when present, and duration
+in milliseconds when enabled.
+
+Options:
+
+| Option | Behavior |
+| --- | --- |
+| `includeRoute` | Includes the route pattern when the app-host knows it. Default: `true`. |
+| `includeDuration` | Includes `durationMs` from the host clock. Default: `true`. |
+| `includeRequestId` | Includes `requestId` when `RequestId` ran earlier in the pipeline. Default: `true`. |
+
+Request logging records metadata only. It does not log request bodies or request
+headers. Authorization, cookie, API key, and proxy authorization header values stay
+out of the default log entry.
+
 ## Static Provider Handles
 
 The current static provider handle syntax is:
@@ -251,10 +311,13 @@ Options:
 - Health checks currently register bootstrap route-table entries. Deployment
   health policy, authentication, and load-balancer integration are separate
   framework/deployment areas.
+- Request ID and request logging helpers run in the bootstrap app-host middleware
+  path. Compiler extraction and emitted Plan metadata for those helpers are separate
+  framework work.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` requires V8.
 - ProblemDetails currently provides safe global handler-error mapping. Production error
-  policy, request logging, and exception taxonomy are separate framework areas.
+  policy and exception taxonomy are separate framework areas.
 
 ## App Test Host
 

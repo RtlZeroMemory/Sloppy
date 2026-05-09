@@ -486,7 +486,7 @@ function createApp(host) {
 
             registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "GET",
@@ -496,11 +496,14 @@ function createApp(host) {
                     checks: healthCheckNames(health.checks, () => true),
                 },
                 createHealthHandler(health.checks, "aggregate"),
+                undefined,
+                middleware,
+                corsPolicy,
             ).withName("Health");
 
             registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "GET",
@@ -510,11 +513,14 @@ function createApp(host) {
                     checks: healthCheckNames(health.checks, (check) => check.liveness),
                 },
                 createHealthHandler(health.checks, "liveness"),
+                undefined,
+                middleware,
+                corsPolicy,
             ).withName("Health.Liveness");
 
             registerRoute(
                 routes,
-                host,
+                routeHost,
                 assertAppMutable,
                 currentModule,
                 "GET",
@@ -524,6 +530,9 @@ function createApp(host) {
                     checks: healthCheckNames(health.checks, (check) => check.readiness),
                 },
                 createHealthHandler(health.checks, "readiness"),
+                undefined,
+                middleware,
+                corsPolicy,
             ).withName("Health.Readiness");
 
             return app;

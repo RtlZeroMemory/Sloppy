@@ -58,6 +58,23 @@ sink.entries();
 expect(sink.entries().some((e) => e.level === "error")).toBe(false);
 ```
 
+## Request logging
+
+Use `RequestLogging.defaults()` to write one structured entry per completed
+app-host request. Install `RequestId.defaults()` first when you want the entry to
+include a request ID:
+
+```ts
+import { RequestId, RequestLogging } from "sloppy";
+
+app.use(RequestId.defaults());
+app.use(RequestLogging.defaults());
+```
+
+The default entry includes method, path or target, status, route pattern when
+known, request ID when present, and `durationMs`. Request bodies and request
+headers are not logged.
+
 ## Sinks
 
 `addMemorySink()` is the only sink available from the JS builder today.

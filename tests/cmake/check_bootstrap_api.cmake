@@ -6,6 +6,8 @@ set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
 set(problem_details_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/problem-details.js")
+set(request_id_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-id.js")
+set(request_logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-logging.js")
 set(testing_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testing.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
@@ -18,7 +20,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -32,6 +34,8 @@ file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
 file(READ "${problem_details_source}" problem_details_js)
+file(READ "${request_id_source}" request_id_js)
+file(READ "${request_logging_source}" request_logging_js)
 file(READ "${testing_source}" testing_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
@@ -246,6 +250,28 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "const DEFAULT_HEADER = \"x-request-id\""
+        "function headerValueSafe(value)"
+        "trustIncoming"
+        "responseHeader"
+        "generator"
+        "requestIdMiddleware"
+        "Object.freeze")
+    require_substring("${request_id_js}" "${required_pattern}" "request-id.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "includeRoute"
+        "includeDuration"
+        "includeRequestId"
+        "request completed"
+        "durationMs"
+        "requestLoggingMiddleware"
+        "Object.freeze")
+    require_substring("${request_logging_js}" "${required_pattern}" "request-logging.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "function createTestHost(app)"
         "function responseFromResult(result)"
         "function matchRoutePattern(pattern, path)"
@@ -329,7 +355,7 @@ foreach(required_pattern IN ITEMS
         "groupPrefix"
         "groupName"
         "handler must be a function"
-        "route: Object.freeze({})"
+        "route: {}"
         "Object.freeze")
     require_substring("${routes_js}" "${required_pattern}" "internal/routes.js is missing expected app-host routing pattern")
 endforeach()
@@ -428,7 +454,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { Results }" "export { schema }" "export { Testing }")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "export { Testing }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 
