@@ -96,7 +96,7 @@ Important repository areas:
 | `tools/` | Windows and Unix contributor scripts. |
 | `docs/` | Product, contributor, and internals documentation. |
 
-## What Works Today
+## Current Limits
 
 - Production hardening is still future work.
 - Runtime handler execution requires V8.
