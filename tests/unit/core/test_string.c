@@ -100,9 +100,12 @@ static int test_hashing(void)
     SlStr embedded_str = sl_str_from_parts(embedded, sizeof(embedded));
     SlStr same_embedded_str = sl_str_from_parts(same_embedded, sizeof(same_embedded));
     SlStr hello_str = sl_str_from_cstr("hello");
+    SlStr nonnull_empty_str = sl_str_from_parts("x", 0U);
     uint64_t hash = 0U;
     uint64_t same_hash = 0U;
     uint64_t hello_hash = 0U;
+    uint64_t empty_hash = 0U;
+    uint64_t nonnull_empty_hash = 0U;
     uint64_t sentinel_hash = 123U;
 
     if (expect_status(sl_str_hash(embedded_str, &hash), SL_STATUS_OK) != 0 ||
@@ -116,6 +119,13 @@ static int test_hashing(void)
         hello_hash != UINT64_C(0x26c7827d889f6da3))
     {
         return 13;
+    }
+
+    if (expect_status(sl_str_hash(sl_str_empty(), &empty_hash), SL_STATUS_OK) != 0 ||
+        expect_status(sl_str_hash(nonnull_empty_str, &nonnull_empty_hash), SL_STATUS_OK) != 0 ||
+        empty_hash != nonnull_empty_hash)
+    {
+        return 14;
     }
 
     if (expect_status(sl_str_hash(sl_str_from_parts(NULL, 1U), &sentinel_hash),
