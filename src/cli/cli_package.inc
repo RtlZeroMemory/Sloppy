@@ -98,6 +98,37 @@ static void sl_package_cleanup_partial(const char* package_dir)
     }
 }
 
+static int sl_package_prepare_clean_directory(const char* package_dir)
+{
+    SlStatus status;
+    bool exists = false;
+
+    if (package_dir == NULL || package_dir[0] == '\0') {
+        return 1;
+    }
+    status = sl_fs_exists(sl_str_from_cstr(package_dir), &exists, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy package: failed to inspect package directory: ",
+                                      package_dir, "\n");
+        return 1;
+    }
+    if (exists) {
+        status = sl_fs_delete_directory(sl_str_from_cstr(package_dir), true, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_error_with_value("sloppy package: failed to clean package directory: ",
+                                          package_dir, "\n");
+            return 1;
+        }
+    }
+    status = sl_fs_create_directory(sl_str_from_cstr(package_dir), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy package: failed to create package directory: ",
+                                      package_dir, "\n");
+        return 1;
+    }
+    return 0;
+}
+
 static int sl_package_copy_artifacts(const char* out_dir, const char* package_dir,
                                      const SlRunApp* app)
 {
@@ -114,10 +145,7 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         return 1;
     }
 
-    status = sl_fs_create_directory(sl_str_from_cstr(package_dir), true, NULL);
-    if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy package: failed to create package directory: ",
-                                      package_dir, "\n");
+    if (sl_package_prepare_clean_directory(package_dir) != 0) {
         return 1;
     }
     status = sl_fs_create_directory(sl_str_from_cstr(artifacts_dir), true, NULL);

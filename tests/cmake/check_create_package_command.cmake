@@ -92,6 +92,9 @@ foreach(artifact IN ITEMS app.plan.json app.js app.js.map)
     endif()
 endforeach()
 
+file(MAKE_DIRECTORY "${project_dir}/.sloppy/package")
+file(WRITE "${project_dir}/.sloppy/package/stale.txt" "stale package output\n")
+
 function(run_artifacts_metadata description expected_pattern)
     execute_process(
         COMMAND "${SLOPPY_CLI}" ${ARGN} --artifacts .sloppy
@@ -135,6 +138,9 @@ foreach(packaged IN ITEMS manifest.json artifacts/app.plan.json artifacts/app.js
         message(FATAL_ERROR "sloppy package did not emit ${packaged}")
     endif()
 endforeach()
+if(EXISTS "${project_dir}/.sloppy/package/stale.txt")
+    message(FATAL_ERROR "sloppy package did not remove stale package output")
+endif()
 file(READ "${project_dir}/.sloppy/package/manifest.json" manifest_json)
 if(NOT manifest_json MATCHES "sloppy.app-package.v1")
     message(FATAL_ERROR "sloppy package manifest is missing schema\n${manifest_json}")

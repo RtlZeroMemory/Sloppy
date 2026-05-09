@@ -3809,10 +3809,16 @@ fn middleware_from_argument(
     source: &str,
     source_name: &str,
     argument: &Argument<'_>,
-    state: &AppState,
+    state: &mut AppState,
 ) -> Result<FrameworkMiddleware, Diagnostic> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
+            if arrow_requires_results_import(function)
+                && !state.results_imported
+                && state.results_required_span.is_none()
+            {
+                state.results_required_span = Some(function.span);
+            }
             validate_middleware_arrow(path, function, state)?;
             let source_text = source_slice(source, function.span).ok_or_else(|| {
                 Diagnostic::new(
@@ -3832,6 +3838,12 @@ fn middleware_from_argument(
             })
         }
         Argument::FunctionExpression(function) => {
+            if function_requires_results_import(function)
+                && !state.results_imported
+                && state.results_required_span.is_none()
+            {
+                state.results_required_span = Some(function.span);
+            }
             validate_middleware_function(path, function, state)?;
             let source_text = source_slice(source, function.span).ok_or_else(|| {
                 Diagnostic::new(
@@ -6042,108 +6054,108 @@ fn extract_relative_module(
     let extract_start = Instant::now();
     let mut module_results_imported = false;
     for statement in &parsed.program.body {
-        match statement {
-            Statement::ImportDeclaration(import) => {
-                let import_source = import.source.value.as_str();
-                if import_source == "sloppy" {
-                    module_results_imported |=
-                        validate_module_sloppy_root_import(&imported.path, import)?;
-                    continue;
-                }
-                if import_source == "sloppy/time" {
-                    validate_module_sloppy_time_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_time_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/crypto" {
-                    validate_module_sloppy_crypto_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_crypto_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/codec" {
-                    validate_module_sloppy_codec_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_codec_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/net" {
-                    validate_module_sloppy_net_import(&imported.path, import)?;
-                    if let Some(specifiers) = &import.specifiers {
-                        for specifier in specifiers {
-                            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) =
-                                specifier
-                            {
-                                if import_specifier_is_runtime_value(import, specifier) {
-                                    let imported_name = specifier.imported.name().as_str();
-                                    mark_sloppy_net_runtime_usage(
-                                        &mut graph.uses_net_runtime,
-                                        &mut graph.uses_http_client_runtime,
-                                        imported_name,
-                                    );
-                                }
-                            }
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        let import_source = import.source.value.as_str();
+        if import_source == "sloppy" {
+            module_results_imported |= validate_module_sloppy_root_import(&imported.path, import)?;
+            continue;
+        }
+        if import_source == "sloppy/time" {
+            validate_module_sloppy_time_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_time_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/crypto" {
+            validate_module_sloppy_crypto_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_crypto_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/codec" {
+            validate_module_sloppy_codec_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_codec_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/net" {
+            validate_module_sloppy_net_import(&imported.path, import)?;
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
+                        if import_specifier_is_runtime_value(import, specifier) {
+                            let imported_name = specifier.imported.name().as_str();
+                            mark_sloppy_net_runtime_usage(
+                                &mut graph.uses_net_runtime,
+                                &mut graph.uses_http_client_runtime,
+                                imported_name,
+                            );
                         }
                     }
-                    continue;
-                }
-                if import_source == "sloppy/os" {
-                    validate_module_sloppy_os_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_os_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source == "sloppy/workers" {
-                    validate_module_sloppy_workers_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_workers_runtime = true;
-                    }
-                    continue;
-                }
-                if import_source.starts_with("./") || import_source.starts_with("../") {
-                    let nested = resolve_relative_import(&imported.path, import_source)
-                        .ok_or_else(|| {
-                            Diagnostic::new(
-                                "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
-                                format!(
-                                    "relative import \"{import_source}\" could not be resolved"
-                                ),
-                            )
-                            .with_path(&imported.path)
-                            .with_span(import.source.span)
-                        })?;
-                    if graph.visiting.contains(&nested) {
-                        return Err(Diagnostic::new(
-                            "SLOPPYC_E_CIRCULAR_IMPORT",
-                            "circular relative imports are not supported",
-                        )
-                        .with_path(&imported.path)
-                        .with_span(import.source.span));
-                    }
-                    if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
-                        return Err(Diagnostic::new(
-                            "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
-                            "relative imports must stay within the source root",
-                        )
-                        .with_path(&imported.path)
-                        .with_span(import.source.span));
-                    }
-                    continue;
-                }
-                if import_source != "sloppy/providers/sqlite" {
-                    return Err(Diagnostic::new(
-                        "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-                        format!("unsupported import specifier \"{import_source}\""),
-                    )
-                    .with_path(&imported.path)
-                    .with_span(import.source.span));
                 }
             }
+            continue;
+        }
+        if import_source == "sloppy/os" {
+            validate_module_sloppy_os_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_os_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/workers" {
+            validate_module_sloppy_workers_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_workers_runtime = true;
+            }
+            continue;
+        }
+        if import_source.starts_with("./") || import_source.starts_with("../") {
+            let nested =
+                resolve_relative_import(&imported.path, import_source).ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+                        format!("relative import \"{import_source}\" could not be resolved"),
+                    )
+                    .with_path(&imported.path)
+                    .with_span(import.source.span)
+                })?;
+            if graph.visiting.contains(&nested) {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_CIRCULAR_IMPORT",
+                    "circular relative imports are not supported",
+                )
+                .with_path(&imported.path)
+                .with_span(import.source.span));
+            }
+            if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
+                    "relative imports must stay within the source root",
+                )
+                .with_path(&imported.path)
+                .with_span(import.source.span));
+            }
+            continue;
+        }
+        if import_source != "sloppy/providers/sqlite" {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                format!("unsupported import specifier \"{import_source}\""),
+            )
+            .with_path(&imported.path)
+            .with_span(import.source.span));
+        }
+    }
+
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::ImportDeclaration(_) => {}
             Statement::ExportNamedDeclaration(export) => {
                 let Some(Declaration::FunctionDeclaration(function)) = &export.declaration else {
                     return Err(Diagnostic::new(

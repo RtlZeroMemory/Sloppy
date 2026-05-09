@@ -78,6 +78,35 @@ static bool sl_create_destination_is_empty(const char* path)
     return sl_status_is_ok(status) && list.count == 0U;
 }
 
+static bool sl_create_path_exists(const char* path, bool* exists)
+{
+    SlStatus status;
+
+    if (exists == NULL) {
+        return false;
+    }
+    *exists = false;
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+    status = sl_fs_exists(sl_str_from_cstr(path), exists, NULL);
+    return sl_status_is_ok(status);
+}
+
+static void sl_create_cleanup_new_destination(const char* path)
+{
+    SlStatus status;
+
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+    status = sl_fs_delete_directory(sl_str_from_cstr(path), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy create: warning: failed to clean partial output: ",
+                                      path, "\n");
+    }
+}
+
 static bool sl_create_join_path(char* buffer, size_t capacity, const char* dir, const char* leaf)
 {
     return sl_run_join_path(buffer, capacity, dir, sl_cli_span_cstr(leaf));
@@ -249,6 +278,7 @@ static int sl_cli_command_create(const SlCliOptions* options)
     const char* project_name = NULL;
     const char* template_name = NULL;
     char template_path[SL_RUN_PATH_MAX_BYTES];
+    bool destination_existed = true;
 
     if (options == NULL) {
         return 1;
@@ -283,8 +313,14 @@ static int sl_cli_command_create(const SlCliOptions* options)
             "\nUse --force to copy template files over existing files; stale files are left alone.\n");
         return 1;
     }
+    if (!sl_create_path_exists(project_name, &destination_existed)) {
+        destination_existed = true;
+    }
 
     if (sl_create_copy_directory(template_path, project_name) != 0) {
+        if (!destination_existed) {
+            sl_create_cleanup_new_destination(project_name);
+        }
         return 1;
     }
 

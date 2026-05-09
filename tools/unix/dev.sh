@@ -80,7 +80,7 @@ resolve_vcpkg_toolchain_arg() {
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH] [--enable-v8] [--v8-root DIR]
+Usage: tools/unix/dev.sh <command> [--preset PRESET] [--package-path PATH] [--enable-v8] [--v8-root DIR] [--require-v8-runtime]
 
 Commands:
   doctor        Validate required Unix host tools and optional dependency status.
@@ -100,6 +100,8 @@ Commands:
 
 Use --enable-v8 for the Linux V8 build/package lane after tools/unix/dev.sh build-v8
 or an extracted Sloppy-owned SDK has populated .sdeps/v8/linux-x64.
+Use --require-v8-runtime with test-package or test-install to require live V8
+execution instead of accepting the documented non-V8 run --once failure path.
 USAGE
 }
 

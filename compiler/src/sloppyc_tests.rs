@@ -1521,6 +1521,81 @@ export default app;
 }
 
 #[test]
+fn middleware_results_handler_requires_results_import_in_same_file() {
+    let root = fixture_temp_dir("middleware-results-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results.status(401));
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("middleware Results usage should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_results_handler_with_comment_requires_results_import() {
+    let root = fixture_temp_dir("middleware-results-comment-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results /* comment */ .status(401));
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("middleware Results usage should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_string_mentioning_results_does_not_require_results_import() {
+    let root = fixture_temp_dir("middleware-results-string-no-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => {
+  const text = "Results.status";
+  // Results.status(401) should not affect import validation.
+  return next();
+});
+app.mapHealthChecks({ path: "/health", checks: [] });
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("middleware string/comment mention should not require Results import");
+    assert_eq!(app.routes.len(), 1);
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn middleware_results_handler_with_import_compiles() {
+    let root = fixture_temp_dir("middleware-results-with-import");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.use((ctx, next) => Results.status(401));
+app.get("/health", () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("middleware Results import should compile");
+    assert_eq!(app.routes.len(), 1);
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn function_module_results_handler_requires_module_results_import() {
     let root = fixture_temp_dir("module-results-requires-import");
     let modules = root.join("modules");
@@ -1545,6 +1620,36 @@ export default app;
 
     assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
     assert!(diagnostic.message.contains("same source file"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_results_import_is_not_source_order_dependent() {
+    let root = fixture_temp_dir("module-results-import-after-export");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+
+import { Results } from "sloppy";
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("module Results import should be honored regardless of source order");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users");
 
     fs::remove_dir_all(&root).expect("test directory should be removable");
 }
