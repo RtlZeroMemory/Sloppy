@@ -84,6 +84,8 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
 
 static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispatch_table)
 {
+    size_t index = 0U;
+
     if (dispatch_table == NULL ||
         (dispatch_table->route_count != 0U && dispatch_table->routes == NULL) ||
         (dispatch_table->exact_route_bucket_count != 0U &&
@@ -93,6 +95,13 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
          dispatch_table->param_route_buckets == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < dispatch_table->param_route_bucket_count; index += 1U) {
+        const SlHttpRouteCandidateBucket* bucket = &dispatch_table->param_route_buckets[index];
+        if (bucket->route_count != 0U && bucket->routes == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
     }
 
     return sl_status_ok();
@@ -1382,10 +1391,14 @@ sl_http_dispatch_next_param_candidate(const SlHttpRouteCandidateBucket* first, s
     const SlHttpRouteBinding* first_route = NULL;
     const SlHttpRouteBinding* generic_route = NULL;
 
-    if (first_index != NULL && first != NULL && *first_index < first->route_count) {
+    if (first_index != NULL && first != NULL && first->routes != NULL &&
+        *first_index < first->route_count)
+    {
         first_route = first->routes[*first_index];
     }
-    if (generic_index != NULL && generic != NULL && *generic_index < generic->route_count) {
+    if (generic_index != NULL && generic != NULL && generic->routes != NULL &&
+        *generic_index < generic->route_count)
+    {
         generic_route = generic->routes[*generic_index];
     }
 
@@ -1642,7 +1655,7 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
     SlHttpDispatchContextNeeds needs = {0};
     size_t index = 0U;
 
-    if (route == NULL || !route->has_bindings || route->has_middleware) {
+    if (route == NULL || !sl_plan_route_has_bindings(route)) {
         sl_http_dispatch_context_needs_all(&needs);
         return needs;
     }

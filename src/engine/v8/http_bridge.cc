@@ -1166,12 +1166,13 @@ bool http_v8_make_header_facade(v8::Isolate* isolate, v8::Local<v8::Context> con
                                 const SlHttpRequestHead* request, v8::Local<v8::Object>* out)
 {
     std::vector<HttpV8HeaderEntry> header_entries;
-    v8::Local<v8::Object> facade = v8::Object::New(isolate);
 
     if (isolate == nullptr || out == nullptr || !http_v8_collect_headers(request, &header_entries))
     {
         return false;
     }
+
+    v8::Local<v8::Object> facade = v8::Object::New(isolate);
 
     for (const HttpV8HeaderEntry& entry : header_entries) {
         std::string property_name = http_v8_header_facade_property_name(entry.name);

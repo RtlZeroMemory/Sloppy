@@ -256,9 +256,8 @@ static int test_plan_metadata_interns_stable_strings(void)
         .binding_count = 1U,
         .method = sl_str_from_cstr("GET"),
         .pattern = sl_str_from_cstr("/"),
-        .name = sl_str_from_cstr("home"),
         .handler_id = 1U,
-        .has_bindings = true,
+        .name = sl_str_from_cstr("home"),
     }};
     SlPlanSchemaNode property_node = {.kind = SL_PLAN_SCHEMA_STRING,
                                       .validation = sl_str_from_cstr("email")};

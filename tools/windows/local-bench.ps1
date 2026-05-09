@@ -1009,14 +1009,16 @@ function New-SloppyBenchApp {
     } | ConvertTo-Json | ForEach-Object {
         Write-BenchUtf8File (Join-Path $ProjectDir "sloppy.json") $_
     }
-    @{
-        Sloppy = @{
-            Server = @{
-                MaxConnections = 64
+    if ($SuiteName -eq "concurrency") {
+        @{
+            Sloppy = @{
+                Server = @{
+                    MaxConnections = 64
+                }
             }
+        } | ConvertTo-Json -Depth 4 | ForEach-Object {
+            Write-BenchUtf8File (Join-Path $ProjectDir "appsettings.json") $_
         }
-    } | ConvertTo-Json -Depth 4 | ForEach-Object {
-        Write-BenchUtf8File (Join-Path $ProjectDir "appsettings.json") $_
     }
 
     $lines = New-Object System.Collections.Generic.List[string]

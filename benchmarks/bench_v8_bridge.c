@@ -122,15 +122,6 @@ sl_bench_v8_request_context(const SlHttpRequestHead* request, const SlRouteParam
     context.query_params = query_params;
     context.query_param_count = query_param_count;
     context.body_kind = body_kind;
-    context.needs_route_params = true;
-    context.needs_query_params = true;
-    context.needs_headers = true;
-    context.needs_body = true;
-    context.needs_request = true;
-    context.needs_connection = true;
-    context.needs_signal = true;
-    context.needs_log = true;
-    context.needs_metadata = true;
     return context;
 }
 
@@ -503,6 +494,9 @@ static SlStatus sl_bench_v8_context_base(const SlBenchContext* context, uint64_t
     request.raw_target = sl_str_from_cstr("/users/123?q=abc");
     request_context = sl_bench_v8_request_context(&request, route_params, 1U, query_params, 1U,
                                                   SL_HTTP_REQUEST_BODY_NONE);
+    request_context.needs_request = true;
+    request_context.needs_route_params = true;
+    request_context.needs_query_params = true;
 
     return sl_bench_v8_context_source(
         context, iterations, out_checksum, "bench-context-base.js",
@@ -530,6 +524,8 @@ static SlStatus sl_bench_v8_context_headers_get(const SlBenchContext* context, u
     request.header_count = sizeof(headers) / sizeof(headers[0]);
     request_context =
         sl_bench_v8_request_context(&request, NULL, 0U, NULL, 0U, SL_HTTP_REQUEST_BODY_NONE);
+    request_context.needs_request = true;
+    request_context.needs_headers = true;
 
     return sl_bench_v8_context_source(
         context, iterations, out_checksum, "bench-context-headers-get.js",
@@ -557,6 +553,8 @@ static SlStatus sl_bench_v8_context_headers_entries(const SlBenchContext* contex
     request.header_count = sizeof(headers) / sizeof(headers[0]);
     request_context =
         sl_bench_v8_request_context(&request, NULL, 0U, NULL, 0U, SL_HTTP_REQUEST_BODY_NONE);
+    request_context.needs_request = true;
+    request_context.needs_headers = true;
 
     return sl_bench_v8_context_source(context, iterations, out_checksum,
                                       "bench-context-headers-entries.js",
@@ -578,6 +576,8 @@ static SlStatus sl_bench_v8_context_body_text_json(const SlBenchContext* context
     request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
     request_context =
         sl_bench_v8_request_context(&request, NULL, 0U, NULL, 0U, SL_HTTP_REQUEST_BODY_JSON);
+    request_context.needs_request = true;
+    request_context.needs_body = true;
 
     return sl_bench_v8_context_source(
         context, iterations, out_checksum, "bench-context-body-text-json.js",
@@ -600,6 +600,8 @@ static SlStatus sl_bench_v8_context_body_bytes(const SlBenchContext* context, ui
     request_context =
         sl_bench_v8_request_context(&request, NULL, 0U, NULL, 0U, SL_HTTP_REQUEST_BODY_BYTES);
     request_context.content_type = sl_str_from_cstr("application/octet-stream");
+    request_context.needs_request = true;
+    request_context.needs_body = true;
 
     return sl_bench_v8_context_source(
         context, iterations, out_checksum, "bench-context-body-bytes.js",

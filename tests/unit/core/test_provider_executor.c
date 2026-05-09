@@ -575,8 +575,23 @@ static int expect_pool_stress_drained(SlProviderInstanceExecutor* executor, SlAs
                                       ProviderRecord* record, size_t operation_count,
                                       int worker_count, atomic_int* max_active_count)
 {
-    if (drain_until_dispatch_count(loop, record, operation_count) != 0) {
+    size_t attempts = 0U;
+
+    if (executor == NULL || loop == NULL || record == NULL || max_active_count == NULL) {
         return 1;
+    }
+
+    for (attempts = 0U; attempts < 100000U; attempts += 1U) {
+        size_t ran = 0U;
+        if (expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0) {
+            return 1;
+        }
+        if (record->dispatch_count >= operation_count && record->cleanup_count >= operation_count &&
+            sl_provider_executor_pending_count(executor) == 0U &&
+            sl_provider_executor_in_flight_count(executor) == 0U)
+        {
+            break;
+        }
     }
     if (record->dispatch_count != operation_count || record->cleanup_count != operation_count) {
         return 2;
@@ -1795,10 +1810,8 @@ static int test_blocking_pool_workers_cap_parallel_execution_and_fifo_queue(void
     }
 
     atomic_store(&release, true);
-    if (drain_until_dispatch_count(loop, &record, 4U) != 0 || record.dispatch_count != 4U ||
-        record.cleanup_count != 4U || atomic_load(&max_active_count) != 2 ||
-        sl_provider_executor_in_flight_count(&executor) != 0U ||
-        sl_provider_executor_pending_count(&executor) != 0U)
+    if (expect_pool_stress_drained(&executor, loop, &record, 4U, 2, &max_active_count) != 0 ||
+        atomic_load(&max_active_count) != 2)
     {
         return 163;
     }

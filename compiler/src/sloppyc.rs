@@ -8925,7 +8925,88 @@ fn collect_statement_request_bindings(
                 bindings,
             );
         }
+        Statement::DoWhileStatement(statement) => {
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+        }
+        Statement::WhileStatement(statement) => {
+            collect_expression_request_bindings(&statement.test, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForStatement(statement) => {
+            if let Some(init) = &statement.init {
+                collect_for_init_request_bindings(init, ctx_name, schema_names, bindings);
+            }
+            if let Some(test) = &statement.test {
+                collect_expression_request_bindings(test, ctx_name, schema_names, bindings);
+            }
+            if let Some(update) = &statement.update {
+                collect_expression_request_bindings(update, ctx_name, schema_names, bindings);
+            }
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForInStatement(statement) => {
+            collect_expression_request_bindings(&statement.right, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::ForOfStatement(statement) => {
+            collect_expression_request_bindings(&statement.right, ctx_name, schema_names, bindings);
+            collect_statement_request_bindings(&statement.body, ctx_name, schema_names, bindings);
+        }
+        Statement::SwitchStatement(statement) => {
+            collect_expression_request_bindings(
+                &statement.discriminant,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
+            for case in &statement.cases {
+                if let Some(test) = &case.test {
+                    collect_expression_request_bindings(test, ctx_name, schema_names, bindings);
+                }
+                for statement in &case.consequent {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        Statement::TryStatement(statement) => {
+            for statement in &statement.block.body {
+                collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+            }
+            if let Some(handler) = &statement.handler {
+                for statement in &handler.body.body {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+            if let Some(finalizer) = &statement.finalizer {
+                for statement in &finalizer.body {
+                    collect_statement_request_bindings(statement, ctx_name, schema_names, bindings);
+                }
+            }
+        }
         _ => {}
+    }
+}
+
+fn collect_for_init_request_bindings(
+    init: &ForStatementInit<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+    bindings: &mut Vec<RequestBinding>,
+) {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_request_bindings(init, ctx_name, schema_names, bindings);
+                }
+            }
+        }
+        _ => {
+            if let Some(expression) = init.as_expression() {
+                collect_expression_request_bindings(expression, ctx_name, schema_names, bindings);
+            }
+        }
     }
 }
 
@@ -9160,7 +9241,7 @@ fn request_binding_from_expression(
     }
     if chain.len() == 2 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
     {
-        return None;
+        return Some(context_request_binding());
     }
     if chain.len() >= 2 && chain[0] == ctx_name {
         return Some(context_request_binding());
@@ -9189,14 +9270,18 @@ fn context_request_binding() -> RequestBinding {
 
 fn header_facade_binding_name(property: &str) -> String {
     let mut output = String::with_capacity(property.len());
+    let mut previous_was_lower_or_digit = false;
+
     for ch in property.chars() {
         if ch.is_ascii_uppercase() {
-            if !output.is_empty() {
+            if !output.is_empty() && previous_was_lower_or_digit {
                 output.push('-');
             }
             output.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = false;
         } else {
             output.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
         }
     }
     output

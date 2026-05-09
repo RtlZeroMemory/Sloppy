@@ -660,8 +660,9 @@ static int test_empty_bindings_marks_route_metadata_available(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
         return 19;
     }
-    if (plan.route_count != 1U || !plan.routes[0].has_bindings ||
-        plan.routes[0].binding_count != 0U || plan.routes[0].bindings != NULL)
+    if (plan.route_count != 1U || !sl_plan_route_has_bindings(&plan.routes[0]) ||
+        plan.routes[0].binding_count != 0U ||
+        plan.routes[0].bindings != SL_PLAN_ROUTE_EMPTY_BINDINGS)
     {
         return 20;
     }
@@ -689,8 +690,9 @@ static int test_route_middleware_marks_context_needs_conservative(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
         return 96;
     }
-    if (plan.route_count != 1U || !plan.routes[0].has_bindings ||
-        plan.routes[0].binding_count != 0U || !plan.routes[0].has_middleware)
+    if (plan.route_count != 1U || !sl_plan_route_has_bindings(&plan.routes[0]) ||
+        plan.routes[0].binding_count != 1U ||
+        plan.routes[0].bindings[0].kind != SL_PLAN_REQUEST_BINDING_CONTEXT)
     {
         return 97;
     }

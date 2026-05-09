@@ -147,6 +147,10 @@ function resolveContentType(options, defaultContentType) {
 }
 
 function maybeFastJsonText(body) {
+    if (body !== null && typeof body === "object") {
+        return undefined;
+    }
+
     let jsonText;
 
     try {

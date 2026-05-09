@@ -367,6 +367,10 @@ static SlStatus sl_plan_intern_bindings(SlArena* arena, SlInternTable* table, Sl
     SlStatus status;
 
     if (route->binding_count == 0U) {
+        if (sl_plan_route_has_bindings(route)) {
+            sl_plan_route_mark_bindings_empty(route);
+            return sl_status_ok();
+        }
         route->bindings = NULL;
         return sl_status_ok();
     }

@@ -466,6 +466,92 @@ static int test_route_table_param_buckets_report_method_mismatch(void)
     return 0;
 }
 
+static int test_parameter_first_route_reaches_bucket(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/{tenant}/users");
+    route.handler_id = 1U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /acme/users HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 165;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        return 166;
+    }
+    return 0;
+}
+
+static int test_generated_options_route_reaches_engine(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    route.method = sl_str_from_cstr("OPTIONS");
+    route.pattern = sl_str_from_cstr("/cors/{id}");
+    route.handler_id = 1U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "OPTIONS /cors/1 HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 167;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        return 168;
+    }
+    return 0;
+}
+
 static int test_route_table_build_accepts_non_get_only_metadata(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -1894,7 +1980,7 @@ static int test_plan_route_without_query_binding_skips_malformed_query(void)
     route.method = sl_str_from_cstr("GET");
     route.pattern = sl_str_from_cstr("/ok");
     route.handler_id = 1U;
-    route.has_bindings = true;
+    sl_plan_route_mark_bindings_empty(&route);
     plan.routes = &route;
     plan.route_count = 1U;
 
@@ -1940,7 +2026,6 @@ static int test_plan_route_with_query_binding_rejects_malformed_query(void)
     route.method = sl_str_from_cstr("GET");
     route.pattern = sl_str_from_cstr("/ok");
     route.handler_id = 1U;
-    route.has_bindings = true;
     route.bindings = &binding;
     route.binding_count = 1U;
     binding.kind = SL_PLAN_REQUEST_BINDING_QUERY;
@@ -1970,6 +2055,55 @@ static int test_plan_route_with_query_binding_rejects_malformed_query(void)
     return 0;
 }
 
+static int test_plan_route_with_middleware_keeps_query_conservative(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding binding = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/ok");
+    route.handler_id = 1U;
+    route.bindings = &binding;
+    route.binding_count = 1U;
+    binding.kind = SL_PLAN_REQUEST_BINDING_CONTEXT;
+    binding.name = sl_str_from_cstr("RequestContext");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /ok?q=%zz HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 174;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_REQUEST)
+    {
+        return 175;
+    }
+
+    return 0;
+}
+
 typedef int (*HttpDispatchTestFn)(void);
 
 typedef struct HttpDispatchTestCase
@@ -1987,6 +2121,8 @@ int main(void)
         {test_route_table_exact_index_reports_method_mismatch},
         {test_route_table_param_buckets_preserve_source_order},
         {test_route_table_param_buckets_report_method_mismatch},
+        {test_parameter_first_route_reaches_bucket},
+        {test_generated_options_route_reaches_engine},
         {test_route_table_build_accepts_non_get_only_metadata},
         {test_allow_header_lists_matching_methods_and_head_for_get},
         {test_method_mismatch_returns_method_not_allowed},
@@ -2012,6 +2148,7 @@ int main(void)
         {test_conformance_smoke_default_http_cases},
         {test_plan_route_without_query_binding_skips_malformed_query},
         {test_plan_route_with_query_binding_rejects_malformed_query},
+        {test_plan_route_with_middleware_keeps_query_conservative},
     };
     size_t index = 0U;
 

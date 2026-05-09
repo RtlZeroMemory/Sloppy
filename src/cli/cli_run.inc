@@ -1973,16 +1973,16 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     return config;
 }
 
+enum
+{
+    SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
+    SL_RUN_TRANSPORT_STORAGE_BLOCKS =
+        (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
+    SL_RUN_TRANSPORT_STORAGE_BYTES = SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
+};
+
 static bool sl_run_transport_arena_size(const SlHttpTransportConfig* config, size_t* out_bytes)
 {
-    enum
-    {
-        SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
-        SL_RUN_TRANSPORT_STORAGE_BLOCKS =
-            (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
-        SL_RUN_TRANSPORT_STORAGE_BYTES =
-            SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
-    };
     size_t connection_units = SL_RUN_MAX_CLIENTS;
     size_t rounded_units = 0U;
     size_t block_count = 0U;
@@ -2011,14 +2011,6 @@ static bool sl_run_transport_arena_size(const SlHttpTransportConfig* config, siz
 
 static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 {
-    enum
-    {
-        SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
-        SL_RUN_TRANSPORT_STORAGE_BLOCKS =
-            (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
-        SL_RUN_TRANSPORT_STORAGE_BYTES =
-            SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
-    };
     static unsigned char transport_storage[SL_RUN_TRANSPORT_STORAGE_BYTES];
     size_t transport_storage_bytes = 0U;
     SlArena transport_arena = {0};

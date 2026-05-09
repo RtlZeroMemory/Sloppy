@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
@@ -1574,7 +1575,7 @@ export default app;
 "#;
     let app = extract_temp_input(&root, source)
         .expect("middleware string/comment mention should not require Results import");
-    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes.len(), 3);
 
     fs::remove_dir_all(&root).expect("test directory should be removable");
 }
@@ -2035,6 +2036,8 @@ app.post("/users/{id:int}", (ctx) => Results.json({
   id: ctx.route.id,
   search: ctx.query.q,
   agent: ctx.header.userAgent,
+  requestId: ctx.header.xRequestId,
+  digest: ctx.header.contentMD5,
   body: ctx.body.json(UserCreate)
 }));
 export default app;
@@ -2045,7 +2048,7 @@ export default app;
     assert_eq!(app.schemas[0].name, "UserCreate");
     assert_eq!(app.config_reads.len(), 1);
     assert_eq!(app.config_reads[0].key, "Sloppy:Server:Host");
-    assert_eq!(app.routes[0].handler.bindings.len(), 4);
+    assert_eq!(app.routes[0].handler.bindings.len(), 6);
     assert_eq!(
         app.routes[0]
             .handler
@@ -2071,8 +2074,51 @@ export default app;
     assert_eq!(plan["routes"][0]["bindings"][0]["kind"], "route");
     assert_eq!(plan["routes"][0]["bindings"][2]["kind"], "header");
     assert_eq!(plan["routes"][0]["bindings"][2]["name"], "user-agent");
+    assert_eq!(plan["routes"][0]["bindings"][3]["kind"], "header");
+    assert_eq!(plan["routes"][0]["bindings"][3]["name"], "x-request-id");
+    assert_eq!(plan["routes"][0]["bindings"][4]["kind"], "header");
+    assert_eq!(plan["routes"][0]["bindings"][4]["name"], "content-md5");
     assert_eq!(plan["routes"][0]["response"]["helper"], "json");
     assert_eq!(plan["features"]["metadataInference"], true);
+}
+
+#[test]
+fn computed_header_facade_access_materializes_headers_conservatively() {
+    let source = r#"const handler = (ctx) => {
+  const userAgent = ctx.header["userAgent"];
+  return "ok";
+};
+"#;
+    let allocator = oxc_allocator::Allocator::default();
+    let source_type = oxc_span::SourceType::from_path(std::path::Path::new("app.js"))
+        .expect("fixture source type should be supported");
+    let parsed = oxc_parser::Parser::new(&allocator, source, source_type).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "fixture should parse without errors: {:?}",
+        parsed.errors
+    );
+
+    let function = parsed
+        .program
+        .body
+        .iter()
+        .find_map(|statement| {
+            let Statement::VariableDeclaration(declaration) = statement else {
+                return None;
+            };
+            let init = declaration.declarations.first()?.init.as_ref()?;
+            let Expression::ArrowFunctionExpression(function) = init else {
+                return None;
+            };
+            Some(function)
+        })
+        .expect("fixture should contain an arrow handler");
+    let bindings = super::request_bindings_from_arrow(function, &BTreeSet::new());
+
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].kind, "context");
+    assert_eq!(bindings[0].name.as_deref(), Some("RequestContext"));
 }
 
 #[test]

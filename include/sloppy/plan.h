@@ -72,14 +72,12 @@ typedef struct SlPlanHandler
 
 typedef struct SlPlanRoute
 {
-    const struct SlPlanRequestBinding* bindings;
-    size_t binding_count;
     SlStr method;
     SlStr pattern;
-    SlStr name;
     SlHandlerId handler_id;
-    bool has_bindings;
-    bool has_middleware;
+    SlStr name;
+    const struct SlPlanRequestBinding* bindings;
+    size_t binding_count;
 } SlPlanRoute;
 
 typedef enum SlPlanRequestBindingKind
@@ -102,6 +100,22 @@ typedef struct SlPlanRequestBinding
     SlStr type;
     bool redacted;
 } SlPlanRequestBinding;
+
+#define SL_PLAN_ROUTE_EMPTY_BINDINGS ((const SlPlanRequestBinding*)(uintptr_t)1)
+
+static inline bool sl_plan_route_has_bindings(const SlPlanRoute* route)
+{
+    return route != NULL &&
+           (route->binding_count != 0U || route->bindings == SL_PLAN_ROUTE_EMPTY_BINDINGS);
+}
+
+static inline void sl_plan_route_mark_bindings_empty(SlPlanRoute* route)
+{
+    if (route != NULL) {
+        route->bindings = SL_PLAN_ROUTE_EMPTY_BINDINGS;
+        route->binding_count = 0U;
+    }
+}
 
 typedef enum SlPlanSchemaKind
 {
