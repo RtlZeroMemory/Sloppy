@@ -70,7 +70,7 @@ compiler fails closed rather than emitting a partial Plan.
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates are packaged with local archives and npm platform packages. |
-| CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under the artifact output directory; not a runtime release archive. |
+| CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
 | CLI `audit` | n/a | Plan-derived | metadata-only | no V8 required | Reports static Plan issues and policy notes. |

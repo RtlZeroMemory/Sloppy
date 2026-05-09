@@ -79,8 +79,8 @@ function Get-PlatformPackageName {
     switch ($triplet) {
         "windows-x64" { return "sloppy-win32-x64" }
         "linux-x64" { return "sloppy-linux-x64" }
-        "macos-arm64" { return "sloppy-darwin-arm64" }
-        "macos-x64" { return "sloppy-darwin-x64" }
+        "macos-arm64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
+        "macos-x64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
         default { throw "Unsupported npm platform package triplet in manifest: $triplet" }
     }
 }
@@ -205,21 +205,21 @@ try {
     if (-not $SkipInstallSmoke) {
         $installRoot = Join-Path $tempRoot "install"
         New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
-        Invoke-Native $npm.Source @("install", "--prefix", $installRoot, "--ignore-scripts", $runtimeTarball[0].FullName, $platformTarball[0].FullName)
+        Invoke-Native $npm.Source @("install", "--prefix", $installRoot, $runtimeTarball[0].FullName, $platformTarball[0].FullName)
         $launcher = Join-Path $installRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($launcher, "--version") -WorkingDirectory $installRoot
         Invoke-Native $node.Source @($launcher, "doctor") -WorkingDirectory $installRoot
 
         $createRoot = Join-Path $tempRoot "created-work"
         New-Item -ItemType Directory -Force -Path $createRoot | Out-Null
-        Invoke-Native $node.Source @($launcher, "create", "tmp-npm-app", "--template", "minimal-api", "--no-git") -WorkingDirectory $createRoot
+        Invoke-Native $node.Source @($launcher, "create", "tmp-npm-app", "--template", "minimal-api") -WorkingDirectory $createRoot
         $createdApp = Join-Path $createRoot "tmp-npm-app"
         Invoke-Native $node.Source @($launcher, "build") -WorkingDirectory $createdApp
         Invoke-Native $node.Source @($launcher, "run", "--once", "GET", "/health") -WorkingDirectory $createdApp -AllowedExitCodes @(0, 1)
 
         $missingRoot = Join-Path $tempRoot "missing-platform"
         New-Item -ItemType Directory -Force -Path $missingRoot | Out-Null
-        Invoke-Native $npm.Source @("install", "--prefix", $missingRoot, "--ignore-scripts", "--omit=optional", $runtimeTarball[0].FullName)
+        Invoke-Native $npm.Source @("install", "--prefix", $missingRoot, "--omit=optional", $runtimeTarball[0].FullName)
         $missingLauncher = Join-Path $missingRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($missingLauncher, "--version") -WorkingDirectory $missingRoot -AllowedExitCodes @(1)
         $oldPlatform = $env:SLOPPY_RUNTIME_PLATFORM

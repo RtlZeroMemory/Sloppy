@@ -155,7 +155,7 @@ static bool sl_create_resolve_template_path(const SlCliOptions* options, const c
            sl_cli_copy_cstr(buffer, capacity, fallback_root) && sl_create_directory_exists(buffer);
 }
 
-static int sl_create_copy_directory(const char* source_dir, const char* target_dir, bool no_git)
+static int sl_create_copy_directory(const char* source_dir, const char* target_dir)
 {
     unsigned char arena_storage[SL_CREATE_ARENA_BYTES];
     SlArena arena = {0};
@@ -190,9 +190,6 @@ static int sl_create_copy_directory(const char* source_dir, const char* target_d
         char source_path[SL_RUN_PATH_MAX_BYTES];
         char target_path[SL_RUN_PATH_MAX_BYTES];
 
-        if (no_git && sl_str_equal(name, SL_STR_LITERAL(".gitignore"))) {
-            continue;
-        }
         if (!sl_create_join_span_path(source_path, sizeof(source_path), source_dir, name) ||
             !sl_create_join_span_path(target_path, sizeof(target_path), target_dir, name))
         {
@@ -201,7 +198,7 @@ static int sl_create_copy_directory(const char* source_dir, const char* target_d
         }
 
         if (list.entries[index].kind == SL_FS_NODE_DIRECTORY) {
-            if (sl_create_copy_directory(source_path, target_path, no_git) != 0) {
+            if (sl_create_copy_directory(source_path, target_path) != 0) {
                 return 1;
             }
         }
@@ -266,11 +263,11 @@ static int sl_cli_command_create(const SlCliOptions* options)
     if (!sl_create_destination_is_empty(project_name) && !options->create_force) {
         sl_cli_write_error_with_value(
             "sloppy create: destination exists and is not empty: ", project_name,
-            "\nUse --force to copy template files over existing files.\n");
+            "\nUse --force to copy template files over existing files; stale files are left alone.\n");
         return 1;
     }
 
-    if (sl_create_copy_directory(template_path, project_name, options->create_no_git) != 0) {
+    if (sl_create_copy_directory(template_path, project_name) != 0) {
         return 1;
     }
 

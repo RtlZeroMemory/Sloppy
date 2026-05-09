@@ -261,8 +261,8 @@ static void sl_cli_print_command_help(const char* command)
         printf("                      [--environment Development] [--host 127.0.0.1]\n");
         printf("                      [--port 5173]\n");
         printf("\n");
-        printf("Compiles source input and writes a directory app package under the artifact "
-               "outDir.\n");
+        printf("Compiles source input and writes a directory app package under .sloppy/package/ "
+               "or <out>/package/.\n");
         printf("This is an app artifact package, not a runtime release archive.\n");
         return;
     }
@@ -271,6 +271,8 @@ static void sl_cli_print_command_help(const char* command)
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
+        printf("--force copies template files over existing files; it does not delete stale files.\n");
+        printf("--no-git is reserved for future git initialization; template files still copy.\n");
         return;
     }
     if (strcmp(command, "doctor") == 0) {

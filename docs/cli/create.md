@@ -24,7 +24,7 @@ through `node_modules` is not part of the alpha track.
 ```
 sloppy create my-api
 sloppy create my-api --template full-api
-sloppy create my-api --template dogfood --no-git
+sloppy create my-api --template dogfood
 sloppy create my-api --format json
 ```
 
@@ -40,9 +40,12 @@ sloppy package
 ## Overwrite behavior
 
 `create` refuses to copy into a non-empty destination. Use `--force` only when
-you intentionally want template files copied over existing files.
+you intentionally want template files copied over existing files. It does not
+delete stale files or replace the directory wholesale.
 
-`--no-git` skips the template `.gitignore`. It does not run `git init`.
+`--no-git` is reserved for future git initialization behavior. `create`
+currently does not run `git init`, and template files such as `.gitignore` are
+copied either way.
 
 ## JSON output
 

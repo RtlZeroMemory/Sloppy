@@ -110,7 +110,9 @@
     "root": "@rtlzeromemory/sloppy",
     "platformPackages": [
       "@rtlzeromemory/sloppy-win32-x64",
-      "@rtlzeromemory/sloppy-linux-x64",
+      "@rtlzeromemory/sloppy-linux-x64"
+    ],
+    "deferredPlatformPackages": [
       "@rtlzeromemory/sloppy-darwin-arm64",
       "@rtlzeromemory/sloppy-darwin-x64"
     ],

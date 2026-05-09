@@ -78,7 +78,7 @@ export SLOPPY_SLOPPYC="$sloppyc"
 "$sloppy" --version
 "$sloppy" doctor
 
-create_output="$(cd "$work_root" && "$sloppy" create install-app --template minimal-api --no-git --format json)"
+create_output="$(cd "$work_root" && "$sloppy" create install-app --template minimal-api --format json)"
 if [[ "$create_output" != *'"created":true'* ]]; then
   echo "sloppy create did not report JSON success: $create_output" >&2
   exit 1

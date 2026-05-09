@@ -14,6 +14,8 @@ endif()
 set(work_dir "${CMAKE_BINARY_DIR}/create-package-command")
 set(project_name "created-api")
 set(project_dir "${work_dir}/${project_name}")
+set(default_project_name "created-api-default")
+set(default_project_dir "${work_dir}/${default_project_name}")
 file(REMOVE_RECURSE "${work_dir}")
 file(MAKE_DIRECTORY "${work_dir}")
 file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${work_dir}")
@@ -37,8 +39,23 @@ foreach(expected IN ITEMS README.md sloppy.json appsettings.json src/main.ts)
         message(FATAL_ERROR "sloppy create did not copy ${expected}")
     endif()
 endforeach()
-if(EXISTS "${project_dir}/.gitignore")
-    message(FATAL_ERROR "sloppy create --no-git copied .gitignore")
+if(NOT EXISTS "${project_dir}/.gitignore")
+    message(FATAL_ERROR "sloppy create --no-git did not copy .gitignore")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${default_project_name}" --template minimal-api --format json
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE default_create_result
+    OUTPUT_VARIABLE default_create_stdout
+    ERROR_VARIABLE default_create_stderr)
+
+if(NOT default_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create without --no-git failed\nstdout:\n${default_create_stdout}\nstderr:\n${default_create_stderr}")
+endif()
+if(NOT EXISTS "${default_project_dir}/.gitignore")
+    message(FATAL_ERROR "sloppy create without --no-git did not copy .gitignore")
 endif()
 
 execute_process(
@@ -58,20 +75,28 @@ foreach(artifact IN ITEMS app.plan.json app.js app.js.map)
     endif()
 endforeach()
 
-execute_process(
-    COMMAND "${SLOPPY_CLI}" openapi --artifacts .sloppy
-    WORKING_DIRECTORY "${project_dir}"
-    TIMEOUT 60
-    RESULT_VARIABLE openapi_result
-    OUTPUT_VARIABLE openapi_stdout
-    ERROR_VARIABLE openapi_stderr)
+function(run_artifacts_metadata description expected_pattern)
+    execute_process(
+        COMMAND "${SLOPPY_CLI}" ${ARGN} --artifacts .sloppy
+        WORKING_DIRECTORY "${project_dir}"
+        TIMEOUT 60
+        RESULT_VARIABLE metadata_result
+        OUTPUT_VARIABLE metadata_stdout
+        ERROR_VARIABLE metadata_stderr)
 
-if(NOT openapi_result EQUAL 0)
-    message(FATAL_ERROR "openapi --artifacts failed for created project\nstdout:\n${openapi_stdout}\nstderr:\n${openapi_stderr}")
-endif()
-if(NOT openapi_stdout MATCHES "\"/health\"")
-    message(FATAL_ERROR "openapi --artifacts did not include created project routes\nstdout:\n${openapi_stdout}")
-endif()
+    if(NOT metadata_result EQUAL 0)
+        message(FATAL_ERROR "${description} failed for created project\nstdout:\n${metadata_stdout}\nstderr:\n${metadata_stderr}")
+    endif()
+    if(NOT metadata_stdout MATCHES "${expected_pattern}")
+        message(FATAL_ERROR "${description} did not include expected output\nstdout:\n${metadata_stdout}")
+    endif()
+endfunction()
+
+run_artifacts_metadata("routes --artifacts" "\"/health\"" routes --format json)
+run_artifacts_metadata("openapi --artifacts" "\"/health\"" openapi)
+run_artifacts_metadata("capabilities --artifacts" "\"capabilities\"" capabilities --format json)
+run_artifacts_metadata("audit --artifacts" "\"findings\"" audit --format json)
+run_artifacts_metadata("doctor --artifacts" "route metadata present" doctor --format text)
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package

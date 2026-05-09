@@ -61,12 +61,12 @@ selects an installed platform package:
 
 - `@rtlzeromemory/sloppy-win32-x64`
 - `@rtlzeromemory/sloppy-linux-x64`
-- `@rtlzeromemory/sloppy-darwin-arm64`
-- `@rtlzeromemory/sloppy-darwin-x64`
 
-npm package dry-runs must use `--tag alpha`, never `latest`. Platform package contents are
-generated from already-built archive contents; npm install must not compile native code,
-run `node-gyp`, build V8, or download V8 in `postinstall`.
+macOS npm platform packages are not referenced by the root package or publish workflow until
+hosted macOS package proof exists. npm package dry-runs must use `--tag alpha`, never
+`latest`. Platform package contents are generated from already-built archive contents; npm
+install must not compile native code, run `node-gyp`, build V8, or download V8 in
+`postinstall`.
 
 Publishing is manual and alpha-gated through the npm publish workflow. It uses
 Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and

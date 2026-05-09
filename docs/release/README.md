@@ -13,10 +13,12 @@ not build native code, fetch or build V8 during install, use `node-gyp`, or
 imply that Sloppy apps can import arbitrary npm packages.
 
 The npm publish workflow is manual. It downloads tarballs produced by the
-release-artifacts dry-run, smokes the Linux package locally, publishes platform
-packages first, then publishes `@rtlzeromemory/sloppy`. Real publish requires
-npm Trusted Publishing/OIDC setup; missing Trusted Publishing is a release
-configuration failure, not a reason to commit tokens.
+release-artifacts dry-run, smokes the Linux package locally, publishes the
+Windows and Linux platform packages first, then publishes
+`@rtlzeromemory/sloppy`. macOS npm publication remains future work until hosted
+package proof exists. Real publish requires npm Trusted Publishing/OIDC setup;
+missing Trusted Publishing is a release configuration failure, not a reason to
+commit tokens.
 
 ## Required Evidence
 

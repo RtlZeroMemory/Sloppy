@@ -36,6 +36,7 @@ pub(crate) struct Handler {
     pub(crate) source: String,
     pub(crate) emitted_source: String,
     pub(crate) span: Span,
+    pub(crate) requires_results_import: bool,
     pub(crate) is_async: bool,
     pub(crate) runtime_deferred: bool,
     pub(crate) source_name: String,

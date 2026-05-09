@@ -13,7 +13,7 @@ Prerequisites:
 ## 1. Create a project
 
 ```sh
-sloppy create hello-api --template minimal-api --no-git
+sloppy create hello-api --template minimal-api
 cd hello-api
 ```
 
@@ -21,6 +21,7 @@ That creates this layout:
 
 ```
 hello-api/
+  .gitignore
   sloppy.json
   appsettings.json
   src/

@@ -258,9 +258,7 @@ function Test-NpmPackagePolicy {
     $expectedPackages = @(
         "sloppy",
         "sloppy-win32-x64",
-        "sloppy-linux-x64",
-        "sloppy-darwin-arm64",
-        "sloppy-darwin-x64"
+        "sloppy-linux-x64"
     )
     foreach ($package in $expectedPackages) {
         $packageJsonPath = Join-Path $packagesRoot "$package/package.json"
@@ -281,9 +279,13 @@ function Test-NpmPackagePolicy {
 
     $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "sloppy/package.json") -Raw | ConvertFrom-Json
     Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/LICENSE") -PathType Leaf) "Root npm package must include a LICENSE file matching its license metadata."
-    foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64", "@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
+    foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64")) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
         Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
+    }
+    foreach ($dependency in @("@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
+        $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
+        Assert-True ($null -eq $property) "Root npm package must not reference unproved macOS package '$dependency'."
     }
 
     $launcher = Read-RequiredText -Relative "packages/npm/sloppy/bin/sloppy.js"

@@ -89,8 +89,10 @@ node "$repo_root/tools/unix/scripts/validate-npm-release-manifest.mjs" "$manifes
 triplet="$(node -e 'const fs=require("fs"); const manifest=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String(manifest.platformTriplet || ""));' "$manifest_path")"
 case "$triplet" in
   linux-x64) platform_package_dir="sloppy-linux-x64" ;;
-  macos-arm64) platform_package_dir="sloppy-darwin-arm64" ;;
-  macos-x64) platform_package_dir="sloppy-darwin-x64" ;;
+  macos-arm64|macos-x64)
+    echo "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." >&2
+    exit 1
+    ;;
   windows-x64) platform_package_dir="sloppy-win32-x64" ;;
   *) echo "Unsupported npm platform package triplet in manifest: $triplet" >&2; exit 1 ;;
 esac
@@ -133,14 +135,14 @@ platform_tarball="$tarball_root/$platform_tarball_name"
 if [[ "$skip_install_smoke" -eq 0 ]]; then
   install_root="$temp_root/install"
   mkdir -p "$install_root"
-  npm install --prefix "$install_root" --ignore-scripts "$runtime_tarball" "$platform_tarball" >/dev/null
+  npm install --prefix "$install_root" "$runtime_tarball" "$platform_tarball" >/dev/null
   launcher="$install_root/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
   node "$launcher" --version
   node "$launcher" doctor
 
   create_root="$temp_root/created-work"
   mkdir -p "$create_root"
-  (cd "$create_root" && node "$launcher" create tmp-npm-app --template minimal-api --no-git)
+  (cd "$create_root" && node "$launcher" create tmp-npm-app --template minimal-api)
   created_app="$create_root/tmp-npm-app"
   (cd "$created_app" && node "$launcher" build)
   set +e
@@ -155,7 +157,7 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
 
   missing_root="$temp_root/missing-platform"
   mkdir -p "$missing_root"
-  npm install --prefix "$missing_root" --ignore-scripts --omit=optional "$runtime_tarball" >/dev/null
+  npm install --prefix "$missing_root" --omit=optional "$runtime_tarball" >/dev/null
   missing_launcher="$missing_root/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
   if node "$missing_launcher" --version >/dev/null 2>&1; then
     echo "missing-platform launcher unexpectedly succeeded." >&2

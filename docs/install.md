@@ -73,17 +73,18 @@ extracts the archive, puts `bin/` on `PATH`, runs `sloppy --version`,
 
 The npm package name prepared by the repository is `@rtlzeromemory/sloppy`.
 It is a launcher package for Sloppy itself, not npm dependency support for
-Sloppy apps. Platform packages are:
+Sloppy apps. The root package currently references only the platform packages
+that this alpha workflow builds, tests, and publishes:
 
 - `@rtlzeromemory/sloppy-win32-x64`
 - `@rtlzeromemory/sloppy-linux-x64`
-- `@rtlzeromemory/sloppy-darwin-arm64`
-- `@rtlzeromemory/sloppy-darwin-x64`
 
 The root package resolves the installed platform package and runs the packaged
 `sloppy` binary. Platform packages are staged from already-built archives and
 must include `bin/`, `stdlib/`, `templates/`, `manifest.json`, and license/readme
 files.
+
+macOS npm platform packages remain future work until hosted package proof exists.
 
 Local proof on Windows:
 
@@ -136,7 +137,7 @@ needs the V8 lane.
 sloppy --version
 sloppyc --version
 sloppy --help
-sloppy create tmp-api --template minimal-api --no-git
+sloppy create tmp-api --template minimal-api
 ```
 
 Both binaries should print a version. `sloppy --help` lists every

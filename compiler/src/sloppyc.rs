@@ -293,7 +293,13 @@ struct CorsPolicy {
 struct ControllerDescriptor {
     source_name: String,
     source_text: String,
-    methods: BTreeMap<String, Span>,
+    methods: BTreeMap<String, ControllerMethodDescriptor>,
+}
+
+#[derive(Debug, Clone)]
+struct ControllerMethodDescriptor {
+    span: Span,
+    requires_results_import: bool,
 }
 
 struct HealthRouteSpec<'a> {
@@ -2159,7 +2165,15 @@ fn extract_class_declaration(
                     continue;
                 }
                 if let Some(name) = property_key_name(&method.key) {
-                    methods.insert(name.to_string(), method.value.span);
+                    methods.insert(
+                        name.to_string(),
+                        ControllerMethodDescriptor {
+                            span: method.value.span,
+                            requires_results_import: function_requires_results_import(
+                                &method.value,
+                            ),
+                        },
+                    );
                 }
             }
             ClassElement::PropertyDefinition(property) => {
@@ -2253,7 +2267,10 @@ fn extract_expression_statement(
     {
         if state.results_required_span.is_none() {
             state.results_required_span = routes.iter().find_map(|route| {
-                handler_requires_results_import(&route.handler).then_some(route.handler.span)
+                route
+                    .handler
+                    .requires_results_import
+                    .then_some(route.handler.span)
             });
         }
         state.routes.extend(routes);
@@ -2363,7 +2380,7 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
-    if handler_requires_results_import(&handler) && state.results_required_span.is_none() {
+    if handler.requires_results_import && state.results_required_span.is_none() {
         state.results_required_span = Some(handler.span);
     }
     if !handler.effects.is_empty() {
@@ -4358,7 +4375,7 @@ fn app_map_controller_call(
             .with_path(path)
             .with_span(statement.span));
         };
-        let Some(method_span) = controller.methods.get(action).copied() else {
+        let Some(controller_method) = controller.methods.get(action).cloned() else {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_CONTROLLER",
                 format!("controller action '{action}' must name a prototype method"),
@@ -4381,13 +4398,14 @@ fn app_map_controller_call(
         tags.extend(fluent_metadata.tags);
         let middleware = route_middleware_metadata(&state.middleware);
         let cors = state.cors_policy.clone();
-        let handler_source = source_slice(&controller.source_text, method_span)
+        let handler_source = source_slice(&controller.source_text, controller_method.span)
             .unwrap_or_else(|| format!("{controller_name}.{action}"));
         let emitted_source = controller_handler_source(controller_name, action);
         let mut handler = Handler {
             source: handler_source.clone(),
             emitted_source,
-            span: method_span,
+            span: controller_method.span,
+            requires_results_import: controller_method.requires_results_import,
             is_async: true,
             runtime_deferred: false,
             source_name: controller.source_name.clone(),
@@ -4704,6 +4722,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
                 source: "app.useCors(...)".to_string(),
                 emitted_source: handler_source,
                 span: route.handler.span,
+                requires_results_import: false,
                 is_async: true,
                 runtime_deferred: false,
                 source_name: route.handler.source_name.clone(),
@@ -5410,6 +5429,7 @@ fn health_route(
                 .unwrap_or_else(|| "app.mapHealthChecks()".to_string()),
             emitted_source: handler_source,
             span,
+            requires_results_import: false,
             is_async: true,
             runtime_deferred: false,
             source_name: source_name.to_string(),
@@ -6152,7 +6172,7 @@ fn extract_relative_module(
                 if !module_results_imported {
                     if let Some(route) = routes
                         .iter()
-                        .find(|route| handler_requires_results_import(&route.handler))
+                        .find(|route| route.handler.requires_results_import)
                     {
                         return Err(missing_results_import_diagnostic(
                             &imported.path,
@@ -7096,6 +7116,7 @@ fn handler_from_argument(
                 source: handler_source.clone(),
                 emitted_source: handler_source,
                 span: function.span,
+                requires_results_import: arrow_requires_results_import(function),
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
@@ -7153,6 +7174,7 @@ fn handler_from_argument(
                 source: handler_source.clone(),
                 emitted_source: handler_source,
                 span: function.span,
+                requires_results_import: function_requires_results_import(function),
                 is_async: function.r#async,
                 runtime_deferred: false,
                 source_name: context.source_name.to_string(),
@@ -7171,8 +7193,272 @@ fn handler_from_argument(
     }
 }
 
-fn handler_requires_results_import(handler: &Handler) -> bool {
-    handler.source.contains("Results.")
+fn arrow_requires_results_import(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
+    function
+        .body
+        .statements
+        .iter()
+        .any(statement_requires_results_import)
+}
+
+fn function_requires_results_import(function: &oxc_ast::ast::Function<'_>) -> bool {
+    function.body.as_ref().is_some_and(|body| {
+        body.statements
+            .iter()
+            .any(statement_requires_results_import)
+    })
+}
+
+fn statement_requires_results_import(statement: &Statement<'_>) -> bool {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().any(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+            })
+        }
+        Statement::ReturnStatement(statement) => statement
+            .argument
+            .as_ref()
+            .is_some_and(expression_requires_results_import),
+        Statement::ExpressionStatement(statement) => {
+            expression_requires_results_import(&statement.expression)
+        }
+        Statement::BlockStatement(block) => {
+            block.body.iter().any(statement_requires_results_import)
+        }
+        Statement::IfStatement(statement) => {
+            expression_requires_results_import(&statement.test)
+                || statement_requires_results_import(&statement.consequent)
+                || statement
+                    .alternate
+                    .as_ref()
+                    .is_some_and(|alternate| statement_requires_results_import(alternate))
+        }
+        Statement::DoWhileStatement(statement) => {
+            statement_requires_results_import(&statement.body)
+                || expression_requires_results_import(&statement.test)
+        }
+        Statement::WhileStatement(statement) => {
+            expression_requires_results_import(&statement.test)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForStatement(statement) => {
+            statement
+                .init
+                .as_ref()
+                .is_some_and(for_init_requires_results_import)
+                || statement
+                    .test
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+                || statement
+                    .update
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForInStatement(statement) => {
+            expression_requires_results_import(&statement.right)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::ForOfStatement(statement) => {
+            expression_requires_results_import(&statement.right)
+                || statement_requires_results_import(&statement.body)
+        }
+        Statement::SwitchStatement(statement) => {
+            expression_requires_results_import(&statement.discriminant)
+                || statement.cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(expression_requires_results_import)
+                        || case
+                            .consequent
+                            .iter()
+                            .any(statement_requires_results_import)
+                })
+        }
+        Statement::TryStatement(statement) => {
+            statement
+                .block
+                .body
+                .iter()
+                .any(statement_requires_results_import)
+                || statement.handler.as_ref().is_some_and(|handler| {
+                    handler
+                        .body
+                        .body
+                        .iter()
+                        .any(statement_requires_results_import)
+                })
+                || statement.finalizer.as_ref().is_some_and(|finalizer| {
+                    finalizer.body.iter().any(statement_requires_results_import)
+                })
+        }
+        Statement::ThrowStatement(statement) => {
+            expression_requires_results_import(&statement.argument)
+        }
+        _ => false,
+    }
+}
+
+fn for_init_requires_results_import(init: &ForStatementInit<'_>) -> bool {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().any(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(expression_requires_results_import)
+            })
+        }
+        ForStatementInit::CallExpression(call) => call_requires_results_import(call),
+        ForStatementInit::ParenthesizedExpression(parenthesized) => {
+            expression_requires_results_import(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn expression_requires_results_import(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::CallExpression(call) => call_requires_results_import(call),
+        Expression::NewExpression(expression) => {
+            expression_requires_results_import(&expression.callee)
+                || expression
+                    .arguments
+                    .iter()
+                    .any(argument_requires_results_import)
+        }
+        Expression::AwaitExpression(expression) => {
+            expression_requires_results_import(&expression.argument)
+        }
+        Expression::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .any(array_element_requires_results_import),
+        Expression::ObjectExpression(object) => {
+            object.properties.iter().any(|property| match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    expression_requires_results_import(&property.value)
+                }
+                ObjectPropertyKind::SpreadProperty(property) => {
+                    expression_requires_results_import(&property.argument)
+                }
+            })
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_requires_results_import(&parenthesized.expression)
+        }
+        Expression::StaticMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+        }
+        Expression::ComputedMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+                || expression_requires_results_import(&member.expression)
+        }
+        Expression::ChainExpression(chain) => {
+            chain_element_requires_results_import(&chain.expression)
+        }
+        Expression::BinaryExpression(expression) => {
+            expression_requires_results_import(&expression.left)
+                || expression_requires_results_import(&expression.right)
+        }
+        Expression::LogicalExpression(expression) => {
+            expression_requires_results_import(&expression.left)
+                || expression_requires_results_import(&expression.right)
+        }
+        Expression::ConditionalExpression(expression) => {
+            expression_requires_results_import(&expression.test)
+                || expression_requires_results_import(&expression.consequent)
+                || expression_requires_results_import(&expression.alternate)
+        }
+        Expression::SequenceExpression(expression) => expression
+            .expressions
+            .iter()
+            .any(expression_requires_results_import),
+        Expression::TaggedTemplateExpression(expression) => {
+            expression_requires_results_import(&expression.tag)
+        }
+        Expression::UnaryExpression(expression) => {
+            expression_requires_results_import(&expression.argument)
+        }
+        Expression::UpdateExpression(_) => false,
+        Expression::YieldExpression(expression) => expression
+            .argument
+            .as_ref()
+            .is_some_and(expression_requires_results_import),
+        Expression::AssignmentExpression(expression) => {
+            expression_requires_results_import(&expression.right)
+        }
+        Expression::ArrowFunctionExpression(function) => arrow_requires_results_import(function),
+        Expression::FunctionExpression(function) => function_requires_results_import(function),
+        Expression::TSAsExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSSatisfiesExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSNonNullExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        Expression::TSInstantiationExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+        _ => false,
+    }
+}
+
+fn call_requires_results_import(call: &CallExpression<'_>) -> bool {
+    expression_requires_results_import(&call.callee)
+        || call.arguments.iter().any(argument_requires_results_import)
+}
+
+fn argument_requires_results_import(argument: &Argument<'_>) -> bool {
+    argument
+        .as_expression()
+        .is_some_and(expression_requires_results_import)
+}
+
+fn array_element_requires_results_import(element: &ArrayExpressionElement<'_>) -> bool {
+    element
+        .as_expression()
+        .is_some_and(expression_requires_results_import)
+}
+
+fn chain_element_requires_results_import(element: &ChainElement<'_>) -> bool {
+    match element {
+        ChainElement::CallExpression(call) => call_requires_results_import(call),
+        ChainElement::StaticMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+        }
+        ChainElement::ComputedMemberExpression(member) => {
+            member_object_is_results(&member.object)
+                || expression_requires_results_import(&member.object)
+                || expression_requires_results_import(&member.expression)
+        }
+        ChainElement::PrivateFieldExpression(member) => {
+            expression_requires_results_import(&member.object)
+        }
+        ChainElement::TSNonNullExpression(expression) => {
+            expression_requires_results_import(&expression.expression)
+        }
+    }
+}
+
+fn member_object_is_results(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::Identifier(identifier) => identifier.name.as_str() == "Results",
+        Expression::ParenthesizedExpression(parenthesized) => {
+            member_object_is_results(&parenthesized.expression)
+        }
+        _ => false,
+    }
 }
 
 fn typed_framework_handler_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
@@ -7198,6 +7484,7 @@ fn typed_framework_handler_from_arrow(
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
         span: function.span,
+        requires_results_import: arrow_requires_results_import(function),
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),
@@ -7228,6 +7515,7 @@ fn typed_framework_handler_from_function(
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
         span: function.span,
+        requires_results_import: function_requires_results_import(function),
         is_async: function.r#async,
         runtime_deferred: false,
         source_name: source_name.to_string(),

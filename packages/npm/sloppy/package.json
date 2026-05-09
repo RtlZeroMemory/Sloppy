@@ -15,9 +15,7 @@
   ],
   "optionalDependencies": {
     "@rtlzeromemory/sloppy-win32-x64": "0.1.0-alpha.0",
-    "@rtlzeromemory/sloppy-linux-x64": "0.1.0-alpha.0",
-    "@rtlzeromemory/sloppy-darwin-arm64": "0.1.0-alpha.0",
-    "@rtlzeromemory/sloppy-darwin-x64": "0.1.0-alpha.0"
+    "@rtlzeromemory/sloppy-linux-x64": "0.1.0-alpha.0"
   },
   "publishConfig": {
     "tag": "alpha",

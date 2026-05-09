@@ -82,7 +82,7 @@ try {
 
         Invoke-Captured -File $sloppy -Arguments @("--version") -WorkingDirectory $workRoot | Out-Null
         Invoke-Captured -File $sloppy -Arguments @("doctor") -WorkingDirectory $workRoot | Out-Null
-        $create = Invoke-Captured -File $sloppy -Arguments @("create", "install-app", "--template", "minimal-api", "--no-git", "--format", "json") -WorkingDirectory $workRoot
+        $create = Invoke-Captured -File $sloppy -Arguments @("create", "install-app", "--template", "minimal-api", "--format", "json") -WorkingDirectory $workRoot
         if ($create.Stdout -notmatch '"created":true') {
             throw "sloppy create did not report JSON success: $($create.Stdout)"
         }

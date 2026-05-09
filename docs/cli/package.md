@@ -1,7 +1,7 @@
 # `sloppy package`
 
-Compile source input and write a directory app package under the artifact
-output directory.
+Compile source input and write a directory app package under `.sloppy/package/`
+by default, or under `<out>/package/` for explicit source output.
 
 ```
 sloppy package [source.js|source.mjs|source.ts] [--out <dir>]

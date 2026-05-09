@@ -62,7 +62,7 @@ Public GitHub Release artifacts and npm publication are gated release work.
 ## A first app
 
 ```
-sloppy create hello --template minimal-api --no-git
+sloppy create hello --template minimal-api
 cd hello
 ```
 
