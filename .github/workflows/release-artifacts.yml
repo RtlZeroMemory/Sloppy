@@ -132,6 +132,8 @@ jobs:
 
       - name: Release artifact dry-run
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if ("${{ inputs.run_package_smoke }}" -ne "true") {
             .\tools\windows\release-dry-run.ps1 -Preset windows-relwithdebinfo -RequireV8Runtime -SkipSmoke
@@ -189,7 +191,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang)
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang libglib2.0-dev)
           missing=()
 
           for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++; do
@@ -199,6 +201,9 @@ jobs:
             fi
           done
           if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
+          if ! pkg-config --exists glib-2.0 gobject-2.0 gio-2.0; then
             missing=("${packages[@]}")
           fi
 

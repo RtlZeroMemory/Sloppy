@@ -110,6 +110,29 @@ function Expand-ZipArchive {
     [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
 }
 
+function Get-DownloadHeaders {
+    param([string]$Url)
+
+    $headers = @{}
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        return $headers
+    }
+
+    try {
+        $uri = [uri]$Url
+    } catch {
+        return $headers
+    }
+
+    if ($uri.Host -eq "github.com" -or $uri.Host -eq "api.github.com") {
+        $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+        $headers["Accept"] = "application/octet-stream"
+        $headers["X-GitHub-Api-Version"] = "2022-11-28"
+    }
+
+    return $headers
+}
+
 if ($ValidateOnly) {
     $rootToValidate = $V8Root
     if ([string]::IsNullOrWhiteSpace($rootToValidate)) {
@@ -179,7 +202,8 @@ if (-not [string]::IsNullOrWhiteSpace($SourceArchive)) {
         $oldProgressPreference = $ProgressPreference
         $ProgressPreference = "SilentlyContinue"
         try {
-            Invoke-WebRequest -Uri $url -OutFile $tempArchive -UseBasicParsing -TimeoutSec 1200
+            $downloadHeaders = Get-DownloadHeaders -Url $url
+            Invoke-WebRequest -Uri $url -OutFile $tempArchive -UseBasicParsing -TimeoutSec 1200 -Headers $downloadHeaders
         } finally {
             $ProgressPreference = $oldProgressPreference
         }
