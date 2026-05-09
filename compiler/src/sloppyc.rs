@@ -8982,17 +8982,13 @@ fn collect_expression_request_bindings(
                 bindings,
             );
         }
-        Expression::StaticMemberExpression(member) => {
-            if static_member_chain(expression).is_none_or(|chain| chain.first() != Some(&ctx_name))
-            {
-                collect_expression_request_bindings(
-                    &member.object,
-                    ctx_name,
-                    schema_names,
-                    bindings,
-                );
-            }
+        Expression::StaticMemberExpression(member)
+            if static_member_chain(expression)
+                .is_none_or(|chain| chain.first() != Some(&ctx_name)) =>
+        {
+            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
         }
+        Expression::StaticMemberExpression(_) => {}
         Expression::ComputedMemberExpression(member) => {
             collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
             collect_expression_request_bindings(
