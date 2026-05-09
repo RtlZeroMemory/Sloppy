@@ -65,6 +65,13 @@ safe handler-error shape is:
 errors when installed on the app. The default policy does not include exception
 messages in the response body.
 
+## Plan Response Metadata
+
+The compiler records visible `Results.*` returns as response metadata when the
+helper call is statically supported. The recorded `kind` follows the descriptor
+kind from this page: `noContent` records `empty`, `badRequest` and `notFound`
+record `json`, and `problem` records `problem`.
+
 ## Limits
 
 - Descriptor API only; not a streaming writer API.

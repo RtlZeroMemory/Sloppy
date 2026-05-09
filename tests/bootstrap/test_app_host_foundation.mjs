@@ -1344,9 +1344,12 @@ async function flushMicrotasks(count = 6) {
     assert.equal(Results.created("/users/1", { id: 1 }).location, "/users/1");
     assert.equal(Results.accepted({ queued: true }).status, 202);
     assert.equal(Results.noContent().status, 204);
+    assert.equal(Results.noContent().kind, "empty");
     assert.equal(Object.prototype.hasOwnProperty.call(Results.noContent(), "body"), false);
     assert.equal(Results.notFound().status, 404);
+    assert.equal(Results.notFound().kind, "json");
     assert.equal(Results.badRequest({ error: "bad" }).status, 400);
+    assert.equal(Results.badRequest({ error: "bad" }).kind, "json");
     assert.deepEqual(Results.status(202, { accepted: true }).body, { accepted: true });
     assert.equal(Results.status(204).kind, "empty");
     assert.equal(Results.problem("broken").kind, "problem");

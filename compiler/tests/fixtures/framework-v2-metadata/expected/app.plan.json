@@ -509,7 +509,7 @@
         {
           "bodySchema": null,
           "helper": "notFound",
-          "kind": "problem",
+          "kind": "json",
           "partial": false,
           "source": {
             "column": 36,
