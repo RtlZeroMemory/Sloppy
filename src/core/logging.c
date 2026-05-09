@@ -6,7 +6,11 @@
 #include "sloppy/platform_time.h"
 
 #include <math.h>
-#include <string.h>
+#include <yyjson.h>
+
+typedef SlStatus (*SlLogSinkWriteFn)(SlLogSink* sink, const SlLogEvent* event);
+typedef SlStatus (*SlLogSinkFlushFn)(SlLogSink* sink);
+typedef void (*SlLogSinkCloseFn)(SlLogSink* sink);
 
 typedef struct SlLogMemorySinkState
 {
@@ -33,9 +37,12 @@ struct SlLogSink
 {
     SlLogSinkKind kind;
     void* state;
-    SlLogCustomSinkWriteFn write;
-    SlLogCustomSinkFlushFn flush;
-    SlLogCustomSinkCloseFn close;
+    SlLogSinkWriteFn write;
+    SlLogSinkFlushFn flush;
+    SlLogSinkCloseFn close;
+    SlLogCustomSinkWriteFn custom_write;
+    SlLogCustomSinkFlushFn custom_flush;
+    SlLogCustomSinkCloseFn custom_close;
     uint64_t write_count;
     uint64_t failure_count;
     bool closed;
@@ -50,6 +57,7 @@ struct SlLogRuntime
     size_t sink_capacity;
     size_t sink_count;
     SlPlatformMutex* mutex;
+    SlPlatformMutex* sink_mutex;
     SlPlatformCond* cond;
     SlPlatformThread* thread;
     size_t in_flight_events;
@@ -77,14 +85,16 @@ static bool sl_log_text_valid(SlStr text)
 
 static SlStatus sl_log_copy_to_fixed(char* buffer, size_t capacity, size_t* out_length, SlStr text)
 {
+    size_t index = 0U;
+
     if (buffer == NULL || capacity == 0U || out_length == NULL || !sl_log_text_valid(text)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (text.length >= capacity) {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
-    if (text.length != 0U) {
-        memcpy(buffer, text.ptr, text.length);
+    for (index = 0U; index < text.length; index += 1U) {
+        buffer[index] = text.ptr[index];
     }
     buffer[text.length] = '\0';
     *out_length = text.length;
@@ -294,7 +304,7 @@ static bool sl_log_normalized_ends_with(SlStr key, const char* suffix)
     if (suffix_length > length) {
         return false;
     }
-    return memcmp(normalized_key + (length - suffix_length), suffix, suffix_length) == 0;
+    return sl_str_ends_with(sl_str_from_parts(normalized_key, length), sl_str_from_cstr(suffix));
 }
 
 bool sl_log_key_is_sensitive(SlStr key, const SlStr* extra_keys, size_t extra_key_count)
@@ -534,6 +544,29 @@ SlStatus sl_log_event_builder_add_string(SlLogEventBuilder* builder, SlStr key, 
     return sl_status_ok();
 }
 
+static bool sl_log_json_payload_valid(SlStr value)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+
+    if (!sl_log_text_valid(value) || value.length == 0U) {
+        return false;
+    }
+
+    doc = yyjson_read_opts((char*)value.ptr, value.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        return false;
+    }
+    root = yyjson_doc_get_root(doc);
+    if (root == NULL) {
+        yyjson_doc_free(doc);
+        return false;
+    }
+    yyjson_doc_free(doc);
+    return true;
+}
+
 SlStatus sl_log_event_builder_add_json(SlLogEventBuilder* builder, SlStr key, SlStr value)
 {
     SlLogField* field = NULL;
@@ -549,6 +582,10 @@ SlStatus sl_log_event_builder_add_json(SlLogEventBuilder* builder, SlStr key, Sl
     if (!sl_status_is_ok(status)) {
         builder->event.field_count -= 1U;
         return status;
+    }
+    if (!sl_log_json_payload_valid(sl_log_field_text_value(field))) {
+        builder->event.field_count -= 1U;
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     field->kind = SL_LOG_FIELD_JSON;
     return sl_status_ok();
@@ -766,8 +803,7 @@ SlStatus sl_log_event_serialize_jsonl(const SlLogEvent* event, char* buffer, siz
     return sl_status_ok();
 }
 
-static SlStatus sl_log_dispatch_to_sink(SlLogRuntime* runtime, SlLogSink* sink,
-                                        const SlLogEvent* event)
+static SlStatus sl_log_dispatch_to_sink(SlLogSink* sink, const SlLogEvent* event)
 {
     SlStatus status;
 
@@ -780,9 +816,6 @@ static SlStatus sl_log_dispatch_to_sink(SlLogRuntime* runtime, SlLogSink* sink,
     }
     else {
         sink->failure_count += 1U;
-        if (runtime != NULL) {
-            runtime->sink_failures += 1U;
-        }
     }
     return status;
 }
@@ -790,14 +823,25 @@ static SlStatus sl_log_dispatch_to_sink(SlLogRuntime* runtime, SlLogSink* sink,
 static void sl_log_runtime_dispatch_event(SlLogRuntime* runtime, const SlLogEvent* event)
 {
     size_t index = 0U;
+    uint64_t sink_failures = 0U;
 
     if (runtime == NULL || event == NULL) {
         return;
     }
+
+    sl_platform_mutex_lock(runtime->sink_mutex);
     for (index = 0U; index < runtime->sink_count; index += 1U) {
-        (void)sl_log_dispatch_to_sink(runtime, runtime->sinks[index], event);
+        if (!sl_status_is_ok(sl_log_dispatch_to_sink(runtime->sinks[index], event))) {
+            sink_failures += 1U;
+        }
     }
+    sl_platform_mutex_unlock(runtime->sink_mutex);
+
+    sl_platform_mutex_lock(runtime->mutex);
+    runtime->sink_failures += sink_failures;
     runtime->dispatched_events += 1U;
+    sl_platform_cond_broadcast(runtime->cond);
+    sl_platform_mutex_unlock(runtime->mutex);
 }
 
 static bool sl_log_runtime_pop_event_locked(SlLogRuntime* runtime, SlLogEvent* out_event)
@@ -900,6 +944,9 @@ SlStatus sl_log_runtime_create(SlArena* arena, const SlLogRuntimeConfig* config,
 
     status = sl_platform_mutex_create(arena, &runtime->mutex);
     if (sl_status_is_ok(status)) {
+        status = sl_platform_mutex_create(arena, &runtime->sink_mutex);
+    }
+    if (sl_status_is_ok(status)) {
         status = sl_platform_cond_create(arena, &runtime->cond);
     }
     if (!sl_status_is_ok(status)) {
@@ -912,14 +959,24 @@ SlStatus sl_log_runtime_create(SlArena* arena, const SlLogRuntimeConfig* config,
 
 SlStatus sl_log_runtime_add_sink(SlLogRuntime* runtime, SlLogSink* sink)
 {
-    if (runtime == NULL || sink == NULL || runtime->shutdown) {
+    if (runtime == NULL || sink == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    sl_platform_mutex_lock(runtime->mutex);
+    if (runtime->dispatcher_started || runtime->stop_requested || runtime->shutdown) {
+        sl_platform_mutex_unlock(runtime->mutex);
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
     if (runtime->sink_count >= runtime->sink_capacity) {
+        sl_platform_mutex_unlock(runtime->mutex);
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
+
+    sl_platform_mutex_lock(runtime->sink_mutex);
     runtime->sinks[runtime->sink_count] = sink;
     runtime->sink_count += 1U;
+    sl_platform_mutex_unlock(runtime->sink_mutex);
+    sl_platform_mutex_unlock(runtime->mutex);
     return sl_status_ok();
 }
 
@@ -927,30 +984,47 @@ SlStatus sl_log_runtime_start(SlLogRuntime* runtime)
 {
     SlStatus status;
 
-    if (runtime == NULL || runtime->shutdown) {
+    if (runtime == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    sl_platform_mutex_lock(runtime->mutex);
+    if (runtime->shutdown || runtime->stop_requested) {
+        sl_platform_mutex_unlock(runtime->mutex);
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
     if (runtime->dispatcher_started) {
+        sl_platform_mutex_unlock(runtime->mutex);
         return sl_status_ok();
     }
     status = sl_platform_thread_start(runtime->arena, sl_log_runtime_dispatch_main, runtime,
                                       &runtime->thread);
     if (!sl_status_is_ok(status)) {
+        sl_platform_mutex_unlock(runtime->mutex);
         return status;
     }
     runtime->dispatcher_started = true;
+    sl_platform_mutex_unlock(runtime->mutex);
     return sl_status_ok();
 }
 
 bool sl_log_runtime_is_enabled(const SlLogRuntime* runtime, SlLogLevel level)
 {
-    return runtime != NULL && runtime->accepting &&
-           sl_log_level_enabled(runtime->config.minimum_level, level);
+    bool enabled = false;
+
+    if (runtime == NULL) {
+        return false;
+    }
+    sl_platform_mutex_lock(runtime->mutex);
+    enabled = runtime->accepting && !runtime->shutdown &&
+              sl_log_level_enabled(runtime->config.minimum_level, level);
+    sl_platform_mutex_unlock(runtime->mutex);
+    return enabled;
 }
 
 SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event)
 {
     SlLogEvent queued = {0};
+    SlLogLevel minimum_level = SL_LOG_LEVEL_OFF;
     SlStatus status;
 
     if (runtime == NULL || event == NULL) {
@@ -958,13 +1032,14 @@ SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event)
     }
 
     sl_platform_mutex_lock(runtime->mutex);
-    if (!runtime->accepting || runtime->shutdown) {
+    if (!runtime->accepting || runtime->stop_requested || runtime->shutdown) {
         sl_platform_mutex_unlock(runtime->mutex);
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
+    minimum_level = runtime->config.minimum_level;
     sl_platform_mutex_unlock(runtime->mutex);
 
-    if (!sl_log_level_enabled(runtime->config.minimum_level, event->level)) {
+    if (!sl_log_level_enabled(minimum_level, event->level)) {
         return sl_status_ok();
     }
 
@@ -977,6 +1052,10 @@ SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event)
     (void)sl_platform_monotonic_time_ns(&queued.timestamp_ns);
 
     sl_platform_mutex_lock(runtime->mutex);
+    if (!runtime->accepting || runtime->stop_requested || runtime->shutdown) {
+        sl_platform_mutex_unlock(runtime->mutex);
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
     runtime->next_sequence += 1U;
     queued.sequence = runtime->next_sequence;
     if (sl_ring_queue_is_full(&runtime->queue)) {
@@ -1010,12 +1089,25 @@ SlStatus sl_log_runtime_drain(SlLogRuntime* runtime)
         bool has_event = false;
 
         sl_platform_mutex_lock(runtime->mutex);
+        if (runtime->dispatcher_started) {
+            sl_platform_mutex_unlock(runtime->mutex);
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
         has_event = sl_log_runtime_pop_event_locked(runtime, &event);
+        if (has_event) {
+            runtime->in_flight_events += 1U;
+        }
         sl_platform_mutex_unlock(runtime->mutex);
         if (!has_event) {
             break;
         }
         sl_log_runtime_dispatch_event(runtime, &event);
+        sl_platform_mutex_lock(runtime->mutex);
+        if (runtime->in_flight_events > 0U) {
+            runtime->in_flight_events -= 1U;
+        }
+        sl_platform_cond_broadcast(runtime->cond);
+        sl_platform_mutex_unlock(runtime->mutex);
     }
     return sl_status_ok();
 }
@@ -1024,11 +1116,18 @@ SlStatus sl_log_runtime_flush(SlLogRuntime* runtime)
 {
     size_t index = 0U;
     SlStatus first_failure = sl_status_ok();
+    uint64_t sink_failures = 0U;
+    bool dispatcher_started = false;
 
     if (runtime == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (!runtime->dispatcher_started) {
+
+    sl_platform_mutex_lock(runtime->mutex);
+    dispatcher_started = runtime->dispatcher_started;
+    sl_platform_mutex_unlock(runtime->mutex);
+
+    if (!dispatcher_started) {
         SlStatus status = sl_log_runtime_drain(runtime);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -1042,6 +1141,7 @@ SlStatus sl_log_runtime_flush(SlLogRuntime* runtime)
         sl_platform_mutex_unlock(runtime->mutex);
     }
 
+    sl_platform_mutex_lock(runtime->sink_mutex);
     for (index = 0U; index < runtime->sink_count; index += 1U) {
         SlLogSink* sink = runtime->sinks[index];
         if (sink != NULL && sink->flush != NULL && !sink->closed) {
@@ -1051,9 +1151,16 @@ SlStatus sl_log_runtime_flush(SlLogRuntime* runtime)
             }
             if (!sl_status_is_ok(status)) {
                 sink->failure_count += 1U;
-                runtime->sink_failures += 1U;
+                sink_failures += 1U;
             }
         }
+    }
+    sl_platform_mutex_unlock(runtime->sink_mutex);
+
+    if (sink_failures != 0U) {
+        sl_platform_mutex_lock(runtime->mutex);
+        runtime->sink_failures += sink_failures;
+        sl_platform_mutex_unlock(runtime->mutex);
     }
     return first_failure;
 }
@@ -1062,26 +1169,34 @@ SlStatus sl_log_runtime_shutdown(SlLogRuntime* runtime)
 {
     size_t index = 0U;
     SlStatus status;
+    bool dispatcher_started = false;
 
     if (runtime == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (runtime->shutdown) {
-        return sl_status_ok();
-    }
 
     sl_platform_mutex_lock(runtime->mutex);
+    if (runtime->shutdown) {
+        sl_platform_mutex_unlock(runtime->mutex);
+        return sl_status_ok();
+    }
     runtime->accepting = false;
     runtime->stop_requested = true;
+    runtime->shutdown = true;
+    dispatcher_started = runtime->dispatcher_started;
     sl_platform_cond_broadcast(runtime->cond);
     sl_platform_mutex_unlock(runtime->mutex);
 
-    if (runtime->dispatcher_started) {
+    if (dispatcher_started) {
         sl_platform_thread_join(runtime->thread);
+        sl_platform_mutex_lock(runtime->mutex);
         runtime->dispatcher_started = false;
+        sl_platform_cond_broadcast(runtime->cond);
+        sl_platform_mutex_unlock(runtime->mutex);
     }
 
     status = sl_log_runtime_flush(runtime);
+    sl_platform_mutex_lock(runtime->sink_mutex);
     for (index = 0U; index < runtime->sink_count; index += 1U) {
         SlLogSink* sink = runtime->sinks[index];
         if (sink != NULL && sink->close != NULL && !sink->closed) {
@@ -1092,11 +1207,7 @@ SlStatus sl_log_runtime_shutdown(SlLogRuntime* runtime)
             sink->closed = true;
         }
     }
-    runtime->shutdown = true;
-    sl_platform_cond_destroy(runtime->cond);
-    sl_platform_mutex_destroy(runtime->mutex);
-    runtime->cond = NULL;
-    runtime->mutex = NULL;
+    sl_platform_mutex_unlock(runtime->sink_mutex);
     return status;
 }
 
@@ -1107,6 +1218,7 @@ SlLogRuntimeSnapshot sl_log_runtime_snapshot(const SlLogRuntime* runtime)
     if (runtime == NULL) {
         return snapshot;
     }
+    sl_platform_mutex_lock(runtime->mutex);
     snapshot.minimum_level = runtime->config.minimum_level;
     snapshot.queued_events = sl_ring_queue_count(&runtime->queue);
     snapshot.in_flight_events = runtime->in_flight_events;
@@ -1120,6 +1232,7 @@ SlLogRuntimeSnapshot sl_log_runtime_snapshot(const SlLogRuntime* runtime)
     snapshot.accepting = runtime->accepting;
     snapshot.dispatcher_started = runtime->dispatcher_started;
     snapshot.shutdown = runtime->shutdown;
+    sl_platform_mutex_unlock(runtime->mutex);
     return snapshot;
 }
 
@@ -1365,6 +1478,7 @@ static SlStatus sl_log_file_sink_append(SlLogFileSinkState* state, SlBytes bytes
 {
     SlStatus status;
     SlLogSink fake_sink = {0};
+    size_t index = 0U;
 
     if (state == NULL || bytes.length == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1385,7 +1499,9 @@ static SlStatus sl_log_file_sink_append(SlLogFileSinkState* state, SlBytes bytes
             return status;
         }
     }
-    memcpy(state->buffer + state->length, bytes.ptr, bytes.length);
+    for (index = 0U; index < bytes.length; index += 1U) {
+        state->buffer[state->length + index] = bytes.ptr[index];
+    }
     state->length += bytes.length;
     return sl_status_ok();
 }
@@ -1470,7 +1586,30 @@ SlStatus sl_log_file_sink_create(SlArena* arena, SlStr path, size_t buffer_bytes
     return sl_status_ok();
 }
 
-SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogSinkKind kind, SlLogCustomSinkWriteFn write,
+static SlStatus sl_log_custom_sink_write(SlLogSink* sink, const SlLogEvent* event)
+{
+    if (sink == NULL || sink->custom_write == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sink->custom_write(sink->state, event);
+}
+
+static SlStatus sl_log_custom_sink_flush(SlLogSink* sink)
+{
+    if (sink == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sink->custom_flush == NULL ? sl_status_ok() : sink->custom_flush(sink->state);
+}
+
+static void sl_log_custom_sink_close(SlLogSink* sink)
+{
+    if (sink != NULL && sink->custom_close != NULL) {
+        sink->custom_close(sink->state);
+    }
+}
+
+SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogCustomSinkWriteFn write,
                                    SlLogCustomSinkFlushFn flush, SlLogCustomSinkCloseFn close,
                                    void* state, SlLogSink** out_sink)
 {
@@ -1488,11 +1627,14 @@ SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogSinkKind kind, SlLogCust
     }
     sink = (SlLogSink*)sink_memory;
     *sink = (SlLogSink){0};
-    sink->kind = kind;
+    sink->kind = SL_LOG_SINK_CUSTOM;
     sink->state = state;
-    sink->write = write;
-    sink->flush = flush;
-    sink->close = close;
+    sink->write = sl_log_custom_sink_write;
+    sink->flush = sl_log_custom_sink_flush;
+    sink->close = sl_log_custom_sink_close;
+    sink->custom_write = write;
+    sink->custom_flush = flush;
+    sink->custom_close = close;
     *out_sink = sink;
     return sl_status_ok();
 }

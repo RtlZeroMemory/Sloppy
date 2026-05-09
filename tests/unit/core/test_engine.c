@@ -30,6 +30,19 @@ static int init_arena(SlArena* arena, unsigned char* storage, size_t storage_siz
     return expect_status(sl_arena_init(arena, storage, storage_size), SL_STATUS_OK);
 }
 
+static int test_http_request_context_route_metadata_is_tail_appended(void)
+{
+    if (offsetof(SlHttpRequestContext, route_name) <= offsetof(SlHttpRequestContext, cancellation))
+    {
+        return 80;
+    }
+    if (offsetof(SlHttpRequestContext, route_pattern) <= offsetof(SlHttpRequestContext, route_name))
+    {
+        return 81;
+    }
+    return 0;
+}
+
 static int test_noop_create_info_destroy(void)
 {
     unsigned char storage[512];
@@ -455,6 +468,11 @@ int main(void)
     }
 
     result = test_create_invalid_options();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_http_request_context_route_metadata_is_tail_appended();
     if (result != 0) {
         return result;
     }

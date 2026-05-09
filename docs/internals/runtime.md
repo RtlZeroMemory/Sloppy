@@ -26,7 +26,7 @@ diagnostic and a non-zero exit.
 13. accept work (--once or listener)    src/platform/libuv/*
 ```
 
-After step 13 the runtime is in steady state. Shutdown reverses 12->1
+After step 13 the runtime is in steady state. Shutdown reverses 13->1
 in cleanup order.
 
 ## Plan validation

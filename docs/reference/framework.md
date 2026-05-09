@@ -272,9 +272,10 @@ The app logger and request logger support:
 | `isEnabled(level)` | Checks the current minimum level. |
 | `forCategory(name)` | Returns a category logger that keeps the same request metadata. |
 
-Field objects are shallow and bounded. Supported field values are `null`,
-booleans, finite numbers, and strings. Unsupported values are rejected rather
-than recursively stringified.
+Field objects are shallow and bounded. `copyLogFields()` accepts at most eight
+fields per event; passing more than eight fields throws. Supported field values
+are `null`, booleans, finite numbers, and strings. Unsupported values are
+rejected rather than recursively stringified.
 
 Builder logging APIs:
 

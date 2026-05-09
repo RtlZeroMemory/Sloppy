@@ -80,8 +80,10 @@ Supported field values are `null`, booleans, finite numbers, and strings. Field
 objects are shallow and bounded; arrays, functions, nested objects, symbols, and
 other unsupported values are rejected instead of being stringified implicitly.
 
-Native events currently retain up to eight fields. Field names and values are
-copied into fixed-size event storage before the event enters the queue.
+Log field objects are shallow and support at most eight fields per event.
+Passing more than eight fields throws in JavaScript; the native builder returns
+`SL_STATUS_CAPACITY_EXCEEDED`. Field names and values are copied into fixed-size
+event storage before the event enters the queue.
 
 ## Redaction
 

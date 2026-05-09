@@ -583,6 +583,9 @@ function createEndpointBuilder(route, assertAppMutable) {
             validateName(name, "endpoint");
 
             route.name = name;
+            if (route.routeInfo !== undefined) {
+                route.routeInfo.name = name;
+            }
             return endpoint;
         },
     };
@@ -701,6 +704,7 @@ function registerRoute(
     }
 
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
+    const routeInfo = { method, pattern: args.pattern, name: null };
     const route = {
         method,
         pattern: args.pattern,
@@ -709,9 +713,10 @@ function registerRoute(
             args.handler,
             Object.freeze(orderedMiddleware),
             corsPolicy,
-            Object.freeze({ method, pattern: args.pattern }),
+            routeInfo,
         ),
         name: null,
+        routeInfo,
         metadata: {
             ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
             ...((currentModule !== null) ? { module: currentModule } : {}),
@@ -791,7 +796,7 @@ function registerCorsPreflightRoute(
             createCorsPreflightHandler(existing.metadata.cors.state),
             middleware,
             null,
-            Object.freeze({ method: "OPTIONS", pattern }),
+            existing.routeInfo ?? { method: "OPTIONS", pattern, name: existing.name ?? null },
         );
         existing.metadata.middleware = middlewareMetadata(middleware);
         return;
@@ -801,6 +806,7 @@ function registerCorsPreflightRoute(
         policy: corsPolicy,
         methods: new Set([method]),
     };
+    const routeInfo = { method: "OPTIONS", pattern, name: null };
     routes.push({
         method: "OPTIONS",
         pattern,
@@ -809,9 +815,10 @@ function registerCorsPreflightRoute(
             createCorsPreflightHandler(state),
             middleware,
             null,
-            Object.freeze({ method: "OPTIONS", pattern }),
+            routeInfo,
         ),
         name: null,
+        routeInfo,
         metadata: {
             cors: {
                 ...snapshotCorsPolicy(corsPolicy),
@@ -846,7 +853,9 @@ function createControllerHandler(host, Controller, action, routeInfo) {
     }
 
     return function controllerHandler(context) {
-        let ctx = context ?? createHandlerContext(host, routeInfo);
+        let ctx = context === undefined || context === null
+            ? createHandlerContext(host, routeInfo)
+            : decorateProvidedContext(host, context, routeInfo);
         let ownsServices = context === undefined || context === null;
         if (ctx.services === undefined || ctx.services === null) {
             ctx = Object.freeze({

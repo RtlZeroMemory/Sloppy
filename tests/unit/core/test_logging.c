@@ -1,4 +1,5 @@
 #include "sloppy/logging.h"
+#include "sloppy/platform_thread.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -33,6 +34,20 @@ static bool str_contains(SlStr haystack, const char* needle)
 {
     return bytes_contains(sl_bytes_from_parts((const unsigned char*)haystack.ptr, haystack.length),
                           needle);
+}
+
+static bool json_parseable(SlBytes bytes)
+{
+    SlLogEventBuilder validator = {0};
+
+    if (bytes.ptr == NULL || bytes.length == 0U) {
+        return false;
+    }
+    return sl_status_is_ok(sl_log_event_builder_init(&validator, SL_LOG_LEVEL_INFO,
+                                                     sl_str_from_cstr("validator"))) &&
+           sl_status_is_ok(sl_log_event_builder_add_json(
+               &validator, sl_str_from_cstr("line"),
+               sl_str_from_parts((const char*)bytes.ptr, bytes.length)));
 }
 
 static SlStatus build_login_event(SlLogLevel level, SlLogEvent* out_event)
@@ -156,6 +171,60 @@ static int test_jsonl_serialization(void)
     return 0;
 }
 
+static int test_json_field_validation_and_parseable_jsonl(void)
+{
+    SlLogEventBuilder builder = {0};
+    SlLogEvent event = {0};
+    char buffer[SL_LOG_MAX_JSONL_BYTES];
+    SlBytes bytes = {0};
+
+    if (expect_status(sl_log_event_builder_init(&builder, SL_LOG_LEVEL_INFO,
+                                                sl_str_from_cstr("json payloads")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_builder_add_json(&builder, sl_str_from_cstr("object"),
+                                                    sl_str_from_cstr("{\"ok\":true}")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_builder_add_json(&builder, sl_str_from_cstr("array"),
+                                                    sl_str_from_cstr("[1,2,3]")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_builder_add_json(&builder, sl_str_from_cstr("scalar"),
+                                                    sl_str_from_cstr("42")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 12;
+    }
+
+    if (builder.event.field_count != 3U) {
+        return 13;
+    }
+
+    if (expect_status(sl_log_event_builder_add_json(&builder, sl_str_from_cstr("bad"),
+                                                    sl_str_from_cstr("{bad")),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 14;
+    }
+
+    if (builder.event.field_count != 3U) {
+        return 15;
+    }
+
+    if (expect_status(sl_log_event_builder_finish(&builder, &event), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_serialize_jsonl(&event, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_OK) != 0)
+    {
+        return 16;
+    }
+
+    if (!bytes_contains(bytes, "\"object\":{\"ok\":true}") ||
+        !bytes_contains(bytes, "\"array\":[1,2,3]") || !bytes_contains(bytes, "\"scalar\":42") ||
+        !json_parseable(bytes))
+    {
+        return 17;
+    }
+    return 0;
+}
+
 static int test_runtime_memory_queue_pressure(void)
 {
     unsigned char storage[131072];
@@ -208,11 +277,123 @@ static int test_runtime_memory_queue_pressure(void)
     return 0;
 }
 
+static int test_runtime_shutdown_public_apis_remain_safe(void)
+{
+    unsigned char storage[131072];
+    unsigned char snapshot_storage[32768];
+    SlArena arena = {0};
+    SlArena snapshot_arena = {0};
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlLogRuntime* runtime = NULL;
+    SlLogSink* memory = NULL;
+    SlLogMemorySnapshot memory_snapshot = {0};
+    SlLogRuntimeSnapshot runtime_snapshot = {0};
+    SlLogEvent event = {0};
+
+    config.queue_capacity = 4U;
+    config.sink_capacity = 1U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&snapshot_arena, snapshot_storage, sizeof(snapshot_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_create(&arena, &config, &runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_create(&arena, 4U, &memory), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, memory), SL_STATUS_OK) != 0 ||
+        expect_status(build_login_event(SL_LOG_LEVEL_INFO, &event), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_submit(runtime, &event), SL_STATUS_OK) != 0)
+    {
+        return 25;
+    }
+
+    runtime_snapshot = sl_log_runtime_snapshot(runtime);
+    if (runtime_snapshot.queued_events != 1U || runtime_snapshot.submitted_events != 1U ||
+        runtime_snapshot.shutdown)
+    {
+        return 26;
+    }
+
+    if (expect_status(sl_log_runtime_flush(runtime), SL_STATUS_OK) != 0) {
+        return 27;
+    }
+    runtime_snapshot = sl_log_runtime_snapshot(runtime);
+    if (runtime_snapshot.queued_events != 0U || runtime_snapshot.dispatched_events != 1U ||
+        runtime_snapshot.in_flight_events != 0U)
+    {
+        return 28;
+    }
+
+    if (expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0)
+    {
+        return 29;
+    }
+
+    runtime_snapshot = sl_log_runtime_snapshot(runtime);
+    if (!runtime_snapshot.shutdown || runtime_snapshot.accepting ||
+        runtime_snapshot.dispatcher_started)
+    {
+        return 30;
+    }
+
+    if (expect_status(sl_log_runtime_submit(runtime, &event), SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(sl_log_runtime_flush(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_drain(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_snapshot(memory, &snapshot_arena, &memory_snapshot),
+                      SL_STATUS_OK) != 0 ||
+        memory_snapshot.count != 1U)
+    {
+        return 31;
+    }
+    return 0;
+}
+
+static int test_runtime_sink_registration_lifecycle(void)
+{
+    unsigned char storage[131072];
+    SlArena arena = {0};
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlLogRuntime* runtime = NULL;
+    SlLogSink* first = NULL;
+    SlLogSink* second = NULL;
+
+    config.queue_capacity = 4U;
+    config.sink_capacity = 2U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_create(&arena, &config, &runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_create(&arena, 4U, &first), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_create(&arena, 4U, &second), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, first), SL_STATUS_OK) != 0)
+    {
+        return 32;
+    }
+
+    if (expect_status(sl_log_runtime_start(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, second), SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 33;
+    }
+
+    if (expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, second), SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 34;
+    }
+    return 0;
+}
+
 typedef struct ConsoleCapture
 {
     char text[4096];
     size_t length;
 } ConsoleCapture;
+
+typedef struct CustomSinkState
+{
+    unsigned int writes;
+    unsigned int flushes;
+    unsigned int closes;
+    const SlLogEvent* last_event;
+    SlStatus write_status;
+} CustomSinkState;
 
 static SlStatus capture_writer(SlBytes bytes, void* user)
 {
@@ -226,6 +407,94 @@ static SlStatus capture_writer(SlBytes bytes, void* user)
     memcpy(capture->text + capture->length, bytes.ptr, bytes.length);
     capture->length += bytes.length;
     return sl_status_ok();
+}
+
+static SlStatus custom_sink_write(void* state, const SlLogEvent* event)
+{
+    CustomSinkState* custom = (CustomSinkState*)state;
+
+    if (custom == NULL || event == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    custom->writes += 1U;
+    custom->last_event = event;
+    return custom->write_status;
+}
+
+static SlStatus custom_sink_flush(void* state)
+{
+    CustomSinkState* custom = (CustomSinkState*)state;
+
+    if (custom == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    custom->flushes += 1U;
+    return sl_status_ok();
+}
+
+static void custom_sink_close(void* state)
+{
+    CustomSinkState* custom = (CustomSinkState*)state;
+
+    if (custom != NULL) {
+        custom->closes += 1U;
+    }
+}
+
+static int test_custom_sink_state_and_failure_accounting(void)
+{
+    unsigned char storage[131072];
+    unsigned char snapshot_storage[32768];
+    SlArena arena = {0};
+    SlArena snapshot_arena = {0};
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlLogRuntime* runtime = NULL;
+    SlLogSink* custom = NULL;
+    SlLogMemorySnapshot memory_snapshot = {0};
+    SlLogSinkSnapshot sink_snapshot = {0};
+    SlLogRuntimeSnapshot runtime_snapshot = {0};
+    SlLogEvent event = {0};
+    CustomSinkState state = {0};
+
+    state.write_status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+    config.queue_capacity = 4U;
+    config.sink_capacity = 1U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&snapshot_arena, snapshot_storage, sizeof(snapshot_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_create(&arena, &config, &runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_custom_sink_create(&arena, custom_sink_write, custom_sink_flush,
+                                                custom_sink_close, &state, &custom),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, custom), SL_STATUS_OK) != 0 ||
+        expect_status(build_login_event(SL_LOG_LEVEL_INFO, &event), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_submit(runtime, &event), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_flush(runtime), SL_STATUS_OK) != 0)
+    {
+        return 35;
+    }
+
+    sink_snapshot = sl_log_sink_snapshot(custom);
+    runtime_snapshot = sl_log_runtime_snapshot(runtime);
+    if (state.writes != 1U || state.flushes != 1U || state.last_event == NULL ||
+        sink_snapshot.kind != SL_LOG_SINK_CUSTOM || sink_snapshot.failure_count != 1U ||
+        runtime_snapshot.sink_failures != 1U)
+    {
+        return 36;
+    }
+
+    if (expect_status(sl_log_memory_sink_snapshot(custom, &snapshot_arena, &memory_snapshot),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 37;
+    }
+
+    if (expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0 || state.closes != 1U ||
+        expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0 || state.closes != 1U)
+    {
+        return 38;
+    }
+    return 0;
 }
 
 static int test_console_sink_pretty_and_jsonl(void)
@@ -361,6 +630,81 @@ static int test_threaded_dispatch_shutdown(void)
     return 0;
 }
 
+typedef struct SubmitRaceState
+{
+    SlLogRuntime* runtime;
+    SlLogEvent event;
+    SlStatus last_status;
+    size_t attempts;
+} SubmitRaceState;
+
+static void submit_race_main(void* user)
+{
+    SubmitRaceState* state = (SubmitRaceState*)user;
+
+    if (state == NULL || state->runtime == NULL) {
+        return;
+    }
+    for (state->attempts = 0U; state->attempts < 4096U; state->attempts += 1U) {
+        state->last_status = sl_log_runtime_submit(state->runtime, &state->event);
+        if (sl_status_code(state->last_status) == SL_STATUS_INVALID_STATE) {
+            return;
+        }
+    }
+}
+
+static int test_submit_racing_shutdown_does_not_crash(void)
+{
+    static unsigned char storage[1048576];
+    SlArena arena = {0};
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlLogRuntime* runtime = NULL;
+    SlLogSink* memory = NULL;
+    SlPlatformThread* thread = NULL;
+    SubmitRaceState state = {0};
+
+    config.queue_capacity = 64U;
+    config.sink_capacity = 1U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 53;
+    }
+    if (expect_status(sl_log_runtime_create(&arena, &config, &runtime), SL_STATUS_OK) != 0) {
+        return 54;
+    }
+    if (expect_status(sl_log_memory_sink_create(&arena, 64U, &memory), SL_STATUS_OK) != 0) {
+        return 55;
+    }
+    if (expect_status(sl_log_runtime_add_sink(runtime, memory), SL_STATUS_OK) != 0) {
+        return 56;
+    }
+    if (expect_status(sl_log_runtime_start(runtime), SL_STATUS_OK) != 0) {
+        return 57;
+    }
+    if (expect_status(build_login_event(SL_LOG_LEVEL_INFO, &state.event), SL_STATUS_OK) != 0) {
+        return 58;
+    }
+
+    state.runtime = runtime;
+    state.last_status = sl_status_ok();
+    if (expect_status(sl_platform_thread_start(&arena, submit_race_main, &state, &thread),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0)
+    {
+        return 54;
+    }
+    sl_platform_thread_join(thread);
+
+    if (sl_status_code(state.last_status) != SL_STATUS_OK &&
+        sl_status_code(state.last_status) != SL_STATUS_INVALID_STATE)
+    {
+        return 55;
+    }
+    if (expect_status(sl_log_runtime_submit(runtime, &state.event), SL_STATUS_INVALID_STATE) != 0) {
+        return 56;
+    }
+    return 0;
+}
+
 static int test_stress_pressure_smoke(void)
 {
     unsigned char storage[262144];
@@ -399,12 +743,13 @@ static int test_stress_pressure_smoke(void)
 
 int main(int argc, char** argv)
 {
-    int (*tests[])(void) = {test_event_builder_fields_and_redaction,
-                            test_jsonl_serialization,
-                            test_runtime_memory_queue_pressure,
-                            test_console_sink_pretty_and_jsonl,
-                            test_file_sink_append_flush_and_missing_parent,
-                            test_threaded_dispatch_shutdown};
+    int (*tests[])(void) = {
+        test_event_builder_fields_and_redaction,        test_jsonl_serialization,
+        test_json_field_validation_and_parseable_jsonl, test_runtime_memory_queue_pressure,
+        test_runtime_shutdown_public_apis_remain_safe,  test_runtime_sink_registration_lifecycle,
+        test_custom_sink_state_and_failure_accounting,  test_console_sink_pretty_and_jsonl,
+        test_file_sink_append_flush_and_missing_parent, test_threaded_dispatch_shutdown,
+        test_submit_racing_shutdown_does_not_crash};
     size_t index = 0U;
 
     if (argc > 1 && strcmp(argv[1], "--stress") == 0) {

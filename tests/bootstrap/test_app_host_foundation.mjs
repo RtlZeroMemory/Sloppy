@@ -1344,9 +1344,13 @@ async function flushMicrotasks(count = 6) {
             this.greeting = greeting;
         }
 
-        get({ route, services }) {
+        get({ route, routeName, routePattern, services }) {
             actionSawServices = services !== undefined;
-            return Results.ok({ message: this.greeting.greet(route.id ?? "demo") });
+            return Results.ok({
+                message: this.greeting.greet(route.id ?? "demo"),
+                routeName,
+                routePattern,
+            });
         }
     }
 
@@ -1362,8 +1366,14 @@ async function flushMicrotasks(count = 6) {
     assert.equal(route.metadata.action, "get");
     assert.deepEqual(route.handler({ route: { id: 42 }, services: app.services.createScope() }).body, {
         message: "hello-42",
+        routeName: "Users.Get",
+        routePattern: "/users/{id:int}",
     });
-    assert.deepEqual(route.handler().body, { message: "hello-demo" });
+    assert.deepEqual(route.handler().body, {
+        message: "hello-demo",
+        routeName: "Users.Get",
+        routePattern: "/users/{id:int}",
+    });
     assert.equal(disposedScoped, 1);
     assert.equal(actionSawServices, true);
 
@@ -2226,7 +2236,12 @@ async function flushMicrotasks(count = 6) {
     const app = builder.build();
     app.use(RequestId.defaults({ generator: () => "req-log-1" }));
     app.use(RequestLogging.defaults());
-    app.get("/items/{id:int}", (ctx) => Results.status(202, { requestId: ctx.requestId }));
+    app.get("/items/{id:int}", (ctx) => Results.status(202, {
+        requestId: ctx.requestId,
+        routeName: ctx.routeName,
+        routePattern: ctx.routePattern,
+        id: ctx.route.id,
+    })).withName("Items.Get");
     const response = await app.__getRoutes()[0].handler({
         route: { id: "7" },
         request: {
@@ -2237,12 +2252,20 @@ async function flushMicrotasks(count = 6) {
         },
     });
     assert.equal(response.status, 202);
+    assert.deepEqual(response.body, {
+        requestId: "req-log-1",
+        routeName: "Items.Get",
+        routePattern: "/items/{id:int}",
+        id: "7",
+    });
     assert.equal(sink.entries().length, 1);
     assert.equal(sink.entries()[0].level, "info");
     assert.equal(sink.entries()[0].message, "request completed");
     assert.equal(sink.entries()[0].fields.method, "GET");
     assert.equal(sink.entries()[0].fields.path, "/items/7?debug=true");
     assert.equal(sink.entries()[0].fields.route, "/items/{id:int}");
+    assert.equal(sink.entries()[0].fields.routePattern, "/items/{id:int}");
+    assert.equal(sink.entries()[0].fields.routeName, "Items.Get");
     assert.equal(sink.entries()[0].fields.status, 202);
     assert.equal(sink.entries()[0].fields.requestId, "req-log-1");
     assert.equal(Number.isInteger(sink.entries()[0].fields.durationMs), true);
@@ -2260,6 +2283,7 @@ async function flushMicrotasks(count = 6) {
         path: "/short",
         status: 418,
         route: "/short",
+        routePattern: "/short",
         requestId: "req-short",
     });
 
@@ -2371,6 +2395,7 @@ async function flushMicrotasks(count = 6) {
         path: "/hidden",
         status: 200,
         route: "/hidden",
+        routePattern: "/hidden",
     });
     assert.equal(Object.hasOwn(noReqIdSink.entries()[0].fields, "requestId"), false);
 

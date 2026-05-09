@@ -61,6 +61,10 @@ function writeRequestLog(context, options, startedAt, status) {
         const route = requestRoute(context);
         if (route !== undefined) {
             fields.route = route;
+            fields.routePattern = route;
+        }
+        if (typeof context?.routeName === "string" && context.routeName.length !== 0) {
+            fields.routeName = context.routeName;
         }
     }
     if (options.includeRequestId && typeof context.requestId === "string") {

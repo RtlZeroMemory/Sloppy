@@ -147,9 +147,9 @@ typedef struct SlLogRuntime SlLogRuntime;
 typedef struct SlLogSink SlLogSink;
 
 typedef SlStatus (*SlLogBytesWriteFn)(SlBytes bytes, void* user);
-typedef SlStatus (*SlLogCustomSinkWriteFn)(SlLogSink* sink, const SlLogEvent* event);
-typedef SlStatus (*SlLogCustomSinkFlushFn)(SlLogSink* sink);
-typedef void (*SlLogCustomSinkCloseFn)(SlLogSink* sink);
+typedef SlStatus (*SlLogCustomSinkWriteFn)(void* state, const SlLogEvent* event);
+typedef SlStatus (*SlLogCustomSinkFlushFn)(void* state);
+typedef void (*SlLogCustomSinkCloseFn)(void* state);
 
 typedef struct SlLogRuntimeConfig
 {
@@ -213,7 +213,7 @@ SlStatus sl_log_console_sink_create(SlArena* arena, SlLogConsoleFormat format,
                                     SlLogSink** out_sink);
 SlStatus sl_log_file_sink_create(SlArena* arena, SlStr path, size_t buffer_bytes,
                                  SlLogSink** out_sink);
-SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogSinkKind kind, SlLogCustomSinkWriteFn write,
+SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogCustomSinkWriteFn write,
                                    SlLogCustomSinkFlushFn flush, SlLogCustomSinkCloseFn close,
                                    void* state, SlLogSink** out_sink);
 SlLogSinkSnapshot sl_log_sink_snapshot(const SlLogSink* sink);
