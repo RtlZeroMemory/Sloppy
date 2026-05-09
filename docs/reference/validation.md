@@ -21,8 +21,14 @@ Supported constructors:
 | `schema.string().min(n)` | minimum string length (`n` must be non-negative integer) |
 | `schema.string().email()` | simple email regex check |
 | `schema.number()` | finite-number check |
+| `schema.int()` | integer check |
 | `schema.boolean()` | boolean check |
+| `schema.bool()` | alias for `schema.boolean()` |
+| `schema.array(itemSchema)` | array validation over an item schema |
 | `schema.object(shape)` | object shape validation over field schemas |
+
+Every schema returned by these constructors also supports `.optional()`. Optional schemas
+accept `undefined`; other values are validated by the wrapped schema.
 
 Validation result shape:
 
@@ -41,9 +47,18 @@ Issue entry shape:
 - each key must be non-empty
 - each value must expose both `validate(...)` and `__validateAtPath(...)`
 
+Optional object fields use the normal field schema:
+
+```ts
+const User = schema.object({
+  name: schema.string().min(1),
+  tags: schema.array(schema.string()).optional(),
+});
+```
+
 ## Route Metadata Validation Hints
 
-Bootstrap route options can carry metadata objects (for example `{ query: someSchema }`), and that metadata appears in route snapshots. This by itself is metadata wiring, not a full automatic HTTP validation contract.
+Bootstrap route options can carry metadata objects (for example `{ query: someSchema }`), and that metadata appears in route snapshots. Automatic request validation and validation-to-ProblemDetails mapping are planned as separate framework/runtime work.
 
 ## Compiler Binding Validation (Framework typed handlers)
 
@@ -77,5 +92,5 @@ Compiler rejects unsupported shapes with `SLOPPYC_E_*` diagnostics and source sp
 ## Limits
 
 - Full TypeScript typechecking is outside the current validation surface.
-- No automatic reflection for arbitrary external schema libraries.
-- No decorator-based validation pipeline.
+- Arbitrary external schema libraries require explicit adapter work.
+- Decorator-based validation belongs to a later framework design if the runtime adopts it.
