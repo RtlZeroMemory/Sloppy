@@ -294,6 +294,71 @@ static void sl_cli_openapi_emit_request_body(FILE* out, const SlCliMetadata* met
     }
 }
 
+static SlCliSpan sl_cli_openapi_content_type_for_response_kind(SlCliSpan kind)
+{
+    if (sl_cli_span_equal_cstr(kind, "json")) {
+        return sl_cli_span_cstr("application/json");
+    }
+    if (sl_cli_span_equal_cstr(kind, "problem")) {
+        return sl_cli_span_cstr("application/problem+json");
+    }
+    if (sl_cli_span_equal_cstr(kind, "text")) {
+        return sl_cli_span_cstr("text/plain");
+    }
+    if (sl_cli_span_equal_cstr(kind, "html")) {
+        return sl_cli_span_cstr("text/html");
+    }
+    if (sl_cli_span_equal_cstr(kind, "bytes")) {
+        return sl_cli_span_cstr("application/octet-stream");
+    }
+    return (SlCliSpan){0};
+}
+
+static void sl_cli_openapi_emit_problem_schema(FILE* out)
+{
+    sl_cli_write_cstr(out,
+                      "{ \"type\": \"object\", \"properties\": { "
+                      "\"status\": { \"type\": \"integer\" }, "
+                      "\"title\": { \"type\": \"string\" }, "
+                      "\"detail\": { \"type\": \"string\" } } }");
+}
+
+static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
+{
+    if (sl_cli_span_equal_cstr(kind, "json")) {
+        sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
+        return;
+    }
+    if (sl_cli_span_equal_cstr(kind, "problem")) {
+        sl_cli_openapi_emit_problem_schema(out);
+        return;
+    }
+    if (sl_cli_span_equal_cstr(kind, "text") || sl_cli_span_equal_cstr(kind, "html")) {
+        sl_cli_write_cstr(out, "{ \"type\": \"string\" }");
+        return;
+    }
+    if (sl_cli_span_equal_cstr(kind, "bytes")) {
+        sl_cli_write_cstr(out, "{ \"type\": \"string\", \"format\": \"binary\" }");
+        return;
+    }
+    sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
+}
+
+static void sl_cli_openapi_emit_response_content(FILE* out, SlCliSpan kind)
+{
+    SlCliSpan content_type = sl_cli_openapi_content_type_for_response_kind(kind);
+
+    if (sl_cli_span_empty(content_type)) {
+        return;
+    }
+
+    sl_cli_write_cstr(out, ", \"content\": { ");
+    sl_cli_json_escape(out, content_type);
+    sl_cli_write_cstr(out, ": { \"schema\": ");
+    sl_cli_openapi_emit_response_schema(out, kind);
+    sl_cli_write_cstr(out, " } }");
+}
+
 static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
 {
     uint64_t status = route->response_status == 0U ? 200U : route->response_status;
@@ -307,10 +372,8 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
     }
     else {
         sl_cli_json_escape(out, route->response_helper);
-        if (sl_cli_span_equal_cstr(route->response_kind, "json")) {
-            sl_cli_write_cstr(out,
-                              ", \"content\": { \"application/json\": { \"schema\": { "
-                              "\"x-slop-partial\": \"response schema shape not declared\" } } }");
+        if (!sl_cli_span_equal_cstr(route->response_kind, "empty")) {
+            sl_cli_openapi_emit_response_content(out, route->response_kind);
         }
         sl_cli_write_cstr(out, " }");
     }

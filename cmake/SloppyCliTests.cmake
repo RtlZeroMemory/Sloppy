@@ -224,6 +224,9 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_missing_schema_json tests/golden/cli/openapi-missing-schema.json openapi
         --plan tests/fixtures/cli/openapi-missing-schema.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_response_content_json tests/golden/cli/openapi-response-content.json
+        openapi --plan tests/fixtures/cli/openapi-response-content.plan.json)
 
     add_test(NAME sloppy.cli.help_includes_run COMMAND "$<TARGET_FILE:sloppy>" --help)
     set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")
