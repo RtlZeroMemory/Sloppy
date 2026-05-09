@@ -15,13 +15,13 @@ Every helper is on the `Results` namespace.
 
 ## JSON results
 
-| Helper                              | Status | `Content-Type`         |
-| ----------------------------------- | ------ | ---------------------- |
-| `Results.ok(value, options?)`       | 200    | `application/json`     |
-| `Results.created(loc, value, opts?)`| 201    | `application/json`, `Location: <loc>` |
-| `Results.accepted(value, options?)` | 202    | `application/json`     |
-| `Results.notFound(value?, options?)`| 404    | `application/json`     |
-| `Results.badRequest(value?, opts?)` | 400    | `application/json`     |
+| Helper                              | Status | `Content-Type`                  |
+| ----------------------------------- | ------ | ------------------------------- |
+| `Results.ok(value, options?)`       | 200    | `application/json; charset=utf-8` |
+| `Results.created(loc, value, opts?)`| 201    | `application/json; charset=utf-8`, `Location: <loc>` |
+| `Results.accepted(value, options?)` | 202    | `application/json; charset=utf-8` |
+| `Results.notFound(value?, options?)`| 404    | `application/json; charset=utf-8` |
+| `Results.badRequest(value?, opts?)` | 400    | `application/json; charset=utf-8` |
 
 ```ts
 return Results.ok({ id: 1, name: "Ada" });
@@ -29,17 +29,18 @@ return Results.created(`/users/${user.id}`, user);
 ```
 
 `Results.notFound()` and `Results.badRequest()` accept an optional payload.
-Without one, they emit an empty JSON body. With a string they emit `"…"`;
-with an object, the object.
+Called with no argument, the descriptor carries no body — the runtime
+sends only headers. With a string they emit `"…"`; with an object, the
+object.
 
 ## Body-shape results
 
-| Helper                          | Status | `Content-Type`             |
-| ------------------------------- | ------ | -------------------------- |
-| `Results.text(body, options?)`  | 200    | `text/plain; charset=utf-8`|
-| `Results.json(value, options?)` | 200    | `application/json`         |
-| `Results.html(body, options?)`  | 200    | `text/html; charset=utf-8` |
-| `Results.bytes(body, options?)` | 200    | `application/octet-stream` |
+| Helper                          | Status | `Content-Type`                  |
+| ------------------------------- | ------ | ------------------------------- |
+| `Results.text(body, options?)`  | 200    | `text/plain; charset=utf-8`     |
+| `Results.json(value, options?)` | 200    | `application/json; charset=utf-8` |
+| `Results.html(body, options?)`  | 200    | `text/html; charset=utf-8`      |
+| `Results.bytes(body, options?)` | 200    | `application/octet-stream`      |
 
 `body` for `text` and `html` is a string. For `bytes`, it's a `Uint8Array`
 (or any `BufferSource`).
@@ -71,12 +72,17 @@ return Results.problem({
 });
 ```
 
-Returns `application/problem+json` with the supplied fields. A bare string
-becomes the `detail` of a `500`:
+Returns `application/problem+json; charset=utf-8` with the supplied
+fields. A bare string becomes the `title` of a `500` (with no `detail`
+unless you pass an object):
 
 ```ts
 return Results.problem("Database is down");
+// → { title: "Database is down", status: 500 }
 ```
+
+Calling `Results.problem()` with no argument produces
+`{ title: "Sloppy problem", status: 500 }`.
 
 ## Options
 

@@ -36,26 +36,19 @@ Closer to **ASP.NET Core Minimal APIs** than to Express middleware soup.
 
 ## Install
 
-Download an archive for your platform from
-[Releases](https://github.com/RtlZeroMemory/Slop/releases), extract, and
-add `bin/` to `PATH`:
+Public release archives aren't published yet. The two supported paths
+today are:
 
-```sh
-# Linux
-tar -xzf sloppy-linux-x64.tar.gz -C ~/.sloppy
-export PATH="$HOME/.sloppy/sloppy-linux-x64/bin:$PATH"
-sloppy --version
-```
+- **Build from source** — full instructions in
+  [docs/contributor/building-from-source.md](docs/contributor/building-from-source.md).
+  Windows x64 is the most validated lane; Linux builds work; macOS and
+  arm64 still need work.
+- **Build a local archive** — `dev.ps1 package` produces a per-platform
+  archive under `artifacts/packages/` that can be extracted and put on
+  `PATH`. See [docs/install.md](docs/install.md).
 
-```powershell
-# Windows
-Expand-Archive sloppy-windows-x64.zip -DestinationPath "$HOME\.sloppy"
-$env:Path = "$HOME\.sloppy\sloppy-windows-x64\bin;$env:Path"
-sloppy --version
-```
-
-For source builds, see [docs/install.md](docs/install.md) and
-[docs/contributor/building-from-source.md](docs/contributor/building-from-source.md).
+Public release artifacts (GitHub Releases, npm launcher) are upcoming
+pre-alpha distribution work.
 
 ## A first app
 
@@ -121,8 +114,10 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 ## What's pre-alpha
 
 - Production hardening (graceful drain, broader TLS posture, HTTP/2/3).
-- The framework feature pack (CORS, ProblemDetails, middleware, health
-  checks, OpenAPI completion) is partially landed and still evolving.
+- A framework feature pack — CORS, middleware/endpoint filters,
+  health checks, ProblemDetails, OpenAPI completion — is upcoming
+  work, not yet implemented.
+- Public release distribution (GitHub Release archives, npm launcher).
 - Cross-platform polish: Windows x64 is the most validated lane.
 - npm app dependency support — Sloppy apps don't import `node_modules`
   packages, see [why](docs/about/why-no-node-modules.md).

@@ -37,8 +37,8 @@ The `token` is a free-form string. Convention is dotted lowercase
 the capability:
 
 ```ts
-const main = await ctx.services.get("data.main");
-// or, for compiler-inferred providers:
+const main = ctx.services.get("data.main");
+// or open a provider directly with a capability reference:
 //   data.sqlite.open({ capability: "data.main", database: ":memory:" });
 ```
 

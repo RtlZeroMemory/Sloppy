@@ -83,7 +83,7 @@ app.get("/users", async (ctx) => {
 });
 
 app.post("/users", async (ctx) => {
-    const body = await ctx.request.json() as { name: string; email: string };
+    const body = ctx.request.json() as { name: string; email: string };
 
     if (!body?.name || !body?.email) {
         return Results.badRequest({ error: "name and email required" });
@@ -119,7 +119,7 @@ app.get("/users/{id:int}", async (ctx) => {
 
 app.put("/users/{id:int}", async (ctx) => {
     const id = Number(ctx.route.id);
-    const body = await ctx.request.json() as { name?: string; email?: string };
+    const body = ctx.request.json() as { name?: string; email?: string };
     const db = ctx.services.get("data.main");
 
     const existing = await db.queryOne(sql`SELECT id FROM users WHERE id = ${id}`);

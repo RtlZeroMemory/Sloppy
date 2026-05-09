@@ -58,9 +58,9 @@ builder.services.addScoped("repo", (scope) => {
 `scope.get(token)` resolves any registered service. `scope.tryGet(token)`
 returns `undefined` when the token isn't registered.
 
-`app.services` is the *root* scope. It can resolve singletons but throws if
-you try to resolve a scoped or transient service from it. Make a child scope
-for ad-hoc work:
+`app.services` is the **root scope**. It only resolves singletons —
+asking for a scoped or transient service throws with a message telling
+you to create a scope. Make a child scope for ad-hoc work:
 
 ```ts
 const scope = app.services.createScope();
@@ -71,28 +71,31 @@ await scope.dispose();
 
 ## Disposal
 
-When a scope ends, every service constructed inside it is disposed. Sloppy
-calls these in order, latest-constructed first:
+When a scope ends, every service constructed inside it is disposed,
+latest-constructed first. Sloppy looks for, in order:
 
-1. `service[Symbol.asyncDispose]?.()`
-2. `service[Symbol.dispose]?.()`
-3. `service.dispose?.()`
-4. `service.close?.()`
+1. `service[Symbol.dispose]()`
+2. `service.dispose()`
+3. `service.close()`
 
-Whichever exists first wins. Async dispose is awaited.
+The first method that exists wins; the others are not called. If the
+returned value is a Promise, the runtime awaits it.
 
-You don't have to call disposal yourself — the runtime ends the request scope
-after the handler completes (or throws).
+You don't have to call disposal yourself — the runtime ends the request
+scope after the handler completes (or throws).
 
 ## Resolution rules
 
 - **Circular dependencies fail at resolve time.** If `A` depends on `B`
-  depends on `A`, `scope.get("A")` throws with the dependency chain in the
-  diagnostic.
-- **Scoped can't depend on transient.** A transient ought to be a fresh
-  value each call; capturing one in a scoped service breaks that contract.
-- **Singletons can't depend on scoped or transient services.** They outlive
-  the scope. Pass scoped data in via method arguments instead.
+  which depends on `A`, `scope.get("A")` throws with the dependency
+  chain in the diagnostic.
+- **Singletons can't depend on scoped services.** Singletons outlive
+  any scope; capturing a scoped service in one would break that
+  contract. The resolver detects the violation and throws.
+
+Other lifetime combinations (singleton → transient, scoped → transient,
+transient → anything) are allowed today. The factory just needs to be
+prepared for the lifetime it's wiring up.
 
 ## Token style
 

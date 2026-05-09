@@ -62,8 +62,10 @@ Real:
 Pre-alpha:
 
 - Production hardening (graceful drain, HTTP/2, broader TLS posture).
-- Framework features still landing: CORS, ProblemDetails, middleware,
-  health checks, OpenAPI completion.
+- Framework features upcoming: CORS, ProblemDetails, middleware /
+  endpoint filters, health checks, OpenAPI completion. Not implemented
+  today.
 - Cross-platform polish: Windows is the most validated lane today.
+- Public release distribution (GitHub Release archives, npm launcher).
 
 [Quickstart →](../quickstart.md)

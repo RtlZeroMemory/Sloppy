@@ -20,25 +20,23 @@ app.get("/", (ctx) =>
 
 ## Sources
 
-Today the builder accepts in-memory objects:
+The JS builder exposes one source today:
 
 ```ts
 builder.config.addObject({ "app:name": "demo" });
 ```
 
-File and environment sources are wired up by the runtime when present (the
-`appsettings.json` overlay, environment variables matching the configured
-prefix). Source ordering follows registration order — later sources override
-earlier ones for the same key.
+Other sources — `appsettings.json`, `appsettings.{Environment}.json`,
+environment variables, command-line — are read by the compiler/Plan
+pipeline before the JS code runs. They land in the same config provider
+your handlers see, but you don't add them from JS code; they're picked
+up automatically from the project layout. See
+[guide/project-layout.md](../guide/project-layout.md).
 
-> Experimental: the public surface for adding env or file sources from the
-> builder is in flux. For now, prefer `addObject` for code-driven config and
-> let the runtime layer in environment values automatically.
+## Keys and environment variables
 
-## Key normalization
-
-Keys are case-insensitive and use `:` as a path separator. Internally they
-are normalized to uppercase:
+Configuration keys are case-insensitive and use `:` as a path
+separator. Internally they're normalized to uppercase:
 
 ```ts
 builder.config.addObject({ "app:Name": "demo" });
@@ -47,17 +45,29 @@ ctx.config.getString("APP:NAME");      // "demo"
 ctx.config.getString("app:name");      // "demo"
 ```
 
-For provider config, Sloppy auto-prefixes provider keys:
+Environment variables are a different surface. Because most shells
+forbid `:` in variable names, **environment variables use double
+underscore (`__`) as the separator**, and the runtime maps them onto
+the `:` form when reading config:
 
 ```
-sloppy.json provider name "main"
-sqlite options       →  SLOPPY:PROVIDERS:SQLITE:MAIN:*
-postgres options     →  SLOPPY:PROVIDERS:POSTGRES:MAIN:*
-sqlserver options    →  SLOPPY:PROVIDERS:SQLSERVER:MAIN:*
+APP__GREETING=hello                 → key "app:greeting"
+SLOPPY__PROVIDERS__POSTGRES__MAIN__CONNECTIONSTRING=...
+                                    → key "sloppy:providers:postgres:main:connectionstring"
 ```
 
-You usually don't write these keys by hand — `app.use(...)` and `data.*` open
-calls bind them automatically.
+Provider keys follow a stable shape:
+
+```
+SQLite    "sloppy:providers:sqlite:<name>:*"
+Postgres  "sloppy:providers:postgres:<name>:*"
+SQLServer "sloppy:providers:sqlserver:<name>:*"
+```
+
+You usually don't write these keys by hand — provider examples and
+modules read environment variables explicitly via
+`Environment.get(...)` from `sloppy/os` and pass the value to
+`data.<provider>.open(...)`.
 
 ## Reading values
 
@@ -124,8 +134,11 @@ const secret = ctx.config.getSecret("db:password");
 const value = secret.value();
 ```
 
-The wrapper exists so secrets don't accidentally end up in logs, snapshots,
-or diagnostics. `secret.toString()` returns `"[redacted]"`.
+The wrapper exists so secrets don't accidentally end up in logs,
+snapshots, or diagnostics. `secret.toString()` returns
+`"[Secret redacted]"`. The real value is only available through
+`secret.value()` — handler code can still leak it if it unwraps and
+logs explicitly.
 
 ## Binding
 

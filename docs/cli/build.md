@@ -50,9 +50,13 @@ an already-built Plan.
   app.js.map      the source map
 ```
 
-`app.plan.json` is what every other command (`routes`, `audit`, `openapi`,
-…) reads. It's fully deterministic given the same source — checking it in
-or hashing it for cache keys is fine.
+`app.plan.json` is what every other command (`routes`, `audit`,
+`openapi`, …) reads. It's fully deterministic given the same source —
+hashing it for cache keys is fine.
+
+Don't check generated artifacts (`.sloppy/`) into source control by
+default; they regenerate from source. Intentional fixtures and test
+goldens are the only normal place to commit Plan output.
 
 ## Examples
 
@@ -60,8 +64,8 @@ or hashing it for cache keys is fine.
 # Standard project build.
 sloppy build
 
-# Build a one-off file into ./dist.
-sloppy build examples/hello/app.ts --out dist
+# Build a one-off example into ./dist.
+sloppy build examples/hello/app.js --out dist
 
 # Build with a different environment overlay.
 sloppy build --environment Production

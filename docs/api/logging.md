@@ -58,13 +58,15 @@ sink.entries();
 expect(sink.entries().some((e) => e.level === "error")).toBe(false);
 ```
 
-## Console output
+## Sinks
 
-The runtime wires up a default JSON console sink when an app is served via
-the `sloppy run` HTTP path. You don't need to call anything to see logs.
+`addMemorySink()` is the only sink available from the JS builder today.
+A console/JSON-console sink that automatically receives logs from a
+running server is not implemented yet.
 
-> Experimental: the API for adding console or file sinks programmatically is
-> in flux. The runtime sink is enough for now; add a memory sink in tests.
+For tests and bridge inspection, attach a memory sink and read its
+entries. For production-style observability, treat console/file/JSON
+sinks as upcoming work.
 
 ## Structured fields
 

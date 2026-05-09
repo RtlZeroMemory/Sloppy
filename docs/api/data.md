@@ -160,19 +160,38 @@ await db.query(sql`SELECT * FROM big_table`, {
 > Experimental. Requires a V8-enabled runtime and `libpq` available at
 > runtime. Live evidence is opt-in.
 
-```ts
-builder.capabilities.addDatabase("data.main", {
-    provider: "postgres",
-    access: "readwrite",
-});
+`data.postgres.open(...)` requires an explicit `connectionString`. The
+recommended pattern is to read it from an environment variable using
+`Environment` from `sloppy/os` and pass it to `open`:
 
-builder.services.addSingleton("data.main", () =>
-    data.postgres.open({
-        capability: "data.main",
-        // by convention the connection string is read from
-        // SLOPPY:PROVIDERS:POSTGRES:MAIN:CONNECTIONSTRING in the environment
+```ts
+import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
+
+function requireEnv(name) {
+    const v = Environment.get(name);
+    if (!v) throw new Error(`Missing required environment value: ${name}`);
+    return v;
+}
+
+const PostgresModule = Sloppy.module("data.postgres")
+    .capabilities((caps) => {
+        caps.addDatabase("data.main", {
+            provider: "postgres",
+            configKey: "SLOPPY_POSTGRES_TEST_URL",
+            access: "readwrite",
+        });
     })
-);
+    .services((services) => {
+        services.addSingleton("data.main", () =>
+            data.postgres.open({
+                connectionString: requireEnv("SLOPPY_POSTGRES_TEST_URL"),
+                maxConnections: 2,
+            })
+        );
+    });
+
+const app = Sloppy.createBuilder().addModule(PostgresModule).build();
 ```
 
 The query API is identical (`query`, `queryOne`, `exec`, `transaction`),
@@ -186,25 +205,36 @@ PostgreSQL-specific value wrappers worth knowing:
 
 ## SQL Server
 
-> Experimental. Requires a V8-enabled runtime and an ODBC driver capable of
-> async connection/statement work.
+> Experimental. Requires a V8-enabled runtime and an ODBC driver capable
+> of async connection/statement work.
+
+Same shape — `data.sqlserver.open({ connectionString })` requires an
+explicit ODBC connection string:
 
 ```ts
-builder.capabilities.addDatabase("data.main", {
-    provider: "sqlserver",
-    access: "readwrite",
-});
+import { Sloppy, data } from "sloppy";
+import { Environment } from "sloppy/os";
 
-builder.services.addSingleton("data.main", () =>
-    data.sqlserver.open({
-        capability: "data.main",
-        // SLOPPY:PROVIDERS:SQLSERVER:MAIN:CONNECTIONSTRING in env
+const SqlServerModule = Sloppy.module("data.sqlserver")
+    .capabilities((caps) => {
+        caps.addDatabase("data.main", {
+            provider: "sqlserver",
+            access: "readwrite",
+        });
     })
-);
+    .services((services) => {
+        services.addSingleton("data.main", () =>
+            data.sqlserver.open({
+                connectionString: Environment.get(
+                    "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+                ),
+            })
+        );
+    });
 ```
 
-Same API. Connection strings, decimal handling, and async ODBC support
-matter; check `data.sqlserver.open(...)` diagnostics if startup fails.
+Connection strings, decimal handling, and async ODBC support matter;
+check `data.sqlserver.open(...)` diagnostics if startup fails.
 
 ## Compiler-inferred providers
 
@@ -221,14 +251,17 @@ app.get("/users", (db: Sqlite<"main">) =>
 );
 ```
 
-The compiler infers a `data.main` capability and a SQLite provider binding
-from the `Sqlite<"main">` type. The runtime materializes the provider when
-the request scope opens. `Postgres<"name">` and `SqlServer<"name">` work
-the same way.
+The compiler emits Plan metadata for `Sqlite<"name">`,
+`Postgres<"name">`, and `SqlServer<"name">` typed handler parameters,
+but **the executable provider bridge is SQLite-only today**.
+Non-SQLite typed handlers fail compilation with
+`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 
-> Experimental: typed-handler injection works for SQLite end-to-end and for
-> PostgreSQL/SQL Server when their dependencies are available. The full
-> compiler-inferred surface is still landing.
+For PostgreSQL and SQL Server, use the explicit module shape shown
+above (`Sloppy.module(...).services(...)` with
+`data.postgres.open({ connectionString })` /
+`data.sqlserver.open({ connectionString })`). That pattern works for
+all three providers today.
 
 ## Errors
 

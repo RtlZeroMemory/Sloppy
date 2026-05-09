@@ -1,30 +1,36 @@
 # Performance
 
-Sloppy is pre-alpha. Performance is *not* a marketing surface yet, and
-benchmarks in this repository measure correctness, not speed.
+Sloppy is pre-alpha. Performance is *not* a marketing surface yet.
+Benchmarks measure specific workloads when they're run as benchmarks;
+benchmark *smoke* runs only verify the harness executes — they're
+neither performance numbers nor correctness coverage.
 
-This page is honest about what's been thought about, what's been measured,
-and what hasn't.
+This page is honest about what's been thought about, what's been
+measured, and what hasn't.
 
 ## What's been designed for
 
-The runtime kernel is C with arena allocation, intern tables for repeated
-metadata, and explicit ownership rules. Hot paths (route matching, plan
-validation, dispatch) avoid heap allocation per request. The HTTP
-parser/dispatch path is bounded and copy-light on the request side.
+The runtime kernel is C with arena allocation, intern tables for
+repeated metadata, and explicit ownership rules. Hot paths (route
+matching, plan validation, dispatch) avoid heap allocation per
+request. The HTTP parser/dispatch path is bounded and copy-light on
+the request side.
 
 The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
+These are design intents, not measured outcomes. They suggest where to
+look when measurements eventually run, not what numbers to expect.
+
 ## What's been measured
 
-The repo has microbenchmark harnesses (`benchmarks/`) that smoke-run as
-part of CI. They prove the harness works. They don't establish any
-operational performance number.
+The repo has microbenchmark harnesses (`benchmarks/`) that can run as
+opt-in lanes. The smoke variant verifies the harness executes; it
+proves nothing about throughput or latency.
 
-If you see a number described as "Sloppy benchmark" anywhere outside a
-specific benchmark run with a documented workload, hardware, build
-config, and command line — it's not a claim Sloppy has signed off on.
+A real benchmark run names the workload, the build configuration, the
+hardware, the command, and the output. Anything described as "Sloppy
+benchmark" without that context is informal, not a project claim.
 
 ## What hasn't been done yet
 

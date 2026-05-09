@@ -39,16 +39,31 @@ runs them directly.
 
 ## One-shot requests
 
-`--once METHOD TARGET` runs a single synthetic request through the runtime
-and exits. Use it for smoke tests:
+`--once METHOD TARGET` runs a single synthetic request through the
+runtime and exits. Use it for smoke tests:
 
 ```
 sloppy run --artifacts .sloppy --once GET /health
 sloppy run src/main.ts --once POST /users
 ```
 
-The response body prints to stdout. Exit status is 0 if the handler
-returned successfully; otherwise non-zero with a diagnostic.
+The full HTTP response is written to stdout — status line, response
+headers, blank line, and body — using the same serializer the real
+HTTP transport uses. Pipe through `head` if you only want the status
+line.
+
+```
+$ sloppy run --artifacts .sloppy --once GET /health
+HTTP/1.1 200 OK
+content-type: text/plain; charset=utf-8
+content-length: 2
+
+ok
+```
+
+Exit status is 0 if the dispatch produced a response (including
+mapped error responses like 404). It is non-zero only on internal
+failures (parse, V8 init, target validation).
 
 `--once` doesn't open a listener, so `--host` and `--port` are ignored.
 
@@ -101,6 +116,7 @@ If any step fails the runtime exits with a diagnostic and a non-zero status.
 ## Shutdown
 
 `Ctrl+C` (SIGINT) requests shutdown. The runtime stops accepting new
-connections, drains active request lifecycles within configured limits, and
-exits. There is no graceful drain for in-flight production traffic — for
-that, terminate behind a reverse proxy that handles connection draining.
+connections and exits. Production-style graceful drain (long timeouts,
+in-flight connection completion, signaled load-balancer drain) is not
+implemented today — terminate behind a reverse proxy that handles
+connection draining for that.

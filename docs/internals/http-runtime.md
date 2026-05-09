@@ -136,10 +136,13 @@ Inbound TLS is opt-in OpenSSL plumbing in
 with an OpenSSL `BIO` pair when the server config enables it.
 Configuration:
 
+Configuration keys live under `sloppy:server:tls:*` (env-var form
+`SLOPPY__SERVER__TLS__ENABLED`, etc.):
+
 ```
-Sloppy:Server:Tls:Enabled = true
-Sloppy:Server:Tls:CertificatePath = path/to/cert.pem
-Sloppy:Server:Tls:PrivateKeyPath = path/to/key.pem
+sloppy:server:tls:enabled        = true
+sloppy:server:tls:certificatePath = path/to/cert.pem
+sloppy:server:tls:privateKeyPath  = path/to/key.pem
 ```
 
 ALPN negotiation is HTTP/1.1-only; mTLS, custom verification, HSTS are

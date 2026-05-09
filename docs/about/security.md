@@ -6,34 +6,41 @@ documents what Sloppy does today and what it doesn't.
 
 ## What Sloppy redacts by default
 
-- **Configuration secrets.** Any value retrieved through
-  `config.getSecret(key)` or marked `secret: true` in a config schema is
-  wrapped — its `toString()` returns `"[redacted]"`. The wrapper exposes
-  the real value only through `.value()`. Diagnostics, log fields, and
-  the `audit` command never include the unwrapped value.
-- **Provider credentials.** Connection strings configured through
-  `Sloppy:Providers:<kind>:<name>:connectionString` are kept on the
-  config side and never appear in Plan metadata or in default diagnostic
+- **Configuration secrets.** Values retrieved through
+  `config.getSecret(key)` or marked `secret: true` in a config schema
+  are wrapped. The wrapper's `toString()` returns
+  `"[Secret redacted]"`; the real value is only available via
+  `secret.value()`. Default diagnostics, audit output, and Plan
+  metadata don't include the unwrapped value. Handler code can still
+  leak the value if it unwraps it and logs the result — the wrapper
+  redacts by default but doesn't enforce.
+- **Provider credentials.** Connection strings passed to
+  `data.<provider>.open({ connectionString })` are kept on the config
+  side and don't appear in Plan metadata or in default diagnostic
   output.
-- **Diagnostic source contexts.** Diagnostic snippets show source lines
-  but not the values of variables visible at that location — there's no
-  "captured locals" output.
+- **Diagnostic source contexts.** Diagnostic snippets show source
+  lines but not the values of variables visible at that location —
+  there's no "captured locals" output.
 
 ## What Sloppy doesn't try to do
 
 - **Sandbox the process.** Capabilities are policy declarations the
-  runtime checks before opening resources, not OS-level isolation. Code
-  that wants to read `/etc/passwd` from JavaScript can't (the JS API
-  surface doesn't expose it), but C-level vulnerabilities or Sloppy
-  bridge bugs are not a sandbox.
+  runtime checks before opening resources, not OS-level isolation.
+  Sloppy *does* expose filesystem, network, OS-process, and similar
+  APIs to JavaScript — they're feature-gated through the Plan and the
+  V8 intrinsics, but once enabled they perform real OS calls. Treat
+  capability checks as policy, not a sandbox; if you need process
+  isolation, that's the OS's job.
 - **Authenticate or authorize end users.** Sloppy ships no auth stack
-  today. Add your own middleware/services or place an API gateway in
-  front. (Auth is on the framework capability roadmap; treat anything
-  here as your job for now.)
+  today. Implement auth as handlers or services that run before the
+  protected work, or terminate auth at an upstream API gateway.
+  Middleware/endpoint filters are upcoming framework work — once they
+  land, auth filters will be the natural shape, but they don't exist
+  yet.
 - **Encrypt secrets at rest.** Config files are plaintext. Use your
   platform's secret store (Kubernetes secrets, AWS Secrets Manager,
-  Vault) and inject through environment variables that Sloppy resolves
-  at startup.
+  Vault) and inject through environment variables read via
+  `Environment.get(...)` from `"sloppy/os"`.
 
 ## The V8 bridge as a security boundary
 
@@ -49,11 +56,14 @@ That trade is intentional.
 
 ## TLS
 
-Inbound TLS exists as opt-in plumbing through OpenSSL. Configure it via
-`Sloppy:Server:Tls:Enabled`, `:CertificatePath`, and `:PrivateKeyPath`. Out
-of scope today: ALPN selection beyond HTTP/1.1, mTLS, custom certificate
-verification, and HSTS hardening. For production you'll generally want a
-reverse proxy in front handling TLS termination.
+Inbound TLS exists as opt-in plumbing through OpenSSL. Configuration
+keys live under the `sloppy:server:tls:*` namespace
+(`enabled`, `certificatePath`, `privateKeyPath`); environment variable
+form is `SLOPPY__SERVER__TLS__ENABLED`, etc.
+
+Out of scope today: ALPN selection beyond HTTP/1.1, mTLS, custom
+certificate verification, and HSTS hardening. For production you'll
+generally want a reverse proxy in front handling TLS termination.
 
 ## Reporting issues
 

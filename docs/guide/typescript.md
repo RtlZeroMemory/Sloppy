@@ -1,56 +1,111 @@
 # TypeScript support
 
-`sloppyc` accepts a focused subset of TypeScript and JavaScript. The subset
-is enough to write real apps but rejects anything the compiler can't extract
-into the Plan.
+`sloppyc` accepts a focused subset of TypeScript and JavaScript. The
+goal is to extract a deterministic Plan from your source — anything the
+compiler can't statically analyze is rejected with a stable
+`SLOPPYC_E_*` diagnostic.
 
-For the full matrix, see
-[reference/supported-syntax.md](../reference/supported-syntax.md). This page
-is the high-level shape.
+This page is the high-level shape. The full matrix of error codes and
+extraction rules lives in
+[reference/supported-syntax.md](../reference/supported-syntax.md), and
+the canonical proof-of-acceptance is the fixture suite under
+`compiler/tests/fixtures/`.
 
-## What you can use
+## Inputs
 
-- ES module syntax: `import` / `export`, default and named exports.
-- TypeScript type annotations on parameters, returns, and variables.
-- Type aliases, interfaces, generics for typed handlers.
-- Arrow functions, async functions.
-- Classes, including controller classes with `static inject` arrays.
-- Const and let, template literals, destructuring, spread.
-- Object and array literals as handler return values.
-- Tagged template literals for `sql\`...\``.
-- Plain conditionals, ternaries, switch.
+- File extensions: `.js`, `.mjs`, `.ts`.
+- Required imports: `Sloppy` and `Results` from `"sloppy"`, named and
+  unaliased.
+- Compiler-recognized import sources: `"sloppy"`, `"sloppy/data"`,
+  `"sloppy/providers/sqlite"`, `"sloppy/providers/postgres"`,
+  `"sloppy/providers/sqlserver"`, `"sloppy/fs"`, `"sloppy/time"`,
+  `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`,
+  `"sloppy/workers"`, and relative imports rooted in the project.
 
-## What you can't use yet
+Anything outside this list fails with
+`SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` or
+`SLOPPYC_E_UNSUPPORTED_IMPORT`.
 
-- Importing arbitrary npm packages. Imports must be `"sloppy"`,
-  `"sloppy/<subpath>"`, or relative paths.
-- Dynamic `import()`.
-- `node:` prefix imports.
-- Top-level `await`.
-- Decorators (the controller surface uses `static inject` instead).
-- Conditional or loop-based route registration.
-- Computed method names on `app.<verb>(...)` calls.
-- `eval`, `Function` constructor.
-- Mutable module state read by the compiler (statics or simple constants
-  are fine; a route table built by a `for` loop is not).
+## What the compiler extracts
 
-If your code uses something the compiler doesn't understand yet, you'll
-get a diagnostic that points at the source location and suggests an
-alternative. Diagnostics never silently strip code.
+The compiler reads supported source and emits Plan metadata for:
+
+- top-level `app.get/post/put/patch/delete` calls (and the `mapGet`/
+  `mapPost`/… aliases) on the app and on groups;
+- top-level `app.group(...)` and group method chains;
+- top-level `app.controller(...)` / `app.mapController(...)` mappings;
+- route options — string literal patterns, route names, tags;
+- top-level service registrations
+  (`addSingleton/addScoped/addTransient` with literal token strings);
+- top-level capability declarations
+  (`capabilities.addDatabase("token", { ... })`);
+- typed handler parameter bindings (Framework v2): `Route<T>`,
+  `Query<T>`, `Body<T>`, `Header<"name">`, `Service<T>`,
+  `Config<"KEY">`, plus `Sqlite<"name">`, `Postgres<"name">`,
+  `SqlServer<"name">`, `WorkQueue<"name">`;
+- handler bodies that return `Results.*` literals or simple computed
+  expressions over the request context;
+- async handlers whose returned Promise settles in the bounded
+  microtask drain;
+- function modules and route-only modules.
+
+Handler bodies and module shapes have their own static rules. If a
+handler is too dynamic for the extractor, you'll get
+`SLOPPYC_E_UNSUPPORTED_HANDLER`,
+`SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS`,
+`SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE`,
+`SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY`, or
+`SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`.
+
+## What gets rejected
+
+Confirmed unsupported (each has a fixture or diagnostic code):
+
+- npm imports, dynamic `import()`, `node:` specifier prefix.
+- Dynamic route patterns and computed method names
+  (`SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`,
+  `SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD`).
+- Conditional or loop-based route registration
+  (`fixtures/conditional-route-registration/`,
+  `fixtures/loop-route-registration/`).
+- Closures over module-level bindings inside handlers
+  (`fixtures/unsupported-handler-capture/`).
+- TypeScript handler shapes the extractor doesn't model
+  (`fixtures/unsupported-typescript-handler/`).
+- HTTP methods other than GET/POST/PUT/PATCH/DELETE
+  (`fixtures/unsupported-http-method/`,
+  `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
+- Sloppy default imports (`SLOPPYC_E_UNSUPPORTED_SLOPPY_DEFAULT_IMPORT`).
+
+What the compiler tolerates outside route-extraction code (helper
+functions, modules) is broader, but:
+
+- It does *not* type-check arbitrary TypeScript. Use `tsc` in your
+  editor for full type checking; `sloppyc` parses TS syntax to extract
+  Plan metadata.
+- It does *not* evaluate arbitrary expressions. Static literals (route
+  patterns, capability tokens, service tokens) are extracted; computed
+  values are rejected.
+
+If a syntactic feature isn't covered by a fixture, treat it as
+unverified — file an issue or check the diagnostic if the compiler
+rejects it.
 
 ## Imports
 
 ```ts
-// Public surface
+// Public surface (everything documented in docs/api/)
 import { Sloppy, Results, sql, schema } from "sloppy";
-import { data } from "sloppy/data";   // alternate subpath
+
+// Provider type wrappers for typed handler injection
+import { Sqlite } from "sloppy/providers/sqlite";
 
 // Relative
 import { usersModule } from "./users";
 ```
 
-Subpath imports under `"sloppy/..."` are reserved for the runtime stdlib —
-see [API](../api/README.md) for what's exported from each.
+Subpath imports under `"sloppy/..."` are reserved for the runtime
+stdlib; see [API](../api/README.md) for what each subpath exports.
 
 ## Async handlers
 
@@ -61,15 +116,15 @@ app.get("/users/{id:int}", async (ctx) => {
 });
 ```
 
-The runtime awaits the returned promise during the owner-thread microtask
-drain. Long-running awaits aren't supported; if your handler depends on
-multi-second background work, queue it via `WorkQueue` and return
-`Results.accepted({ jobId })`.
+The runtime awaits the returned promise during the owner-thread
+microtask drain. Long-running awaits aren't supported; if your handler
+depends on multi-second background work, queue it via `WorkQueue` and
+return `Results.accepted({ jobId })`.
 
 ## Type-driven handler bindings
 
-Framework v2 typed handlers let you declare what a handler needs in the
-parameter list:
+Framework v2 typed handlers let you declare what a handler needs in
+the parameter list:
 
 ```ts
 import { Sloppy, Results, sql } from "sloppy";
@@ -89,25 +144,34 @@ app.post("/users", (
     body:  Body<{ name: string; email: string }>,
     db:    Sqlite<"main">,
 ) =>
-    db.exec(sql`INSERT INTO users (name, email) VALUES (${body.name}, ${body.email})`)
+    db.exec(sql`
+        INSERT INTO users (name, email)
+        VALUES (${body.name}, ${body.email})
+    `)
 );
 ```
 
-The compiler infers route bindings, body schemas, provider injections, and
-service capabilities from these types.
+The compiler emits Plan metadata for route bindings, body schemas,
+provider injections, and service capabilities from these types.
 
-> Experimental. Typed handlers cover the common path end-to-end for
-> SQLite, route/query/header/body bindings, and `Service<T>` injection.
-> Edge cases may still emit a less-specific generated wrapper. If a typed
-> handler doesn't compile, fall back to the explicit `(ctx) => …` style.
+> **SQLite is the only provider with end-to-end executable injection
+> today.** The compiler recognizes `Postgres<"name">` and
+> `SqlServer<"name">` and emits Plan metadata for them, but the
+> executable bridge is sqlite-only — non-SQLite typed handlers fail
+> with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. Use the explicit
+> `Sloppy.module(...).services(...)` + `data.<provider>.open(...)`
+> pattern from [api/data.md](../api/data.md) for PostgreSQL and SQL
+> Server.
 
 ## Common gotchas
 
-- **Import paths must be statically analyzable.** `import("./" + name)` is
-  rejected.
-- **Routes register at module load.** Don't wrap registrations in
-  `if (process.env.NODE_ENV …)` — there is no `process.env` in Sloppy
-  source. Use config-driven decisions inside the handler instead.
-- **Top-level side effects should be cheap.** The compiler evaluates simple
-  literal expressions; complex top-level work is rejected because it makes
-  the Plan non-deterministic.
+- **Import paths must be statically analyzable.** `import("./" + name)`
+  is rejected.
+- **Route registrations are top-level only.** No `if`/`for` wrapping
+  the call; no computed method names.
+- **No `process.env`.** Sloppy source has no `process` global. Use
+  `Environment.get(...)` from `"sloppy/os"` if you need env access in
+  module code, or read configuration via `ctx.config` inside a
+  handler.
+- **No top-level await.** Initialize lazily inside services or
+  handlers.

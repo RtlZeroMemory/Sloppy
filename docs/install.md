@@ -1,69 +1,14 @@
 # Install
 
-Sloppy is distributed as a per-platform archive that contains the `sloppy` CLI,
-the `sloppyc` compiler, and the runtime stdlib. The CLI builds, runs, and
-inspects Sloppy applications.
-
-> Pre-alpha. Windows x64 archives are the most polished today. Linux x64 builds
-> work but get less validation. macOS and arm64 packages are not published
-> yet — for those, build from source.
-
-## Install from an archive
-
-1. Download the archive for your platform.
-
-   | Platform     | Archive                       |
-   | ------------ | ----------------------------- |
-   | Windows x64  | `sloppy-windows-x64.zip`      |
-   | Linux x64    | `sloppy-linux-x64.tar.gz`     |
-
-2. Extract it somewhere stable (not inside a project).
-
-   **Windows (PowerShell):**
-
-   ```powershell
-   Expand-Archive sloppy-windows-x64.zip -DestinationPath "$HOME\.sloppy"
-   ```
-
-   **Linux:**
-
-   ```sh
-   mkdir -p ~/.sloppy && tar -xzf sloppy-linux-x64.tar.gz -C ~/.sloppy
-   ```
-
-3. Add the `bin/` directory to your `PATH`.
-
-   **Windows (current shell):**
-
-   ```powershell
-   $env:Path = "$HOME\.sloppy\sloppy-windows-x64\bin;$env:Path"
-   ```
-
-   **Linux:**
-
-   ```sh
-   export PATH="$HOME/.sloppy/sloppy-linux-x64/bin:$PATH"
-   ```
-
-   To make this permanent, add the export to your shell profile.
-
-4. Verify.
-
-   ```
-   sloppy --version
-   sloppyc --version
-   ```
-
-   Both should print a version string. `sloppy --help` lists every command.
+Public release archives aren't published yet. There are two supported
+ways to get a working `sloppy` CLI today: build from source, or build a
+local archive and extract it.
 
 ## Build from source
 
-If your platform has no archive yet, or you want the bleeding edge, build from
-the repository. Building requires CMake, a C compiler, the Rust toolchain, and
-a fetched V8 SDK for runtime execution.
-
-See [contributor/building-from-source.md](contributor/building-from-source.md)
-for the full setup. The short version on Windows:
+The full path. See
+[contributor/building-from-source.md](contributor/building-from-source.md)
+for prerequisites and details. The short version on Windows:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
@@ -72,28 +17,91 @@ for the full setup. The short version on Windows:
 .\tools\windows\dev.ps1 build
 ```
 
-The built CLI lives at `build\windows-relwithdebinfo\sloppy.exe`.
+The built CLI lives at `build\windows-dev\sloppy.exe` (or
+`build\windows-relwithdebinfo\sloppy.exe` for the V8-enabled preset).
+
+Linux:
+
+```sh
+./tools/unix/bootstrap.sh
+./tools/unix/dev.sh doctor
+./tools/unix/dev.sh configure
+./tools/unix/dev.sh build
+```
+
+Add the resulting `bin/` (or per-preset directory) to `PATH` if you
+want to invoke `sloppy` from anywhere.
+
+## Build a local archive
+
+`dev.ps1 package` produces a per-platform archive under
+`artifacts/packages/`. This is the same shape that release distribution
+will eventually use.
+
+```powershell
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 build
+.\tools\windows\dev.ps1 package
+```
+
+The result is something like
+`artifacts/packages/sloppy-windows-x64.zip`. Extract it outside the
+checkout and add its `bin/` directory to `PATH`:
+
+```powershell
+Expand-Archive .\artifacts\packages\sloppy-windows-x64.zip `
+    -DestinationPath "$HOME\.sloppy"
+$env:Path = "$HOME\.sloppy\sloppy-windows-x64\bin;$env:Path"
+sloppy --version
+```
+
+`dev.ps1 test-package` smokes the archive from outside the checkout so
+you can confirm the layout is good before publishing.
+
+> Local archives are pre-alpha distribution. Linux archives can be
+> built from source; macOS and arm64 archives still need work. Public
+> GitHub Release archives and an npm launcher package are upcoming
+> distribution work, not yet published.
 
 ## V8 and handler execution
 
-`sloppy build` and most inspection commands work without V8. Executing
-JavaScript handlers (i.e. running an actual request) needs a V8-enabled
-build. Archives published with V8 included will run handlers; the source
-build path requires fetching the V8 SDK first
-(`.\tools\windows\resolve-v8-sdk.ps1 -Fetch` on Windows).
+`sloppy build` and the introspection commands (`sloppy routes`,
+`sloppy capabilities`, `sloppy doctor`, `sloppy audit`,
+`sloppy openapi`) work without V8.
 
-If `sloppy run` fails with a "V8 unavailable" diagnostic, your runtime can
-still build and validate artifacts — it just can't execute handlers yet.
+Executing JavaScript handlers (i.e. `sloppy run` against a real app)
+requires a V8-enabled build. Source builds fetch the V8 SDK first:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+```
+
+If `sloppy run` fails with a "V8 unavailable" diagnostic, your build
+isn't V8-enabled — `sloppy build` still works, but handler execution
+needs the V8 lane.
+
+## Verify
+
+```
+sloppy --version
+sloppyc --version
+sloppy --help
+```
+
+Both binaries should print a version. `sloppy --help` lists every
+command. `sloppy doctor` reports environment health.
 
 ## Common pitfalls
 
-- **`sloppy: command not found`** — the `bin/` directory isn't on `PATH`. Re-run
-  the export step or restart your shell.
-- **Mixing repo binaries with installed ones** — running inside the Sloppy repo
-  doesn't pick up `build\…\sloppy.exe` automatically. Either invoke that path
-  directly or put it on `PATH`.
-- **`node_modules` not resolved** — Sloppy apps don't import npm packages. The
-  npm distribution channel installs the `sloppy` CLI itself, not application
-  dependencies. See [about/why-no-node-modules.md](about/why-no-node-modules.md).
+- **`sloppy: command not found`** — the `bin/` directory isn't on
+  `PATH`. Re-run the export step or restart your shell.
+- **Mixing repo binaries with installed ones** — running inside the
+  Sloppy repo doesn't pick up `build\…\sloppy.exe` automatically.
+  Either invoke that path directly or put it on `PATH`.
+- **`node_modules` not resolved** — Sloppy apps don't import npm
+  packages. See
+  [about/why-no-node-modules.md](about/why-no-node-modules.md).
 
 Next: [Quickstart](quickstart.md).

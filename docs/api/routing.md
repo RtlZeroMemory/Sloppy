@@ -22,23 +22,26 @@ app.delete(pattern, handler)
 `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and `mapDelete` are aliases — same
 behavior, longer name.
 
-`HEAD` and `OPTIONS` are reserved by the framework. The runtime answers
-`OPTIONS` for allowed-method/preflight responses. You can't register a
-handler for them today.
+`HEAD` and `OPTIONS` are not supported as registrable verbs and the
+runtime does not answer them automatically — incoming HEAD or OPTIONS
+requests get `405 Method Not Allowed`. CORS preflight handling is
+upcoming framework work, not implemented today.
 
 ## Route patterns
 
-Patterns must start with `/`. Path segments are either literal text or a
-parameter:
+Patterns must start with `/`. Path segments are either literal text or
+a parameter:
 
-| Syntax       | Matches                                  | `ctx.route.*`                |
-| ------------ | ---------------------------------------- | ---------------------------- |
-| `/users`     | `/users` exactly                         | —                            |
-| `{name}`     | a single non-`/` segment                 | `ctx.route.name` (string)    |
-| `{id:int}`   | a single segment of digits               | `ctx.route.id` (string)      |
+| Syntax        | Matches                                  | `ctx.route.*`             |
+| ------------- | ---------------------------------------- | ------------------------- |
+| `/users`      | `/users` exactly                         | —                         |
+| `{name}`      | a single non-`/` segment                 | `ctx.route.name` (string) |
+| `{name:str}`  | same as `{name}`, explicit               | `ctx.route.name` (string) |
+| `{id:int}`    | a single segment of digits               | `ctx.route.id` (string)   |
 
-Even with `:int`, `ctx.route.id` is a string — the type tag validates the
-segment but doesn't coerce. Convert it yourself if you need a number:
+Even with `:int`, `ctx.route.id` is a string — the type tag validates
+the segment but doesn't coerce. Convert it yourself if you need a
+number:
 
 ```ts
 app.get("/users/{id:int}", (ctx) => {
@@ -47,10 +50,12 @@ app.get("/users/{id:int}", (ctx) => {
 });
 ```
 
-Trailing slashes are strict. `/users` and `/users/` are different routes.
+Trailing slashes are strict. `/users` and `/users/` are different
+routes.
 
-When several routes could match, Sloppy prefers literal segments over
-parameter segments and falls back to source order.
+When several patterns could match, the runtime sorts routes with no
+parameters before routes with any parameter; ties break in source
+order.
 
 ## Options object
 
@@ -147,7 +152,9 @@ What's on `ctx` is documented in [request-context](request-context.md).
 
 ## What's not supported yet
 
-- Middleware and per-route filters (planned: see the framework capability pack)
+- Middleware and per-route filters — upcoming framework work
+- Automatic OPTIONS / preflight responses, CORS — upcoming framework work
+- HEAD handling
 - Streaming or chunked request bodies
 - `multipart/form-data` and file uploads
 - Custom matchers beyond `{name}` / `{name:int}`

@@ -114,19 +114,25 @@ Loads config from `addObject`, reads with typed getters, demonstrates the
 
 ### framework-v2-sqlite-crud
 
-Five-route CRUD app with `Sqlite<"main">` typed injection. The
-typed-handler version of the [SQLite walkthrough](sqlite.md).
+CRUD app using `Sqlite<"main">` typed injection. The typed-handler
+version of the [SQLite walkthrough](sqlite.md). SQLite is the only
+provider with end-to-end typed-handler injection today.
 
 ### framework-v2-postgres-crud
 
-Same shape, PostgreSQL provider. Requires `libpq` and a running database
-declared via `Sloppy:Providers:postgres:main:connectionString`.
+Same shape, PostgreSQL provider. Requires `libpq` and a running
+database. The example reads its connection string from the
+`SLOPPY_POSTGRES_TEST_URL` environment variable. Typed-handler
+injection for PostgreSQL is not implemented yet
+(`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`); the example uses the
+explicit module + service factory shape.
 
 ### framework-v2-sqlserver-crud
 
-Same shape, SQL Server provider. Requires an ODBC driver capable of async
-work and a connection string in
-`Sloppy:Providers:sqlserver:main:connectionString`.
+Same shape, SQL Server provider. Requires an ODBC driver and a
+connection string in `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. As
+with PostgreSQL, typed-handler injection is not implemented yet; the
+example uses explicit module + service factory.
 
 ### framework-v2-validation-errors
 

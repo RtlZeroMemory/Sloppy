@@ -86,7 +86,7 @@ Server, install `libpq` / an ODBC driver and re-run.
 | 400    | Malformed JSON body                             | Send valid JSON, with the right `Content-Type` |
 | 404    | No route matched                                | Run `sloppy routes` to confirm registrations |
 | 405    | Method not allowed for this path                | Add the verb, or hit the right path          |
-| 413    | Body exceeded the configured request limit      | Raise `Sloppy:Server:MaxRequestBodyBytes`    |
+| 413    | Body exceeded the configured request limit      | Raise the configured server max-body-bytes   |
 | 415    | Unsupported `Content-Type`                      | Use `application/json` or `text/plain` today |
 | 500    | Handler threw or returned an unsupported result | Check the diagnostic on stderr               |
 | 501    | Transfer encoding not accepted                  | Avoid `Transfer-Encoding: chunked` for now   |
@@ -101,9 +101,11 @@ tests.
 
 ### Postgres connection refused
 
-The `connectionString` env var (`Sloppy:Providers:postgres:main:connectionString`
-or whichever name) didn't resolve to a reachable server. Verify with
-`psql` first, then re-run `sloppy run`.
+The connection string passed to `data.postgres.open({ connectionString })`
+didn't resolve to a reachable server. Verify with `psql` first, then
+re-run `sloppy run`. Provider examples read the value from a single
+environment variable (e.g. `SLOPPY_POSTGRES_TEST_URL`) using
+`Environment.get(...)` from `"sloppy/os"`.
 
 ### SQL Server "driver not found"
 

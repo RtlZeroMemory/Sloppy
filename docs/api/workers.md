@@ -3,13 +3,30 @@
 Workers cover background work that runs alongside HTTP request handling:
 long-running services, cancellable operations, and queued jobs.
 
-> Experimental. The shapes documented here are real; some pool/queue surfaces
-> are still landing. Treat the section as a tour, not a contract.
+> Experimental. The shapes documented here are real; some surfaces are
+> still landing. Treat the section as a tour, not a contract.
+
+The public exports come from `"sloppy"`:
+
+```ts
+import {
+    BackgroundService,
+    WorkQueue,
+    WorkerPool,
+    Worker,
+    WorkerCancellationController,
+    WorkerCancellationSignal,
+    SloppyWorkerError,
+} from "sloppy";
+```
+
+The constructible classes use static `.create(...)` factories rather
+than `new`. `WorkerCancellationController` is the one that uses `new`.
 
 ## Cancellation
 
-A `WorkerCancellationController` is the producer side of a cancel signal.
-A `WorkerCancellationSignal` is the consumer side.
+A `WorkerCancellationController` is the producer side. The signal
+attached to it is the consumer side.
 
 ```ts
 import { WorkerCancellationController } from "sloppy";
@@ -23,22 +40,21 @@ await doWork(ctl.signal);
 
 A signal exposes:
 
-| Member                   | Purpose                                            |
-| ------------------------ | -------------------------------------------------- |
-| `signal.cancelled`       | `true` once cancelled                              |
-| `signal.aborted`         | mirror of `cancelled`, mirrors `AbortSignal`       |
-| `signal.reason`          | the reason passed to `cancel(reason)`              |
-| `signal.throwIfCancelled()` | throws if already cancelled                     |
-| `signal.addEventListener("abort", fn)` | run `fn` when cancelled              |
-| `signal.removeEventListener(...)` | detach a listener                         |
+| Member                                 | Purpose                                           |
+| -------------------------------------- | ------------------------------------------------- |
+| `signal.cancelled`                     | `true` once cancelled                             |
+| `signal.aborted`                       | mirror of `cancelled`, matching `AbortSignal`     |
+| `signal.reason`                        | the reason passed to `cancel(reason)`             |
+| `signal.throwIfCancelled()`            | throws `SloppyWorkerError` if already cancelled   |
+| `signal.addEventListener("abort", fn)` | run `fn` when cancelled                           |
+| `signal.removeEventListener(...)`      | detach a listener                                 |
 
-Signals are compatible with `AbortSignal` consumers in practice — the
-shape matches.
+The shape is compatible with `AbortSignal` consumers in practice, but
+it is `WorkerCancellationSignal`, not a Web `AbortSignal`.
 
 ## Errors
 
-Worker code throws `SloppyWorkerError` when the runtime needs to surface
-something specific (cancellation, queue full, etc):
+Worker code throws `SloppyWorkerError` for runtime conditions:
 
 ```ts
 import { SloppyWorkerError } from "sloppy";
@@ -46,7 +62,8 @@ import { SloppyWorkerError } from "sloppy";
 try {
     await queue.enqueue(payload);
 } catch (err) {
-    if (err instanceof SloppyWorkerError && err.code === "QUEUE_FULL") {
+    if (err instanceof SloppyWorkerError &&
+        err.code === "SLOPPY_E_WORK_QUEUE_FULL") {
         // back off
     } else {
         throw err;
@@ -54,28 +71,36 @@ try {
 }
 ```
 
-Typical codes:
+Codes used today (full list in `stdlib/sloppy/workers.js`):
 
-| Code            | Meaning                                |
-| --------------- | -------------------------------------- |
-| `CANCELLED`     | The operation was cancelled            |
-| `DEADLINE`      | A deadline expired                     |
-| `QUEUE_FULL`    | A bounded queue rejected the item      |
-| `SHUTDOWN`      | The worker host is shutting down       |
+| Code                                          | Meaning                                                 |
+| --------------------------------------------- | ------------------------------------------------------- |
+| `SLOPPY_E_WORK_JOB_CANCELLED`                 | A job was cancelled                                     |
+| `SLOPPY_E_WORK_JOB_TIMEOUT`                   | A job exceeded its deadline                             |
+| `SLOPPY_E_WORK_QUEUE_FULL`                    | A bounded queue rejected an enqueue                     |
+| `SLOPPY_E_WORK_QUEUE_STOPPED`                 | The queue is stopped                                    |
+| `SLOPPY_E_WORK_RETRY_EXHAUSTED`               | Retries exhausted for a job                             |
+| `SLOPPY_E_WORKER_SHUTDOWN_CANCELLED`          | Cancelled because the worker host is shutting down      |
+| `SLOPPY_E_WORKER_STALE_HANDLE`                | The handle was used after stop/dispose                  |
+| `SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE`          | The native worker bridge isn't available                |
+| `SLOPPY_E_WORKER_CRASHED`                     | The worker isolate crashed                              |
+| `SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED`      | Worker isolate failed to start                          |
+| `SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD`         | Message payload not supported                           |
+| `SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED`| Message could not be serialized across the boundary     |
+| `SLOPPY_E_BACKGROUND_SERVICE_FAILED`          | A background service handler threw                      |
 
 ## Background services
 
-A `BackgroundService` is a long-running task with start/stop semantics. The
-typical use is something that polls or processes work alongside the HTTP
-server.
+A `BackgroundService` is a long-running task with start/stop semantics.
+Construct it with the static factory:
 
 ```ts
 import { Sloppy, BackgroundService } from "sloppy";
 
-const tick = new BackgroundService("clock-tick", async (signal) => {
-    while (!signal.cancelled) {
-        await sleep(1000, signal);
-        ctx.log.info("tick");
+const tick = BackgroundService.create("clock-tick", async (svc) => {
+    while (!svc.signal.cancelled) {
+        await sleep(1000, svc.signal);
+        // svc.name === "clock-tick"
     }
 });
 
@@ -83,14 +108,14 @@ const app = Sloppy.create();
 app.use(tick);
 ```
 
-`app.use(...)` recognizes worker resources and starts them when the app
-starts; they shut down gracefully on app shutdown.
+The handler receives a context object — `{ name, signal }` — not just
+the signal. `app.use(...)` recognizes worker resources and starts them
+when the app starts; they shut down on app shutdown.
 
 ## Work queues
 
-`WorkQueue.create("name")` returns a named queue. The queue exposes
-`enqueue(payload, options?)` and exposes consumer hooks the runtime sets
-up for you when the queue is referenced from a typed handler:
+`WorkQueue.create("name", options?)` returns a named queue. The
+producer side exposes `enqueue(payload, options?)`:
 
 ```ts
 import { Sloppy, Results, WorkQueue } from "sloppy";
@@ -99,18 +124,20 @@ const emails = WorkQueue.create("emails");
 
 const app = Sloppy.create();
 
-app.post("/send", async (ctx) => {
-    const body = await ctx.request.json();
-    await emails.enqueue(body, { deadline: Date.now() + 5000 });
-    return Results.accepted({ queued: true });
+app.post("/send", (ctx) => {
+    const body = ctx.request.json();
+    return emails.enqueue(body, { deadline: Date.now() + 5000 })
+        .then(() => Results.accepted({ queued: true }));
 });
 ```
 
-The compiler can infer queue capabilities from `WorkQueue<"name">` typed
-handler parameters and wire up the default service registration for you.
+Compiler-inferred `WorkQueue<"name">` typed handler parameters are
+upcoming framework work. Until that's exercised by fixtures, register
+the queue explicitly as above.
 
-## Worker pools
+## Worker pools and workers
 
-`WorkerPool` runs work across a bounded set of worker isolates. The current
-public surface is small — most apps don't need it. If you do, look at the
-existing `examples/workers-workerpool/` example for a vetted pattern.
+`WorkerPool.create("name", options?)` runs work across a bounded set
+of worker isolates. `Worker.start(modulePath, options?)` starts a
+single worker isolate. Both surfaces are small today; for a vetted
+pattern see `examples/workers-workerpool/`.

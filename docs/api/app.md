@@ -5,8 +5,9 @@ provider hooks. There are two ways to construct one.
 
 ## `Sloppy.create()`
 
-Returns a fully built, frozen app. Use it for small apps that don't need
-custom configuration sources or service registration.
+Returns a built app with the four builder namespaces sealed but routes
+and modules still open. Use it for small apps that don't need custom
+configuration sources or service registration.
 
 ```ts
 import { Sloppy, Results } from "sloppy";
@@ -19,8 +20,9 @@ export default app;
 ```
 
 `Sloppy.create()` is sugar for `Sloppy.createBuilder().build()`. After
-`build()`, the app is frozen — route registration is still allowed, but the
-config/services/logging/capabilities builders are sealed.
+`build()`, the config/services/logging/capabilities builders are sealed,
+but route registration (`app.get`, `app.useModule`, `app.controller`,
+…) is still allowed until you call `app.freeze()` explicitly.
 
 ## `Sloppy.createBuilder()`
 
@@ -33,8 +35,9 @@ import { Sloppy, Results } from "sloppy";
 const builder = Sloppy.createBuilder();
 
 builder.config.addObject({ "app:greeting": "hello" });
-builder.services.addSingleton("greeting", (s) =>
-    s.config.getString("app:greeting", "hi")
+builder.services.addSingleton(
+    "greeting",
+    () => builder.config.getString("app:greeting", "hi"),
 );
 
 const app = builder.build();
@@ -43,6 +46,11 @@ app.get("/", (ctx) => Results.text(ctx.services.get("greeting")));
 
 export default app;
 ```
+
+Service factories receive a service scope, *not* the config provider —
+read `builder.config` (or `app.config` after build) directly when you
+need configuration inside a factory. See [services](services.md) for
+the resolver shape.
 
 The builder has four namespaces:
 
@@ -113,25 +121,35 @@ register routes.
 
 ## Providers
 
-`app.use(...)` accepts a SQLite provider descriptor (other providers come
-through capability declarations and `data.*` calls):
+`app.use(...)` registers a Sloppy provider descriptor. The simplest way
+to construct one for SQLite is the helper exported from
+`sloppy/providers/sqlite`:
 
 ```ts
-const sqlite = app.use({
-    __sloppyProvider: true,
-    kind: "sqlite",
-    name: "main",
-    options: { database: "app.db" },
-});
+import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.use(sqlite("main", { database: "app.db" }));
 ```
 
 For PostgreSQL and SQL Server, declare a capability up front and call
-`data.postgres.open(...)` / `data.sqlserver.open(...)` from a handler or
-service. See [data](data.md).
+`data.postgres.open(...)` / `data.sqlserver.open(...)` from a service
+factory or handler. See [data](data.md).
 
 ## Freezing
 
-Apps are frozen automatically after `build()` for everything except routes.
-Call `app.freeze()` before serving traffic if you want further route
-registration to throw — useful in tests that assert nothing else mutates
-the app. Once frozen, modules and route registration both throw.
+`builder.build()` seals the config/services/logging/capabilities
+namespaces. Route and module registration stays open until you call
+`app.freeze()` explicitly. Once frozen, `app.useModule`, `app.get`,
+`app.use`, and the rest throw.
+
+```ts
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+app.freeze();
+// app.get(...) now throws
+```
+
+Freezing before serving is useful in tests that assert nothing else
+mutates the app.

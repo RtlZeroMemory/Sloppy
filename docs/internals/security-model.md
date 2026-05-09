@@ -53,9 +53,10 @@ Two layers:
 Diagnostics still carry useful structure: error codes, SQLSTATE,
 driver categories, source locations. Just no secret payloads.
 
-The `ConfigSecretValue` wrapper at the JS layer (`stdlib/sloppy/internal/config.js`)
-extends the same pattern to user-visible config — `secret.toString()`
-returns `"[redacted]"`, only `secret.value()` exposes the real value.
+The `ConfigSecretValue` wrapper at the JS layer
+(`stdlib/sloppy/internal/config.js`) extends the same pattern to
+user-visible config — `secret.toString()` returns
+`"[Secret redacted]"`; only `secret.value()` exposes the real value.
 
 ## Resource handle isolation
 
