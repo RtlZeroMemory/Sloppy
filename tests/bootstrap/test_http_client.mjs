@@ -321,6 +321,332 @@ function startPersistentHttpServer(handler) {
     });
 }
 
+const HTTP2_PREFACE = Buffer.from("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", "ascii");
+const HTTP2_FRAME_DATA = 0x0;
+const HTTP2_FRAME_HEADERS = 0x1;
+const HTTP2_FRAME_SETTINGS = 0x4;
+const HTTP2_FLAG_END_STREAM = 0x1;
+const HTTP2_FLAG_ACK = 0x1;
+const HTTP2_FLAG_END_HEADERS = 0x4;
+
+const HTTP2_HPACK_STATIC = [
+    undefined,
+    [":authority", ""],
+    [":method", "GET"],
+    [":method", "POST"],
+    [":path", "/"],
+    [":path", "/index.html"],
+    [":scheme", "http"],
+    [":scheme", "https"],
+    [":status", "200"],
+    [":status", "204"],
+    [":status", "206"],
+    [":status", "304"],
+    [":status", "400"],
+    [":status", "404"],
+    [":status", "500"],
+    ["accept-charset", ""],
+    ["accept-encoding", "gzip, deflate"],
+    ["accept-language", ""],
+    ["accept-ranges", ""],
+    ["accept", ""],
+    ["access-control-allow-origin", ""],
+    ["age", ""],
+    ["allow", ""],
+    ["authorization", ""],
+    ["cache-control", ""],
+    ["content-disposition", ""],
+    ["content-encoding", ""],
+    ["content-language", ""],
+    ["content-length", ""],
+    ["content-location", ""],
+    ["content-range", ""],
+    ["content-type", ""],
+    ["cookie", ""],
+    ["date", ""],
+    ["etag", ""],
+    ["expect", ""],
+    ["expires", ""],
+    ["from", ""],
+    ["host", ""],
+    ["if-match", ""],
+    ["if-modified-since", ""],
+    ["if-none-match", ""],
+    ["if-range", ""],
+    ["if-unmodified-since", ""],
+    ["last-modified", ""],
+    ["link", ""],
+    ["location", ""],
+    ["max-forwards", ""],
+    ["proxy-authenticate", ""],
+    ["proxy-authorization", ""],
+    ["range", ""],
+    ["referer", ""],
+    ["refresh", ""],
+    ["retry-after", ""],
+    ["server", ""],
+    ["set-cookie", ""],
+    ["strict-transport-security", ""],
+    ["transfer-encoding", ""],
+    ["user-agent", ""],
+    ["vary", ""],
+    ["via", ""],
+    ["www-authenticate", ""],
+];
+
+function h2Frame(type, flags, streamId, payload = Buffer.alloc(0)) {
+    const frame = Buffer.alloc(9 + payload.length);
+    frame[0] = (payload.length >>> 16) & 0xff;
+    frame[1] = (payload.length >>> 8) & 0xff;
+    frame[2] = payload.length & 0xff;
+    frame[3] = type;
+    frame[4] = flags;
+    frame[5] = (streamId >>> 24) & 0x7f;
+    frame[6] = (streamId >>> 16) & 0xff;
+    frame[7] = (streamId >>> 8) & 0xff;
+    frame[8] = streamId & 0xff;
+    payload.copy(frame, 9);
+    return frame;
+}
+
+function h2ReadFrame(buffer) {
+    const length = (buffer[0] << 16) | (buffer[1] << 8) | buffer[2];
+    return {
+        length,
+        type: buffer[3],
+        flags: buffer[4],
+        streamId: ((buffer[5] & 0x7f) << 24) | (buffer[6] << 16) | (buffer[7] << 8) | buffer[8],
+        payload: buffer.subarray(9, 9 + length),
+    };
+}
+
+function hpackInteger(value, prefixBits, prefixMask) {
+    const maxPrefix = (1 << prefixBits) - 1;
+    const bytes = [];
+    if (value < maxPrefix) {
+        bytes.push(prefixMask | value);
+    } else {
+        bytes.push(prefixMask | maxPrefix);
+        value -= maxPrefix;
+        while (value >= 128) {
+            bytes.push((value % 128) + 128);
+            value = Math.floor(value / 128);
+        }
+        bytes.push(value);
+    }
+    return Buffer.from(bytes);
+}
+
+function hpackReadInteger(bytes, offset, prefixBits) {
+    const maxPrefix = (1 << prefixBits) - 1;
+    let value = bytes[offset] & maxPrefix;
+    offset += 1;
+    if (value !== maxPrefix) {
+        return { value, offset };
+    }
+    let shift = 0;
+    while (offset < bytes.length) {
+        const byte = bytes[offset];
+        offset += 1;
+        value += (byte & 0x7f) * (2 ** shift);
+        if ((byte & 0x80) === 0) {
+            return { value, offset };
+        }
+        shift += 7;
+    }
+    throw new Error("incomplete HPACK integer");
+}
+
+function hpackKnownHuffmanString(value) {
+    const encodings = new Map([
+        ["text/plain", Buffer.from([0x49, 0x7c, 0xa5, 0x8a, 0xe8, 0x19, 0xaa])],
+        ["13", Buffer.from([0x0b, 0x3f])],
+        ["14", Buffer.from([0x0b, 0x5f])],
+    ]);
+    const encoded = encodings.get(value);
+    assert.notEqual(encoded, undefined, `missing test HPACK Huffman encoding for ${value}`);
+    return Buffer.concat([hpackInteger(encoded.length, 7, 0x80), encoded]);
+}
+
+function hpackString(value, huffman = false) {
+    if (huffman) {
+        return hpackKnownHuffmanString(value);
+    }
+    const bytes = Buffer.from(value, "utf8");
+    return Buffer.concat([hpackInteger(bytes.length, 7, 0), bytes]);
+}
+
+function hpackReadString(bytes, offset) {
+    assert.equal((bytes[offset] & 0x80), 0);
+    const length = hpackReadInteger(bytes, offset, 7);
+    return {
+        value: bytes.subarray(length.offset, length.offset + length.value).toString("utf8"),
+        offset: length.offset + length.value,
+    };
+}
+
+function hpackHeader(index, value, huffman = false) {
+    return Buffer.concat([hpackInteger(index, 4, 0), hpackString(value, huffman)]);
+}
+
+function hpackResponseHeaders(status, contentType, contentLength, huffman = false) {
+    const statusBlock = status === 200 ? Buffer.from([0x88]) : hpackHeader(8, String(status));
+    return Buffer.concat([
+        statusBlock,
+        hpackHeader(31, contentType, huffman),
+        hpackHeader(28, String(contentLength), huffman),
+    ]);
+}
+
+function hpackDecodeRequestHeaders(block) {
+    const headers = [];
+    let offset = 0;
+    while (offset < block.length) {
+        const byte = block[offset];
+        if ((byte & 0x80) !== 0) {
+            const indexed = hpackReadInteger(block, offset, 7);
+            offset = indexed.offset;
+            headers.push(HTTP2_HPACK_STATIC[indexed.value]);
+            continue;
+        }
+        const prefixBits = (byte & 0x40) !== 0 ? 6 : 4;
+        const nameRef = hpackReadInteger(block, offset, prefixBits);
+        offset = nameRef.offset;
+        let name;
+        if (nameRef.value === 0) {
+            const decodedName = hpackReadString(block, offset);
+            name = decodedName.value;
+            offset = decodedName.offset;
+        } else {
+            name = HTTP2_HPACK_STATIC[nameRef.value][0];
+        }
+        const decodedValue = hpackReadString(block, offset);
+        offset = decodedValue.offset;
+        headers.push([name, decodedValue.value]);
+    }
+    return headers;
+}
+
+function startHttp2Server(handler, options = {}) {
+    const sockets = new Set();
+    const onSocket = (socket) => {
+        let buffer = Buffer.alloc(0);
+        let sawPreface = false;
+        let responded = false;
+        let requestHeaders = [];
+        let requestBody = Buffer.alloc(0);
+        sockets.add(socket);
+        socket.on("close", () => sockets.delete(socket));
+        socket.on("error", () => {});
+
+        const respond = async (streamId) => {
+            if (responded) {
+                return;
+            }
+            responded = true;
+            const headerMap = new Map(requestHeaders);
+            const response = await handler({
+                headers: headerMap,
+                body: requestBody,
+            });
+            const status = response?.status ?? 200;
+            const contentType = response?.contentType ?? "text/plain";
+            const body = Buffer.from(response?.body ?? "h2 ok", "utf8");
+            const huffmanHeaders = response?.huffmanHeaders === true;
+            socket.write(
+                Buffer.concat([
+                    h2Frame(
+                        HTTP2_FRAME_HEADERS,
+                        HTTP2_FLAG_END_HEADERS,
+                        streamId,
+                        hpackResponseHeaders(status, contentType, body.length, huffmanHeaders),
+                    ),
+                    h2Frame(HTTP2_FRAME_DATA, HTTP2_FLAG_END_STREAM, streamId, body),
+                ]),
+            );
+        };
+
+        const parse = () => {
+            if (!sawPreface) {
+                if (buffer.length < HTTP2_PREFACE.length) {
+                    return;
+                }
+                if (!buffer.subarray(0, HTTP2_PREFACE.length).equals(HTTP2_PREFACE)) {
+                    socket.destroy();
+                    return;
+                }
+                buffer = buffer.subarray(HTTP2_PREFACE.length);
+                sawPreface = true;
+                socket.write(h2Frame(HTTP2_FRAME_SETTINGS, 0, 0));
+            }
+            while (buffer.length >= 9) {
+                const frame = h2ReadFrame(buffer);
+                if (buffer.length < 9 + frame.length) {
+                    return;
+                }
+                buffer = buffer.subarray(9 + frame.length);
+                if (frame.type === HTTP2_FRAME_SETTINGS && (frame.flags & HTTP2_FLAG_ACK) === 0) {
+                    socket.write(h2Frame(HTTP2_FRAME_SETTINGS, HTTP2_FLAG_ACK, 0));
+                    continue;
+                }
+                if (frame.type === HTTP2_FRAME_HEADERS) {
+                    requestHeaders = hpackDecodeRequestHeaders(frame.payload);
+                    if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
+                        void respond(frame.streamId).catch(() => socket.destroy());
+                    }
+                    continue;
+                }
+                if (frame.type === HTTP2_FRAME_DATA) {
+                    requestBody = Buffer.concat([requestBody, frame.payload]);
+                    if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
+                        void respond(frame.streamId).catch(() => socket.destroy());
+                    }
+                }
+            }
+        };
+
+        socket.on("data", (chunk) => {
+            buffer = Buffer.concat([buffer, chunk]);
+            try {
+                parse();
+            } catch {
+                socket.destroy();
+            }
+        });
+    };
+
+    const tlsMaterial = options.tlsMaterial;
+    const server = tlsMaterial === undefined
+        ? net.createServer(onSocket)
+        : tls.createServer(
+            {
+                key: tlsMaterial.key,
+                cert: tlsMaterial.cert,
+                ALPNProtocols: options.alpnProtocols ?? ["h2"],
+            },
+            onSocket,
+        );
+    const scheme = tlsMaterial === undefined ? "http" : "https";
+
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            const address = server.address();
+            resolve({
+                url: `${scheme}://127.0.0.1:${address.port}`,
+                close: () =>
+                    new Promise((done) => {
+                        for (const socket of sockets) {
+                            socket.destroy();
+                        }
+                        server.close(done);
+                    }),
+            });
+        });
+    });
+}
+
 function createNodeNetBridge() {
     let nextId = 1;
     const handles = new Map();
@@ -421,7 +747,11 @@ function createNodeNetBridge() {
             attachSocketHandlers(socket, handle, reject);
             socket.once(readyEvent, () => {
                 handles.set(id, handle);
-                resolve({ id });
+                const handleRef = { id };
+                if (typeof socket.alpnProtocol === "string" && socket.alpnProtocol.length > 0) {
+                    handleRef.selectedProtocol = socket.alpnProtocol;
+                }
+                resolve(handleRef);
             });
         });
     }
@@ -432,6 +762,7 @@ function createNodeNetBridge() {
         tlsTrustStorePath: true,
         tlsClientCertificate: true,
         tlsInsecureSkipVerify: true,
+        tlsAlpn: true,
 
         connect(options) {
             return connectSocket(
@@ -451,6 +782,7 @@ function createNodeNetBridge() {
                         servername: tlsServerName(options.serverName),
                         ca: loadTlsMaterial(options.tls),
                         rejectUnauthorized: options.tls?.insecureSkipVerify !== true,
+                        ALPNProtocols: options.alpnProtocols,
                     }),
                 "secureConnect",
             );
@@ -552,6 +884,102 @@ await withNodeNetBridge(async () => {
         assert.equal(observed.headers.get("x-test"), "1");
     } finally {
         await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let observed;
+    const server = await startHttp2Server((request) => {
+        observed = request;
+        return { body: "h2c ok" };
+    });
+
+    try {
+        const response = await HttpClient.get(`${server.url}/h2c?ready=1`, {
+            protocol: "h2c",
+            headers: { "x-test": "h2c" },
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.statusText, "");
+        assert.equal(response.headers.get("content-type"), "text/plain");
+        assert.equal(await response.text(), "h2c ok");
+        assert.equal(observed.headers.get(":method"), "GET");
+        assert.equal(observed.headers.get(":scheme"), "http");
+        assert.equal(observed.headers.get(":path"), "/h2c?ready=1");
+        assert.equal(observed.headers.get("x-test"), "h2c");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttp2Server(() => ({
+        body: "h2 huffman ok",
+        huffmanHeaders: true,
+    }));
+
+    try {
+        const response = await HttpClient.get(`${server.url}/h2c-huffman`, {
+            protocol: "h2c",
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("content-type"), "text/plain");
+        assert.equal(await response.text(), "h2 huffman ok");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let observed;
+    const server = await startHttp2Server((request) => {
+        observed = request;
+        return { body: `posted ${request.body.toString("utf8")}` };
+    });
+
+    try {
+        const response = await HttpClient.post(`${server.url}/h2c-post`, {
+            protocol: "h2c",
+            text: "body",
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), "posted body");
+        assert.equal(observed.headers.get(":method"), "POST");
+        assert.equal(observed.headers.get("content-type"), "text/plain; charset=utf-8");
+        assert.equal(observed.headers.get("content-length"), "4");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-h2-"));
+    const trustStorePath = path.join(tempDir, "server.crt");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    let observed;
+    const server = await startHttp2Server((request) => {
+        observed = request;
+        return { body: "h2 tls ok" };
+    }, { tlsMaterial });
+
+    try {
+        const response = await HttpClient.get(`${server.url}/secure`, {
+            protocol: "h2",
+            tls: { trustStorePath },
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), "h2 tls ok");
+        assert.equal(observed.headers.get(":method"), "GET");
+        assert.equal(observed.headers.get(":scheme"), "https");
+        assert.equal(observed.headers.get(":path"), "/secure");
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
     }
 });
 

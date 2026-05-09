@@ -116,12 +116,15 @@ Outbound `HttpClient` HTTPS/TLS is experimental. It uses OpenSSL through the
 private `__sloppy.net.connectTls` V8 bridge in
 `src/engine/v8/intrinsics_net.cc` when that bridge is present. TLS state stays
 inside the resource-table TCP connection; JavaScript sees only slot/generation
-handles and copied buffers. Trust-store and client-certificate option names may
-still change before a broader stability contract exists.
+handles, copied buffers, and the selected ALPN protocol string when ALPN is
+configured. Trust-store and client-certificate option names may still change
+before a broader stability contract exists.
 
-Not implemented today: ALPN selection beyond HTTP/1.1, server-side mTLS,
-custom certificate verifier callbacks, OCSP stapling, HSTS hardening.
-Production deployments should terminate inbound TLS at a reverse proxy.
+Inbound TLS ALPN can select `h2` or `http/1.1`. Outbound TLS can offer ALPN for
+explicit `HttpClient` HTTP/2 requests. Server-side mTLS, custom certificate
+verifier callbacks, OCSP stapling, and HSTS hardening are not implemented.
+Production deployments should terminate inbound TLS at a reverse proxy unless
+the development listener's TLS posture is sufficient for the deployment lane.
 
 The current Plan format still carries inbound server certificate and
 private-key paths so `sloppy run` can configure the development TLS

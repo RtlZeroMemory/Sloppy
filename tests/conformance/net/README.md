@@ -28,9 +28,10 @@ Network conformance is split by lane:
   `TcpListener`, `TcpConnection`, `LocalEndpoint`, `UnixSocket`, `NamedPipe`, and
   `NetworkAddress` surface behavior;
 - outbound HTTP client coverage: `bootstrap.stdlib.http_client` verifies the HTTP/1.1
-  request/response lane over the TCP bridge and private TLS bridge with deterministic
-  loopback status/header/body, HTTPS trust-store and insecure-skip verification,
-  body-consumption, malformed-response, body-limit, ambiguous-body, bounded
+  request/response lane and explicit HTTP/2 `h2c`/TLS `h2` lanes over the TCP and
+  private TLS bridges with deterministic loopback status/header/body, HTTPS
+  trust-store and insecure-skip verification, body-consumption,
+  malformed-response, body-limit, ambiguous-body, bounded
   stream/deadline/cancellation, per-origin pooling, pool
   exhaustion, redirect loop/max, cross-origin sensitive-header stripping/denial,
   strict-network denial, and DNS-failure checks;
@@ -40,11 +41,26 @@ Network conformance is split by lane:
   registration, `stdlib.httpclient` activation of that private bridge dependency, TCP
   client/listener loopback smoke, LocalEndpoint bridge/path validation, promise settlement
   through the V8 owner-thread path, and inactive-feature gating when a V8 SDK is configured.
+- HTTP/2 transport coverage: `core.http2_frame`, `core.http2_hpack`,
+  `core.http2_session`, `core.http2_mapping`, and `core.http2_dispatch` cover the native
+  protocol units. `conformance.transport.http2_h2c`,
+  `conformance.transport.http2_h2c_upgrade`, and
+  `conformance.transport.http2_tls_alpn` cover h2c prior knowledge, h2c
+  Upgrade, and server h2 over TLS ALPN through the libuv listener paths. The
+  HTTP client bootstrap lane covers explicit h2c and h2, informational
+  responses, response content-length validation, frame-size caps, SETTINGS ACK,
+  CONTINUATION request headers, and HPACK Huffman response decoding.
+  Optional external-tool smoke wrappers live at `tools/windows/test-http2.ps1`
+  and `tools/unix/test-http2.sh`; they report missing h2spec, curl, nghttp,
+  and h2load lanes as `UNAVAILABLE` or `SKIPPED`. A wrapper run is not h2spec
+  coverage unless h2spec is present and actually executed; CI h2spec coverage
+  is tracked in #1011.
 
 Local IPC coverage adds POSIX-gated Unix domain socket native tests, Windows-gated named
 pipe native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring,
 and doctor/audit/source-example coverage under the same `stdlib.net` feature.
-HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket,
+HTTP/3, gRPC, WebTransport, server push, HTTP server behavior beyond the
+existing inbound lanes, UDP, WebSocket,
 direct WinSock/epoll/kqueue/io_uring public APIs, crypto implementation,
 package-manager behavior, release docs, benchmark reports, stress/torture, and
 external live-network validation are separate work.

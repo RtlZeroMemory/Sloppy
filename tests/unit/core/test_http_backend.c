@@ -369,6 +369,73 @@ static int test_keep_alive_disabled_rejects_second_request(void)
     return 0;
 }
 
+static int test_multiplexing_allows_overlapping_requests_without_keep_alive(void)
+{
+    unsigned char first_storage[TEST_ARENA_SIZE];
+    unsigned char second_storage[TEST_ARENA_SIZE];
+    SlArena first_arena = {0};
+    SlArena second_arena = {0};
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle first_request = {0};
+    SlHttpRequestLifecycle second_request = {0};
+
+    options.max_connections = 1U;
+    options.max_active_requests = 2U;
+    options.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.keep_alive_enabled = false;
+
+    if (expect_status(sl_arena_init(&first_arena, first_storage, sizeof(first_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&second_arena, second_storage, sizeof(second_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, &options) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 57;
+    }
+    sl_http_connection_set_multiplexing(&connection, true);
+
+    if (expect_status(sl_http_request_begin(&connection, &first_arena, &first_request, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_parse_head(
+                          &first_request,
+                          bytes_from_cstr("GET /one HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &second_arena, &second_request, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_parse_head(
+                          &second_request,
+                          bytes_from_cstr("GET /two HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
+                      SL_STATUS_OK) != 0 ||
+        backend.active_requests != 2U || connection.request_count != 2U)
+    {
+        return 58;
+    }
+
+    if (expect_status(sl_http_request_begin_dispatch(&first_request, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin_write(&first_request, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_complete(&first_request, NULL), SL_STATUS_OK) != 0 ||
+        backend.active_requests != 1U ||
+        sl_http_connection_state(&connection) != SL_HTTP_CONNECTION_STATE_OPEN)
+    {
+        return 59;
+    }
+
+    if (expect_status(sl_http_request_begin_dispatch(&second_request, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin_write(&second_request, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_complete(&second_request, NULL), SL_STATUS_OK) != 0 ||
+        backend.active_requests != 0U ||
+        sl_http_connection_state(&connection) != SL_HTTP_CONNECTION_STATE_OPEN)
+    {
+        return 60;
+    }
+
+    return 0;
+}
+
 static int test_overload_admission_rejection(void)
 {
     unsigned char first_storage[TEST_ARENA_SIZE];
@@ -1308,6 +1375,7 @@ int main(void)
         {test_parser_limits_flow_through_backend_options},
         {test_timeout_hook_cancels_request_distinctly},
         {test_keep_alive_disabled_rejects_second_request},
+        {test_multiplexing_allows_overlapping_requests_without_keep_alive},
         {test_overload_admission_rejection},
         {test_stop_finalizes_after_failed_connection},
         {test_stop_finalizes_after_request_release},

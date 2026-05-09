@@ -75,10 +75,13 @@ The lower-level inbound transport can load passphrase-protected private keys.
 `sloppy run` config metadata currently carries only the inbound certificate and
 private-key paths, not a TLS passphrase value.
 
-Out of scope today: ALPN selection beyond HTTP/1.1, server-side mTLS,
-custom certificate verifier callbacks, OCSP stapling, and HSTS hardening. For
-production you'll generally want a reverse proxy in front handling TLS
-termination.
+Inbound TLS ALPN can select `h2` or `http/1.1` for the Sloppy HTTP transport.
+Outbound `HttpClient` can request HTTP/2 over TLS with `protocol: "h2"` when
+the private bridge exposes ALPN support.
+
+Server-side mTLS, custom certificate verifier callbacks, OCSP stapling, and
+HSTS hardening are out of scope today. For production you'll generally want a
+reverse proxy in front handling TLS termination.
 
 ## Reporting issues
 

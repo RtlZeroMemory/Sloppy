@@ -114,6 +114,14 @@
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(
+        core_http2_dispatch core.http2.dispatch tests/unit/core/test_http2_dispatch.c)
+    sloppy_add_c_unit_test(core_http2_frame core.http2.frame tests/unit/core/test_http2_frame.c)
+    sloppy_add_c_unit_test(core_http2_hpack core.http2.hpack tests/unit/core/test_http2_hpack.c)
+    sloppy_add_c_unit_test(
+        core_http2_mapping core.http2.mapping tests/unit/core/test_http2_mapping.c)
+    sloppy_add_c_unit_test(
+        core_http2_session core.http2.session tests/unit/core/test_http2_session.c)
+    sloppy_add_c_unit_test(
         core_http_backend core.http.backend tests/unit/core/test_http_backend.c)
     if(CMAKE_CXX_COMPILER)
         sloppy_add_cxx_unit_test(
@@ -137,6 +145,9 @@
             conformance.transport.streaming_response streaming_response)
         sloppy_add_http_transport_case(conformance.transport.backpressure backpressure)
         sloppy_add_http_transport_case(conformance.transport.https_loopback https_loopback)
+        sloppy_add_http_transport_case(conformance.transport.http2_h2c http2_h2c)
+        sloppy_add_http_transport_case(conformance.transport.http2_h2c_upgrade http2_h2c_upgrade)
+        sloppy_add_http_transport_case(conformance.transport.http2_tls_alpn http2_tls_alpn)
         sloppy_add_http_transport_case(conformance.transport.https_tls_negative https_tls_negative)
         sloppy_add_http_transport_case(conformance.transport.shutdown_cancel shutdown_cancel)
         add_test(
@@ -227,6 +238,15 @@
         fuzz_seed_route_pattern fuzz.route_pattern.seed_replay tests/fuzz/fuzz_route_pattern.c
         route-pattern)
     sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http2_frame fuzz.http2_frame.seed_replay tests/fuzz/fuzz_http2_frame.c
+        http2-frame)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http2_hpack fuzz.http2_hpack.seed_replay tests/fuzz/fuzz_http2_hpack.c
+        http2-hpack)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http2_session fuzz.http2_session.seed_replay tests/fuzz/fuzz_http2_session.c
+        http2-session)
+    sloppy_add_fuzz_seed_replay(
         fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
         http-request)
     sloppy_add_fuzz_seed_replay(
@@ -237,6 +257,9 @@
         tests/fuzz/fuzz_memory_primitives.c memory-primitives)
     sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
     sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
+    sloppy_add_libfuzzer_target(fuzz_http2_frame_libfuzzer tests/fuzz/fuzz_http2_frame.c)
+    sloppy_add_libfuzzer_target(fuzz_http2_hpack_libfuzzer tests/fuzz/fuzz_http2_hpack.c)
+    sloppy_add_libfuzzer_target(fuzz_http2_session_libfuzzer tests/fuzz/fuzz_http2_session.c)
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)

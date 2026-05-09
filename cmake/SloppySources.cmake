@@ -27,6 +27,11 @@ set(
     src/core/provider_executor.c
     src/core/worker_pool.c
     src/core/http.c
+    src/core/http2_dispatch.c
+    src/core/http2_frame.c
+    src/core/http2_hpack.c
+    src/core/http2_mapping.c
+    src/core/http2_session.c
     src/core/http_backend.c
     src/core/http_context.c
     src/core/http_dispatch.c
@@ -142,6 +147,11 @@ set(
     tests/unit/core/test_provider_executor.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
+    tests/unit/core/test_http2_dispatch.c
+    tests/unit/core/test_http2_frame.c
+    tests/unit/core/test_http2_hpack.c
+    tests/unit/core/test_http2_mapping.c
+    tests/unit/core/test_http2_session.c
     tests/unit/core/test_http_backend.c
     tests/unit/core/test_http_transport.cc
     tests/unit/core/test_http_context.c
@@ -161,6 +171,9 @@ set(
     tests/unit/data/test_sqlite.c
     tests/fuzz/fuzz_plan_parse.c
     tests/fuzz/fuzz_route_pattern.c
+    tests/fuzz/fuzz_http2_frame.c
+    tests/fuzz/fuzz_http2_hpack.c
+    tests/fuzz/fuzz_http2_session.c
     tests/fuzz/fuzz_http_request.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c

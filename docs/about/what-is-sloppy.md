@@ -56,12 +56,14 @@ Real:
 - Compiles a focused TypeScript/JS subset into deterministic Plans.
 - Runs handlers through an isolated V8 bridge.
 - SQLite end-to-end, with PostgreSQL and SQL Server in opt-in lanes.
-- Bounded HTTP/1.1 server, OpenSSL TLS plumbing, capability declarations,
-  service injection, structured logging, configuration with typed binding.
+- Bounded HTTP/1.1 server, HTTP/2 server over TLS ALPN, h2c prior knowledge
+  and Upgrade handling, explicit `HttpClient` h2/h2c support, OpenSSL TLS plumbing,
+  capability declarations, service injection, structured logging,
+  configuration with typed binding.
 
 Pre-alpha:
 
-- Production hardening (long graceful drain, HTTP/2, broader TLS posture).
+- Production hardening (long graceful drain, broader TLS posture).
 - The app-host feature surface and compiler subset are intentionally narrow:
   middleware, CORS, request IDs, request logging, controllers, health checks,
   ProblemDetails, services, config, and typed providers have static compiler
@@ -70,5 +72,7 @@ Pre-alpha:
   response schemas, and full runtime-pipeline modeling are not represented.
 - Cross-platform polish: Windows is the most validated lane today.
 - Public release distribution (GitHub Release archives, npm launcher).
+- Full outbound HTTP/2 pooling/multiplexing and automatic ALPN protocol
+  selection are follow-up work.
 
 [Quickstart →](../quickstart.md)

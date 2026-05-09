@@ -104,7 +104,8 @@ divergence into a platform API instead.
 | libuv       | async loop, transport         | `src/platform/libuv/`                 |
 | libpq       | PostgreSQL provider           | `src/data/postgres.c`                 |
 | ODBC driver | SQL Server provider           | `src/data/sqlserver.c`                |
-| OpenSSL     | inbound TLS                   | `src/platform/libuv/http_transport_libuv.c` |
+| OpenSSL     | inbound TLS, outbound V8 TLS  | `src/platform/libuv/http_transport_libuv.c`, `src/engine/v8/` |
+| nghttp2     | HTTP/2 session + HPACK        | `src/core/http2_session.c`, `src/core/http2_hpack.c` |
 | libsodium   | password hashing              | `src/platform/crypto_password_sodium.c` |
 | V8          | JS execution                  | `src/engine/v8/`                      |
 | yyjson      | JSON parsing (Plan, etc.)     | core                                  |
