@@ -3983,10 +3983,7 @@ fn route_metadata_chain<'a>(
 ) -> Result<(&'a Expression<'a>, RouteMetadata), Diagnostic> {
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
-    loop {
-        let Expression::CallExpression(call) = current else {
-            break;
-        };
+    while let Expression::CallExpression(call) = current {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
         };

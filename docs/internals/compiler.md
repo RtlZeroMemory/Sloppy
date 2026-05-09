@@ -81,7 +81,8 @@ results; they do not link to the compiler library.
 
 ## Invariants
 
-- Same source and compiler version produce byte-for-byte stable artifacts.
+- Same source and compiler version produce a deterministic Plan and
+  byte-for-byte stable artifacts.
 - Handler IDs are assigned from source order starting at `1`.
 - Plan emission reads from AppGraph, not from parser lifetimes.
 - Source locations are preserved for route, handler, schema, provider, binding,
@@ -94,10 +95,10 @@ results; they do not link to the compiler library.
 ## Failure Behavior
 
 Compiler failures return a source-located diagnostic when source context is
-available. Common failures include unsupported imports, dynamic `import()`,
-dynamic route patterns, unsupported route methods, unsupported handler shapes,
-invalid route metadata options, missing relative imports, and provider bridge
-gaps.
+available. Common failures include unsupported imports, npm specifiers,
+dynamic import(), dynamic route patterns, unsupported route methods,
+unsupported handler shapes, invalid route metadata options, missing relative
+imports, and provider bridge gaps.
 
 Rejected builds do not emit success artifacts.
 
