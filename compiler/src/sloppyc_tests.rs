@@ -2451,6 +2451,56 @@ export default app;
 }
 
 #[test]
+fn data_backed_body_schema_references_are_sanitized_in_control_flow() {
+    let source = r#"import { Sloppy, Results, data, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: "users-api-sqlite-runtime.db",
+});
+const app = builder.build();
+app.mapPost("/users", async (ctx) => {
+  const first = await ctx.body.json(UserCreate);
+  if ((await ctx.body.json(UserCreate)).name) {
+    for (
+      let current = await ctx.body.json(UserCreate);
+      current.name;
+      current = await ctx.body.json(UserCreate)
+    ) {
+      break;
+    }
+  }
+  try {
+    return Results.json({ body: await ctx.body.json(UserCreate), first });
+  } catch (error) {
+    throw await ctx.body.json(UserCreate);
+  }
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("data-backed handler body should extract");
+    assert_eq!(app.routes[0].handler.bindings.len(), 1);
+    assert_eq!(app.routes[0].handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].schema.as_deref(),
+        Some("UserCreate")
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    assert_eq!(
+        emitted_js
+            .source
+            .matches("ctx.body.json(undefined)")
+            .count(),
+        6
+    );
+    assert!(!emitted_js.source.contains("ctx.body.json(UserCreate)"));
+}
+
+#[test]
 fn infers_direct_provider_read_effect_without_manual_uses() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";

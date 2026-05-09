@@ -18,6 +18,8 @@
 #include "sloppy/container.h"
 #include "sloppy/http.h"
 
+const SlPlanRequestBinding sl_plan_route_empty_bindings_sentinel = {0};
+
 static bool sl_plan_token_equal(SlStr left, SlStr right)
 {
     return !sl_str_is_empty(left) && sl_str_equal(left, right);

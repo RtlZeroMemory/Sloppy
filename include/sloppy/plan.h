@@ -101,7 +101,9 @@ typedef struct SlPlanRequestBinding
     bool redacted;
 } SlPlanRequestBinding;
 
-#define SL_PLAN_ROUTE_EMPTY_BINDINGS ((const SlPlanRequestBinding*)(uintptr_t)1)
+extern const SlPlanRequestBinding sl_plan_route_empty_bindings_sentinel;
+
+#define SL_PLAN_ROUTE_EMPTY_BINDINGS (&sl_plan_route_empty_bindings_sentinel)
 
 static inline bool sl_plan_route_has_bindings(const SlPlanRoute* route)
 {
