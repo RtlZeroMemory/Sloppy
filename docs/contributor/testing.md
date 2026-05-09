@@ -122,9 +122,13 @@ checking the diagnostic code or the cleanup behavior is incomplete.
   ctest --preset windows-asan --output-on-failure
   ```
 
-- **Benchmarks** — `sloppy_bench` runs in benchmark presets. Output is
-  measurement, not pass/fail. Don't use benchmark smoke as correctness
-  evidence; don't claim performance numbers from a smoke run.
+- **Benchmarks** — `sloppy_bench` runs native microbenchmarks, and
+  `tools/windows/bench.ps1 -Suite ...` runs the local runtime comparison
+  engine, including process-level CPU/memory counters and the `concurrency`
+  suite. Output is measurement, not pass/fail. Don't use benchmark smoke as
+  correctness evidence; don't claim performance numbers from a smoke run.
+  Missing Node, Bun, Deno, or V8-enabled Sloppy executables are reported as
+  `UNAVAILABLE` or `SKIPPED`, separate from default gates.
 
 Logging has focused native stress and benchmark coverage:
 

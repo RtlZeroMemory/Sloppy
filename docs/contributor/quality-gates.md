@@ -105,6 +105,9 @@ If you intentionally need to skip one, name it in the PR body.
 
 - A passing benchmark smoke is harness coverage, not a performance
   number.
+- A local runtime benchmark with missing Node/Bun/Deno is an
+  `UNAVAILABLE` comparator lane, not a failed default gate and not a
+  successful comparison.
 - A skipped optional lane is not a passing optional lane.
 - A passing default lane doesn't validate V8 behavior, package smoke,
   or live providers.

@@ -242,6 +242,17 @@
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
+        NAME sloppy.cli.max_routes_plan
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DSLOPPY_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
+            "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_ROUTE_COUNT=1024" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_max_routes_plan.cmake")
+    set_tests_properties(sloppy.cli.max_routes_plan
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
         NAME sloppy.run.version_mismatch
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"

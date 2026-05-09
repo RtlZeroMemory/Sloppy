@@ -99,11 +99,11 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route)
 
 static int sl_cli_command_routes(const SlCliOptions* options)
 {
-    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
-    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    unsigned char* json_storage = sl_cli_scratch_json_storage();
+    unsigned char* plan_arena_storage = sl_cli_scratch_plan_arena_storage();
     SlArena plan_arena;
     yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
+    SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t index = 0U;
 
     if (options->plan_path == NULL) {
@@ -111,36 +111,36 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         return 1;
     }
     if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
     {
         sl_cli_write_cstr(stderr, "sloppy routes: failed to initialize plan validation arena\n");
         return 1;
     }
     if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             &metadata) != 0)
+                             metadata) != 0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }
         return 1;
     }
-    sl_cli_sort_routes(&metadata);
+    sl_cli_sort_routes(metadata);
 
     if (options->format == SL_CLI_FORMAT_JSON) {
         printf("{\n  \"routes\": [");
-        for (index = 0U; index < metadata.route_count; index += 1U) {
-            sl_cli_routes_emit_json_route(&metadata.routes[index], index);
+        for (index = 0U; index < metadata->route_count; index += 1U) {
+            sl_cli_routes_emit_json_route(&metadata->routes[index], index);
         }
         printf("\n  ]\n}\n");
     }
     else {
         printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
                "BINDINGS  RESPONSE  NAME\n");
-        if (metadata.route_count == 0U) {
+        if (metadata->route_count == 0U) {
             printf("No routes.\n");
         }
-        for (index = 0U; index < metadata.route_count; index += 1U) {
-            sl_cli_routes_emit_text_route(&metadata.routes[index]);
+        for (index = 0U; index < metadata->route_count; index += 1U) {
+            sl_cli_routes_emit_text_route(&metadata->routes[index]);
         }
     }
 
@@ -209,11 +209,11 @@ static void sl_cli_capabilities_emit_route_effects(const SlCliOptions* options,
 
 static int sl_cli_command_capabilities(const SlCliOptions* options)
 {
-    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
-    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    unsigned char* json_storage = sl_cli_scratch_json_storage();
+    unsigned char* plan_arena_storage = sl_cli_scratch_plan_arena_storage();
     SlArena plan_arena;
     yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
+    SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t route_index = 0U;
     size_t finding_count = 0U;
 
@@ -222,21 +222,21 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
         return 1;
     }
     if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
     {
         sl_cli_write_cstr(stderr,
                           "sloppy capabilities: failed to initialize plan validation arena\n");
         return 1;
     }
     if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             &metadata) != 0)
+                             metadata) != 0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }
         return 1;
     }
-    sl_cli_sort_routes(&metadata);
+    sl_cli_sort_routes(metadata);
 
     if (options->format == SL_CLI_FORMAT_JSON) {
         printf("{\n  \"capabilities\": [");
@@ -244,8 +244,8 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
     else {
         printf("ROUTE  PROVIDER  KIND  ACCESS  REASON  SOURCE\n");
     }
-    for (route_index = 0U; route_index < metadata.route_count; route_index += 1U) {
-        sl_cli_capabilities_emit_route_effects(options, &metadata.routes[route_index],
+    for (route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
+        sl_cli_capabilities_emit_route_effects(options, &metadata->routes[route_index],
                                                &finding_count);
     }
     if (finding_count == 0U && options->format == SL_CLI_FORMAT_TEXT) {

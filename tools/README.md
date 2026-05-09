@@ -24,6 +24,10 @@ Packaging scripts create experimental local artifacts under ignored `artifacts/p
   artifact dry-runs and write ignored summaries under `artifacts/release-dry-run/`.
 - `tools/windows/check-release-artifacts.ps1` enforces release policy and checksum
   policy.
+- `tools/windows/bench.ps1` runs native benchmark smoke/list checks and the BENCH-01
+  local runtime comparison engine.
+- `tools/unix/bench.sh` runs the native Unix benchmark wrapper and reports the local
+  runtime comparison lane as unavailable until that runner is ported.
 
 Canonical command vocabulary:
 

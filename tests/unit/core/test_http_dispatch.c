@@ -224,7 +224,9 @@ static int test_route_table_build_orders_literal_before_params(void)
 
     if (table.route_count != 2U || table.dispatch.route_count != 2U ||
         table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 2U ||
-        table.dispatch.routes[1].handler_id != 1U)
+        table.dispatch.routes[1].handler_id != 1U || table.dispatch.exact_route_buckets == NULL ||
+        table.dispatch.exact_route_bucket_count == 0U || table.dispatch.param_routes == NULL ||
+        table.dispatch.param_route_count != 1U || table.dispatch.param_routes[0].handler_id != 1U)
     {
         return 6;
     }
@@ -281,12 +283,73 @@ static int test_route_table_build_keeps_method_metadata(void)
         table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 1U ||
         table.dispatch.routes[0].method != SL_HTTP_METHOD_GET ||
         table.dispatch.routes[1].handler_id != 2U ||
-        table.dispatch.routes[1].method != SL_HTTP_METHOD_POST || diag.code != SL_DIAG_NONE)
+        table.dispatch.routes[1].method != SL_HTTP_METHOD_POST ||
+        table.dispatch.exact_route_buckets == NULL ||
+        table.dispatch.exact_route_bucket_count == 0U || table.dispatch.param_routes != NULL ||
+        table.dispatch.param_route_count != 0U || diag.code != SL_DIAG_NONE)
     {
         return 72;
     }
 
     return 0;
+}
+
+static int test_route_table_exact_index_reports_method_mismatch(void)
+{
+    unsigned char route_storage[TEST_ARENA_SIZE];
+    unsigned char request_storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena route_arena = {0};
+    SlArena request_arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (init_arena(&route_arena, route_storage, sizeof(route_storage)) != 0 ||
+        init_arena(&request_arena, request_storage, sizeof(request_storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&request_arena, "GET /users HTTP/1.1\r\nHost: example\r\n\r\n", &request) !=
+            0)
+    {
+        sl_engine_destroy(engine);
+        return 76;
+    }
+
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/users");
+    route.handler_id = 1U;
+    route.name = sl_str_from_cstr("Users.Create");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (expect_status(sl_http_route_table_build(&route_arena, &plan, &table, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 77;
+    }
+    if (table.dispatch.exact_route_buckets == NULL ||
+        table.dispatch.exact_route_bucket_count == 0U || table.dispatch.param_route_count != 0U)
+    {
+        sl_engine_destroy(engine);
+        return 78;
+    }
+
+    status = sl_http_dispatch_request_head(&route_arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0) {
+        return 79;
+    }
+    return expect_true(diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD);
 }
 
 static int test_route_table_build_accepts_non_get_only_metadata(void)
@@ -1706,6 +1769,7 @@ int main(void)
         {test_route_table_build_orders_literal_before_params},
         {test_route_table_rejects_duplicate_method_pattern},
         {test_route_table_build_keeps_method_metadata},
+        {test_route_table_exact_index_reports_method_mismatch},
         {test_route_table_build_accepts_non_get_only_metadata},
         {test_allow_header_lists_matching_methods_and_head_for_get},
         {test_method_mismatch_returns_method_not_allowed},

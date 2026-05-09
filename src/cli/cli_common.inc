@@ -533,25 +533,32 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     return 0;
 }
 
-static int sl_read_file_with_messages(const char* path, unsigned char* buffer, size_t capacity,
-                                      SlBytes* out, const char* not_found_prefix,
-                                      const char* size_prefix, const char* failed_read_prefix)
+static int sl_read_file_with_storage(const char* path, unsigned char* buffer, size_t capacity,
+                                     unsigned char* read_storage, size_t read_storage_capacity,
+                                     SlBytes* out, const char* not_found_prefix,
+                                     const char* size_prefix, const char* failed_read_prefix)
 {
-    unsigned char read_storage[SL_CLI_FILE_READ_ARENA_BYTES];
     SlArena arena = {0};
     SlArena output_arena = {0};
     SlOwnedBytes bytes = {0};
     SlOwnedBytes copied = {0};
     SlStatus status;
+    size_t read_arena_capacity = 0U;
 
-    if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
-        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_CLI_FILE_READ_MAX_BYTES)
+    if (path == NULL || buffer == NULL || read_storage == NULL || out == NULL ||
+        not_found_prefix == NULL || size_prefix == NULL || failed_read_prefix == NULL)
     {
         return 1;
     }
     *out = sl_bytes_from_parts(NULL, 0U);
 
-    status = sl_arena_init(&arena, read_storage, capacity + SL_CLI_FILE_READ_SCRATCH_BYTES);
+    status = sl_checked_add_size(capacity, SL_CLI_FILE_READ_SCRATCH_BYTES, &read_arena_capacity);
+    if (!sl_status_is_ok(status) || read_arena_capacity > read_storage_capacity) {
+        sl_cli_write_error_with_value(size_prefix, path, "\n");
+        return 1;
+    }
+
+    status = sl_arena_init(&arena, read_storage, read_arena_capacity);
     if (!sl_status_is_ok(status)) {
         return 1;
     }
@@ -589,6 +596,38 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
     }
     *out = sl_owned_bytes_as_view(copied);
     return 0;
+}
+
+static int sl_read_file_with_messages(const char* path, unsigned char* buffer, size_t capacity,
+                                      SlBytes* out, const char* not_found_prefix,
+                                      const char* size_prefix, const char* failed_read_prefix)
+{
+    static unsigned char read_storage[SL_CLI_FILE_READ_ARENA_BYTES];
+
+    return sl_read_file_with_storage(path, buffer, capacity, read_storage, sizeof(read_storage),
+                                     out, not_found_prefix, size_prefix, failed_read_prefix);
+}
+
+static unsigned char* sl_cli_scratch_json_storage(void)
+{
+    static unsigned char storage[SL_CLI_FILE_MAX_BYTES];
+
+    return storage;
+}
+
+static unsigned char* sl_cli_scratch_plan_arena_storage(void)
+{
+    static unsigned char storage[SL_CLI_ARENA_BYTES];
+
+    return storage;
+}
+
+static SlCliMetadata* sl_cli_scratch_metadata(void)
+{
+    static SlCliMetadata metadata;
+
+    metadata = (SlCliMetadata){0};
+    return &metadata;
 }
 
 static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)

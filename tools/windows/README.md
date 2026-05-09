@@ -117,3 +117,18 @@ reported through:
 smoke harnesses. Without a V8-enabled build it reports V8-required examples as
 unavailable diagnostics, not positive execution. Without `-PackagePath` it reports
 package-mode dogfood as skipped.
+
+Local benchmark evidence is reported through `bench.ps1`:
+
+```powershell
+.\tools\windows\bench.ps1 -List
+.\tools\windows\bench.ps1 -Smoke -Json
+.\tools\windows\bench.ps1 -Suite http -Runtime sloppy,node,bun,deno -Out artifacts\bench\local-comparison.json
+.\tools\windows\bench.ps1 -Suite concurrency -Runtime sloppy,node,bun,deno -Out artifacts\bench\local-concurrency.json
+.\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
+```
+
+`-List` and `-Smoke` exercise the native `sloppy_bench` harness. `-Suite` uses the BENCH-01
+local runtime runner for internal branch-to-branch measurements, including process-level
+CPU/memory counters and concurrent HTTP batch workloads. Missing Node, Bun, Deno, or
+V8-enabled Sloppy executables are reported in the JSON as unavailable lanes.

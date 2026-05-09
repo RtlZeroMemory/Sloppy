@@ -119,3 +119,20 @@ tools/unix/test-live-providers.sh --provider all --preset linux-clang
 These scripts are opt-in Docker-backed live-provider lanes. Missing Docker, missing
 ODBC driver support, or an unavailable database service is reported as unavailable or
 failed live-provider status, never as default CI success.
+
+Benchmark support starts with the native wrapper:
+
+```sh
+tools/unix/bench.sh --list
+tools/unix/bench.sh --smoke --json
+```
+
+The Unix wrapper also preserves the BENCH-01 local runtime command shape:
+
+```sh
+tools/unix/bench.sh --suite http --runtime sloppy,node,bun,deno --out artifacts/bench/local-comparison.json
+```
+
+That local runtime comparison lane currently reports `UNAVAILABLE` on Unix instead of
+faking parity with the Windows runner. Native `sloppy_bench` measurements remain available
+when the selected CMake preset can build the benchmark target.
