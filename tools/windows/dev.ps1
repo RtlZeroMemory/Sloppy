@@ -209,7 +209,7 @@ function Resolve-V8Root {
             "Bypass",
             "-File",
             $fetchScript
-        )
+        ) | Out-Host
         return Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
     }
 }
