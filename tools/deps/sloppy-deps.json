@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "sloppy-alpha-infra-dependencies",
+  "name": "sloppy-runtime-dependencies",
   "statusVocabulary": [
     "found",
     "missing",
@@ -57,7 +57,7 @@
       "command": "node",
       "versionArguments": ["--version"],
       "versionPattern": "v([0-9]+\\.[0-9]+\\.[0-9]+)",
-      "reason": "Optional bootstrap stdlib fixture execution; Sloppy app code does not claim Node compatibility."
+      "reason": "Optional bootstrap stdlib fixture execution; Sloppy app code still uses Sloppy-managed artifacts."
     },
     "python": {
       "required": false,
@@ -108,7 +108,7 @@
       "defaultPreset": "macos-clang",
       "compiler": "clang",
       "v8SdkPlatform": null,
-      "notes": "No separate x64 package or V8 SDK artifact is published in this wave."
+      "notes": "No separate x64 package or V8 SDK artifact is published in this package lane."
     },
     "windows-arm64": {
       "status": "planned",
@@ -116,7 +116,7 @@
       "defaultPreset": null,
       "compiler": "clang-cl",
       "v8SdkPlatform": null,
-      "notes": "Planned platform; no build, package, or V8 SDK lane is claimed."
+      "notes": "Planned platform; build, package, and V8 SDK lanes are not available yet."
     }
   },
   "features": {
@@ -128,11 +128,11 @@
     },
     "http": {
       "status": "experimental",
-      "evidence": "Bounded HTTP/1.1 internal alpha lane; no production edge claim."
+      "evidence": "Bounded HTTP/1.1 local development lane."
     },
     "httpsTls": {
       "status": "planned",
-      "evidence": "TLS listener behavior is out of ALPHA-INFRA Wave 1 scope."
+      "evidence": "TLS listener behavior is out of scope for the current dogfood/runtime evidence catalog."
     },
     "sqlite": {
       "status": "experimental",
@@ -148,7 +148,7 @@
     },
     "dockerLiveProviders": {
       "status": "optional unavailable",
-      "evidence": "Docker is optional and never counts as live-provider pass evidence when absent."
+      "evidence": "Docker is optional; absent Docker is reported as unavailable for live-provider lanes."
     },
     "simd": {
       "status": "supported",

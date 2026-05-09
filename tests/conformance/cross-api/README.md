@@ -1,8 +1,8 @@
 # Cross-API Conformance Foundation
 
-This directory indexes #652 cross-API conformance scenarios for TEST-PLATFORM-01. The goal
-is to prove shared runtime primitives and denial/error semantics across implemented APIs,
-not to implement missing APIs merely to make a matrix green.
+This directory indexes cross-API conformance scenarios. The goal is to validate shared
+runtime primitives and denial/error semantics across implemented APIs, not to implement
+missing APIs merely to make a matrix green.
 
 | Scenario | Current evidence | Status |
 | --- | --- | --- |

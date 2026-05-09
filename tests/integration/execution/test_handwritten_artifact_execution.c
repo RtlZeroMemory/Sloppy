@@ -191,7 +191,7 @@ static int test_handwritten_plan_and_app_call_handler_1(void)
                                      "handwritten_smoke/app.js", 1U, "sloppy-ok");
 }
 
-static int test_compiler_mvp_plan_and_app_call_handler_1(void)
+static int test_compiler_artifact_plan_and_app_call_handler_1(void)
 {
     unsigned char engine_storage[TEST_ARENA_SIZE];
     unsigned char plan_storage[TEST_ARENA_SIZE];
@@ -218,12 +218,12 @@ static int test_compiler_mvp_plan_and_app_call_handler_1(void)
         return 1;
     }
 
-    if (load_plan_from_path("tests/integration/execution/compiler_mvp/app.plan.json", &plan_arena,
-                            &plan, &diag) != 0 ||
+    if (load_plan_from_path("tests/integration/execution/compiler_artifact/app.plan.json",
+                            &plan_arena, &plan, &diag) != 0 ||
         create_v8_engine(&engine_arena, &engine) != 0 ||
         eval_bootstrap_runtime(engine, &diag) != 0 ||
-        eval_app_from_path("tests/integration/execution/compiler_mvp/app.js", "compiler_mvp/app.js",
-                           engine, &diag) != 0)
+        eval_app_from_path("tests/integration/execution/compiler_artifact/app.js",
+                           "compiler_artifact/app.js", engine, &diag) != 0)
     {
         sl_engine_destroy(engine);
         return 2;
@@ -422,7 +422,7 @@ int main(void)
         return 1;
     }
 
-    if (test_compiler_mvp_plan_and_app_call_handler_1() != 0) {
+    if (test_compiler_artifact_plan_and_app_call_handler_1() != 0) {
         return 5;
     }
 

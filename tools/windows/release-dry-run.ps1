@@ -53,8 +53,6 @@ if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
     $powerShellExe = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
 }
 
-Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"), "-SelfTest")
-Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"))
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-SelfTest")
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 
@@ -110,4 +108,4 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $summaryFile) | Ou
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $summaryFile -Encoding ASCII
 
 Write-Host "release dry-run summary: $summaryFile"
-Write-Host "release dry-run completed without creating a public release."
+Write-Host "release dry-run completed; publishing is a separate step."

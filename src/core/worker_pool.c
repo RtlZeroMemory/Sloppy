@@ -1,11 +1,11 @@
 /*
  * src/core/worker_pool.c
  *
- * Implements Sloppy's worker-pool design skeleton as an inline-only test backend.
+ * Implements Sloppy's inline worker-pool backend for deterministic tests.
  *
  * Safety invariants:
  * - no real threads, atomics, locks, platform APIs, libuv, V8, or heap allocation are used;
- * - work callbacks run immediately on the caller thread in this skeleton;
+ * - work callbacks run immediately on the caller thread in this backend;
  * - completions are always posted to SlLoop instead of invoked directly;
  * - result ownership transfers to the completion callback only when the loop dispatches it;
  * - if posting fails or queued loop completions are deliberately discarded before dispatch,

@@ -25,7 +25,8 @@ Usage: tools/unix/bootstrap.sh
 
 Validates the Unix host tools needed for Sloppy's developer loop and bootstraps the
 repo-local vcpkg cache under .sdeps/. Linux and macOS remain cross-platform lanes; this
-script does not build V8 SDK artifacts or claim release readiness.
+script validates host setup and vcpkg only. V8 SDK setup and release packaging use
+separate commands.
 
 On Debian/Ubuntu-style systems, the current Linux clang lane expects packages roughly
 equivalent to:

@@ -1,15 +1,14 @@
 # HTTP Conformance
 
-Status: ENGINE-19.BC executable lane registration plus HTTP-25.F evidence registration.
-
-This lane covers HTTP parser, route table, synthetic dispatch, body policy, response
-mapping, and localhost transport behavior that is already implemented. It does not add or
-claim production-edge HTTP behavior.
+This directory records executable lane registration.
+This lane covers HTTP parser, route table, synthetic dispatch, body policy,
+response mapping, and localhost transport behavior that is already
+implemented. Production-edge HTTP behavior is separate work.
 
 ## Default Non-V8 Cases
 
 `conformance.http.default_dispatch` runs the existing `core.http.dispatch` executable under
-an ENGINE-19 name. It proves the documented synthetic dispatch lane:
+the conformance HTTP lane. It validates the documented synthetic dispatch lane:
 
 - GET/POST/PUT/PATCH/DELETE metadata can reach the engine boundary;
 - route miss returns the documented route-not-found diagnostic;
@@ -21,14 +20,14 @@ an ENGINE-19 name. It proves the documented synthetic dispatch lane:
 - missing plan handler fails before engine entry.
 
 This is default non-V8 evidence. It uses the noop engine where handler execution is out of
-scope, so it does not prove V8 handler execution.
+scope, so it does not validate V8 handler execution.
 
 ## Localhost Transport Cases
 
 `core.http.transport` remains the detailed executable for the complete localhost transport
 suite. The conformance registrations run targeted cases from that executable so the
 default CI lane keeps the evidence names visible without rerunning the full transport
-suite under every alias. Together, those cases prove the localhost transport lane:
+suite under every alias. Together, those cases validate the localhost transport lane:
 
 - raw TCP bytes over `127.0.0.1` with an ephemeral port;
 - GET success, POST text body success, route miss, method mismatch, and safe dispatch
@@ -55,7 +54,7 @@ suite under every alias. Together, those cases prove the localhost transport lan
   dispatch, and shutdown cleanup with an active TLS connection;
 - client disconnect, timeout, shutdown, response-capacity failure, and cleanup-once paths.
 
-HTTP-25.F also registers matrix-aligned targeted aliases over the same bounded executable:
+The HTTP lane also registers matrix-aligned targeted aliases over the same bounded executable:
 
 - `conformance.transport.keep_alive`;
 - `conformance.transport.keep_alive_idle_timeout`;
@@ -72,10 +71,10 @@ HTTP-25.F also registers matrix-aligned targeted aliases over the same bounded e
 The smoke alias exercises bounded repeated keep-alive requests on one connection, repeated
 short-lived keep-alive connections, repeated chunked requests, repeated streaming
 responses, repeated malformed requests, and shutdown/cleanup counters. It is stress/smoke
-evidence only: no throughput, latency, scalability, external-runtime comparison, or
-performance claim.
+metadata coverage: no throughput, latency, scalability, external-runtime comparison, or
+performance comparison.
 
-This is bounded loopback transport evidence only. The HTTPS case proves the current
+This is bounded loopback transport metadata coverage. The HTTPS case validates the current
 OpenSSL server wrapper on localhost, not production TLS hardening. This is not HTTP/2,
 HTTP/3, ALPN, mTLS, WebSockets, SSE, multipart/file upload, compression, static files,
 reverse-proxy, production-edge, benchmark, public streaming API, or V8 evidence.
@@ -83,7 +82,7 @@ reverse-proxy, production-edge, benchmark, public streaming API, or V8 evidence.
 ## V8-Gated HTTP Cases
 
 `conformance.v8.http_dispatch_execution` is registered only when `SLOPPY_ENABLE_V8=ON`.
-It runs the existing HTTP dispatch integration executable and proves synthetic HTTP request
+It runs the existing HTTP dispatch integration executable and validates synthetic HTTP request
 dispatch through the V8 handler boundary, including non-GET methods, request headers, JSON
 body materialization, missing function diagnostics, and thrown handler diagnostics.
 

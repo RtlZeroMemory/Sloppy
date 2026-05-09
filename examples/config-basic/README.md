@@ -7,5 +7,7 @@ secret redaction.
 secret. Doctor/package metadata should show the required key and redaction category, not
 the value.
 
-This example does not claim public alpha readiness, Node compatibility, hot reload, or
-production secret-vault integration.
+## Limitations
+
+This example focuses on local typed config and redaction metadata. Hot reload and external
+secret-vault integrations are separate work.

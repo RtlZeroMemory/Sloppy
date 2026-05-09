@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
-    $ManifestPath = Join-Path $Root "examples/dogfood/alpha-dogfood.json"
+    $ManifestPath = Join-Path $Root "examples/dogfood/dogfood.json"
 }
 
 function Read-JsonFile {
@@ -154,7 +154,7 @@ function Invoke-SelfTest {
         )
     }
     Assert-DogfoodManifest -Manifest $fixture
-    Write-Host "alpha dogfood self-test passed."
+    Write-Host "dogfood self-test passed."
 }
 
 if ($SelfTest) {
@@ -279,5 +279,5 @@ if ($Json) {
     foreach ($result in @($summary.results)) {
         Write-Host ("dogfood: {0}: {1} - {2}" -f $result.lane, $result.status, $result.reason)
     }
-    Write-Host "alpha dogfood harness completed."
+    Write-Host "dogfood harness completed."
 }

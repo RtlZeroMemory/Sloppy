@@ -1,6 +1,6 @@
 # Codec Streaming Compression Example
 
-Status: source example. This example documents the async-iterable
+This example documents the async-iterable
 compression transform shape with Time deadline/cancellation options.
 
 ```js
@@ -15,4 +15,5 @@ const stream = Compression.gzipStream(chunks, { signal, deadline: Deadline.after
 
 The stream helpers are Sloppy async-iterable transforms, not Web Streams. They keep bounded
 buffering and terminal-state behavior explicit. This example has no Node, Bun, or Deno
-compatibility promise, no package-manager behavior, and no benchmark claim.
+compatibility promise. Use benchmark-specific docs and tests for compression
+measurements.

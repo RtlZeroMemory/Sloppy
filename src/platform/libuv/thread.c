@@ -1,7 +1,7 @@
 /*
  * src/platform/libuv/thread.c
  *
- * Small Slop-owned thread primitive wrapper. Libuv types stay in platform code so core
+ * Small Sloppy-owned thread primitive wrapper. Libuv types stay in platform code so core
  * provider executors can own worker lifecycle without exposing libuv or OS handles.
  */
 #include "sloppy/platform_thread.h"

@@ -1,10 +1,9 @@
 # Sloppy Bootstrap Stdlib
 
-Status: active bootstrap standard library and staged runtime asset set.
-
+This directory contains the active bootstrap standard library and staged runtime asset set.
 This directory contains the source-controlled JavaScript facade used by bootstrap tests,
-examples, compiler fixtures, and staged runtime assets. It is not a Node compatibility shim
-and does not imply npm/package-manager behavior.
+examples, compiler fixtures, and staged runtime assets. It is the Sloppy
+bootstrap facade, not a Node compatibility layer.
 
 ## Layout
 
@@ -56,7 +55,7 @@ lib/sloppy/bootstrap/sloppy/
   assets, not public import targets.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; descriptors do not write responses by themselves.
-- `schema.js` provides the current validation metadata skeleton for strings, numbers,
+- `schema.js` provides the current validation metadata surface for strings, numbers,
   booleans, and object shapes.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
@@ -71,7 +70,7 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Boundaries
 
-- The bootstrap stdlib is JavaScript source, not a package-manager distribution.
+- The bootstrap stdlib is JavaScript source staged with the runtime.
 - Source examples may use relative imports into this directory when they are API-shape
   fixtures; compiler-owned runnable examples use the supported bare `"sloppy"` input shape.
 - Feature-gated APIs fail closed when the active runtime bridge is unavailable.
@@ -79,8 +78,9 @@ lib/sloppy/bootstrap/sloppy/
   provider-specific lane separately documents and tests active native interruption.
 - Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
   facades use opaque Sloppy-owned objects, not public slot/generation fields.
-- Node, Bun, Deno, Web API, and npm compatibility are not claimed.
-- Benchmark, production-readiness, and public alpha claims do not come from this directory.
+- Node, Bun, Deno, Web API, and npm compatibility are separate compatibility
+  tracks.
+- Benchmark, operations, and release readiness are covered by dedicated docs and gates.
 
 ## Not Implemented Here
 
@@ -95,9 +95,9 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Source Docs
 
-- `docs/developer-ergonomics.md`
-- `docs/js-ts-standards.md`
-- `docs/compiler-supported-syntax.md`
-- `docs/data-providers.md`
-- `docs/security-permissions.md`
-- `docs/execution-model.md`
+- `docs/explanation/developer-ergonomics.md`
+- `docs/contributor/js-ts-standards.md`
+- `docs/reference/supported-syntax.md`
+- `docs/reference/providers.md`
+- `docs/internals/security-model.md`
+- `docs/internals/runtime.md`

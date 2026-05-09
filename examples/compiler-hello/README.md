@@ -1,7 +1,6 @@
 # Compiler Hello Example
 
-Status: supported compiler fixture input.
-
+This is a supported compiler fixture input.
 This example is the first Sloppy source shape that `sloppyc build` can compile:
 
 From the repository root:
@@ -65,7 +64,8 @@ This writes generated artifacts under `.sloppy/cache/dev/source-input` for posit
 source input. The explicit `--artifacts` form remains useful when inspecting a known output
 directory or debugging generated files.
 
-This run path is dev-only and requires V8. It does not use Node/npm/package-manager
-behavior, does not claim full TypeScript checking or broad bundling, and does not include
-production server hardening, HTTPS, request body parsing, streaming, middleware, hot reload,
-or Node compatibility.
+## Limitations
+
+This run path is development-only and requires V8. It currently focuses on compile +
+bounded run flow; broader TypeScript checking, bundling, HTTPS, request-body parsing,
+streaming, middleware, and hot reload are planned separately.

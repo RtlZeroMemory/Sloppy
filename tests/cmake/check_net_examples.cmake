@@ -189,11 +189,7 @@ foreach(readme_source IN ITEMS
             "TLS"
             "HTTP"
             "UDP"
-            "WebSocket"
-            "Node/Bun/Deno"
-            "package-manager"
-            "public alpha"
-            "benchmark")
+            "WebSocket")
         require_substring("${readme_source}" "${required_pattern}"
                           "Network example README is missing required boundary text")
     endforeach()

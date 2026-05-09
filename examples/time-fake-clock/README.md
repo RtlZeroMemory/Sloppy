@@ -1,11 +1,14 @@
 # Time Fake Clock Example
 
-Status: source example. This example documents deterministic tests that
+This example documents deterministic tests that
 inject a clock explicitly.
 
 `Time.fakeClock()` creates an explicit test-scoped provider. Passing `{ clock }` to
 `Time.delay` or `Time.timeout` lets tests advance time deterministically with
 `clock.advanceBy(ms)`.
 
-Fake clocks do not mutate global timers for ordinary apps. `Time.fakeClock` does not mutate global timers.
-This example is not benchmark evidence and does not claim public alpha readiness.
+Fake clocks do not mutate global timers for ordinary apps.
+
+## Limitations
+
+This example focuses on deterministic fake-clock behavior for tests.

@@ -245,7 +245,7 @@
         NAME sloppy.run.rejects_mixed_artifact_inputs
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;extra;--once;GET;/"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;extra;--once;GET;/"
             "-DSLOPPY_EXPECTED_ERROR=expected either --artifacts <dir> or one positional artifact path"
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
@@ -255,7 +255,7 @@
         NAME sloppy.run.rejects_environment_with_artifacts
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--environment;Development;--once;GET;/"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;--environment;Development;--once;GET;/"
             "-DSLOPPY_EXPECTED_ERROR=--environment only applies to source input or sloppy.json"
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.rejects_environment_with_artifacts

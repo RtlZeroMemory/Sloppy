@@ -1,8 +1,8 @@
 /*
  * Libuv-backed HTTP transport listener foundation.
  *
- * This file owns uv loop, listener, and accepted TCP handles. Public Slop headers expose
- * only Slop-owned transport/backend state plus opaque platform pointers.
+ * This file owns uv loop, listener, and accepted TCP handles. Public Sloppy headers expose
+ * only Sloppy-owned transport/backend state plus opaque platform pointers.
  */
 #include "sloppy/http_transport.h"
 

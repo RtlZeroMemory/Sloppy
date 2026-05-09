@@ -11,15 +11,15 @@ Current checked-in plan fixtures under `tests/golden/plan/` define the intended 
 Plan v1 parser inputs. `tests/golden/plan/README.md` lists every fixture, expected outcome,
 diagnostic code, and parser coverage status.
 CLI fixtures under `tests/golden/cli/` pin routes, capabilities, doctor, audit, and
-OpenAPI output. Network, HTTP client, and OS doctor/audit goldens are metadata evidence
-only: they must not include live external network claims, raw URLs that carry secrets,
+OpenAPI output. Network, HTTP client, and OS doctor/audit goldens are metadata coverage
+only: they must not include live external network statements, raw URLs that carry secrets,
 cookies, authorization headers, bearer tokens, API keys, TLS-sensitive material,
 environment values, secret process args, captured process output, raw PIDs, native
-handles, public alpha claims, or benchmark claims.
+handles, release publishing statements, or benchmark comparisons.
 
 Golden files should be reviewed like public API changes.
 
-## TEST-PLATFORM-01 Golden Policy
+## Golden Policy
 
 Every golden is a semantic contract. Structured JSON goldens should assert stable semantic
 fields; text goldens are reserved for deliberate UX surfaces. Do not update a golden only

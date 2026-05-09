@@ -1,6 +1,6 @@
 # SQLite Conformance
 
-Status: native provider conformance plus V8-gated executable bridge and users API
+This directory covers native provider conformance plus V8-gated executable bridge and users API
 transport fixtures.
 
 Source fixtures:
@@ -63,13 +63,12 @@ Expected users API behavior:
 - verify `GET /users`, `GET /users/{id}`, missing-user `404`, `POST /users`, follow-up
   `GET /users`, invalid JSON `400`, and denied SQLite capability behavior.
 
-Default evidence: native C SQLite provider tests cover `:memory:` and file DB open, exec,
+Default coverage: native C SQLite provider tests cover `:memory:` and file DB open, exec,
 query, `queryOne`, primitive parameters, explicit SQLite encoding policy, transactions,
-provider executor configuration, and diagnostics. The default suite does not prove the V8
+provider executor configuration, and diagnostics. The default suite does not validate the V8
 JavaScript bridge or localhost transport executed.
 
 Gated/deferred requirements: PostgreSQL has separate native/live V8 lanes, and SQL Server
 JavaScript bridge behavior is not part of this SQLite conformance suite. The users API
-fixture is localhost transport evidence, not production-edge HTTP evidence. Filesystem and
-network capability checks remain Sloppy policy/metadata evidence and do not prove OS-level
-containment.
+fixture is localhost transport coverage. Production-edge HTTP and OS-level
+containment are separate work.

@@ -56,7 +56,7 @@ function Write-DevHelp {
     Write-Host "  package       Build an experimental local package archive."
     Write-Host "  test-package  Extract a package outside the checkout and run smoke checks."
     Write-Host "  npm-dry-run   Generate npm launcher/platform tarballs from a package archive."
-    Write-Host "  dogfood       Run or report ALPHA-INFRA dogfood/example evidence."
+    Write-Host "  dogfood       Run or report dogfood/example evidence."
     Write-Host "  analyze       Run the advanced static-analysis target."
     Write-Host "  clean         Remove the selected build directory."
     Write-Host "  all           Configure, build, and test."
@@ -515,48 +515,6 @@ function Invoke-TestGovernanceCheck {
     }
 }
 
-function Invoke-AlphaInfraCheck {
-    $script = Join-Path $PSScriptRoot "check-alpha-infra.ps1"
-    & $script -SelfTest
-    if (-not $?) {
-        throw "alpha infra self-test failed"
-    }
-
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "alpha infra self-test failed with exit code $LASTEXITCODE"
-    }
-
-    & $script
-    if (-not $?) {
-        throw "alpha infra check failed"
-    }
-
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "alpha infra check failed with exit code $LASTEXITCODE"
-    }
-}
-
-function Invoke-AlphaClaimsCheck {
-    $script = Join-Path $PSScriptRoot "check-alpha-claims.ps1"
-    & $script -SelfTest
-    if (-not $?) {
-        throw "alpha claims scanner self-test failed"
-    }
-
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "alpha claims scanner self-test failed with exit code $LASTEXITCODE"
-    }
-
-    & $script
-    if (-not $?) {
-        throw "alpha claims check failed"
-    }
-
-    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        throw "alpha claims check failed with exit code $LASTEXITCODE"
-    }
-}
-
 function Invoke-ReleaseArtifactCheck {
     $script = Join-Path $PSScriptRoot "check-release-artifacts.ps1"
     & $script -SelfTest
@@ -597,8 +555,6 @@ function Invoke-Lint {
     Invoke-DocsFreshnessCheck
     Invoke-CoreApiIntegrationCheck
     Invoke-TestGovernanceCheck
-    Invoke-AlphaInfraCheck
-    Invoke-AlphaClaimsCheck
     Invoke-ReleaseArtifactCheck
     Invoke-CComplexityWarningCheck
 

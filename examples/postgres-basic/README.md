@@ -14,7 +14,7 @@ Current limitations:
   stdlib bridge when the Plan enables `provider.postgres`;
 - no migrations;
 - no ORM;
-- TLS option hardening and production operational pooling policy remain separate provider
+- TLS option hardening and advanced operational pooling policy remain separate provider
   hardening work.
 
 Native live provider tests are opt-in:

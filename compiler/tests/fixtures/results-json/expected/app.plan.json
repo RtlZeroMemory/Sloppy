@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:e5c3c19a1a3f3ba9157f6e0771d8902d7afdcaf615e5a8dcbf509caa073b7862",
+    "hash": "sha256:8fb7047ef1d73834e0436c638852bddbd1e89bd7938bfdb2e151e75405b0ff41",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -119,12 +119,12 @@
   "schemaVersion": 1,
   "sourceFiles": [
     {
-      "hash": "sha256:fea863573b3936700480590cb5044344ef9ff35ed403756119e0215194f5184e",
+      "hash": "sha256:8ac3b1000876a270918e99dca2d16386fbaab989de0bcd33b53441bb06ae42f2",
       "path": "input.js"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:893545c02cdaf73a45cef20cb96c4e386850c7a20c3d4f4696f89733ddd4a717",
+    "hash": "sha256:f128efde38a39ad0a9ea649fd532f4267925472b2cec3bcba68d37812b0f868f",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

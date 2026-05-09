@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "catalog": "Sloppy dogfood and example evidence catalog",
+  "statusVocabulary": [
+    "available",
+    "v8-gated",
+    "package-gated",
+    "live-provider-gated",
+    "blocked",
+    "unavailable",
+    "planned"
+  ],
+  "resultVocabulary": [
+    "PASS",
+    "FAIL",
+    "SKIPPED",
+    "UNAVAILABLE",
+    "NOT RUN"
+  ],
+  "scenarios": [
+    {
+      "id": "hello-artifact",
+      "feature": "hello",
+      "status": "v8-gated",
+      "lane": "artifact",
+      "source": "examples/compiler-hello/app.js",
+      "artifactFixture": "compiler/tests/fixtures/hello-mapget/expected",
+      "once": {
+        "method": "GET",
+        "target": "/"
+      },
+      "stdoutContains": [
+        "Hello from Sloppy"
+      ],
+      "requiresV8": true,
+      "defaultNonV8Result": "UNAVAILABLE",
+      "evidence": "V8-enabled sloppy run --artifacts evidence is required for positive execution; default non-V8 runs must report the V8 requirement."
+    },
+    {
+      "id": "hello-source-input",
+      "feature": "hello",
+      "status": "v8-gated",
+      "lane": "source-input",
+      "sourceFixture": "tests/fixtures/source-input/hello-minimal",
+      "example": "examples/hello-minimal/src/main.ts",
+      "once": {
+        "method": "GET",
+        "target": "/hello/Ada"
+      },
+      "stdoutContains": [
+        "\"hello\":\"Ada\""
+      ],
+      "requiresV8": true,
+      "defaultNonV8Result": "UNAVAILABLE",
+      "evidence": "Source-input compile/diagnostic behavior is validated by the fixture harness; positive handler execution requires a V8-enabled build."
+    },
+    {
+      "id": "package-hello-artifact",
+      "feature": "package",
+      "status": "package-gated",
+      "lane": "package outside-checkout",
+      "metadataFixture": "tests/fixtures/package/windows-default/case.json",
+      "requiresPackage": true,
+      "requiresV8": false,
+      "defaultMissingPackageResult": "SKIPPED",
+      "evidence": "Package-mode dogfood runs only when an archive path is supplied; missing package input is reported as skipped."
+    },
+    {
+      "id": "http-app",
+      "feature": "HTTP",
+      "status": "blocked",
+      "lane": "future feature app",
+      "blockedBy": [
+        706
+      ],
+      "reason": "HTTP server runtime work is owned by the HTTP server track and is not implemented in this catalog."
+    },
+    {
+      "id": "https-app",
+      "feature": "HTTPS/TLS",
+      "status": "blocked",
+      "lane": "future feature app",
+      "blockedBy": [
+        717
+      ],
+      "reason": "Inbound TLS listener behavior is owned by the TLS listener track and is not implemented in this catalog."
+    },
+    {
+      "id": "sqlite-app",
+      "feature": "SQLite",
+      "status": "v8-gated",
+      "lane": "future feature app",
+      "blockedBy": [],
+      "reason": "Native SQLite and scoped V8 bridge evidence exist in gated lanes, but a default dogfood app must wait for package/source-input V8 evidence to be recorded here."
+    },
+    {
+      "id": "postgresql-app",
+      "feature": "PostgreSQL",
+      "status": "live-provider-gated",
+      "lane": "future live-provider app",
+      "blockedBy": [],
+      "reason": "PostgreSQL dogfood requires live-provider evidence and service configuration outside default CI."
+    },
+    {
+      "id": "sqlserver-app",
+      "feature": "SQL Server",
+      "status": "live-provider-gated",
+      "lane": "future live-provider app",
+      "blockedBy": [],
+      "reason": "SQL Server dogfood requires live-provider evidence, ODBC driver availability, and service configuration outside default CI."
+    },
+    {
+      "id": "framework-v2-app",
+      "feature": "Framework v2",
+      "status": "blocked",
+      "lane": "future framework app",
+      "blockedBy": [
+        666
+      ],
+      "reason": "Framework v2 compiler/runtime integration is outside this catalog and must not be faked here."
+    }
+  ]
+}

@@ -1,12 +1,11 @@
 name: Task
 description: Bounded-context task intended to map to one coherent PR.
-title: "TASK XX.A: "
+title: "Task: "
 labels: ["type:task", "status:ready", "size:bounded"]
 body:
   - type: input
-    id: parent-epic
-    attributes: { label: Parent EPIC }
-    validations: { required: true }
+    id: related-work
+    attributes: { label: Related work }
   - type: textarea
     id: summary
     attributes: { label: Summary }
@@ -46,9 +45,6 @@ body:
   - type: textarea
     id: reviewer-checklist
     attributes: { label: Reviewer checklist }
-  - type: textarea
-    id: followups
-    attributes: { label: Follow-up tasks }
   - type: input
     id: labels
     attributes: { label: Labels }

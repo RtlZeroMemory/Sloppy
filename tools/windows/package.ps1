@@ -96,12 +96,12 @@ function Write-PackageReadme {
     $content = @"
 # Sloppy Local Package
 
-This is an experimental development artifact, not a public release.
+This is an experimental development artifact for local validation.
 
 The package contains the currently built `sloppy` runtime CLI, the `sloppyc` compiler CLI,
 the source-controlled bootstrap stdlib assets, and example sources. It does not install
-anything, mutate PATH, fetch dependencies, include a package manager, or claim production
-readiness.
+anything, mutate PATH, fetch dependencies, include a package manager, or change production
+readiness status.
 
 Use `bin/sloppy --version`, `bin/sloppy --help`, `bin/sloppyc --version`, or
 `bin/sloppyc --help` for basic outside-checkout smoke checks.
@@ -122,11 +122,11 @@ function Write-KnownLimitations {
 
 This package is an experimental pre-alpha development artifact.
 
-- It is not a public alpha release.
-- It is not production ready.
-- It is not a Node, Bun, Deno, npm, or package-manager compatibility target.
-- Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
-  release readiness.
+- Publishing uses a separate release step.
+- Production readiness is tracked separately.
+- Node, Bun, Deno, npm, and package-manager compatibility are separate tracks.
+- V8 execution, live provider readiness, TLS hardening, and release readiness use their own
+  lanes.
 - V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
 - PostgreSQL and SQL Server live-provider behavior requires separate opt-in evidence.
 - Signing, notarization, installers, auto-update, and package-manager distribution are not
@@ -146,7 +146,7 @@ This experimental package includes Sloppy source-license text in the repository 
 `LICENSE.md` file, copied into this package as `LICENSE`, and may include runtime
 dependency DLLs restored by vcpkg for local package smoke.
 
-Complete third-party license review remains required before any public release.
+Complete third-party license review remains required before publishing.
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
@@ -194,7 +194,7 @@ and lz4.
 
 The package does not include V8 SDK headers/import libraries, database drivers, package
 manager metadata, installers, or signed release metadata. Dependency license review and a
-complete release notice file are still required before any public release.
+complete release notice file are still required before publishing.
 
 Included runtime files:
 
@@ -369,8 +369,8 @@ $manifest = [ordered]@{
     notes = @(
         "experimental",
         "dry-run artifact",
-        "not production ready",
-        "not a public alpha release",
+        "production readiness tracked separately",
+        "dry-run only",
         "no installer",
         "no package manager",
         "npm launcher packages may reuse this archive but do not add npm app dependency support",

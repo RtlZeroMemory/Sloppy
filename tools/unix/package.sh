@@ -222,14 +222,14 @@ cat > "$stage_root/docs/KNOWN_LIMITATIONS.md" <<'LIMITATIONS'
 
 This package is an experimental pre-alpha development artifact.
 
-- It is not a public alpha release.
-- It is not production ready.
-- It is not a Node, Bun, Deno, npm, or package-manager compatibility target.
-- Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
-  release readiness.
+- Publishing uses a separate release step.
+- Production readiness is tracked separately.
+- Node, Bun, Deno, npm, and package-manager compatibility are separate tracks.
+- V8 execution, live provider readiness, TLS hardening, and release readiness use their own
+  lanes.
 - V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
 - V8 runtime support is included only in packages built with a matching Sloppy-owned SDK
-  and proven by the V8 package smoke lane.
+  and validated by the V8 package smoke lane.
 - PostgreSQL and SQL Server live-provider behavior requires separate opt-in evidence.
 - Signing, notarization, installers, auto-update, and package-manager distribution are not
   included.
@@ -240,7 +240,7 @@ cat > "$stage_root/docs/LICENSES.md" <<'LICENSES'
 This experimental package includes Sloppy source-license text in the repository root
 LICENSE file and may include runtime dependencies provided by the host build environment.
 
-Complete third-party license review remains required before any public release.
+Complete third-party license review remains required before publishing.
 LICENSES
 cat > "$stage_root/docs/NOTICE.md" <<'NOTICES'
 # Notice
@@ -250,14 +250,14 @@ host build environment. It does not include V8 SDK headers/import libraries,
 database drivers, package manager metadata, installers, or signed release metadata.
 
 Dependency license review and a complete release notice file are still required
-before any public release.
+before publishing.
 NOTICES
 cat > "$stage_root/README.md" <<'README'
 # Sloppy Local Package
 
-This is an experimental development artifact, not a public release. It does not install
-anything, fetch dependencies, bundle a V8 SDK, provide package-manager behavior, or claim
-production readiness.
+This is an experimental development artifact for local validation. It does not install
+anything, fetch dependencies, bundle a V8 SDK, provide package-manager behavior, or change
+production readiness status.
 README
 
 contains_v8_runtime=false
@@ -367,7 +367,7 @@ cat > "$stage_root/manifest.json" <<JSON
   },
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
-  "notes": ["experimental", "dry-run artifact", "not production ready", "not a public alpha release", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
+  "notes": ["experimental", "dry-run artifact", "production readiness tracked separately", "dry-run only", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
 }
 JSON
 

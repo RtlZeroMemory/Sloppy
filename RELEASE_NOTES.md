@@ -1,18 +1,18 @@
-# Release Notes Skeleton
+# Release Notes
 
-These notes are a pre-alpha template for manual artifact dry-runs. They are not public
-alpha release notes until the readiness gate accepts the evidence.
+These notes are for manual artifact dry-runs. Hosted release notes are prepared
+after the readiness gate accepts the validation report.
 
 ## Release Type
 
-- Type: manual dry-run artifact package.
-- Public release: not created.
+- Package kind: manual dry-run artifact package.
+- GitHub release: not created.
 - Signing/notarization/installers: not included.
 
 ## Evidence Summary
 
-Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or `NOT RUN with
-reason`.
+Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or
+`NOT RUN with reason`.
 
 - Windows x64:
 - Linux x64:
@@ -25,32 +25,34 @@ reason`.
 - CI workflow:
 - Optional/live-provider:
 
-## Shipped
+## Included Artifact Areas
 
 - Experimental package archive layout.
 - Runtime manifest.
 - Package checksums.
 - Known limitations, license policy, and notice policy files.
-- npm launcher/platform package dry-run skeletons generated from tested archive contents.
+- npm launcher/platform package dry-run content generated from tested archive
+  contents.
 
 ## Deferred
 
-- Public GitHub release.
-- Hosted V8 SDK artifact publication.
+- GitHub release publishing.
+- Hosted V8 SDK artifact publication for every supported platform.
 - Signing, notarization, installers, and package-manager wrappers.
-- npm publish and public registry metadata.
-- Final public alpha documentation.
-- Final alpha verification.
+- npm publish and registry metadata.
+- Final product documentation.
+- Final verification.
 
 ## Known Limitations
 
 See `docs/release/KNOWN_LIMITATIONS.md`.
 
-## No-Claims Confirmation
+## Boundary Confirmation
 
-- No public alpha release claim.
-- No production-readiness claim.
-- No benchmark or performance claim.
-- No Node, Bun, or Deno compatibility claim.
-- No npm app dependency support or `node_modules` resolution claim.
-- No fake V8, package, provider, or platform readiness claim.
+- Dry-run output stays separate from GitHub release publishing.
+- Production readiness is tracked separately.
+- Benchmark and performance wording requires measured benchmark reports.
+- Node, Bun, and Deno compatibility are separate design tracks.
+- npm launcher packages install the runtime; app dependency support and
+  `node_modules` resolution are separate work.
+- V8, package, provider, and platform readiness are reported by their own lanes.

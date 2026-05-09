@@ -1,7 +1,7 @@
 /*
  * src/core/loop.c
  *
- * Implements Sloppy's first event-loop abstraction skeleton as a caller-backed native
+ * Implements Sloppy's caller-backed native event-loop abstraction as a
  * completion queue.
  *
  * Safety invariants:
@@ -9,7 +9,7 @@
  * - no raw allocation, platform API, libuv, V8, atomics, or locks are used;
  * - posts fail without mutating queue state when the loop is stopped or full;
  * - completions are consumed before callbacks run, so failed callbacks are not retried;
- * - this skeleton is single-threaded and rejects nested drain calls on the same loop.
+ * - this queue is single-threaded and rejects nested drain calls on the same loop.
  *
  * Tests: tests/unit/core/test_loop.c.
  */

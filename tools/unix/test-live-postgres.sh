@@ -27,7 +27,7 @@ export Sloppy__Providers__postgres__main__connectionString="$SLOPPY_POSTGRES_TES
 
 if [ "$no_docker" -eq 0 ]; then
   if ! command -v docker >/dev/null 2>&1; then
-    printf 'UNAVAILABLE: Docker CLI is required for the PostgreSQL live-provider lane.\n' >&2
+    printf 'UNAVAILABLE: Docker CLI is required for the PostgreSQL integration checks.\n' >&2
     exit 1
   fi
   docker info >/dev/null

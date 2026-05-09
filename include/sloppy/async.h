@@ -23,8 +23,8 @@ typedef enum SlAsyncState
  * Native async settlement result carried by SlAsync.
  *
  * `payload`, `user`, and `diag` are borrowed. SlAsync does not allocate, copy, free, or own
- * them. A borrowed diagnostic must outlive loop dispatch for this skeleton; future request
- * scope/V8 integration will define stronger ownership for async diagnostics.
+ * them. A borrowed diagnostic must outlive loop dispatch for this primitive; request
+ * scope/V8 integrations must define stronger ownership for async diagnostics before use.
  */
 typedef struct SlAsyncResult
 {
@@ -39,7 +39,7 @@ typedef struct SlAsyncResult
  *
  * The callback runs synchronously on the thread calling sl_loop_run_once() or
  * sl_loop_drain(). Returning failure propagates through the loop. SlAsync is not
- * thread-safe, and this skeleton does not support cross-thread settlement or posting.
+ * thread-safe, and this primitive does not support cross-thread settlement or posting.
  */
 typedef SlStatus (*SlAsyncContinuationFn)(SlLoop* loop, SlAsyncState state,
                                           const SlAsyncResult* result, void* user);

@@ -3,7 +3,7 @@
     { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
     { "id": "engine.v8", "status": "warn", "message": "V8 bridge disabled in this build; V8 runtime tests not run" },
     { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
-    { "id": "package.runtime", "status": "warn", "message": "local CLI checks do not prove package release readiness" },
+    { "id": "package.runtime", "status": "warn", "message": "package release status requires package smoke" },
     { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
     { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
     { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
@@ -13,7 +13,7 @@
     { "id": "stdlib.os.environment", "status": "ok", "message": "environment access metadata omits environment values" },
     { "id": "stdlib.os.process", "status": "ok", "message": "process metadata is explicit-argv and exposes no native handles" },
     { "id": "stdlib.os.shell", "status": "warn", "message": "shell capability metadata is visible but shell execution is denied" },
-    { "id": "stdlib.os.signals", "status": "ok", "message": "shutdown signal metadata is visible without platform signal claims" },
+    { "id": "stdlib.os.signals", "status": "ok", "message": "shutdown signal metadata is visible for the current platform" },
     { "id": "stdlib.os.redaction", "status": "ok", "message": "OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles" }
   ]
 }

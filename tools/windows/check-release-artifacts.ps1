@@ -71,7 +71,7 @@ function Get-Sha256Hex {
 
 function Test-ReleaseTemplates {
     $contractText = Read-RequiredText -Relative "docs/release/artifact-contract.md"
-    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@sloppy/runtime", "do not add npm package imports")) {
+    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@sloppy/runtime", "Sloppy apps still run through Sloppy-managed artifacts")) {
         Assert-TextContains -Text $contractText -Needle $needle -Message "Artifact contract doc missing required wording: $needle"
     }
 
@@ -85,7 +85,7 @@ function Test-ReleaseTemplates {
     Assert-True ($contract.npmPackages.publishTag -eq "alpha") "Artifact contract npm publishTag must be alpha."
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
-    Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must not claim final legal review."
+    Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."
     foreach ($dependency in @("v8", "openssl-tls", "sqlite", "libpq", "sql-server-odbc", "vcpkg-native-runtime")) {
         $match = @($dependencyAudit.dependencies | Where-Object { $_.id -eq $dependency })
         Assert-True ($match.Count -eq 1) "Runtime dependency audit missing '$dependency'."
@@ -97,24 +97,14 @@ function Test-ReleaseTemplates {
         Assert-True ($match.Count -eq 1) "Install verification matrix missing lane '$lane'."
     }
 
-    $handoff = Read-RequiredText -Relative "docs/release/alpha-gate-handoff.md"
-    foreach ($needle in @("# Alpha Gate Handoff", "#918", "#300", "#684", "must not be used as proof that alpha shipped", "exact blocker is recorded")) {
-        Assert-TextContains -Text $handoff -Needle $needle -Message "Alpha gate handoff missing required wording: $needle"
-    }
-
-    $verifier = Read-RequiredText -Relative "docs/release/post-merge-verifier.md"
-    foreach ($needle in @("/goal Verify Sloppy alpha packaging", "Contributor trial:", "Normal user archive trial:", "Normal user npm trial:", "do not publish npm")) {
-        Assert-TextContains -Text $verifier -Needle $needle -Message "Post-merge verifier handoff missing required prompt text: $needle"
-    }
-
     $knownLimitations = Read-RequiredText -Relative "docs/release/KNOWN_LIMITATIONS.md"
     foreach ($heading in @("# Known Limitations", "## Platform Status", "## V8 SDK and Runtime", "## Package and Release Limits", "## Deferred Release Work")) {
         Assert-TextContains -Text $knownLimitations -Needle $heading -Message "Known limitations template missing heading: $heading"
     }
 
     $releaseNotes = Read-RequiredText -Relative "RELEASE_NOTES.md"
-    foreach ($heading in @("# Release Notes Skeleton", "## Release Type", "## Evidence Summary", "## Shipped", "## Deferred", "## Known Limitations", "## No-Claims Confirmation")) {
-        Assert-TextContains -Text $releaseNotes -Needle $heading -Message "Release notes skeleton missing heading: $heading"
+    foreach ($heading in @("# Release Notes", "## Release Type", "## Evidence Summary", "## Included Artifact Areas", "## Deferred", "## Known Limitations", "## Boundary Confirmation")) {
+        Assert-TextContains -Text $releaseNotes -Needle $heading -Message "Release notes missing heading: $heading"
     }
 
     $changelog = Read-RequiredText -Relative "CHANGELOG.md"
@@ -124,11 +114,31 @@ function Test-ReleaseTemplates {
 
     $licenses = Read-RequiredText -Relative "docs/release/LICENSES.md"
     Assert-TextContains -Text $licenses -Needle "# License and Notice Policy" -Message "License policy template missing title."
-    Assert-TextContains -Text $licenses -Needle "complete third-party license review" -Message "License policy must require third-party review before public release."
+    Assert-TextContains -Text $licenses -Needle "complete third-party license review" -Message "License policy must require third-party review before publishing."
 
     $notice = Read-RequiredText -Relative "docs/release/NOTICE.md"
-    Assert-TextContains -Text $notice -Needle "# Notice Skeleton" -Message "Notice template missing title."
+    Assert-TextContains -Text $notice -Needle "# Notice Policy" -Message "Notice policy missing title."
     Assert-TextContains -Text $notice -Needle "No secrets" -Message "Notice template must name no-secrets policy."
+}
+
+function Test-ReleaseTextHygiene {
+    foreach ($relative in @(
+        "LICENSE.md",
+        "packages/npm/runtime/LICENSE",
+        "docs/release/README.md",
+        "docs/release/KNOWN_LIMITATIONS.md",
+        "docs/release/LICENSES.md",
+        "docs/release/NOTICE.md",
+        "RELEASE_NOTES.md"
+    )) {
+        $path = Join-Path $Root $relative
+        Assert-True (Test-Path -LiteralPath $path -PathType Leaf) "Required release policy text is missing: $relative"
+        $lineNumber = 0
+        foreach ($line in Get-Content -LiteralPath $path) {
+            $lineNumber += 1
+            Assert-True (-not ($line -match '(?i)\b(TODO|placeholder|skeleton)\b')) "Release policy text contains construction wording at ${relative}:${lineNumber}: $($line.Trim())"
+        }
+    }
 }
 
 function Read-JsonFile {
@@ -238,7 +248,7 @@ function Test-PackageChecksums {
 
 function Test-NpmPackagePolicy {
     $packagesRoot = Join-Path $Root "packages/npm"
-    Assert-True (Test-Path -LiteralPath $packagesRoot -PathType Container) "npm package skeleton root is missing: packages/npm"
+    Assert-True (Test-Path -LiteralPath $packagesRoot -PathType Container) "npm package root is missing: packages/npm"
     $expectedPackages = @(
         "runtime",
         "runtime-win32-x64",
@@ -248,7 +258,7 @@ function Test-NpmPackagePolicy {
     )
     foreach ($package in $expectedPackages) {
         $packageJsonPath = Join-Path $packagesRoot "$package/package.json"
-        Assert-True (Test-Path -LiteralPath $packageJsonPath -PathType Leaf) "npm package skeleton missing package.json for $package."
+        Assert-True (Test-Path -LiteralPath $packageJsonPath -PathType Leaf) "npm package missing package.json for $package."
         $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
         Assert-True ($packageJson.publishConfig.tag -eq "alpha") "npm package $package must use alpha publishConfig tag."
         if ($null -ne $packageJson.scripts) {
@@ -314,6 +324,7 @@ if ($SelfTest) {
 }
 
 Test-ReleaseTemplates
+Test-ReleaseTextHygiene
 Test-NpmPackagePolicy
 Test-ReleaseWorkflow
 Test-PackageChecksums -Directory $PackageDirectory

@@ -30,8 +30,8 @@ while [[ $# -gt 0 ]]; do
 Usage: tools/unix/release-dry-run.sh [--preset PRESET] [--output-dir DIR] [--skip-package] [--skip-smoke]
 
 Builds an experimental package artifact, verifies SHA256SUMS.txt through package smoke,
-and writes an ignored dry-run summary. It does not create a public release, sign artifacts,
-or require secrets.
+and writes an ignored dry-run summary. Publishing, signing, and secrets are
+separate release steps.
 USAGE
       exit 0
       ;;
@@ -86,4 +86,4 @@ cat > "$summary_dir/${platform}-${arch}-summary.json" <<JSON
 JSON
 
 echo "release dry-run summary: $summary_dir/${platform}-${arch}-summary.json"
-echo "release dry-run completed without creating a public release."
+echo "release dry-run completed; publishing is a separate step."

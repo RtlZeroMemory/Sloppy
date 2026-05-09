@@ -4,7 +4,7 @@
     "id": "hash-mismatch-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
+  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-fixture",
   "handlers": [
     {
       "displayName": "GET /",

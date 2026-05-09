@@ -21,7 +21,7 @@ Current core capabilities include:
 - diagnostics, source spans, related spans, hints, text/JSON rendering, and redaction;
 - app-host lifecycle, runtime feature, capability, filesystem, OS, crypto, network, HTTP,
   provider-executor, async backend, worker-pool, and resource/leak foundations where their
-  ownership is documented under `docs/modules/` or `docs/project/`.
+  ownership is documented under `docs/internals/`.
 
 Core modules must stay bounded. Ownership, tests, diagnostics, and public headers must be
 specified before adding behavior. Test-only hooks must remain narrow and must not be

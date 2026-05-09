@@ -223,7 +223,7 @@ foreach ($file in $files) {
                     -Line $lineNumber `
                     -Pattern "#include <$header>" `
                     -Rule "OS headers are allowed only under src/platform/*." `
-                    -Fix "Move platform behavior behind docs/platform-abstraction.md." `
+                    -Fix "Move platform behavior behind docs/internals/platform-boundaries.md." `
                     -Severity "error"
             }
 
@@ -233,7 +233,7 @@ foreach ($file in $files) {
                     -Line $lineNumber `
                     -Pattern "#include <$header>" `
                     -Rule "V8 headers are allowed only under src/engine/v8/*." `
-                    -Fix "Use the engine-neutral bridge described in docs/c-standards.md." `
+                    -Fix "Use the engine-neutral bridge described in docs/contributor/c-standards.md." `
                     -Severity "error"
             }
         }
@@ -245,7 +245,7 @@ foreach ($file in $files) {
                 -Line $lineNumber `
                 -Pattern "v8::" `
                 -Rule "V8 types must not leak outside src/engine/v8/*." `
-                -Fix "Move V8 usage behind the bridge described in docs/architecture.md." `
+                -Fix "Move V8 usage behind the bridge described in docs/internals/architecture.md." `
                 -Severity "error"
         }
 
@@ -255,7 +255,7 @@ foreach ($file in $files) {
                 -Line $lineNumber `
                 -Pattern $Matches[1] `
                 -Rule "Unsafe C string/format functions are forbidden." `
-                -Fix "Use bounded helpers and follow docs/c-standards.md." `
+                -Fix "Use bounded helpers and follow docs/contributor/c-standards.md." `
                     -Severity "error"
         }
 
@@ -326,7 +326,7 @@ foreach ($file in $files) {
                 -Line $lineNumber `
                 -Pattern $Matches[1] `
                 -Rule "Raw allocation belongs in allocator modules." `
-                -Fix "Use future allocator APIs; see docs/c-standards.md." `
+                -Fix "Use future allocator APIs; see docs/contributor/c-standards.md." `
                 -Severity "error"
         }
 

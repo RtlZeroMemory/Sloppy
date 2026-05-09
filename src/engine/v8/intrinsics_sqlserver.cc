@@ -3,7 +3,7 @@
  *
  * Installs the V8-internal SQL Server bridge under __sloppy.data.sqlserver.
  * The bridge enables ODBC asynchronous connection/statement mode and advances the
- * driver state machine through Slop-owned V8 continuations. It does not expose ODBC
+ * driver state machine through Sloppy-owned V8 continuations. It does not expose ODBC
  * handles, sockets, native pointers, or worker objects to JavaScript.
  */
 #include "engine_v8_internal.h"

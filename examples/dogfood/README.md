@@ -1,10 +1,7 @@
-# Alpha Dogfood Catalog
+# Dogfood Catalog
 
-Status: ALPHA-INFRA-01 dogfood/test-app catalog.
-
-This directory does not introduce new runtime behavior. It names the current executable
-or blocked dogfood targets so alpha infrastructure can report example evidence honestly.
-The machine-readable catalog is `alpha-dogfood.json`.
+This directory is a catalog of current dogfood targets. The machine-readable source is
+`dogfood.json`.
 
 Current runnable or diagnosable targets:
 
@@ -16,8 +13,8 @@ Current runnable or diagnosable targets:
   archive is provided.
 
 Feature app targets for HTTP, HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and Framework v2
-are cataloged with blocked or gated status until their owning tracks provide the required
-runtime and evidence lanes. Skipped or unavailable entries are not pass evidence.
+are listed with their current blocked or gated status until the required runtime support is
+available.
 
-Default non-V8 dogfood runs are allowed to prove clear diagnostics for V8-required
+Default non-V8 dogfood runs validate clear diagnostics for V8-required
 examples. Positive execution of the hello handlers requires a V8-enabled build.

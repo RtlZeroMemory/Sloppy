@@ -36,8 +36,8 @@ typedef enum SlWorkKind
  * worker-pool implementation and starts as NULL. When the callback stores a non-NULL result
  * pointer, ownership transfers to the completion callback after the completion is posted
  * and dispatched. If posting fails before dispatch, the worker pool calls
- * SlWorkResultDestroyFn when one was provided. This skeleton runs the callback inline on
- * the caller thread; future real worker threads must not enter V8 from this callback.
+ * SlWorkResultDestroyFn when one was provided. The inline backend runs the callback on
+ * the caller thread; real worker threads must not enter V8 from this callback.
  */
 typedef SlStatus (*SlWorkFn)(void* payload, void* user, void** out_result);
 
@@ -83,7 +83,7 @@ typedef struct SlWorkerPoolCompletionRecord
 } SlWorkerPoolCompletionRecord;
 
 /*
- * SlWorkerPool is the first worker-pool design skeleton.
+ * SlWorkerPool is Sloppy's native worker-pool abstraction.
  *
  * Only SL_WORKER_POOL_MODE_INLINE is implemented. It runs SlWorkFn immediately on the
  * caller thread and posts completion back to SlLoop for deterministic tests. The pool

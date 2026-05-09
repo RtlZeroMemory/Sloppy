@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Define Sloppy terms used across specs, ADRs, implementation tasks, and review prompts. When
-a term becomes ambiguous during implementation, update this glossary before relying on an
+Define Sloppy terms used across specs, ADRs, implementation tasks, and review notes. When a
+term becomes ambiguous during implementation, update this glossary before relying on an
 implicit meaning.
 
 ## Sloppy
@@ -13,11 +13,11 @@ bridge, Rust compiler tool, and app-host model.
 
 ## sloppy
 
-The planned runtime CLI executable.
+The runtime CLI executable.
 
 ## sloppyc
 
-The Rust-based compiler/build tool that will parse, transform, extract metadata, and emit
+The Rust-based compiler/build tool that parses, transforms, extracts metadata, and emits
 Sloppy artifacts.
 
 ## Sloppy Plan
@@ -65,7 +65,7 @@ A first-party or third-party module that packages a focused application capabili
 
 ## Data Provider
 
-A database provider module such as future SQLite, PostgreSQL, or SQL Server support.
+A database provider module such as SQLite, PostgreSQL, or SQL Server support.
 
 ## Resource Table
 

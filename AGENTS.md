@@ -2,232 +2,63 @@
 
 ## Mission
 
-Sloppy is a pre-alpha TypeScript backend application runtime/app-host.
+Sloppy is a pre-alpha TypeScript backend runtime/app-host with a C runtime
+kernel, an isolated C++ V8 bridge, and a Rust `sloppyc` compiler.
 
-It has a C runtime kernel, an isolated C++ V8 bridge, and a Rust `sloppyc` compiler
-toolchain built around Oxc parsing and Sloppy artifact emission.
+This file and `AGENTS_CONTRIBUTING.md` define agent-only rules. Keep human
+workflow guidance in `CONTRIBUTING.md` and `docs/contributor/*`.
 
-Sloppy is cross-platform by design. Windows x64 is currently the most complete validated
-local development lane, but it is not the product boundary. Developer ergonomics is the
-product wedge: Sloppy should feel designed, not assembled from runtime primitives and
-framework soup.
+## Operating Rules
 
-Clean/safe C and honest evidence are non-negotiable.
+- Read this file and `AGENTS_CONTRIBUTING.md` before editing.
+- Read the relevant source docs before implementation.
+- Keep each change scoped to one coherent contract.
+- Use GitHub issues for live roadmap/task state.
+- Do not paste prompts, hidden reasoning, or choreography text into docs,
+  commits, comments, or PR bodies.
+- Use execution plans only when the task needs durable multi-step tracking.
+- Keep docs, tests, and checks aligned with behavior changes.
+- Prefer mechanical checks over memory.
+- Report commands honestly, including failures and commands not run.
+- Delete stale docs and planning residue by default. Archive only when there is
+  durable historical value.
 
-## How to work
+## Documentation Contract
 
-- Read this file before changing files.
-- Read the relevant docs before implementing.
-- Keep changes bounded to the requested roadmap slice.
-- Create or update execution plans for complex multi-step work.
-- Update docs/ADRs when architecture changes.
-- Add or update tests/checks where applicable.
-- Keep code, tests, and docs moving together.
-- Run available checks before claiming a task is done.
-- Report commands honestly, including commands not run.
-- Never claim success for a command you did not run.
-- Avoid future-phase implementation unless explicitly asked.
-- Prefer mechanical checks over reviewer memory.
-- Promote repeated review feedback into docs/checks/tools.
-- Comment rationale/invariants where needed; do not narrate obvious syntax.
-- Track deferred cleanup in `docs/tech-debt-tracker.md`.
-- If docs conflict, pause and resolve the source of truth first.
-- If a task is spec-only, say why tests did not change.
-- Before changing code, identify whether user-facing docs, module docs, architecture docs,
-  or ADRs need updates.
-- Tests must verify documented intent, not current accidental behavior.
-- Large coherent PRs are allowed when they represent one bounded context. Avoid both
-  micro-PR paralysis and kitchen-sink scope.
-- Use targeted subagents or independent specialist passes for high-risk sweeps such as
-  C safety, V8 boundaries, concurrency, providers, permissions/security, diagnostics
-  redaction, packaging, release evidence, and repository-wide documentation cleanup.
-- Do not introduce public alpha, production-readiness, benchmark/performance,
-  package-readiness, provider-readiness, or Node/Bun/Deno claims unless the
-  source doc and evidence lane prove the exact claim.
+Current docs must come from current code/tests/scripts/examples and commands
+actually run. Old docs are discovery input, not validation.
 
-## Pre-Alpha Change Policy
+Use Diataxis structure by reader need:
 
-- Breaking API, ABI, layout, and source-shape changes are allowed while Sloppy is
-  pre-alpha.
-- When a contract changes, update the current code, tests, and source docs directly.
-- Prefer deleting replaced code over keeping parallel replaced/current paths, shims, numbered
-  successor types, or transitional layers.
-- Do not add replaced-shape preservation machinery unless the user explicitly asks for a
-  release-stability slice.
-- If review feedback assumes a stable external ABI, verify whether that promise exists in
-  current docs before reshaping the implementation around it.
+- `tutorials`: guided learning with a working result.
+- `how-to`: one concrete task and exact steps.
+- `reference`: precise lookup.
+- `explanation`: design reasoning and mental model.
+- `contributor`: operational contributor workflows.
+- `internals`: boundaries, invariants, lifecycle.
+
+Do not add fake examples, dry status pages, or unsupported
+readiness/performance status statements.
+
+## Evidence Lane Contract
+
+PR evidence tables must use only:
+
+- `PASS`
+- `FAIL`
+- `SKIPPED`
+- `UNAVAILABLE`
+- `DEFERRED`
+- `NOT RUN`
+
+Report skipped optional gates under their own status.
 
 ## Implementation Contract for Reviewers
 
-Every implementation PR must include an evidence report that names the expected behavior
-under test, the source-of-truth contract, explicit non-goals, negative paths, evidence
-lanes run, lanes skipped or unavailable, golden updates and why they are intended,
-secret/redaction checks, and deferred coverage. Skipped optional gates are not pass claims.
+Implementation PRs must include expected behavior under test, source-of-truth
+contract, explicit non-goals, negative paths, lanes run, lanes skipped or
+unavailable, goldens changed and why, secret/redaction checks, and deferred
+coverage.
 
-Tests must fail for a contract violation, not mirror the current output. New behavior needs
-contract or source-of-truth coverage, and large PRs must include an "Implementation
-Contract for Reviewers" section so reviewers can compare the code and tests against the
-task contract. CodeRabbit and human reviewers should reject shallow happy-path-only tests,
-current-output snapshots, unredacted goldens, V8/package/live/fuzz/stress evidence
-reported as default evidence, optional lanes reported as success, and unsupported public
-alpha/production/performance/runtime claims.
-
-## Source-of-truth map
-
-Project management:
-
-- [GitHub project model](docs/project/README.md)
-
-Implementation work should map to a project task under `docs/project/tasks/` unless it is trivial docs-only cleanup.
-
-Core architecture:
-
-- [Architecture](docs/architecture.md)
-- [Execution model](docs/execution-model.md)
-- [Concurrency and async model](docs/concurrency.md)
-- [Developer ergonomics](docs/developer-ergonomics.md)
-- [Platform abstraction](docs/platform-abstraction.md)
-
-Runtime standards:
-
-- [C style](docs/c-style.md)
-- [C standards](docs/c-standards.md)
-- [JavaScript/TypeScript standards](docs/js-ts-standards.md)
-- [Rust standards](docs/rust-standards.md)
-- [Memory](docs/memory.md)
-- [Diagnostics](docs/diagnostics.md)
-- [Documentation policy](docs/documentation-policy.md)
-- [Testing strategy](docs/testing-strategy.md)
-
-System shape:
-
-- [Modularity](docs/modularity.md)
-- [Data providers](docs/data-providers.md)
-- [Testing](docs/testing.md)
-- [Quality gates](docs/quality-gates.md)
-- [Roadmap](docs/roadmap.md)
-
-Agent workflow:
-
-- [Agent harness](docs/agent-harness.md)
-- [Agent skills](docs/skills/README.md)
-- [Execution plans](docs/exec-plans/README.md)
-
-## Language Standards
-
-- C/C++ runtime work: read `docs/c-standards.md` and `docs/c-style.md`.
-- JavaScript/TypeScript stdlib, public API, and examples: read `docs/js-ts-standards.md`.
-- Rust compiler/tooling: read `docs/rust-standards.md`.
-- All languages: follow `docs/testing-strategy.md`, `docs/documentation-policy.md`, and
-  `docs/review-playbook.md`.
-
-Language-specific gates are part of `tools/windows/dev.ps1 lint`.
-
-## Review guidelines
-
-AI reviewers should spend review budget on bugs that can break Sloppy's contracts, safety,
-or evidence trail. Prefer a few high-signal findings over broad style commentary, and cite
-the governing docs when a change conflicts with them.
-
-Prioritize:
-
-- correctness bugs, security regressions, bad error handling, resource leaks, and missing
-  failure-path cleanup;
-- C/C++ memory safety issues: bounds checks, checked arithmetic for sizes and offsets,
-  null handling, ownership/lifetime, allocation failure, double-free/use-after-free risk,
-  unsafe string/memory operations, strict-aliasing/alignment issues, and undefined behavior;
-- Rust compiler/tooling issues: unsafe block invariants, panic safety in non-test code,
-  unnecessary `unwrap`/`expect`, deterministic output, feature/crate boundary drift, and
-  trait or macro abstractions that obscure simple logic;
-- JavaScript/TypeScript runtime-contract issues: descriptor shape drift, unsupported
-  Node/Bun/Deno/npm behavior assumptions, nullable/undefined assumptions, type holes, async
-  cleanup, secret redaction, and ESM/package-boundary regressions;
-- native boundary issues: V8 type leakage outside `src/engine/v8/*`, JS raw native pointer
-  exposure, ownership transfer across language boundaries, thread-affinity mistakes, string
-  encoding bugs, and exceptions or panics crossing FFI/ABI boundaries unsafely;
-- parser, Plan, route, protocol, terminal/IO, and binary-format issues: malformed input
-  handling, partial reads/writes, bounds checks before access, integer overflow, state
-  machine correctness, deterministic output, and wire-format evolution;
-- concurrency and async bugs: owner-thread rules, races, cancellation/timeout behavior,
-  late completion, shutdown ordering, worker-pool/resource lifetime, and hidden global
-  mutable state;
-- build, CI, and tooling regressions: reproducibility, cache correctness, dependency
-  pinning, release/debug drift, disabled warnings/lints/tests, optional V8/provider gates
-  that overclaim success, and broken Windows/Linux/macOS paths;
-- tests that miss documented behavior, skip important failure paths, depend on timing,
-  mirror implementation details, update goldens without explaining intent, or make
-  benchmark/performance claims from smoke evidence;
-- docs/spec changes that contradict implementation, omit user-visible behavior limits,
-  overclaim unsupported runtime/provider/V8 behavior, or leave ABI/API/safety invariants
-  stale.
-
-Deprioritize grammar nits, naming preferences, formatting already covered by gates, and
-minor refactors unless they hide a serious issue. Call out over-engineering when a new
-abstraction, registry, plugin point, macro layer, or generic helper is not required by the
-task or the source-of-truth docs.
-
-## Hard boundaries
-
-- No OS APIs outside `src/platform/*`.
-- No OS headers in core modules.
-- No V8 types outside `src/engine/v8/*`.
-- No native worker thread may enter a V8 isolate unless it is the owning engine thread or
-  the engine bridge explicitly documents that ownership.
-- No JS raw native pointers.
-- No raw `malloc`/`free` outside allocator modules once allocator exists.
-- No package-manager scope.
-- No Node behavior by default.
-- No package-manager behavior unless a scoped task and docs require it.
-- No Node behavior assumptions.
-- No runtime features before scoped source docs and tasks.
-- No overengineering in JS/Rust either; keep public API and compiler/tooling work direct.
-- Avoid speculative abstraction; simple direct C is preferred unless a documented
-  boundary/invariant requires abstraction.
-- No generated/build artifacts committed.
-- No hidden global mutable runtime state.
-- No fake-success placeholders in implemented paths.
-- No dependency additions without the relevant phase/docs.
-
-## Common commands
-
-Canonical Windows workflow:
-
-```powershell
-.\tools\windows\bootstrap.ps1
-.\tools\windows\dev.ps1 doctor
-.\tools\windows\dev.ps1 configure
-.\tools\windows\dev.ps1 build
-.\tools\windows\dev.ps1 test
-.\tools\windows\dev.ps1 format-check
-.\tools\windows\dev.ps1 lint
-```
-
-Root wrappers may exist, but `tools/windows` is canonical for the Windows workflow.
-
-Codex sessions on this machine must assume the compatible local V8 SDK is available through
-the repo scripts. For implementation PRs that touch runtime, app-host, compiler, bootstrap,
-provider, configuration, or V8-adjacent behavior, run and report a separate V8-enabled
-Windows lane unless the resolver itself fails:
-
-```powershell
-.\tools\windows\resolve-v8-sdk.ps1
-.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
-.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
-.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
-```
-
-If SDK resolution fails on this machine, treat that as a local environment blocker and
-report it honestly, including the concrete resolver failure, instead of counting the V8
-lane as skipped, optional, or unavailable.
-
-## Before opening a PR
-
-- Identify the source docs that govern the change.
-- Keep the PR bounded to one coherent task or foundation slice.
-- Add/update tests or explain why not.
-- Update docs if behavior, architecture, or workflow changes.
-- Run checks and report failures honestly.
-- Inspect `git status`.
-- Review the changed files for accidental scope creep.
-- Verify docs and checks agree.
-- Ensure no ignored/generated artifacts are staged.
+Tests should fail on contract violations rather than mirror accidental current
+output.

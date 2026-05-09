@@ -6,7 +6,7 @@
     "input.js"
   ],
   "sourcesContent": [
-    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/json\", () => Results.json({ ok: true, tags: [\"compiler\", \"mvp\"] }));\n\nexport default app;\n"
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/json\", () => Results.json({ ok: true, tags: [\"compiler\", \"artifact\"] }));\n\nexport default app;\n"
   ],
   "version": 3,
   "x_sloppy": {
@@ -44,7 +44,7 @@
     "schemas": [],
     "sourceFiles": [
       {
-        "hash": "sha256:fea863573b3936700480590cb5044344ef9ff35ed403756119e0215194f5184e",
+        "hash": "sha256:8ac3b1000876a270918e99dca2d16386fbaab989de0bcd33b53441bb06ae42f2",
         "path": "input.js"
       }
     ],

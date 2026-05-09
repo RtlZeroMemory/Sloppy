@@ -3,7 +3,7 @@
 Package fixtures describe the `package outside-checkout` lane. They validate extracted
 archives, not a repository checkout.
 
-Package smoke tests must prove:
+Package smoke tests validate:
 
 - the runtime loads committed artifacts instead of silently compiling source;
 - Plan/source-map files are present and read from the extracted archive;
@@ -15,4 +15,4 @@ When a fixture declares `mustNotCompileSource=true`, `tools/windows/test-package
 run the named `prebuiltArtifactFixture` and must not invoke `sloppyc` as part of package
 artifact evidence. Compiler-from-package smoke is a separate tooling check.
 
-These fixtures do not claim public release readiness.
+Release readiness uses separate release lanes.

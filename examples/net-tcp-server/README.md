@@ -4,6 +4,7 @@ This source example shows `TcpListener.listen`, loopback binding, backlog metada
 async iterable `accept`, accepted connection ownership, line reads, text writes, and
 listener cleanup.
 
-It is not local IPC, TLS, HTTP server/client behavior, UDP, WebSocket,
-Node/Bun/Deno compatibility, package-manager behavior, public alpha documentation,
-benchmark evidence, or external live-network evidence.
+## Limitations
+
+This example is limited to scoped TCP listener behavior. Local IPC, TLS, HTTP,
+UDP, WebSocket, and external live-network behavior are outside this example.

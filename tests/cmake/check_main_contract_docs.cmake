@@ -10,12 +10,12 @@ function(require_file_substring path required message)
     endif()
 endfunction()
 
-set(roadmap_main "${PROJECT_SOURCE_DIR}/docs/project/roadmap-main.md")
-set(main_evidence "${PROJECT_SOURCE_DIR}/docs/project/main-evidence.md")
-set(public_cli "${PROJECT_SOURCE_DIR}/docs/public/cli.md")
-set(compiler_doc "${PROJECT_SOURCE_DIR}/docs/compiler.md")
+set(first_api "${PROJECT_SOURCE_DIR}/docs/tutorials/first-api.md")
+set(main_evidence "${PROJECT_SOURCE_DIR}/docs/contributor/testing.md")
+set(public_cli "${PROJECT_SOURCE_DIR}/docs/reference/cli.md")
+set(compiler_doc "${PROJECT_SOURCE_DIR}/docs/internals/compiler.md")
 
-foreach(path IN ITEMS "${roadmap_main}" "${main_evidence}" "${public_cli}" "${compiler_doc}")
+foreach(path IN ITEMS "${first_api}" "${main_evidence}" "${public_cli}" "${compiler_doc}")
     if(NOT EXISTS "${path}")
         message(FATAL_ERROR "Missing MAIN contract doc: ${path}")
     endif()
@@ -23,37 +23,34 @@ endforeach()
 
 foreach(required IN ITEMS
         "import { Sloppy, Results } from \"sloppy\";"
-        "sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke"
-        "sloppy run --artifacts .sloppy-main-smoke --once GET /"
-        "Hello from Sloppy"
-        "Source-input `sloppy run <source.js>`"
-        "Node/npm/package-manager behavior is not part of MAIN")
-    require_file_substring("${roadmap_main}" "${required}" "roadmap MAIN contract is missing text")
+        "sloppy build"
+        "sloppy run --artifacts .sloppy --once GET /hello/Ada"
+        "{\"hello\":\"Ada\"}"
+        "matched `/hello/{name}`, and executed")
+    require_file_substring("${first_api}" "${required}" "first API tutorial is missing MAIN contract text")
 endforeach()
 
 foreach(required IN ITEMS
         "Default non-V8"
-        "default non-V8 results"
-        "V8-Gated Evidence"
-        "These commands do not prove"
-        "Package Evidence"
-        "Live Provider Evidence"
-        "Benchmark Evidence"
-        "public alpha readiness")
+        "V8-gated"
+        "package outside-checkout"
+        "live-network/live-provider"
+        "benchmark"
+        "Report skipped or unavailable lanes honestly as not run")
     require_file_substring("${main_evidence}" "${required}" "MAIN evidence doc is missing text")
 endforeach()
 
 foreach(required IN ITEMS
         "`sloppy run <source.js|source.mjs|source.ts>` invokes `sloppyc build`"
-        "no package manager"
-        "no npm resolution"
-        "no Node compatibility")
+        "package manager"
+        "npm-style dependency resolution"
+        "Source input is limited")
     require_file_substring("${public_cli}" "${required}" "public CLI doc is missing MAIN caveat")
 endforeach()
 
 foreach(required IN ITEMS
         "deterministic artifacts"
-        "does not implement Node package"
+        "Node package resolution"
         "dynamic route strings")
     require_file_substring("${compiler_doc}" "${required}" "compiler doc is missing MAIN caveat")
 endforeach()

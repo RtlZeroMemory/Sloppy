@@ -4,7 +4,7 @@
     "id": "invalid-bundle-path-app-js",
     "path": "../outside.js"
   },
-  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
+  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-fixture",
   "handlers": [
     {
       "displayName": "GET /",

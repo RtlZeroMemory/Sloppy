@@ -20,8 +20,7 @@ tools/unix/check-c-standards.sh
 ```
 
 The Unix `bootstrap.sh` and `dev.sh` command contract mirrors the Windows vocabulary for
-Linux and macOS. Unsupported optional lanes are reported as unavailable rather than pass
-evidence. Linux x64 V8 does not use distro Node/V8 development packages; it uses the
+Linux and macOS. Unsupported optional lanes are reported as unavailable. Linux x64 V8 does not use distro Node/V8 development packages; it uses the
 Sloppy-owned SDK produced by `tools/unix/build-v8.sh` or an extracted matching SDK
 artifact.
 
@@ -88,10 +87,10 @@ tools/unix/release-dry-run.sh --preset linux-clang
 ```
 
 The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies package
-checksums through `test-package.sh`, and does not require secrets or create a public
+checksums through `test-package.sh`, and does not require secrets or publish a
 release.
 
-Alpha dogfood status is represented through:
+Dogfood status is represented through:
 
 ```sh
 tools/unix/dogfood.sh
@@ -103,10 +102,10 @@ TAR archive is supplied. Positive source-input execution remains V8-gated and mu
 reported separately from this static Unix lane.
 
 `tools/unix/dev.sh npm-dry-run` currently reports unavailable instead of faking a Unix npm
-package generator. The committed npm package skeletons are platform-neutral, but the local
+package generator. The committed npm package metadata is platform-neutral, but the local
 dry-run generator in this PR is the Windows `tools/windows/npm-dry-run.ps1` path. A Unix
-generator should reuse tested archive contents and preserve the no native install-script
-policy before being reported as pass evidence.
+generator should reuse tested archive contents and preserve the native-install-script
+policy before being reported as available.
 
 Provider live lanes have POSIX wrappers for machines that already have the matching CMake
 preset configured and the required service dependencies installed:
@@ -117,6 +116,6 @@ tools/unix/test-live-sqlserver.sh --preset linux-clang
 tools/unix/test-live-providers.sh --provider all --preset linux-clang
 ```
 
-These scripts are opt-in Docker-backed live-provider evidence. Missing Docker, missing
+These scripts are opt-in Docker-backed live-provider lanes. Missing Docker, missing
 ODBC driver support, or an unavailable database service is reported as unavailable or
-failed live-provider evidence, never as default CI success.
+failed live-provider status, never as default CI success.

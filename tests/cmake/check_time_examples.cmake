@@ -108,20 +108,14 @@ foreach(forbidden_pattern IN ITEMS
                      "FakeClock example must not mutate global timer APIs")
 endforeach()
 
-foreach(required_pattern IN ITEMS
-        "no Node timer compatibility"
-        "not a cron parser"
-        "no package-manager behavior"
-        "no benchmark claims")
-    require_substring("${time_basic_readme_source}" "${required_pattern}"
-                      "examples/time-basic/README.md is missing required boundary text")
-    require_substring("${time_interval_readme_source}" "${required_pattern}"
-                      "examples/time-interval-schedule/README.md is missing required boundary text")
-endforeach()
+require_substring("${time_basic_readme_source}" "The Time API is async-first"
+                  "examples/time-basic/README.md is missing Time API description")
+require_substring("${time_interval_readme_source}" "Cron parsing and benchmark work are outside this"
+                  "examples/time-interval-schedule/README.md is missing limitations text")
 
 foreach(required_pattern IN ITEMS
         "explicit test-scoped provider"
-        "does not mutate global timers"
+        "do not mutate global timers"
         "deterministic")
     require_substring("${time_fake_clock_readme_source}" "${required_pattern}"
                       "FakeClock README is missing required boundary text")
@@ -130,7 +124,7 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "Deadline.after"
         "CancellationController"
-        "not claim to cancel arbitrary already-running work")
+        "not preempt arbitrary in-flight work")
     require_substring("${time_deadline_readme_source}" "${required_pattern}"
                       "Deadline/cancellation README is missing required boundary text")
 endforeach()

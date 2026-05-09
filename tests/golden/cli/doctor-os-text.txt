@@ -3,7 +3,7 @@ Sloppy Doctor
 [ok] bootstrap.assets: bootstrap runtime asset found
 [warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
 [warn] providers.live: live provider checks are not configured by default and no live DB was contacted
-[warn] package.runtime: local CLI checks do not prove package release readiness
+[warn] package.runtime: package release status requires package smoke
 [ok] app.plan.parse: app plan parsed by native Plan v1 parser
 [warn] app.plan.routes: no route metadata present
 [warn] app.plan.providers: provider metadata not present
@@ -13,5 +13,5 @@ Sloppy Doctor
 [ok] stdlib.os.environment: environment access metadata omits environment values
 [ok] stdlib.os.process: process metadata is explicit-argv and exposes no native handles
 [warn] stdlib.os.shell: shell capability metadata is visible but shell execution is denied
-[ok] stdlib.os.signals: shutdown signal metadata is visible without platform signal claims
+[ok] stdlib.os.signals: shutdown signal metadata is visible for the current platform
 [ok] stdlib.os.redaction: OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles

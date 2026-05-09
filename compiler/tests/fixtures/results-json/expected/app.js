@@ -4,5 +4,5 @@ if (__sloppyRuntime === undefined) {
 }
 const { Results } = __sloppyRuntime;
 
-globalThis.__sloppy_handler_1 = () => Results.json({ ok: true, tags: ["compiler", "mvp"] });
+globalThis.__sloppy_handler_1 = () => Results.json({ ok: true, tags: ["compiler", "artifact"] });
 globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);

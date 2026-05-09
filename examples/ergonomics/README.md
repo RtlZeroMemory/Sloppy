@@ -1,10 +1,9 @@
 # Ergonomics Example
 
-Status: Bootstrap developer ergonomics API-shape example.
-
+Bootstrap developer ergonomics API-shape example.
 This example shows the current bootstrap surface: route groups, result helpers,
-schema metadata, config, logging, and services. It uses the source stdlib path because the
-future bare `"sloppy"` import is not wired into compiler/runtime module resolution yet.
+schema metadata, config, logging, and services. It uses the current bootstrap stdlib
+source path and is validated as an API-shape example.
 
 What works today:
 
@@ -21,19 +20,19 @@ What works today:
 - CTest statically verifies this example imports the current stdlib path and uses the
   expected API shape.
 
-What does not work yet:
+Current limitations:
 
-- this source-stdlib example is not a `sloppy run --artifacts` app.
-- `sloppyc` does not compile this example or extract route groups/schemas from it.
-- This example does not emit `app.plan.json`.
-- The current bounded `sloppy run` path does not load this source-stdlib example, materialize a
-  request context, or parse request bodies/query values for it.
+- This source-stdlib example is documentation-first and is not executed with `sloppy run --artifacts`.
+- `sloppyc` compilation and route-group/schema extraction are still pending for this shape.
+- `app.plan.json` is not emitted for this example yet.
+- The current bounded `sloppy run` path does not load this source shape, materialize a request
+  context, or parse request bodies/query values for it.
 - Route params are not passed by the native HTTP runtime into JavaScript handler context
   yet; this example uses `route.id ?? "demo"` to stay honest in bootstrap mode.
-- Validation metadata is not wired to automatic `400` responses.
-- There is no OpenAPI generation.
-- There is no `app.run` or `app.listen` yet.
+- Validation metadata is not wired to automatic `400` responses yet.
+- OpenAPI generation is planned separately.
+- `app.run` and `app.listen` are not available yet.
 
 Until compiler extraction, app-plan emission, ESM bootstrap loading, and HTTP serving land,
-this directory is a checked-in documentation and fixture example rather than a runnable
+this directory remains a checked-in documentation and fixture example rather than a runnable
 application host.

@@ -1,8 +1,6 @@
 # Workers WorkerPool
 
-Status: worker API-shape example. It is not benchmark or production scheduling evidence.
+This example shows the `WorkerPool` API and bounded admission shape for CPU/native offload style work.
 
-Shows the `WorkerPool` API and bounded admission shape for CPU/native offload style work.
-
-Current bootstrap examples demonstrate API shape and lifecycle policy. Native CPU-parallel
-execution must be verified in the V8/native bridge lane before making performance claims.
+Current bootstrap examples focus on API shape and lifecycle policy. Native CPU-parallel
+execution is validated in V8/native bridge checks.

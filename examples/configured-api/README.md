@@ -1,7 +1,6 @@
 # Configured API Example
 
-Status: compile-time source-input/config example for the current Plan metadata subset.
-
+This is a compile-time source-input/config example for the current Plan metadata subset.
 Run from this directory:
 
 ```powershell
@@ -12,7 +11,7 @@ On a non-V8 build this still compiles and emits `.sloppy\app.plan.json`, then fa
 serving with the normal V8-required diagnostic. With V8 enabled, it enters the same
 artifact runtime path.
 
-The example proves `sloppy.json`, `appsettings.json`, `appsettings.Development.json`, and
+The example demonstrates `sloppy.json`, `appsettings.json`, `appsettings.Development.json`, and
 Plan-visible `app.config.getString(...)` reads. The `Development` overlay is present so
 tooling can inspect the selected environment's config requirements. The `/config` handler
 returns static supported-subset JSON because closed-over config values in route results are
@@ -32,7 +31,8 @@ Expected tooling after building artifacts:
 ..\..\build\windows-dev\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
-This example does not prove config values flowing into runtime handler responses,
-arbitrary environment providers, secret handling, CLI override behavior beyond the
-implemented `--environment` option, public alpha readiness, or production configuration
-management.
+## Limitations
+
+This example focuses on the current `--environment` flow and static config reads.
+Arbitrary environment providers and broader secret-management flows are outside
+this slice.

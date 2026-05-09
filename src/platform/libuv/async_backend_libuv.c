@@ -2,7 +2,7 @@
  * src/platform/libuv/async_backend_libuv.c
  *
  * Libuv-backed implementation of Sloppy's async backend. Libuv handles and thread IDs stay
- * inside this file; public Slop headers expose only Slop-owned async types.
+ * inside this file; public Sloppy headers expose only Sloppy-owned async types.
  */
 #include "../../core/async_backend_internal.h"
 

@@ -38,14 +38,15 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "Bootstrap app-host skeleton example"
-        "What works today"
-        "What does not work yet"
-        "not a `sloppy run --artifacts` app"
+        "Bootstrap app-host example"
+        "What to inspect"
+        "Current limitations"
+        "Runtime Command"
+        "not executed with `sloppy run --artifacts`"
         "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
+        "`app.plan.json` is not emitted"
         "Sloppy facade import"
-        "planned only")
+        "not the current execution path")
     require_substring(
         "${hello_readme_md}" "${required_pattern}"
         "examples/hello/README.md is missing required status text")

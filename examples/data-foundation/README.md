@@ -1,7 +1,6 @@
 # Data Foundation Example
 
-Status: Bootstrap data/capabilities foundation example.
-
+Bootstrap data/capabilities foundation example.
 This example shows the current JavaScript-only shape for database capability metadata,
 query template lowering, a fake data provider service, and transaction callback semantics.
 
@@ -16,11 +15,11 @@ What works today:
 - `sql` and provider methods lower placeholders to `?` by default.
 - fake transactions record begin/commit/rollback behavior for tests.
 
-What does not work yet:
+Current limitations:
 
-- this source-stdlib example is not a `sloppy run --artifacts` app;
-- `sloppyc` does not compile this example;
-- this example does not emit `app.plan.json`;
+- this source-stdlib example is not executed with `sloppy run --artifacts`;
+- `sloppyc` does not compile this example yet;
+- `app.plan.json` is not emitted for this example;
 - the current bounded `sloppy run` path does not load this source-stdlib data example;
 - the real SQLite provider is covered by native C tests, but this example still uses a fake
   JavaScript provider;
@@ -30,10 +29,10 @@ What does not work yet:
 - no SQL is executed;
 - filesystem and network capabilities are not enforced;
 - migrations and ORM behavior are not part of Sloppy's provider surface;
-- real native SQL execution, pooling, true-async external providers, and live-provider
-  evidence are covered by the provider-specific SQLite/PostgreSQL/SQL Server examples and
+- real native SQL execution, pooling, and true-async external providers are covered by
+  provider-specific SQLite/PostgreSQL/SQL Server examples and
   tests;
-- the future bare `"sloppy"` import is planned only.
+- bare `"sloppy"` imports are the current source shape for this example.
 
 See `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`
 for provider registration shapes.

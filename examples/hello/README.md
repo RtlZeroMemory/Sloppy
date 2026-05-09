@@ -1,9 +1,8 @@
 # Hello Example
 
-Status: Bootstrap app-host skeleton example.
-
-This example demonstrates Sloppy's first public app shape using the current source
-bootstrap stdlib:
+Bootstrap app-host example.
+This example shows the minimal app-host builder flow: config, logging, services, route
+mapping, and a text result descriptor. Runtime notes follow after the code.
 
 ```js
 import { Sloppy, Results } from "sloppy";
@@ -25,7 +24,7 @@ app.mapGet("/", ({ services }) => Results.text(services.get("message")))
 export default app;
 ```
 
-What works today:
+What to inspect:
 
 - `Sloppy.createBuilder()` creates a bootstrap builder with config, logging, and services.
 - `builder.config.addObject(...)` stores object-backed config values.
@@ -39,22 +38,22 @@ What works today:
 - CTest statically verifies this example imports the public Sloppy facade and uses the
   expected public API shape.
 
-What does not work yet:
+Current limitations:
 
-- `sloppyc` does not compile this example or extract routes from it.
-- This example does not emit `app.plan.json`.
-- This source-stdlib example is not a `sloppy run --artifacts` app.
-- There is no `app.run` or `app.listen` yet.
+- `sloppyc` does not compile this example or extract routes from it yet.
+- `app.plan.json` is not emitted for this example.
+- This source-stdlib example is not executed with `sloppy run --artifacts`.
+- `app.run` and `app.listen` are not available yet.
 - Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
   use the Sloppy facade import shape that `sloppyc` recognizes.
 
-Future intended workflow:
+Runtime Command:
 
 ```powershell
-sloppy run examples/hello/app.ts
+sloppy run examples/hello/app.js
 ```
 
-That command is planned only. Until compiler extraction, ESM bootstrap loading, app-plan
-emission for this broader source shape, and V8 bootstrap loading land, this directory is a
-checked-in API-shape and documentation example rather than a runnable app host. Use
-`examples/compiler-hello/` for the current dev-only `sloppy run --artifacts` path.
+That command is not the current execution path for this example. Until compiler extraction,
+ESM bootstrap loading, app-plan emission for this broader source shape, and V8 bootstrap
+loading land, this directory remains an API-shape/documentation example. Use
+`examples/compiler-hello/` for the current `sloppy run --artifacts` path.

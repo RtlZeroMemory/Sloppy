@@ -1,6 +1,6 @@
 # Fuzz And Property Tests
 
-`tests/fuzz` owns the TEST-PLATFORM-01 fuzz/property lane.
+`tests/fuzz` owns the fuzz/property lane.
 
 The lane has two layers:
 
@@ -27,8 +27,8 @@ Default seed replay:
 ctest --test-dir build\windows-dev -L fuzz --output-on-failure
 ```
 
-Seed replay is the default-safe fuzz/property lane. It proves the checked-in corpus stays
-bounded and crash-free. The `windows-libfuzzer` preset repeats the seed replay with
+Seed replay is the default-safe fuzz/property lane. It validates that the
+checked-in corpus stays bounded and crash-free. The `windows-libfuzzer` preset repeats the seed replay with
 libFuzzer instrumentation in mandatory CI. Mutation runs are separate optional evidence and
 must name the target, corpus, toolchain, duration, and result explicitly.
 
@@ -41,5 +41,5 @@ Opt-in libFuzzer:
 .\build\windows-libfuzzer\fuzz_memory_primitives_libfuzzer.exe tests\fuzz\corpus\memory-primitives -max_total_time=60
 ```
 
-Long fuzzing is optional evidence. Report it as `fuzz/property`, not default non-V8. A
-skipped or unavailable libFuzzer toolchain is not pass evidence.
+Long fuzzing is optional. Report it as `fuzz/property`, not default non-V8. A
+skipped or unavailable libFuzzer toolchain gets its own status.

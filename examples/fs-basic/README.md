@@ -1,8 +1,8 @@
 # Filesystem Basic Example
 
-Status: filesystem source example. This source example documents the intended
+This filesystem source example documents the intended
 `sloppy/fs` app-facing shape; full source-input execution remains gated by the V8 runtime
-lane and current compiler support.
+runtime path and current compiler support.
 
 This example uses project-relative paths for local development:
 
@@ -19,5 +19,6 @@ const deadline = Deadline.after(1000);
 const users = await File.readJson("./tmp/users.json", { deadline });
 ```
 
-The read uses a Time deadline option. It does not claim preemptive native filesystem
-interruption, Node `fs` compatibility, or public sync filesystem APIs.
+The read uses a Time deadline option. Deadline handling is cooperative; it does not
+preempt in-flight native filesystem calls. This example also focuses on Sloppy APIs rather
+than Node-style `fs` compatibility or sync APIs.

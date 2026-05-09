@@ -1,44 +1,56 @@
 # SQLite Users API Example
 
-Status: V8-gated framework example registered as
-`conformance.users_api_sqlite.localhost_transport`. Source-input compile/run tests also
-verify that the example emits artifacts and Plan metadata through the supported dev loop.
+## What This Demonstrates
 
-This example is a deliberately small users API backed by SQLite:
-
-- `GET /health` returns `ok`.
-- `GET /users` returns seeded and inserted users as JSON.
-- `GET /users/{id}` returns one user as JSON or `404`.
-- `POST /users` accepts a JSON object with `name` and `email`, inserts the user, and returns `201`.
-- `POST /users` returns a safe problem response for a structurally invalid user payload.
-
-The example uses the explicit provider import
-`import { sqlite } from "sloppy/providers/sqlite"`, `sloppy.json`, `appsettings.json`, and
-a relative function module. The compiler rewrites that supported source graph into the
-classic artifact runtime path and emits Plan-visible module routes, `data.main`
-provider/capability metadata, generated route effects, config-driven SQLite metadata, and
-source locations. The database file is configured through
-`Sloppy:Providers:sqlite:main:database`. Tests remove `users-api-sqlite-runtime.db` before
-and after the localhost transport proof.
-
-With a V8-enabled build, the direct source-input shortcut compiles and then runs the same
+This example shows a small SQLite-backed users API using the supported classic
 artifact path:
 
-```powershell
-.\build\windows-relwithdebinfo\sloppy.exe run examples/users-api-sqlite/app.js --once GET /users
-```
+- `GET /health`;
+- `GET /users`;
+- `GET /users/{id}`;
+- `POST /users`;
+- explicit `sqlite("main")` provider registration;
+- a relative function module under `modules/users.js`;
+- `sloppy.json` and `appsettings.json` project configuration.
 
-From this directory, `sloppy run` reads `sloppy.json`:
+## Requirements
+
+- A V8-enabled `sloppy` runtime.
+- SQLite bridge support in that runtime.
+
+## Run
+
+From this example directory:
 
 ```powershell
 ..\..\build\windows-relwithdebinfo\sloppy.exe run --once GET /users
 ```
 
-Generated positional-source artifacts go under `.sloppy/cache/dev/source-input`. The
-explicit `sloppyc build ... --out <dir>` plus `sloppy run --artifacts <dir>` path remains
-the debuggable artifact workflow.
+From the repository root:
 
-After building artifacts, these commands expose the Plan-driven developer surfaces:
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run examples/users-api-sqlite/app.js --once GET /users
+```
+
+## Expected Result
+
+The response body is JSON with the seeded users. The exact rows can include
+users inserted by earlier requests when the configured database file is reused.
+
+```json
+[{"id":1,"name":"Ada Lovelace","email":"ada@example.test"},{"id":2,"name":"Grace Hopper","email":"grace@example.test"}]
+```
+
+## What To Inspect
+
+- `app.js`: app creation, SQLite descriptor registration, and route wiring.
+- `modules/users.js`: `app.provider("sqlite:main")` and users route handlers.
+- `sloppy.json`: source-input project configuration.
+- `appsettings.json`: SQLite provider database setting.
+- Generated `.sloppy/app.plan.json`: route, module, provider, capability, and
+  source-location metadata.
+
+After building artifacts, these commands inspect the Plan:
 
 ```powershell
 ..\..\build\windows-dev\sloppy.exe routes --plan .sloppy\app.plan.json
@@ -48,14 +60,15 @@ After building artifacts, these commands expose the Plan-driven developer surfac
 ..\..\build\windows-dev\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
-Current expected metadata includes `/health`, `/users`, `/users/{id:int}`, generated
-SQLite read/write capabilities, the `usersModule` module attribution, and explicit partial
-response metadata for module handlers whose runtime branches are not fully inferred.
+## Current Limits
 
-This is not an ORM, migration framework, production HTTP edge, benchmark, public alpha
-claim, keep-alive/chunked/streaming stress claim, PostgreSQL bridge claim, or SQL Server
-bridge claim. The localhost transport is keep-alive-capable for basic request sequences,
-but this users API fixture remains V8-gated workflow evidence rather than streaming,
-chunked, pipelining, or production-edge HTTP evidence. SQLite bridge calls are
-async-at-boundary through the serialized provider executor; they are not `TRUE_ASYNC`
-database I/O claims.
+This example focuses on SQLite provider integration and localhost transport flow. PostgreSQL
+and SQL Server are covered by separate examples, and streaming APIs are not included in
+this slice.
+
+## Related Docs
+
+- `docs/tutorials/sqlite-api.md`
+- `docs/reference/providers.md`
+- `docs/reference/framework.md`
+- `docs/how-to/use-sqlite.md`

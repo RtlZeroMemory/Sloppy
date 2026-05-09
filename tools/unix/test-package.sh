@@ -28,9 +28,10 @@ sloppy/sloppyc --version and --help smoke checks, verifies stdlib assets, valida
 manifest fields, checks excluded build/dependency directories, and verifies SHA256SUMS.txt
 when present.
 
-This is package-layout smoke. It is not a public release, package-manager, or live
-provider gate. --require-v8-runtime requires the manifest to record V8 runtime support
-and proves JS app execution from the extracted package, including source-input execution.
+This is package-layout smoke. Publishing, package-manager behavior, and live
+provider validation use separate lanes. --require-v8-runtime requires the
+manifest to record V8 runtime support and validates JS app execution from the
+extracted package, including source-input execution.
 USAGE
       exit 0
       ;;

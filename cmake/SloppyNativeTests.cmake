@@ -121,7 +121,7 @@
                 COMMAND $<TARGET_FILE:core_http_transport> --case ${case_name})
             set_tests_properties(${test_name} PROPERTIES LABELS "conformance;transport;http")
         endfunction()
-        sloppy_add_http_transport_case(conformance.transport.localhost_mvp localhost_mvp)
+        sloppy_add_http_transport_case(conformance.transport.localhost_basic localhost_basic)
         sloppy_add_http_transport_case(conformance.transport.keep_alive keep_alive)
         sloppy_add_http_transport_case(
             conformance.transport.keep_alive_idle_timeout keep_alive_idle_timeout)
