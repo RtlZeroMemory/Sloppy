@@ -53,17 +53,15 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "Bootstrap data/capabilities foundation example"
         "What works today"
-        "Current limitations"
-        "not executed with `sloppy run --artifacts`"
-        "`sloppyc` does not compile this example"
-        "`app.plan.json` is not emitted"
+        "Current product state"
+        "`sloppy run --artifacts` currently runs emitted artifacts"
+        "`sloppyc` compilation and `app.plan.json` emission"
         "real SQLite provider is covered by native C tests"
         "PostgreSQL and SQL Server have separate provider examples"
-        "no database connection is opened"
-        "no SQL is executed"
-        "filesystem and network capabilities are not enforced"
+        "opens no database connection and executes no SQL"
+        "Filesystem and network capability enforcement belong to their provider/runtime lanes"
         "examples/sqlserver-basic/"
-        "bare `\"sloppy\"` imports are the current source shape")
+        "Bare `\"sloppy\"` imports are the current source shape")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
         "examples/data-foundation/README.md is missing required status text")

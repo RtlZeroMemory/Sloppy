@@ -34,15 +34,19 @@ What works today:
 - public prepared statement handles are intentionally absent; SQLite prepare/bind/step/
   finalize remains internal to `exec`, `query`, `queryOne`, and transaction operations.
 
-Current limitations:
+Current product state:
 
-- this source-stdlib example is not executed with `sloppy run --artifacts`;
-- `sloppyc` does not compile this example yet;
-- `app.plan.json` is not emitted for this example;
-- the current bounded `sloppy run` path does not load this source-stdlib SQLite example directly;
-- executable SQLite runtime coverage currently lives in the internal V8-gated artifact fixture;
-- PostgreSQL and SQL Server providers are covered by their own examples and tests;
-- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL checks;
-- SQLite has no ORM, migrations, expanded pooling, public prepared statement handles, or
-  mid-operation interruption support implemented;
-- bare `"sloppy"` imports are the current source shape for this example.
+- This source-stdlib example is a checked-in API-shape fixture.
+- `sloppy run --artifacts` currently runs emitted artifacts such as
+  `examples/compiler-hello`.
+- `sloppyc` compilation and `app.plan.json` emission for this SQLite source shape are
+  future source-extraction work.
+- The bounded `sloppy run` path currently loads generated artifacts, not this
+  source-stdlib SQLite example directly.
+- Executable SQLite runtime coverage currently lives in the internal V8-gated artifact
+  fixture.
+- PostgreSQL and SQL Server providers are covered by their own examples and tests.
+- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL checks.
+- ORM, migrations, expanded pooling, public prepared statement handles, and mid-operation
+  interruption are separate SQLite/provider features.
+- Bare `"sloppy"` imports are the current source shape for this example.

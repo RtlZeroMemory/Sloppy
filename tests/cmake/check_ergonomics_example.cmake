@@ -50,12 +50,11 @@ foreach(required_pattern IN ITEMS
         "route groups"
         "result helpers"
         "schema metadata"
-        "not executed with `sloppy run --artifacts`"
-        "`sloppyc` compilation and route-group/schema extraction are still pending"
-        "`app.plan.json` is not emitted"
-        "Validation metadata is not wired to automatic `400` responses yet"
+        "checked by CTest"
+        "`sloppy run --artifacts` currently runs emitted artifacts"
+        "`sloppyc` compilation, route-group/schema extraction, and `app.plan.json` emission"
+        "Validation metadata currently remains route metadata"
         "OpenAPI generation is planned separately"
-        "runnable"
         "application host")
     require_substring(
         "${ergonomics_readme_md}" "${required_pattern}"
