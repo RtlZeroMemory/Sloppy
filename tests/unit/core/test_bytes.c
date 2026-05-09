@@ -59,16 +59,36 @@ static int test_hashing(void)
 {
     const unsigned char bytes[] = {0U, 1U, 2U, 0U};
     const unsigned char same[] = {0U, 1U, 2U, 0U};
+    const unsigned char hello[] = {'h', 'e', 'l', 'l', 'o'};
+    const unsigned char marker = 0x7fU;
     SlBytes view = sl_bytes_from_parts(bytes, sizeof(bytes));
     SlBytes same_view = sl_bytes_from_parts(same, sizeof(same));
+    SlBytes hello_view = sl_bytes_from_parts(hello, sizeof(hello));
     uint64_t hash = 0U;
     uint64_t same_hash = 0U;
+    uint64_t hello_hash = 0U;
+    uint64_t empty_hash = 0U;
+    uint64_t nonnull_empty_hash = 0U;
     uint64_t sentinel_hash = 123U;
 
     if (expect_status(sl_bytes_hash(view, &hash), SL_STATUS_OK) != 0 ||
         expect_status(sl_bytes_hash(same_view, &same_hash), SL_STATUS_OK) != 0 || hash != same_hash)
     {
         return 10;
+    }
+
+    if (expect_status(sl_bytes_hash(hello_view, &hello_hash), SL_STATUS_OK) != 0 ||
+        hello_hash != UINT64_C(0x26c7827d889f6da3))
+    {
+        return 13;
+    }
+
+    if (expect_status(sl_bytes_hash(sl_bytes_empty(), &empty_hash), SL_STATUS_OK) != 0 ||
+        expect_status(sl_bytes_hash(sl_bytes_from_parts(&marker, 0U), &nonnull_empty_hash),
+                      SL_STATUS_OK) != 0 ||
+        empty_hash != nonnull_empty_hash)
+    {
+        return 14;
     }
 
     if (expect_status(sl_bytes_hash(sl_bytes_from_parts(NULL, 1U), &sentinel_hash),

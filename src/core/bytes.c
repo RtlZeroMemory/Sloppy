@@ -13,9 +13,7 @@
 #include "sloppy/container.h"
 
 #include <string.h>
-
-#define SL_BYTES_FNV1A_OFFSET 14695981039346656037ULL
-#define SL_BYTES_FNV1A_PRIME 1099511628211ULL
+#include <xxhash.h>
 
 static bool sl_bytes_has_valid_storage(SlBytes bytes)
 {
@@ -179,19 +177,15 @@ SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* ou
 
 SlStatus sl_bytes_hash(SlBytes bytes, uint64_t* out_hash)
 {
-    uint64_t hash = SL_BYTES_FNV1A_OFFSET;
-    size_t index = 0U;
+    static const unsigned char empty = 0U;
+    const void* data = NULL;
 
     if (out_hash == NULL || !sl_bytes_has_valid_storage(bytes)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    for (index = 0U; index < bytes.length; index += 1U) {
-        hash ^= (uint64_t)bytes.ptr[index];
-        hash *= SL_BYTES_FNV1A_PRIME;
-    }
-
-    *out_hash = hash;
+    data = bytes.length == 0U ? (const void*)&empty : (const void*)bytes.ptr;
+    *out_hash = (uint64_t)XXH64(data, bytes.length, 0U);
     return sl_status_ok();
 }
 

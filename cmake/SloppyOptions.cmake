@@ -1,10 +1,5 @@
-set(SLOPPY_ENABLE_ASSERTS_DEFAULT ON)
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(SLOPPY_ENABLE_ASSERTS_DEFAULT OFF)
-endif()
-
 option(SLOPPY_ENABLE_TESTS "Build and register Sloppy tests." ON)
-option(SLOPPY_ENABLE_ASSERTS "Enable Sloppy runtime assertions." ${SLOPPY_ENABLE_ASSERTS_DEFAULT})
+option(SLOPPY_ENABLE_ASSERTS "Enable Sloppy runtime assertions." ON)
 option(SLOPPY_ENABLE_WERROR "Treat compiler warnings as errors." OFF)
 option(SLOPPY_ENABLE_ASAN "Enable AddressSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported." OFF)
