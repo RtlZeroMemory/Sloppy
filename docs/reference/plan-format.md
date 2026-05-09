@@ -88,7 +88,9 @@ TLS remains opt-in. Cleartext HTTP is the default. Enabling TLS requires
 `Sloppy:Server:Tls:Enabled`, `Sloppy:Server:Tls:CertificatePath`, and
 `Sloppy:Server:Tls:PrivateKeyPath`. Relative certificate and private-key paths in Plan metadata
 are resolved under the loaded artifact directory; absolute paths are preserved when explicitly
-emitted by config. Passphrase-protected private keys remain available only through the native
+emitted by config. Diagnostic output redacts TLS material path values, but these two server
+path values remain Plan-visible today because the dev runtime consumes them directly.
+Passphrase-protected private keys remain available only through the native
 transport config until Sloppy has non-redacted runtime secret retrieval. Malformed, zero,
 unsupported, range-overflowing, missing certificate/key, unsafe path, or embedded-NUL values fail
 closed before serving work. Route-level limits and trusted proxy policy are not Plan metadata yet.

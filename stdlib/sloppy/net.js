@@ -904,6 +904,15 @@ const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 const HTTP_CLIENT_DEFAULT_MAX_REDIRECTS = 5;
 const HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS = 30000;
 const HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN = 8;
+const HTTP_CLIENT_TLS_OPTION_KEYS = new Set([
+    "caPath",
+    "caBundlePath",
+    "trustStorePath",
+    "clientCertificatePath",
+    "clientPrivateKeyPath",
+    "clientPrivateKeyPassphrase",
+    "insecureSkipVerify",
+]);
 const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
     "authorization",
     "cookie",
@@ -1157,6 +1166,33 @@ function normalizeHttpPoolOptions(value, operation) {
         );
     }
     return Object.freeze({ maxConnectionsPerOrigin, idleTimeoutMs });
+}
+
+function normalizeHttpTlsOptions(value, operation) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!isPlainObject(value)) {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} tls must be a plain object when provided.`,
+        );
+    }
+    for (const key of Object.keys(value)) {
+        if (!HTTP_CLIENT_TLS_OPTION_KEYS.has(key)) {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option ${key} is not supported.`,
+            );
+        }
+    }
+    throw httpClientError(
+        "HttpClientTlsUnavailableError",
+        "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+        "HTTP client TLS options require a configured TLS backend; no custom TLS fallback is available.",
+    );
 }
 
 function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
@@ -2246,6 +2282,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
     appendHttpHeaders(headers, requestObject.headers, operation);
     const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
     const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
+    normalizeHttpTlsOptions(requestObject.tls, operation);
     const maxRequestBytes =
         parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
         HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -2632,6 +2669,7 @@ function postJsonRequest(baseOptions, url, value, options = undefined, pool = un
 
 function createHttpClientFacade(baseOptions = undefined) {
     baseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
+    normalizeHttpTlsOptions(baseOptions?.tls, "HttpClient.create");
     const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
     const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
     const client = {
@@ -2643,6 +2681,18 @@ function createHttpClientFacade(baseOptions = undefined) {
         },
         post(url, options = undefined) {
             return sendHttpRequest(baseOptions, url, options, "POST", pool);
+        },
+        put(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "PUT", pool);
+        },
+        patch(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "PATCH", pool);
+        },
+        delete(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "DELETE", pool);
+        },
+        head(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "HEAD", pool);
         },
         getJson(url, options = undefined) {
             return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
@@ -2679,6 +2729,18 @@ const HttpClient = Object.freeze({
     },
     post(url, options = undefined) {
         return sendHttpRequest(undefined, url, options, "POST");
+    },
+    put(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "PUT");
+    },
+    patch(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "PATCH");
+    },
+    delete(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "DELETE");
+    },
+    head(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "HEAD");
     },
     getJson(url, options = undefined) {
         return sendHttpBodyRequest(undefined, url, options, "json");

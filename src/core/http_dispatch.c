@@ -20,6 +20,7 @@
 #include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/container.h"
 
 #include <yyjson.h>
@@ -124,10 +125,9 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
         sl_http_dispatch_literal("HTTP method is not supported by the framework runtime",
                                  sizeof("HTTP method is not supported by the framework runtime") -
                                      1U),
-        sl_http_dispatch_literal("supported route methods are GET, POST, PUT, PATCH, and DELETE",
-                                 sizeof("supported route methods are GET, POST, PUT, PATCH, and "
-                                        "DELETE") -
-                                     1U),
+        sl_http_dispatch_literal(
+            "supported request methods are GET, HEAD, POST, PUT, PATCH, and DELETE",
+            sizeof("supported request methods are GET, HEAD, POST, PUT, PATCH, and DELETE") - 1U),
         SL_STATUS_UNSUPPORTED);
 }
 
@@ -136,9 +136,19 @@ static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
     return route != NULL && sl_plan_route_method_runnable(route->method);
 }
 
-static bool sl_http_dispatch_method_runnable(SlHttpMethod method)
+static bool sl_http_dispatch_request_method_runnable(SlHttpMethod method)
+{
+    return method == SL_HTTP_METHOD_HEAD || sl_http_method_supported(method);
+}
+
+static bool sl_http_dispatch_binding_method_runnable(SlHttpMethod method)
 {
     return sl_http_method_supported(method);
+}
+
+static SlHttpMethod sl_http_dispatch_route_match_method(SlHttpMethod method)
+{
+    return method == SL_HTTP_METHOD_HEAD ? SL_HTTP_METHOD_GET : method;
 }
 
 static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* out_method)
@@ -691,6 +701,177 @@ static SlStatus sl_http_route_table_count_runnable_routes(SlArena* arena, const 
     return sl_status_ok();
 }
 
+typedef struct SlHttpDispatchAllowSet
+{
+    bool get;
+    bool head;
+    bool post;
+    bool put;
+    bool patch;
+    bool delete_;
+} SlHttpDispatchAllowSet;
+
+static void sl_http_dispatch_allow_set_add(SlHttpDispatchAllowSet* methods, SlHttpMethod method)
+{
+    if (methods == NULL) {
+        return;
+    }
+    switch (method) {
+    case SL_HTTP_METHOD_GET:
+        methods->get = true;
+        methods->head = true;
+        break;
+    case SL_HTTP_METHOD_HEAD:
+        methods->head = true;
+        break;
+    case SL_HTTP_METHOD_POST:
+        methods->post = true;
+        break;
+    case SL_HTTP_METHOD_PUT:
+        methods->put = true;
+        break;
+    case SL_HTTP_METHOD_PATCH:
+        methods->patch = true;
+        break;
+    case SL_HTTP_METHOD_DELETE:
+        methods->delete_ = true;
+        break;
+    case SL_HTTP_METHOD_UNKNOWN:
+    case SL_HTTP_METHOD_OPTIONS:
+    default:
+        break;
+    }
+}
+
+static bool sl_http_dispatch_allow_set_empty(const SlHttpDispatchAllowSet* methods)
+{
+    return methods == NULL || (!methods->get && !methods->head && !methods->post && !methods->put &&
+                               !methods->patch && !methods->delete_);
+}
+
+static SlStatus sl_http_dispatch_allow_append(SlStringBuilder* builder, const char* method,
+                                              bool* wrote_any)
+{
+    SlStatus status;
+
+    if (builder == NULL || method == NULL || wrote_any == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (*wrote_any) {
+        status = sl_string_builder_append_cstr(builder, ", ");
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    status = sl_string_builder_append_cstr(builder, method);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *wrote_any = true;
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_dispatch_format_allow_header(SlArena* arena,
+                                                     const SlHttpDispatchAllowSet* methods,
+                                                     SlStr* out_allow)
+{
+    SlStringBuilder builder = {0};
+    bool wrote_any = false;
+    SlStatus status;
+
+    if (out_allow != NULL) {
+        *out_allow = sl_str_empty();
+    }
+    if (arena == NULL || methods == NULL || out_allow == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_http_dispatch_allow_set_empty(methods)) {
+        return sl_status_ok();
+    }
+
+    status = sl_string_builder_init_arena(&builder, arena, 32U, 128U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+#define SL_HTTP_DISPATCH_APPEND_ALLOW(flag, token)                                                 \
+    do {                                                                                           \
+        if ((flag)) {                                                                              \
+            status = sl_http_dispatch_allow_append(&builder, (token), &wrote_any);                 \
+            if (!sl_status_is_ok(status)) {                                                        \
+                return status;                                                                     \
+            }                                                                                      \
+        }                                                                                          \
+    } while (0)
+
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->get, "GET");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->head, "HEAD");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->post, "POST");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->put, "PUT");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->patch, "PATCH");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->delete_, "DELETE");
+
+#undef SL_HTTP_DISPATCH_APPEND_ALLOW
+
+    *out_allow = sl_string_builder_view(&builder);
+    return sl_status_ok();
+}
+
+SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
+                                                const SlHttpDispatchTable* dispatch_table,
+                                                SlStr path, SlStr* out_allow)
+{
+    SlArenaMark mark = {0};
+    SlHttpDispatchAllowSet methods = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (out_allow != NULL) {
+        *out_allow = sl_str_empty();
+    }
+    if (arena == NULL || dispatch_table == NULL || out_allow == NULL || path.ptr == NULL ||
+        path.length == 0U || path.ptr[0] != '/')
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_http_dispatch_validate_table(dispatch_table);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    mark = sl_arena_mark(arena);
+    for (index = 0U; index < dispatch_table->route_count; index += 1U) {
+        const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
+        SlRouteMatch match = {0};
+
+        if (!sl_http_dispatch_binding_method_runnable(binding->method) ||
+            binding->pattern == NULL || !sl_handler_id_valid(binding->handler_id))
+        {
+            status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            goto cleanup;
+        }
+
+        status = sl_route_pattern_match(arena, binding->pattern, path, &match);
+        if (!sl_status_is_ok(status)) {
+            goto cleanup;
+        }
+        if (match.matched) {
+            sl_http_dispatch_allow_set_add(&methods, binding->method);
+        }
+    }
+
+cleanup: {
+    SlStatus reset_status = sl_arena_reset_to(arena, mark);
+    if (!sl_status_is_ok(status)) {
+        (void)reset_status;
+        return status;
+    }
+    if (!sl_status_is_ok(reset_status)) {
+        return reset_status;
+    }
+}
+    return sl_http_dispatch_format_allow_header(arena, &methods, out_allow);
+}
+
 SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRouteTable* out_table,
                                    SlDiag* out_diag)
 {
@@ -784,8 +965,8 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
         SlRouteMatch match = {0};
         SlStatus status;
 
-        if (!sl_http_dispatch_method_runnable(binding->method) || binding->pattern == NULL ||
-            !sl_handler_id_valid(binding->handler_id))
+        if (!sl_http_dispatch_binding_method_runnable(binding->method) ||
+            binding->pattern == NULL || !sl_handler_id_valid(binding->handler_id))
         {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
@@ -796,7 +977,7 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
         }
 
         if (match.matched) {
-            if (binding->method != request->method) {
+            if (binding->method != sl_http_dispatch_route_match_method(request->method)) {
                 *out_method_mismatch = true;
                 continue;
             }
@@ -842,7 +1023,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
         return status;
     }
 
-    if (!sl_http_dispatch_method_runnable(request->method)) {
+    if (!sl_http_dispatch_request_method_runnable(request->method)) {
         return sl_http_dispatch_unsupported_method(arena, out_diag);
     }
 

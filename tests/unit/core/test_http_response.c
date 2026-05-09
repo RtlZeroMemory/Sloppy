@@ -88,6 +88,18 @@ static int test_keep_alive_connection_policy_exact_bytes(void)
         "charset=utf-8\r\nContent-Length: 5\r\n\r\nhello");
 }
 
+static int test_head_suppression_keeps_content_length_without_body(void)
+{
+    SlHttpResponseWriteOptions options = {0};
+
+    options.connection = SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE;
+    options.suppress_body = true;
+    return expect_response_with_options(
+        sl_http_response_text(200U, sl_str_from_cstr("hello")), &options,
+        "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 5\r\n\r\n");
+}
+
 static int test_binary_body_exact_bytes(void)
 {
     static const unsigned char body[] = {'A', '\0', 'B'};
@@ -107,8 +119,14 @@ static int test_binary_body_exact_bytes(void)
 
 static int test_no_content_writes_no_body_or_content_type(void)
 {
-    return expect_response(sl_http_response_text(204U, sl_str_from_cstr("ignored")),
-                           "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+    if (expect_response(sl_http_response_text(204U, sl_str_from_cstr("ignored")),
+                        "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n") != 0)
+    {
+        return 1;
+    }
+
+    return expect_response(sl_http_response_text(304U, sl_str_from_cstr("ignored")),
+                           "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n");
 }
 
 static int test_statuses_and_content_length(void)
@@ -142,10 +160,18 @@ static int test_error_statuses_for_http_policy(void)
         return 1;
     }
 
+    if (expect_response(sl_http_response_text(415U, sl_str_from_cstr("Unsupported\n")),
+                        "HTTP/1.1 415 Unsupported Media Type\r\nConnection: close\r\n"
+                        "Content-Type: text/plain; charset=utf-8\r\nContent-Length: "
+                        "12\r\n\r\nUnsupported\n") != 0)
+    {
+        return 2;
+    }
+
     return expect_response(
-        sl_http_response_text(415U, sl_str_from_cstr("Unsupported\n")),
-        "HTTP/1.1 415 Unsupported Media Type\r\nConnection: close\r\nContent-Type: "
-        "text/plain; charset=utf-8\r\nContent-Length: 12\r\n\r\nUnsupported\n");
+        sl_http_response_text(417U, sl_str_from_cstr("Expectation Failed\n")),
+        "HTTP/1.1 417 Expectation Failed\r\nConnection: close\r\nContent-Type: "
+        "text/plain; charset=utf-8\r\nContent-Length: 19\r\n\r\nExpectation Failed\n");
 }
 
 static int test_custom_headers_are_written_after_content_type(void)
@@ -307,6 +333,12 @@ int main(void)
     }
     result = run_test("test_keep_alive_connection_policy_exact_bytes",
                       test_keep_alive_connection_policy_exact_bytes);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_head_suppression_keeps_content_length_without_body",
+                      test_head_suppression_keeps_content_length_without_body);
     if (result != 0) {
         return result;
     }

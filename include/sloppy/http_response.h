@@ -6,6 +6,7 @@
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -32,6 +33,11 @@ typedef enum SlHttpResponseConnectionPolicy
 typedef struct SlHttpResponseWriteOptions
 {
     SlHttpResponseConnectionPolicy connection;
+    /*
+     * Writes response metadata including the original Content-Length, but omits the
+     * body bytes on the wire. Used for HEAD responses after normal GET dispatch.
+     */
+    bool suppress_body;
 } SlHttpResponseWriteOptions;
 
 typedef struct SlHttpResponseStreamChunk
@@ -76,9 +82,9 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
  *
  * `response`, `buffer`, and `out_bytes` are required. Returned bytes borrow `buffer` and
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
- * 204, 400, 404, 405, 408, 413, 415, 500, and 501. Unknown statuses, invalid custom header
- * names, managed custom headers, and CR/LF in Content-Type or header values are rejected.
- * Status 204 always writes no Content-Type, no Content-Length, and no body.
+ * 204, 304, 400, 404, 405, 408, 413, 415, 417, 500, and 501. Unknown statuses, invalid custom
+ * header names, managed custom headers, and CR/LF in Content-Type or header values are
+ * rejected. Status 204 and 304 always write no Content-Type, no Content-Length, and no body.
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);

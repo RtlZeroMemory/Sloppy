@@ -346,6 +346,50 @@ await withNodeNetBridge(async () => {
 });
 
 await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request) => {
+        observed.push({
+            method: request.method,
+            target: request.target,
+            body: request.body.toString("utf8"),
+        });
+        if (request.method === "HEAD") {
+            return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n";
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        assert.equal(await (await HttpClient.put(`${server.url}/static-put`, { text: "one" })).text(), "ok");
+        assert.equal(await (await HttpClient.patch(`${server.url}/static-patch`, { text: "two" })).text(), "ok");
+        assert.equal(await (await HttpClient.delete(`${server.url}/static-delete`)).text(), "ok");
+        assert.deepEqual(await (await HttpClient.head(`${server.url}/static-head`)).bytes(), new Uint8Array(0));
+
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.put("/client-put", { text: "three" })).text(), "ok");
+        assert.equal(await (await client.patch("/client-patch", { text: "four" })).text(), "ok");
+        assert.equal(await (await client.delete("/client-delete")).text(), "ok");
+        assert.deepEqual(await (await client.head("/client-head")).bytes(), new Uint8Array(0));
+
+        assert.deepEqual(observed, [
+            { method: "PUT", target: "/static-put", body: "one" },
+            { method: "PATCH", target: "/static-patch", body: "two" },
+            { method: "DELETE", target: "/static-delete", body: "" },
+            { method: "HEAD", target: "/static-head", body: "" },
+            { method: "PUT", target: "/client-put", body: "three" },
+            { method: "PATCH", target: "/client-patch", body: "four" },
+            { method: "DELETE", target: "/client-delete", body: "" },
+            { method: "HEAD", target: "/client-head", body: "" },
+        ]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n");
 
     try {
@@ -775,6 +819,29 @@ await withNodeNetBridge(async () => {
 await assertRejectsMessage(
     () => HttpClient.get("https://127.0.0.1/"),
     /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
+);
+
+await assertRejectsMessage(
+    async () => HttpClient.create({ tls: { caPath: "C:\\secret\\ca.pem" } }),
+    /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
+);
+
+await assertRejectsMessage(
+    () =>
+        HttpClient.get("http://127.0.0.1/", {
+            tls: { clientPrivateKeyPath: "C:\\secret\\key.pem" },
+        }),
+    /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
+);
+
+await assertRejectsMessage(
+    async () => HttpClient.create({ tls: "C:\\secret\\ca.pem" }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", { tls: { privateKey: "secret" } }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
 );
 
 await assertRejectsMessage(

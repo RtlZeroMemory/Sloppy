@@ -80,21 +80,39 @@ disappears or moves.
 
 `request_validation.c` enforces, before any handler runs:
 
-| Failure mode                                | Status |
-| ------------------------------------------- | ------ |
-| Method not in `GET/POST/PUT/PATCH/DELETE`   | 405    |
-| Body declared but `Content-Type` missing    | 415    |
-| `Content-Type` not supported                | 415    |
-| Body exceeds configured limit               | 413    |
-| Malformed JSON for `application/[*+]json`   | 400    |
-| `Transfer-Encoding: chunked` (current)      | 501    |
+| Failure mode                                    | Status |
+| ----------------------------------------------- | ------ |
+| Method not in `GET/HEAD/POST/PUT/PATCH/DELETE` | 405    |
+| Body declared but `Content-Type` missing        | 415    |
+| `Content-Type` not supported                    | 415    |
+| Body exceeds configured limit                   | 413    |
+| `Expect` header present                         | 417    |
+| Malformed JSON for `application/[*+]json`       | 400    |
 
 Supported request media types today are `application/json`,
 `application/*+json`, `text/plain`, and `application/octet-stream`.
+The transport decodes bounded `Transfer-Encoding: chunked` request
+bodies before validation. Unsupported transfer codings, trailers,
+invalid chunk framing, and `Transfer-Encoding` plus `Content-Length`
+conflicts are rejected before handler dispatch.
 
 The runtime owns the body — the parser allocates it inside the
 per-request arena. JS body helpers (`request.text()`, `request.json()`)
 return copies into V8-owned storage.
+
+Incoming `HEAD` requests match the corresponding `GET` route. Dispatch
+still executes the handler so validation and metadata stay identical to
+GET, but the transport writes only the response head and preserves the
+computed `Content-Length`.
+
+`405 Method Not Allowed` responses from the Plan-backed run path include an
+`Allow` header when the route table can match the request path. The header
+lists route-backed methods in deterministic order and includes `HEAD` when
+`GET` is available for that path.
+
+`Expect: 100-continue` is not negotiated today. The transport rejects
+requests carrying an `Expect` header with `417 Expectation Failed` before
+waiting for the request body or entering handler dispatch.
 
 ## Limits
 
@@ -120,10 +138,15 @@ timeout. There's no pipelining and no HTTP/2.
 
 ## Response writing
 
-`sl_http_response_write` serializes the descriptor into a single buffer
-inside the per-request arena, then hands it to the transport for write.
-Headers are normalized to lowercase; `Content-Length` is computed from
-the body (no chunked responses today).
+`sl_http_response_write` serializes fixed response descriptors into a
+single buffer inside the per-request arena, then hands them to the
+transport for write. Headers are normalized to lowercase; `Content-Length`
+is computed from the body. Streaming responses are transport-owned and
+use bounded HTTP/1.1 chunked frames.
+
+`204 No Content` and `304 Not Modified` never write `Content-Type`,
+`Content-Length`, or body bytes even if the handler descriptor includes a
+body.
 
 If the descriptor is malformed (bad status code, body kind that doesn't
 match content type, oversized headers), the dispatcher logs a

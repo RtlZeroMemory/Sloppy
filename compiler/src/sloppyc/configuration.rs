@@ -644,37 +644,86 @@ pub(super) fn json_type_name(value: &Value) -> &'static str {
     }
 }
 
+fn config_key_segment_is_secret(segment: &str) -> bool {
+    matches!(
+        segment,
+        "pwd"
+            | "passwd"
+            | "secret"
+            | "password"
+            | "token"
+            | "apikey"
+            | "api_key"
+            | "clientsecret"
+            | "client_secret"
+            | "privatekey"
+            | "private_key"
+            | "passphrase"
+            | "connectionstring"
+            | "connection_string"
+    ) || segment.ends_with("secret")
+        || segment.ends_with("password")
+        || segment.ends_with("token")
+        || segment.ends_with("apikey")
+        || segment.ends_with("clientsecret")
+        || segment.ends_with("privatekey")
+        || segment.ends_with("passphrase")
+        || segment.ends_with("connectionstring")
+}
+
+fn config_key_segment_is_tls_material_path(segment: &str) -> bool {
+    matches!(
+        segment,
+        "certificatepath"
+            | "certificate_path"
+            | "certpath"
+            | "cert_path"
+            | "privatekeypath"
+            | "private_key_path"
+            | "keypath"
+            | "key_path"
+            | "clientcertificatepath"
+            | "client_certificate_path"
+            | "clientprivatekeypath"
+            | "client_private_key_path"
+            | "clientcapath"
+            | "client_ca_path"
+            | "capath"
+            | "ca_path"
+            | "cabundlepath"
+            | "ca_bundle_path"
+            | "clientcabundlepath"
+            | "client_ca_bundle_path"
+            | "truststorepath"
+            | "trust_store_path"
+    ) || segment.ends_with("certificatepath")
+        || segment.ends_with("certificate_path")
+        || segment.ends_with("privatekeypath")
+        || segment.ends_with("private_key_path")
+        || segment.ends_with("clientcertificatepath")
+        || segment.ends_with("client_certificate_path")
+        || segment.ends_with("clientprivatekeypath")
+        || segment.ends_with("client_private_key_path")
+        || segment.ends_with("cabundlepath")
+        || segment.ends_with("ca_bundle_path")
+        || segment.ends_with("truststorepath")
+        || segment.ends_with("trust_store_path")
+}
+
 pub(super) fn config_key_is_sensitive(key: &str) -> bool {
+    key.to_ascii_lowercase()
+        .split(':')
+        .any(config_key_segment_is_secret)
+}
+
+pub(super) fn config_key_is_diagnostic_sensitive(key: &str) -> bool {
     key.to_ascii_lowercase().split(':').any(|segment| {
-        matches!(
-            segment,
-            "pwd"
-                | "passwd"
-                | "secret"
-                | "password"
-                | "token"
-                | "apikey"
-                | "api_key"
-                | "clientsecret"
-                | "client_secret"
-                | "privatekey"
-                | "private_key"
-                | "passphrase"
-                | "connectionstring"
-                | "connection_string"
-        ) || segment.ends_with("secret")
-            || segment.ends_with("password")
-            || segment.ends_with("token")
-            || segment.ends_with("apikey")
-            || segment.ends_with("clientsecret")
-            || segment.ends_with("privatekey")
-            || segment.ends_with("passphrase")
-            || segment.ends_with("connectionstring")
+        config_key_segment_is_secret(segment) || config_key_segment_is_tls_material_path(segment)
     })
 }
 
 pub(super) fn redact_config_value(key: &str, value: &str) -> String {
-    if config_key_is_sensitive(key) {
+    if config_key_is_diagnostic_sensitive(key) {
         "<redacted>".to_string()
     } else {
         format!("'{value}'")

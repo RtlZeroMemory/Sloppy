@@ -18,6 +18,11 @@ documents what Sloppy does today and what it doesn't.
   `data.<provider>.open({ connectionString })` are kept on the config
   side and don't appear in Plan metadata or in default diagnostic
   output.
+- **TLS material references in diagnostics.** Diagnostic redaction
+  treats TLS certificate, private-key, client-certificate, and CA
+  bundle path keys as sensitive. Current Plan metadata still carries
+  inbound server certificate and private-key paths so `sloppy run` can
+  configure the development TLS listener.
 - **Diagnostic source contexts.** Diagnostic snippets show source
   lines but not the values of variables visible at that location —
   there's no "captured locals" output.

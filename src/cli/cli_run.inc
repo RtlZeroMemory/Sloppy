@@ -1291,6 +1291,65 @@ static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
     return (int)bytes.length;
 }
 
+static SlStatus sl_run_method_not_allowed_response(SlRunApp* app, SlArena* arena,
+                                                   const SlHttpRequestHead* request,
+                                                   SlHttpResponse* out_response)
+{
+    SlHttpHeader* allow_header = NULL;
+    SlStr allow = sl_str_empty();
+    SlStatus status;
+    void* header_storage = NULL;
+
+    if (out_response != NULL) {
+        *out_response = sl_http_response_text(405U, sl_str_from_cstr("Method Not Allowed\n"));
+    }
+    if (app == NULL || arena == NULL || request == NULL || out_response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_allow_header_for_path(arena, &app->route_table.dispatch,
+                                                    request->path, &allow);
+    if (!sl_status_is_ok(status) || sl_str_is_empty(allow)) {
+        return status;
+    }
+
+    status = sl_arena_alloc(arena, sizeof(SlHttpHeader), _Alignof(SlHttpHeader), &header_storage);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    allow_header = (SlHttpHeader*)header_storage;
+    allow_header->name = sl_str_from_cstr("Allow");
+    allow_header->value = allow;
+    out_response->headers = allow_header;
+    out_response->header_count = 1U;
+    return sl_status_ok();
+}
+
+static int sl_run_write_method_not_allowed_response(SlRunApp* app, SlArena* arena,
+                                                    const SlHttpRequestHead* request,
+                                                    char* response, size_t response_capacity)
+{
+    SlHttpResponse method_response = {0};
+    SlBytes response_bytes = {0};
+    SlStatus status;
+
+    if (response == NULL) {
+        return -1;
+    }
+
+    status = sl_run_method_not_allowed_response(app, arena, request, &method_response);
+    if (sl_status_is_ok(status)) {
+        status = sl_http_response_write(&method_response, (unsigned char*)response,
+                                        response_capacity, &response_bytes);
+        if (sl_status_is_ok(status) && response_bytes.length <= (size_t)INT32_MAX) {
+            return (int)response_bytes.length;
+        }
+    }
+
+    return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
+                                 sl_str_from_cstr("Method Not Allowed\n"));
+}
+
 static SlHttpMethod sl_run_method_from_cstr(const char* method)
 {
     if (method == NULL) {
@@ -1475,8 +1534,8 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
         diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
     {
-        return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Method Not Allowed\n"));
+        return sl_run_write_method_not_allowed_response(app, &dispatch_arena, request, response,
+                                                        response_capacity);
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
@@ -1581,6 +1640,16 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
                                                    out_response, out_diag);
     if (sl_status_is_ok(status)) {
         return status;
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED && out_diag != NULL &&
+        out_diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
+    {
+        SlStatus response_status =
+            sl_run_method_not_allowed_response(app, arena, &request->head, out_response);
+        if (sl_status_is_ok(response_status)) {
+            return response_status;
+        }
     }
 
     transport_status = sl_run_dispatch_transport_status(status, out_diag);

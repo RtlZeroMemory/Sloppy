@@ -2062,7 +2062,7 @@ static int test_json_source_frame_snapshot(void)
 
 static int test_redaction_helper(void)
 {
-    unsigned char buffer[1024];
+    unsigned char buffer[2048];
     SlArena arena;
     SlStr redacted;
 
@@ -2076,7 +2076,12 @@ static int test_redaction_helper(void)
                                            "monkey=value donkey:abc key=plain "
                                            "key exchange: keep key steps: visible "
                                            "connectionString=Server=.;Password=p; "
-                                           "clientSecret=abc private_key=pem passphrase=hunter2"),
+                                           "clientSecret=abc private_key=pem passphrase=hunter2 "
+                                           "certificatePath=C:/certs/dev.crt "
+                                           "privateKeyPath=C:/keys/dev.key "
+                                           "clientCertificatePath=C:/certs/client.crt "
+                                           "clientPrivateKeyPath=C:/keys/client.key "
+                                           "caBundlePath=C:/ca/root.pem"),
                           &redacted),
                       SL_STATUS_OK) != 0)
     {
@@ -2088,7 +2093,11 @@ static int test_redaction_helper(void)
                                        "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
                                        "key exchange: keep key steps: visible "
                                        "connectionString=<redacted>; clientSecret=<redacted> "
-                                       "private_key=<redacted> passphrase=<redacted>")) != 0)
+                                       "private_key=<redacted> passphrase=<redacted> "
+                                       "certificatePath=<redacted> privateKeyPath=<redacted> "
+                                       "clientCertificatePath=<redacted> "
+                                       "clientPrivateKeyPath=<redacted> "
+                                       "caBundlePath=<redacted>")) != 0)
     {
         return 102;
     }

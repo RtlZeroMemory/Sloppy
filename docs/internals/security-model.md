@@ -52,6 +52,9 @@ Two layers:
 
 Diagnostics still carry useful structure: error codes, SQLSTATE,
 driver categories, source locations. Just no secret payloads.
+Diagnostic redaction also treats TLS material path keys as sensitive:
+certificate paths, private-key paths, client-certificate paths, and CA
+bundle paths are replaced with `<redacted>` in diagnostics.
 
 The `ConfigSecretValue` wrapper at the JS layer
 (`stdlib/sloppy/internal/config.js`) extends the same pattern to
@@ -108,6 +111,11 @@ Path validation rejects:
 Not implemented today: ALPN selection beyond HTTP/1.1, mTLS, custom
 verification, OCSP stapling, HSTS hardening. Production deployments
 should terminate TLS at a reverse proxy.
+
+The current Plan format still carries inbound server certificate and
+private-key paths so `sloppy run` can configure the development TLS
+listener. Removing those paths from Plan metadata needs a separate
+runtime secret/config hand-off design.
 
 ## What's not in scope
 
