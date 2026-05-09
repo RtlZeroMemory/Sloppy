@@ -2,6 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 
 const SIZES = {
   tiny: { files: 1, routes: 2, schemas: 1, services: 1, controllers: 0 },
@@ -12,6 +16,7 @@ const SIZES = {
 };
 
 function parseArgs(argv) {
+  const allowed = new Set(["out", "size", "files", "routes", "schemas", "services", "controllers"]);
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -23,6 +28,9 @@ function parseArgs(argv) {
       throw new Error(`unexpected argument '${arg}'`);
     }
     const key = arg.slice(2);
+    if (!allowed.has(key)) {
+      throw new Error(`unknown option '${arg}'`);
+    }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--")) {
       throw new Error(`${arg} requires a value`);
@@ -31,6 +39,31 @@ function parseArgs(argv) {
     index += 1;
   }
   return options;
+}
+
+function assertSafeOutputDirectory(out) {
+  const root = path.parse(out).root;
+  const cwd = path.resolve(process.cwd());
+  const relativeToRoot = path.relative(ROOT, out);
+  if (out === root) {
+    throw new Error("--out must not be a filesystem root");
+  }
+  if (out === cwd) {
+    throw new Error("--out must not be the current working directory");
+  }
+  if (out === ROOT) {
+    throw new Error("--out must not be the repository root");
+  }
+  if (
+    path.isAbsolute(relativeToRoot) ||
+    relativeToRoot === ".." ||
+    relativeToRoot.startsWith(`..${path.sep}`)
+  ) {
+    return;
+  }
+  if (relativeToRoot !== "artifacts" && !relativeToRoot.startsWith(`artifacts${path.sep}`)) {
+    throw new Error("--out inside the repository must be under artifacts/");
+  }
 }
 
 function usage() {
@@ -230,6 +263,7 @@ function writeJson(file, value) {
 
 function buildProject(options) {
   const out = path.resolve(options.out);
+  assertSafeOutputDirectory(out);
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(path.join(out, "src", "routes"), { recursive: true });
 
@@ -302,7 +336,10 @@ function main() {
     throw new Error("--out is required");
   }
   const sizeName = args.size ?? "small";
-  const base = SIZES[sizeName] ?? SIZES.small;
+  const base = SIZES[sizeName];
+  if (!base) {
+    throw new Error(`--size must be one of: ${Object.keys(SIZES).join(", ")}`);
+  }
   const options = {
     sizeName,
     out: args.out,

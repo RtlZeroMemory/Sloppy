@@ -6,7 +6,7 @@ use std::{
 
 use super::{
     canonical_config_key, checksum_security_context_visible, command_from_args,
-    config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract,
+    config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract, help_text,
     noncrypto_hash_security_context_visible, redact_config_value, route_pattern_supported,
     CliCommand, CompileOptions, ConfigurationModel,
 };
@@ -99,6 +99,12 @@ fn build_args_accept_timings_json_output() {
             },
         }
     );
+}
+
+#[test]
+fn help_text_lists_diagnostics_timing_json_alias() {
+    let help = help_text();
+    assert!(help.contains("--timings-json|--diagnostics-timing-json <file>"));
 }
 
 #[test]

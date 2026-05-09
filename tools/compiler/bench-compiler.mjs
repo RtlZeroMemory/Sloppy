@@ -18,7 +18,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 
 function parseArgs(argv) {
-  const options = { suite: "smoke", sizes: [], compare: [] };
+  const options = { suite: "smoke", sizes: [], compare: [], compilerProfile: "debug" };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
@@ -51,6 +51,17 @@ function parseArgs(argv) {
       options.out = value;
     } else if (key === "sloppyc") {
       options.sloppyc = value;
+    } else if (key === "compiler-profile") {
+      if (!["debug", "release"].includes(value)) {
+        throw new Error("--compiler-profile must be 'debug' or 'release'");
+      }
+      options.compilerProfile = value;
+    } else if (key === "max-working-set-mb") {
+      const mb = Number(value);
+      if (!Number.isFinite(mb) || mb <= 0) {
+        throw new Error("--max-working-set-mb must be a positive number");
+      }
+      options.maxWorkingSetBytes = Math.round(mb * 1024 * 1024);
     } else {
       throw new Error(`unknown option '${arg}'`);
     }
@@ -63,6 +74,7 @@ function usage() {
   return `Usage:
   node tools/compiler/bench-compiler.mjs --suite smoke --out artifacts/bench/compiler-smoke.json
   node tools/compiler/bench-compiler.mjs --suite scale --size small,medium --out artifacts/bench/compiler-scale-smoke.json
+  node tools/compiler/bench-compiler.mjs --suite scale --size small,medium,large --compiler-profile release --out artifacts/bench/compiler-release.json
   node tools/compiler/bench-compiler.mjs --compare artifacts/bench/before.json artifacts/bench/after.json
 `;
 }
@@ -92,7 +104,7 @@ function gitText(args, fallback = "") {
   }
 }
 
-function resolveSloppyc(explicit) {
+function resolveSloppyc(explicit, profile) {
   if (explicit) {
     return path.resolve(explicit);
   }
@@ -103,20 +115,32 @@ function resolveSloppyc(explicit) {
     return path.resolve(process.env.SLOPPYC);
   }
 
-  runChecked("cargo", ["build", "--manifest-path", repoPath("compiler", "Cargo.toml")], {
+  const cargoArgs = ["build", "--manifest-path", repoPath("compiler", "Cargo.toml")];
+  if (profile === "release") {
+    cargoArgs.push("--release");
+  }
+  runChecked("cargo", cargoArgs, {
     stdio: "inherit",
   });
   const binary = path.join(
     ROOT,
     "compiler",
     "target",
-    "debug",
+    profile,
     process.platform === "win32" ? "sloppyc.exe" : "sloppyc",
   );
   if (!fs.existsSync(binary)) {
     throw new Error(`sloppyc binary was not produced at ${binary}`);
   }
   return binary;
+}
+
+function topPhases(phases) {
+  return Object.entries(phases ?? {})
+    .filter(([, value]) => Number.isFinite(value))
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5)
+    .map(([name, durationMs]) => ({ name, durationMs }));
 }
 
 function sloppycVersion(sloppyc) {
@@ -168,6 +192,16 @@ function runMeasured(command, args, cwd) {
     let stdout = "";
     let stderr = "";
     let peakWorkingSetBytes = null;
+    let settled = false;
+    const durationMs = () => Number(process.hrtime.bigint() - started) / 1_000_000;
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearInterval(timer);
+      resolve(result);
+    };
     const sample = () => {
       const value = sampleWorkingSetBytes(child.pid);
       if (value !== null && (peakWorkingSetBytes === null || value > peakWorkingSetBytes)) {
@@ -182,10 +216,18 @@ function runMeasured(command, args, cwd) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
+    child.on("error", (error) => {
+      finish({
+        code: 1,
+        stdout,
+        stderr: `${stderr}${stderr.length > 0 && !stderr.endsWith("\n") ? "\n" : ""}${error.message}`,
+        durationMs: durationMs(),
+        peakWorkingSetBytes,
+        spawnError: error.code ?? error.name,
+      });
+    });
     child.on("close", (code) => {
-      clearInterval(timer);
-      const durationMs = Number(process.hrtime.bigint() - started) / 1_000_000;
-      resolve({ code, stdout, stderr, durationMs, peakWorkingSetBytes });
+      finish({ code, stdout, stderr, durationMs: durationMs(), peakWorkingSetBytes });
     });
   });
 }
@@ -246,7 +288,7 @@ async function runBenchmarks(options) {
       throw new Error(`unknown compiler scale size '${size}'`);
     }
   }
-  const sloppyc = resolveSloppyc(options.sloppyc);
+  const sloppyc = resolveSloppyc(options.sloppyc, options.compilerProfile);
   const compilerVersion = sloppycVersion(sloppyc);
   const startedAt = new Date().toISOString();
   const benchmarks = [];
@@ -277,9 +319,20 @@ async function runBenchmarks(options) {
     const planPath = path.join(outDir, "app.plan.json");
     const bundlePath = path.join(outDir, "app.js");
     const sourceMapPath = path.join(outDir, "app.js.map");
+    let status = measured.code === 0 ? "pass" : "fail";
+    let stderr = measured.code === 0 ? undefined : measured.stderr;
+    if (
+      status === "pass" &&
+      options.maxWorkingSetBytes !== undefined &&
+      measured.peakWorkingSetBytes !== null &&
+      measured.peakWorkingSetBytes > options.maxWorkingSetBytes
+    ) {
+      status = "fail";
+      stderr = `peak working set ${measured.peakWorkingSetBytes} exceeded threshold ${options.maxWorkingSetBytes}`;
+    }
     benchmarks.push({
       id: `compiler.${size}.routes_${shape.routes}.files_${shape.files}`,
-      status: measured.code === 0 ? "pass" : "fail",
+      status,
       projectSize: size,
       files: shape.files,
       routes: shape.routes,
@@ -294,8 +347,9 @@ async function runBenchmarks(options) {
         sourceMapBytes: timings.artifacts?.sourceMapBytes ?? artifactBytes(sourceMapPath),
       },
       phases: timings.phases ?? {},
+      topPhases: topPhases(timings.phases),
       counters: timings.counters ?? {},
-      stderr: measured.code === 0 ? undefined : measured.stderr,
+      stderr,
     });
   }
   return {
@@ -310,10 +364,32 @@ async function runBenchmarks(options) {
     compiler: {
       version: compilerVersion,
       path: sloppyc,
+      profile: options.sloppyc ? "explicit" : options.compilerProfile,
+    },
+    thresholds: {
+      maxWorkingSetBytes: options.maxWorkingSetBytes,
     },
     suite: options.suite,
     benchmarks,
   };
+}
+
+function numericDelta(before, after) {
+  if (!Number.isFinite(before) || !Number.isFinite(after)) {
+    return { before, after, delta: null, deltaPercent: null };
+  }
+  const delta = after - before;
+  return {
+    before,
+    after,
+    delta,
+    deltaPercent: before > 0 ? (delta / before) * 100 : null,
+  };
+}
+
+function objectDeltas(before = {}, after = {}) {
+  const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort();
+  return Object.fromEntries(keys.map((key) => [key, numericDelta(before?.[key], after?.[key])]));
 }
 
 function compareReports(beforePath, afterPath) {
@@ -339,8 +415,11 @@ function compareReports(beforePath, afterPath) {
       afterDurationMs: afterEntry.durationMs,
       durationDeltaMs,
       durationDeltaPercent,
+      workingSetBytes: numericDelta(beforeEntry.peakWorkingSetBytes, afterEntry.peakWorkingSetBytes),
       beforeArtifacts: beforeEntry.artifacts,
       afterArtifacts: afterEntry.artifacts,
+      artifactDeltas: objectDeltas(beforeEntry.artifacts, afterEntry.artifacts),
+      phaseDeltas: objectDeltas(beforeEntry.phases, afterEntry.phases),
     });
   }
   return {
@@ -362,7 +441,11 @@ async function main() {
     writeOutput(options.out, compareReports(options.compare[0], options.compare[1]));
     return;
   }
-  writeOutput(options.out, await runBenchmarks(options));
+  const report = await runBenchmarks(options);
+  writeOutput(options.out, report);
+  if (report.benchmarks.some((entry) => entry.status !== "pass")) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

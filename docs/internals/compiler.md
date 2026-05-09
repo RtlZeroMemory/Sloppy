@@ -85,9 +85,11 @@ relative imports, extracts the AppGraph, applies configuration metadata, and
 writes artifacts into the requested output directory.
 
 `sloppyc build <input> --out <dir> --timings-json <file>` writes a structured
-timing report for compiler-performance work. The report records phase timings,
-source counters, and artifact sizes without changing normal compiler output.
-Timing collection is opt-in and intended for local benchmark evidence.
+timing report for compiler-performance work. The alias
+`--diagnostics-timing-json <file>` writes the same report for diagnostic tooling
+call sites. The report records phase timings, source counters, and artifact
+sizes without changing normal compiler output. Timing collection is opt-in and
+intended for local benchmark evidence.
 
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command

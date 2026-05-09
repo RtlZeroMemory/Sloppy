@@ -189,12 +189,14 @@ Local runtime JSON uses `schemaVersion: 1`. Each report includes:
 Compiler benchmark JSON also uses `schemaVersion: 1`. Each report includes
 Git/host/compiler metadata plus one benchmark entry per size. Entries record
 project shape, status, duration, sampled peak working set, artifact byte sizes,
-compiler phase timings, and source counters. See
+compiler profile, compiler phase timings, top phases, and source counters. See
 `docs/contributor/compiler-performance.md` for the schema and workflow.
 
 Use compare mode to compare two reports from the same machine and similar load conditions.
 Do not compare a laptop run against a CI VM or a dirty Debug build against a clean Release
 build and treat the delta as meaningful.
+Compare output reports duration, artifact, phase, and sampled working-set deltas when
+both inputs contain the relevant fields.
 
 ## Deferred
 

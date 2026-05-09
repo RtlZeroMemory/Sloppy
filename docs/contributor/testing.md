@@ -129,10 +129,14 @@ checking the diagnostic code or the cleanup behavior is incomplete.
   correctness evidence; don't claim performance numbers from a smoke run.
   Missing Node, Bun, Deno, or V8-enabled Sloppy executables are reported as
   `UNAVAILABLE` or `SKIPPED`, separate from default gates.
-- **Compiler scale** — `tools/windows/bench-compiler.ps1` generates
-  deterministic source-input projects and measures `sloppyc` compile time,
-  phase timings, memory, and artifact sizes. Cargo tests also include a
-  medium scale smoke guard to catch obvious compiler regressions. See
+- **Compiler scale** — `tools/windows/bench-compiler.ps1` and
+  `tools/unix/bench-compiler.sh` generate deterministic source-input projects
+  and measure `sloppyc` compile time, phase timings, memory, and artifact
+  sizes. Use `-CompilerProfile release` / `--compiler-profile release` for
+  release compiler evidence. Cargo tests also include route/module and
+  full-framework scale smoke guards to catch obvious compiler regressions,
+  framework-lowering regressions, helper duplication, and source-map/artifact
+  growth. See
   [compiler-performance.md](compiler-performance.md).
 
 Logging has focused native stress and benchmark coverage:

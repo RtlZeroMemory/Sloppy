@@ -153,6 +153,31 @@ fn cli_writes_timing_json_when_requested() {
 }
 
 #[test]
+fn cli_rejects_timing_json_path_that_would_clobber_artifacts() {
+    let root = manifest_dir();
+    let input = root.join("../examples/compiler-hello/app.js");
+    let out_dir = temp_output("cli-timings-conflict");
+    remove_dir_if_present(&out_dir);
+
+    let binary = env!("CARGO_BIN_EXE_sloppyc");
+    let output = Command::new(binary)
+        .arg("build")
+        .arg(&input)
+        .arg("--out")
+        .arg(&out_dir)
+        .arg("--timings-json")
+        .arg(out_dir.join("app.plan.json"))
+        .output()
+        .expect("sloppyc binary should launch");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("timings JSON output conflicts with emitted Plan path"));
+
+    remove_dir_if_present(&out_dir);
+}
+
+#[test]
 fn working_tree_has_no_generated_or_cache_artifacts_staged() {
     let status = Command::new("git")
         .args(["diff", "--cached", "--name-only"])

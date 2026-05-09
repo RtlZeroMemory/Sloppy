@@ -77,7 +77,7 @@ These run on demand or when labels/inputs select them:
 | libFuzzer mutation   | Manual workflow dispatch                                        |
 | Stress / torture     | Manual workflow dispatch                                        |
 | Benchmark            | Manual; output is measurement only, never correctness           |
-| Compiler performance | Manual/local for reports; Cargo scale smoke runs with compiler tests |
+| benchmark | Manual/local for reports; Cargo scale smoke runs with compiler tests |
 
 When CI is green except for lanes that didn't apply, that's fine. When
 a lane is skipped because the environment doesn't support it (no

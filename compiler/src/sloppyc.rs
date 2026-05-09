@@ -588,7 +588,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json <file>]\n",
+        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json|--diagnostics-timing-json <file>]\n",
     );
     text
 }
@@ -674,6 +674,14 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
         })
     })?;
     if let (Some(metrics), Some(path)) = (metrics.as_ref(), options.timings_json.as_ref()) {
+        validate_timings_output_path(input, out_dir, path).map_err(|diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
+            Box::new(CompileError {
+                code: 1,
+                diagnostic,
+                source: diagnostic_source,
+            })
+        })?;
         write_timings_json(path, metrics).map_err(|diagnostic| {
             let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
             Box::new(CompileError {
@@ -739,6 +747,37 @@ fn read_artifact(path: &Path, name: &str) -> Result<String, Box<CompileError>> {
             source: None,
         })
     })
+}
+
+fn canonical_if_present(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn validate_timings_output_path(
+    input: &Path,
+    out_dir: &Path,
+    timings_path: &Path,
+) -> Result<(), Diagnostic> {
+    let timings = canonical_if_present(timings_path);
+    let bundle = out_dir.join("app.js");
+    let source_map = out_dir.join("app.js.map");
+    let plan = out_dir.join("app.plan.json");
+    let conflicts = [
+        (input, "input source"),
+        (bundle.as_path(), "emitted bundle"),
+        (source_map.as_path(), "emitted source map"),
+        (plan.as_path(), "emitted Plan"),
+    ];
+    for (path, label) in conflicts {
+        if timings == canonical_if_present(path) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_OUTPUT",
+                format!("timings JSON output conflicts with {label} path"),
+            )
+            .with_path(timings_path));
+        }
+    }
+    Ok(())
 }
 
 fn write_timings_json(path: &Path, metrics: &CompileMetrics) -> Result<(), Diagnostic> {
