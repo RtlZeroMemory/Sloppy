@@ -271,7 +271,7 @@
                 "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" "-DSLOPPY_COMMAND=build"
                 "-DSLOPPY_CASE=build-artifacts-rejected"
-                "-DSLOPPY_EXTRA_ARGS=--artifacts;tests/integration/execution/compiler_mvp"
+                "-DSLOPPY_EXTRA_ARGS=--artifacts;tests/integration/execution/compiler_artifact"
                 "-DSLOPPY_EXPECTED_ERROR=--artifacts is not supported" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(sloppy.build.artifacts_rejected
@@ -440,7 +440,7 @@
             NAME sloppy.run.v8_disabled_is_clear
             COMMAND
                 "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--once;GET;/"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;--once;GET;/"
                 "-DSLOPPY_EXPECT_NO_STDLIB_FS=1"
                 "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
@@ -450,7 +450,7 @@
             NAME sloppy.run.runtime_artifacts_without_fs_feature_non_v8
             COMMAND
                 "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--once;GET;/"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;--once;GET;/"
                 "-DSLOPPY_EXPECT_NO_STDLIB_FS=1"
                 "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
@@ -606,19 +606,19 @@
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
-                    tests/integration/execution/compiler_mvp --once GET /
+                    tests/integration/execution/compiler_artifact --once GET /
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppy.run.once_hello PROPERTIES PASS_REGULAR_EXPRESSION "Hello from Sloppy")
         add_test(
             NAME sloppy.run.once_route_miss
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
-                    tests/integration/execution/compiler_mvp --once GET /missing
+                    tests/integration/execution/compiler_artifact --once GET /missing
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppy.run.once_route_miss PROPERTIES PASS_REGULAR_EXPRESSION "404 Not Found")
         add_test(
             NAME sloppy.run.once_unsupported_method
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
-                    tests/integration/execution/compiler_mvp --once POST /
+                    tests/integration/execution/compiler_artifact --once POST /
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppy.run.once_unsupported_method
                              PROPERTIES PASS_REGULAR_EXPRESSION "405 Method Not Allowed")
@@ -659,7 +659,7 @@
             NAME sloppy.run.missing_stdlib_asset
             COMMAND
                 "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--stdlib;tests/fixtures/run/missing;--once;GET;/"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;--stdlib;tests/fixtures/run/missing;--once;GET;/"
                 "-DSLOPPY_EXPECTED_ERROR=stdlib asset missing" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
         set_tests_properties(sloppy.run.missing_stdlib_asset

@@ -3,9 +3,9 @@ if(NOT DEFINED PROJECT_SOURCE_DIR)
 endif()
 
 set(required_files
-    "docs/testing-strategy.md"
-    "docs/quality-gates.md"
-    "docs/data-providers.md"
+    "docs/contributor/testing.md"
+    "docs/contributor/quality-gates.md"
+    "docs/internals/provider-runtime.md"
     "docs/reference/providers.md"
     "tests/conformance/providers/README.md"
     "tools/windows/test-live-providers.ps1"
@@ -21,9 +21,9 @@ foreach(file IN LISTS required_files)
     endif()
 endforeach()
 
-file(READ "${PROJECT_SOURCE_DIR}/docs/testing-strategy.md" testing_strategy)
-file(READ "${PROJECT_SOURCE_DIR}/docs/quality-gates.md" quality_gates)
-file(READ "${PROJECT_SOURCE_DIR}/docs/data-providers.md" data_providers)
+file(READ "${PROJECT_SOURCE_DIR}/docs/contributor/testing.md" testing_strategy)
+file(READ "${PROJECT_SOURCE_DIR}/docs/contributor/quality-gates.md" quality_gates)
+file(READ "${PROJECT_SOURCE_DIR}/docs/internals/provider-runtime.md" data_providers)
 file(READ "${PROJECT_SOURCE_DIR}/docs/reference/providers.md" provider_reference)
 file(READ "${PROJECT_SOURCE_DIR}/tests/conformance/providers/README.md" provider_conformance)
 file(READ "${PROJECT_SOURCE_DIR}/.github/workflows/ci.yml" ci_workflow)

@@ -1684,7 +1684,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 
     printf("Sloppy dev server listening on %s://%s:%u\n", config.tls.enabled ? "https" : "http",
            host, (unsigned)port);
-    printf("Bounded development server: HTTP/1.1%s, no middleware, no production-edge claim.\n",
+    printf("Bounded development server: HTTP/1.1%s, local development only.\n",
            config.tls.enabled ? " over TLS" : "");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {

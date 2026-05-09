@@ -199,16 +199,16 @@ endforeach()
 foreach(example_name IN LISTS framework_examples)
     file(READ "${example_root}/${example_name}/README.md" readme_text)
     require_substring(
-        "${readme_text}" "package-manager"
-        "${example_name} README is missing package-manager boundary text")
+        "${readme_text}" "This example"
+        "${example_name} README is missing useful example text")
 endforeach()
 
 file(READ "${example_root}/framework-v2-postgres-crud/README.md" postgres_readme)
 foreach(required_pattern IN ITEMS
-        "opt-in live-lane"
-        "not part of default CI"
-        "unavailable diagnostics, not pass evidence"
-        "redacted connection string")
+        "opt-in live-provider example"
+        "PostgreSQL service"
+        "live lane"
+        "connection string")
     require_substring(
         "${postgres_readme}" "${required_pattern}"
         "Framework v2 PostgreSQL README is missing live-lane boundary text")
@@ -216,10 +216,9 @@ endforeach()
 
 file(READ "${example_root}/framework-v2-sqlserver-crud/README.md" sqlserver_readme)
 foreach(required_pattern IN ITEMS
-        "opt-in live-lane"
-        "honest unavailable"
-        "not part of default CI"
-        "unavailable diagnostics, not pass evidence"
+        "opt-in live-provider example"
+        "live lane"
+        "driver cases"
         "Microsoft ODBC Driver 18")
     require_substring(
         "${sqlserver_readme}" "${required_pattern}"

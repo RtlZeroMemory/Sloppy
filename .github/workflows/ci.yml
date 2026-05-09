@@ -135,7 +135,7 @@ jobs:
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|docs/data-providers.md|docs/internals/data/**|docs/quality-gates.md|docs/testing-strategy.md)
+                .github/workflows/ci.yml|docs/reference/providers.md|docs/explanation/provider-runtime-model.md|docs/internals/provider-runtime.md|docs/contributor/quality-gates.md|docs/contributor/testing.md)
                 provider_relevant=true
                 ;;
               include/sloppy/data*|src/data/**|src/core/provider_executor.c)
@@ -187,7 +187,7 @@ jobs:
               tools/windows/check-release-artifacts.ps1|\
               tools/windows/release-dry-run.ps1|tools/unix/release-dry-run.sh|\
               tools/windows/dev.ps1|tools/windows/npm-dry-run.ps1|tools/unix/package.sh|tools/unix/test-package.sh|\
-              tools/unix/dev.sh|src/main.c|tests/fixtures/package/**|docs/build-and-distribution.md|\
+                tools/unix/dev.sh|src/main.c|tests/fixtures/package/**|docs/explanation/packaging-model.md|docs/contributor/release-artifacts.md|\
               docs/release/**|RELEASE_NOTES.md|CHANGELOG.md|\
               docs/contributor/testing.md|docs/reference/cli.md|packages/npm/**)
                 package_relevant=true

@@ -38,7 +38,7 @@ foreach(required IN ITEMS
         "last-wins"
         "request.rawTarget"
         "body parsing"
-        "not implemented")
+        "implemented yet")
     string(FIND "${readme_source}" "${required}" found_index)
     if(found_index EQUAL -1)
         message(FATAL_ERROR "request-context README missing honest scope text: ${required}")

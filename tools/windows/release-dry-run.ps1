@@ -108,4 +108,4 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $summaryFile) | Ou
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $summaryFile -Encoding ASCII
 
 Write-Host "release dry-run summary: $summaryFile"
-Write-Host "release dry-run completed without creating a public release."
+Write-Host "release dry-run completed; publishing is a separate step."

@@ -39,11 +39,12 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "Bootstrap app-host example"
-        "What works today"
-        "What does not work yet"
-        "not a `sloppy run --artifacts` app"
+        "What to inspect"
+        "Current limitations"
+        "Runtime lane"
+        "not on the `sloppy run --artifacts` lane"
         "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
+        "`app.plan.json` is not emitted"
         "Sloppy facade import"
         "not the current execution lane")
     require_substring(

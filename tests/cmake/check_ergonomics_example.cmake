@@ -50,11 +50,11 @@ foreach(required_pattern IN ITEMS
         "route groups"
         "result helpers"
         "schema metadata"
-        "not a `sloppy run --artifacts` app"
-        "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
-        "Validation metadata is not wired to automatic `400` responses"
-        "There is no OpenAPI generation"
+        "not on the `sloppy run --artifacts` lane"
+        "`sloppyc` compilation and route-group/schema extraction are still pending"
+        "`app.plan.json` is not emitted"
+        "Validation metadata is not wired to automatic `400` responses yet"
+        "OpenAPI generation is planned separately"
         "runnable"
         "application host")
     require_substring(

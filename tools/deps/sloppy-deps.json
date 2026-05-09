@@ -57,7 +57,7 @@
       "command": "node",
       "versionArguments": ["--version"],
       "versionPattern": "v([0-9]+\\.[0-9]+\\.[0-9]+)",
-      "reason": "Optional bootstrap stdlib fixture execution; Sloppy app code does not claim Node compatibility."
+      "reason": "Optional bootstrap stdlib fixture execution; Sloppy app code still uses Sloppy-managed artifacts."
     },
     "python": {
       "required": false,
@@ -116,7 +116,7 @@
       "defaultPreset": null,
       "compiler": "clang-cl",
       "v8SdkPlatform": null,
-      "notes": "Planned platform; no build, package, or V8 SDK lane is claimed."
+      "notes": "Planned platform; build, package, and V8 SDK lanes are not available yet."
     }
   },
   "features": {
@@ -128,7 +128,7 @@
     },
     "http": {
       "status": "experimental",
-      "evidence": "Bounded HTTP/1.1 internal alpha lane; no production edge claim."
+      "evidence": "Bounded HTTP/1.1 local development lane."
     },
     "httpsTls": {
       "status": "planned",
@@ -148,7 +148,7 @@
     },
     "dockerLiveProviders": {
       "status": "optional unavailable",
-      "evidence": "Docker is optional and never counts as live-provider pass evidence when absent."
+      "evidence": "Docker is optional; absent Docker is reported as unavailable for live-provider lanes."
     },
     "simd": {
       "status": "supported",

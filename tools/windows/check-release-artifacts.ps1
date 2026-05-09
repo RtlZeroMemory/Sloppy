@@ -71,7 +71,7 @@ function Get-Sha256Hex {
 
 function Test-ReleaseTemplates {
     $contractText = Read-RequiredText -Relative "docs/release/artifact-contract.md"
-    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@sloppy/runtime", "do not add npm package imports")) {
+    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@sloppy/runtime", "Sloppy apps still run through Sloppy-managed artifacts")) {
         Assert-TextContains -Text $contractText -Needle $needle -Message "Artifact contract doc missing required wording: $needle"
     }
 
@@ -85,7 +85,7 @@ function Test-ReleaseTemplates {
     Assert-True ($contract.npmPackages.publishTag -eq "alpha") "Artifact contract npm publishTag must be alpha."
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
-    Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must not claim final legal review."
+    Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."
     foreach ($dependency in @("v8", "openssl-tls", "sqlite", "libpq", "sql-server-odbc", "vcpkg-native-runtime")) {
         $match = @($dependencyAudit.dependencies | Where-Object { $_.id -eq $dependency })
         Assert-True ($match.Count -eq 1) "Runtime dependency audit missing '$dependency'."
@@ -103,7 +103,7 @@ function Test-ReleaseTemplates {
     }
 
     $releaseNotes = Read-RequiredText -Relative "RELEASE_NOTES.md"
-    foreach ($heading in @("# Release Notes", "## Release Type", "## Evidence Summary", "## Included Artifact Areas", "## Deferred", "## Known Limitations", "## No-Claims Confirmation")) {
+    foreach ($heading in @("# Release Notes", "## Release Type", "## Evidence Summary", "## Included Artifact Areas", "## Deferred", "## Known Limitations", "## Boundary Confirmation")) {
         Assert-TextContains -Text $releaseNotes -Needle $heading -Message "Release notes missing heading: $heading"
     }
 
@@ -114,7 +114,7 @@ function Test-ReleaseTemplates {
 
     $licenses = Read-RequiredText -Relative "docs/release/LICENSES.md"
     Assert-TextContains -Text $licenses -Needle "# License and Notice Policy" -Message "License policy template missing title."
-    Assert-TextContains -Text $licenses -Needle "complete third-party license review" -Message "License policy must require third-party review before public release."
+    Assert-TextContains -Text $licenses -Needle "complete third-party license review" -Message "License policy must require third-party review before publishing."
 
     $notice = Read-RequiredText -Relative "docs/release/NOTICE.md"
     Assert-TextContains -Text $notice -Needle "# Notice Policy" -Message "Notice policy missing title."

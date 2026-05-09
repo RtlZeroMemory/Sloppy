@@ -1825,7 +1825,7 @@ export default app;
 }
 
 #[test]
-fn extracts_route_metadata_without_runtime_claims() {
+fn extracts_route_metadata_without_runtime_execution() {
     let source = r#"import { Sloppy, Results, data } from "sloppy";
 const builder = Sloppy.createBuilder();
 builder.capabilities.addDatabase("users.db", { provider: "sqlite", access: "read" });

@@ -25,12 +25,10 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-        "source-shape evidence only"
-        "does not prove shell execution"
-        "Node"
-        "Deno"
-        "PID/native handle exposure"
-        "benchmark evidence")
+        "Sloppy-owned OS runtime API"
+        "Shell execution"
+        "raw native handle"
+        "outside this example")
     string(FIND "${readme_text}" "${required}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR "examples/os-runtime-api/README.md is missing required boundary text")

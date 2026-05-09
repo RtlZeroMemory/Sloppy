@@ -29,7 +29,7 @@ on:
         default: true
         type: boolean
       dry_run:
-        description: "Keep this workflow in dry-run mode. Public release creation is not implemented here."
+        description: "Keep this workflow in dry-run mode. Publishing is handled separately."
         required: true
         default: true
         type: boolean
@@ -58,7 +58,7 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ inputs.dry_run }}" -ne "true") {
-            throw "release-artifacts only supports dry_run=true. This workflow must not create a public release."
+            throw "release-artifacts only supports dry_run=true. Publishing is handled separately."
           }
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
           .\tools\windows\check-release-artifacts.ps1

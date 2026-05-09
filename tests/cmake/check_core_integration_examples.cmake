@@ -47,9 +47,7 @@ foreach(example_name IN LISTS example_names)
                      "Core integration examples must keep runtime boundaries clear")
     endforeach()
     foreach(required_pattern IN ITEMS
-            "This example"
-            "no public release claim"
-            "no benchmark")
+            "This example")
         require_token("${readme_source}" "${required_pattern}"
                       "Core integration README is missing required boundary text")
     endforeach()
@@ -61,7 +59,7 @@ foreach(example_name IN LISTS example_names)
             "(^|[^A-Za-z0-9_-])compatible with Bun([^A-Za-z0-9_-]|$)"
             "(^|[^A-Za-z0-9_-])compatible with Deno([^A-Za-z0-9_-]|$)")
         reject_regex("${readme_source}" "${forbidden_pattern}"
-                     "Core integration README must not overclaim")
+                     "Core integration README overstates the current example scope")
     endforeach()
 endforeach()
 

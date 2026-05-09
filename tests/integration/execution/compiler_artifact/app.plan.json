@@ -1,10 +1,10 @@
 {
   "bundle": {
     "hash": "sha256:8574ad670d955461e1189cf6d70c1fb82085635b33c927de6dbd1b18b1924232",
-    "id": "compiler-mvp-app-js",
+    "id": "compiler-artifact-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
+  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-fixture",
   "handlers": [
     {
       "displayName": "GET /",
@@ -24,7 +24,7 @@
   "schemaVersion": 1,
   "sourceMap": {
     "hash": "sha256:d12ed083a2040a2b479c50b3aa9050263e770438ac90a94db322c928dece70d6",
-    "id": "compiler-mvp-app-js-map",
+    "id": "compiler-artifact-app-js-map",
     "path": "app.js.map"
   },
   "stdlibVersion": "0.1.0",

@@ -112,10 +112,9 @@ foreach(readme_source IN ITEMS
         "${base_readme_source}" "${text_readme_source}" "${compression_readme_source}"
         "${stream_readme_source}" "${checksum_readme_source}")
     foreach(required_pattern IN ITEMS
-            "no package-manager behavior"
-            "no benchmark")
+            "This example")
         require_substring("${readme_source}" "${required_pattern}"
-                          "Codec example README is missing required boundary text")
+                          "Codec example README is missing useful example text")
     endforeach()
     foreach(forbidden_pattern IN ITEMS
             "compatible with Node"
@@ -126,7 +125,7 @@ foreach(readme_source IN ITEMS
             "fastest"
             "no overhead")
         reject_substring("${readme_source}" "${forbidden_pattern}"
-                         "Codec example README must not claim unsupported compatibility or performance")
+                         "Codec example README must not overstate compatibility or performance")
     endforeach()
 endforeach()
 

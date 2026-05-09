@@ -4,7 +4,7 @@
     "id": "postgres-bridge-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "handwritten-data-wave-3-postgres-bridge",
+  "compilerVersion": "handwritten-data-postgres-bridge-fixture",
   "requiredFeatures": [
     "provider.postgres",
     "stdlib.os"

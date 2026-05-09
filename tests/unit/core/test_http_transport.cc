@@ -3398,7 +3398,7 @@ static int run_named_transport_case(const char* name)
     if (name == nullptr) {
         return 2;
     }
-    if (strcmp(name, "localhost_mvp") == 0) {
+    if (strcmp(name, "localhost_basic") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_localhost_transport_smoke_success_and_dispatch_statuses,
                                        test_localhost_transport_smoke_body_success_and_rejections,
                                        test_dispatch_failures_map_to_safe_responses);

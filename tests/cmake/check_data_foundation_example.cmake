@@ -53,10 +53,10 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "Bootstrap data/capabilities foundation example"
         "What works today"
-        "What does not work yet"
-        "not a `sloppy run --artifacts` app"
+        "Current limitations"
+        "not on the `sloppy run --artifacts` lane"
         "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
+        "`app.plan.json` is not emitted"
         "real SQLite provider is covered by native C tests"
         "PostgreSQL and SQL Server have separate provider examples"
         "no database connection is opened"

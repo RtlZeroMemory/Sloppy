@@ -4,7 +4,7 @@
     "id": "sqlserver-bridge-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "handwritten-data-wave-4-sqlserver-bridge",
+  "compilerVersion": "handwritten-data-sqlserver-bridge-fixture",
   "requiredFeatures": [
     "provider.sqlserver",
     "stdlib.os"

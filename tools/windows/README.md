@@ -33,7 +33,7 @@ controlled memory/core clang-tidy/Clang Static Analyzer lane:
 `analyze` requires `compile_commands.json` from configure and a local `clang-tidy`. It
 builds the `sloppy_memory_analysis` target; the broader `sloppy_clang_tidy` target is
 exploratory until the full-repo analyzer baseline is quiet. Report it as the `advanced
-static analysis` lane, separate from default non-V8 evidence.
+static analysis` lane, separate from default non-V8 validation.
 
 ## V8 SDK Discovery
 
@@ -59,7 +59,7 @@ the downloaded archive under `.sdeps/v8/_downloads`, extracts the SDK into
 `.sdeps/v8/windows-x64`, validates `share/sloppy-v8-sdk.json`, and refuses checksum or
 layout mismatches. `dev.ps1 configure -EnableV8` also provisions the SDK when no
 compatible local SDK is found. Linux and macOS SDK artifact sources remain planned and
-must not be reported as pass evidence.
+must be reported under their own status.
 
 Validation uses the same helper without downloading:
 
@@ -81,7 +81,7 @@ The package script stages the alpha ZIP layout under ignored `artifacts/packages
 checks packaged CLI startup, `sloppy doctor`, required package docs, stdlib assets,
 examples, manifest fields, prebuilt artifact execution without compiling source, and
 honest non-V8 `sloppy run --artifacts` skip reporting. It does not install anything,
-mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a public release.
+mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or publish a release.
 
 Manual release artifact dry-runs add release policy checks around the same
 package/test-package path:
@@ -91,8 +91,8 @@ package/test-package path:
 .\tools\windows\release-dry-run.ps1 -Preset windows-release
 ```
 
-The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies
-`SHA256SUMS.txt`, and does not require secrets or create a public GitHub release.
+The dry-run writes ignored output under `artifacts/release-dry-run/`, verifies
+`SHA256SUMS.txt`, and does not require secrets or publish a GitHub release.
 
 npm package dry-runs generate `@sloppy/runtime` and the matching platform package from an
 already-built archive:

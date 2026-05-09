@@ -193,7 +193,7 @@ static void sl_cli_doctor_emit_os_capabilities(const SlCliOptions* options, SlAr
     if (has_signals_capability) {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("stdlib.os.signals"), sl_cli_span_cstr("ok"),
-            sl_cli_span_cstr("shutdown signal metadata is visible without platform signal claims"),
+            sl_cli_span_cstr("shutdown signal metadata is visible for the current platform"),
             emitted);
     }
 }
@@ -513,7 +513,7 @@ static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena*
         emitted);
     sl_cli_doctor_emit(
         options, arena, sl_cli_span_cstr("package.runtime"), sl_cli_span_cstr("warn"),
-        sl_cli_span_cstr("local CLI checks do not prove package release readiness"), emitted);
+        sl_cli_span_cstr("package release status requires package smoke"), emitted);
 }
 
 static int sl_cli_command_doctor(const SlCliOptions* options)

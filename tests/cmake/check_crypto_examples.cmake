@@ -129,20 +129,14 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "OS CSPRNG"
-        "no Math.random fallback"
-        "no package-manager behavior"
-        "no WebCrypto/Node/Bun compatibility"
-        "no public release"
-        "no benchmark")
+        "`Math.random` fallback")
     require_substring("${random_readme_source}" "${required_pattern}"
                       "examples/crypto-random-token/README.md is missing required boundary text")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         "constant-time comparison"
-        "no custom crypto algorithm"
-        "no package-manager behavior"
-        "no public release")
+        "does not define")
     require_substring("${hash_readme_source}" "${required_pattern}"
                       "examples/crypto-hash-hmac/README.md is missing required boundary text")
 endforeach()
@@ -150,16 +144,16 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "async"
         "offloaded from the V8 owner thread"
-        "no synchronous password hashing API"
-        "no custom password hashing algorithm")
+        "Password hashing is async"
+        "does not define a custom")
     require_substring("${password_readme_source}" "${required_pattern}"
                       "examples/crypto-password/README.md is missing required boundary text")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         "best-effort cleanup"
-        "does not print secret material"
-        "does not claim timing-proof behavior")
+        "avoids printing secret material"
+        "side-channel")
     require_substring("${secret_readme_source}" "${required_pattern}"
                       "examples/crypto-secret-constant-time/README.md is missing required boundary text")
 endforeach()

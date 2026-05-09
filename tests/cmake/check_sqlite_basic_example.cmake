@@ -53,13 +53,13 @@ foreach(required_pattern IN ITEMS
         "V8-enabled runtime tests cover the real SQLite JS-to-native bridge"
         "`data.sqlite.open({ database: \":memory:\", capability: \"data.main\" })` opens a native"
         "V8 runtime installs the SQLite bridge intrinsics"
-        "not a `sloppy run --artifacts` app"
+        "not on the `sloppy run --artifacts` lane"
         "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
-        "executable SQLite proof is the internal V8-gated artifact fixture"
+        "`app.plan.json` is not emitted"
+        "executable SQLite runtime coverage currently lives in the internal V8-gated artifact fixture"
         "PostgreSQL and SQL Server providers are covered"
         "PostgreSQL has its own V8-gated true-async bridge"
-        "SQLite has no ORM, migrations, connection pooling expansion")
+        "SQLite has no ORM, migrations, expanded pooling")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
         "examples/sqlite-basic/README.md is missing required status text")

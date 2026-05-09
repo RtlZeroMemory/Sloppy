@@ -46,11 +46,11 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "Bootstrap module example"
-        "What works today"
-        "What does not work yet"
-        "not a `sloppy run --artifacts` app"
+        "What to inspect"
+        "Current limitations"
+        "not on the `sloppy run --artifacts` lane"
         "`sloppyc` does not compile this example"
-        "does not emit `app.plan.json`"
+        "`app.plan.json` is not emitted"
         "not a real data provider"
         "module package loading and native plugins are outside this example"
         "bare `\"sloppy\"` imports are the current source shape")

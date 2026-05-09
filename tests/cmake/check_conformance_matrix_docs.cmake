@@ -25,7 +25,7 @@ foreach(required IN ITEMS
         "live-provider optional"
         "stress/smoke"
         "benchmark harness"
-        "Skipped optional gates are not pass claims"
+        "Report skipped or unavailable lanes honestly as not run"
         "skipped/not configured"
         "conformance.foundation.*"
         "conformance.v8.*"

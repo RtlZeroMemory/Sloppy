@@ -36,21 +36,21 @@ foreach(required IN ITEMS
         "package outside-checkout"
         "live-network/live-provider"
         "benchmark"
-        "Skipped optional gates are not pass claims")
+        "Report skipped or unavailable lanes honestly as not run")
     require_file_substring("${main_evidence}" "${required}" "MAIN evidence doc is missing text")
 endforeach()
 
 foreach(required IN ITEMS
         "`sloppy run <source.js|source.mjs|source.ts>` invokes `sloppyc build`"
-        "no package manager"
-        "no npm resolution"
-        "no Node compatibility")
+        "package manager"
+        "npm-style dependency resolution"
+        "Source input is limited")
     require_file_substring("${public_cli}" "${required}" "public CLI doc is missing MAIN caveat")
 endforeach()
 
 foreach(required IN ITEMS
         "deterministic artifacts"
-        "does not implement Node package"
+        "Node package resolution"
         "dynamic route strings")
     require_file_substring("${compiler_doc}" "${required}" "compiler doc is missing MAIN caveat")
 endforeach()
