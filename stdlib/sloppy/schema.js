@@ -20,6 +20,53 @@ function failure(issues) {
     });
 }
 
+function isPlainObject(value) {
+    if (value === null || typeof value !== "object") {
+        return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
+function isSchema(value) {
+    return value !== null &&
+        typeof value === "object" &&
+        typeof value.validate === "function" &&
+        typeof value.__validateAtPath === "function";
+}
+
+function withOptional(schema) {
+    return Object.freeze({
+        ...schema,
+        optional() {
+            return createOptionalSchema(schema);
+        },
+    });
+}
+
+function createOptionalSchema(inner) {
+    function validateAtPath(value, path) {
+        if (value === undefined) {
+            return success(undefined);
+        }
+
+        return inner.__validateAtPath(value, path);
+    }
+
+    return withOptional({
+        kind: inner.kind,
+        metadata: Object.freeze({
+            ...inner.metadata,
+            optional: true,
+        }),
+        validate(value) {
+            return validateAtPath(value, []);
+        },
+        __validateAtPath: validateAtPath,
+    });
+}
+
 function createStringSchema(rules = []) {
     function validateAtPath(value, path) {
         const issues = [];
@@ -64,7 +111,7 @@ function createStringSchema(rules = []) {
         __validateAtPath: validateAtPath,
     };
 
-    return Object.freeze(schema);
+    return withOptional(schema);
 }
 
 function createPrimitiveSchema(kind, predicate, expected) {
@@ -76,7 +123,7 @@ function createPrimitiveSchema(kind, predicate, expected) {
         return success(value);
     }
 
-    return Object.freeze({
+    return withOptional({
         kind,
         metadata: Object.freeze({ kind }),
         validate(value) {
@@ -86,8 +133,43 @@ function createPrimitiveSchema(kind, predicate, expected) {
     });
 }
 
+function createArraySchema(itemSchema) {
+    if (!isSchema(itemSchema)) {
+        throw new TypeError("Sloppy schema.array item must be a schema.");
+    }
+
+    function validateAtPath(value, path) {
+        if (!Array.isArray(value)) {
+            return failure([issue(path, "type", "Expected an array.")]);
+        }
+
+        const issues = [];
+        for (let index = 0; index < value.length; index += 1) {
+            const itemResult = itemSchema.__validateAtPath(value[index], [...path, index]);
+            if (!itemResult.ok) {
+                issues.push(...itemResult.issues);
+            }
+        }
+
+        return issues.length === 0 ? success(value) : failure(issues);
+    }
+
+    return withOptional({
+        kind: "array",
+        metadata: Object.freeze({
+            kind: "array",
+            item: itemSchema.metadata,
+        }),
+        item: itemSchema,
+        validate(value) {
+            return validateAtPath(value, []);
+        },
+        __validateAtPath: validateAtPath,
+    });
+}
+
 function validateShape(shape) {
-    if (shape === null || typeof shape !== "object" || Array.isArray(shape)) {
+    if (!isPlainObject(shape)) {
         throw new TypeError("Sloppy schema.object shape must be a plain object.");
     }
 
@@ -96,12 +178,7 @@ function validateShape(shape) {
             throw new TypeError("Sloppy schema.object keys must be non-empty strings.");
         }
 
-        if (
-            value === null ||
-            typeof value !== "object" ||
-            typeof value.validate !== "function" ||
-            typeof value.__validateAtPath !== "function"
-        ) {
+        if (!isSchema(value)) {
             throw new TypeError(`Sloppy schema.object field '${key}' must be a schema.`);
         }
     }
@@ -136,7 +213,7 @@ function object(shape) {
         return issues.length === 0 ? success(value) : failure(issues);
     }
 
-    return Object.freeze({
+    return withOptional({
         kind: "object",
         metadata,
         shape: fields,
@@ -158,8 +235,21 @@ export const schema = Object.freeze({
             "a finite number",
         );
     },
+    int() {
+        return createPrimitiveSchema(
+            "int",
+            (value) => typeof value === "number" && Number.isInteger(value),
+            "an integer",
+        );
+    },
     boolean() {
         return createPrimitiveSchema("boolean", (value) => typeof value === "boolean", "a boolean");
+    },
+    bool() {
+        return createPrimitiveSchema("boolean", (value) => typeof value === "boolean", "a boolean");
+    },
+    array(itemSchema) {
+        return createArraySchema(itemSchema);
     },
     object,
 });

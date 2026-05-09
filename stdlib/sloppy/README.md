@@ -3,7 +3,7 @@
 This directory contains the active bootstrap standard library and staged runtime asset set.
 This directory contains the source-controlled JavaScript facade used by bootstrap tests,
 examples, compiler fixtures, and staged runtime assets. It is the Sloppy
-bootstrap facade, not a Node compatibility layer.
+bootstrap facade for Sloppy-owned application imports.
 
 ## Layout
 
@@ -53,14 +53,14 @@ lib/sloppy/bootstrap/sloppy/
   snapshots.
 - `internal/capabilities.js`, `internal/config.js`, `internal/logging.js`,
   `internal/modules.js`, `internal/routes.js`, `internal/services.js`, and
-  `internal/shared.js` hold app-host implementation helpers. They are staged bootstrap
-  assets, not public import targets.
+  `internal/shared.js` hold app-host implementation helpers. Public imports come from the
+  documented package entry points.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
-  handled by the engine/runtime bridge; descriptors do not write responses by themselves.
+  handled by the engine/runtime bridge; response writing belongs to runtime conversion.
 - `problem-details.js` provides `ProblemDetails.defaults(...)` descriptors for safe
   route-handler error responses.
 - `schema.js` provides the current validation metadata surface for strings, numbers,
-  booleans, and object shapes.
+  integers, booleans, arrays, optional fields, and object shapes.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.
@@ -86,7 +86,7 @@ lib/sloppy/bootstrap/sloppy/
   tracks.
 - Benchmark, operations, and release readiness are covered by dedicated docs and gates.
 
-## Not Implemented Here
+## Current Boundaries
 
 - `app.run`, `app.listen`, or `app.build`;
 - public handler registration APIs;

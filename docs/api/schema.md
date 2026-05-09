@@ -47,8 +47,10 @@ schema.string().min(1)
 schema.string().email()
 
 schema.number()
+schema.int()
 
 schema.boolean()
+schema.bool()        // alias
 ```
 
 Each returns a frozen schema object. Chained methods return new schemas
@@ -58,6 +60,27 @@ Each returns a frozen schema object. Chained methods return new schemas
 | -------------------- | ----------------------------------- | --------------- |
 | `.min(n)`            | reject strings shorter than `n`     | `string.min`    |
 | `.email()`           | basic email format check            | `string.email`  |
+
+## Arrays
+
+```ts
+const tags = schema.array(schema.string());
+```
+
+`schema.array(itemSchema)` validates each entry against `itemSchema`. Failed
+items report a numeric segment in `issue.path` (e.g. `["tags", 2]`).
+
+## Optional fields
+
+Every schema exposes `.optional()`. An optional schema accepts `undefined`;
+any other value is delegated to the wrapped schema.
+
+```ts
+const post = schema.object({
+    title: schema.string().min(1),
+    tags:  schema.array(schema.string()).optional(),
+});
+```
 
 ## Objects
 

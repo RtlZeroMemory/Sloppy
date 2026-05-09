@@ -1449,8 +1449,9 @@ async function flushMicrotasks(count = 6) {
 
     const User = schema.object({
         name: schema.string().min(1),
-        age: schema.number(),
-        active: schema.boolean(),
+        age: schema.int(),
+        active: schema.bool(),
+        tags: schema.array(schema.string()).optional(),
     });
 
     assert.equal(User.kind, "object");
@@ -1459,11 +1460,18 @@ async function flushMicrotasks(count = 6) {
         age: 37,
         active: true,
     }).ok, true);
+    assert.deepEqual(User.validate({
+        name: "Ada",
+        age: 37,
+        active: true,
+        tags: ["admin", "editor"],
+    }).ok, true);
 
     const invalidUser = User.validate({
         name: "",
-        age: Number.NaN,
+        age: 37.5,
         active: "yes",
+        tags: ["ok", 1],
     });
 
     assert.equal(invalidUser.ok, false);
@@ -1471,8 +1479,13 @@ async function flushMicrotasks(count = 6) {
         "name",
         "age",
         "active",
+        "tags.1",
     ]);
     assert.equal(User.metadata.shape.name.kind, "string");
+    assert.equal(User.metadata.shape.tags.kind, "array");
+    assert.equal(User.metadata.shape.tags.optional, true);
+    assert.equal(schema.number().optional().validate(undefined).ok, true);
+    assertThrowsMessage(() => schema.array({}), /must be a schema/);
     assertThrowsMessage(() => schema.object({ bad: {} }), /must be a schema/);
     assertThrowsMessage(
         () => schema.object({ bad: { validate() { return { ok: true }; } } }),
