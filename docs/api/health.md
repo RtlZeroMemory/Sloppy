@@ -4,7 +4,7 @@
 liveness, and readiness — that report the app's health.
 
 ```ts
-import { Sloppy, Results } from "sloppy";
+import { Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 

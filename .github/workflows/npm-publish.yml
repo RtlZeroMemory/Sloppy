@@ -1,0 +1,156 @@
+name: npm-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_artifacts_run_id:
+        description: "GitHub Actions run ID from release-artifacts that uploaded npm tarballs."
+        required: true
+        type: string
+      publish:
+        description: "Publish to npm. Leave false for a dry-run validation."
+        required: true
+        default: false
+        type: boolean
+      confirm:
+        description: "Type publish-alpha when publish=true."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: npm publish / alpha gated
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate publish gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.publish }}" == "true" && "${{ inputs.confirm }}" != "publish-alpha" ]]; then
+            echo "Publishing requires confirm=publish-alpha." >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+
+      - name: Setup npm
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.5.1
+          node --version
+          npm --version
+
+      - name: Download Windows npm tarballs
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.release_artifacts_run_id }}
+          name: sloppy-windows-x64-dry-run
+          path: artifacts/npm-publish/windows
+
+      - name: Download Linux npm tarballs
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.release_artifacts_run_id }}
+          name: sloppy-linux-x64-dry-run
+          path: artifacts/npm-publish/linux
+
+      - name: Locate npm tarballs
+        id: tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t root_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-[0-9]*.tgz' | sort)
+          mapfile -t linux_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-linux-x64-*.tgz' | sort)
+          mapfile -t windows_candidates < <(find artifacts/npm-publish/windows -type f -name 'rtlzeromemory-sloppy-win32-x64-*.tgz' | sort)
+          if [[ "${#root_candidates[@]}" -ne 1 || "${#linux_candidates[@]}" -ne 1 || "${#windows_candidates[@]}" -ne 1 ]]; then
+            echo "Expected one root, one Linux, and one Windows npm tarball from release-artifacts." >&2
+            find artifacts/npm-publish -name '*.tgz' -print >&2
+            exit 1
+          fi
+          {
+            echo "root=${root_candidates[0]}"
+            echo "linux=${linux_candidates[0]}"
+            echo "windows=${windows_candidates[0]}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Local npm install smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_root="$(mktemp -d)"
+          trap 'rm -rf "$temp_root"' EXIT
+          npm install --prefix "$temp_root/install" --ignore-scripts \
+            "${{ steps.tarballs.outputs.root }}" \
+            "${{ steps.tarballs.outputs.linux }}"
+          launcher="$temp_root/install/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+          node "$launcher" --version
+          node "$launcher" doctor
+          mkdir -p "$temp_root/work"
+          (cd "$temp_root/work" && node "$launcher" create tmp-app --template minimal-api --no-git)
+          (cd "$temp_root/work/tmp-app" && node "$launcher" build)
+          set +e
+          run_output="$(cd "$temp_root/work/tmp-app" && node "$launcher" run --once GET /health 2>&1)"
+          run_status=$?
+          set -e
+          if [[ "$run_status" -ne 0 && "$run_output" != *"requires V8-enabled build"* ]]; then
+            echo "Local npm smoke failed unexpectedly." >&2
+            echo "$run_output" >&2
+            exit 1
+          fi
+
+      - name: npm publish dry-run
+        if: ${{ inputs.publish != true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm publish "${{ steps.tarballs.outputs.windows }}" --access public --tag alpha --dry-run
+          npm publish "${{ steps.tarballs.outputs.linux }}" --access public --tag alpha --dry-run
+          npm publish "${{ steps.tarballs.outputs.root }}" --access public --tag alpha --dry-run
+          echo "Dry-run only. Set publish=true and confirm=publish-alpha to publish."
+
+      - name: Publish platform packages
+        if: ${{ inputs.publish == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish_one() {
+            local tarball="$1"
+            if ! npm publish "$tarball" --access public --tag alpha --provenance; then
+              echo "npm publish failed. Confirm npm Trusted Publishing is configured for this GitHub workflow and package on npmjs.com." >&2
+              echo "Do not commit .npmrc auth files or print npm tokens." >&2
+              exit 1
+            fi
+          }
+          publish_one "${{ steps.tarballs.outputs.windows }}"
+          publish_one "${{ steps.tarballs.outputs.linux }}"
+
+      - name: Publish root launcher package
+        if: ${{ inputs.publish == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! npm publish "${{ steps.tarballs.outputs.root }}" --access public --tag alpha --provenance; then
+            echo "npm root package publish failed. Platform packages publish first; reruns must account for already-published versions." >&2
+            echo "Confirm npm Trusted Publishing is configured before retrying." >&2
+            exit 1
+          fi

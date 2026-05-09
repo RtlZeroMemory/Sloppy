@@ -69,6 +69,8 @@ compiler fails closed rather than emitting a partial Plan.
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
+| CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates are packaged with local archives and npm platform packages. |
+| CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under the artifact output directory; not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
 | CLI `audit` | n/a | Plan-derived | metadata-only | no V8 required | Reports static Plan issues and policy notes. |
@@ -81,7 +83,7 @@ compiler fails closed rather than emitting a partial Plan.
 | Inbound TLS | n/a | config metadata | supported paths | experimental | Certificate/key paths are Plan-visible today; diagnostics redact TLS material. |
 | HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | `https://` needs the private outbound TLS bridge. |
 | Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for proof classification. |
-| Package/install path | n/a | n/a | package layout | experimental | Local archives exist; public release/npm launcher are not published. |
+| Package/install path | n/a | n/a | package layout | experimental | Local archives and local npm tarball proof exist; public release/npm packages are not published. |
 
 ## Current Limits
 

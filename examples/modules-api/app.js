@@ -1,4 +1,4 @@
-import { Sloppy, Results } from "sloppy";
+import { Sloppy } from "sloppy";
 import { healthModule, usersModule } from "./modules/routes.js";
 
 const app = Sloppy.create();

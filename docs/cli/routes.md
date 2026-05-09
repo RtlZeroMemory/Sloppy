@@ -42,5 +42,5 @@ custom validation.
 - Generate human-readable documentation for an API.
 - Wire into CI to fail when routes change unexpectedly.
 
-For OpenAPI output, use [`sloppy openapi`](openapi.md). `routes` is the
-lower-level dump.
+For OpenAPI output, use [`sloppy openapi`](openapi.md). `routes` accepts either
+`--plan <path>` or `--artifacts <dir>`. `routes` is the lower-level dump.

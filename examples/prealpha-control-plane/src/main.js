@@ -1,4 +1,4 @@
-import { ProblemDetails, Results, Sloppy } from "sloppy";
+import { ProblemDetails, Sloppy } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";
 import { appsModule } from "./routes/apps.js";
 import { buildsModule } from "./routes/builds.js";

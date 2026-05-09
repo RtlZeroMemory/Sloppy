@@ -1384,6 +1384,84 @@ export default app;
 }
 
 #[test]
+fn entry_without_results_import_can_use_results_in_function_module() {
+    let root = fixture_temp_dir("module-only-entry-without-results");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module-only entry should extract");
+
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert_eq!(app.routes[0].module.as_deref(), Some("usersModule"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn direct_results_handler_requires_results_import_in_same_file() {
+    let root = fixture_temp_dir("direct-results-requires-import");
+    let source = r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("direct Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("call Results"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_results_handler_requires_module_results_import() {
+    let root = fixture_temp_dir("module-results-requires-import");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"export function usersModule(app) {
+    app.get("/users", () => Results.json([{ id: "ada" }]));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("module Results handler should fail");
+
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic.message.contains("same source file"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn rejects_invalid_composed_function_module_route_pattern() {
     let root = fixture_temp_dir("invalid-module-route-pattern");
     let modules = root.join("modules");

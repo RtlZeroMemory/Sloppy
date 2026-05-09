@@ -340,6 +340,7 @@ struct AppState {
     unsupported_import_name: Option<(String, Span)>,
     unsupported_import_specifier: Option<(String, Span)>,
     dynamic_import: Option<Span>,
+    results_required_span: Option<Span>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, RouteGroupState>,
@@ -391,6 +392,7 @@ impl AppState {
             unsupported_import_name: None,
             unsupported_import_specifier: None,
             dynamic_import: None,
+            results_required_span: None,
             app_vars: BTreeSet::new(),
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
@@ -1000,18 +1002,18 @@ fn extract_entry(
         .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", or \"sloppy/workers\"."));
     }
 
-    if !state.sloppy_imported || !state.results_imported {
+    if !state.sloppy_imported {
         let hint = if state.unsupported_import_alias {
-            "Import without aliases: import { Sloppy, Results } from \"sloppy\";"
+            "Import without aliases: import { Sloppy } from \"sloppy\";"
         } else {
-            "Use: import { Sloppy, Results } from \"sloppy\";"
+            "Use: import { Sloppy } from \"sloppy\";"
         };
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT",
             if state.unsupported_import_alias {
-                "input must import Sloppy and Results from \"sloppy\" without aliases"
+                "input must import Sloppy from \"sloppy\" without aliases"
             } else {
-                "input must import Sloppy and Results from \"sloppy\""
+                "input must import Sloppy from \"sloppy\""
             },
         )
         .with_path(path)
@@ -1019,6 +1021,12 @@ fn extract_entry(
     }
 
     let module_graph_start = Instant::now();
+    if !state.results_imported {
+        if let Some(span) = state.results_required_span {
+            return Err(missing_results_import_diagnostic(path, span));
+        }
+    }
+
     for (local_name, span) in state.used_modules.clone() {
         let Some(imported) = state
             .imported_modules
@@ -1542,6 +1550,74 @@ fn validate_module_sloppy_import(
         }
     }
     Ok(())
+}
+
+fn validate_module_sloppy_root_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<bool, Diagnostic> {
+    let Some(specifiers) = &import.specifiers else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    };
+    if specifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    }
+
+    let mut results_imported = false;
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                "unsupported import specifier \"sloppy\"",
+            )
+            .with_path(path)
+            .with_span(import.source.span));
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if imported == "Testing" {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+                "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+            )
+            .with_path(path)
+            .with_span(specifier.span)
+            .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+        }
+        if !sloppy_root_import_name_supported(imported) || imported != local {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("unsupported sloppy import \"{imported}\""),
+            )
+            .with_path(path)
+            .with_span(specifier.span)
+            .with_hint("Use documented unaliased imports from \"sloppy\"."));
+        }
+        if imported == "Results" {
+            results_imported = true;
+        }
+    }
+    Ok(results_imported)
+}
+
+fn missing_results_import_diagnostic(path: &Path, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_UNSUPPORTED_IMPORT",
+        "route handlers that call Results must import Results from \"sloppy\" in the same source file",
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Add `import { Results } from \"sloppy\";` to the file that contains the handler.")
 }
 
 fn validate_module_sloppy_time_import(
@@ -2175,6 +2251,11 @@ fn extract_expression_statement(
     if let Some(routes) =
         app_map_controller_call(path, source, source_name, &statement.expression, state)?
     {
+        if state.results_required_span.is_none() {
+            state.results_required_span = routes.iter().find_map(|route| {
+                handler_requires_results_import(&route.handler).then_some(route.handler.span)
+            });
+        }
         state.routes.extend(routes);
         return Ok(());
     }
@@ -2282,6 +2363,9 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
+    if handler_requires_results_import(&handler) && state.results_required_span.is_none() {
+        state.results_required_span = Some(handler.span);
+    }
     if !handler.effects.is_empty() {
         let providers = providers_used_by_effects(&state.provider_bindings, &handler.effects);
         if let Some((name, binding)) = providers
@@ -5936,11 +6020,14 @@ fn extract_relative_module(
     let mut exports = BTreeMap::<String, Vec<Route>>::new();
     let mut duplicate_exports = BTreeSet::<String>::new();
     let extract_start = Instant::now();
+    let mut module_results_imported = false;
     for statement in &parsed.program.body {
         match statement {
             Statement::ImportDeclaration(import) => {
                 let import_source = import.source.value.as_str();
                 if import_source == "sloppy" {
+                    module_results_imported |=
+                        validate_module_sloppy_root_import(&imported.path, import)?;
                     continue;
                 }
                 if import_source == "sloppy/time" {
@@ -6062,6 +6149,17 @@ fn extract_relative_module(
                     export_name,
                     function,
                 )?;
+                if !module_results_imported {
+                    if let Some(route) = routes
+                        .iter()
+                        .find(|route| handler_requires_results_import(&route.handler))
+                    {
+                        return Err(missing_results_import_diagnostic(
+                            &imported.path,
+                            route.handler.span,
+                        ));
+                    }
+                }
                 if exports.insert(export_name.to_string(), routes).is_some() {
                     duplicate_exports.insert(export_name.to_string());
                 }
@@ -7071,6 +7169,10 @@ fn handler_from_argument(
         }
         _ => None,
     }
+}
+
+fn handler_requires_results_import(handler: &Handler) -> bool {
+    handler.source.contains("Results.")
 }
 
 fn typed_framework_handler_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {

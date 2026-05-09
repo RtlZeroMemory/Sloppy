@@ -4,15 +4,15 @@ Check that the local environment and (optionally) a Plan are healthy.
 Useful as the first command to run when something isn't working.
 
 ```
-sloppy doctor [--plan <path>] [--format text|json]
+sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]
 ```
 
 ## What it checks
 
 - The CLI version and build flags (V8 enabled, debug/release).
 - The bootstrap stdlib is present and at a compatible version.
-- If `--plan` is given: the Plan parses, schema version is supported,
-  artifact hashes match, required features are activatable.
+- If `--plan` or `--artifacts` is given: the Plan parses, schema version is
+  supported, artifact hashes match, required features are activatable.
 - Provider dependencies: SQLite is built-in; PostgreSQL needs `libpq`;
   SQL Server needs an ODBC driver. `doctor` reports each provider as
   `available`, `unavailable`, or `unknown`.

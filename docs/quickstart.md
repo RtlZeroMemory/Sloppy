@@ -13,20 +13,21 @@ Prerequisites:
 ## 1. Create a project
 
 ```sh
-mkdir hello-api && cd hello-api
-mkdir src
+sloppy create hello-api --template minimal-api --no-git
+cd hello-api
 ```
 
-You're aiming for this layout:
+That creates this layout:
 
 ```
 hello-api/
   sloppy.json
+  appsettings.json
   src/
     main.ts
 ```
 
-## 2. Add `sloppy.json`
+## 2. Check `sloppy.json`
 
 ```json
 {
@@ -42,7 +43,7 @@ Three fields:
 - `outDir` — where compiled artifacts go.
 - `environment` — picked up for environment-tagged config; `"Development"` is fine.
 
-## 3. Write the app
+## 3. Check the app
 
 `src/main.ts`:
 
@@ -68,6 +69,9 @@ That's the whole app:
   `patch`, and `delete` work the same way.
 - `{name}` is a route parameter; `ctx.route.name` reads it back as a string.
 - `Results.text(...)` and `Results.json(...)` describe the response.
+- Imports are file-local. This single file imports `Results` because its
+  handlers call `Results.*`; a thin multi-file entry that only registers route
+  modules would import `Sloppy` alone.
 
 ## 4. Build
 
@@ -109,7 +113,24 @@ the artifacts:
 sloppy run src/main.ts --once GET /hello/Ada
 ```
 
-## 6. Run a server
+## 6. Package the app
+
+```
+sloppy package
+```
+
+This validates the generated artifacts and writes:
+
+```
+.sloppy/package/
+  manifest.json
+  artifacts/
+    app.plan.json
+    app.js
+    app.js.map
+```
+
+## 7. Run a server
 
 Drop `--once` to start a real HTTP server bound to `127.0.0.1:5173`:
 
@@ -144,4 +165,4 @@ sloppy run --artifacts .sloppy --host 0.0.0.0 --port 8080
 - [API: routing](api/routing.md) — patterns, groups, controllers
 - [API: results](api/results.md) — every `Results.*` helper
 - [Guide: project layout](guide/project-layout.md) — `sloppy.json`, env config, `appsettings.json`
-- [CLI: build](cli/build.md) and [CLI: run](cli/run.md) — every flag
+- [CLI: create](cli/create.md), [build](cli/build.md), [run](cli/run.md), and [package](cli/package.md) — every flag

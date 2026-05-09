@@ -451,7 +451,7 @@ try {
             throw "Package smoke missing required package file: $requiredFile"
         }
     }
-    $requiredDirectories = @("bin", "stdlib", "stdlib/sloppy", "examples", "docs")
+    $requiredDirectories = @("bin", "stdlib", "stdlib/sloppy", "templates", "examples", "docs")
     if ($null -ne $metadata -and $null -ne $metadata.requiredDirectories) {
         $requiredDirectories = @($metadata.requiredDirectories)
     }

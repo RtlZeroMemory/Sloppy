@@ -27,6 +27,7 @@ sloppy-<platform>-<arch>/
     required runtime dynamic libraries
   stdlib/
     sloppy/
+  templates/
   examples/
   docs/
     KNOWN_LIMITATIONS.md
@@ -55,17 +56,25 @@ The supported status vocabulary is `supported`, `experimental`, `source-build on
 
 ## npm
 
-The npm root package is `@sloppy/runtime`. It exposes only the `sloppy` launcher and
+The npm root package is `@rtlzeromemory/sloppy`. It exposes only the `sloppy` launcher and
 selects an installed platform package:
 
-- `@sloppy/runtime-win32-x64`
-- `@sloppy/runtime-linux-x64-gnu`
-- `@sloppy/runtime-darwin-arm64`
-- `@sloppy/runtime-darwin-x64`
+- `@rtlzeromemory/sloppy-win32-x64`
+- `@rtlzeromemory/sloppy-linux-x64`
+- `@rtlzeromemory/sloppy-darwin-arm64`
+- `@rtlzeromemory/sloppy-darwin-x64`
 
 npm package dry-runs must use `--tag alpha`, never `latest`. Platform package contents are
 generated from already-built archive contents; npm install must not compile native code,
 run `node-gyp`, build V8, or download V8 in `postinstall`.
+
+Publishing is manual and alpha-gated through the npm publish workflow. It uses
+Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and
+`npm publish --provenance` so npm Trusted Publishing can issue the publish
+credential. If Trusted Publishing is not configured on npmjs.com for these
+packages, the publish step must fail; do not add committed `.npmrc` auth or
+long-lived tokens. The documented fallback is a granular `NPM_TOKEN` GitHub
+Actions secret, restricted to the package/scope and expiration-bound.
 
 User-facing wording:
 

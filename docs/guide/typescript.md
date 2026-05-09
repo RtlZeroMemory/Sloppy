@@ -14,8 +14,9 @@ the canonical proof-of-acceptance is the fixture suite under
 ## Inputs
 
 - File extensions: `.js`, `.mjs`, `.ts`.
-- Required imports: `Sloppy` and `Results` from `"sloppy"`, named and
-  unaliased.
+- Required entry import: `Sloppy` from `"sloppy"`, named and unaliased.
+- `Results` is file-local: any file with handlers that call `Results.*` must
+  import `Results` from `"sloppy"` in that same file.
 - Compiler-recognized import sources: `"sloppy"`, `"sloppy/data"`,
   `"sloppy/providers/sqlite"`, `"sloppy/providers/postgres"`,
   `"sloppy/providers/sqlserver"`, `"sloppy/fs"`, `"sloppy/time"`,
@@ -113,6 +114,10 @@ import { usersModule } from "./users";
 
 Subpath imports under `"sloppy/..."` are reserved for the runtime
 stdlib; see [API](../api/README.md) for what each subpath exports.
+
+`Results` imports are not inherited across files. A thin `main.ts` that only
+creates the app and registers function modules can import `Sloppy` alone; each
+route module imports `Results` when its own handlers return `Results.*`.
 
 ## Async handlers
 

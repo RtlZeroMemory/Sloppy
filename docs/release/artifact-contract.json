@@ -65,6 +65,7 @@
     "bin/sloppy",
     "bin/sloppyc",
     "stdlib/sloppy",
+    "templates",
     "examples",
     "docs/KNOWN_LIMITATIONS.md",
     "docs/LICENSES.md",
@@ -106,14 +107,23 @@
   ],
   "checksumFile": "SHA256SUMS.txt",
   "npmPackages": {
-    "root": "@sloppy/runtime",
+    "root": "@rtlzeromemory/sloppy",
     "platformPackages": [
-      "@sloppy/runtime-win32-x64",
-      "@sloppy/runtime-linux-x64-gnu",
-      "@sloppy/runtime-darwin-arm64",
-      "@sloppy/runtime-darwin-x64"
+      "@rtlzeromemory/sloppy-win32-x64",
+      "@rtlzeromemory/sloppy-linux-x64",
+      "@rtlzeromemory/sloppy-darwin-arm64",
+      "@rtlzeromemory/sloppy-darwin-x64"
     ],
     "publishTag": "alpha",
+    "publishWorkflow": ".github/workflows/npm-publish.yml",
+    "publishTrigger": "manual workflow_dispatch",
+    "publishAuth": "npm Trusted Publishing/OIDC preferred; granular NPM_TOKEN secret is fallback only",
+    "publishOrder": [
+      "platform packages",
+      "root launcher package"
+    ],
+    "nodeMinimum": "22.14.0",
+    "npmMinimum": "11.5.1",
     "nativeInstallScriptsAllowed": false,
     "nodeGypAllowed": false,
     "postinstallDownloadAllowed": false,
@@ -121,7 +131,7 @@
   },
   "nonGoals": [
     "dry-run only",
-    "no npm publish",
+    "no automatic npm publish",
     "no latest dist-tag",
     "no installer",
     "no signing",

@@ -261,6 +261,10 @@ jobs:
           fi
           tools/unix/release-dry-run.sh "${args[@]}"
 
+      - name: npm launcher dry-run from Linux archive
+        shell: bash
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-linux-x64.tar.gz
+
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -281,6 +285,8 @@ jobs:
             artifacts/packages/sloppy-*.tar.gz
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz
 
   package-macos-arm64:
     name: release dry-run / macos-arm64

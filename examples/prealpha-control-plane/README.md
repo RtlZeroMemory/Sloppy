@@ -37,9 +37,10 @@ health routes, method mismatch, not-found behavior, and host lifecycle cleanup.
 ## Current limits
 
 This example stays inside the syntax that `sloppyc` can extract today. Source
-root imports therefore use `Sloppy`, `Results`, `ProblemDetails`, and
-`sloppy/providers/sqlite`; request-id middleware, request logging middleware,
-and `app.mapHealthChecks()` are covered by the app test host rather than by the
+root imports therefore use `Sloppy`, `ProblemDetails`, and
+`sloppy/providers/sqlite`; route modules import `Results` in the files that
+call `Results.*`. Request-id middleware, request logging middleware, and
+`app.mapHealthChecks()` are covered by the app test host rather than by the
 compiled source project.
 
 The source route modules keep SQL near the handlers because current function

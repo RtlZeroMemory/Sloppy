@@ -15,7 +15,9 @@ sloppy --version
 
 | Command                      | Purpose                                                  |
 | ---------------------------- | -------------------------------------------------------- |
+| [`sloppy create`](create.md) | Copy a built-in app template into a new directory        |
 | [`sloppy build`](build.md)   | Compile source into Plan-backed artifacts                |
+| [`sloppy package`](package.md) | Build a directory app package from source artifacts    |
 | [`sloppy run`](run.md)       | Run a compiled app or compile-and-run from source        |
 | [`sloppy routes`](routes.md) | List route metadata from a Plan                          |
 | [`sloppy capabilities`](capabilities.md) | List declared capabilities                   |
@@ -23,8 +25,8 @@ sloppy --version
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |
 | [`sloppy openapi`](openapi.md) | Generate an OpenAPI document from a Plan               |
 
-`build` and `run` are what you'll use day to day. The rest are inspection
-tools that work against an already-built `app.plan.json`.
+`create`, `build`, `run`, and `package` are the normal app workflow. The
+inspection tools work against an already-built `app.plan.json`.
 
 ## Project mode vs explicit paths
 
@@ -35,11 +37,14 @@ Most commands work in two ways: read `sloppy.json` from the current directory
 # project mode — uses sloppy.json
 sloppy build
 sloppy run
+sloppy package
 
 # explicit
 sloppy build src/main.ts --out dist
 sloppy run --artifacts dist
 sloppy run src/main.ts
+sloppy package src/main.ts --out dist
+sloppy openapi --artifacts dist
 ```
 
 See [reference/sloppy-json.md](../reference/sloppy-json.md) for the project
@@ -57,6 +62,9 @@ config schema.
 `--host` and `--port` apply to `sloppy run`; `sloppy build` accepts them so
 they can be baked into the Plan but doesn't open a socket. `--environment`
 selects which `appsettings.{Environment}.json` overlay applies.
+
+`sloppy create` defaults to `minimal-api`. The current template names are
+`minimal-api`, `full-api`, and `dogfood`.
 
 ## Exit codes
 
