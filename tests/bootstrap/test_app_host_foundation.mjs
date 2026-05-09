@@ -1364,8 +1364,29 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(Results.json({ ok: true }, { headers: { "x-test": "1" } }).headers, {
         "x-test": "1",
     });
+    {
+        const protoHeaders = {};
+        Object.defineProperty(protoHeaders, "__proto__", {
+            value: "value",
+            enumerable: true,
+            writable: true,
+            configurable: true,
+        });
+        const protoResult = Results.json({ ok: true }, { headers: protoHeaders });
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(protoResult.headers, "__proto__"),
+            true,
+        );
+        assert.equal(protoResult.headers["__proto__"], "value");
+        assert.equal(Object.getPrototypeOf(protoResult.headers), Object.prototype);
+    }
     assertThrowsMessage(() => Results.ok("bad", { status: 99 }), /status/);
     assertThrowsMessage(() => Results.ok("bad", { headers: new Map() }), /plain object/);
+    assertThrowsMessage(() => Results.ok("bad", { headers: { "bad header": "1" } }), /safe unmanaged/);
+    assertThrowsMessage(() => Results.ok("bad", { headers: { "Content-Type": "text/plain" } }), /safe unmanaged/);
+    assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": 1 } }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": "a\r\nb" } }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.created("/users/1\r\nx: y", { id: 1 }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "text/plain\r\nx: y" }), /control characters/);
