@@ -114,9 +114,36 @@ function handleRouteError(host, error) {
     return host.handleError(error);
 }
 
-function finishRouteError(host, error, cleanup) {
+function appendContextResponseHeaders(result, context) {
+    const responseHeaders = context?.__sloppyResponseHeaders;
+    if (!isPlainObject(responseHeaders) || result === null || typeof result !== "object") {
+        return result;
+    }
+
+    return Object.freeze({
+        ...result,
+        headers: Object.freeze({
+            ...(isPlainObject(result.headers) ? result.headers : {}),
+            ...responseHeaders,
+        }),
+    });
+}
+
+function finishRouteResult(result, policy, context) {
+    if (result !== null && typeof result === "object" && typeof result.then === "function") {
+        return Promise.resolve(result).then((value) => finishRouteResult(value, policy, context));
+    }
+
+    return finishWithCors(appendContextResponseHeaders(result, context), policy, context);
+}
+
+function finishHandledRouteError(host, error, policy, context) {
+    return finishRouteResult(handleRouteError(host, error), policy, context);
+}
+
+function finishRouteError(host, error, policy, context, cleanup) {
     try {
-        return finishWithCleanup(handleRouteError(host, error), cleanup);
+        return finishWithCleanup(finishHandledRouteError(host, error, policy, context), cleanup);
     } catch (handledError) {
         return cleanupAfterFailure(handledError, cleanup);
     }
@@ -467,13 +494,13 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
                 );
                 if (result !== null && typeof result === "object" && typeof result.then === "function") {
                     return Promise.resolve(result).then(
-                        (value) => finishWithCors(value, corsPolicy, providedContext),
-                        (error) => handleRouteError(host, error),
+                        (value) => finishRouteResult(value, corsPolicy, providedContext),
+                        (error) => finishHandledRouteError(host, error, corsPolicy, providedContext),
                     );
                 }
-                return finishWithCors(result, corsPolicy, providedContext);
+                return finishRouteResult(result, corsPolicy, providedContext);
             } catch (error) {
-                return handleRouteError(host, error);
+                return finishHandledRouteError(host, error, corsPolicy, providedContext);
             }
         }
 
@@ -487,18 +514,30 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
             if (result !== null && typeof result === "object" && typeof result.then === "function") {
                 return Promise.resolve(result).then(
                     (value) => finishWithCleanup(
-                        finishWithCors(value, corsPolicy, ownedContext),
+                        finishRouteResult(value, corsPolicy, ownedContext),
                         () => ownedContext.services.dispose(),
                     ),
-                    (error) => finishRouteError(host, error, () => ownedContext.services.dispose()),
+                    (error) => finishRouteError(
+                        host,
+                        error,
+                        corsPolicy,
+                        ownedContext,
+                        () => ownedContext.services.dispose(),
+                    ),
                 );
             }
             return finishWithCleanup(
-                finishWithCors(result, corsPolicy, ownedContext),
+                finishRouteResult(result, corsPolicy, ownedContext),
                 () => ownedContext.services.dispose(),
             );
         } catch (error) {
-            return finishRouteError(host, error, () => ownedContext.services.dispose());
+            return finishRouteError(
+                host,
+                error,
+                corsPolicy,
+                ownedContext,
+                () => ownedContext.services.dispose(),
+            );
         }
     };
 }
@@ -743,6 +782,14 @@ function registerCorsPreflightRoute(
             throw new Error(`Sloppy CORS preflight route '${pattern}' already has a different policy.`);
         }
         existing.metadata.cors.state.methods.add(method);
+        existing.handler = createRouteHandler(
+            host,
+            createCorsPreflightHandler(existing.metadata.cors.state),
+            middleware,
+            null,
+            Object.freeze({ method: "OPTIONS", pattern }),
+        );
+        existing.metadata.middleware = middlewareMetadata(middleware);
         return;
     }
 
@@ -767,6 +814,7 @@ function registerCorsPreflightRoute(
                 preflight: true,
                 state,
             },
+            middleware: middlewareMetadata(middleware),
         },
     });
 }

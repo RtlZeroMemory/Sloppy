@@ -1880,6 +1880,7 @@ async function flushMicrotasks(count = 6) {
     });
     const errorResponse = await errorApp.__getRoutes()[0].handler();
     assert.equal(errorResponse.status, 500);
+    assert.equal(errorResponse.headers["x-request-id"], "req-error");
     assert.equal(errorSink.entries()[0].fields.status, 500);
     assert.equal(errorSink.entries()[0].fields.requestId, "req-error");
     assert.equal(JSON.stringify(errorSink.entries()).includes("SECRET_VALUE_SHOULD_NOT_LEAK"), false);
@@ -1939,6 +1940,45 @@ async function flushMicrotasks(count = 6) {
     assert.equal(corsSink.entries()[0].fields.method, "OPTIONS");
     assert.equal(corsSink.entries()[0].fields.path, "/cors");
     assert.equal(corsSink.entries()[0].fields.status, 204);
+
+    const lateCorsBuilder = Sloppy.createBuilder();
+    const lateCorsSink = lateCorsBuilder.logging.addMemorySink();
+    const lateCorsApp = lateCorsBuilder.build();
+    lateCorsApp.useCors({ origins: ["https://app.example"] });
+    lateCorsApp.get("/shared-cors", () => Results.ok({ ok: true }));
+    lateCorsApp.use(RequestId.defaults({ generator: () => "req-late-cors" }));
+    lateCorsApp.use(RequestLogging.defaults({ includeDuration: false }));
+    lateCorsApp.post("/shared-cors", () => Results.ok({ ok: true }));
+    const latePreflight = lateCorsApp.__getRoutes().find((route) =>
+        route.method === "OPTIONS" && route.pattern === "/shared-cors");
+    const lateCorsResponse = await latePreflight.handler({
+        request: {
+            headers: requestHeaders({
+                Origin: "https://app.example",
+                "Access-Control-Request-Method": "POST",
+            }),
+        },
+    });
+    assert.equal(lateCorsResponse.status, 204);
+    assert.equal(lateCorsResponse.headers["x-request-id"], "req-late-cors");
+    assert.equal(lateCorsSink.entries()[0].fields.method, "OPTIONS");
+    assert.equal(lateCorsSink.entries()[0].fields.path, "/shared-cors");
+    assert.equal(lateCorsSink.entries()[0].fields.requestId, "req-late-cors");
+
+    const noReqIdBuilder = Sloppy.createBuilder();
+    const noReqIdSink = noReqIdBuilder.logging.addMemorySink();
+    const noReqIdApp = noReqIdBuilder.build();
+    noReqIdApp.use(RequestId.defaults({ generator: () => "req-noid" }));
+    noReqIdApp.use(RequestLogging.defaults({ includeDuration: false, includeRequestId: false }));
+    noReqIdApp.get("/hidden", () => Results.ok({ ok: true }));
+    await noReqIdApp.__getRoutes()[0].handler();
+    assert.deepEqual(noReqIdSink.entries()[0].fields, {
+        method: "GET",
+        path: "/hidden",
+        status: 200,
+        route: "/hidden",
+    });
+    assert.equal(Object.hasOwn(noReqIdSink.entries()[0].fields, "requestId"), false);
 
     assertThrowsMessage(() => RequestLogging.defaults(null), /plain object/);
     assertThrowsMessage(() => RequestLogging.defaults({ includeRoute: "yes" }), /boolean/);

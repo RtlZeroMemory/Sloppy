@@ -17,6 +17,8 @@ stdlib/sloppy/
   fs.js
   net.js
   problem-details.js
+  request-id.js
+  request-logging.js
   time.js
   codec.js
   crypto.js

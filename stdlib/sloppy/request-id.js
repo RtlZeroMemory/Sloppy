@@ -94,6 +94,21 @@ function appendResponseHeader(result, header, requestId) {
     });
 }
 
+function recordResponseHeader(context, header, requestId) {
+    const current = isPlainObject(context.__sloppyResponseHeaders)
+        ? context.__sloppyResponseHeaders
+        : {};
+    Object.defineProperty(context, "__sloppyResponseHeaders", {
+        value: Object.freeze({
+            ...current,
+            [header]: requestId,
+        }),
+        enumerable: false,
+        writable: true,
+        configurable: true,
+    });
+}
+
 function normalizeOptions(options) {
     if (options !== undefined && !isPlainObject(options)) {
         throw new TypeError("Sloppy RequestId.defaults options must be a plain object.");
@@ -151,6 +166,9 @@ function defaults(options) {
             writable: true,
             configurable: true,
         });
+        if (normalized.responseHeader) {
+            recordResponseHeader(context, normalized.header, requestId);
+        }
 
         const result = await next();
         return normalized.responseHeader
