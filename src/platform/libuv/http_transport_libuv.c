@@ -258,6 +258,7 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                                                  ? config.max_requests_per_connection
                                                  : input->max_requests_per_connection;
         config.keep_alive_disabled = input->keep_alive_disabled;
+        config.http2_prior_knowledge_only = input->http2_prior_knowledge_only;
         config.tls = input->tls;
         if (config.tls.enabled && config.tls.backend == SL_HTTP_TRANSPORT_TLS_BACKEND_NONE) {
             config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
@@ -1306,6 +1307,33 @@ static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* 
     return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
 }
 
+static SlStatus sl_http_transport_http2_close_if_peer_goaway(SlHttpTransportConnection* connection,
+                                                             SlDiag* out_diag)
+{
+    if (connection == NULL || !connection->http2_dispatcher_started ||
+        !sl_http2_server_dispatcher_peer_goaway_received(connection->http2_dispatcher))
+    {
+        return sl_status_ok();
+    }
+    connection->close_after_write = true;
+    if (connection->platform != NULL && connection->platform->writing) {
+        return sl_status_ok();
+    }
+    return sl_http_transport_connection_close(connection, out_diag);
+}
+
+static SlStatus sl_http_transport_http2_close_if_requested(SlHttpTransportConnection* connection,
+                                                           SlDiag* out_diag)
+{
+    if (connection == NULL || !connection->http2_dispatcher_started ||
+        !sl_http2_server_dispatcher_close_without_goaway(connection->http2_dispatcher))
+    {
+        return sl_status_ok();
+    }
+    connection->close_after_write = true;
+    return sl_http_transport_connection_close(connection, out_diag);
+}
+
 static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connection,
                                              bool reset_request_arena, SlDiag* out_diag)
 {
@@ -1401,7 +1429,11 @@ static SlStatus sl_http_transport_http2_start(SlHttpTransportConnection* connect
             return status;
         }
     }
-    return sl_http_transport_http2_flush_output(connection, out_diag);
+    status = sl_http_transport_http2_flush_output(connection, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_http_transport_http2_close_if_peer_goaway(connection, out_diag);
 }
 
 static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* connection,
@@ -1427,7 +1459,18 @@ static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* conne
                                              "exposing socket details") -
                                           1U));
     }
-    return sl_http_transport_http2_flush_output(connection, out_diag);
+    status = sl_http_transport_http2_close_if_requested(connection, out_diag);
+    if (!sl_status_is_ok(status) ||
+        (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING ||
+         connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED))
+    {
+        return status;
+    }
+    status = sl_http_transport_http2_flush_output(connection, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_http_transport_http2_close_if_peer_goaway(connection, out_diag);
 }
 
 static bool sl_http_transport_http2_preface_prefix_matches(SlBytes bytes)
@@ -1443,11 +1486,25 @@ static bool sl_http_transport_http2_preface_prefix_matches(SlBytes bytes)
     return true;
 }
 
+static bool sl_http_transport_http2_preface_attempted(SlBytes bytes)
+{
+    if (bytes.ptr == NULL || bytes.length < 3U) {
+        return false;
+    }
+    for (size_t index = 0U; index < 3U; index += 1U) {
+        if (bytes.ptr[index] != SL_HTTP2_PREFACE[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* connection,
                                                     bool* out_handled, SlDiag* out_diag)
 {
     SlBytes accumulated = {0};
     SlBytes initial_frames = {0};
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
 
     if (out_handled != NULL) {
         *out_handled = false;
@@ -1463,6 +1520,36 @@ static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* c
             accumulated.ptr, accumulated.length < SL_HTTP2_PREFACE_BYTES ? accumulated.length
                                                                          : SL_HTTP2_PREFACE_BYTES)))
     {
+        if (connection->platform != NULL && connection->platform->tls_enabled &&
+            connection->platform->tls_alpn_h2)
+        {
+            *out_handled = true;
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP/2 ALPN connection did not start with h2 preface",
+                                          sizeof("HTTP/2 ALPN connection did not start with h2 "
+                                                 "preface") -
+                                              1U),
+                sl_http_transport_literal("TLS ALPN h2 must stay on the HTTP/2 parser path",
+                                          sizeof("TLS ALPN h2 must stay on the HTTP/2 parser "
+                                                 "path") -
+                                              1U));
+        }
+        if (sl_http_transport_http2_preface_attempted(accumulated) ||
+            (server != NULL && server->config.http2_prior_knowledge_only))
+        {
+            *out_handled = true;
+            (void)sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP/2 prior-knowledge preface is invalid",
+                                          sizeof("HTTP/2 prior-knowledge preface is invalid") -
+                                              1U),
+                sl_http_transport_literal("invalid h2 prefaces close without HTTP/1 fallback",
+                                          sizeof("invalid h2 prefaces close without HTTP/1 "
+                                                 "fallback") -
+                                              1U));
+            return sl_http_transport_connection_close(connection, NULL);
+        }
         return sl_status_ok();
     }
 
@@ -1831,7 +1918,9 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
             (void)sl_http_transport_connection_close(connection, NULL);
             return;
         }
-        if (connection->close_after_write) {
+        if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING ||
+            connection->close_after_write)
+        {
             (void)sl_http_transport_connection_close(connection, NULL);
             return;
         }

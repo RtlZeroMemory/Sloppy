@@ -47,14 +47,21 @@ Network conformance is split by lane:
   `conformance.transport.http2_h2c_upgrade`, and
   `conformance.transport.http2_tls_alpn` cover h2c prior knowledge, h2c
   Upgrade, and server h2 over TLS ALPN through the libuv listener paths. The
-  HTTP client bootstrap lane covers explicit h2c and h2, informational
-  responses, response content-length validation, frame-size caps, SETTINGS ACK,
-  CONTINUATION request headers, and HPACK Huffman response decoding.
+  HTTP client bootstrap lane covers explicit h2c and h2, pooled concurrent h2
+  streams over one connection, HTTPS `auto` ALPN h2 selection, HTTP/1.1
+  fallback under `auto`, explicit h2 fail-closed behavior, per-stream
+  RST_STREAM failure isolation, conservative pooled-client GOAWAY failure,
+  informational responses, response content-length validation, frame-size caps,
+  SETTINGS ACK, CONTINUATION request headers, and HPACK Huffman response
+  decoding. Full outbound client flow-control and graceful GOAWAY drain are
+  tracked in #1015 and are not claimed by this lane.
   Optional external-tool smoke wrappers live at `tools/windows/test-http2.ps1`
   and `tools/unix/test-http2.sh`; they report missing h2spec, curl, nghttp,
   and h2load lanes as `UNAVAILABLE` or `SKIPPED`. A wrapper run is not h2spec
-  coverage unless h2spec is present and actually executed; CI h2spec coverage
-  is tracked in #1011.
+  coverage unless h2spec is present and actually executed. The Linux clang CI
+  lane installs h2spec and runs full h2spec against a live Sloppy h2c transport
+  server. Curl, nghttp, and h2load are separate smoke lanes and count as
+  coverage only when the wrapper reports `PASS` for that tool.
 
 Local IPC coverage adds POSIX-gated Unix domain socket native tests, Windows-gated named
 pipe native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring,

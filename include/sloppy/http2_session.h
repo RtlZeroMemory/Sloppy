@@ -22,6 +22,7 @@ extern "C" {
 #define SL_HTTP2_SESSION_DEFAULT_MAX_EVENT_DATA_BYTES 1048576U
 #define SL_HTTP2_SESSION_DEFAULT_MAX_CONCURRENT_STREAMS 100U
 #define SL_HTTP2_SESSION_DEFAULT_INITIAL_WINDOW_SIZE 65535U
+#define SL_HTTP2_SESSION_CLOSED_STREAM_TRACK 1024U
 
 typedef enum SlHttp2SessionRole
 {
@@ -40,7 +41,8 @@ typedef enum SlHttp2EventType
     SL_HTTP2_EVENT_STREAM_CLOSE = 6,
     SL_HTTP2_EVENT_RST_STREAM = 7,
     SL_HTTP2_EVENT_GOAWAY = 8,
-    SL_HTTP2_EVENT_SETTINGS = 9
+    SL_HTTP2_EVENT_SETTINGS = 9,
+    SL_HTTP2_EVENT_INVALID_FRAME = 10
 } SlHttp2EventType;
 
 typedef struct SlHttp2Event
@@ -71,6 +73,16 @@ typedef struct SlHttp2EventList
     size_t count;
 } SlHttp2EventList;
 
+typedef struct SlHttp2ClosedStream
+{
+    int32_t stream_id;
+    int64_t outbound_window;
+    bool active;
+    bool remote_closed;
+    bool reset_by_peer;
+    bool outbound_window_known;
+} SlHttp2ClosedStream;
+
 typedef struct SlHttp2SessionConfig
 {
     SlHttp2SessionRole role;
@@ -92,14 +104,20 @@ typedef struct SlHttp2Session
     SlArenaMark event_mark;
     bool event_mark_valid;
     SlHttp2SessionConfig config;
+    SlHttp2ClosedStream closed_streams[SL_HTTP2_SESSION_CLOSED_STREAM_TRACK];
+    size_t next_closed_stream;
     SlByteBuilder outbound;
     SlHttp2Event* events;
     size_t event_count;
     SlHttp2HeaderField* current_headers;
     size_t current_header_count;
     size_t current_header_bytes;
+    int64_t outbound_connection_window;
+    int64_t outbound_initial_stream_window;
     int32_t current_stream_id;
+    int32_t highest_peer_stream_id;
     uint8_t current_header_category;
+    bool close_without_goaway;
     SlStatus callback_status;
 } SlHttp2Session;
 
@@ -127,6 +145,7 @@ SlStatus sl_http2_session_submit_goaway(SlHttp2Session* session, int32_t last_st
                                         uint32_t error_code);
 bool sl_http2_session_want_read(const SlHttp2Session* session);
 bool sl_http2_session_want_write(const SlHttp2Session* session);
+bool sl_http2_session_close_without_goaway(const SlHttp2Session* session);
 
 #ifdef __cplusplus
 }

@@ -1,8 +1,9 @@
 # HTTP Client
 
 `HttpClient` is the experimental outbound HTTP client exposed from
-`sloppy` and `sloppy/net`. It uses HTTP/1.1 by default and supports explicit
-HTTP/2 h2/h2c when requested with `protocol`.
+`sloppy` and `sloppy/net`. It uses HTTP/1.1 by default, can negotiate HTTP/2
+over HTTPS with ALPN in `auto` mode, and supports explicit HTTP/2 h2/h2c when
+requested with `protocol`.
 
 ```ts
 import { HttpClient } from "sloppy";
@@ -69,7 +70,10 @@ of `Uint8Array` chunks.
 
 The `protocol` option accepts:
 
-- `"auto"` — the default. The current committed client uses HTTP/1.1.
+- `"auto"` — the default. HTTPS requests offer ALPN `h2` / `http/1.1` when
+  the TLS bridge supports ALPN, use HTTP/2 when the peer selects `h2`, and
+  otherwise fall back to HTTP/1.1. HTTP URLs use HTTP/1.1 unless `h2c` is
+  requested explicitly.
 - `"http/1.1"` — force HTTP/1.1.
 - `"h2c"` — use cleartext HTTP/2 prior knowledge for `http://` URLs.
 - `"h2"` — use HTTP/2 over TLS for `https://` URLs with ALPN.
@@ -91,10 +95,12 @@ HTTP/2 requests use the normal method helpers, headers, body sources,
 timeouts, deadlines, cancellation, redirect policy, strict-network policy, and
 body/header limits. Callers do not construct frames manually.
 
-Explicit HTTP/2 currently opens one connection for one request. Pooled h2
-connection reuse, concurrent client streams over one h2 connection, and
-`protocol: "auto"` selecting h2 through ALPN are not part of the committed
-surface in this branch.
+When a created client has `pool` enabled, HTTP/2 h2 and h2c requests to the
+same origin reuse a pooled HTTP/2 session and can run as concurrent streams on
+that connection. Per-request timeout, deadline, cancellation, redirect,
+strict-network, TLS validation, and body/header limits still apply to each
+stream. Static helpers without a client pool close their HTTP/2 connection
+after the request completes.
 
 Response bodies are consumed once with `response.text()`, `response.json()`,
 `response.bytes()`, or `response.stream(options?)`. `HEAD` responses always
@@ -121,9 +127,9 @@ eligible.
 
 ## Current Boundaries
 
-- HTTP/1.1 is the default. Explicit `protocol: "h2"` and `protocol: "h2c"`
-  requests are supported; `protocol: "auto"` does not select h2 through ALPN
-  in this branch.
+- HTTP/1.1 is the default for cleartext `http://` URLs. HTTPS requests with
+  `protocol: "auto"` can negotiate `h2` through ALPN and otherwise fall back
+  to HTTP/1.1.
 - `http://` URLs are supported over the runtime TCP bridge.
 - `https://` URLs use the experimental private outbound TLS bridge when the
   runtime exposes it. Missing bridge support fails closed with
@@ -131,6 +137,8 @@ eligible.
   imply HTTPS support.
 - `protocol: "h2"` requires an ALPN-capable outbound TLS bridge and fails
   closed if the peer does not negotiate `h2`.
+- `protocol: "auto"` never downgrades an explicit `h2` request; fallback to
+  HTTP/1.1 applies only when the caller leaves protocol selection on `auto`.
 - `protocol: "h2c"` is prior-knowledge HTTP/2 over cleartext TCP; it does not
   perform an HTTP/1.1 Upgrade handshake.
 - Server push is disabled. The client advertises `SETTINGS_ENABLE_PUSH = 0`.
@@ -138,6 +146,15 @@ eligible.
   final non-1xx response. It validates response `content-length`, enforces a
   conservative frame-size cap until peer SETTINGS are processed, ACKs peer
   SETTINGS, and splits large request header blocks into CONTINUATION frames.
+- HTTP/2 client pooling is alpha. The client reuses h2/h2c sessions and can run
+  concurrent streams, but it does not yet enforce peer
+  `SETTINGS_MAX_CONCURRENT_STREAMS`, track outbound connection/stream send
+  windows, delay large request bodies until `WINDOW_UPDATE`, or adjust active
+  request send windows after peer `SETTINGS_INITIAL_WINDOW_SIZE`; this is
+  tracked in #1015.
+- Peer `GOAWAY` retires the pooled HTTP/2 connection and fails active streams
+  conservatively. The client does not yet drain already-accepted streams by
+  `last_stream_id`; this is tracked in #1015.
 - HTTP/3, gRPC, WebTransport, and WebSocket-over-h2 are not included.
 - `tls` is experimental. It accepts string path options `caPath`,
   `caBundlePath`, `trustStorePath`, `clientCertificatePath`,

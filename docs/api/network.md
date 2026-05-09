@@ -209,9 +209,9 @@ In-repo references:
 
 ## Boundaries
 
-- HTTP/1.1 is the default. Explicit `protocol: "h2"` and `protocol: "h2c"`
-  are supported by `HttpClient`; pooled h2 multiplexing and automatic ALPN
-  selection are not part of the committed surface in this branch.
+- HTTP/1.1 is the default for cleartext `http://` URLs. `HttpClient` supports
+  explicit `protocol: "h2"` / `protocol: "h2c"`, pooled h2 multiplexing, and
+  HTTPS `auto` ALPN h2 selection.
 - No DNS API. Hostnames are resolved as part of `connect`/`listen`.
 - No UDP, raw IP, QUIC, or SCTP.
 - No WebSocket client.

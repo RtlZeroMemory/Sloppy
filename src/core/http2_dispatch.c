@@ -168,34 +168,34 @@ static SlStatus sl_http2_dispatch_claim_stream(SlHttp2ServerDispatcher* dispatch
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
-    bool pending_output = sl_http2_session_want_write(&dispatcher->session);
     for (size_t index = 0U; index < dispatcher->config.max_streams; index += 1U) {
         SlHttp2DispatchStream* stream = &dispatcher->streams[index];
         if (!stream->active) {
-            if (pending_output && stream->mark_valid) {
-                continue;
-            }
             size_t initial_capacity =
                 dispatcher->config.max_body_bytes < 256U ? dispatcher->config.max_body_bytes : 256U;
-            status = sl_status_ok();
-            if (stream->mark_valid) {
-                status = sl_arena_reset_to(dispatcher->arena, stream->mark);
+            if (stream->body_mark_valid && dispatcher->active_streams == 0U &&
+                dispatcher->session.current_headers == NULL &&
+                !sl_http2_session_want_write(&dispatcher->session))
+            {
+                status = sl_arena_reset_to(dispatcher->arena, stream->body_mark);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+                stream->body_mark_valid = false;
+                stream->body = (SlByteBuilder){0};
             }
-            if (sl_status_is_ok(status)) {
-                stream->mark = sl_arena_mark(dispatcher->arena);
-                stream->mark_valid = true;
-            }
-            if (sl_status_is_ok(status)) {
-                status =
-                    sl_byte_builder_init_arena(&stream->body, dispatcher->arena, initial_capacity,
-                                               dispatcher->config.max_body_bytes);
-            }
+            stream->body_mark = sl_arena_mark(dispatcher->arena);
+            stream->body_mark_valid = true;
+            status = sl_byte_builder_init_arena(&stream->body, dispatcher->arena, initial_capacity,
+                                                dispatcher->config.max_body_bytes);
             if (!sl_status_is_ok(status)) {
+                stream->body_mark_valid = false;
                 return status;
             }
             stream->stream_id = stream_id;
             stream->active = true;
             stream->headers_seen = false;
+            stream->complete_pending = false;
             stream->headers = (SlHttp2HeaderList){0};
             dispatcher->active_streams += 1U;
             *out_stream = stream;
@@ -214,11 +214,31 @@ static void sl_http2_dispatch_close_stream(SlHttp2ServerDispatcher* dispatcher,
     }
     stream->active = false;
     stream->headers_seen = false;
+    stream->complete_pending = false;
     stream->stream_id = 0;
     stream->headers = (SlHttp2HeaderList){0};
     stream->body = (SlByteBuilder){0};
     if (dispatcher->active_streams != 0U) {
         dispatcher->active_streams -= 1U;
+    }
+}
+
+static bool sl_http2_dispatch_can_clear_session_events(const SlHttp2ServerDispatcher* dispatcher)
+{
+    return dispatcher != NULL && dispatcher->active_streams == 0U &&
+           dispatcher->session.current_headers == NULL &&
+           !sl_http2_session_want_write(&dispatcher->session);
+}
+
+static void sl_http2_dispatch_forget_stream_body_marks(SlHttp2ServerDispatcher* dispatcher)
+{
+    if (dispatcher == NULL || dispatcher->streams == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < dispatcher->config.max_streams; index += 1U) {
+        dispatcher->streams[index].body = (SlByteBuilder){0};
+        dispatcher->streams[index].body_mark = (SlArenaMark){0};
+        dispatcher->streams[index].body_mark_valid = false;
     }
 }
 
@@ -312,7 +332,7 @@ static SlStatus sl_http2_dispatch_complete_stream(SlHttp2ServerDispatcher* dispa
     request_body = sl_byte_builder_view(&stream->body);
     status =
         sl_http2_request_from_headers(dispatcher->arena, dispatcher->connection, &stream->headers,
-                                      request_body, &request, &dispatcher->last_diag);
+                                       request_body, &request, &dispatcher->last_diag);
     if (!sl_status_is_ok(status)) {
         (void)sl_http2_dispatch_reset_stream(dispatcher, stream->stream_id,
                                              SL_HTTP2_ERROR_PROTOCOL_ERROR);
@@ -325,6 +345,16 @@ static SlStatus sl_http2_dispatch_complete_stream(SlHttp2ServerDispatcher* dispa
         return status;
     }
     sl_http2_dispatch_close_stream(dispatcher, stream);
+    return sl_status_ok();
+}
+
+static SlStatus sl_http2_dispatch_mark_stream_complete(SlHttp2ServerDispatcher* dispatcher,
+                                                       SlHttp2DispatchStream* stream)
+{
+    if (dispatcher == NULL || stream == NULL || !stream->active || !stream->headers_seen) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    stream->complete_pending = true;
     return sl_status_ok();
 }
 
@@ -346,7 +376,7 @@ static SlStatus sl_http2_dispatch_handle_request_headers(SlHttp2ServerDispatcher
     stream->headers = event->headers;
     stream->headers_seen = true;
     if (event->end_stream) {
-        return sl_http2_dispatch_complete_stream(dispatcher, stream);
+        return sl_http2_dispatch_mark_stream_complete(dispatcher, stream);
     }
     return sl_status_ok();
 }
@@ -365,6 +395,10 @@ static SlStatus sl_http2_dispatch_handle_data(SlHttp2ServerDispatcher* dispatche
         return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
                                               SL_HTTP2_ERROR_STREAM_CLOSED);
     }
+    if (stream->complete_pending) {
+        return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
+                                              SL_HTTP2_ERROR_STREAM_CLOSED);
+    }
 
     status = sl_byte_builder_append_bytes(&stream->body, event->data);
     if (!sl_status_is_ok(status)) {
@@ -372,7 +406,7 @@ static SlStatus sl_http2_dispatch_handle_data(SlHttp2ServerDispatcher* dispatche
                                               SL_HTTP2_ERROR_REFUSED_STREAM);
     }
     if (event->end_stream) {
-        return sl_http2_dispatch_complete_stream(dispatcher, stream);
+        return sl_http2_dispatch_mark_stream_complete(dispatcher, stream);
     }
     return sl_status_ok();
 }
@@ -389,7 +423,51 @@ static SlStatus sl_http2_dispatch_handle_stream_end(SlHttp2ServerDispatcher* dis
     if (stream == NULL) {
         return sl_status_ok();
     }
-    return sl_http2_dispatch_complete_stream(dispatcher, stream);
+    return sl_http2_dispatch_mark_stream_complete(dispatcher, stream);
+}
+
+static SlStatus sl_http2_dispatch_handle_trailers(SlHttp2ServerDispatcher* dispatcher,
+                                                  const SlHttp2Event* event)
+{
+    SlHttp2DispatchStream* stream = NULL;
+
+    if (dispatcher == NULL || event == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    stream = sl_http2_dispatch_find_stream(dispatcher, event->stream_id);
+    if (stream == NULL) {
+        return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
+                                              SL_HTTP2_ERROR_STREAM_CLOSED);
+    }
+    if (!stream->headers_seen || !event->end_stream) {
+        return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
+                                              SL_HTTP2_ERROR_PROTOCOL_ERROR);
+    }
+    for (size_t index = 0U; index < event->headers.count; index += 1U) {
+        const SlHttp2HeaderField* header = &event->headers.fields[index];
+        if (header->name.length != 0U && header->name.ptr[0] == ':') {
+            return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
+                                                  SL_HTTP2_ERROR_PROTOCOL_ERROR);
+        }
+    }
+    return sl_http2_dispatch_mark_stream_complete(dispatcher, stream);
+}
+
+static SlStatus sl_http2_dispatch_flush_completed_streams(SlHttp2ServerDispatcher* dispatcher)
+{
+    if (dispatcher == NULL || dispatcher->streams == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (size_t index = 0U; index < dispatcher->config.max_streams; index += 1U) {
+        SlHttp2DispatchStream* stream = &dispatcher->streams[index];
+        if (stream->active && stream->complete_pending) {
+            SlStatus status = sl_http2_dispatch_complete_stream(dispatcher, stream);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+    }
+    return sl_status_ok();
 }
 
 static SlStatus sl_http2_dispatch_handle_event(SlHttp2ServerDispatcher* dispatcher,
@@ -412,10 +490,16 @@ static SlStatus sl_http2_dispatch_handle_event(SlHttp2ServerDispatcher* dispatch
                                        sl_http2_dispatch_find_stream(dispatcher, event->stream_id));
         return sl_status_ok();
     case SL_HTTP2_EVENT_HEADERS:
-        return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
-                                              SL_HTTP2_ERROR_PROTOCOL_ERROR);
+        return sl_http2_dispatch_handle_trailers(dispatcher, event);
+    case SL_HTTP2_EVENT_INVALID_FRAME:
+        sl_http2_dispatch_close_stream(dispatcher,
+                                       sl_http2_dispatch_find_stream(dispatcher, event->stream_id));
+        return sl_status_ok();
     case SL_HTTP2_EVENT_SETTINGS:
+        return sl_status_ok();
     case SL_HTTP2_EVENT_GOAWAY:
+        dispatcher->peer_goaway_received = true;
+        return sl_status_ok();
     case SL_HTTP2_EVENT_RESPONSE_HEADERS:
     case SL_HTTP2_EVENT_NONE:
     default:
@@ -495,8 +579,9 @@ SlStatus sl_http2_server_dispatcher_upgrade_h2c(SlHttp2ServerDispatcher* dispatc
     if (dispatcher == NULL || !dispatcher->initialized || request == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (!sl_http2_session_want_write(&dispatcher->session)) {
+    if (sl_http2_dispatch_can_clear_session_events(dispatcher)) {
         sl_http2_session_clear_events(&dispatcher->session);
+        sl_http2_dispatch_forget_stream_body_marks(dispatcher);
     }
 
     status = sl_http2_session_upgrade_h2c(&dispatcher->session, settings_payload,
@@ -519,8 +604,9 @@ SlStatus sl_http2_server_dispatcher_receive(SlHttp2ServerDispatcher* dispatcher,
     if (dispatcher == NULL || !dispatcher->initialized) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (!sl_http2_session_want_write(&dispatcher->session)) {
+    if (sl_http2_dispatch_can_clear_session_events(dispatcher)) {
         sl_http2_session_clear_events(&dispatcher->session);
+        sl_http2_dispatch_forget_stream_body_marks(dispatcher);
     }
 
     status = sl_http2_session_receive(&dispatcher->session, bytes, out_consumed);
@@ -548,7 +634,7 @@ SlStatus sl_http2_server_dispatcher_process_pending(SlHttp2ServerDispatcher* dis
         }
     }
     dispatcher->session.event_count = 0U;
-    return sl_status_ok();
+    return sl_http2_dispatch_flush_completed_streams(dispatcher);
 }
 
 SlStatus sl_http2_server_dispatcher_drain_output(SlHttp2ServerDispatcher* dispatcher,
@@ -563,4 +649,14 @@ SlStatus sl_http2_server_dispatcher_drain_output(SlHttp2ServerDispatcher* dispat
 size_t sl_http2_server_dispatcher_active_streams(const SlHttp2ServerDispatcher* dispatcher)
 {
     return dispatcher == NULL ? 0U : dispatcher->active_streams;
+}
+
+bool sl_http2_server_dispatcher_peer_goaway_received(const SlHttp2ServerDispatcher* dispatcher)
+{
+    return dispatcher != NULL && dispatcher->peer_goaway_received;
+}
+
+bool sl_http2_server_dispatcher_close_without_goaway(const SlHttp2ServerDispatcher* dispatcher)
+{
+    return dispatcher != NULL && sl_http2_session_close_without_goaway(&dispatcher->session);
 }

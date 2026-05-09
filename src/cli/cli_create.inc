@@ -119,7 +119,7 @@ static bool sl_create_join_span_path(char* buffer, size_t capacity, const char* 
 
 static SlStr sl_create_template_target_name(SlStr source_name)
 {
-    if (source_name.length == 9U && memcmp(source_name.ptr, "gitignore", 9U) == 0) {
+    if (sl_str_equal(source_name, sl_str_from_cstr("gitignore"))) {
         return sl_str_from_cstr(".gitignore");
     }
     return source_name;

@@ -1666,6 +1666,10 @@ static int test_https_h2_alpn_reaches_dispatch(void)
         }
         uv_sleep(1U);
     }
+    if (client_result.load() == 999) {
+        result = 9024;
+        goto cleanup;
+    }
     if (client.joinable()) {
         client.join();
     }
@@ -4066,6 +4070,92 @@ static int run_case_sequence(const TransportCaseTest* tests, size_t test_count)
         return run_case_sequence(tests, sizeof(tests) / sizeof(tests[0]));                         \
     } while (0)
 
+static int serve_http2_h2c(const char* port_file)
+{
+    static unsigned char storage[64U * 1024U * 1024U];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+    SlStatus status = sl_status_ok();
+    int result = 1;
+
+    if (port_file == nullptr) {
+        return 2;
+    }
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("sloppy h2\n"));
+    config = small_config(nullptr);
+    config.max_connections = 64U;
+    config.max_active_requests = 16U;
+    config.connection_capacity = 64U;
+    config.request_arena_bytes = 131072U;
+    config.max_request_head_bytes = 16384U;
+    config.max_response_bytes = 16384U;
+    config.parse.max_header_value_length = 65536U;
+    config.parse.max_total_header_bytes = 65536U;
+    config.parse.max_body_length = 65536U;
+    config.keep_alive_disabled = false;
+    config.http2_prior_knowledge_only = true;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        std::fprintf(stderr, "failed to initialize h2 conformance arena\n");
+        result = 3;
+        goto cleanup;
+    }
+    status = sl_http_transport_server_init(&server, &arena, &config, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        std::fprintf(stderr, "failed to initialize h2 conformance server: status=%d diag=%d\n",
+                     (int)sl_status_code(status), (int)diag.code);
+        result = 3;
+        goto cleanup;
+    }
+    status = sl_http_transport_server_listen(&server, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        std::fprintf(stderr, "failed to listen h2 conformance server: status=%d diag=%d\n",
+                     (int)sl_status_code(status), (int)diag.code);
+        result = 3;
+        goto cleanup;
+    }
+
+    {
+        FILE* file = nullptr;
+#if defined(_WIN32)
+        if (::fopen_s(&file, port_file, "w") != 0) {
+            file = nullptr;
+        }
+#else
+        file = std::fopen(port_file, "w");
+#endif
+        if (file == nullptr) {
+            result = 4;
+            goto cleanup;
+        }
+        int write_result = std::fprintf(file, "http://127.0.0.1:%u/\n",
+                                        sl_http_transport_server_bound_port(&server));
+        int flush_result = std::fflush(file);
+        int close_result = std::fclose(file);
+        if (write_result < 0 || flush_result != 0 || close_result != 0)
+        {
+            std::remove(port_file);
+            result = 4;
+            goto cleanup;
+        }
+    }
+    std::printf("http://127.0.0.1:%u/\n", sl_http_transport_server_bound_port(&server));
+    std::fflush(stdout);
+
+    result = sl_status_is_ok(sl_http_transport_server_run(&server, &diag)) ? 0 : 5;
+
+cleanup:
+    (void)sl_http_transport_server_stop(&server, &diag);
+    (void)sl_http_transport_server_dispose(&server, &diag);
+    return result;
+}
+
 static int run_named_transport_case(const char* name)
 {
     if (name == nullptr) {
@@ -4147,6 +4237,9 @@ int main(int argc, char** argv)
     bool run_bounded_smoke = true;
     if (argc == 3 && strcmp(argv[1], "--case") == 0) {
         return run_named_transport_case(argv[2]);
+    }
+    if (argc == 3 && strcmp(argv[1], "--serve-http2-h2c") == 0) {
+        return serve_http2_h2c(argv[2]);
     }
     if (argc == 2 && strcmp(argv[1], "--without-bounded-smoke") == 0) {
         run_bounded_smoke = false;

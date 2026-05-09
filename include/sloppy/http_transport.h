@@ -116,6 +116,8 @@ typedef struct SlHttpTransportConfig
     uint64_t keep_alive_idle_timeout_ms;
     size_t max_requests_per_connection;
     bool keep_alive_disabled;
+    /* Test/conformance h2c mode: reject HTTP/1 fallback and require the prior-knowledge preface. */
+    bool http2_prior_knowledge_only;
     SlHttpTransportTlsConfig tls;
     /* Caller/arena-backed table size for accepted connection slots. */
     size_t connection_capacity;
