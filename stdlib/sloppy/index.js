@@ -17,6 +17,7 @@ export { Environment, OsError, Process, Signals, System } from "./os.js";
 export { ProblemDetails } from "./problem-details.js";
 export { Results } from "./results.js";
 export { schema } from "./schema.js";
+export { Testing } from "./testing.js";
 export {
     CancelledError,
     CancellationController,
