@@ -1,145 +1,174 @@
 # Compiler
 
-## Purpose
+`sloppyc` is the Rust compiler. It reads supported source, validates the
+shape, and emits a deterministic Plan + JavaScript bundle. It does *not*
+type-check arbitrary TypeScript and it does *not* run the program.
 
-`sloppyc` is Sloppy's Rust compiler/build tool. It parses the supported JavaScript source
-subset, validates the current application shape, and emits deterministic artifacts for the
-runtime host.
+## Layout
 
-## Where It Lives
-
-- `compiler/src/sloppyc.rs` owns the main extraction and emission path.
-- `compiler/src/sloppyc/*` contains focused compiler modules such as schema and
-  effects helpers.
-- `compiler/tests/fixtures/**` pins source input, generated JavaScript, Plan,
-  source map, and diagnostic contracts.
-- `docs/reference/supported-syntax.md` is the public syntax lookup.
-
-## Main Concepts
-
-The compiler is a static extractor, not a JavaScript runtime. It recognizes a
-narrow Sloppy framework subset, emits deterministic artifacts, and rejects
-unsupported dynamic behavior instead of approximating it.
-
-```mermaid
-flowchart TB
-    Entry[src/main.ts] --> Parser[Oxc parser]
-    Parser --> Imports[Import validation]
-    Imports --> Graph[Allowed relative source graph]
-    Graph --> Extract[Sloppy app extraction]
-    Extract --> Validate[Source-shape validation]
-    Validate --> Plan[app.plan.json]
-    Validate --> JS[generated app.js]
-    Validate --> Map[app.js.map]
-    Validate --> Diag[diagnostics on failure]
+```text
+compiler/
+  Cargo.toml
+  src/
+    main.rs                  CLI entry
+    lib.rs
+    sloppyc.rs               main extraction/emission (~6k LOC)
+    sloppyc/                 helpers used by sloppyc.rs
+      configuration.rs
+      schema.rs
+      effects.rs
+    parser.rs                Oxc setup
+    resolver.rs              import resolution
+    module_graph.rs
+    framework_runtime.rs     framework metadata extraction
+    static_eval.rs           bounded literal evaluation
+    diagnostic.rs
+    source.rs / source_map.rs
+    validation.rs
+  tests/
+    fixtures/                input.{js,ts} + expected plan/bundle/sourcemap/diagnostic
+    sloppyc_tests.rs         driver
 ```
 
-## Lifecycle
+`sloppyc.rs` is large by design — extraction logic for routes, services,
+providers, capabilities, schemas, and framework metadata is all close
+together so the emission step can see everything at once. The supporting
+modules carry shared structures and inference rules.
 
-`sloppyc build` parses the entrypoint, loads allowed relative modules, extracts
-app/framework metadata, validates source-shape constraints, emits `app.plan.json`,
-emits generated `app.js`, emits `app.js.map`, and returns deterministic
-diagnostics on failure.
+## Pipeline
 
-## Extraction Boundaries
+```text
+input file (.js / .mjs / .ts)
+   │  parser.rs (Oxc)
+   ▼
+AST
+   │  resolver.rs::resolve_imports
+   │     allow "sloppy", "sloppy/<subpath>", relative
+   │     reject npm specifiers, dynamic import(), node: prefix
+   ▼
+module graph
+   │  sloppyc.rs::extract_app
+   │     find Sloppy.create()/createBuilder()
+   │     extract routes, groups, controllers, modules
+   │     extract services, capabilities, providers, schemas
+   │     extract framework v2 typed parameter bindings
+   ▼
+intermediate model
+   │  validation.rs
+   │     supported subset, deterministic shape
+   ▼
+emit
+   │  sloppyc.rs::emit_*
+   │     deterministic app.js (with handler wrappers)
+   │     deterministic source map
+   │     app.plan.json
+   ▼
+output to --out / cache directory
+```
 
-| Boundary | Accepted today | Rejected today |
-| --- | --- | --- |
-| Imports | first-party `sloppy` modules and relative source files | unsupported bare specifiers, dynamic import, Node built-ins |
-| Routes | literal `get/post/put/patch/delete` shapes | computed route methods, dynamic route patterns |
-| Handlers | supported `Results.*` and typed handler subset | arbitrary TypeScript lowering, unsupported captures |
-| Providers | metadata for SQLite/PostgreSQL/SQL Server surfaces | dynamic provider names and unsupported executable bridge shapes |
-| Artifacts | deterministic Plan, bundle, source map | timestamps, private absolute paths, secret material |
+## Versioning
 
-## Invariants
+Constants in `compiler/src/sloppyc.rs`:
 
-- Output order is stable.
-- Paths in goldens and package fixtures are normalized.
-- Unsupported syntax fails clearly.
-- Generated JavaScript targets Sloppy bootstrap APIs, not Node globals.
-- Secrets and local absolute paths are not embedded in artifacts.
+```rust
+const COMPILER_VERSION:        &str = "sloppyc-0.x.y";
+const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
+const STDLIB_VERSION:          &str = "0.1.0";
+```
 
-## Failure Behavior
+These three appear in `app.plan.json`. The runtime checks the minimum
+version on load.
 
-Parse, unsupported import, unsupported route shape, dynamic provider name,
-unsupported typed binding, unresolved type, and provider bridge gaps become
-stable compiler diagnostics. The compiler must not silently drop a route,
-handler, provider, schema, or capability to make output look successful.
+## What gets extracted
 
-## Public API Relationship
+- **Routes.** `app.get/post/put/patch/delete` and the `mapGet/...` aliases,
+  on both `app` and group/controller mappers. Pattern is a string
+  literal; method is the call name.
+- **Route groups.** `app.group("/prefix")` and `app.mapGroup` form
+  prefixes that combine with child patterns deterministically.
+- **Controllers.** `app.controller("/prefix", ClassName, configure)` —
+  the configure callback maps controller method names to routes.
+- **Service registrations.** Literal
+  `services.addSingleton/addScoped/addTransient("Token", factory)` calls.
+- **Capabilities.** `capabilities.addDatabase("token", { ... })` and the
+  inferred capability needs from typed handler parameters
+  (`Sqlite<"name">`, `Postgres<"name">`, `SqlServer<"name">`,
+  `WorkQueue<"name">`).
+- **Schemas.** `schema.object({...})` and primitives used as `Body<T>`
+  parameter types.
+- **Configuration reads.** Statically visible `config.get*("KEY")` calls
+  and `Config<"KEY">` typed parameters.
+- **Framework v2 typed bindings.** `Route<T>`, `Query<T>`, `Body<T>`,
+  `Header<"name">`, `Service<T>`, `Config<"KEY">`, provider, queue, and
+  context bindings on handler parameters.
+- **Visible response metadata.** Status codes from `Results.status(...)`
+  and helper-inferred status codes.
 
-Public docs expose the supported syntax and CLI shape. Internally, the compiler
-also defines the artifact shape consumed by the runtime and the source-map spans
-used by diagnostics.
+## What gets rejected
 
-## Tests And Evidence
+- npm imports, dynamic `import()`, `node:` specifier prefix.
+- Dynamic route patterns or computed method names.
+- Conditional or loop-based route registration.
+- Top-level `await`, `eval`, `Function` constructor.
+- Arbitrary TypeScript type checking — `sloppyc` parses TS syntax but
+  does not infer through arbitrary type expressions.
 
-Evidence comes from `cargo test`, compiler fixture snapshots,
-source-input fixture checks, Plan parser tests, generated artifact checks, and
-`tools/windows/check-rust-standards.ps1`.
-
-## Current Limits
-
-The compiler does not implement arbitrary TypeScript lowering, decorators,
-controllers as a general runtime pattern, npm package resolution, watch mode,
-or dynamic imports.
-
-## Current Output
-
-`sloppyc build <source.js|source.ts> --out <dir>` emits deterministic artifacts:
-
-- `app.plan.json`;
-- generated `app.js`;
-- `app.js.map`.
-
-Artifact hashes use deterministic `sha256:` values. Source-map and artifact paths must be
-normalized so tests and package fixtures do not depend on a developer's checkout path.
-
-## Supported Shape
-
-The current compiler supports a narrow source subset:
-
-- recognized first-party imports from `sloppy` modules;
-- a static source graph rooted at a project entrypoint such as `src/main.ts`;
-- direct app creation and route registration shapes documented in
-  `docs/reference/supported-syntax.md`;
-- inline route handlers that return supported `Results.*` descriptors;
-- selected async handler shapes that settle through the current V8 Promise contract;
-- provider metadata for first-party database providers;
-- capability, route, result, source-map, completeness, and configuration metadata required
-  by the current runtime host.
-
-Unsupported syntax must fail with deterministic diagnostics. `dynamic route strings`,
-arbitrary module graphs, decorators, controllers, TypeScript lowering, npm packages, and
-Node built-ins are not part of the current compiler contract.
-
-## Runtime Boundary
-
-The compiler emits artifacts; it does not execute app code. Runtime execution is owned by
-`sloppy run --artifacts` or source-input `sloppy run <source.js|source.ts>` after compilation. The
-compiler does not implement Node package resolution, npm install behavior, or a package
-manager.
-
-The compiler-generated JavaScript targets Sloppy's current runtime bridge. It should not
-depend on Node, Bun, Deno, or ambient globals outside the documented Sloppy bootstrap
-contract. In particular, this compiler does not implement Node package behavior or Node
-compatibility.
-
-## Diagnostics
-
-Compiler diagnostics should include stable codes, source spans, clear messages, and hints
-that describe the supported contract. Hints must not point users toward unsupported future
-features as if they exist.
+The full matrix lives in
+[reference/supported-syntax.md](../reference/supported-syntax.md). Every
+rejection produces a diagnostic with a stable code (`SLOPPYC_E_*`) and
+a source location.
 
 ## Determinism
 
-Compiler tests pin deterministic output. Any output change must update goldens with a
-contract explanation. Generated artifacts must not embed private absolute paths, secrets,
-timestamps, nondeterministic ordering, or environment-specific values.
+Same source + same compiler version produces the same Plan, byte-for-byte.
 
-## Related Docs
+Determinism is enforced by:
 
-- `docs/reference/supported-syntax.md`
-- `docs/reference/plan-format.md`
-- `docs/internals/compiler.md`
-- `docs/contributor/testing.md`
+- ordering rules (handler IDs assigned in source order from 1, route
+  metadata sorted by source order at emit time);
+- deterministic SHA-256 hashing of artifacts in the Plan;
+- a normalized source-map line/column scheme; and
+- a fixture suite (`compiler/tests/fixtures/`) that pins inputs to
+  expected `app.plan.json`, `app.js`, source map, and diagnostic
+  outputs. Any drift is a test failure.
+
+## Source map
+
+`app.js.map` is a Source Map V3 document. Mappings are produced from
+`HandlerGeneratedStart` records — each handler the compiler emits has a
+known generated line/column and the original span is recorded into the
+mapping list.
+
+The runtime uses this to remap exception traces back to original
+sources before showing diagnostics.
+
+## CLI
+
+```
+sloppyc build <input> --out <dir>
+sloppyc --version
+sloppyc --help
+```
+
+`sloppy build` is a thin wrapper: it formats CLI arguments and invokes
+`sloppyc` through the platform process runner. There's no shared library
+between `sloppy` and `sloppyc` — they communicate only through arguments
+and artifact files.
+
+## Tests
+
+- **Fixtures** under `compiler/tests/fixtures/` are the canonical test
+  surface. Each fixture has `input.{js,ts}` plus expected
+  `app.plan.json`, `app.js`, source map, and diagnostic output. Diff
+  failures fail CI.
+- **Negative fixtures** assert specific `SLOPPYC_E_*` codes for
+  unsupported source.
+- **Unit tests** cover individual extraction paths (`schema.rs`,
+  `effects.rs`, …).
+
+## What's still moving
+
+The framework v2 typed-handler surface (typed parameter bindings,
+provider injection, schema-driven validation metadata) is the active
+front. Edge cases may still fall back to a generic generated wrapper —
+the fixture suite is the source of truth for what's supported.

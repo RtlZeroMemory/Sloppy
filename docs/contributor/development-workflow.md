@@ -1,29 +1,10 @@
-# Developer Workflow
+# Development workflow
 
-## Purpose
+How to ship a change.
 
-This document describes how Sloppy work should be sliced, built, reviewed, and verified.
-The goal is to move quickly without lowering the engineering bar.
-
-## Scope
-
-This covers:
-
-- local commands;
-- bounded-context PR model;
-- review modes;
-- blocking versus non-blocking findings;
-- follow-up issue rules;
-- source/review archive hygiene.
-
-## Local Loop
-
-Use a Visual Studio Developer PowerShell/Command Prompt or a normal PowerShell with Visual
-Studio C++ tools installed. The Windows scripts import the MSVC/Windows SDK environment
-when needed.
+## Local loop
 
 ```powershell
-.\tools\windows\bootstrap.ps1
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
@@ -31,120 +12,109 @@ when needed.
 .\tools\windows\dev.ps1 lint
 ```
 
-Root `tools/*.ps1` scripts are compatibility forwarders to `tools/windows/*.ps1`.
+That's the inner loop. `configure` is one-time per preset; the rest are
+per-change.
 
-Use `.\tools\windows\dev.ps1 clean` to remove only `build/<preset>`. It does not remove
-`compiler/target/` or dependency caches.
+For runtime/compiler/V8-adjacent work, also run the V8-enabled lane:
 
-## Bounded-Context PR Model
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
 
-Preferred PR shape:
+See [building-from-source.md](building-from-source.md) for the full
+list of commands.
 
-- one coherent behavior slice;
-- docs updated with any behavior change;
-- tests for the touched slice;
-- no kitchen-sink refactors;
-- no unrelated formatting churn.
+## PR shape
 
-Examples:
+One coherent change per PR. Examples of good shape:
 
-- good: "core bytes view overflow guards and tests";
-- good: "provider diagnostics redaction coverage and docs";
-- bad: "core primitives, diagnostics, router, and compiler cleanup".
+- "core bytes view overflow guards + tests"
+- "provider redaction coverage + docs"
+- "CORS middleware skeleton (no behavior yet)"
 
-## Review Modes
+Examples of bad shape:
 
-Contract review:
+- "core primitives, diagnostics, router, and compiler cleanup"
+- "fix everything CodeRabbit complained about"
 
-- matches the issue, docs, and acceptance criteria;
-- does not implement out-of-scope runtime features;
-- updates docs/ADRs when architecture changes.
+A bounded change is easier to review and easier to revert. Big
+behavior shifts are still fine — they just need a coherent narrative,
+not a diff that grew accidentally.
 
-C safety/quality review:
+When you change behavior, move the docs and tests with it. A PR that
+changes API behavior without updating `docs/api/<area>.md` will get
+review feedback to add the doc change before merging.
 
-- ownership documented;
-- cleanup paths are explicit;
-- checked arithmetic used for sizes;
-- no VLA;
-- no raw malloc/free outside allocator modules;
-- no OS APIs outside platform implementation directories.
+## Tests
 
-Build/tooling review:
+Add or update tests for the slice you're changing. The existing test
+surface lives in `tests/`; pick the lane that matches what you're
+proving:
 
-- CMake/CTest updated;
-- Cargo gates pass when compiler touched;
-- format/lint pass;
-- no generated artifacts staged.
+| Lane                        | Where                                  |
+| --------------------------- | -------------------------------------- |
+| Unit                        | `tests/unit/<area>/`                   |
+| Integration                 | `tests/integration/<area>/`            |
+| Conformance (CTest fixtures)| `tests/conformance/`                   |
+| Compiler fixtures           | `compiler/tests/fixtures/`             |
+| Source-input end-to-end     | `tests/fixtures/source-input/`         |
+| Goldens (rendered output)   | `tests/golden/`                        |
 
-Product ergonomics review:
+See [testing.md](testing.md) for the principles and
+[testing-inventory.md](testing-inventory.md) for the layout.
 
-- public API examples remain app-host oriented;
-- diagnostics are actionable;
-- no low-level primitive path becomes the primary user story.
+If a change is genuinely test-irrelevant (a doc fix, a renaming-only
+refactor that doesn't touch behavior), say so explicitly in the PR
+body so reviewers don't have to ask.
 
-## Blocking Versus Non-Blocking Findings
+## Review focus
 
-Blocking findings:
+What reviewers look for:
 
-- correctness bug;
-- memory safety risk;
-- platform-boundary violation;
-- V8 type leak outside `src/engine/v8/`;
-- missing required tests for implemented behavior;
-- out-of-scope feature implementation;
-- tracked generated artifact.
+- **Correctness.** Does the code do what the PR says it does?
+- **Boundaries.** Does it respect the platform/V8/JS boundaries
+  ([architecture.md](../internals/architecture.md))?
+- **Memory safety.** Ownership, bounds, overflow. The C-side
+  [memory model](../internals/memory-model.md) is the contract.
+- **Cleanup.** Every resource has an owner and a cleanup path.
+- **Diagnostics.** Failures produce structured `SlDiag`s with stable
+  codes and useful hints.
+- **Scope.** No drive-by refactors that double the diff.
 
-Non-blocking findings:
+The longer version is in [review-playbook.md](review-playbook.md).
 
-- naming polish;
-- future refactor suggestion;
-- optimization without measured need;
-- additional docs examples not needed for current acceptance.
+## Follow-ups
 
-Non-blocking findings should become follow-up issues when they are real but not required for
-the PR's acceptance criteria.
+If you spot something real but out of scope, file a follow-up issue
+and link it from the PR. Don't bury fixes in unrelated diffs, and
+don't punt required tests or safety fixes to a later PR.
 
-## Follow-Up Issues
+## Generated artifacts
 
-Create a follow-up when:
+Don't commit them. The build outputs are:
 
-- the issue is real;
-- it is outside current PR scope;
-- it has clear acceptance criteria;
-- delaying it does not make the current PR unsafe.
+- `build/`
+- `compiler/target/`
+- `target/` (top-level Cargo cache, if any)
+- `.sdeps/` (dependency cache)
+- `.sloppy/` (per-app build output)
+- Local V8 SDKs
 
-Do not use follow-ups to defer required tests, safety fixes, or architecture decisions.
+These are all in `.gitignore`. Double-check before pushing — `git
+status` is your friend.
 
-## Keeping Speed Without Lowering Quality
+## Before opening a PR
 
-Speed comes from bounded coherent PRs, clear acceptance criteria, reusable review
-checklists, and automated gates. It does not come from merging vague code and promising to
-clean it up later, and it does not require splitting one coherent bounded context into many
-tiny PRs.
+1. `dev.ps1 build` and `dev.ps1 test` pass.
+2. `dev.ps1 lint` and `format-check` pass.
+3. V8-enabled lane passes if your change is runtime/compiler-adjacent.
+4. Docs updated where behavior changed.
+5. `git status` looks clean.
+6. The PR body explains *what* and *why*; the diff explains *how*.
 
-## Source And Review Archive Hygiene
-
-Review/source archives must exclude:
-
-- `.git/`;
-- `build/`;
-- `compiler/target/`;
-- `target/`;
-- `.sdeps/`;
-- `.sloppy/`;
-- local V8 SDKs;
-- local binaries and PDBs;
-- ZIP/7z/tar archives.
-
-Prefer a tracked-file-only archive process after commits exist.
-
-## Acceptance Criteria
-
-Developer workflow is healthy when:
-
-- each implementation PR maps to a current issue or explicitly states why it is
-  trivial docs-only cleanup;
-- gates are run and reported honestly;
-- review comments distinguish blocking from non-blocking;
-- follow-ups have clear scope;
-- generated artifacts never enter review accidentally.
+Agent contributors have additional reporting requirements — see
+[`AGENTS.md`](../../AGENTS.md) and
+[`AGENTS_CONTRIBUTING.md`](../../AGENTS_CONTRIBUTING.md).

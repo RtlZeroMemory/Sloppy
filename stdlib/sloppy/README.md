@@ -95,7 +95,7 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Source Docs
 
-- `docs/explanation/developer-ergonomics.md`
+- `docs/api/README.md`
 - `docs/contributor/js-ts-standards.md`
 - `docs/reference/supported-syntax.md`
 - `docs/reference/providers.md`

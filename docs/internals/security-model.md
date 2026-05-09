@@ -1,113 +1,150 @@
-# Security And Permissions
+# Security model
 
-## Purpose
+Sloppy's security posture is **auditable boundaries**, not an OS
+sandbox. The runtime decides what an app can do based on declared
+capabilities, validates that decision at startup, and redacts secrets
+out of diagnostics.
 
-Sloppy is built around explicit authority boundaries. Permission-related behavior
-should be visible in metadata, validated at startup, and enforced at runtime
-entry points.
+The user-facing model lives in [about/security.md](../about/security.md).
+This page documents how it's enforced.
 
-This is an auditability model, not OS-level sandboxing.
+## Boundaries
 
-## Where It Lives
+| Boundary                    | Enforced where                              | Failure shape                |
+| --------------------------- | ------------------------------------------- | ---------------------------- |
+| Secret in Plan field        | `src/core/plan_parse.c` redaction sweep      | startup rejection            |
+| Provider/capability mismatch| `src/core/plan_parse.c`, `src/core/app_host.c` | startup rejection         |
+| Missing runtime feature     | `src/core/features.c`                        | startup rejection            |
+| Connection-string in error  | `src/data/<provider>.c` redaction helpers    | redacted diagnostic          |
+| Raw native pointer in JS    | `src/engine/v8/*`, resource table            | bridge rejection             |
+| OS-level confinement        | not enforced (documented limitation)         | —                            |
 
-- `src/core/plan_parse.c` validates provider/capability metadata.
-- `src/core/app_host.c` validates runtime relationships before serving.
-- `src/data/*` owns provider redaction and capability-aware diagnostics.
-- `src/engine/v8/*` prevents raw native pointer exposure to JavaScript.
-- `docs/explanation/security-and-redaction.md` explains the public model.
+Each row's enforcement is in code, not policy. A PR that, say, prints a
+connection string into a diagnostic violates the redaction tests.
 
-## Main Concepts
+## Capability validation
 
-Authority is explicit metadata. Sloppy prefers validated capabilities, scoped
-provider tokens, redacted diagnostics, and startup rejection over ambient access
-or best-effort warnings.
+Two passes:
 
-```mermaid
-flowchart LR
-    Source[Source metadata] --> Plan[Plan capability/provider metadata]
-    Plan --> Parser[Plan parser validation]
-    Parser --> Host[App-host relationship checks]
-    Host --> Operation[Runtime/provider operation]
-    Operation --> Redaction[Diagnostic redaction]
-    Operation --> Deny[Deny or allow]
-    Redaction --> User[User-visible diagnostic]
+1. **Plan parse** (`plan_parse.c`) — capability/provider blocks are
+   shape-validated. Duplicates, malformed entries, and unknown
+   `provider`/`access` values are rejected.
+2. **App host** (`app_host.c`) — every capability with a `database`
+   kind must reference a provider whose runtime feature is active.
+   Mismatches abort startup.
+
+After step 2, the request path can trust capability metadata. There's
+no "best effort" — a Plan that doesn't pass both passes never gets to
+serve traffic.
+
+## Secret redaction
+
+Two layers:
+
+- **Plan-level**: the Plan parser rejects fields that look like
+  credentials (matching configured patterns or explicitly tagged
+  secrets). The compiler is expected to never emit them; this is
+  defense in depth.
+- **Provider-level**: every provider's `*.c` includes redaction
+  helpers (e.g. `sl_pg_safe_config_hint` in `postgres.c`,
+  equivalents in `sqlserver.c`). Connection strings, passwords, and
+  parameter values are stripped from diagnostics by default.
+
+Diagnostics still carry useful structure: error codes, SQLSTATE,
+driver categories, source locations. Just no secret payloads.
+
+The `ConfigSecretValue` wrapper at the JS layer
+(`stdlib/sloppy/internal/config.js`) extends the same pattern to
+user-visible config — `secret.toString()` returns
+`"[Secret redacted]"`; only `secret.value()` exposes the real value.
+
+## Resource handle isolation
+
+JavaScript never gets a native pointer. Every native resource exposed
+to JS goes through the resource table (`include/sloppy/resource.h`):
+
+- A registration returns a generation-counted ID.
+- The bridge looks up `(slot, generation, kind)` on every use.
+- A stale ID — slot reused, kind wrong, table empty — fails cleanly.
+
+This is what makes "JS can't get a `FILE*`" load-bearing instead of
+aspirational.
+
+## V8 bridge invariants (security-relevant)
+
+From [v8-bridge.md](v8-bridge.md), the bits that matter for security:
+
+- One owner thread per isolate. Off-thread JS access fails before V8
+  sees it.
+- Buffers are copied across the bridge. No shared memory between
+  native and JS.
+- C++ exceptions caught at the bridge. No exception machinery escapes
+  to C.
+- Source maps remap exception traces. JS errors point at original
+  sources, not the generated bundle.
+
+The bridge is small, named, and reviewable. Audit changes to
+`src/engine/v8/` carefully — this is where the security boundary lives.
+
+## TLS
+
+Inbound TLS is opt-in OpenSSL plumbing in
+`src/platform/libuv/http_transport_libuv.c`. Configure with:
+
+```
+Sloppy:Server:Tls:Enabled = true
+Sloppy:Server:Tls:CertificatePath = path/to/cert.pem
+Sloppy:Server:Tls:PrivateKeyPath  = path/to/key.pem
+Sloppy:Server:Tls:Passphrase      = (passphrase or env reference)
 ```
 
-## Lifecycle
+Path validation rejects:
 
-Security-sensitive metadata is emitted by the compiler or app builder, parsed
-from the Plan, validated during app startup, consumed during provider/runtime
-operations, and rendered through diagnostics that must preserve redaction.
+- relative paths that escape the artifact directory;
+- paths with embedded NULs;
+- missing certificate or key files;
+- unreadable / oversized inputs.
 
-## Security Boundary Table
+Not implemented today: ALPN selection beyond HTTP/1.1, mTLS, custom
+verification, OCSP stapling, HSTS hardening. Production deployments
+should terminate TLS at a reverse proxy.
 
-| Boundary | Enforced by | Expected failure |
-| --- | --- | --- |
-| Secret-bearing Plan fields | Plan parser | startup diagnostic |
-| Provider/capability mismatch | Plan parser/app host | startup diagnostic |
-| Missing runtime feature | feature registry/app host | unavailable feature diagnostic |
-| Provider connection secret | provider diagnostics | redacted diagnostic |
-| Raw native pointer exposure | V8/resource bridge rules | bridge/API rejection |
-| OS sandboxing | documentation and scope checks | tracked as future scoped work |
+## What's not in scope
 
-## Invariants
+- **OS sandboxing.** Capabilities are policy declarations; they don't
+  prevent native code or kernel bugs from misbehaving. If you need
+  process isolation, that's the OS's job.
+- **Authentication / authorization of end users.** Sloppy ships no
+  auth stack today. Layer your own middleware/services or an API
+  gateway. (On the framework capability roadmap.)
+- **Encryption at rest.** Use the platform's secret store (Kubernetes
+  secrets, AWS Secrets Manager, Vault) to inject values via
+  environment variables.
+- **Threat modeling for production deployment.** Pre-alpha. The
+  bridge boundaries and redaction give you a reasonable foundation;
+  production posture is your responsibility for now.
 
-- Secret-looking fields are rejected from Plan metadata.
-- Provider connection strings are not printed in diagnostics.
-- Capability/provider relationships must be consistent before execution.
-- JavaScript cannot receive native pointers or driver handles.
-- Unsupported security-sensitive behavior fails closed.
+## Reporting issues
 
-## Failure Behavior
+Don't open public issues for security findings. Use GitHub's private
+vulnerability reporting on the repo, or email the maintainers (see
+the repository profile). We acknowledge and coordinate disclosure.
 
-Malformed capability metadata, missing provider relationships, denied access
-mode, secret-bearing Plan fields, unavailable runtime features, and provider
-config failures produce diagnostics without leaking sensitive values.
+## Tests
 
-## Public API Relationship
+- **Plan validation negative tests** — every rejection path in
+  `plan_parse.c` has a dedicated test.
+- **Redaction goldens** under `tests/golden/diagnostics/` pin redacted
+  diagnostic shapes; drift is a test failure.
+- **V8 bridge boundary tests** verify that native pointers don't escape
+  and that resource generation checks work.
+- **TLS conformance** lanes (V8-gated, opt-in) cover certificate path
+  validation and handshake behavior.
 
-Public docs describe current capability and redaction behavior. This internals
-page explains implementation invariants; OS sandboxing and production security
-hardening are separate work.
+## See also
 
-## Tests And Evidence
-
-Coverage comes from Plan validation tests, diagnostics goldens, provider
-redaction tests, V8 bridge pointer-boundary tests, config redaction checks, and
-docs scanners.
-
-## Current Limits
-
-OS sandboxing, release-grade threat modeling, comprehensive authorization,
-cryptographic key management, and production hardening are future scoped work.
-
-## Current Status
-
-From the current source:
-
-- plan parsing validates provider/capability sections and rejects malformed or
-  inconsistent metadata (`src/core/plan_parse.c`);
-- app-host startup re-validates provider/capability relationships before serving
-  (`src/core/app_host.c`);
-- provider modules include redaction-aware diagnostic behavior for
-  connection-string secrets (`src/data/postgres.c`, `src/data/sqlserver.c`);
-- V8 bridge code keeps resource ownership private and avoids raw native pointer
-  exposure (`src/engine/v8/*`).
-
-## Capability Model
-
-Capability metadata is treated as a runtime contract. Missing or inconsistent
-provider/capability relationships fail validation before normal request
-execution.
-
-The design goal is clear denial signals, not implicit ambient access.
-
-## Secret Handling
-
-Plan artifacts are not allowed to carry obvious secret-bearing fields. Provider
-diagnostics must redact secret values while keeping failure categories usable.
-
-## Deferred Work
-
-This model still defers OS sandbox enforcement, production hardening, and
-broader release-grade security posture work.
+- [about/security.md](../about/security.md) — the user-facing model
+- [Plan](plan.md) — validation order
+- [Provider runtime](provider-runtime.md) — provider redaction
+- [V8 bridge](v8-bridge.md) — bridge invariants
+- [Memory model](memory-model.md) — resource handle isolation

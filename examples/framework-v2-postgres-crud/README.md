@@ -50,7 +50,7 @@ from the PostgreSQL database.
 
 - `app.ts`: `Postgres<"main">` injection and PostgreSQL SQL statements.
 - Generated `.sloppy/app.plan.json`: inferred `postgres/main` provider metadata.
-- `docs/how-to/run-live-postgres-checks.md`: PostgreSQL setup.
+- `docs/api/data.md`: PostgreSQL setup and connection string convention.
 
 ## Current Limits
 
@@ -59,7 +59,7 @@ deployment guidance, and package dependency support are future work.
 
 ## Related Docs
 
+- `docs/api/data.md`
 - `docs/reference/providers.md`
 - `docs/reference/framework.md`
-- `docs/how-to/run-live-postgres-checks.md`
-- `docs/explanation/provider-runtime-model.md`
+- `docs/internals/provider-runtime.md`

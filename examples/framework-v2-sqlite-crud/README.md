@@ -46,7 +46,8 @@ database setup.
 
 ## Related Docs
 
+- `docs/api/data.md`
+- `docs/guide/sqlite.md`
 - `docs/reference/providers.md`
 - `docs/reference/framework.md`
-- `docs/explanation/provider-runtime-model.md`
-- `docs/how-to/use-sqlite.md`
+- `docs/internals/provider-runtime.md`

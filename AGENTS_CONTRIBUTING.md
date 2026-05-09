@@ -5,15 +5,17 @@ instructions live in `CONTRIBUTING.md`.
 
 ## Documentation
 
-Write documentation for human readers. Use the directory structure under
-`docs/` to keep reader goals separate:
+Write documentation for human readers. Match the directory layout under
+`docs/`:
 
-- `docs/tutorials/` teaches guided paths.
-- `docs/how-to/` solves one task.
-- `docs/reference/` is lookup material.
-- `docs/explanation/` explains design reasoning.
-- `docs/contributor/` covers repository operations.
-- `docs/internals/` records implementation invariants.
+- `docs/install.md`, `docs/quickstart.md` — onboarding.
+- `docs/api/` — first-party TypeScript API reference.
+- `docs/cli/` — `sloppy` and `sloppyc` commands.
+- `docs/guide/` — task-shaped walkthroughs.
+- `docs/reference/` — exhaustive lookup material.
+- `docs/about/` — design notes and background.
+- `docs/contributor/` — repository operations.
+- `docs/internals/` — implementation invariants.
 
 Do not add visible machine metadata lines to the top of pages. Do not paste
 prompts, planning transcripts, or agent choreography into docs or PR bodies.

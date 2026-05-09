@@ -68,7 +68,7 @@ this slice.
 
 ## Related Docs
 
-- `docs/tutorials/sqlite-api.md`
+- `docs/guide/sqlite.md`
+- `docs/api/data.md`
 - `docs/reference/providers.md`
 - `docs/reference/framework.md`
-- `docs/how-to/use-sqlite.md`

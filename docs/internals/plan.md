@@ -1,97 +1,130 @@
-# Plan Internals
+# Plan
 
-## Purpose
+`app.plan.json` is the contract between the compiler and the runtime. It
+is JSON, deterministic, and the only file the runtime reads to decide
+what your app *is* before evaluating any JavaScript.
 
-The Plan is the validated runtime contract between `sloppyc` and the native app
-host. It lets the runtime reject malformed or unsupported application metadata
-before request dispatch.
+The user-facing schema reference lives at
+[reference/plan-format.md](../reference/plan-format.md). This page covers
+internals — how the runtime parses and validates it.
 
-## Where It Lives
+## Where it's parsed
 
-- `include/sloppy/plan.h`
-- `src/core/plan_parse.c`
-- `src/core/app_host.c`
-- `tests/golden/plan/**`
-- `tests/cmake/check_source_input_run.cmake`
-- `docs/reference/plan-format.md`
+| Step                                | File                       |
+| ----------------------------------- | -------------------------- |
+| Read JSON, allocate parsed structure | `src/core/plan_parse.c`   |
+| Validate field shapes and relationships | `src/core/plan_parse.c` |
+| Cross-check vs runtime capabilities | `src/core/app_host.c`      |
+| Public types                        | `include/sloppy/plan.h`    |
 
-## Main Concepts
+`SlPlan` is arena-owned (see [memory-model.md](memory-model.md)). A
+parsed Plan is a single allocation tree freed when the app exits or when
+parsing fails.
 
-Plan v1 records compiler/runtime versions, target metadata, bundle/source-map
-artifacts, handlers, routes, features, providers, capabilities, schemas,
-configuration reads, and diagnostics-oriented source metadata. The Plan is data,
-not executable JavaScript.
+## Validation order
 
-```mermaid
-flowchart TB
-    Plan[app.plan.json] --> Version[schema/runtime versions]
-    Plan --> Target[target platform and engine]
-    Plan --> Artifacts[bundle and source map]
-    Plan --> Handlers[handler table]
-    Plan --> Routes[route table]
-    Plan --> Features[required features]
-    Plan --> Providers[dataProviders]
-    Plan --> Capabilities[capabilities]
-    Plan --> Config[configuration and configReads]
-    Plan --> Schemas[schemas and validation metadata]
+Order matters: each step assumes the previous one succeeded.
 
-    Handlers --> Host[app-host validation]
-    Routes --> Host
-    Features --> Host
-    Providers --> Host
-    Capabilities --> Host
-    Config --> Host
-    Schemas --> Host
+```text
+1. yyjson parse                     malformed JSON → reject
+2. schemaVersion check              unknown version → reject
+3. compiler/runtime version check   minimum mismatch → reject
+4. target check                     platform/engine wrong → reject
+5. artifact list                    missing file or hash → reject
+6. handler table                    duplicate IDs → reject
+7. route table                      duplicate (method,pattern) → reject
+                                    duplicate non-empty names → reject
+                                    unknown handlerId → reject
+8. providers                        duplicate tokens, bad shape → reject
+9. capabilities                     duplicate tokens, bad shape → reject
+10. requiredFeatures                unknown feature → reject
+11. server config                   bad host/port/limits → reject
+12. config requirements             malformed → reject
+13. secret redaction sweep          embedded credential → reject
 ```
 
-## Lifecycle
+Every rejection is a structured `SlDiag` with a stable code and a
+source location pointing at the offending JSON path.
 
-The compiler emits `app.plan.json`. The runtime reads it from the artifact
-directory, parses it into arena-owned structures, validates required fields and
-cross-references, checks target/runtime compatibility, then passes the validated
-shape to app-host startup.
+## What gets stored
 
-## Invariants
+`SlPlan` carries arena-owned views of:
 
-- Route metadata and handler IDs must be deterministic.
-- Source map links must match emitted artifacts.
-- Feature and provider requirements must be explicit metadata.
-- Known fields with invalid types fail.
-- Duplicate handler IDs, duplicate route method/pattern pairs, and duplicate
-  route names fail.
-- Secret-bearing provider/capability metadata is rejected.
+- `schema_version`, `compiler_version`, `runtime_min_version`, `target`
+- `artifacts[]` — name + 32-byte SHA-256 hash + size
+- `handlers[]` — id (numeric), kind, source span
+- `routes[]` — method, pattern (parsed once), handlerId, name, tags,
+  bindings (Plan v2 framework metadata where present), source span
+- `providers[]` — name, kind, runtime config metadata (no secrets)
+- `capabilities[]` — token, kind, provider, access, metadata
+- `required_features[]`
+- `server` — host, port, max connections, body limits, timeouts, TLS metadata
+- `config` — environment-resolved keys the compiler saw
 
-## Failure Behavior
+Strings and arrays are interned where it matters
+(`src/core/intern.c`) — repeated route patterns, handler IDs, and
+capability tokens share storage.
 
-Malformed JSON, unsupported schema version, invalid target, missing bundle,
-invalid hash, duplicate route/provider/capability identity, missing handler
-reference, and secret-looking metadata fail before engine initialization.
-Parser failure rolls back arena state instead of exposing partial structures.
+## Schema versioning
 
-## Validation Layers
+`schemaVersion` is a single string today (`"plan/v1-alpha"`). Pre-alpha
+breaking changes are expected. The parser rejects any version it doesn't
+recognize.
 
-| Layer | Example checks | Owner |
-| --- | --- | --- |
-| JSON shape | required fields, object/array/string/number types | `src/core/plan_parse.c` |
-| Semantic identity | duplicate route names, handler IDs, provider tokens | `src/core/plan_parse.c` |
-| Target/runtime | runtime minimum, platform, engine | `src/core/app_host.c` |
-| Artifact relationship | bundle/source map path and hash metadata | app-host and CLI artifact loading |
-| Feature activation | `requiredFeatures[]` availability | feature registry/app host |
-| Provider/capability | provider tokens, capability references, secret-bearing metadata | Plan parser/app host/provider runtime |
+When the schema bumps, both ends move together: `sloppyc` writes the new
+version, the runtime parser learns it, the test fixtures regenerate.
+There is no on-the-fly upgrade path — old artifacts are recompiled.
 
-## Public API Relationship
+## Artifact hashing
 
-Public CLI commands such as `routes`, `capabilities`, `doctor`, `audit`, and
-`openapi` read Plan metadata. The Plan reference documents lookup fields; this
-internals page documents parser and app-host invariants.
+Each entry in `artifacts[]` records:
 
-## Tests And Evidence
+```jsonc
+{ "name": "app.js", "size": 12345, "hash": "sha256:abcd…" }
+```
 
-Evidence comes from `tests/golden/plan/**`, source-input fixture checks,
-app-host validation tests, compiler fixture goldens, and package artifact
-fixture checks.
+The runtime reads `app.js` (and `app.js.map` if present), computes the
+SHA-256, and refuses to evaluate the bundle if it doesn't match. This
+catches partial copies, corrupted artifacts, and accidental edits.
 
-## Current Limits
+## Route table construction
 
-The Plan is not a package manifest, npm metadata format, public extension
-system, dynamic plugin format, or OS sandbox declaration.
+Plan-validated routes feed into the native route table. The order of
+operations:
+
+1. Parse each `pattern` once with `sl_route_pattern_parse`
+   (`src/core/route.c`).
+2. Bind each entry to its `handlerId` and source order.
+3. Sort: literal patterns before parameter patterns; ties broken by
+   source order.
+4. Allocate the dispatch table inside the app arena.
+
+The table is read-only at request time. Lookup is `O(n)` over the table
+(small constant — apps have tens of routes, not thousands).
+
+## Secret-redaction sweep
+
+Step 13 walks every string field in the Plan and rejects values that
+look like credential strings (anything matching the configured
+provider connection-string patterns, anything explicitly tagged secret).
+The compiler is expected to never emit credentials into the Plan in the
+first place; this sweep is a belt-and-braces check.
+
+If your app's source somehow ends up with a literal password, you'll
+get a Plan rejection at startup with a diagnostic pointing at the field.
+
+## Tests
+
+- **Goldens** under `tests/golden/plan/**` pin expected Plan content for
+  representative apps. Compiler changes that alter Plan shape have to
+  update goldens explicitly.
+- **Plan parser unit tests** under `tests/unit/core/test_plan*.c` cover
+  every rejection branch.
+- **End-to-end** runs `tests/cmake/check_source_input_run.cmake` builds
+  source through the CLI and verifies the full Plan/run path.
+
+## See also
+
+- [reference/plan-format.md](../reference/plan-format.md) — full field reference
+- [Compiler](compiler.md) — how the Plan is produced
+- [Runtime](runtime.md) — what happens after validation

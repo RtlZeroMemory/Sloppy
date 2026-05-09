@@ -51,8 +51,7 @@ JSON rows from SQL Server.
 
 - `app.ts`: `SqlServer<"main">` injection and SQL Server statements.
 - Generated `.sloppy/app.plan.json`: inferred `sqlserver/main` provider metadata.
-- `docs/how-to/run-live-sqlserver-checks.md`: SQL Server setup and unavailable
-  driver cases.
+- `docs/api/data.md`: SQL Server setup and unavailable driver cases.
 
 ## Current Limits
 
@@ -62,7 +61,7 @@ deployment guidance, and package dependency support are future work.
 
 ## Related Docs
 
+- `docs/api/data.md`
 - `docs/reference/providers.md`
 - `docs/reference/framework.md`
-- `docs/how-to/run-live-sqlserver-checks.md`
-- `docs/explanation/provider-runtime-model.md`
+- `docs/internals/provider-runtime.md`

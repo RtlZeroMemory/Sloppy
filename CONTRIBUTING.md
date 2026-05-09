@@ -66,7 +66,7 @@ V8-enabled, package, live-provider, stress, and benchmark results separate.
 
 - Write for readers, not for planning ceremony.
 - Keep docs aligned with current implementation and validation.
-- Keep Diataxis page intent clear (tutorial/how-to/reference/explanation).
+- Match the docs directory layout (api/cli/guide/reference/about/contributor/internals).
 - Avoid stale planning language and unsupported statements.
 
 ## PR Checklist
