@@ -63,11 +63,12 @@ source file
 
 AppGraph records the compiler-owned view of the app: source files, modules,
 routes, handlers, bindings, response metadata, schemas, providers,
-capabilities, configuration reads, runtime feature requirements, and source
-spans.
+capabilities, configuration reads, health endpoint metadata, runtime feature
+requirements, and source spans.
 
-Route metadata includes literal route names, literal route option tags, and
-tags inherited from `app.group(...).withTags(...)`.
+Route metadata includes literal route names, literal route option tags, tags
+inherited from `app.group(...).withTags(...)`, and compiler-extracted health
+endpoint kind/check names from `app.mapHealthChecks(...)`.
 
 ## Lifecycle
 
@@ -137,8 +138,8 @@ Run the full repository gates when compiler output or CLI metadata changes.
 - npm and `node_modules` resolution are outside the current source graph.
 - Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
   remains responsible for that.
-- Middleware, CORS, health, and request logging execute in the bootstrap
-  app-host path today. Plan metadata for those surfaces needs a compiler/runtime
-  slice that can represent emitted artifacts honestly.
+- Middleware, CORS, and request logging execute in the bootstrap app-host path
+  today. Plan metadata for those surfaces needs a compiler/runtime slice that
+  can represent emitted artifacts honestly.
 - Controller constructor injection and broader response-writing APIs are still
   future compiler work.

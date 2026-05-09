@@ -49,9 +49,14 @@ Supported route metadata:
 - `app.get("/path", handler).withName("Name")`
 - `app.get("/path", { name: "Name", tags: ["tag"] }, handler)`
 - `app.group("/prefix").withTags("tag")`
+- `app.mapHealthChecks(...)` with literal paths and literal check metadata
 
 Route metadata options must be literal objects. `name` must be a non-empty
 string literal. `tags` must be an array of non-empty string literals.
+Health options must be omitted, a string literal aggregate path, or a literal
+object with `path`, `livenessPath`, `readinessPath`, and `checks`. Check
+objects must use literal names, boolean `liveness`/`readiness` flags, and
+inline check functions.
 
 Common route failures:
 
@@ -62,6 +67,7 @@ Common route failures:
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_NAME`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS`
+- `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`
 
 ## Pattern Rules
 

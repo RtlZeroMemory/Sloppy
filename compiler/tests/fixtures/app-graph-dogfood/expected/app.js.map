@@ -1,0 +1,311 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;0EAkD6D;AAC7D;AACA;AACA;;;;oOAEiE;AACjE;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;AACA;;oOAEsE;AACtE;AACA;AACA;AACA;AACA;AACA;AACA;AACA;;0EAEA;AACA;AACA,0EAFA;AAGA,AAFA;AAGA,AAFA,0EAFA;AAKA,AAFA,AAFA;AAKA,AAFA,AAFA,0EC/EsB;ADoFtB,AAFA,AAFA;AAKA,AAFA,AAFA;AAGA,AAFA;AAGA,AAFA;AACA;AACA",
+  "names": [],
+  "sources": [
+    "input.ts",
+    "health.ts"
+  ],
+  "sourcesContent": [
+    "import {\n  Sloppy,\n  Results,\n  ProblemDetails,\n  schema,\n  Body,\n  Config,\n  Header,\n  Query,\n  RequestContext,\n  Route,\n  Service,\n} from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { healthModule } from \"./modules/health\";\n\nconst ProjectCreate = schema.object({\n  name: schema.string().min(1),\n  owner: schema.string().optional(),\n});\n\ntype ProjectCreateInput = {\n  name: string;\n  owner?: string;\n};\n\ntype ProjectDto = {\n  id: number;\n  name: string;\n};\n\ntype ClockService = {\n  now: string;\n};\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\napp.use(ProblemDetails.defaults({ detail: \"never\" }));\napp.services.addSingleton(\"ClockService\", () => ({ now: \"2026-01-01T00:00:00Z\" }));\n\nconst db = app.provider(\"sqlite:main\");\nconst api = app.group(\"/api\").withTags(\"api\");\nconst projects = api.group(\"/projects\").withTags(\"projects\");\nconst greeting = app.config.getString(\"App:Greeting\", \"hello\");\n\nfunction listProjects() {\n  return db.query(\"select id, name from projects\", []);\n}\n\nprojects.get(\"/\", { name: \"Projects.List\", tags: [\"list\"] }, (ctx) => Results.ok({\n  q: ctx.query.q,\n  rows: listProjects(),\n}));\n\nprojects.post(\"/\", { name: \"Projects.Create\", tags: [\"write\"] }, (\n  body: Body<ProjectCreateInput>,\n  database: Sqlite<\"main\">,\n  clock: Service<ClockService>,\n  trace: Header<\"x-trace-id\">,\n  message: Config<\"App:Greeting\">,\n  ctx: RequestContext,\n) => Results.created(\"/api/projects/1\", {\n  name: body.name,\n  at: clock.now,\n  trace,\n  message,\n  hasContext: ctx !== undefined,\n  providerReady: database !== undefined,\n}));\n\nprojects.get(\"/{id:int}\", { name: \"Projects.Get\", tags: [\"detail\"] }, (\n  id: Route<number>,\n  includeDeleted: Query<boolean>,\n  database: Sqlite<\"main\">,\n  ctx: RequestContext,\n) => {\n  const project = database.queryOne(\"select id, name from projects where id = ?\", [id]);\n  return project || includeDeleted || database || ctx ? Results.ok(project) : Results.notFound();\n});\n\napp.mapHealthChecks({\n  path: \"/status\",\n  livenessPath: \"/status/live\",\n  readinessPath: \"/status/ready\",\n  checks: [\n    { name: \"database\", readiness: true, check: () => true },\n    { name: \"scheduler\", liveness: true, readiness: false, check() { return true; } },\n  ],\n});\n\napp.useModule(healthModule);\n\nexport default app;\n",
+    "import { Results } from \"sloppy\";\n\nexport function healthModule(app) {\n  const status = app.group(\"/status\").withTags(\"status\");\n  status.get(\"/ping\", () => Results.text(\"pong\")).withName(\"Status.Ping\");\n}\n"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "read",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 38,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 1,
+        "operation": "query",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.query",
+        "source": {
+          "column": 10,
+          "line": 48,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 64
+        },
+        "id": 1,
+        "source": {
+          "column": 62,
+          "line": 51,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 71
+        },
+        "id": 2,
+        "source": {
+          "column": 66,
+          "line": 56,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 87
+        },
+        "id": 3,
+        "source": {
+          "column": 71,
+          "line": 72,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 97
+        },
+        "id": 4,
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 99
+        },
+        "id": 5,
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 101
+        },
+        "id": 6,
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 103
+        },
+        "id": 7,
+        "source": {
+          "column": 23,
+          "line": 5,
+          "path": "health.ts"
+        }
+      }
+    ],
+    "modules": [
+      {
+        "name": "healthModule",
+        "source": {
+          "path": "health.ts"
+        }
+      }
+    ],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 38,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/api/projects",
+        "source": {
+          "column": 1,
+          "line": 51,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "list"
+        ]
+      },
+      {
+        "handlerId": 2,
+        "method": "POST",
+        "module": null,
+        "pattern": "/api/projects",
+        "source": {
+          "column": 1,
+          "line": 56,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "write"
+        ]
+      },
+      {
+        "handlerId": 3,
+        "method": "GET",
+        "module": null,
+        "pattern": "/api/projects/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 72,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "detail"
+        ]
+      },
+      {
+        "handlerId": 4,
+        "health": {
+          "checks": [
+            "database",
+            "scheduler"
+          ],
+          "kind": "aggregate"
+        },
+        "method": "GET",
+        "module": null,
+        "pattern": "/status",
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "handlerId": 5,
+        "health": {
+          "checks": [
+            "scheduler"
+          ],
+          "kind": "liveness"
+        },
+        "method": "GET",
+        "module": null,
+        "pattern": "/status/live",
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "handlerId": 6,
+        "health": {
+          "checks": [
+            "database"
+          ],
+          "kind": "readiness"
+        },
+        "method": "GET",
+        "module": null,
+        "pattern": "/status/ready",
+        "source": {
+          "column": 1,
+          "line": 82,
+          "path": "input.ts"
+        }
+      },
+      {
+        "handlerId": 7,
+        "method": "GET",
+        "module": "healthModule",
+        "pattern": "/status/ping",
+        "source": {
+          "column": 3,
+          "line": 5,
+          "path": "health.ts"
+        },
+        "tags": [
+          "status"
+        ]
+      }
+    ],
+    "schemas": [
+      {
+        "name": "ProjectCreate",
+        "source": {
+          "column": 23,
+          "line": 18,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ProjectCreateInput",
+        "source": {
+          "column": 1,
+          "line": 23,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ProjectDto",
+        "source": {
+          "column": 1,
+          "line": 28,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ClockService",
+        "source": {
+          "column": 1,
+          "line": 33,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "sourceFiles": [
+      {
+        "hash": "sha256:dadb3621f608361f852f653be7599dc90dc8c1525cdfb6b9f822b3d822d27557",
+        "path": "input.ts"
+      },
+      {
+        "hash": "sha256:aefd1fd2b51f7f6824a90adb04ce38b2da4a081f463a8c7d488048050a9730f1",
+        "path": "health.ts"
+      }
+    ],
+    "version": 1
+  }
+}

@@ -53,8 +53,11 @@ source location pointing at the offending JSON path.
 - `schema_version`, `compiler_version`, `runtime_min_version`, `target`
 - `artifacts[]` — name + 32-byte SHA-256 hash + size
 - `handlers[]` — id (numeric), kind, source span
-- `routes[]` — method, pattern (parsed once), handlerId, name, tags,
-  bindings (Plan v2 framework metadata where present), source span
+- `routes[]` — method, pattern (parsed once), handlerId, name, and request
+  bindings consumed by the native runtime. Compiler-emitted JSON may also carry
+  optional route tags, source metadata, and health metadata for CLI, OpenAPI,
+  diagnostics, and source-map tooling; those fields are ignored by native
+  dispatch.
 - `providers[]` — name, kind, runtime config metadata (no secrets)
 - `capabilities[]` — token, kind, provider, access, metadata
 - `required_features[]`

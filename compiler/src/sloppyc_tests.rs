@@ -208,6 +208,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_os_runtime: false,
         uses_http_client_runtime: false,
         uses_workers_runtime: false,
+        uses_health: false,
         problem_details: None,
     };
     config
@@ -1558,6 +1559,90 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("ProblemDetails"));
     assert!(emitted_js.source.contains("Internal Server Error"));
+}
+
+#[test]
+fn map_health_checks_extracts_routes_and_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({
+  path: "/_health",
+  livenessPath: "/_live",
+  readinessPath: "/_ready",
+  checks: [
+    function database() { return { ok: true }; },
+    { name: "worker", liveness: true, readiness: false, check: () => true },
+    { name: "cache", liveness: true, check(ctx) { return ctx !== undefined; } }
+  ]
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    assert!(app.uses_health);
+    assert_eq!(app.routes.len(), 3);
+    assert_eq!(app.routes[0].name.as_deref(), Some("Health"));
+    assert_eq!(app.routes[1].name.as_deref(), Some("Health.Liveness"));
+    assert_eq!(app.routes[2].name.as_deref(), Some("Health.Readiness"));
+    assert_eq!(app.routes[0].pattern, "/_health");
+    assert_eq!(app.routes[1].pattern, "/_live");
+    assert_eq!(app.routes[2].pattern, "/_ready");
+    assert_eq!(
+        app.routes[0].health.as_ref().unwrap().checks,
+        vec!["database", "worker", "cache"]
+    );
+    assert_eq!(
+        app.routes[1].health.as_ref().unwrap().checks,
+        vec!["worker", "cache"]
+    );
+    assert_eq!(
+        app.routes[2].health.as_ref().unwrap().checks,
+        vec!["database", "cache"]
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("__sloppy_health_checks"));
+    assert!(emitted_js.source.contains("function (ctx)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["features"]["health"], true);
+    assert_eq!(plan["strongPlan"]["evidence"]["health"], true);
+    assert_eq!(plan["routes"][0]["health"]["kind"], "aggregate");
+    assert_eq!(
+        plan["routes"][1]["health"]["checks"],
+        serde_json::json!(["worker", "cache"])
+    );
+    assert_eq!(plan["routes"][2]["responses"][1]["status"], 503);
+}
+
+#[test]
+fn map_health_checks_rejects_unsupported_static_shapes() {
+    for source in [
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ path: "/same", livenessPath: "/same" });
+export default app;
+"#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ checks: [{ name: "none", liveness: false, readiness: false, check: () => true }] });
+export default app;
+"#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ checks: [{ name: "bad", check: (ctx: RequestContext) => true }] });
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("unsupported health shape should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS");
+    }
 }
 
 #[test]
@@ -3142,6 +3227,57 @@ fn typed_framework_metadata_fixture_expected_outputs_stay_current() {
 }
 
 #[test]
+fn app_graph_dogfood_fixture_expected_outputs_stay_current() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_name = "app-graph-dogfood";
+    let fixture = root
+        .join("tests/fixtures")
+        .join(fixture_name)
+        .join("input.ts");
+    let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+    let mut app = extract(&fixture, &source).expect("app graph dogfood fixture should extract");
+    super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
+        .expect("fixture configuration should load")
+        .apply_to_app(&mut app)
+        .expect("fixture configuration should apply");
+
+    let emitted_js = super::emit_app_js(&app);
+    let expected_js = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.js"),
+    )
+    .expect("expected app.js should exist");
+    assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
+
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let emitted_plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let expected_plan = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.plan.json"),
+    )
+    .expect("expected app.plan.json should exist");
+    assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+
+    let expected_source_map = fs::read_to_string(
+        root.join("tests/fixtures")
+            .join(fixture_name)
+            .join("expected/app.js.map"),
+    )
+    .expect("expected app.js.map should exist");
+    assert_eq!(
+        emitted_source_map, expected_source_map,
+        "{fixture_name} app.js.map"
+    );
+}
+
+#[test]
 fn typed_framework_negative_diagnostics_are_source_aware() {
     for (source, code) in [
         (
@@ -3806,6 +3942,7 @@ fn rejected_fixture_diagnostics_stay_current() {
         ("missing-provider-effect", "input.js"),
         ("non-sqlite-provider-bridge", "input.js"),
         ("unsupported-provider-method", "input.js"),
+        ("unsupported-route-options-dynamic-tags", "input.js"),
     ] {
         let fixture = root
             .join("tests/fixtures")

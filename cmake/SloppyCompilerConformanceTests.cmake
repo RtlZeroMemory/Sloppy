@@ -57,6 +57,9 @@
         sloppy_add_conformance_compile_test(
             conformance.source_map.compile_artifacts source-map
             compiler/tests/fixtures/source-map/input.js)
+        sloppy_add_conformance_compile_test(
+            conformance.app_graph_dogfood.compile_artifacts app-graph-dogfood
+            compiler/tests/fixtures/app-graph-dogfood/input.ts)
         sloppy_add_conformance_rejected_test(
             conformance.unsupported.dynamic_route dynamic-route
             compiler/tests/fixtures/unsupported-dynamic-route/input.js

@@ -33,7 +33,7 @@ The compiler reads supported source and emits Plan metadata for:
 - top-level `app.get/post/put/patch/delete` calls (and the `mapGet`/
   `mapPost`/… aliases) on the app and on groups;
 - top-level `app.group(...)` and group method chains;
-- top-level `app.controller(...)` / `app.mapController(...)` mappings;
+- literal `app.mapHealthChecks(...)` calls;
 - route options — string literal patterns, route names, tags;
 - top-level service registrations
   (`addSingleton/addScoped/addTransient` with literal token strings);
@@ -75,6 +75,7 @@ Confirmed unsupported (each has a fixture or diagnostic code):
 - HTTP methods other than GET/POST/PUT/PATCH/DELETE
   (`fixtures/unsupported-http-method/`,
   `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
+- Controller mappings and constructor injection are not compiler-extracted yet.
 - Sloppy default imports (`SLOPPYC_E_UNSUPPORTED_SLOPPY_DEFAULT_IMPORT`).
 
 What the compiler tolerates outside route-extraction code (helper

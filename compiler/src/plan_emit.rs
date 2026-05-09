@@ -34,7 +34,8 @@ pub(crate) fn emit_plan(
     source_map_hash: &str,
 ) -> Result<String, Diagnostic> {
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
-    let emits_app_metadata = !app.schemas.is_empty() || !app.config_reads.is_empty();
+    let emits_app_metadata =
+        !app.schemas.is_empty() || !app.config_reads.is_empty() || app.uses_health;
     let emits_metadata = emits_app_metadata
         || app.routes.iter().any(|route| {
             !route.handler.bindings.is_empty()
@@ -42,6 +43,7 @@ pub(crate) fn emit_plan(
                 || !route.handler.responses.is_empty()
                 || route.handler.runtime_deferred
                 || !route.handler.effects.is_empty()
+                || route.health.is_some()
         });
     let handlers = app
         .routes
@@ -117,6 +119,12 @@ pub(crate) fn emit_plan(
             if !route.tags.is_empty() {
                 route_json["tags"] = json!(route.tags);
             }
+            if let Some(health) = &route.health {
+                route_json["health"] = json!({
+                    "kind": health.kind,
+                    "checks": health.checks
+                });
+            }
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);
             }
@@ -135,7 +143,8 @@ pub(crate) fn emit_plan(
                 || !route.handler.bindings.is_empty()
                 || route.handler.response.is_some()
                 || !route.handler.responses.is_empty()
-                || !route.handler.effects.is_empty();
+                || !route.handler.effects.is_empty()
+                || route.health.is_some();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
                     .handler
@@ -581,6 +590,10 @@ pub(crate) fn emit_plan(
         required_features.push("stdlib.workers");
         value["strongPlan"]["evidence"]["workers"] = json!(true);
         value["features"]["workers"] = json!(true);
+    }
+    if app.uses_health {
+        value["strongPlan"]["evidence"]["health"] = json!(true);
+        value["features"]["health"] = json!(true);
     }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);

@@ -180,6 +180,12 @@ Check return details and thrown error messages are intentionally omitted from
 the health response. Detailed failure logging belongs in the logging and
 diagnostics surfaces.
 
+For source-input builds, `sloppyc` extracts literal
+`app.mapHealthChecks(...)` calls. The compiler emits three generated GET
+handlers and adds route-level Plan metadata with the health endpoint kind and
+selected check names. Health paths and check metadata must be static literals
+in compiler input.
+
 ## Request IDs
 
 `RequestId.defaults(options?)` returns app-host middleware that assigns one request ID

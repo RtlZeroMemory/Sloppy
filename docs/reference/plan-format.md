@@ -36,6 +36,7 @@ The compiler can emit route metadata for the supported source subset:
 - supported HTTP methods;
 - optional route names;
 - optional route tags from route metadata and group tags;
+- optional health metadata for compiler-extracted health endpoints;
 - source metadata;
 - direct handler IDs;
 - simple request context usage in supported handlers.
@@ -46,10 +47,13 @@ The compiler can emit route metadata for the supported source subset:
 The native runtime validates route metadata, builds a deterministic route table, and
 dispatches supported requests through V8 when the runtime is V8-enabled. For Framework v2 metadata, the
 native dispatcher also consumes Plan-backed route/query/header scalar bindings and
-schema-backed JSON body metadata to fail invalid requests with a safe `400`
-`application/problem+json` response before calling the handler. Dynamic route registration,
-middleware, modules, arbitrary imports, custom validators, and full TypeScript semantics
-remain outside the current source subset.
+  schema-backed JSON body metadata to fail invalid requests with a safe `400`
+  `application/problem+json` response before calling the handler. Route tags
+  and health metadata are optional compiler/CLI metadata; native dispatch does
+  not need them to match a request. Dynamic route registration, middleware,
+  CORS preflight metadata, controller extraction, arbitrary imports, custom
+  validators, and full TypeScript semantics remain outside the current source
+  subset.
 
 Typed Framework v2 handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

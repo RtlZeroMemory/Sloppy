@@ -1,0 +1,5 @@
+<compiler>/tests/fixtures/unsupported-route-options-dynamic-tags/input.js:5:21: SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS: route option tags must be a string literal array
+  --> <compiler>/tests/fixtures/unsupported-route-options-dynamic-tags/input.js:5:21
+   |
+5 | app.get("/users", { tags }, () => Results.ok({ ok: true }));
+   |                     ^^^^

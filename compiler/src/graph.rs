@@ -19,6 +19,7 @@ pub(crate) struct Route {
     pub(crate) framework_path: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) tags: Vec<String>,
+    pub(crate) health: Option<HealthRouteMetadata>,
     pub(crate) span: Span,
     pub(crate) source_path: PathBuf,
     pub(crate) source_name: String,
@@ -113,6 +114,7 @@ pub(crate) struct AppGraph {
     pub(crate) uses_os_runtime: bool,
     pub(crate) uses_http_client_runtime: bool,
     pub(crate) uses_workers_runtime: bool,
+    pub(crate) uses_health: bool,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
 }
 
@@ -121,6 +123,12 @@ pub(crate) type ExtractedApp = AppGraph;
 #[derive(Debug, Clone)]
 pub(crate) struct ProblemDetailsDescriptor {
     pub(crate) detail: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct HealthRouteMetadata {
+    pub(crate) kind: &'static str,
+    pub(crate) checks: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
