@@ -104,7 +104,7 @@ V8-gated and must be reported separately from this static Unix lane.
 `tools/unix/dev.sh npm-dry-run --package-path artifacts/packages/sloppy-linux-x64.tar.gz`
 stages `@rtlzeromemory/sloppy` plus the matching Linux x64 GNU platform package from a tested archive.
 It runs `npm pack --dry-run`, creates local tarballs, and can run the launcher smoke path
-without publishing packages. macOS npm staging is deferred until hosted package proof exists.
+without publishing packages. macOS npm packages are not staged in this alpha.
 `tools/unix/dev.sh test-install --package-path ...` verifies
 `sloppy create`, `sloppy build`, `sloppy package`, and `sloppy run --once` from an
 extracted archive.

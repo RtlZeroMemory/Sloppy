@@ -34,10 +34,8 @@ Delete stale execution transcripts, issue snapshots, task copies, dry
 status pages, fake examples, and docs that don't match the current
 implementation. Archive only material with durable historical value.
 
-Automation operating instructions (agent rules, evidence-lane policy,
-review playbooks for AI reviewers) live under `AGENTS.md`, `CLAUDE.md`,
-and `AGENTS_CONTRIBUTING.md` — not in reader-facing product or
-contributor docs.
+Automation operating instructions live at the repository root, outside the
+reader-facing product and contributor docs.
 
 ## Code, tests, docs move together
 

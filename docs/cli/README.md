@@ -24,6 +24,7 @@ sloppy --version
 | [`sloppy doctor`](doctor.md) | Validate the local environment and a Plan                |
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |
 | [`sloppy openapi`](openapi.md) | Generate an OpenAPI document from a Plan               |
+| [`sloppyc`](sloppyc.md)      | Run the compiler directly                                |
 
 `create`, `build`, `run`, and `package` are the normal app workflow. The
 inspection tools work against an already-built `app.plan.json`.

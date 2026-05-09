@@ -3,7 +3,7 @@
 The gates that have to be green before a PR merges. Some are local,
 some run in CI; the local commands mirror what CI does.
 
-## Local checklist
+## Local commands
 
 ```powershell
 .\tools\windows\dev.ps1 configure
@@ -69,7 +69,7 @@ These run on demand or when labels/inputs select them:
 | -------------------- | --------------------------------------------------------------- |
 | V8-gated             | Required for runtime/compiler/V8-adjacent PRs                   |
 | Source-input         | Triggered by source-input fixture changes                       |
-| Dogfood              | App/example proof catalog; wraps source-input, V8, and package evidence |
+| Dogfood              | App/example coverage catalog; wraps source-input, V8, and package evidence |
 | Package outside-checkout | `package-smoke` / `full-ci` label, or `workflow_dispatch`   |
 | Live PostgreSQL      | `live-postgres` / `live-providers` / `full-ci` label            |
 | Live SQL Server      | `live-sqlserver` / `live-providers` / `full-ci` label           |
@@ -96,7 +96,7 @@ Docs touch runs the docs hygiene scanners as part of `lint`. The
 scanners check for:
 
 - broken cross-links inside `docs/`;
-- agent operating instructions leaking into product docs;
+- repository workflow notes leaking into product docs;
 - stale planning material;
 - claims unsupported by the current implementation.
 

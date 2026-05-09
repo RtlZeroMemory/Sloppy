@@ -114,7 +114,3 @@ status` is your friend.
 4. Docs updated where behavior changed.
 5. `git status` looks clean.
 6. The PR body explains *what* and *why*; the diff explains *how*.
-
-Agent contributors have additional reporting requirements — see
-[`AGENTS.md`](../../AGENTS.md) and
-[`AGENTS_CONTRIBUTING.md`](../../AGENTS_CONTRIBUTING.md).

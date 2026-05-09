@@ -1,8 +1,9 @@
 # `sloppy audit`
 
-Run security and policy checks against a Plan. Read-only; doesn't enter V8.
+Run static policy checks against a compiled Plan. `audit` is read-only and does
+not enter V8.
 
-```
+```sh
 sloppy audit --plan <path> [--format text|json]
 sloppy audit --artifacts <dir> [--format text|json]
 ```
@@ -12,41 +13,45 @@ sloppy audit --artifacts <dir> [--format text|json]
 
 ## What it checks
 
-- Capability surface: every declared capability has a known provider.
-- Secret handling: no credential strings appear in Plan metadata.
-- Process and network usage flags: anything declared at compile time that
-  would expand the trust surface.
-- Provider connection strings: configured via env / config keys, not baked
-  into source.
+- route capability references;
+- duplicate route names and route method/pattern pairs;
+- handler references;
+- module dependency references;
+- provider metadata shape;
+- provider/capability consistency;
+- filesystem and network capability visibility.
 
-The exact list of checks is part of the audit output, so you don't have to
-remember it.
+## Text output
 
-## Output
+Current text output lists each finding with severity, code, message, and area:
 
-**Text** (default):
+```text
+Sloppy Audit
 
+[error] SLOPPY_AUDIT_ROUTE_CAPABILITY_MISSING route references an undeclared capability (routes)
+[error] SLOPPY_AUDIT_DUPLICATE_ROUTE_NAME duplicate route name (routes)
+[error] SLOPPY_AUDIT_DUPLICATE_ROUTE duplicate route method and pattern (routes)
+[error] SLOPPY_AUDIT_MISSING_HANDLER route references a missing handler id (routes)
+[error] SLOPPY_AUDIT_MISSING_MODULE_DEPENDENCY module dependency is missing (modules)
+[warn] SLOPPY_AUDIT_PROVIDER_INCOMPLETE provider metadata is missing token, provider, or service (dataProviders)
+[error] SLOPPY_AUDIT_PROVIDER_MISMATCH capability provider reference does not match data provider (capabilities)
+[error] SLOPPY_AUDIT_CAPABILITY_INSUFFICIENT capability access is insufficient for provider operation (capabilities)
+[error] SLOPPY_AUDIT_DUPLICATE_CAPABILITY duplicate capability token (capabilities)
+[error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING database capability references an undeclared provider (capabilities)
+[error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED database capability is missing required provider reference (capabilities)
+[error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN filesystem/network capabilities must not declare providers (capabilities)
+[note] SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented (capabilities)
+[note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net, including LocalEndpoint metadata; no OS sandbox or external live-network evidence is implemented (capabilities)
 ```
-$ sloppy audit --plan .sloppy/app.plan.json
-plan-secrets-redacted   : pass
-provider-config-source  : pass
-process-spawn           : not declared
-network-egress          : not declared
-```
 
-**JSON** is the same data, suitable for piping into compliance tooling.
+Clean Plans produce fewer rows. JSON output carries the same findings in a
+machine-readable form.
 
 ## Exit codes
 
-- `0` when every check passes.
-- `1` when one or more checks fail.
+| Code | Meaning |
+| --- | --- |
+| `0` | No errors |
+| `1` | At least one `error` finding |
 
-## When to use
-
-- Before publishing artifacts.
-- In CI as a hard gate.
-- After upgrading the Sloppy runtime, to surface new policy checks the
-  newer compiler emits metadata for.
-
-For provider availability and environment health, use
-[`sloppy doctor`](doctor.md) instead.
+Warnings and notes describe visible policy surface but do not fail the command.

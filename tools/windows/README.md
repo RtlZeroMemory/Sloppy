@@ -51,8 +51,8 @@ resolver supports `OFF`, `AUTO`, and `REQUIRED` modes. It checks, in order, an e
 `.sdeps/v8/windows-x64`, and the same `.sdeps` location in registered git worktrees.
 `SLOPPY_V8_ROOT` is an advanced override, not the default contributor path.
 `SLOPPY_V8_SDK_HINTS` is a path-list environment variable separated by the platform path
-separator, so agents can point at portable cache roots without baking machine-local paths
-into docs or PRs.
+separator. Use it for portable cache roots without baking machine-local paths into docs
+or PRs.
 
 Windows x64 has a pinned, checksum-validated SDK artifact source. `fetch-v8.ps1` stores
 the downloaded archive under `.sdeps/v8/_downloads`, extracts the SDK into
@@ -95,7 +95,7 @@ The dry-run writes ignored output under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or publish a GitHub release.
 
 npm package dry-runs generate `@rtlzeromemory/sloppy` and the matching Windows platform package
-from an already-built archive. macOS npm staging is deferred until hosted package proof exists:
+from an already-built archive. macOS npm packages are not staged in this alpha:
 
 ```powershell
 .\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip

@@ -50,8 +50,9 @@ native dispatcher also consumes Plan-backed route/query/header scalar bindings a
   schema-backed JSON body metadata to fail invalid requests with a safe `400`
   `application/problem+json` response before calling the handler. Route tags
   and health metadata are optional compiler/CLI metadata; native dispatch does
-  not need them to match a request. Dynamic route registration, middleware,
-  CORS preflight metadata, controller extraction, arbitrary imports, custom
+  not need them to match a request. Static middleware, CORS, request ID,
+  request logging, and controller metadata are represented where the compiler
+  can lower them. Dynamic route registration, arbitrary imports, custom
   validators, and full TypeScript semantics remain outside the current source
   subset.
 
@@ -74,8 +75,8 @@ and backed by `WorkQueue.create("<name>")`.
 `Config<"KEY">` reads the matching environment value. If the compiler recorded a
 literal config default for that key, generated JavaScript uses the default when
 the environment value is absent. Custom validators, arbitrary TypeScript
-lowering, controller constructor injection, middleware, CORS, RequestId,
-RequestLogging, and broader response writing remain future implementation work.
+lowering, controller constructor injection, dynamic middleware options, and
+broader response writing remain future implementation work.
 
 ## Server Config Metadata
 

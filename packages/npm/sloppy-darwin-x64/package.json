@@ -1,7 +1,7 @@
 {
   "name": "@rtlzeromemory/sloppy-darwin-x64",
   "version": "0.1.0-alpha.1",
-  "description": "Unpublished macOS x64 Sloppy runtime package template for future hosted package proof.",
+  "description": "Unpublished macOS x64 Sloppy runtime package template for a future alpha package.",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "os": ["darwin"],

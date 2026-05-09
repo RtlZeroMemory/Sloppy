@@ -33,7 +33,7 @@ finding at review.
 
 ## What not to do
 
-- Don't paste prompts, agent choreography, or planning transcripts
+- Don't paste planning transcripts or workflow notes
   into docs.
 - Don't add `Type:`/`Status:` metadata lines at the top of pages.
 - Don't keep stale planning notes as if they were current docs —

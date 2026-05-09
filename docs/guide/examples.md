@@ -8,7 +8,7 @@ This page starts with the curated set, then lists every example directory with
 its current role. If a row says "fixture", treat it as test evidence rather
 than a tutorial.
 
-For a complete evidence-oriented inventory, see `examples/README.md` in the
+For a complete test-oriented inventory, see `examples/README.md` in the
 repository.
 
 ## Start here
@@ -18,11 +18,11 @@ repository.
 | [`framework-v2-hello`](#framework-v2-hello) | `Sloppy.create()`, typed route param, JSON response |
 | [`hello-minimal`](#hello-minimal) | The smallest runnable app |
 
-## Dogfood proof
+## Dogfood coverage
 
 | Example | Shows |
 | --- | --- |
-| [`prealpha-control-plane`](#prealpha-control-plane) | Multi-file project-mode app host, SQLite capability, app test host proof |
+| [`prealpha-control-plane`](#prealpha-control-plane) | Multi-file project-mode app host, SQLite capability, app test host coverage |
 
 ## Routing
 
@@ -116,8 +116,8 @@ sloppy run --once GET /projects?owner=runtime
 ```
 
 `sloppy run` enters V8. Default non-V8 builds report the V8 requirement after
-compiling source input and writing artifacts; that diagnostic is useful proof,
-but it is not positive handler execution.
+compiling source input and writing artifacts; that diagnostic confirms the
+handoff path, but it is not positive handler execution.
 
 ## Quick descriptions
 
@@ -135,7 +135,7 @@ response. Useful when something else stops working and you want to bisect.
 
 A multi-file project with `sloppy.json`, `appsettings*.json`, function modules,
 route groups, JSON bodies, path and query params, SQLite provider metadata,
-health routes, diagnostics, and dogfood proof lanes. Its app-host test imports
+health routes, diagnostics, and dogfood coverage lanes. Its app-host test imports
 the same route modules and covers CORS, ProblemDetails, request IDs, request
 logging redaction, service-scope cleanup, negative paths, and host lifecycle.
 
@@ -252,7 +252,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
-| `prealpha-control-plane` | Dogfood proof app |
+| `prealpha-control-plane` | Dogfood coverage app |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |

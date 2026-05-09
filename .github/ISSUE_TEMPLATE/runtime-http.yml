@@ -1,0 +1,53 @@
+name: Runtime or HTTP problem
+description: Report handler execution, HTTP transport, TLS, or runtime behavior issues.
+title: "Runtime: "
+labels: ["type:bug", "area:runtime", "status:needs-triage"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Sloppy version
+  - type: input
+    id: os-arch
+    attributes:
+      label: OS and architecture
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - HTTP/1.1
+        - HTTP/2
+        - TLS
+        - h2c
+        - run --once
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: app-shape
+    attributes:
+      label: Route or app shape
+      render: ts
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text

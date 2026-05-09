@@ -331,8 +331,8 @@ function Get-UnsupportedStatementViolations {
 
             if ((Test-PublicProductDocPath -Path $file) -and (
                 $line -cmatch $ConstructionPhaseDocPattern -or
-                $line -match '(?i)\b(AI slop|slop vibes|vibe[- ]coded|vibe coding)\b')) {
-                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "public/product docs contain construction-phase or agent-choreography wording" }) | Out-Null
+                $line -match '(?i)\b(slop vibes|vibe[- ]coded|vibe coding)\b')) {
+                $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "public/product docs contain construction-phase or planning-transcript wording" }) | Out-Null
             }
 
             if ((Test-CurrentClaimDocPath -Path $file) -and

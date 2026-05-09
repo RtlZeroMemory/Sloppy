@@ -428,8 +428,8 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "const HTTP_CLIENT_PROTOCOLS = new Set([\"auto\", \"http/1.1\", \"h2\", \"h2c\"]);"
         "function normalizeHttpProtocol(baseOptions, requestObject, operation)"
-        "async function sendHttp2RequestOnce(request, lifecycle)"
-        "return await sendHttp2RequestOnce(request, lifecycle);")
+        "async function sendHttp2RequestOnce(request, pool, lifecycle)"
+        "return await sendHttp2RequestOnce(request, pool, lifecycle);")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected HTTP/2 client runtime pattern")
 endforeach()
 

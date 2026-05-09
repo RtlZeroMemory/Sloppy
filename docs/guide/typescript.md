@@ -8,7 +8,7 @@ compiler can't statically analyze is rejected with a stable
 This page is the high-level shape. The full matrix of error codes and
 extraction rules lives in
 [reference/supported-syntax.md](../reference/supported-syntax.md), and
-the canonical proof-of-acceptance is the fixture suite under
+the canonical acceptance source is the fixture suite under
 `compiler/tests/fixtures/`.
 
 ## Inputs

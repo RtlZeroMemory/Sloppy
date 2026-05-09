@@ -1,50 +1,52 @@
 # `sloppy doctor`
 
-Check that the local environment and (optionally) a Plan are healthy.
-Useful as the first command to run when something isn't working.
+Check the local runtime, packaged assets, optional provider dependencies, and
+optionally a compiled Plan.
 
-```
+```sh
 sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]
 ```
 
 ## What it checks
 
-- The CLI version and build flags (V8 enabled, debug/release).
-- The bootstrap stdlib is present and at a compatible version.
-- If `--plan` or `--artifacts` is given: the Plan parses, schema version is
-  supported, artifact hashes match, required features are activatable.
-- Provider dependencies: SQLite is built-in; PostgreSQL needs `libpq`;
-  SQL Server needs an ODBC driver. `doctor` reports each provider as
-  `available`, `unavailable`, or `unknown`.
+- bootstrap runtime assets;
+- V8 bridge status for the current build/package;
+- live provider configuration;
+- native Plan parsing;
+- route, provider, and capability metadata;
+- SQLite metadata;
+- PostgreSQL live-test environment;
+- SQL Server ODBC driver availability.
 
-## Output
+## Text output
 
-**Text** (default):
+Current text output uses status-prefixed lines:
 
+```text
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: package release status requires package smoke
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[warn] app.plan.routes: no route metadata present
+[warn] app.plan.providers: provider metadata not present
+[warn] app.plan.capabilities: capability metadata not present
+[ok] sqlite.provider: sqlite provider metadata available
+[warn] postgres.live: live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set
+[error] sqlserver.driver: connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found
 ```
-$ sloppy doctor --plan .sloppy/app.plan.json
-sloppy 0.x.y  (V8 enabled, RelWithDebInfo)
-stdlib       : available  bootstrap.manifest.json @ 0.1.0
-plan         : ok         schema=plan/v1-alpha
-sqlite       : available
-postgres     : unavailable  libpq not found
-sqlserver    : unknown      ODBC driver scan deferred
-```
 
-**JSON**: same data, machine-readable.
+The exact rows depend on the current platform, build, package, and provider
+environment.
 
 ## Exit codes
 
-- `0` when every check passes.
-- `1` when one or more checks fail (e.g. unsupported Plan, missing required
-  feature).
+| Code | Meaning |
+| --- | --- |
+| `0` | No errors |
+| `1` | One or more checks reported `error` |
 
-`unavailable` and `unknown` provider statuses do *not* fail the command —
-they're informational. They become failures only if a Plan declares a
-capability the local runtime can't satisfy.
-
-## Use cases
-
-- New machine setup: confirm `sloppy` and dependencies are wired up.
-- Troubleshooting: get a one-shot view of the runtime's view of the world.
-- CI pre-flight: gate the build on `sloppy doctor` returning 0.
+Warnings are informational unless the checked Plan requires the unavailable
+feature.

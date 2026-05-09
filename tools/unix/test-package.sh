@@ -210,7 +210,7 @@ if [[ "$require_v8_runtime" -eq 1 ]]; then
     exit 1
   }
 elif grep -Eq '"containsV8Runtime"[[:space:]]*:[[:space:]]*true' "$manifest_path"; then
-  echo "Package smoke note: manifest records V8 runtime support. This run validates layout only; use --require-v8-runtime for V8 execution proof."
+  echo "Package smoke note: manifest records V8 runtime support. This run validates layout only; use --require-v8-runtime for V8 execution verification."
 fi
 
 invoke_cli_smoke "$package_root/bin/sloppy" "sloppy"

@@ -1,6 +1,6 @@
 # Review playbook
 
-What reviewers look for. Use this as a checklist when reviewing or as
+What reviewers look for. Use this as a guide when reviewing or as
 a self-check before requesting review.
 
 ## Correctness and contracts

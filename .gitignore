@@ -56,6 +56,9 @@ target/
 # Logs and temporary artifacts
 artifacts/
 logs/
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 *.log
 *.trace
 *.zip

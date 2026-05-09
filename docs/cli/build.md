@@ -67,7 +67,7 @@ goldens are the only normal place to commit Plan output.
 sloppy build
 
 # Build a one-off example into ./dist.
-sloppy build examples/hello/app.js --out dist
+sloppy build examples/compiler-hello/app.js --out dist
 
 # Build with a different environment overlay.
 sloppy build --environment Production

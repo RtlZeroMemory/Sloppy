@@ -119,21 +119,34 @@ function Test-DocsFreshness {
         "AGENTS.md",
         "AGENTS_CONTRIBUTING.md",
         "CONTRIBUTING.md",
+        "SECURITY.md",
         "docs/README.md",
+        "docs/index.md",
+        "docs/install.md",
+        "docs/quickstart.md",
+        "docs/roadmap.md",
         "docs/tutorials/first-api.md",
-        "docs/tutorials/sqlite-api.md",
-        "docs/how-to/install-sloppy.md",
-        "docs/how-to/create-a-project.md",
-        "docs/how-to/build-artifacts.md",
-        "docs/how-to/run-an-app.md",
-        "docs/how-to/run-one-request.md",
-        "docs/how-to/configure-an-app.md",
-        "docs/how-to/use-sqlite.md",
-        "docs/how-to/run-live-postgres-checks.md",
-        "docs/how-to/run-live-sqlserver-checks.md",
-        "docs/how-to/package-sloppy.md",
-        "docs/how-to/troubleshoot-v8.md",
-        "docs/reference/cli.md",
+        "docs/tutorials/multi-file-api.md",
+        "docs/tutorials/config-services-logging.md",
+        "docs/tutorials/middleware-cors-request-logging.md",
+        "docs/tutorials/openapi-and-package.md",
+        "docs/api/README.md",
+        "docs/api/app.md",
+        "docs/api/routing.md",
+        "docs/api/results.md",
+        "docs/api/data.md",
+        "docs/api/workers.md",
+        "docs/cli/README.md",
+        "docs/cli/build.md",
+        "docs/cli/run.md",
+        "docs/cli/package.md",
+        "docs/cli/doctor.md",
+        "docs/cli/audit.md",
+        "docs/cli/sloppyc.md",
+        "docs/guide/README.md",
+        "docs/guide/project-layout.md",
+        "docs/guide/examples.md",
+        "docs/guide/typescript.md",
         "docs/reference/sloppy-json.md",
         "docs/reference/configuration.md",
         "docs/reference/framework.md",
@@ -149,15 +162,11 @@ function Test-DocsFreshness {
         "docs/reference/supported-syntax.md",
         "docs/reference/platform-status.md",
         "docs/reference/stability.md",
-        "docs/explanation/what-is-sloppy.md",
-        "docs/explanation/source-input-and-artifacts.md",
-        "docs/explanation/compiler-and-plan-model.md",
-        "docs/explanation/why-no-node-modules.md",
-        "docs/explanation/configuration-model.md",
-        "docs/explanation/provider-runtime-model.md",
-        "docs/explanation/v8-bridge-model.md",
-        "docs/explanation/security-and-redaction.md",
-        "docs/explanation/packaging-model.md",
+        "docs/about/what-is-sloppy.md",
+        "docs/about/compiler-first-runtime.md",
+        "docs/about/why-no-node-modules.md",
+        "docs/about/v8-bridge.md",
+        "docs/about/security.md",
         "docs/contributor/building-from-source.md",
         "docs/contributor/v8-sdk.md",
         "docs/contributor/dev-scripts.md",
@@ -177,28 +186,26 @@ function Test-DocsFreshness {
         "docs/internals/http-runtime.md",
         "docs/internals/provider-runtime.md",
         "docs/internals/platform-boundaries.md",
-        "docs/internals/security-model.md"
+        "docs/internals/security-model.md",
+        "docs/release/README.md",
+        "docs/release/artifact-contract.md"
     )
 
     foreach ($relative in $requiredFiles) {
         $path = Join-Path $ScanRoot $relative
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            if ($relative -match '^docs/(tutorials|how-to|explanation)/' -or
-                $relative -eq "docs/reference/cli.md") {
-                continue
-            }
             $errors.Add("Missing required documentation file: $relative") | Out-Null
         }
     }
 
-    foreach ($removedDir in @("docs/public", "docs/modules", "docs/project", "docs/exec-plans")) {
+    foreach ($removedDir in @("docs/skills", "docs/modules", "docs/project", "docs/exec-plans")) {
         if (Test-Path -LiteralPath (Join-Path $ScanRoot $removedDir)) {
             $errors.Add("Removed construction-era documentation directory still exists: $removedDir") | Out-Null
         }
     }
 
     $badExamplePattern = 'Results\.json\(\s*\{\s*provider:\s*"sqlserver"\s*,\s*configured:\s*false\s*\}'
-    $allowedRootDocs = @("docs/README.md", "docs/glossary.md", "docs/documentation-policy.md", "docs/install.md", "docs/quickstart.md")
+    $allowedRootDocs = @("docs/README.md", "docs/glossary.md", "docs/documentation-policy.md", "docs/index.md", "docs/install.md", "docs/quickstart.md", "docs/roadmap.md")
     foreach ($relative in Get-TrackedMarkdownFiles -ScanRoot $ScanRoot) {
         $normalized = $relative -replace "\\", "/"
         if ($normalized -notmatch '^(docs/|README\.md|AGENTS\.md|AGENTS_CONTRIBUTING\.md|CONTRIBUTING\.md|RELEASE_NOTES\.md|CHANGELOG\.md)') {
@@ -274,7 +281,7 @@ function Test-DocsFreshness {
                 $errors.Add("${normalized}:${lineNumber}: fake SQL Server provider example is forbidden") | Out-Null
             }
             if ($line -match '(?i)\b(CODEX|Codex|/goal|this prompt|implementation run)\b') {
-                $errors.Add("${normalized}:${lineNumber}: prompt or agent choreography wording is forbidden in current docs") | Out-Null
+                $errors.Add("${normalized}:${lineNumber}: prompt or transcript wording is forbidden in current docs") | Out-Null
             }
             if ($line -match '(?i)\b(prompt dump|prompt transcript|current-doc construction|current doc construction)\b') {
                 $errors.Add("${normalized}:${lineNumber}: prompt-dump or construction-choreography wording is forbidden in current docs") | Out-Null
@@ -322,11 +329,14 @@ function Test-DocsFreshness {
 function Invoke-SelfTest {
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-docs-freshness-" + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/tutorials") | Out-Null
-    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/how-to") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/api") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/cli") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/guide") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/reference") | Out-Null
-    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/explanation") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/about") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/contributor") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/internals") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/release") | Out-Null
     try {
         & git -C $tempRoot init | Out-Null
         foreach ($relative in @(
@@ -334,21 +344,34 @@ function Invoke-SelfTest {
             "AGENTS.md",
             "AGENTS_CONTRIBUTING.md",
             "CONTRIBUTING.md",
+            "SECURITY.md",
             "docs/README.md",
+            "docs/index.md",
+            "docs/install.md",
+            "docs/quickstart.md",
+            "docs/roadmap.md",
             "docs/tutorials/first-api.md",
-            "docs/tutorials/sqlite-api.md",
-            "docs/how-to/install-sloppy.md",
-            "docs/how-to/create-a-project.md",
-            "docs/how-to/build-artifacts.md",
-            "docs/how-to/run-an-app.md",
-            "docs/how-to/run-one-request.md",
-            "docs/how-to/configure-an-app.md",
-            "docs/how-to/use-sqlite.md",
-            "docs/how-to/run-live-postgres-checks.md",
-            "docs/how-to/run-live-sqlserver-checks.md",
-            "docs/how-to/package-sloppy.md",
-            "docs/how-to/troubleshoot-v8.md",
-            "docs/reference/cli.md",
+            "docs/tutorials/multi-file-api.md",
+            "docs/tutorials/config-services-logging.md",
+            "docs/tutorials/middleware-cors-request-logging.md",
+            "docs/tutorials/openapi-and-package.md",
+            "docs/api/README.md",
+            "docs/api/app.md",
+            "docs/api/routing.md",
+            "docs/api/results.md",
+            "docs/api/data.md",
+            "docs/api/workers.md",
+            "docs/cli/README.md",
+            "docs/cli/build.md",
+            "docs/cli/run.md",
+            "docs/cli/package.md",
+            "docs/cli/doctor.md",
+            "docs/cli/audit.md",
+            "docs/cli/sloppyc.md",
+            "docs/guide/README.md",
+            "docs/guide/project-layout.md",
+            "docs/guide/examples.md",
+            "docs/guide/typescript.md",
             "docs/reference/sloppy-json.md",
             "docs/reference/configuration.md",
             "docs/reference/framework.md",
@@ -364,15 +387,11 @@ function Invoke-SelfTest {
             "docs/reference/supported-syntax.md",
             "docs/reference/platform-status.md",
             "docs/reference/stability.md",
-            "docs/explanation/what-is-sloppy.md",
-            "docs/explanation/source-input-and-artifacts.md",
-            "docs/explanation/compiler-and-plan-model.md",
-            "docs/explanation/why-no-node-modules.md",
-            "docs/explanation/configuration-model.md",
-            "docs/explanation/provider-runtime-model.md",
-            "docs/explanation/v8-bridge-model.md",
-            "docs/explanation/security-and-redaction.md",
-            "docs/explanation/packaging-model.md",
+            "docs/about/what-is-sloppy.md",
+            "docs/about/compiler-first-runtime.md",
+            "docs/about/why-no-node-modules.md",
+            "docs/about/v8-bridge.md",
+            "docs/about/security.md",
             "docs/contributor/building-from-source.md",
             "docs/contributor/v8-sdk.md",
             "docs/contributor/dev-scripts.md",
@@ -392,7 +411,9 @@ function Invoke-SelfTest {
             "docs/internals/http-runtime.md",
             "docs/internals/provider-runtime.md",
             "docs/internals/platform-boundaries.md",
-            "docs/internals/security-model.md"
+            "docs/internals/security-model.md",
+            "docs/release/README.md",
+            "docs/release/artifact-contract.md"
         )) {
             $path = Join-Path $tempRoot $relative
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
@@ -510,22 +531,22 @@ Future work is tracked in issues and contributor docs.
         Assert-True ((Test-DocsFreshness -ScanRoot $tempRoot).Count -gt 0) "Fake SQL Server example fixture passed."
 
         "# Good`n`nBody.`n" | Set-Content -LiteralPath $providersPath -Encoding ASCII
-        "Type: Reference" | Add-Content -LiteralPath (Join-Path $tempRoot "docs/reference/cli.md") -Encoding ASCII
+        "Type: Reference" | Add-Content -LiteralPath (Join-Path $tempRoot "docs/reference/stability.md") -Encoding ASCII
         Assert-True ((Test-DocsFreshness -ScanRoot $tempRoot).Count -gt 0) "Metadata-line fixture passed."
 
-        @"
+@"
 # Good Reference
 ## API
 - Option: Value
-"@ | Set-Content -LiteralPath (Join-Path $tempRoot "docs/reference/cli.md") -Encoding ASCII
+"@ | Set-Content -LiteralPath (Join-Path $tempRoot "docs/reference/stability.md") -Encoding ASCII
         $RemovedAlphaCheckFixture | Add-Content -LiteralPath (Join-Path $tempRoot "README.md") -Encoding ASCII
         Assert-True ((Test-DocsFreshness -ScanRoot $tempRoot).Count -gt 0) "removed alpha-check fixture passed."
 
         "# Good`n" | Set-Content -LiteralPath (Join-Path $tempRoot "README.md") -Encoding ASCII
-        "This page contains a prompt transcript." | Add-Content -LiteralPath (Join-Path $tempRoot "docs/explanation/what-is-sloppy.md") -Encoding ASCII
+        "This page contains a prompt transcript." | Add-Content -LiteralPath (Join-Path $tempRoot "docs/about/what-is-sloppy.md") -Encoding ASCII
         Assert-True ((Test-DocsFreshness -ScanRoot $tempRoot).Count -gt 0) "Prompt transcript fixture passed."
 
-        "# Good`n`nBody.`n" | Set-Content -LiteralPath (Join-Path $tempRoot "docs/explanation/what-is-sloppy.md") -Encoding ASCII
+        "# Good`n`nBody.`n" | Set-Content -LiteralPath (Join-Path $tempRoot "docs/about/what-is-sloppy.md") -Encoding ASCII
         New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot "docs/project") | Out-Null
         Assert-True ((Test-DocsFreshness -ScanRoot $tempRoot).Count -gt 0) "Stale planning directory fixture passed."
 

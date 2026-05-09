@@ -40,7 +40,7 @@ which provider implementations to wire up.
   packages. It runs Sloppy applications.
 - **Not a library you bolt onto an existing app.** It's a runtime; you
   invoke `sloppy run`, not `node`.
-- **Not production-hardened yet.** Pre-alpha.
+- **Pre-alpha.** APIs and artifact formats can change between alpha revisions.
 
 ## What it inspires from
 
@@ -71,7 +71,7 @@ Pre-alpha:
   coverage where the Plan can encode them; dynamic shapes fail closed.
 - OpenAPI is generated from Plan metadata today; security schemes, richer
   response schemas, and full runtime-pipeline modeling are not represented.
-- Cross-platform polish: Windows is the most validated lane today.
-- Public release distribution (GitHub Release archives, npm launcher).
+- npm runtime packages for Windows x64 and Linux x64.
+- Cross-platform polish: macOS and arm64 use source/archive paths today.
 
 [Quickstart →](../quickstart.md)

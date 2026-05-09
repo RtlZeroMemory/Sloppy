@@ -63,7 +63,7 @@ selects an installed platform package:
 - `@rtlzeromemory/sloppy-linux-x64`
 
 macOS npm platform packages are not referenced by the root package or publish workflow until
-hosted macOS package proof exists. npm package dry-runs must use `--tag alpha`, never
+hosted macOS package verification exists. npm package dry-runs must use `--tag alpha`, never
 `latest`. Platform package contents are generated from already-built archive contents; npm
 install must not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.

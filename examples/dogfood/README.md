@@ -10,7 +10,7 @@ Current runnable or diagnosable targets:
 - `hello-source-input`: uses `examples/hello-minimal/src/main.ts` through the source-input
   fixture harness.
 - `prealpha-control-plane`: uses `examples/prealpha-control-plane/` through project-mode
-  source input and the app test host proof suite.
+  source input and the app test host coverage suite.
 - `package-hello-artifact`: uses the package outside-checkout smoke fixture when a package
   archive is provided.
 

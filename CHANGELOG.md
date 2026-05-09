@@ -11,6 +11,14 @@ evidence and a completed readiness gate.
 
 ## Unreleased
 
+- Prepare public alpha docs, GitHub Pages site scaffolding, issue templates,
+  and V8-required npm/package proof for the next alpha package.
 - Added alpha infrastructure release dry-run and no-statements guardrail skeletons.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
+
+## 0.1.0-alpha.0
+
+- Early alpha npm package records were published, but they did not prove
+  V8-backed handler execution. Treat this version as incomplete for the public
+  runtime install path.

@@ -2,7 +2,8 @@
 
 This template mirrors the shape of a small control-plane service: projects,
 apps, builds, deployments, diagnostics, and health routes. The data is static
-so the template can compile and run without a database.
+so the template can compile without a database; running handlers still requires
+a V8-enabled build or package.
 
 ## Run
 

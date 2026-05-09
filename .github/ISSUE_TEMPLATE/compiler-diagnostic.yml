@@ -1,0 +1,39 @@
+name: Compiler diagnostic problem
+description: Report an unexpected compiler diagnostic or missing diagnostic.
+title: "Compiler diagnostic: "
+labels: ["type:bug", "area:compiler", "status:needs-triage"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Sloppy version
+  - type: textarea
+    id: input-shape
+    attributes:
+      label: Input file or project shape
+      description: Include the smallest source shape you can share.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Diagnostic
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Can you share a minimal reproduction?

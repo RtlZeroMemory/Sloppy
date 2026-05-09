@@ -95,7 +95,7 @@ triplet="$(node -e 'const fs=require("fs"); const manifest=JSON.parse(fs.readFil
 case "$triplet" in
   linux-x64) platform_package_dir="sloppy-linux-x64" ;;
   macos-arm64|macos-x64)
-    echo "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." >&2
+    echo "macOS npm packages are not staged in this alpha." >&2
     exit 1
     ;;
   windows-x64) platform_package_dir="sloppy-win32-x64" ;;

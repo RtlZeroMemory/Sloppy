@@ -11,7 +11,7 @@ set(required_pairs
     "CONTRIBUTING.md|`UNAVAILABLE`"
     ".github/PULL_REQUEST_TEMPLATE.md|Implementation Contract for Reviewers"
     ".github/PULL_REQUEST_TEMPLATE.md|Report skipped optional gates as skipped, unavailable, deferred, or not run."
-    "docs/contributor/testing.md|Tests are how Sloppy proves a behavior change matches the docs"
+    "docs/contributor/testing.md|Tests are how Sloppy verifies that a behavior change matches the docs"
     "docs/contributor/testing.md|Default (non-V8)"
     "docs/contributor/testing.md|V8-gated"
     "docs/contributor/testing.md|Fuzz / property"
