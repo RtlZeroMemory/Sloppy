@@ -86,6 +86,26 @@ static void sl_cli_parse_route_effects(yyjson_val* value, SlCliRoute* route)
     }
 }
 
+static void sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* tags = yyjson_obj_get(value, "tags");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (tags == NULL || !yyjson_is_arr(tags)) {
+        return;
+    }
+
+    yyjson_arr_iter_init(tags, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (yyjson_is_str(entry) && route->tag_count < SL_CLI_MAX_ROUTE_TAGS) {
+            route->tags[route->tag_count] =
+                (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+            route->tag_count += 1U;
+        }
+    }
+}
+
 static void sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* completeness = yyjson_obj_get(value, "completeness");
@@ -99,6 +119,7 @@ static void sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* ro
         route->response_helper = sl_cli_json_span(response, "helper");
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
     }
+    sl_cli_parse_route_tags(value, route);
     sl_cli_parse_route_bindings(value, route);
     sl_cli_parse_route_effects(value, route);
 }

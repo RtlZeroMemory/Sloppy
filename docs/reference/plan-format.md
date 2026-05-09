@@ -35,6 +35,7 @@ The compiler can emit route metadata for the supported source subset:
 - literal route patterns;
 - supported HTTP methods;
 - optional route names;
+- optional route tags from route metadata and group tags;
 - source metadata;
 - direct handler IDs;
 - simple request context usage in supported handlers.

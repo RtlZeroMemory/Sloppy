@@ -3679,6 +3679,39 @@ export default app;
 }
 
 #[test]
+fn extracts_route_options_and_group_tags_into_plan() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const users = app.group("/users").withTags("users");
+users.get("/", { name: "Users.List", tags: ["list"] }, () => Results.ok([]));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("route metadata options should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].name.as_deref(), Some("Users.List"));
+    assert_eq!(
+        app.routes[0].tags,
+        vec!["users".to_string(), "list".to_string()]
+    );
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let emitted_plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value =
+        serde_json::from_str(&emitted_plan).expect("plan should be valid json");
+    assert_eq!(
+        value["routes"][0]["tags"],
+        serde_json::json!(["users", "list"])
+    );
+}
+
+#[test]
 fn success_fixture_expected_outputs_stay_current() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     for fixture_name in [

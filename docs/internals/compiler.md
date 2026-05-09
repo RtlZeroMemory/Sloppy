@@ -1,174 +1,143 @@
 # Compiler
 
-`sloppyc` is the Rust compiler. It reads supported source, validates the
-shape, and emits a deterministic Plan + JavaScript bundle. It does *not*
-type-check arbitrary TypeScript and it does *not* run the program.
+## Purpose
 
-## Layout
+`sloppyc` is the Rust compiler for Sloppy source input. It parses the supported
+JavaScript and TypeScript source subset, extracts Sloppy application metadata,
+and writes deterministic artifacts:
+
+- `app.plan.json`
+- generated `app.js`
+- `app.js.map`
+
+The compiler validates source shape and metadata. It does not run the program
+and does not type-check arbitrary TypeScript.
+
+## Where It Lives
 
 ```text
 compiler/
   Cargo.toml
   src/
     main.rs                  CLI entry
-    lib.rs
-    sloppyc.rs               main extraction/emission (~6k LOC)
-    sloppyc/                 helpers used by sloppyc.rs
+    lib.rs                   library exports
+    graph.rs                 compiler-owned AppGraph IR
+    plan_emit.rs             app.plan.json emission from AppGraph
+    hash.rs / version.rs     artifact hash and version constants
+    sloppyc.rs               extraction plus JS/source-map emission
+    sloppyc/
       configuration.rs
       schema.rs
       effects.rs
-    parser.rs                Oxc setup
+    parser.rs                Oxc parser setup
     resolver.rs              import resolution
-    module_graph.rs
-    framework_runtime.rs     framework metadata extraction
+    module_graph.rs          source graph model
+    framework_runtime.rs     framework typed metadata helpers
     static_eval.rs           bounded literal evaluation
-    diagnostic.rs
+    diagnostic.rs            compiler diagnostics
     source.rs / source_map.rs
-    validation.rs
+    validation.rs            Plan completeness helpers
   tests/
-    fixtures/                input.{js,ts} + expected plan/bundle/sourcemap/diagnostic
-    sloppyc_tests.rs         driver
+    fixtures/
+    compiler_fixture_harness.rs
 ```
 
-`sloppyc.rs` is large by design — extraction logic for routes, services,
-providers, capabilities, schemas, and framework metadata is all close
-together so the emission step can see everything at once. The supporting
-modules carry shared structures and inference rules.
+`src/sloppyc.rs` still owns most extraction. `src/graph.rs` owns the internal
+AppGraph data types copied out of parser lifetimes. `src/plan_emit.rs` consumes
+that graph for Plan JSON so the Plan shape is separated from extraction.
 
-## Pipeline
+## Main Concepts
+
+The compiler pipeline is:
 
 ```text
-input file (.js / .mjs / .ts)
-   │  parser.rs (Oxc)
-   ▼
-AST
-   │  resolver.rs::resolve_imports
-   │     allow "sloppy", "sloppy/<subpath>", relative
-   │     reject npm specifiers, dynamic import(), node: prefix
-   ▼
-module graph
-   │  sloppyc.rs::extract_app
-   │     find Sloppy.create()/createBuilder()
-   │     extract routes, groups, controllers, modules
-   │     extract services, capabilities, providers, schemas
-   │     extract framework v2 typed parameter bindings
-   ▼
-intermediate model
-   │  validation.rs
-   │     supported subset, deterministic shape
-   ▼
-emit
-   │  sloppyc.rs::emit_*
-   │     deterministic app.js (with handler wrappers)
-   │     deterministic source map
-   │     app.plan.json
-   ▼
-output to --out / cache directory
+source file
+  -> parser.rs
+  -> resolver.rs / module_graph.rs
+  -> sloppyc.rs extraction
+  -> graph.rs AppGraph
+  -> validation.rs completeness
+  -> plan_emit.rs app.plan.json
+  -> sloppyc.rs app.js and app.js.map
 ```
 
-## Versioning
+AppGraph records the compiler-owned view of the app: source files, modules,
+routes, handlers, bindings, response metadata, schemas, providers,
+capabilities, configuration reads, runtime feature requirements, and source
+spans.
 
-Constants in `compiler/src/sloppyc.rs`:
+Route metadata includes literal route names, literal route option tags, and
+tags inherited from `app.group(...).withTags(...)`.
 
-```rust
-const COMPILER_VERSION:        &str = "sloppyc-0.x.y";
-const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
-const STDLIB_VERSION:          &str = "0.1.0";
+## Lifecycle
+
+`sloppyc build <input> --out <dir>` loads the entry source, resolves supported
+relative imports, extracts the AppGraph, applies configuration metadata, and
+writes artifacts into the requested output directory.
+
+`sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
+process. The native CLI/runtime consume only the emitted artifacts and command
+results; they do not link to the compiler library.
+
+## Invariants
+
+- Same source and compiler version produce byte-for-byte stable artifacts.
+- Handler IDs are assigned from source order starting at `1`.
+- Plan emission reads from AppGraph, not from parser lifetimes.
+- Source locations are preserved for route, handler, schema, provider, binding,
+  and effect metadata where the compiler can identify them.
+- Unsupported source shapes fail with stable `SLOPPYC_E_*` diagnostics instead
+  of being silently ignored.
+- Generated provider bridges remain honest about runtime support. Static
+  non-SQLite provider handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
+
+## Failure Behavior
+
+Compiler failures return a source-located diagnostic when source context is
+available. Common failures include unsupported imports, dynamic `import()`,
+dynamic route patterns, unsupported route methods, unsupported handler shapes,
+invalid route metadata options, missing relative imports, and provider bridge
+gaps.
+
+Rejected builds do not emit success artifacts.
+
+## Public API Relationship
+
+The public contract is the emitted Plan and generated artifacts. AppGraph is an
+internal compiler model and is not a public API.
+
+The Plan feeds native validation, `sloppy routes`, `sloppy audit`, `sloppy
+doctor`, `sloppy openapi`, runtime feature activation, and V8 artifact
+execution when V8 is enabled.
+
+## Tests And Evidence
+
+Compiler evidence lives in:
+
+- unit tests in `compiler/src/sloppyc_tests.rs`
+- fixture inputs and expected artifacts under `compiler/tests/fixtures/`
+- `compiler/tests/compiler_fixture_harness.rs`
+- native Plan/CLI/runtime tests under `tests/`
+
+Use these gates for compiler changes:
+
+```powershell
+cargo fmt --manifest-path compiler/Cargo.toml -- --check
+cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
+cargo test --manifest-path compiler/Cargo.toml
+tools/windows/check-rust-standards.ps1
+tools/windows/dev.ps1 test
 ```
 
-These three appear in `app.plan.json`. The runtime checks the minimum
-version on load.
+Run the full repository gates when compiler output or CLI metadata changes.
 
-## What gets extracted
+## Current Limits
 
-- **Routes.** `app.get/post/put/patch/delete` and the `mapGet/...` aliases,
-  on both `app` and group/controller mappers. Pattern is a string
-  literal; method is the call name.
-- **Route groups.** `app.group("/prefix")` and `app.mapGroup` form
-  prefixes that combine with child patterns deterministically.
-- **Controllers.** `app.controller("/prefix", ClassName, configure)` —
-  the configure callback maps controller method names to routes.
-- **Service registrations.** Literal
-  `services.addSingleton/addScoped/addTransient("Token", factory)` calls.
-- **Capabilities.** `capabilities.addDatabase("token", { ... })` and the
-  inferred capability needs from typed handler parameters
-  (`Sqlite<"name">`, `Postgres<"name">`, `SqlServer<"name">`,
-  `WorkQueue<"name">`).
-- **Schemas.** `schema.object({...})` and primitives used as `Body<T>`
-  parameter types.
-- **Configuration reads.** Statically visible `config.get*("KEY")` calls
-  and `Config<"KEY">` typed parameters.
-- **Framework v2 typed bindings.** `Route<T>`, `Query<T>`, `Body<T>`,
-  `Header<"name">`, `Service<T>`, `Config<"KEY">`, provider, queue, and
-  context bindings on handler parameters.
-- **Visible response metadata.** Status codes from `Results.status(...)`
-  and helper-inferred status codes.
-
-## What gets rejected
-
-- npm imports, dynamic `import()`, `node:` specifier prefix.
-- Dynamic route patterns or computed method names.
-- Conditional or loop-based route registration.
-- Top-level `await`, `eval`, `Function` constructor.
-- Arbitrary TypeScript type checking — `sloppyc` parses TS syntax but
-  does not infer through arbitrary type expressions.
-
-The full matrix lives in
-[reference/supported-syntax.md](../reference/supported-syntax.md). Every
-rejection produces a diagnostic with a stable code (`SLOPPYC_E_*`) and
-a source location.
-
-## Determinism
-
-Same source + same compiler version produces the same Plan, byte-for-byte.
-
-Determinism is enforced by:
-
-- ordering rules (handler IDs assigned in source order from 1, route
-  metadata sorted by source order at emit time);
-- deterministic SHA-256 hashing of artifacts in the Plan;
-- a normalized source-map line/column scheme; and
-- a fixture suite (`compiler/tests/fixtures/`) that pins inputs to
-  expected `app.plan.json`, `app.js`, source map, and diagnostic
-  outputs. Any drift is a test failure.
-
-## Source map
-
-`app.js.map` is a Source Map V3 document. Mappings are produced from
-`HandlerGeneratedStart` records — each handler the compiler emits has a
-known generated line/column and the original span is recorded into the
-mapping list.
-
-The runtime uses this to remap exception traces back to original
-sources before showing diagnostics.
-
-## CLI
-
-```
-sloppyc build <input> --out <dir>
-sloppyc --version
-sloppyc --help
-```
-
-`sloppy build` is a thin wrapper: it formats CLI arguments and invokes
-`sloppyc` through the platform process runner. There's no shared library
-between `sloppy` and `sloppyc` — they communicate only through arguments
-and artifact files.
-
-## Tests
-
-- **Fixtures** under `compiler/tests/fixtures/` are the canonical test
-  surface. Each fixture has `input.{js,ts}` plus expected
-  `app.plan.json`, `app.js`, source map, and diagnostic output. Diff
-  failures fail CI.
-- **Negative fixtures** assert specific `SLOPPYC_E_*` codes for
-  unsupported source.
-- **Unit tests** cover individual extraction paths (`schema.rs`,
-  `effects.rs`, …).
-
-## What's still moving
-
-The framework v2 typed-handler surface (typed parameter bindings,
-provider injection, schema-driven validation metadata) is the active
-front. Edge cases may still fall back to a generic generated wrapper —
-the fixture suite is the source of truth for what's supported.
+- npm and `node_modules` resolution are outside the current source graph.
+- Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
+  remains responsible for that.
+- Middleware, CORS, health, and request logging execute in the bootstrap
+  app-host path today. Plan metadata for those surfaces needs a compiler/runtime
+  slice that can represent emitted artifacts honestly.
+- Controller constructor injection and broader response-writing APIs are still
+  future compiler work.

@@ -7,6 +7,7 @@ pub mod effects;
 pub mod fixtures;
 mod framework_runtime;
 pub mod graph;
+mod hash;
 pub mod module_graph;
 pub mod parser;
 pub mod plan_emit;
@@ -21,6 +22,7 @@ pub mod symbols;
 pub mod validation;
 
 mod sloppyc;
+mod version;
 
 pub use diagnostic::{Diagnostic, DiagnosticSeverity};
 pub use sloppyc::{

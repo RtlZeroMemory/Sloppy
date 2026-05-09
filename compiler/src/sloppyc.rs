@@ -16,19 +16,15 @@ use oxc_parser::Parser;
 use oxc_span::Span;
 use serde_json::json;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::diagnostic::Diagnostic;
+pub(crate) use crate::graph::*;
+use crate::hash::sha256_hex;
 use crate::parser::{source_type_for_path, ParseContext};
+use crate::plan_emit::emit_plan;
 use crate::resolver;
 use crate::source::{line_column, source_map_source_name};
-use crate::validation::{
-    plan_completeness, route_completeness, Completeness, RouteCompletenessInput,
-};
-
-const COMPILER_VERSION: &str = "sloppyc-0.8.0";
-const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
-const STDLIB_VERSION: &str = "0.1.0";
+use crate::version::COMPILER_VERSION;
 
 // CODEC_EXPORTS is the public codec contract shared by import validation and runtime
 // export emission.
@@ -140,167 +136,6 @@ pub struct CompileError {
     pub source: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct Route {
-    method: &'static str,
-    pattern: String,
-    framework_path: Option<String>,
-    name: Option<String>,
-    span: Span,
-    source_path: PathBuf,
-    source_name: String,
-    source: String,
-    module: Option<String>,
-    handler: Handler,
-}
-
-#[derive(Debug, Clone)]
-struct Handler {
-    source: String,
-    emitted_source: String,
-    span: Span,
-    is_async: bool,
-    runtime_deferred: bool,
-    source_name: String,
-    source_text: String,
-    source_map_line_offset: usize,
-    source_map_column_offset: usize,
-    bindings: Vec<RequestBinding>,
-    response: Option<ResponseMetadata>,
-    responses: Vec<ResponseMetadata>,
-    effects: Vec<EffectMetadata>,
-}
-
-#[derive(Debug, Clone)]
-struct DatabaseCapability {
-    token: String,
-    capability_kind: String,
-    provider: String,
-    config_name: Option<String>,
-    config_key: Option<String>,
-    access: String,
-    database: Option<String>,
-    config_source: Option<String>,
-    source_name: String,
-    source: String,
-    span: Span,
-    from_provider_use: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ServiceRegistration {
-    token: String,
-    lifetime: &'static str,
-    factory_source: String,
-}
-
-#[derive(Debug, Clone)]
-struct SourceMapMapping {
-    generated_line: usize,
-    generated_column: usize,
-    source_index: usize,
-    original_line: usize,
-    original_column: usize,
-}
-
-#[derive(Debug)]
-struct HandlerGeneratedStart {
-    handler_id: usize,
-    generated_line: usize,
-    generated_column: usize,
-}
-
-#[derive(Debug)]
-struct EmittedAppJs {
-    source: String,
-    mappings: Vec<SourceMapMapping>,
-    handler_generated_starts: Vec<HandlerGeneratedStart>,
-}
-
-#[derive(Debug)]
-struct ExtractedApp {
-    uses_data_runtime: bool,
-    uses_sql_runtime: bool,
-    source_files: Vec<SourceFile>,
-    routes: Vec<Route>,
-    service_registrations: Vec<ServiceRegistration>,
-    modules: Vec<FunctionModule>,
-    helper_sources: Vec<String>,
-    capabilities: Vec<DatabaseCapability>,
-    configuration: Option<ConfigurationPlan>,
-    schemas: Vec<SchemaMetadata>,
-    config_reads: Vec<ConfigReadMetadata>,
-    uses_time_runtime: bool,
-    uses_fs_runtime: bool,
-    uses_crypto_runtime: bool,
-    noncrypto_hash_security_context_visible: bool,
-    uses_codec_runtime: bool,
-    checksum_security_context_visible: bool,
-    uses_net_runtime: bool,
-    uses_os_runtime: bool,
-    uses_http_client_runtime: bool,
-    uses_workers_runtime: bool,
-    problem_details: Option<ProblemDetailsDescriptor>,
-}
-
-#[derive(Debug, Clone)]
-struct ProblemDetailsDescriptor {
-    detail: String,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct RequestBinding {
-    pub(crate) kind: String,
-    pub(crate) name: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) parameter: Option<String>,
-    pub(crate) type_name: Option<String>,
-    pub(crate) source_name: Option<String>,
-    pub(crate) source_text: Option<String>,
-    pub(crate) span: Option<Span>,
-    pub(crate) wrapper: Option<String>,
-    pub(crate) injection_kind: Option<String>,
-    pub(crate) provider_kind: Option<String>,
-    pub(crate) capability: Option<String>,
-    pub(crate) semantic: Option<String>,
-    pub(crate) redacted: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ResponseMetadata {
-    helper: String,
-    status: u16,
-    kind: String,
-    body_schema: Option<String>,
-    source_name: Option<String>,
-    source_text: Option<String>,
-    span: Option<Span>,
-    partial: bool,
-}
-
-#[derive(Debug, Clone)]
-struct EffectMetadata {
-    provider: String,
-    capability_kind: String,
-    provider_kind: String,
-    access: &'static str,
-    operation: String,
-    reason: String,
-    source_name: String,
-    source_text: String,
-    span: Span,
-}
-
-#[derive(Debug, Clone, Default)]
-struct FunctionEffectSummary {
-    effects: Vec<EffectMetadata>,
-    provider_bindings: BTreeMap<String, ProviderBinding>,
-    helper_calls: BTreeSet<String>,
-    unknown_provider_usage: bool,
-    source_name: String,
-    source_text: String,
-}
-
 struct HandlerExtractionContext<'a> {
     route_pattern: &'a str,
     source: &'a str,
@@ -312,108 +147,27 @@ struct HandlerExtractionContext<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct ProviderBinding {
-    token: String,
-    capability_kind: String,
-    provider: String,
-}
-
-#[derive(Debug, Clone)]
-struct SchemaMetadata {
-    name: String,
-    definition: Value,
-    source_name: String,
-    source: String,
-    span: Span,
-}
-
-#[derive(Debug, Clone)]
-struct ConfigReadMetadata {
-    key: String,
-    value_type: String,
-    has_default: bool,
-    default_value: Option<Value>,
-    required: bool,
-    sensitive: bool,
-    source_name: String,
-    source: String,
-    span: Span,
-}
-
-fn schema_names(state: &AppState) -> BTreeSet<String> {
-    state.schema_names.clone()
-}
-
-#[derive(Debug, Clone)]
-struct ConfigurationPlan {
-    environment: String,
-    keys: Vec<ConfigurationPlanKey>,
-    providers: Vec<ConfigurationProviderPlan>,
-    requirements: Vec<ConfigurationRequirementPlan>,
-    package_manifest: ConfigurationPackageManifest,
-}
-
-#[derive(Debug, Clone)]
-struct ConfigurationPlanKey {
-    key: String,
-    source: String,
-    value: Value,
-    sensitive: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ConfigurationProviderPlan {
-    provider: String,
-    name: String,
+struct RouteGroupState {
     prefix: String,
-    source: String,
-}
-
-#[derive(Debug, Clone)]
-struct ConfigurationRequirementPlan {
-    key: String,
-    value_type: String,
-    required: bool,
-    sensitive: bool,
-    status: String,
-    source: Option<String>,
-    required_by: String,
-    default_value: Option<Value>,
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
-struct ConfigurationPackageManifest {
-    required: Vec<ConfigurationPackageEntry>,
-    optional: Vec<ConfigurationPackageEntry>,
+struct RouteMetadata {
+    name: Option<String>,
+    tags: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-struct ConfigurationPackageEntry {
-    key: String,
-    env: String,
-    value_type: String,
-    sensitive: bool,
-    default_value: Option<Value>,
-}
+type RouteCallParts<'a> = (
+    &'a str,
+    &'static str,
+    &'a str,
+    RouteMetadata,
+    &'a Argument<'a>,
+);
 
-#[derive(Debug, Clone)]
-struct SourceFile {
-    name: String,
-    source: String,
-}
-
-#[derive(Debug, Clone)]
-struct ImportedModule {
-    local_name: String,
-    export_name: String,
-    path: PathBuf,
-    span: Span,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct FunctionModule {
-    name: String,
-    source_name: String,
+fn schema_names(state: &AppState) -> BTreeSet<String> {
+    state.schema_names.clone()
 }
 
 #[derive(Debug)]
@@ -441,7 +195,7 @@ struct AppState {
     dynamic_import: Option<Span>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
-    group_vars: BTreeMap<String, String>,
+    group_vars: BTreeMap<String, RouteGroupState>,
     provider_bindings: BTreeMap<String, ProviderBinding>,
     helper_sources: BTreeMap<String, String>,
     helper_effects: BTreeMap<String, FunctionEffectSummary>,
@@ -1855,11 +1609,11 @@ fn extract_variable_declaration(
                 .with_path(path)
                 .with_span(init.span()));
             }
-        } else if let Some((receiver, prefix)) = app_group_call(init) {
+        } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
             let full_prefix = if state.app_vars.contains(receiver) {
                 prefix.to_string()
-            } else if let Some(parent_prefix) = state.group_vars.get(receiver) {
-                join_route_patterns(parent_prefix, prefix)
+            } else if let Some(parent) = state.group_vars.get(receiver) {
+                join_route_patterns(&parent.prefix, prefix)
             } else {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_ROUTE_GROUP",
@@ -1868,7 +1622,23 @@ fn extract_variable_declaration(
                 .with_path(path)
                 .with_span(init.span()));
             };
-            state.group_vars.insert(name.to_string(), full_prefix);
+            let mut tags = if state.app_vars.contains(receiver) {
+                Vec::new()
+            } else {
+                state
+                    .group_vars
+                    .get(receiver)
+                    .map(|parent| parent.tags.clone())
+                    .unwrap_or_default()
+            };
+            tags.extend(metadata.tags);
+            state.group_vars.insert(
+                name.to_string(),
+                RouteGroupState {
+                    prefix: full_prefix,
+                    tags,
+                },
+            );
         } else if let Some(provider) = sqlite_provider_call(init, source, source_name) {
             state.provider_bindings.insert(
                 name.to_string(),
@@ -2006,15 +1776,11 @@ fn extract_expression_statement(
         return Ok(());
     }
 
-    let (route_expr, name) = match &statement.expression {
-        Expression::CallExpression(call) => match with_name_call(call)? {
-            Some((inner, name)) => (inner, Some(name)),
-            None => (&statement.expression, None),
-        },
-        _ => (&statement.expression, None),
-    };
+    let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)?;
 
-    let Some((receiver, method, pattern, handler_arg)) = route_call_parts(route_expr) else {
+    let Some((receiver, method, pattern, route_metadata, handler_arg)) =
+        route_call_parts(route_expr)?
+    else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -2031,10 +1797,13 @@ fn extract_expression_statement(
         ));
     };
 
-    let full_pattern = if state.app_vars.contains(receiver) {
-        pattern.to_string()
-    } else if let Some(prefix) = state.group_vars.get(receiver) {
-        join_route_patterns(prefix, pattern)
+    let (full_pattern, mut tags) = if state.app_vars.contains(receiver) {
+        (pattern.to_string(), Vec::new())
+    } else if let Some(group) = state.group_vars.get(receiver) {
+        (
+            join_route_patterns(&group.prefix, pattern),
+            group.tags.clone(),
+        )
     } else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_TARGET",
@@ -2092,7 +1861,7 @@ fn extract_expression_statement(
             .with_path(path)
             .with_span(statement.span)
             .with_hint(format!(
-                "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
+            "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
             )));
         }
         let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
@@ -2103,12 +1872,15 @@ fn extract_expression_statement(
             handler.is_async,
         );
     }
+    tags.extend(route_metadata.tags);
+    tags.extend(fluent_metadata.tags);
 
     state.routes.push(Route {
         method,
         framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
         pattern: normalized_pattern,
-        name,
+        name: fluent_metadata.name.or(route_metadata.name),
+        tags,
         span: statement.span,
         source_path: path.to_path_buf(),
         source_name: source_name.to_string(),
@@ -2161,11 +1933,11 @@ fn unsupported_route_call_diagnostic(
         return None;
     }
 
-    if call.arguments.len() != 2 {
+    if !matches!(call.arguments.len(), 2 | 3) {
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
-                "route declarations require a literal pattern and one handler",
+                "route declarations require a literal pattern, optional metadata, and one handler",
             )
             .with_path(path)
             .with_span(call.span),
@@ -2184,9 +1956,10 @@ fn unsupported_route_call_diagnostic(
         );
     }
 
+    let handler_index = if call.arguments.len() == 3 { 2 } else { 1 };
     if call
         .arguments
-        .get(1)
+        .get(handler_index)
         .and_then(|argument| {
             let context = HandlerExtractionContext {
                 route_pattern: call
@@ -2205,7 +1978,7 @@ fn unsupported_route_call_diagnostic(
         })
         .is_none()
     {
-        let handler_argument = call.arguments.get(1)?;
+        let handler_argument = call.arguments.get(handler_index)?;
         return Some(handler_diagnostic(
             path,
             handler_argument,
@@ -2660,16 +2433,38 @@ fn builder_build_object<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
     })
 }
 
-fn app_group_call<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
-    let Expression::CallExpression(call) = expression else {
-        return None;
-    };
-    let (object, property) = static_member_name(&call.callee)?;
-    if !matches!(property, "mapGroup" | "group") || call.arguments.len() != 1 {
-        return None;
+fn app_group_call<'a>(
+    expression: &'a Expression<'a>,
+) -> Result<Option<(&'a str, &'a str, RouteMetadata)>, Diagnostic> {
+    let mut current = expression;
+    let mut metadata = RouteMetadata::default();
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return Ok(None);
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            break;
+        };
+        if member.property.name.as_str() != "withTags" {
+            break;
+        }
+        metadata.tags.extend(route_tags_from_arguments(call)?);
+        current = &member.object;
     }
-    let prefix = string_argument(call.arguments.first()?)?;
-    Some((object, prefix))
+
+    let Expression::CallExpression(call) = current else {
+        return Ok(None);
+    };
+    let Some((object, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    if !matches!(property, "mapGroup" | "group") || call.arguments.len() != 1 {
+        return Ok(None);
+    }
+    let Some(prefix) = call.arguments.first().and_then(string_argument) else {
+        return Ok(None);
+    };
+    Ok(Some((object, prefix, metadata)))
 }
 
 fn app_provider_lookup(expression: &Expression<'_>, state: &AppState) -> Option<ProviderBinding> {
@@ -3875,7 +3670,7 @@ fn extract_module_function_routes(
         .with_span(function.span));
     };
 
-    let mut groups = BTreeMap::<String, String>::new();
+    let mut groups = BTreeMap::<String, RouteGroupState>::new();
     let mut providers = BTreeMap::<String, ProviderBinding>::new();
     let mut routes = Vec::new();
 
@@ -3896,11 +3691,11 @@ fn extract_module_function_routes(
                     };
                     if let Some(binding) = app_provider_call(init, app_name) {
                         providers.insert(name.to_string(), binding);
-                    } else if let Some((receiver, prefix)) = app_group_call(init) {
+                    } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
                         let full_prefix = if receiver == app_name {
                             prefix.to_string()
-                        } else if let Some(parent_prefix) = groups.get(receiver) {
-                            join_route_patterns(parent_prefix, prefix)
+                        } else if let Some(parent) = groups.get(receiver) {
+                            join_route_patterns(&parent.prefix, prefix)
                         } else {
                             return Err(Diagnostic::new(
                                 "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -3909,19 +3704,29 @@ fn extract_module_function_routes(
                             .with_path(path)
                             .with_span(init.span()));
                         };
-                        groups.insert(name.to_string(), full_prefix);
+                        let mut tags = if receiver == app_name {
+                            Vec::new()
+                        } else {
+                            groups
+                                .get(receiver)
+                                .map(|parent| parent.tags.clone())
+                                .unwrap_or_default()
+                        };
+                        tags.extend(metadata.tags);
+                        groups.insert(
+                            name.to_string(),
+                            RouteGroupState {
+                                prefix: full_prefix,
+                                tags,
+                            },
+                        );
                     }
                 }
             }
             Statement::ExpressionStatement(statement) => {
-                let (route_expr, name) = match &statement.expression {
-                    Expression::CallExpression(call) => match with_name_call(call)? {
-                        Some((inner, name)) => (inner, Some(name)),
-                        None => (&statement.expression, None),
-                    },
-                    _ => (&statement.expression, None),
-                };
-                let Some((receiver, method, pattern, handler_arg)) = route_call_parts(route_expr)
+                let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)?;
+                let Some((receiver, method, pattern, route_metadata, handler_arg)) =
+                    route_call_parts(route_expr)?
                 else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -3930,10 +3735,13 @@ fn extract_module_function_routes(
                     .with_path(path)
                     .with_span(statement.span));
                 };
-                let full_pattern = if receiver == app_name {
-                    pattern.to_string()
-                } else if let Some(prefix) = groups.get(receiver) {
-                    join_route_patterns(prefix, pattern)
+                let (full_pattern, mut tags) = if receiver == app_name {
+                    (pattern.to_string(), Vec::new())
+                } else if let Some(group) = groups.get(receiver) {
+                    (
+                        join_route_patterns(&group.prefix, pattern),
+                        group.tags.clone(),
+                    )
                 } else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -3999,11 +3807,14 @@ fn extract_module_function_routes(
                         handler.is_async,
                     );
                 }
+                tags.extend(route_metadata.tags);
+                tags.extend(fluent_metadata.tags);
                 routes.push(Route {
                     method,
                     framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
                     pattern: normalized_pattern,
-                    name,
+                    name: fluent_metadata.name.or(route_metadata.name),
+                    tags,
                     span: statement.span,
                     source_path: path.to_path_buf(),
                     source_name: source_name.to_string(),
@@ -4118,7 +3929,8 @@ fn route_call<'a>(
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
 ) -> Option<(&'a str, &'static str, &'a str, Handler)> {
-    let (receiver, method, pattern, handler_arg) = route_call_parts(expression)?;
+    let (receiver, method, pattern, _metadata, handler_arg) =
+        route_call_parts(expression).ok()??;
     let context = HandlerExtractionContext {
         route_pattern: pattern,
         source,
@@ -4134,36 +3946,70 @@ fn route_call<'a>(
 
 fn route_call_parts<'a>(
     expression: &'a Expression<'a>,
-) -> Option<(&'a str, &'static str, &'a str, &'a Argument<'a>)> {
+) -> Result<Option<RouteCallParts<'a>>, Diagnostic> {
     let Expression::CallExpression(call) = expression else {
-        return None;
+        return Ok(None);
     };
-    let (receiver, property) = static_member_name(&call.callee)?;
-    let method = route_method_from_property(property)?;
-    if call.arguments.len() != 2 {
-        return None;
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    let Some(method) = route_method_from_property(property) else {
+        return Ok(None);
+    };
+    if !matches!(call.arguments.len(), 2 | 3) {
+        return Ok(None);
     }
 
-    let pattern = string_argument(call.arguments.first()?)?;
-    let handler_arg = call.arguments.get(1)?;
-    Some((receiver, method, pattern, handler_arg))
+    let Some(pattern) = call.arguments.first().and_then(string_argument) else {
+        return Ok(None);
+    };
+    let (metadata, handler_arg) = if call.arguments.len() == 3 {
+        (
+            route_metadata_from_options_argument(&call.arguments[1])?,
+            &call.arguments[2],
+        )
+    } else {
+        (RouteMetadata::default(), &call.arguments[1])
+    };
+    Ok(Some((receiver, method, pattern, metadata, handler_arg)))
 }
 
 fn route_method_from_property(property: &str) -> Option<&'static str> {
     crate::slop_dsl::route_method_from_property(property)
 }
 
-fn with_name_call<'a>(
-    call: &'a CallExpression<'a>,
-) -> Result<Option<(&'a Expression<'a>, String)>, Diagnostic> {
-    let Expression::StaticMemberExpression(member) = &call.callee else {
-        return Ok(None);
-    };
-
-    if member.property.name.as_str() != "withName" {
-        return Ok(None);
+fn route_metadata_chain<'a>(
+    expression: &'a Expression<'a>,
+) -> Result<(&'a Expression<'a>, RouteMetadata), Diagnostic> {
+    let mut current = expression;
+    let mut metadata = RouteMetadata::default();
+    loop {
+        let Expression::CallExpression(call) = current else {
+            break;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            break;
+        };
+        match member.property.name.as_str() {
+            "withName" => {
+                metadata.name = Some(route_name_from_argument(call)?);
+                current = &member.object;
+            }
+            "withTags" => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                    "route tags must be declared with route metadata options or group.withTags(...)",
+                )
+                .with_span(call.span));
+            }
+            _ => break,
+        }
     }
 
+    Ok((current, metadata))
+}
+
+fn route_name_from_argument(call: &CallExpression<'_>) -> Result<String, Diagnostic> {
     if call.arguments.len() != 1 {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_NAME",
@@ -4172,18 +4018,157 @@ fn with_name_call<'a>(
         .with_span(call.span));
     }
 
-    let Some(name) = string_argument(call.arguments.first().ok_or_else(|| {
-        Diagnostic::new("SLOPPYC_E_UNSUPPORTED_ROUTE_NAME", "missing route name")
-            .with_span(call.span)
-    })?) else {
+    let Some(name) = call.arguments.first().and_then(string_argument) else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_NAME",
             "route names must be string literals",
         )
         .with_span(call.span));
     };
+    if name.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_NAME",
+            "route names must be non-empty string literals",
+        )
+        .with_span(call.span));
+    }
+    Ok(name.to_string())
+}
 
-    Ok(Some((&member.object, name.to_string())))
+fn route_metadata_from_options_argument(
+    argument: &Argument<'_>,
+) -> Result<RouteMetadata, Diagnostic> {
+    let Some(object) = object_argument(argument) else {
+        let diagnostic = Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "route metadata options must be an object literal",
+        );
+        return Err(with_argument_span(diagnostic, argument));
+    };
+    let mut metadata = RouteMetadata::default();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route metadata options must use literal properties",
+            )
+            .with_span(object.span));
+        };
+        if property.computed {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route metadata option names must be literal",
+            )
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route metadata option names must be literal",
+            )
+            .with_span(property.span));
+        };
+        match key {
+            "name" => {
+                let Some(name) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_NAME",
+                        "route option name must be a string literal",
+                    )
+                    .with_span(property.value.span()));
+                };
+                if name.is_empty() {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_NAME",
+                        "route option name must be a non-empty string literal",
+                    )
+                    .with_span(property.value.span()));
+                }
+                metadata.name = Some(name.to_string());
+            }
+            "tags" => {
+                metadata.tags = route_tags_from_expression(&property.value)?;
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                    format!("unsupported route metadata option '{key}'"),
+                )
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(metadata)
+}
+
+fn route_tags_from_arguments(call: &CallExpression<'_>) -> Result<Vec<String>, Diagnostic> {
+    let mut tags = Vec::new();
+    for argument in &call.arguments {
+        let Some(tag) = string_argument(argument) else {
+            let diagnostic = Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "group.withTags(...) arguments must be string literals",
+            );
+            return Err(with_argument_span(diagnostic, argument));
+        };
+        if tag.is_empty() {
+            let diagnostic = Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route tags must be non-empty string literals",
+            );
+            return Err(with_argument_span(diagnostic, argument));
+        }
+        tags.push(tag.to_string());
+    }
+    Ok(tags)
+}
+
+fn route_tags_from_expression(expression: &Expression<'_>) -> Result<Vec<String>, Diagnostic> {
+    let Expression::ArrayExpression(array) = expression else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "route option tags must be a string literal array",
+        )
+        .with_span(expression.span()));
+    };
+    let mut tags = Vec::new();
+    for element in &array.elements {
+        let ArrayExpressionElement::StringLiteral(value) = element else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route option tags must contain only string literals",
+            )
+            .with_span(array.span));
+        };
+        let tag = value.value.as_str();
+        if tag.is_empty() {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                "route tags must be non-empty string literals",
+            )
+            .with_span(value.span));
+        }
+        tags.push(tag.to_string());
+    }
+    Ok(tags)
+}
+
+fn expression_string_literal<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    match expression {
+        Expression::StringLiteral(value) => Some(value.value.as_str()),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_string_literal(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+fn with_argument_span(diagnostic: Diagnostic, argument: &Argument<'_>) -> Diagnostic {
+    if let Some(span) = argument_span(argument) {
+        diagnostic.with_span(span)
+    } else {
+        diagnostic
+    }
 }
 
 fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
@@ -4873,25 +4858,6 @@ fn framework_binding(
         semantic: None,
         redacted: false,
     }
-}
-
-fn route_parameter_names(pattern: &str) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for segment in pattern.split('/').skip(1) {
-        if let Some(name) = segment.strip_prefix(':') {
-            let name = name.split([':', '.', '?']).next().unwrap_or(name);
-            if !name.is_empty() {
-                names.insert(name.to_string());
-            }
-        } else if segment.starts_with('{') && segment.ends_with('}') {
-            let inner = &segment[1..segment.len() - 1];
-            let name = inner.split_once(':').map(|(name, _)| name).unwrap_or(inner);
-            if !name.is_empty() {
-                names.insert(name.to_string());
-            }
-        }
-    }
-    names
 }
 
 fn primitive_type_schema(ty: &TSType<'_>) -> Option<String> {
@@ -6982,612 +6948,6 @@ fn validate_output_dir(out_dir: &Path) -> Result<(), Diagnostic> {
     Ok(())
 }
 
-fn sha256_hex(contents: &str) -> String {
-    let digest = Sha256::digest(contents.as_bytes());
-    let mut output = String::with_capacity("sha256:".len() + 64);
-    output.push_str("sha256:");
-    for byte in digest {
-        output.push_str(&format!("{byte:02x}"));
-    }
-    output
-}
-
-fn completeness_json(completeness: &Completeness) -> Value {
-    json!({
-        "status": completeness.status.as_str(),
-        "reasons": completeness
-            .reasons
-            .iter()
-            .map(|reason| {
-                json!({
-                    "code": reason.code,
-                    "message": reason.message
-                })
-            })
-            .collect::<Vec<_>>()
-    })
-}
-
-fn emit_plan(
-    app: &ExtractedApp,
-    bundle_hash: &str,
-    source_map_hash: &str,
-) -> Result<String, Diagnostic> {
-    let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
-    let emits_app_metadata = !app.schemas.is_empty() || !app.config_reads.is_empty();
-    let emits_metadata = emits_app_metadata
-        || app.routes.iter().any(|route| {
-            !route.handler.bindings.is_empty()
-                || route.handler.response.is_some()
-                || !route.handler.responses.is_empty()
-                || route.handler.runtime_deferred
-                || !route.handler.effects.is_empty()
-        });
-    let handlers = app
-        .routes
-        .iter()
-        .enumerate()
-        .map(|(index, route)| {
-            let id = index + 1;
-            let (line, column) = line_column(&route.handler.source_text, route.handler.span.start);
-            let mut handler = json!({
-                "async": route.handler.is_async,
-                "id": id,
-                "exportName": format!("__sloppy_handler_{id}"),
-                "displayName": route.name.clone().unwrap_or_else(|| format!("{} {}", route.method, route.pattern)),
-                "source": {
-                    "path": route.handler.source_name,
-                    "line": line,
-                    "column": column
-                }
-            });
-            if route.handler.runtime_deferred {
-                handler["runtimeDispatch"] = json!("deferred");
-            }
-            handler
-        })
-        .collect::<Vec<_>>();
-
-    let route_completeness_values = app
-        .routes
-        .iter()
-        .map(|route| {
-            route_completeness(&RouteCompletenessInput {
-                has_response_metadata: route.handler.response.is_some(),
-                body_json_without_schema: route
-                    .handler
-                    .bindings
-                    .iter()
-                    .any(|binding| binding.kind == "body.json" && binding.schema.is_none()),
-                missing_provider_registration: route.handler.effects.iter().any(|effect| {
-                    !app.capabilities.iter().any(|capability| {
-                        capability.token == effect.provider
-                            && capability.capability_kind == effect.capability_kind
-                            && capability.provider == effect.provider_kind
-                    })
-                }),
-                runtime_only: route.handler.runtime_deferred,
-            })
-        })
-        .collect::<Vec<_>>();
-    let app_completeness = plan_completeness(&route_completeness_values);
-
-    let routes = app
-        .routes
-        .iter()
-        .enumerate()
-        .map(|(index, route)| {
-            let id = index + 1;
-            let (line, column) = line_column(&route.source, route.span.start);
-            let completeness = &route_completeness_values[index];
-            let mut route_json = json!({
-                "method": route.method,
-                "pattern": route.pattern,
-                "handlerId": id,
-                "name": route.name,
-                "source": {
-                    "path": route.source_name,
-                    "line": line,
-                    "column": column
-                }
-            });
-            if let Some(module) = &route.module {
-                route_json["module"] = json!(module);
-            }
-            if let Some(framework_path) = &route.framework_path {
-                route_json["frameworkPath"] = json!(framework_path);
-            }
-            if route.handler.runtime_deferred {
-                let route_params = route_parameter_names(
-                    route.framework_path.as_deref().unwrap_or(&route.pattern),
-                )
-                .into_iter()
-                .map(|name| json!({ "name": name }))
-                .collect::<Vec<_>>();
-                if !route_params.is_empty() {
-                    route_json["routeParams"] = json!(route_params);
-                }
-            }
-            let emits_route_metadata = emits_app_metadata
-                || !route.handler.bindings.is_empty()
-                || route.handler.response.is_some()
-                || !route.handler.responses.is_empty()
-                || !route.handler.effects.is_empty();
-            if !route.handler.bindings.is_empty() {
-                route_json["bindings"] = json!(route
-                    .handler
-                    .bindings
-                    .iter()
-                    .map(|binding| {
-                        let mut binding_json = json!({
-                            "kind": binding.kind,
-                            "name": binding.name,
-                            "schema": binding.schema
-                        });
-                        if let Some(parameter) = &binding.parameter {
-                            binding_json["parameter"] = json!(parameter);
-                        }
-                        if let Some(type_name) = &binding.type_name {
-                            binding_json["type"] = json!(type_name);
-                        }
-                        if let Some(wrapper) = &binding.wrapper {
-                            binding_json["wrapper"] = json!(wrapper);
-                        }
-                        if let Some(kind) = &binding.injection_kind {
-                            binding_json["injectionKind"] = json!(kind);
-                        }
-                        if let Some(provider_kind) = &binding.provider_kind {
-                            binding_json["providerKind"] = json!(provider_kind);
-                        }
-                        if let Some(capability) = &binding.capability {
-                            binding_json["capability"] = json!(capability);
-                        }
-                        if let Some(semantic) = &binding.semantic {
-                            binding_json["semantic"] = json!(semantic);
-                        }
-                        if binding.redacted {
-                            binding_json["secret"] = json!(true);
-                            binding_json["redaction"] = json!("secret");
-                        }
-                        if let Some(span) = binding.span {
-                            binding_json["source"] = source_location_json(
-                                binding
-                                    .source_name
-                                    .as_deref()
-                                    .unwrap_or(&route.handler.source_name),
-                                binding
-                                    .source_text
-                                    .as_deref()
-                                    .unwrap_or(&route.handler.source_text),
-                                span,
-                            );
-                        }
-                        binding_json
-                    })
-                    .collect::<Vec<_>>());
-                let injections = route
-                    .handler
-                    .bindings
-                    .iter()
-                    .filter(|binding| binding.injection_kind.is_some())
-                    .map(|binding| {
-                        json!({
-                            "kind": binding.injection_kind,
-                            "providerKind": binding.provider_kind,
-                            "name": binding.name,
-                            "parameter": binding.parameter,
-                            "capability": binding.capability
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if !injections.is_empty() {
-                    route_json["injections"] = json!(injections);
-                }
-            }
-            if emits_route_metadata {
-                if let Some(response) = &route.handler.response {
-                    let mut response_json = json!({
-                        "helper": response.helper,
-                        "status": response.status,
-                        "kind": response.kind
-                    });
-                    if response.body_schema.is_some() {
-                        response_json["bodySchema"] = json!(response.body_schema);
-                    }
-                    if response.partial {
-                        response_json["partial"] = json!(true);
-                    }
-                    route_json["response"] = response_json;
-                }
-                if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
-                    route_json["responses"] = json!(route
-                        .handler
-                        .responses
-                        .iter()
-                        .map(|response| {
-                            let mut value = json!({
-                                "helper": response.helper,
-                                "status": response.status,
-                                "kind": response.kind,
-                                "bodySchema": response.body_schema,
-                                "partial": response.partial
-                            });
-                            if let (Some(source_name), Some(source_text), Some(span)) =
-                                (&response.source_name, &response.source_text, response.span)
-                            {
-                                value["source"] =
-                                    source_location_json(source_name, source_text, span);
-                            }
-                            value
-                        })
-                        .collect::<Vec<_>>());
-                }
-            }
-            if !route.handler.effects.is_empty() {
-                route_json["effects"] = json!(route
-                    .handler
-                    .effects
-                    .iter()
-                    .map(|effect| {
-                        json!({
-                            "provider": effect.provider,
-                            "capabilityKind": effect.capability_kind,
-                            "providerKind": effect.provider_kind,
-                            "access": effect.access,
-                            "operation": effect.operation,
-                            "reason": effect.reason,
-                            "source": source_location_json(
-                                &effect.source_name,
-                                &effect.source_text,
-                                effect.span
-                            )
-                        })
-                    })
-                    .collect::<Vec<_>>());
-            }
-            route_json["completeness"] = completeness_json(completeness);
-            route_json
-        })
-        .collect::<Vec<_>>();
-
-    let modules = app
-        .modules
-        .iter()
-        .map(|module| {
-            json!({
-                "name": module.name,
-                "source": {
-                    "path": module.source_name
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let source_files = app
-        .source_files
-        .iter()
-        .map(|source_file| {
-            json!({
-                "path": source_file.name,
-                "hash": sha256_hex(&source_file.source)
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let data_provider_capabilities = app
-        .capabilities
-        .iter()
-        .filter(|capability| capability.capability_kind == "database")
-        .collect::<Vec<_>>();
-
-    let data_providers = data_provider_capabilities
-        .iter()
-        .map(|capability| {
-            let mut provider = json!({
-                "token": capability.token,
-                "capabilityKind": capability.capability_kind,
-                "providerKind": capability.provider,
-                "provider": capability.provider,
-                "capability": capability.token,
-                "service": null,
-                "source": source_location_json(
-                    &capability.source_name,
-                    &capability.source,
-                    capability.span
-                )
-            });
-            if let Some(database) = &capability.database {
-                provider["database"] = json!(database);
-            }
-            if let Some(config_key) = &capability.config_key {
-                provider["configKey"] = json!(config_key);
-            }
-            provider
-        })
-        .collect::<Vec<_>>();
-
-    let capabilities = app
-        .capabilities
-        .iter()
-        .map(|capability| {
-            let mut value = json!({
-                "token": capability.token,
-                "kind": capability.capability_kind,
-                "access": capability.access,
-                "source": source_location_json(
-                    &capability.source_name,
-                    &capability.source,
-                    capability.span
-                )
-            });
-            if capability.capability_kind == "database" {
-                value["provider"] = json!(capability.token);
-            }
-            if let Some(config_key) = &capability.config_key {
-                value["configKey"] = json!(config_key);
-            }
-            value
-        })
-        .collect::<Vec<_>>();
-
-    let configuration = app.configuration.as_ref().map(|configuration| {
-        let keys = configuration
-            .keys
-            .iter()
-            .map(|key| {
-                json!({
-                    "key": key.key,
-                    "source": key.source,
-                    "value": key.value,
-                    "sensitive": key.sensitive
-                })
-            })
-            .collect::<Vec<_>>();
-        let providers = configuration
-            .providers
-            .iter()
-            .map(|provider| {
-                json!({
-                    "provider": provider.provider,
-                    "name": provider.name,
-                    "prefix": provider.prefix,
-                    "source": provider.source
-                })
-            })
-            .collect::<Vec<_>>();
-        let requirements = configuration
-            .requirements
-            .iter()
-            .map(|requirement| {
-                let mut value = json!({
-                    "key": requirement.key,
-                    "type": requirement.value_type,
-                    "required": requirement.required,
-                    "status": requirement.status,
-                    "source": requirement.source,
-                    "requiredBy": requirement.required_by,
-                    "redaction": if requirement.sensitive { "secret" } else { "none" },
-                    "secret": requirement.sensitive
-                });
-                if let Some(default_value) = &requirement.default_value {
-                    value["default"] = if requirement.sensitive {
-                        json!("<redacted>")
-                    } else {
-                        default_value.clone()
-                    };
-                }
-                value
-            })
-            .collect::<Vec<_>>();
-        let package_required = configuration
-            .package_manifest
-            .required
-            .iter()
-            .map(package_manifest_entry_json)
-            .collect::<Vec<_>>();
-        let package_optional = configuration
-            .package_manifest
-            .optional
-            .iter()
-            .map(package_manifest_entry_json)
-            .collect::<Vec<_>>();
-        let mut configuration_json = json!({
-            "environment": configuration.environment,
-            "keys": keys,
-            "providers": providers
-        });
-        if !requirements.is_empty() {
-            configuration_json["requirements"] = json!(requirements);
-        }
-        if !package_required.is_empty() || !package_optional.is_empty() {
-            configuration_json["packageManifest"] = json!({
-                "required": package_required,
-                "optional": package_optional
-            });
-        }
-        configuration_json
-    });
-
-    let schemas = app
-        .schemas
-        .iter()
-        .map(|schema| {
-            let (line, column) = line_column(&schema.source, schema.span.start);
-            json!({
-                "name": schema.name,
-                "definition": schema.definition,
-                "source": {
-                    "path": schema.source_name,
-                    "line": line,
-                    "column": column
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let config_reads = app
-        .config_reads
-        .iter()
-        .map(|read| {
-            let (line, column) = line_column(&read.source, read.span.start);
-            json!({
-                "key": read.key,
-                "type": read.value_type,
-                "hasDefault": read.has_default,
-                "required": read.required,
-                "secret": read.sensitive,
-                "source": {
-                    "path": read.source_name,
-                    "line": line,
-                    "column": column
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let mut value = json!({
-        "schemaVersion": 1,
-        "compilerVersion": COMPILER_VERSION,
-        "runtimeMinimumVersion": RUNTIME_MINIMUM_VERSION,
-        "stdlibVersion": STDLIB_VERSION,
-        "target": {
-            "platform": "windows-x64",
-            "engine": "v8"
-        },
-        "bundle": {
-            "path": "app.js",
-            "id": "sloppyc-app-js",
-            "hash": bundle_hash
-        },
-        "sourceMap": {
-            "path": "app.js.map",
-            "id": "sloppyc-app-js-map",
-            "hash": source_map_hash
-        },
-        "handlers": handlers,
-        "routes": routes,
-        "modules": modules,
-        "sourceFiles": source_files,
-        "dataProviders": data_providers,
-        "capabilities": capabilities,
-        "completeness": completeness_json(&app_completeness),
-        "strongPlan": {
-            "version": 1,
-            "profile": "compiler-30-strong-plan",
-            "compatibility": {
-                "schemaVersion": 1,
-                "unknownOptionalFields": "ignored",
-                "unknownRequiredFeatures": "rejected"
-            },
-            "evidence": {
-                "sourceGraph": true,
-                "routes": true,
-                "providers": !data_providers.is_empty(),
-                "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
-                "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
-                "capabilities": !app.capabilities.is_empty()
-            }
-        },
-        "features": {
-            "asyncHandlers": has_async_handlers,
-            "dataProviders": !data_providers.is_empty(),
-            "capabilities": !app.capabilities.is_empty(),
-            "strongPlanMetadata": true,
-            "sourceMaps": true
-        }
-    });
-    let mut required_features = Vec::new();
-    let mut doctor_checks = Vec::new();
-    if app.uses_time_runtime {
-        required_features.push("stdlib.time");
-        value["strongPlan"]["evidence"]["time"] = json!(true);
-        value["features"]["time"] = json!(true);
-    }
-    if app.uses_fs_runtime {
-        required_features.push("stdlib.fs");
-        value["strongPlan"]["evidence"]["filesystem"] = json!(true);
-        value["features"]["fileSystem"] = json!(true);
-    }
-    if app.uses_crypto_runtime {
-        required_features.push("stdlib.crypto");
-        value["strongPlan"]["evidence"]["crypto"] = json!(true);
-        value["features"]["crypto"] = json!(true);
-    }
-    if app.uses_codec_runtime {
-        required_features.push("stdlib.codec");
-        value["strongPlan"]["evidence"]["codec"] = json!(true);
-        value["features"]["codec"] = json!(true);
-    }
-    if app.uses_crypto_runtime && app.noncrypto_hash_security_context_visible {
-        value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"] = json!(true);
-        doctor_checks.push(json!({
-            "id": "stdlib.crypto.noncrypto_hash.security_context",
-            "status": "warn",
-            "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance"
-        }));
-    }
-    if app.uses_codec_runtime && app.checksum_security_context_visible {
-        value["strongPlan"]["evidence"]["checksumSecurityContext"] = json!(true);
-        doctor_checks.push(json!({
-            "id": "stdlib.codec.checksum.security_context",
-            "status": "warn",
-            "message": "Checksums.crc32 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
-        }));
-    }
-    if app.uses_net_runtime {
-        required_features.push("stdlib.net");
-        value["strongPlan"]["evidence"]["network"] = json!(true);
-        value["features"]["network"] = json!(true);
-    }
-    if app.uses_os_runtime {
-        required_features.push("stdlib.os");
-        value["strongPlan"]["evidence"]["os"] = json!(true);
-        value["features"]["os"] = json!(true);
-    }
-    if app.uses_http_client_runtime {
-        required_features.push("stdlib.httpclient");
-        value["strongPlan"]["evidence"]["httpClient"] = json!(true);
-        value["features"]["httpClient"] = json!(true);
-        doctor_checks.push(json!({
-            "id": "stdlib.httpclient.contract",
-            "status": "warn",
-            "message": "HttpClient is Plan-visible; default compiler metadata does not infer static outbound targets yet"
-        }));
-    }
-    if app.uses_workers_runtime {
-        required_features.push("stdlib.workers");
-        value["strongPlan"]["evidence"]["workers"] = json!(true);
-        value["features"]["workers"] = json!(true);
-    }
-    if !required_features.is_empty() {
-        value["requiredFeatures"] = json!(required_features);
-    }
-    if !doctor_checks.is_empty() {
-        value["doctorChecks"] = json!(doctor_checks);
-    }
-    if let Some(configuration) = configuration {
-        value["configuration"] = configuration;
-    }
-    if !schemas.is_empty() {
-        value["schemas"] = json!(schemas);
-    }
-    if !config_reads.is_empty() {
-        value["configReads"] = json!(config_reads);
-    }
-    if emits_metadata {
-        value["features"]["metadataInference"] = json!(true);
-    }
-
-    serde_json::to_string_pretty(&value)
-        .map(|json| format!("{json}\n"))
-        .map_err(|error| {
-            Diagnostic::new(
-                "SLOPPYC_E_EMIT",
-                format!("failed to emit app.plan.json: {error}"),
-            )
-        })
-}
-
 fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
     let (line, column) = line_column(source, span.start);
     json!({
@@ -8189,6 +7549,9 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);
             }
+            if !route.tags.is_empty() {
+                route_json["tags"] = json!(route.tags);
+            }
             route_json
         })
         .collect::<Vec<_>>();
@@ -8291,23 +7654,6 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
 
     let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
     format!("{json}\n")
-}
-
-fn package_manifest_entry_json(entry: &ConfigurationPackageEntry) -> Value {
-    let mut value = json!({
-        "key": entry.key,
-        "env": entry.env,
-        "type": entry.value_type,
-        "secret": entry.sensitive
-    });
-    if let Some(default_value) = &entry.default_value {
-        value["default"] = if entry.sensitive {
-            json!("<redacted>")
-        } else {
-            default_value.clone()
-        };
-    }
-    value
 }
 
 fn generated_location_json(generated_line: usize, generated_column: usize) -> Value {

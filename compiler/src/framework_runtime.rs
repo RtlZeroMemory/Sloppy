@@ -5,7 +5,7 @@ use oxc_ast::ast::{
 use oxc_span::{GetSpan, Span};
 use serde_json::{json, Value};
 
-use crate::sloppyc::{ts_type_span, RequestBinding};
+use crate::{graph::RequestBinding, sloppyc::ts_type_span};
 
 pub(crate) struct TypedHandlerSource {
     pub original_source: String,

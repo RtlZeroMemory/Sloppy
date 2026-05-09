@@ -44,6 +44,15 @@ Route methods:
 
 - GET, POST, PUT, PATCH, DELETE (`map*` and plain verb forms)
 
+Supported route metadata:
+
+- `app.get("/path", handler).withName("Name")`
+- `app.get("/path", { name: "Name", tags: ["tag"] }, handler)`
+- `app.group("/prefix").withTags("tag")`
+
+Route metadata options must be literal objects. `name` must be a non-empty
+string literal. `tags` must be an array of non-empty string literals.
+
 Common route failures:
 
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE`
@@ -51,6 +60,8 @@ Common route failures:
 - `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`
 - `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN`
+- `SLOPPYC_E_UNSUPPORTED_ROUTE_NAME`
+- `SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS`
 
 ## Pattern Rules
 
