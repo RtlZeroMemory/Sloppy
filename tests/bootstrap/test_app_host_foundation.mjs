@@ -1541,6 +1541,116 @@ async function flushMicrotasks(count = 6) {
 }
 
 {
+    const app = Sloppy.create();
+    let readinessCalls = 0;
+    let livenessCalls = 0;
+    const secret = "server=prod;password=super-secret";
+
+    app.mapHealthChecks({
+        checks: [
+            function cache(context) {
+                assert.equal(typeof context.services.get, "function");
+                readinessCalls += 1;
+                return { ok: true, details: { ignoredSecret: secret } };
+            },
+            {
+                name: "worker-loop",
+                liveness: true,
+                readiness: false,
+                async check() {
+                    livenessCalls += 1;
+                    await Promise.resolve();
+                    return true;
+                },
+            },
+            {
+                name: "database",
+                check() {
+                    return false;
+                },
+            },
+        ],
+    });
+
+    const routes = app.__getRoutes();
+    assert.equal(routes.length, 3);
+    assert.equal(routes[0].method, "GET");
+    assert.equal(routes[0].pattern, "/health");
+    assert.equal(routes[0].name, "Health");
+    assert.equal(routes[0].metadata.health, "aggregate");
+    assert.deepEqual(routes[0].metadata.checks, ["cache", "worker-loop", "database"]);
+    assert.equal(routes[1].pattern, "/health/live");
+    assert.equal(routes[1].name, "Health.Liveness");
+    assert.equal(routes[1].metadata.health, "liveness");
+    assert.deepEqual(routes[1].metadata.checks, ["worker-loop"]);
+    assert.equal(routes[2].pattern, "/health/ready");
+    assert.equal(routes[2].name, "Health.Readiness");
+    assert.equal(routes[2].metadata.health, "readiness");
+    assert.deepEqual(routes[2].metadata.checks, ["cache", "database"]);
+
+    const liveness = await routes[1].handler();
+    assert.equal(liveness.status, 200);
+    assert.deepEqual(liveness.body, {
+        status: "healthy",
+        checks: [{ name: "worker-loop", status: "healthy" }],
+    });
+    assert.equal(livenessCalls, 1);
+    assert.equal(readinessCalls, 0);
+
+    const readiness = await routes[2].handler();
+    assert.equal(readiness.status, 503);
+    assert.deepEqual(readiness.body, {
+        status: "unhealthy",
+        checks: [
+            { name: "cache", status: "healthy" },
+            { name: "database", status: "unhealthy" },
+        ],
+    });
+    assert.equal(JSON.stringify(readiness.body).includes(secret), false);
+    assert.equal(readinessCalls, 1);
+
+    const aggregate = await routes[0].handler();
+    assert.equal(aggregate.status, 503);
+    assert.deepEqual(aggregate.body.checks.map((check) => check.name), [
+        "cache",
+        "worker-loop",
+        "database",
+    ]);
+}
+
+{
+    const app = Sloppy.create();
+    app.mapHealthChecks({
+        path: "/status",
+        livenessPath: "/status/live",
+        readinessPath: "/status/ready",
+    });
+
+    const routes = app.__getRoutes();
+    assert.deepEqual(routes.map((route) => route.pattern), ["/status", "/status/live", "/status/ready"]);
+    assert.deepEqual((await routes[0].handler()).body, { status: "healthy", checks: [] });
+    assert.deepEqual((await routes[1].handler()).body, { status: "healthy", checks: [] });
+    assert.deepEqual((await routes[2].handler()).body, { status: "healthy", checks: [] });
+
+    assertThrowsMessage(() => app.mapHealthChecks({ path: "health" }), /starting with/);
+    assertThrowsMessage(() => app.mapHealthChecks("/health/live"), /distinct/);
+    assertThrowsMessage(() => app.mapHealthChecks({ checks: {} }), /array/);
+    assertThrowsMessage(() => app.mapHealthChecks({ checks: [{ name: "bad", check: 123 }] }), /function/);
+    assertThrowsMessage(
+        () => app.mapHealthChecks({ checks: [{ name: "bad", readiness: false, check() {} }] }),
+        /readiness or liveness/,
+    );
+
+    {
+        const conflictApp = Sloppy.create();
+        conflictApp.get("/health/live", () => Results.ok({}));
+        const before = conflictApp.__getRoutes().length;
+        assertThrowsMessage(() => conflictApp.mapHealthChecks(), /already registered/);
+        assert.equal(conflictApp.__getRoutes().length, before);
+    }
+}
+
+{
     assert.deepEqual(Results.ok({ ok: true }), {
         __sloppyResult: true,
         kind: "json",

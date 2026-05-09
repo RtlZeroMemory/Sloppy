@@ -11,6 +11,8 @@ Current route registration methods:
 
 - `mapGet`, `mapPost`, `mapPut`, `mapPatch`, `mapDelete`
 - aliases: `get`, `post`, `put`, `patch`, `delete`
+- `mapHealthChecks` for the bootstrap aggregate health, liveness, and readiness
+  route set
 
 Unsupported direct methods in compiler extraction are rejected (for example `head` and `options` registrations).
 
@@ -70,7 +72,7 @@ Compiler extraction currently enforces:
 
 ## Limits
 
-- Sloppy currently follows the Sloppy router surface documented on this page.
-- Middleware/filter pipeline support is planned separately.
-- Package-managed route plugin discovery is planned separately from the current
-  pre-alpha router.
+- Sloppy routing currently follows Sloppy app/group registration and supported
+  route patterns. Node-style router APIs are planned separately.
+- Package-manager route plugins are planned separately from the current
+  pre-alpha route table.

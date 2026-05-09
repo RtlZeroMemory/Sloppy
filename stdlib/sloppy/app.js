@@ -26,6 +26,10 @@ import { createServiceProvider, createServicesBuilder } from "./internal/service
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
 import { Results } from "./results.js";
 
+const DEFAULT_HEALTH_PATH = "/health";
+const DEFAULT_LIVENESS_PATH = "/health/live";
+const DEFAULT_READINESS_PATH = "/health/ready";
+
 function validateProviderDescriptor(provider) {
     if (!isPlainObject(provider) || provider.__sloppyProvider !== true) {
         throw new TypeError("Sloppy app.use expects a Sloppy provider descriptor.");
@@ -85,6 +89,181 @@ function validateMergedProviderOptions(provider, options) {
             );
         }
     }
+}
+
+function validateHealthPath(path, subject) {
+    if (typeof path !== "string" || path.length === 0 || !path.startsWith("/")) {
+        throw new TypeError(`Sloppy ${subject} path must be a non-empty string starting with '/'.`);
+    }
+}
+
+function validateHealthCheckName(name) {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError("Sloppy health check name must be a non-empty string.");
+    }
+}
+
+function validateHealthCheckFunction(check) {
+    if (typeof check !== "function") {
+        throw new TypeError("Sloppy health check must be a function.");
+    }
+}
+
+function normalizeHealthCheck(check, index) {
+    if (typeof check === "function") {
+        const name = check.name.length > 0 ? check.name : `check-${index + 1}`;
+        return Object.freeze({
+            name,
+            check,
+            liveness: false,
+            readiness: true,
+        });
+    }
+
+    if (!isPlainObject(check)) {
+        throw new TypeError("Sloppy health checks must be functions or plain objects.");
+    }
+
+    validateHealthCheckName(check.name);
+    validateHealthCheckFunction(check.check);
+
+    const liveness = check.liveness === true;
+    const readiness = check.readiness !== false;
+
+    if (!liveness && !readiness) {
+        throw new TypeError("Sloppy health check must target readiness or liveness.");
+    }
+
+    return Object.freeze({
+        name: check.name,
+        check: check.check,
+        liveness,
+        readiness,
+    });
+}
+
+function normalizeHealthOptions(options) {
+    if (options === undefined) {
+        return Object.freeze({
+            path: DEFAULT_HEALTH_PATH,
+            livenessPath: DEFAULT_LIVENESS_PATH,
+            readinessPath: DEFAULT_READINESS_PATH,
+            checks: Object.freeze([]),
+        });
+    }
+
+    if (typeof options === "string") {
+        validateHealthPath(options, "health");
+        if (new Set([options, DEFAULT_LIVENESS_PATH, DEFAULT_READINESS_PATH]).size !== 3) {
+            throw new TypeError("Sloppy health, liveness, and readiness paths must be distinct.");
+        }
+        return Object.freeze({
+            path: options,
+            livenessPath: DEFAULT_LIVENESS_PATH,
+            readinessPath: DEFAULT_READINESS_PATH,
+            checks: Object.freeze([]),
+        });
+    }
+
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.mapHealthChecks options must be a plain object.");
+    }
+
+    const path = options.path ?? DEFAULT_HEALTH_PATH;
+    const livenessPath = options.livenessPath ?? DEFAULT_LIVENESS_PATH;
+    const readinessPath = options.readinessPath ?? DEFAULT_READINESS_PATH;
+
+    validateHealthPath(path, "health");
+    validateHealthPath(livenessPath, "liveness");
+    validateHealthPath(readinessPath, "readiness");
+
+    if (new Set([path, livenessPath, readinessPath]).size !== 3) {
+        throw new TypeError("Sloppy health, liveness, and readiness paths must be distinct.");
+    }
+
+    if (options.checks !== undefined && !Array.isArray(options.checks)) {
+        throw new TypeError("Sloppy health checks option must be an array when provided.");
+    }
+
+    const checks = (options.checks ?? []).map(normalizeHealthCheck);
+
+    return Object.freeze({
+        path,
+        livenessPath,
+        readinessPath,
+        checks: Object.freeze(checks),
+    });
+}
+
+function checkAppliesToMode(check, mode) {
+    if (mode === "liveness") {
+        return check.liveness;
+    }
+
+    if (mode === "readiness") {
+        return check.readiness;
+    }
+
+    return true;
+}
+
+function healthCheckNames(checks, predicate) {
+    return Object.freeze(checks.filter(predicate).map((check) => check.name));
+}
+
+function normalizeHealthCheckResult(result) {
+    if (result === undefined) {
+        return true;
+    }
+
+    if (typeof result === "boolean") {
+        return result;
+    }
+
+    if (isPlainObject(result) && typeof result.ok === "boolean") {
+        return result.ok;
+    }
+
+    return true;
+}
+
+async function runHealthChecks(checks, mode, context) {
+    const selected = checks.filter((check) => checkAppliesToMode(check, mode));
+    const results = [];
+    let healthy = true;
+
+    for (const check of selected) {
+        try {
+            const ok = normalizeHealthCheckResult(await check.check(context));
+            healthy = healthy && ok;
+            results.push(Object.freeze({
+                name: check.name,
+                status: ok ? "healthy" : "unhealthy",
+            }));
+        } catch {
+            healthy = false;
+            results.push(Object.freeze({
+                name: check.name,
+                status: "unhealthy",
+            }));
+        }
+    }
+
+    return Object.freeze({
+        status: healthy ? "healthy" : "unhealthy",
+        checks: Object.freeze(results),
+    });
+}
+
+function createHealthHandler(checks, mode) {
+    return async function healthHandler(context) {
+        const body = await runHealthChecks(checks, mode, context);
+        if (body.status === "healthy") {
+            return Results.ok(body);
+        }
+
+        return Results.status(503, body);
+    };
 }
 
 function createApp(host) {
@@ -289,6 +468,65 @@ function createApp(host) {
                 middleware,
                 corsPolicy,
             );
+        },
+
+        mapHealthChecks(options) {
+            assertAppMutable();
+            const health = normalizeHealthOptions(options);
+
+            const targets = [health.path, health.livenessPath, health.readinessPath];
+            for (const target of targets) {
+                const conflict = routes.find(
+                    (route) => route.method === "GET" && route.pattern === target,
+                );
+                if (conflict !== undefined) {
+                    throw new Error(`Sloppy route 'GET ${target}' is already registered.`);
+                }
+            }
+
+            registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                health.path,
+                {
+                    health: "aggregate",
+                    checks: healthCheckNames(health.checks, () => true),
+                },
+                createHealthHandler(health.checks, "aggregate"),
+            ).withName("Health");
+
+            registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                health.livenessPath,
+                {
+                    health: "liveness",
+                    checks: healthCheckNames(health.checks, (check) => check.liveness),
+                },
+                createHealthHandler(health.checks, "liveness"),
+            ).withName("Health.Liveness");
+
+            registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                health.readinessPath,
+                {
+                    health: "readiness",
+                    checks: healthCheckNames(health.checks, (check) => check.readiness),
+                },
+                createHealthHandler(health.checks, "readiness"),
+            ).withName("Health.Readiness");
+
+            return app;
         },
 
         get(pattern, optionsOrHandler, maybeHandler) {
