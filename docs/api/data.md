@@ -4,8 +4,9 @@ Sloppy ships first-party providers for SQLite, PostgreSQL, and SQL Server.
 Queries use a tagged template literal that's safe by construction — every
 interpolation becomes a parameter, never a string concatenation.
 
-> Stable: SQLite. Experimental: PostgreSQL and SQL Server need their live
-> dependencies (libpq, ODBC) and a V8-enabled runtime.
+> SQLite is the most complete provider path today. PostgreSQL and SQL
+> Server are pre-alpha and require their live dependencies (libpq,
+> ODBC) plus a V8-enabled runtime.
 
 ## Tagged template
 
@@ -178,7 +179,6 @@ const PostgresModule = Sloppy.module("data.postgres")
     .capabilities((caps) => {
         caps.addDatabase("data.main", {
             provider: "postgres",
-            configKey: "SLOPPY_POSTGRES_TEST_URL",
             access: "readwrite",
         });
     })

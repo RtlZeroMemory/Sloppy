@@ -62,9 +62,10 @@ export default app;
 
 That's the whole app:
 
-- `Sloppy.create()` returns a frozen app builder.
-- `app.get("/path", handler)` registers a GET route. `post`, `put`, `patch`,
-  and `delete` work the same way.
+- `Sloppy.create()` returns a built app. You can still register routes
+  until `app.freeze()` is called.
+- `app.get("/path", handler)` registers a GET route. `post`, `put`,
+  `patch`, and `delete` work the same way.
 - `{name}` is a route parameter; `ctx.route.name` reads it back as a string.
 - `Results.text(...)` and `Results.json(...)` describe the response.
 

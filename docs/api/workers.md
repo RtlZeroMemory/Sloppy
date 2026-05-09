@@ -109,8 +109,14 @@ app.use(tick);
 ```
 
 The handler receives a context object — `{ name, signal }` — not just
-the signal. `app.use(...)` recognizes worker resources and starts them
-when the app starts; they shut down on app shutdown.
+the signal. `app.use(...)` recognizes worker resources and calls their
+`__sloppyStartForApp(app)` hook **immediately at registration**, so
+`tick` is already running once `app.use(tick)` returns.
+
+Shutdown integration is still being hardened — the app does not
+automatically call worker `__sloppyStopForApp` hooks today. If you
+need a clean stop, hold a reference to the resource and call
+`tick.stop(...)` yourself (e.g. from a process-level signal handler).
 
 ## Work queues
 
