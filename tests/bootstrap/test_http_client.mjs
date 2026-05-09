@@ -457,7 +457,21 @@ function hpackReadInteger(bytes, offset, prefixBits) {
     throw new Error("incomplete HPACK integer");
 }
 
-function hpackString(value) {
+function hpackKnownHuffmanString(value) {
+    const encodings = new Map([
+        ["text/plain", Buffer.from([0x49, 0x7c, 0xa5, 0x8a, 0xe8, 0x19, 0xaa])],
+        ["13", Buffer.from([0x0b, 0x3f])],
+        ["14", Buffer.from([0x0b, 0x5f])],
+    ]);
+    const encoded = encodings.get(value);
+    assert.notEqual(encoded, undefined, `missing test HPACK Huffman encoding for ${value}`);
+    return Buffer.concat([hpackInteger(encoded.length, 7, 0x80), encoded]);
+}
+
+function hpackString(value, huffman = false) {
+    if (huffman) {
+        return hpackKnownHuffmanString(value);
+    }
     const bytes = Buffer.from(value, "utf8");
     return Buffer.concat([hpackInteger(bytes.length, 7, 0), bytes]);
 }
@@ -471,16 +485,16 @@ function hpackReadString(bytes, offset) {
     };
 }
 
-function hpackHeader(index, value) {
-    return Buffer.concat([hpackInteger(index, 4, 0), hpackString(value)]);
+function hpackHeader(index, value, huffman = false) {
+    return Buffer.concat([hpackInteger(index, 4, 0), hpackString(value, huffman)]);
 }
 
-function hpackResponseHeaders(status, contentType, contentLength) {
+function hpackResponseHeaders(status, contentType, contentLength, huffman = false) {
     const statusBlock = status === 200 ? Buffer.from([0x88]) : hpackHeader(8, String(status));
     return Buffer.concat([
         statusBlock,
-        hpackHeader(31, contentType),
-        hpackHeader(28, String(contentLength)),
+        hpackHeader(31, contentType, huffman),
+        hpackHeader(28, String(contentLength), huffman),
     ]);
 }
 
@@ -538,13 +552,14 @@ function startHttp2Server(handler, options = {}) {
             const status = response?.status ?? 200;
             const contentType = response?.contentType ?? "text/plain";
             const body = Buffer.from(response?.body ?? "h2 ok", "utf8");
+            const huffmanHeaders = response?.huffmanHeaders === true;
             socket.write(
                 Buffer.concat([
                     h2Frame(
                         HTTP2_FRAME_HEADERS,
                         HTTP2_FLAG_END_HEADERS,
                         streamId,
-                        hpackResponseHeaders(status, contentType, body.length),
+                        hpackResponseHeaders(status, contentType, body.length, huffmanHeaders),
                     ),
                     h2Frame(HTTP2_FRAME_DATA, HTTP2_FLAG_END_STREAM, streamId, body),
                 ]),
@@ -886,6 +901,25 @@ await withNodeNetBridge(async () => {
         assert.equal(observed.headers.get(":scheme"), "http");
         assert.equal(observed.headers.get(":path"), "/h2c?ready=1");
         assert.equal(observed.headers.get("x-test"), "h2c");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttp2Server(() => ({
+        body: "h2 huffman ok",
+        huffmanHeaders: true,
+    }));
+
+    try {
+        const response = await HttpClient.get(`${server.url}/h2c-huffman`, {
+            protocol: "h2c",
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("content-type"), "text/plain");
+        assert.equal(await response.text(), "h2 huffman ok");
     } finally {
         await server.close();
     }

@@ -1,7 +1,5 @@
 #include "sloppy/http2_frame.h"
 
-#include <string.h>
-
 static bool sl_http2_valid_bytes(SlBytes bytes)
 {
     return bytes.ptr != NULL || bytes.length == 0U;
@@ -37,6 +35,15 @@ static void sl_http2_write_u32(unsigned char* bytes, uint32_t value)
     bytes[1] = (unsigned char)((value >> 16U) & 0xffU);
     bytes[2] = (unsigned char)((value >> 8U) & 0xffU);
     bytes[3] = (unsigned char)(value & 0xffU);
+}
+
+static void sl_http2_write_bytes(unsigned char* dst, SlBytes src)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < src.length; index += 1U) {
+        dst[index] = src.ptr[index];
+    }
 }
 
 static bool sl_http2_payload_has_padding(const SlHttp2Frame* frame, size_t bytes_after_pad_length)
@@ -279,7 +286,7 @@ SlStatus sl_http2_frame_write(const SlHttp2Frame* frame, unsigned char* buffer, 
         return status;
     }
     if (frame->payload.length != 0U) {
-        memcpy(buffer + header.length, frame->payload.ptr, frame->payload.length);
+        sl_http2_write_bytes(buffer + header.length, frame->payload);
     }
     *out_bytes = sl_bytes_from_parts(buffer, header.length + frame->payload.length);
     return sl_status_ok();

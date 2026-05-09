@@ -92,6 +92,11 @@ run_optional_tool() {
 }
 
 build_dir="$repo_root/build/$(host_preset)"
+if [[ ! -d "$build_dir" ]]; then
+  evidence "http2.local_ctest" "UNAVAILABLE" "build preset directory not found: $build_dir"
+  exit 0
+fi
+
 ctest --test-dir "$build_dir" -R 'core\.http2|conformance\.transport\.http2_' --output-on-failure
 evidence "http2.local_ctest" "PASS" "core and transport HTTP/2 lanes passed"
 
