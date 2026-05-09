@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:66fa58b702f61d7cacdd9e5344a37584efad60070325747910530cc95c327b19",
+    "hash": "sha256:99f02198298c670de20917357302eb6a9470f24f57bd1c24501e7609e1cd40a9",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -554,7 +554,7 @@
           "kind": "json",
           "partial": false,
           "source": {
-            "column": 57,
+            "column": 20,
             "line": 79,
             "path": "input.ts"
           },
@@ -566,7 +566,7 @@
           "kind": "json",
           "partial": false,
           "source": {
-            "column": 79,
+            "column": 42,
             "line": 79,
             "path": "input.ts"
           },
@@ -892,7 +892,7 @@
   ],
   "sourceFiles": [
     {
-      "hash": "sha256:dadb3621f608361f852f653be7599dc90dc8c1525cdfb6b9f822b3d822d27557",
+      "hash": "sha256:06e3d5fc1c33458ecb5d1f481821cc7591b90cbc4b08419d79a3350db2445978",
       "path": "input.ts"
     },
     {
@@ -901,7 +901,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:65e79d889e83a636af235c82ee2f445046682a38f0e82efa3b58e89d7070921c",
+    "hash": "sha256:75189dccc48cb4d68f902061c381332cd37712b5e65ccb5017bbd67a23d730d3",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

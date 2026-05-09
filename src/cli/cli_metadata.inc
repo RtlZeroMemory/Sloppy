@@ -86,27 +86,37 @@ static void sl_cli_parse_route_effects(yyjson_val* value, SlCliRoute* route)
     }
 }
 
-static void sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
+static int sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* tags = yyjson_obj_get(value, "tags");
     yyjson_val* entry = NULL;
     yyjson_arr_iter iter;
 
     if (tags == NULL || !yyjson_is_arr(tags)) {
-        return;
+        return 0;
     }
 
     yyjson_arr_iter_init(tags, &iter);
     while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
-        if (yyjson_is_str(entry) && route->tag_count < SL_CLI_MAX_ROUTE_TAGS) {
-            route->tags[route->tag_count] =
-                (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
-            route->tag_count += 1U;
+        if (!yyjson_is_str(entry)) {
+            continue;
         }
+        if (route->tag_count >= SL_CLI_MAX_ROUTE_TAGS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route tags in metadata for ");
+            sl_cli_write_span(stderr, route->method);
+            sl_cli_write_cstr(stderr, " ");
+            sl_cli_write_span(stderr, route->pattern);
+            sl_cli_write_cstr(stderr, "\n");
+            return 1;
+        }
+        route->tags[route->tag_count] =
+            (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        route->tag_count += 1U;
     }
+    return 0;
 }
 
-static void sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
+static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* completeness = yyjson_obj_get(value, "completeness");
     yyjson_val* response = yyjson_obj_get(value, "response");
@@ -119,9 +129,12 @@ static void sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* ro
         route->response_helper = sl_cli_json_span(response, "helper");
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
     }
-    sl_cli_parse_route_tags(value, route);
+    if (sl_cli_parse_route_tags(value, route) != 0) {
+        return 1;
+    }
     sl_cli_parse_route_bindings(value, route);
     sl_cli_parse_route_effects(value, route);
+    return 0;
 }
 
 static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
@@ -157,7 +170,9 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.name = sl_cli_json_span(value, "name");
         route.module = sl_cli_json_span(value, "module");
         route.capability = sl_cli_json_span(value, "capability");
-        sl_cli_parse_route_strong_metadata(value, &route);
+        if (sl_cli_parse_route_strong_metadata(value, &route) != 0) {
+            return 1;
+        }
         route.handler_id = sl_cli_json_handler_id(value);
         sl_cli_parse_source(value, &route.source_path, &route.source_line, &route.source_column);
         route.source_order = metadata->route_count;

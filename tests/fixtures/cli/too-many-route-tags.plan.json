@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-too-many-route-tags-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-too-many-route-tags-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "GET /tagged"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/tagged",
+      "handlerId": 1,
+      "tags": [
+        "t01",
+        "t02",
+        "t03",
+        "t04",
+        "t05",
+        "t06",
+        "t07",
+        "t08",
+        "t09",
+        "t10",
+        "t11",
+        "t12",
+        "t13",
+        "t14",
+        "t15",
+        "t16",
+        "t17"
+      ]
+    }
+  ]
+}

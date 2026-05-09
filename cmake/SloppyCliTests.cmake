@@ -228,6 +228,16 @@
         sloppy.cli.openapi_response_content_json tests/golden/cli/openapi-response-content.json
         openapi --plan tests/fixtures/cli/openapi-response-content.plan.json)
 
+    add_test(
+        NAME sloppy.cli.openapi_too_many_route_tags
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=openapi;--plan;tests/fixtures/cli/too-many-route-tags.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=too many route tags in metadata" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.openapi_too_many_route_tags
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
     add_test(NAME sloppy.cli.help_includes_run COMMAND "$<TARGET_FILE:sloppy>" --help)
     set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")
 

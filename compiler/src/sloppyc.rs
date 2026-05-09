@@ -2053,7 +2053,9 @@ fn validate_supported_initializer(
         &schema_names(state),
         &state.provider_bindings,
         &state.helper_effects,
-    ) {
+    )
+    .map_err(|diagnostic| diagnostic.with_path(path))?
+    {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
             "route registration must be a top-level statement, not a variable initializer",
@@ -2478,6 +2480,7 @@ fn app_group_call<'a>(
 ) -> Result<Option<(&'a str, &'a str, RouteMetadata)>, Diagnostic> {
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
+    let mut tag_groups = Vec::new();
     loop {
         let Expression::CallExpression(call) = current else {
             return Ok(None);
@@ -2488,8 +2491,11 @@ fn app_group_call<'a>(
         if member.property.name.as_str() != "withTags" {
             break;
         }
-        metadata.tags.extend(route_tags_from_arguments(call)?);
+        tag_groups.push(route_tags_from_arguments(call)?);
         current = &member.object;
+    }
+    for tags in tag_groups.into_iter().rev() {
+        metadata.tags.extend(tags);
     }
 
     let Expression::CallExpression(call) = current else {
@@ -3373,6 +3379,11 @@ fn health_check_arrow_source(
         .with_path(path)
         .with_span(function.span));
     }
+    reject_health_check_captures(
+        path,
+        function.span,
+        health_check_arrow_free_identifiers(function),
+    )?;
     source_slice(source, function.span).ok_or_else(|| {
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
@@ -3401,6 +3412,11 @@ fn health_check_function_source(
         .with_path(path)
         .with_span(function.span));
     }
+    reject_health_check_captures(
+        path,
+        function.span,
+        health_check_function_free_identifiers(function),
+    )?;
     if method {
         let params = source_slice(source, function.params.span).ok_or_else(|| {
             Diagnostic::new(
@@ -3437,6 +3453,56 @@ fn health_check_function_source(
         .with_path(path)
         .with_span(function.span)
     })
+}
+
+fn reject_health_check_captures(
+    path: &Path,
+    span: Span,
+    free_identifiers: BTreeSet<String>,
+) -> Result<(), Diagnostic> {
+    if free_identifiers.is_empty() {
+        return Ok(());
+    }
+    let identifier = free_identifiers
+        .iter()
+        .next()
+        .map(String::as_str)
+        .unwrap_or("");
+    Err(Diagnostic::new(
+        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+        format!("health check captures unsupported identifier '{identifier}'"),
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Use inline health checks that only depend on their optional context parameter and local values."))
+}
+
+fn health_check_arrow_free_identifiers(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+) -> BTreeSet<String> {
+    let mut scope = BTreeSet::new();
+    collect_formal_parameter_bindings(&function.params, &mut scope);
+    collect_function_body_bindings(&function.body.statements, &mut scope);
+    let mut free = BTreeSet::new();
+    collect_statement_list_identifier_references(&function.body.statements, &scope, &mut free);
+    free
+}
+
+fn health_check_function_free_identifiers(
+    function: &oxc_ast::ast::Function<'_>,
+) -> BTreeSet<String> {
+    let mut scope = BTreeSet::new();
+    collect_formal_parameter_bindings(&function.params, &mut scope);
+    if let Some(identifier) = &function.id {
+        scope.insert(identifier.name.as_str().to_string());
+    }
+    let Some(body) = &function.body else {
+        return BTreeSet::new();
+    };
+    collect_function_body_bindings(&body.statements, &mut scope);
+    let mut free = BTreeSet::new();
+    collect_statement_list_identifier_references(&body.statements, &scope, &mut free);
+    free
 }
 
 fn health_routes_from_options(
@@ -4023,6 +4089,7 @@ fn service_factory_allowed_global(name: &str) -> bool {
             | "Uint8Array"
             | "WeakMap"
             | "WeakSet"
+            | "undefined"
     )
 }
 
@@ -4397,9 +4464,11 @@ fn extract_module_function_routes(
                 }
             }
             Statement::ExpressionStatement(statement) => {
-                let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)?;
+                let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
+                    .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let Some((receiver, method, pattern, route_metadata, handler_arg)) =
-                    route_call_parts(route_expr)?
+                    route_call_parts(route_expr)
+                        .map_err(|diagnostic| diagnostic.with_path(path))?
                 else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -4602,9 +4671,11 @@ fn route_call<'a>(
     schema_names: &BTreeSet<String>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
-) -> Option<(&'a str, &'static str, &'a str, Handler)> {
-    let (receiver, method, pattern, _metadata, handler_arg) =
-        route_call_parts(expression).ok()??;
+) -> Result<Option<(&'a str, &'static str, &'a str, Handler)>, Diagnostic> {
+    let Some((receiver, method, pattern, _metadata, handler_arg)) = route_call_parts(expression)?
+    else {
+        return Ok(None);
+    };
     let context = HandlerExtractionContext {
         route_pattern: pattern,
         source,
@@ -4614,8 +4685,10 @@ fn route_call<'a>(
         provider_bindings,
         helper_effects,
     };
-    let handler = handler_from_argument(handler_arg, &context)?;
-    Some((receiver, method, pattern, handler))
+    let Some(handler) = handler_from_argument(handler_arg, &context) else {
+        return Ok(None);
+    };
+    Ok(Some((receiver, method, pattern, handler)))
 }
 
 fn route_call_parts<'a>(
@@ -4663,7 +4736,9 @@ fn route_metadata_chain<'a>(
         };
         match member.property.name.as_str() {
             "withName" => {
-                metadata.name = Some(route_name_from_argument(call)?);
+                if metadata.name.is_none() {
+                    metadata.name = Some(route_name_from_argument(call)?);
+                }
                 current = &member.object;
             }
             "withTags" => {

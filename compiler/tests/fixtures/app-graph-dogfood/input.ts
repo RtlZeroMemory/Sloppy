@@ -76,7 +76,7 @@ projects.get("/{id:int}", { name: "Projects.Get", tags: ["detail"] }, (
   ctx: RequestContext,
 ) => {
   const project = database.queryOne("select id, name from projects where id = ?", [id]);
-  return project || includeDeleted || database || ctx ? Results.ok(project) : Results.notFound();
+  return project ? Results.ok(project) : Results.notFound();
 });
 
 app.mapHealthChecks({

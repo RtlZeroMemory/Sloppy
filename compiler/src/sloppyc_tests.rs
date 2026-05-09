@@ -1638,6 +1638,12 @@ const app = Sloppy.create();
 app.mapHealthChecks({ checks: [{ name: "bad", check: (ctx: RequestContext) => true }] });
 export default app;
 "#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const ready = true;
+app.mapHealthChecks({ checks: [{ name: "captured", check: () => ready }] });
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported health shape should fail");
@@ -3815,20 +3821,41 @@ export default app;
 }
 
 #[test]
+fn route_metadata_errors_in_initializers_are_reported() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const tags = ["users"];
+const route = app.get("/users", { tags }, () => Results.ok({ ok: true }));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("dynamic route metadata in an initializer should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS");
+    assert!(diagnostic.path.is_some());
+}
+
+#[test]
 fn extracts_route_options_and_group_tags_into_plan() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 const users = app.group("/users").withTags("users");
 users.get("/", { name: "Users.List", tags: ["list"] }, () => Results.ok([]));
+const admin = app.group("/admin").withTags("admin").withTags("v1");
+admin.get("/audit", () => Results.ok([])).withName("Admin.Audit").withName("Admin.Audit.Latest");
 export default app;
 "#;
     let app = extract(std::path::Path::new("app.js"), source)
         .expect("route metadata options should extract");
-    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes.len(), 2);
     assert_eq!(app.routes[0].name.as_deref(), Some("Users.List"));
     assert_eq!(
         app.routes[0].tags,
         vec!["users".to_string(), "list".to_string()]
+    );
+    assert_eq!(app.routes[1].name.as_deref(), Some("Admin.Audit.Latest"));
+    assert_eq!(
+        app.routes[1].tags,
+        vec!["admin".to_string(), "v1".to_string()]
     );
 
     let emitted_js = super::emit_app_js(&app);
@@ -3844,6 +3871,10 @@ export default app;
     assert_eq!(
         value["routes"][0]["tags"],
         serde_json::json!(["users", "list"])
+    );
+    assert_eq!(
+        value["routes"][1]["tags"],
+        serde_json::json!(["admin", "v1"])
     );
 }
 
