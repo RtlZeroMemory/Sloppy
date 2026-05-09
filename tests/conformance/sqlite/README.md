@@ -1,6 +1,6 @@
 # SQLite Conformance
 
-Status: native provider conformance plus V8-gated executable bridge and users API
+This directory covers native provider conformance plus V8-gated executable bridge and users API
 transport fixtures.
 
 Source fixtures:

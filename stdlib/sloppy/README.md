@@ -1,7 +1,6 @@
 # Sloppy Bootstrap Stdlib
 
-Status: active bootstrap standard library and staged runtime asset set.
-
+This directory contains the active bootstrap standard library and staged runtime asset set.
 This directory contains the source-controlled JavaScript facade used by bootstrap tests,
 examples, compiler fixtures, and staged runtime assets. It is not a Node compatibility shim
 and does not imply npm/package-manager behavior.
@@ -56,7 +55,7 @@ lib/sloppy/bootstrap/sloppy/
   assets, not public import targets.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; descriptors do not write responses by themselves.
-- `schema.js` provides the current validation metadata skeleton for strings, numbers,
+- `schema.js` provides the current validation metadata surface for strings, numbers,
   booleans, and object shapes.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
@@ -80,7 +79,7 @@ lib/sloppy/bootstrap/sloppy/
 - Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
   facades use opaque Sloppy-owned objects, not public slot/generation fields.
 - Node, Bun, Deno, Web API, and npm compatibility are not claimed.
-- Benchmark, production-readiness, and public alpha claims do not come from this directory.
+- Benchmark, production-readiness, and public release claims do not come from this directory.
 
 ## Not Implemented Here
 

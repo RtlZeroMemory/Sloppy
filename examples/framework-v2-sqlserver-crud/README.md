@@ -1,6 +1,6 @@
 # Framework v2 SQL Server CRUD Example
 
-Status: opt-in live-lane Framework v2 SQL Server example with honest unavailable
+This is an opt-in live-lane Framework v2 SQL Server example with honest unavailable
 diagnostics when the local ODBC lane is not configured.
 
 This example documents the Plan-visible Framework v2 shape for SQL Server CRUD-style
@@ -19,5 +19,5 @@ $env:Sloppy__Providers__sqlserver__main__connectionString="<redacted SQL Server 
 .\tools\windows\test-live-sqlserver.ps1
 ```
 
-This is not an ORM, migration system, production database policy, public alpha claim,
+This is not an ORM, migration system, production database policy, public release claim,
 benchmark, package-manager behavior, or Node/Bun/Deno compatibility proof.

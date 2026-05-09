@@ -1,6 +1,6 @@
 # Time Interval and Schedule Example
 
-Status: source example. This example documents async iterable intervals and
+This example documents async iterable intervals and
 interval-based scheduled jobs.
 
 `Time.interval` is consumed with `for await`. `Time.every` is interval-based and is not a

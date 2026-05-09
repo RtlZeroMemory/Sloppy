@@ -1,7 +1,6 @@
 # Codec Conformance
 
-Status: CORE-CODEC-01.J evidence index.
-
+This directory is the evidence index.
 Codec conformance is split by lane:
 
 - default bootstrap JavaScript vectors: `bootstrap.stdlib.codec` covers RFC 4648
@@ -25,5 +24,5 @@ Codec conformance is split by lane:
 
 This is not Node Buffer compatibility, Web Streams compatibility, Bun/Deno compatibility,
 custom compression algorithm evidence, brotli/zstd/deflate support, authentication or
-attacker-resistant integrity evidence, public alpha documentation, package-manager
+attacker-resistant integrity evidence, public release documentation, package-manager
 behavior, package release evidence, or benchmark evidence.

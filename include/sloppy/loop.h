@@ -26,7 +26,7 @@ typedef enum SlCompletionKind
  *
  * `loop` is the loop currently dispatching the completion. `payload` and `user` are
  * borrowed opaque pointers supplied to sl_loop_post() and may be NULL. The callback runs on
- * the caller thread; this skeleton creates no threads and does not support cross-thread
+ * the caller thread; this loop creates no threads and does not support cross-thread
  * posting. Returning failure propagates that SlStatus to the caller, and the consumed
  * completion is not retried automatically.
  */
@@ -41,14 +41,14 @@ typedef struct SlCompletion
 } SlCompletion;
 
 /*
- * SlLoop is Sloppy's first native completion queue skeleton.
+ * SlLoop is Sloppy's caller-backed native completion queue.
  *
  * Storage is caller-owned: SlLoop never allocates, frees, calls OS APIs, or owns callback
  * payloads. The queue is fixed-capacity FIFO. Completion callbacks are invoked
  * synchronously on the caller thread and may post more completions if capacity permits.
  *
  * Threading and engine boundary:
- * - this skeleton is single-threaded and not thread-safe;
+ * - this queue is single-threaded and not thread-safe;
  * - cross-thread posting is outside the current loop contract;
  * - owner-thread enforcement remains an engine boundary responsibility;
  * - V8 isolates must only be entered by their owning JS event-loop thread;

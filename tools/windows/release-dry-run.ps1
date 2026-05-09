@@ -53,8 +53,6 @@ if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
     $powerShellExe = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
 }
 
-Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"), "-SelfTest")
-Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"))
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-SelfTest")
 Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 

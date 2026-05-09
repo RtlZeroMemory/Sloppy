@@ -1,7 +1,7 @@
 /*
  * src/platform/libuv/net_tcp_libuv.c
  *
- * Libuv-backed TCP client/connection runtime. Public headers expose only Slop-owned
+ * Libuv-backed TCP client/connection runtime. Public headers expose only Sloppy-owned
  * connection/resource types; libuv handles and sockaddr storage stay private here.
  */
 #include "sloppy/net.h"

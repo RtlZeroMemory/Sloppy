@@ -557,7 +557,7 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
     }
 
     /*
-     * Trusted runtime/tooling file reads use the Slop-owned native filesystem backend directly.
+     * Trusted runtime/tooling file reads use the Sloppy-owned native filesystem backend directly.
      * They intentionally do not go through the public V8 `sloppy/fs` feature/capability path.
      */
     status = sl_fs_read_file(&arena, sl_str_from_cstr(path), &bytes, NULL);

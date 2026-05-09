@@ -1,6 +1,6 @@
 # Fuzz And Property Tests
 
-`tests/fuzz` owns the TEST-PLATFORM-01 fuzz/property lane.
+`tests/fuzz` owns the fuzz/property lane.
 
 The lane has two layers:
 

@@ -20,18 +20,17 @@ git diff --check
 ```
 
 `tools/windows/dev.ps1 lint` runs platform and physical boundary checks, language
-standards checks, docs freshness and claim checks, core API integration checks,
-test-governance checks, C complexity warnings, alpha-infra dependency manifest
-checks, optional local `clang-tidy` where configured, and artifact hygiene.
+standards checks, docs freshness checks, core API integration checks,
+test-governance checks, release artifact checks, C complexity warnings, optional local
+`clang-tidy` where configured, and artifact hygiene.
 
 Run narrower checks only when the task scope justifies them, and report that
 scope honestly.
 
 ## Evidence Status
 
-Use these statuses in PR reports. Canonical status labels are `PASS, FAIL, SKIPPED, UNAVAILABLE`.
-`DEFERRED` and `NOT RUN` may be used when a lane was explicitly out of scope or applicable
-but not executed.
+Use these statuses in PR reports: `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
+`DEFERRED`, `NOT RUN`.
 
 | Status | Meaning |
 | --- | --- |
@@ -108,12 +107,12 @@ compiler, preset, V8 SDK/version, baseline, and caveats.
 
 Documentation work must run `git diff --check` and the docs/static checks that
 are wired into lint or available as standalone scripts. Claim checks should
-guard public/current docs against construction-language drift, public alpha
+guard public/current docs against construction-language drift, public release
 claims, production-readiness claims, unsupported compatibility claims, benchmark
 or performance overclaims, and obvious real secrets.
 
-Archive docs, issue snapshots, contributor/agent instructions, and tests may
-contain historical or fake marker text when that text is clearly scoped.
+Archive docs, issue snapshots, and tests may contain historical marker text when
+that text is clearly scoped.
 
 ## Tooling-Specific Gates
 
@@ -127,17 +126,16 @@ contain historical or fake marker text when that text is clearly scoped.
   artifact hygiene. Package-smoke CI must stay opt-in through `workflow_dispatch`,
   `full-ci`, or `package-smoke` so ordinary tooling/docs PRs do not pull a full package
   build into the fast path; skipped remote package-smoke lanes are not pass evidence.
-- Release artifact dry-runs must verify checksums, no-claims policy, release skeletons,
+- Release artifact dry-runs must verify checksums, no-claims policy, release policy files,
   and outside-checkout package smoke for the package lane under test.
 - The release artifact workflow is manual and read-only; it must not require secrets or
   create a public release.
-- Dogfood/readiness changes must validate `examples/dogfood/alpha-dogfood.json` and
-  `docs/project/alpha-infra-readiness.json` through `check-alpha-infra.ps1`. Positive hello
-  execution remains V8-gated; status-only dogfood checks do not prove V8 execution or
-  package-mode behavior.
-- No-claims scanning rejects unguarded production, performance, Node/Bun/Deno,
-  provider-readiness, V8-readiness, package-readiness, release-readiness, or unsupported
-  platform claims.
+- Dogfood changes must validate `examples/dogfood/dogfood.json` through the dogfood
+  harness. Positive hello execution remains V8-gated; status-only dogfood checks do not
+  prove V8 execution or package-mode behavior.
+- Documentation and release policy checks reject unguarded production, performance,
+  Node/Bun/Deno, provider-readiness, V8-readiness, package-readiness, release-readiness,
+  or unsupported platform claims when those claims are not backed by the relevant lane.
 
 ## Mandatory Sanitizer And Fuzz Evidence
 

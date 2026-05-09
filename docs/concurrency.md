@@ -36,8 +36,8 @@ capability checks, executor mode, bounded queues, cancellation, deadline behavio
 completion must remain provider-owned runtime contracts. SQLite-class blocking work may use
 serialized/offloaded provider execution where the scoped lane supports it. PostgreSQL
 JavaScript provider work uses a provider-owned nonblocking libpq state machine with
-Slop-owned socket readiness watches and owner-thread Promise settlement. SQL Server
-JavaScript provider work uses ODBC asynchronous connection/statement mode and Slop-owned
+Sloppy-owned socket readiness watches and owner-thread Promise settlement. SQL Server
+JavaScript provider work uses ODBC asynchronous connection/statement mode and Sloppy-owned
 V8 continuations; drivers that cannot enable async behavior must be reported as
 unsupported rather than hidden behind a blocking worker.
 

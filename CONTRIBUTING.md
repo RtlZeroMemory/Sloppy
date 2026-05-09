@@ -1,20 +1,22 @@
-# Contributing to Sloppy
+# Contributing
 
-Sloppy is a pre-alpha runtime project. The repository is expected to read and behave like a
-serious engineering project even while major product tracks remain unfinished.
+This guide is for human contributors working in the Sloppy repository.
 
-Do not commit build outputs, generated local artifacts, V8 SDKs, Rust `target`
-directories, local dependency caches, release archives, or local binaries.
+Automation-specific operating rules are documented in
+[AGENTS.md](AGENTS.md) and [AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md).
 
-Windows x64 with `clang-cl`, `lld-link`, CMake, and Ninja is the most complete validated
-local runtime developer path today. Sloppy remains cross-platform by design. No WinAPI,
-POSIX, Linux, or macOS API calls may be added outside `src/platform/*`; core modules must
-not include OS-specific headers.
+## Start Here
 
-## Local Commands
+- [Documentation home](docs/README.md)
+- [Building from source](docs/contributor/building-from-source.md)
+- [Development scripts](docs/contributor/dev-scripts.md)
+- [Testing](docs/contributor/testing.md)
+- [Quality gates](docs/contributor/quality-gates.md)
+- [Coding standards](docs/contributor/coding-standards.md)
+- [Documentation policy](docs/contributor/documentation.md)
+- [Review playbook](docs/contributor/review-playbook.md)
 
-Run from a Visual Studio Developer PowerShell/Command Prompt or an equivalent initialized
-environment:
+## Local Setup (Windows x64)
 
 ```powershell
 .\tools\windows\bootstrap.ps1
@@ -22,107 +24,53 @@ environment:
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
-.\tools\windows\dev.ps1 format-check
-.\tools\windows\dev.ps1 lint
-.\tools\windows\dev.ps1 package
-.\tools\windows\dev.ps1 test-package
-git diff --check
 ```
 
-Root scripts are convenience forwarders to `tools/windows/*.ps1`.
+When a change affects runtime execution or other V8-adjacent behavior, also run:
 
-## Definition Of Done
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
 
-- source docs, ADRs, module docs, or user-facing docs updated when behavior or architecture
-  changes;
-- tests added or an explicit reason given for docs-only/spec-only changes;
-- tests reference intended behavior from source docs/specs;
-- positive and negative paths covered where applicable;
-- golden updates explain the intended behavior change;
-- evidence lanes reported honestly;
-- no ignored/generated artifacts staged;
-- relevant format, lint, build, and test gates run or reported as not run with reason;
-- platform, V8, memory, diagnostics, and JavaScript boundary rules preserved.
+If a required tool or SDK is missing, report that failure directly. Do not
+present blocked lanes as successful lanes.
 
-## Evidence Lane Report
+## Working Rules
 
-Every implementation PR must report test evidence by lane and status. Use the lane names
-from `docs/testing-strategy.md` and `docs/quality-gates.md`: default non-V8,
-compiler/Plan, V8-gated, source-input, package outside-checkout, platform-specific,
-dependency-backed, live-network/live-provider, fuzz/property, stress/torture,
-advanced static analysis, sanitizer/memory-safety, and benchmark. Status values are
-`PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`, `DEFERRED`, or `NOT RUN`. Skipped optional gates
-are not pass claims.
+1. Keep each PR scoped to one coherent behavior slice.
+2. Update code, tests, and docs together when behavior changes.
+3. Prefer removing replaced pre-alpha shapes over adding compatibility layers.
+4. Run the relevant checks before opening a PR.
+5. Review staged files for generated artifacts or scope creep before push.
 
-The report must state:
+## Evidence Reporting
 
-- expected behavior under test and the source-of-truth contract;
-- positive and negative paths covered;
-- evidence lanes run with exact commands;
-- skipped or unavailable lanes with exact reasons;
-- goldens changed and why the new output is intended;
-- secret/redaction checks run;
-- known deferred coverage with issue references.
+Use only these lane statuses in PR evidence:
 
-Benchmark results are never correctness evidence. V8, package, live-provider,
-advanced static analysis, fuzz/property, stress/torture, sanitizer, and platform-specific
-results must stay separate from default non-V8 evidence.
+- `PASS`
+- `FAIL`
+- `SKIPPED`
+- `UNAVAILABLE`
+- `DEFERRED`
+- `NOT RUN`
 
-## Implementation Contract for Reviewers
+Skipped optional lanes are not pass evidence. Separate non-V8, V8, package,
+live-provider, stress, and benchmark lanes when reporting.
 
-Large or high-risk PRs must include an implementation contract that reviewers can check
-against. Include:
+## Documentation Expectations
 
-- source docs and issues read;
-- intended behavior;
-- explicit non-goals;
-- files or surfaces touched;
-- docs, tests, and code expected to move together;
-- negative paths and diagnostics that must be covered;
-- evidence lanes required, skipped, or deferred;
-- known residual risk or follow-up.
+- Write for readers, not for planning ceremony.
+- Keep docs aligned with current implementation evidence.
+- Keep Diataxis page intent clear (tutorial/how-to/reference/explanation).
+- Avoid stale planning language and unsupported claims.
 
-Reviewers should compare the PR against this contract, not only inspect local code style.
+## PR Checklist
 
-## Project Issue Policy
-
-Implementation PRs should reference a current GitHub issue or a task file under
-`docs/project/tasks/`. If no issue exists, create or update one before implementation
-unless the change is trivial docs-only cleanup. GitHub owns live issue state; local issue
-indexes are snapshots.
-
-## Pull Request Policy
-
-- Prefer bounded, coherent, reviewable PRs.
-- One large PR is acceptable when it represents one bounded context.
-- Avoid unrelated refactors, broad rewrites, and formatting churn.
-- Do not split coherent work into tiny PRs only to satisfy process ceremony.
-- Do not mix unrelated architecture, tooling, and feature work.
-- Do not add frameworks, registries, plugin systems, generic abstractions, or public
-  extension points unless a source doc or ADR requires them.
-- Comments must explain rationale, ownership, lifetime, safety, platform, engine, or
-  threading invariants where context matters.
-- Stale comments must be fixed in the same PR as the behavior change.
-- Tests must verify documented intended behavior, not accidental current behavior.
-- Do not introduce hidden global mutable state.
-- Do not leak V8 types outside `src/engine/v8/`.
-- Do not expose raw native pointers to JavaScript.
-- Do not add package-manager scope or Node compatibility assumptions.
-- Do not add public alpha, production-readiness, performance, package-readiness,
-  provider-readiness, or Node/Bun/Deno compatibility claims without source docs and
-  matching evidence.
-
-## Agent Workflow
-
-Agent-assisted development is part of the repository workflow, but outcome quality matters
-more than prompt choreography. Agents should read `AGENTS.md`, use the relevant skills under
-`docs/skills/`, identify the source docs first, keep scope bounded, run checks, and report
-commands honestly.
-
-Use targeted independent reviewers or subagents for high-risk work such as C safety, V8
-boundaries, concurrency, providers, permissions/security, diagnostics redaction, packaging,
-release evidence, and repository-wide documentation cleanup. Trivial changes do not need a
-specialist sweep.
-
-Promote repeated review findings into docs, checks, or tools. Track deferred cleanup in
-`docs/tech-debt-tracker.md` when the cleanup is real but outside the current PR.
+- Clear contract and non-goals.
+- Tests for expected and negative paths when applicable.
+- Honest lane report with run/skip reasons.
+- Goldens updated only when intended and explained.
+- Secret/redaction checks when the change touches diagnostics or outputs.

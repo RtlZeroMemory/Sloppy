@@ -1,7 +1,6 @@
 # Network Conformance
 
-Status: CORE-NET-01.I plus CORE-NET-02 stabilization evidence index.
-
+This directory is the network conformance evidence index.
 Network conformance is split by lane:
 
 - default native loopback execution: `core.net_tcp` covers TCP client connect/write/read,
@@ -42,10 +41,10 @@ Network conformance is split by lane:
   client/listener loopback smoke, LocalEndpoint bridge/path validation, promise settlement
   through the V8 owner-thread path, and inactive-feature gating when a V8 SDK is configured.
 
-CORE-NET-02 adds POSIX-gated Unix domain socket native tests, Windows-gated named pipe
-native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring, and
-doctor/audit/source-example evidence under the same `stdlib.net` feature. This is not TLS,
+Local IPC coverage adds POSIX-gated Unix domain socket native tests, Windows-gated named
+pipe native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring,
+and doctor/audit/source-example evidence under the same `stdlib.net` feature. This is not TLS,
 HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket, Node/Bun/Deno
 compatibility, direct WinSock/epoll/kqueue/io_uring public API exposure, crypto
-implementation, package-manager behavior, public alpha documentation, benchmark evidence,
+implementation, package-manager behavior, public release documentation, benchmark evidence,
 stress/torture evidence, or external live-network proof.

@@ -5,7 +5,7 @@
 /*
  * src/platform/posix/net_local_posix.c
  *
- * POSIX Unix domain socket backend for Slop-owned LocalEndpoint resources. Public APIs
+ * POSIX Unix domain socket backend for Sloppy-owned LocalEndpoint resources. Public APIs
  * expose only SlLocalConnection/SlLocalServer pointers and JS-safe resource IDs above
  * this layer; raw file descriptors and sockaddr_un details stay private here.
  */

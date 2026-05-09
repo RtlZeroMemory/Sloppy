@@ -38,8 +38,8 @@ The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
 documented API shape without requiring Node, npm, compiler extraction, app-plan emission,
 JavaScript provider connections, external network access, or unrelated runtime behavior.
 
-TEST-PLATFORM-01 adds `tools/windows/check-test-governance.ps1`, source-input fixture
-metadata executed by `tools/windows/test-source-input-fixtures.ps1`, package
+The governance lane includes `tools/windows/check-test-governance.ps1`, source-input
+fixture metadata executed by `tools/windows/test-source-input-fixtures.ps1`, package
 outside-checkout fixture metadata with prebuilt artifact evidence, cross-API conformance
 indexing, V8 bridge test templates, resource/lifecycle conformance aliases, and
 deterministic fuzz seed replay under `tests/fuzz`. libFuzzer, sanitizer, long fuzz,

@@ -1,6 +1,6 @@
 # Workers JS Isolate
 
-Status: V8-lane API-shape example. It is not Node, Web Worker, or package-manager
+This is a V8-lane API-shape example. It is not Node, Web Worker, or package-manager
 compatibility evidence.
 
 Shows the explicit `Worker.start(...).invoke(...).stop()` API shape.

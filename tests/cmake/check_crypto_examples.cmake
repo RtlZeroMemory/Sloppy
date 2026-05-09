@@ -132,7 +132,7 @@ foreach(required_pattern IN ITEMS
         "no Math.random fallback"
         "no package-manager behavior"
         "no WebCrypto/Node/Bun compatibility"
-        "no public alpha"
+        "no public release"
         "no benchmark")
     require_substring("${random_readme_source}" "${required_pattern}"
                       "examples/crypto-random-token/README.md is missing required boundary text")
@@ -142,7 +142,7 @@ foreach(required_pattern IN ITEMS
         "constant-time comparison"
         "no custom crypto algorithm"
         "no package-manager behavior"
-        "no public alpha")
+        "no public release")
     require_substring("${hash_readme_source}" "${required_pattern}"
                       "examples/crypto-hash-hmac/README.md is missing required boundary text")
 endforeach()

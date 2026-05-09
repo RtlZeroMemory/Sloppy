@@ -6,5 +6,5 @@ bounded admission before socket work.
 
 The policy object is example metadata, not a package-manager manifest or an OS sandbox.
 It does not prove external live-network access, TLS, HTTP, UDP, WebSocket, local IPC,
-Node/Bun/Deno compatibility, public alpha readiness, benchmark evidence, or secret
+Node/Bun/Deno compatibility, public release readiness, benchmark evidence, or secret
 endpoint disclosure.

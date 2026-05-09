@@ -1,7 +1,6 @@
 # Data Foundation Example
 
-Status: Bootstrap data/capabilities foundation example.
-
+Bootstrap data/capabilities foundation example.
 This example shows the current JavaScript-only shape for database capability metadata,
 query template lowering, a fake data provider service, and transaction callback semantics.
 
@@ -33,7 +32,7 @@ What does not work yet:
 - real native SQL execution, pooling, true-async external providers, and live-provider
   evidence are covered by the provider-specific SQLite/PostgreSQL/SQL Server examples and
   tests;
-- the future bare `"sloppy"` import is planned only.
+- bare `"sloppy"` imports are the current source shape for this example.
 
 See `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`
 for provider registration shapes.

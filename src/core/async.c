@@ -1,7 +1,7 @@
 /*
  * src/core/async.c
  *
- * Implements Sloppy's first native async settlement skeleton.
+ * Implements Sloppy's caller-owned native async settlement primitive.
  *
  * Safety invariants:
  * - async objects are caller-owned and never allocate or free memory;
@@ -10,7 +10,7 @@
  * - state changes only after the loop post succeeds;
  * - reinitialization is rejected while a queued completion is still pending;
  * - each async object settles at most once;
- * - this skeleton is single-threaded and has no V8, microtask, HTTP, or worker behavior.
+ * - this primitive is single-threaded and has no V8, microtask, HTTP, or worker behavior.
  *
  * Tests: tests/unit/core/test_async.c.
  */

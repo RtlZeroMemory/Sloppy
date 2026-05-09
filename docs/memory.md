@@ -186,4 +186,4 @@ Deferred memory work includes broader hot-path adoption, more allocation-aware r
 tests, provider executor/offload adoption for all provider paths, and any future heap-owned
 buffer abstraction that earns its place through a real ownership need.
 
-Historical audits and adoption maps live under `docs/project/archive/`.
+Historical audits and adoption maps are not current documentation; use GitHub issues for live state.

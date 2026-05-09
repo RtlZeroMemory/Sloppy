@@ -11,7 +11,7 @@ enforcement-oriented standard.
 
 Simplicity is part of the style. Sloppy prefers boring, direct C with visible ownership and
 error paths over generic systems, speculative extension points, macro DSLs, and
-abstraction-heavy "AI ceremony." See the Simplicity and Anti-Overengineering section in
+abstraction-heavy ceremony. See the Simplicity and Anti-Overengineering section in
 `docs/c-standards.md`.
 
 Comments should explain rationale, ownership, lifetime, invariants, and boundary

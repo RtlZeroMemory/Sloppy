@@ -1,8 +1,8 @@
 # Review Playbook
 
-## Spec Compliance Reviewer
+## Contract Reviewer
 
-Checks that the change matches the prompt, docs/ADRs, and acceptance criteria. Also checks
+Checks that the change matches the issue, docs/ADRs, and acceptance criteria. Also checks
 for scope creep and required doc updates.
 
 For large PRs, compare the diff against the `Implementation Contract for Reviewers`.
@@ -92,7 +92,7 @@ JS/TS checklist:
 - errors are deterministic and redact secrets;
 - compiler-extractable examples avoid dynamic patterns;
 - `tools/windows/check-js-ts-standards.ps1` passes.
-- no public alpha, production-readiness, performance, package-readiness,
+- no public release, production-readiness, performance, package-readiness,
   provider-readiness, or Node/Bun/Deno compatibility claims unless a source doc and
   evidence lane prove the exact claim.
 

@@ -222,7 +222,7 @@ cat > "$stage_root/docs/KNOWN_LIMITATIONS.md" <<'LIMITATIONS'
 
 This package is an experimental pre-alpha development artifact.
 
-- It is not a public alpha release.
+- It is not a public release.
 - It is not production ready.
 - It is not a Node, Bun, Deno, npm, or package-manager compatibility target.
 - Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
@@ -367,7 +367,7 @@ cat > "$stage_root/manifest.json" <<JSON
   },
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
-  "notes": ["experimental", "dry-run artifact", "not production ready", "not a public alpha release", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
+  "notes": ["experimental", "dry-run artifact", "not production ready", "not a public release", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
 }
 JSON
 

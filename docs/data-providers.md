@@ -25,11 +25,11 @@ Implemented foundations include:
   transaction, binding, result-copy, and diagnostic behavior;
 - a V8-gated SQLite bridge that routes SQLite exec/query/queryOne/transaction work through
   the serialized provider executor and settles Promises on the V8 owner thread;
-- a V8-gated PostgreSQL bridge that uses libpq's nonblocking state machine, Slop-owned
+- a V8-gated PostgreSQL bridge that uses libpq's nonblocking state machine, Sloppy-owned
   socket-readiness watches, bounded connection pooling, parameterized exec/query/queryOne,
   callback transactions, and owner-thread Promise settlement;
 - a V8-gated SQL Server bridge that enables asynchronous ODBC connection/statement mode,
-  advances the driver through Slop-owned V8 continuations, owns result payloads before
+  advances the driver through Sloppy-owned V8 continuations, owns result payloads before
   Promise settlement, and exposes bounded connection pooling and callback transactions;
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge

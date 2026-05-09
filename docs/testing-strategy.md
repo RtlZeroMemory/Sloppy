@@ -1,10 +1,9 @@
 # Testing Strategy
 
-Tests are executable specifications. TEST-PLATFORM-01 made that rule mechanical
-across the repository: each changed behavior needs a source-of-truth contract,
-tests that fail when that contract is violated, and docs/spec/test updates in
-the same PR when intent changes. Tests must not snapshot current output merely
-because it exists.
+Tests are executable specifications. The repository makes that rule mechanical:
+each changed behavior needs a source-of-truth contract, tests that fail when that
+contract is violated, and docs/spec/test updates in the same PR when intent changes.
+Tests must not snapshot current output merely because it exists.
 
 ## Principles
 

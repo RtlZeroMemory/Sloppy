@@ -11,7 +11,7 @@ for C in Sloppy.
 - Bounded behavior.
 - Sanitizer/static-analysis friendly code.
 - Cross-platform core.
-- Agent-legible code.
+- Maintainer-legible code.
 
 ## Language Baseline
 
@@ -193,8 +193,8 @@ TODOs must include:
 Good:
 
 ```c
-// TODO(TASK-09.B): replace this synchronous completion path when the native
-// completion queue exists. This placeholder is test-only and must not be used
+// TODO(<tracked-issue>): replace this synchronous completion path when the native
+// completion queue exists. This test double must not be used
 // by HTTP request handling.
 ```
 
@@ -543,9 +543,9 @@ Primitive-only or explicit-boundary APIs:
 - `strlen` is allowed in `src/core/string.c` for the canonical C-string adapter. Other
   C-string boundary code must use `SlStr` adapters instead of local length scans.
 - `memcpy`, `memmove`, `memcmp`, and `memset` are errors outside canonical string/byte
-  primitives recognized by the scanner. Add a reusable Slop primitive instead of an
+  primitives recognized by the scanner. Add a reusable Sloppy primitive instead of an
   inline exception.
-- `snprintf` is not allowed in Slop-owned implementation code. Floating-point text uses
+- `snprintf` is not allowed in Sloppy-owned implementation code. Floating-point text uses
   the Ryu-backed `sl_string_format_f32` / `sl_string_format_f64` helpers, and integer text
   uses the canonical `sl_string_format_*` helpers.
 - `memset` must not be used for secret wiping. Structure zero-initialization at platform
@@ -570,7 +570,7 @@ Ignored stdio/format return values:
 - If the return value matters for truncation, formatting, or write failure, check it and
   propagate or report the error. If failure is intentionally non-actionable in a test or
   best-effort diagnostic path, call the function directly without a void cast.
-- New implementation code should not use `snprintf` at all; use Slop string builders or
+- New implementation code should not use `snprintf` at all; use Sloppy string builders or
   canonical formatting helpers instead.
 
 ## Integer and Size Safety
@@ -660,7 +660,7 @@ when it is enabled, assertions must remain active even if a toolchain or build m
 - Core code has no platform or V8 leakage.
 - JS-facing native state uses resource IDs, not raw pointers.
 - Tests cover success and failure paths.
-- Code is boring enough for the next agent to maintain.
+- Code is boring enough for the next maintainer to maintain.
 
 ## Acceptance Criteria for Phase 1 C Primitives
 

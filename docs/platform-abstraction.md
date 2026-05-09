@@ -37,7 +37,7 @@ implementation story explicitly needs them and places them under `src/platform/*
 
 The repository has:
 
-- `src/platform/` directory skeleton;
+- `src/platform/` directory layout;
 - `src/platform/common/`, `win32/`, `posix/`, `linux/`, and `macos/` README files;
 - `tools/windows/check-platform-boundaries.ps1`;
 - `tools/unix/check-platform-boundaries.sh`;
@@ -335,9 +335,7 @@ Examples:
 - core code uses Sloppy abstractions, not OS APIs;
 - docs update whenever a new platform abstraction category is introduced.
 
-## Implementation Tasks
-
-### Platform Skeleton
+## Platform Boundary Work
 
 Tasks:
 

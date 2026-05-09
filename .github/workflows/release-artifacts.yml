@@ -54,21 +54,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate release templates and no-claims policy
+      - name: Validate release policy
         shell: pwsh
         run: |
           if ("${{ inputs.dry_run }}" -ne "true") {
             throw "release-artifacts only supports dry_run=true. This workflow must not create a public release."
           }
-          .\tools\windows\check-alpha-claims.ps1 -SelfTest
-          .\tools\windows\check-alpha-claims.ps1
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
           .\tools\windows\check-release-artifacts.ps1
 
-      - name: Upload release skeletons
+      - name: Upload release policy files
         uses: actions/upload-artifact@v4
         with:
-          name: release-skeletons
+          name: release-policy-files
           if-no-files-found: error
           path: |
             RELEASE_NOTES.md

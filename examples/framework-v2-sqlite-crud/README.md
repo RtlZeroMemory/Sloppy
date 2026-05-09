@@ -1,7 +1,6 @@
 # Framework v2 SQLite CRUD Example
 
-Status: V8-gated executable Framework v2 SQLite source-input example.
-
+V8-gated executable Framework v2 SQLite source-input example.
 This example uses typed `Body<T>` and `Route<T>` bindings, compiler-inferred SQLite
 provider metadata from `Sqlite<"main">`, semantic request types, and the native SQLite
 bridge through V8. `appsettings.json` supplies the normal provider config for the
@@ -14,4 +13,4 @@ and create a user with `Results.created`.
 
 The database is `:memory:` and intended for local evidence only. This is not an ORM,
 migration system, production database policy, PostgreSQL/SQL Server proof, benchmark,
-public alpha claim, or package-manager behavior.
+public release claim, or package-manager behavior.

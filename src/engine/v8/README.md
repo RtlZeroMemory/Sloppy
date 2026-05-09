@@ -33,7 +33,7 @@ Rules:
   resource table to sibling intrinsic modules without making V8 a public runtime type.
 - No Node compatibility, package-manager behavior, inspector, snapshots, or raw native
   handle exposure belongs in this directory.
-- Missing feature paths must report stable diagnostics instead of fake-success placeholders.
+- Missing feature paths must report stable diagnostics instead of fake-success fallbacks.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the
   process lifetime because runtime shutdown semantics are not yet defined.
 - `sl_engine_destroy` releases per-engine isolate/context state only.

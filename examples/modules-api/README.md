@@ -1,7 +1,6 @@
 # Modules API Example
 
-Status: compile-time source-input example for multi-file function modules.
-
+This is a compile-time source-input example for multi-file function modules.
 Run from this directory:
 
 ```powershell

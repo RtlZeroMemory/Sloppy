@@ -1,7 +1,6 @@
 # Framework v2 Controller Example
 
-Status: Bootstrap controller API-shape example.
-
+Bootstrap controller API-shape example.
 This example shows the implemented bootstrap `app.mapController(...)` surface, explicit
 method mapping, and constructor injection through the same service provider used by route
 handlers.

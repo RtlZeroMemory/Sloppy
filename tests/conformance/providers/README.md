@@ -1,7 +1,6 @@
 # Provider Conformance
 
-Status: DATA-PROVIDER-TESTING-01 provider matrix and evidence lane contract.
-
+This directory records the provider matrix and evidence lane contract.
 Provider conformance is one shared Db contract with provider-specific deltas called out
 explicitly. A default pass is not live-provider evidence, a V8 pass is not native live
 evidence, and skipped or unavailable lanes must stay visible as skipped or unavailable.
@@ -48,5 +47,5 @@ evidence.
   not advance async ODBC operations.
 
 No provider conformance lane proves ORM behavior, migrations, production readiness,
-Node/Bun/Deno compatibility, package readiness, benchmark claims, or public alpha
+Node/Bun/Deno compatibility, package readiness, benchmark claims, or public release
 readiness.

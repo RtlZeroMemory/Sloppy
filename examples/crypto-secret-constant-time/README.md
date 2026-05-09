@@ -1,6 +1,6 @@
 # Crypto Secret And Constant-Time Example
 
-Status: source example. This example documents `Secret` ownership,
+This example documents `Secret` ownership,
 cleanup-once disposal, HMAC verification, and constant-time byte comparison.
 
 ```js
@@ -19,4 +19,4 @@ try {
 prior JavaScript string copies, engine internals, operating-system paging, or crash dumps
 are erased. The example does not print secret material and
 does not claim timing-proof behavior from deterministic tests. It has
-no package-manager behavior, no public alpha claim, and no benchmark claim.
+no package-manager behavior, no public release claim, and no benchmark claim.

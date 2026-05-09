@@ -1,10 +1,9 @@
 # Ergonomics Example
 
-Status: Bootstrap developer ergonomics API-shape example.
-
+Bootstrap developer ergonomics API-shape example.
 This example shows the current bootstrap surface: route groups, result helpers,
-schema metadata, config, logging, and services. It uses the source stdlib path because the
-future bare `"sloppy"` import is not wired into compiler/runtime module resolution yet.
+schema metadata, config, logging, and services. It uses the current bootstrap stdlib
+source path and is validated as an API-shape example.
 
 What works today:
 

@@ -199,9 +199,6 @@ endforeach()
 foreach(example_name IN LISTS framework_examples)
     file(READ "${example_root}/${example_name}/README.md" readme_text)
     require_substring(
-        "${readme_text}" "Status:"
-        "${example_name} README is missing explicit evidence status")
-    require_substring(
         "${readme_text}" "package-manager"
         "${example_name} README is missing package-manager boundary text")
 endforeach()

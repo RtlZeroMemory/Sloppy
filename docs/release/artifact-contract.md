@@ -1,7 +1,7 @@
 # Release Artifact Contract
 
 This is the current source contract for the RELEASE-DIST-01 alpha packaging dry-run. It is
-not a public alpha release announcement.
+not a public release announcement.
 
 GitHub Release archives are the canonical artifacts. npm packages are convenience
 installers for the Sloppy runtime only; they do not add npm package imports, `node_modules`

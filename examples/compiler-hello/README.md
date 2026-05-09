@@ -1,7 +1,6 @@
 # Compiler Hello Example
 
-Status: supported compiler fixture input.
-
+This is a supported compiler fixture input.
 This example is the first Sloppy source shape that `sloppyc build` can compile:
 
 From the repository root:

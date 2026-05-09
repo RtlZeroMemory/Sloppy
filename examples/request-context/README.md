@@ -1,7 +1,6 @@
 # Request Context Example
 
-Status: compiler-input example for the dev-only V8 `sloppy run --artifacts` path.
-
+This is a compiler-input example for the dev-only V8 `sloppy run --artifacts` path.
 This example demonstrates the current request context shape:
 
 - `route.id` comes from `/users/{id:int}`;

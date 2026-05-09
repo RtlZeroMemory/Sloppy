@@ -1,7 +1,6 @@
 # Framework v2 Validation Errors Example
 
-Status: compile-time Framework v2 validation example.
-
+This is a compile-time Framework v2 validation example.
 This example keeps the request-body TypeScript shape visible to `sloppyc`, so generated
 Plan schema metadata can drive native request validation before a supported handler is
 invoked. The example is checked as source-input compile/tooling evidence; it is not a

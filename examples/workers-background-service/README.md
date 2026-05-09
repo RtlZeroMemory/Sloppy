@@ -1,6 +1,6 @@
 # Workers Background Service
 
-Status: worker API-shape example. It is not a production supervision model or public alpha
+This is a worker API-shape example. It is not a production supervision model or public release
 guide.
 
 Shows a lifecycle-bound `BackgroundService` registered with `app.use(...)`.

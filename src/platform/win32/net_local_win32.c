@@ -1,7 +1,7 @@
 /*
  * src/platform/win32/net_local_win32.c
  *
- * Windows named pipe backend for Slop-owned LocalEndpoint resources. Public APIs expose
+ * Windows named pipe backend for Sloppy-owned LocalEndpoint resources. Public APIs expose
  * only SlLocalConnection/SlLocalServer pointers; raw HANDLE values stay private here.
  */
 #ifndef WIN32_LEAN_AND_MEAN

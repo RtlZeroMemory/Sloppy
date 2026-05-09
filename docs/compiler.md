@@ -63,5 +63,5 @@ timestamps, nondeterministic ordering, or environment-specific values.
 
 - `docs/compiler-supported-syntax.md`
 - `docs/app-plan.md`
-- `docs/project/compiler-inference-engine-architecture.md`
+- `docs/internals/compiler.md`
 - `docs/testing-strategy.md`

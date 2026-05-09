@@ -58,7 +58,7 @@ generation share the same documented contract.
 
 Package fixtures live under `tests/fixtures/package/`. They prove package layout and
 outside-checkout behavior for the current experimental package artifacts. They do not prove
-release readiness, installer behavior, hosted distribution, or public alpha status.
+release readiness, installer behavior, hosted distribution, or public release status.
 
 ## Public And Example Checks
 

@@ -5,5 +5,5 @@ async iterable `accept`, accepted connection ownership, line reads, text writes,
 listener cleanup.
 
 It is not local IPC, TLS, HTTP server/client behavior, UDP, WebSocket,
-Node/Bun/Deno compatibility, package-manager behavior, public alpha documentation,
+Node/Bun/Deno compatibility, package-manager behavior, public release documentation,
 benchmark evidence, or external live-network evidence.

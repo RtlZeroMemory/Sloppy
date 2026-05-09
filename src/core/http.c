@@ -863,8 +863,9 @@ static SlStatus sl_http_validate_parsed_request(SlHttpParseContext* ctx, const l
             ctx, SL_DIAG_INVALID_HTTP_REQUEST,
             sl_http_literal("unsupported HTTP method", sizeof("unsupported HTTP method") - 1U),
             sl_http_literal(
-                "this skeleton supports GET, POST, PUT, DELETE, PATCH, OPTIONS, and HEAD",
-                sizeof("this skeleton supports GET, POST, PUT, DELETE, PATCH, OPTIONS, and HEAD") -
+                "supported HTTP methods are GET, POST, PUT, DELETE, PATCH, OPTIONS, and HEAD",
+                sizeof(
+                    "supported HTTP methods are GET, POST, PUT, DELETE, PATCH, OPTIONS, and HEAD") -
                     1U));
     }
 

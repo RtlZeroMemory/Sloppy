@@ -1,6 +1,6 @@
 # Codec Streaming Compression Example
 
-Status: source example. This example documents the async-iterable
+This example documents the async-iterable
 compression transform shape with Time deadline/cancellation options.
 
 ```js

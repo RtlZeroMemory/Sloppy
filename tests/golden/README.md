@@ -15,11 +15,11 @@ OpenAPI output. Network, HTTP client, and OS doctor/audit goldens are metadata e
 only: they must not include live external network claims, raw URLs that carry secrets,
 cookies, authorization headers, bearer tokens, API keys, TLS-sensitive material,
 environment values, secret process args, captured process output, raw PIDs, native
-handles, public alpha claims, or benchmark claims.
+handles, public release claims, or benchmark claims.
 
 Golden files should be reviewed like public API changes.
 
-## TEST-PLATFORM-01 Golden Policy
+## Golden Policy
 
 Every golden is a semantic contract. Structured JSON goldens should assert stable semantic
 fields; text goldens are reserved for deliberate UX surfaces. Do not update a golden only

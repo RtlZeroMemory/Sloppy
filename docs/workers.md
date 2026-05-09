@@ -2,7 +2,7 @@
 
 ## Status
 
-CORE-WORKER-01 introduces the public `sloppy/workers` module, feature metadata, diagnostics,
+The worker API introduces the public `sloppy/workers` module, feature metadata, diagnostics,
 doctor/audit evidence, examples, bootstrap tests, and V8-gated worker bridge coverage. The
 JavaScript bootstrap API implements deterministic `BackgroundService`, bounded `WorkQueue`,
 and `WorkerPool` admission semantics. In V8 builds, `WorkerPool.run(...)` runs copied work in

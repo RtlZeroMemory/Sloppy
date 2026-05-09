@@ -1,7 +1,6 @@
 # V8 Runtime Conformance
 
-Status: ENGINE-19.BC executable lane registration.
-
+This directory records executable lane registration.
 V8 conformance runs only when the build is configured with `SLOPPY_ENABLE_V8=ON` and a
 valid SDK. Default non-V8 gates do not prove this lane.
 
@@ -56,6 +55,6 @@ Provider bridge cases are separate from native provider correctness:
 
 This lane is not default non-V8 evidence, arbitrary bundler source-map support, async stack
 remapping evidence, package evidence, live-provider evidence, production-edge HTTP
-evidence, benchmark evidence, Node/npm compatibility, or public alpha readiness. Missing
+evidence, benchmark evidence, Node/npm compatibility, or public release readiness. Missing
 SDK, Docker, service configuration, ODBC driver support, or SQL Server async-driver support
 means skipped/not configured/unavailable, not passed.

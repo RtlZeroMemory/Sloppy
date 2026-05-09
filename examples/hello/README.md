@@ -1,7 +1,7 @@
 # Hello Example
 
-Status: Bootstrap app-host skeleton example.
-
+Bootstrap app-host example.
+This is a static API-shape example (not runnable in the current runtime lane).
 This example demonstrates Sloppy's first public app shape using the current source
 bootstrap stdlib:
 
@@ -48,13 +48,13 @@ What does not work yet:
 - Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
   use the Sloppy facade import shape that `sloppyc` recognizes.
 
-Future intended workflow:
+Current runtime boundary:
 
 ```powershell
-sloppy run examples/hello/app.ts
+sloppy run examples/hello/app.js
 ```
 
-That command is planned only. Until compiler extraction, ESM bootstrap loading, app-plan
+That command is not the current execution lane for this example. Until compiler extraction, ESM bootstrap loading, app-plan
 emission for this broader source shape, and V8 bootstrap loading land, this directory is a
 checked-in API-shape and documentation example rather than a runnable app host. Use
 `examples/compiler-hello/` for the current dev-only `sloppy run --artifacts` path.

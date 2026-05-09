@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-manifest_path="$repo_root/examples/dogfood/alpha-dogfood.json"
+manifest_path="$repo_root/examples/dogfood/dogfood.json"
 package_path=""
 require_v8_runtime=0
 json=0
@@ -11,7 +11,7 @@ usage() {
   cat <<'USAGE'
 Usage: tools/unix/dogfood.sh [--manifest PATH] [--package-path PATH] [--require-v8-runtime] [--json]
 
-Validates the ALPHA-INFRA dogfood catalog and reports Unix/package lanes honestly.
+Validates the dogfood catalog and reports Unix/package lanes honestly.
 Source-input positive execution is V8-gated and is not claimed by this static Unix path.
 USAGE
 }
@@ -124,5 +124,5 @@ PY
 else
   echo "dogfood: source-input: UNAVAILABLE - Unix static dogfood validates the catalog only; positive source-input execution remains V8-gated."
   echo "dogfood: package outside-checkout: $package_status - $package_reason"
-  echo "alpha dogfood harness completed."
+  echo "dogfood harness completed."
 fi

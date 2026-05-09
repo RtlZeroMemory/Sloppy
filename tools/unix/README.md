@@ -91,7 +91,7 @@ The dry-run writes ignored evidence under `artifacts/release-dry-run/`, verifies
 checksums through `test-package.sh`, and does not require secrets or create a public
 release.
 
-Alpha dogfood status is represented through:
+Dogfood status is represented through:
 
 ```sh
 tools/unix/dogfood.sh
@@ -103,7 +103,7 @@ TAR archive is supplied. Positive source-input execution remains V8-gated and mu
 reported separately from this static Unix lane.
 
 `tools/unix/dev.sh npm-dry-run` currently reports unavailable instead of faking a Unix npm
-package generator. The committed npm package skeletons are platform-neutral, but the local
+package generator. The committed npm package metadata is platform-neutral, but the local
 dry-run generator in this PR is the Windows `tools/windows/npm-dry-run.ps1` path. A Unix
 generator should reuse tested archive contents and preserve the no native install-script
 policy before being reported as pass evidence.

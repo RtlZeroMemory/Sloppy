@@ -1,6 +1,6 @@
 # Codec Text And Binary Example
 
-Status: source example. This example documents UTF-8 text helpers and the
+This example documents UTF-8 text helpers and the
 bounds-checked Binary reader/writer surface.
 
 ```js

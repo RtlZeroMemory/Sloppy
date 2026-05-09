@@ -1,7 +1,6 @@
 # Async Conformance
 
-Status: ENGINE-19.BC executable lane registration.
-
+This directory records executable lane registration.
 This lane protects the async behavior that exists today. It keeps native async settlement,
 native backend completion transport, and V8 owner-thread Promise continuation evidence
 separate.
@@ -9,7 +8,7 @@ separate.
 ## Default Non-V8 Cases
 
 `conformance.async.native_settlement` runs the existing `core.async.settlement` executable.
-It proves the native `SlAsync` skeleton semantics: pending initialization, fulfill, reject,
+It proves the native `SlAsync` primitive semantics: pending initialization, fulfill, reject,
 cancel, loop-post failure leaving the async record pending, continuation failure
 propagation, rejected reinitialization before drain, FIFO dispatch, and exactly-one
 settlement.

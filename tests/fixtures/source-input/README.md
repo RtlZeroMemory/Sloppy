@@ -1,6 +1,6 @@
 # Source-Input Fixtures
 
-These fixtures are the manually reviewed source-input lane inventory for TEST-PLATFORM-01.
+These fixtures are the manually reviewed source-input lane inventory.
 Each case owns a small TypeScript app, `sloppy.json`, fixture metadata, and semantic expected
 outputs for Plan, doctor, and diagnostics surfaces.
 

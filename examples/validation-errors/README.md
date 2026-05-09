@@ -1,6 +1,6 @@
 # Validation Errors Example
 
-Status: Plan/OpenAPI metadata example plus native Plan-backed validation fixture for
+This is a Plan/OpenAPI metadata example plus native Plan-backed validation fixture for
 schema-backed body bindings.
 
 Build artifacts from this directory:
@@ -29,4 +29,4 @@ and the request shape consumed by the native Plan-backed validation foundation.
 The native runtime now has a bounded Plan-backed validation path for route/query/header
 scalars and schema-backed JSON request bodies. This directory still does not prove typed
 handler execution, provider/DI integration, custom validators, native JSON fast paths,
-public alpha readiness, or production HTTP behavior.
+public release readiness, or production HTTP behavior.

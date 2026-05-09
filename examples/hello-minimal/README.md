@@ -1,7 +1,6 @@
 # Hello Minimal Example
 
-Status: executable source-input example for the currently supported framework subset.
-
+This is an executable source-input example for the currently supported framework subset.
 Run from this directory with a V8-enabled build:
 
 ```powershell
@@ -34,5 +33,5 @@ Expected tooling after building artifacts:
 ```
 
 This example requires V8 for execution. It does not prove runtime request validation,
-Node/npm/package-manager behavior, public alpha readiness, production HTTP edge behavior,
+Node/npm/package-manager behavior, public release readiness, production HTTP edge behavior,
 or performance.

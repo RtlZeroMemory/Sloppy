@@ -1,18 +1,18 @@
-# Release Notes Skeleton
+# Release Notes
 
-These notes are a pre-alpha template for manual artifact dry-runs. They are not public
-alpha release notes until the readiness gate accepts the evidence.
+These notes are for manual artifact dry-runs. They are not public release notes
+until the readiness gate accepts the evidence.
 
 ## Release Type
 
-- Type: manual dry-run artifact package.
+- Package kind: manual dry-run artifact package.
 - Public release: not created.
 - Signing/notarization/installers: not included.
 
 ## Evidence Summary
 
-Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or `NOT RUN with
-reason`.
+Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or
+`NOT RUN with reason`.
 
 - Windows x64:
 - Linux x64:
@@ -25,22 +25,23 @@ reason`.
 - CI workflow:
 - Optional/live-provider:
 
-## Shipped
+## Included Artifact Areas
 
 - Experimental package archive layout.
 - Runtime manifest.
 - Package checksums.
 - Known limitations, license policy, and notice policy files.
-- npm launcher/platform package dry-run skeletons generated from tested archive contents.
+- npm launcher/platform package dry-run content generated from tested archive
+  contents.
 
 ## Deferred
 
 - Public GitHub release.
-- Hosted V8 SDK artifact publication.
+- Hosted V8 SDK artifact publication for every supported platform.
 - Signing, notarization, installers, and package-manager wrappers.
 - npm publish and public registry metadata.
-- Final public alpha documentation.
-- Final alpha verification.
+- Final public documentation.
+- Final verification.
 
 ## Known Limitations
 
@@ -48,7 +49,7 @@ See `docs/release/KNOWN_LIMITATIONS.md`.
 
 ## No-Claims Confirmation
 
-- No public alpha release claim.
+- No public release claim.
 - No production-readiness claim.
 - No benchmark or performance claim.
 - No Node, Bun, or Deno compatibility claim.

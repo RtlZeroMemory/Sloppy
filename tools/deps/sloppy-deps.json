@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "sloppy-alpha-infra-dependencies",
+  "name": "sloppy-runtime-dependencies",
   "statusVocabulary": [
     "found",
     "missing",
@@ -108,7 +108,7 @@
       "defaultPreset": "macos-clang",
       "compiler": "clang",
       "v8SdkPlatform": null,
-      "notes": "No separate x64 package or V8 SDK artifact is published in this wave."
+      "notes": "No separate x64 package or V8 SDK artifact is published in this package lane."
     },
     "windows-arm64": {
       "status": "planned",
@@ -132,7 +132,7 @@
     },
     "httpsTls": {
       "status": "planned",
-      "evidence": "TLS listener behavior is out of ALPHA-INFRA Wave 1 scope."
+      "evidence": "TLS listener behavior is out of scope for the current dogfood/runtime evidence catalog."
     },
     "sqlite": {
       "status": "experimental",

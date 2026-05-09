@@ -1,7 +1,6 @@
 # Configured API Example
 
-Status: compile-time source-input/config example for the current Plan metadata subset.
-
+This is a compile-time source-input/config example for the current Plan metadata subset.
 Run from this directory:
 
 ```powershell
@@ -34,5 +33,5 @@ Expected tooling after building artifacts:
 
 This example does not prove config values flowing into runtime handler responses,
 arbitrary environment providers, secret handling, CLI override behavior beyond the
-implemented `--environment` option, public alpha readiness, or production configuration
+implemented `--environment` option, public release readiness, or production configuration
 management.

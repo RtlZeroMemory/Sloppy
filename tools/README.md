@@ -22,8 +22,8 @@ Packaging scripts create experimental local artifacts under ignored `artifacts/p
 - `tools/unix/package.sh` creates a Linux/macOS TAR package when run on those platforms.
 - `tools/windows/release-dry-run.ps1` and `tools/unix/release-dry-run.sh` run manual
   artifact dry-runs and write ignored summaries under `artifacts/release-dry-run/`.
-- `tools/windows/check-alpha-claims.ps1` and `tools/windows/check-release-artifacts.ps1`
-  enforce alpha no-claims and release skeleton/checksum policy.
+- `tools/windows/check-release-artifacts.ps1` enforces release policy and checksum
+  policy.
 
 Canonical command vocabulary:
 

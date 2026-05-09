@@ -1,7 +1,6 @@
 # Filesystem Watch Example
 
-Status: filesystem watch example.
-
+This is a filesystem watch example.
 The current watch API is resource-backed, bounded, and non-recursive. It reports
 create/modify/delete/overflow events without claiming Node `fs.watch` semantics:
 

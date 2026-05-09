@@ -2,7 +2,7 @@
  * src/engine/v8/intrinsics_os.cc
  *
  * Installs the V8-internal OS bridge under __sloppy.os. Blocking process work is copied
- * into Slop-owned requests, executed off the isolate owner thread, and settled through the
+ * into Sloppy-owned requests, executed off the isolate owner thread, and settled through the
  * engine async loop.
  */
 #include "engine_v8_internal.h"

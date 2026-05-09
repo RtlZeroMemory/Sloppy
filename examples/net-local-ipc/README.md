@@ -7,6 +7,6 @@ stale cleanup intent, permissions where supported, and explicit `UnixSocket`/`Na
 entry points.
 
 It is not a TLS client, HTTP client, UDP client, WebSocket client, Node/Bun/Deno
-compatibility claim, package-manager behavior, public alpha documentation,
+compatibility claim, package-manager behavior, public release documentation,
 benchmark evidence, external live-network evidence, or a claim that Windows
 AF_UNIX is portable.

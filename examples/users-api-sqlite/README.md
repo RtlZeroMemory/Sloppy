@@ -1,6 +1,6 @@
 # SQLite Users API Example
 
-Status: V8-gated framework example registered as
+This V8-gated framework example registered as
 `conformance.users_api_sqlite.localhost_transport`. Source-input compile/run tests also
 verify that the example emits artifacts and Plan metadata through the supported dev loop.
 
@@ -52,7 +52,7 @@ Current expected metadata includes `/health`, `/users`, `/users/{id:int}`, gener
 SQLite read/write capabilities, the `usersModule` module attribution, and explicit partial
 response metadata for module handlers whose runtime branches are not fully inferred.
 
-This is not an ORM, migration framework, production HTTP edge, benchmark, public alpha
+This is not an ORM, migration framework, production HTTP edge, benchmark, public release
 claim, keep-alive/chunked/streaming stress claim, PostgreSQL bridge claim, or SQL Server
 bridge claim. The localhost transport is keep-alive-capable for basic request sequences,
 but this users API fixture remains V8-gated workflow evidence rather than streaming,

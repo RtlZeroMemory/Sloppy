@@ -79,7 +79,7 @@
     sloppy_add_framework_v2_static_example_tests()
     set_tests_properties(
         examples.core_integration.api_shape PROPERTIES LABELS
-                                                     "CORE-INTEGRATION-01;examples;conformance")
+                                                     "core-integration;examples;conformance")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -128,7 +128,7 @@
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(
             bootstrap.stdlib.core_integration PROPERTIES LABELS
-                                                       "CORE-INTEGRATION-01;bootstrap;conformance")
+                                                       "core-integration;bootstrap;conformance")
     endif()
 
     if(WIN32 AND SLOPPY_PACKAGE_ARCHIVE)

@@ -1,7 +1,6 @@
 # Filesystem Streams Example
 
-Status: filesystem FileHandle/stream example.
-
+This is a filesystem FileHandle/stream example.
 `FileHandle` exposes Sloppy-owned async iteration helpers without claiming Node stream
 compatibility:
 

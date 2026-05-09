@@ -146,7 +146,7 @@ Benchmarks must be reproducible from source and documented inputs.
 
 Initial candidates:
 
-- cold start placeholder;
+- cold start measurement plan;
 - many pending async requests later;
 - worker scaling later;
 - `app.plan.json` load and validation;

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "contract": "sloppy.release-artifact",
   "contractVersion": "1.0.0",
-  "releaseVersionPolicy": "0.1.0-alpha.N until the public alpha gate chooses a concrete N",
+  "releaseVersionPolicy": "0.1.0-alpha.N until the public release gate chooses a concrete N",
   "dryRunDefault": true,
   "canonicalDistribution": "github-release-archives",
   "npmDistributionRole": "convenience launcher for installing Sloppy itself only",
@@ -119,7 +119,7 @@
     "platformContentSource": "generated from already built and tested release archive contents"
   },
   "nonGoals": [
-    "no public alpha release",
+    "no public release",
     "no npm publish",
     "no latest dist-tag",
     "no installer",

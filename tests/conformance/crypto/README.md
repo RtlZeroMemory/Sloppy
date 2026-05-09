@@ -1,7 +1,6 @@
 # Crypto Conformance
 
-Status: CORE-CRYPTO-01.I evidence index.
-
+This directory is the evidence index.
 Crypto conformance is split by lane:
 
 - default native vectors: `core.crypto` covers OS-random API shape, UUID v4 text shape,
@@ -30,6 +29,6 @@ Crypto conformance is split by lane:
   configured.
 
 This is not randomness-quality proof, password cracking-cost proof, timing-proof evidence,
-security proof for non-cryptographic hashes, public alpha documentation, WebCrypto/Node/Bun
+security proof for non-cryptographic hashes, public release documentation, WebCrypto/Node/Bun
 compatibility, package-manager behavior, custom crypto algorithm evidence, weak-random
 fallback evidence, benchmark evidence, or unrelated filesystem/network/process behavior.

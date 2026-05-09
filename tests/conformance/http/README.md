@@ -1,7 +1,6 @@
 # HTTP Conformance
 
-Status: ENGINE-19.BC executable lane registration plus HTTP-25.F evidence registration.
-
+This directory records executable lane registration.
 This lane covers HTTP parser, route table, synthetic dispatch, body policy, response
 mapping, and localhost transport behavior that is already implemented. It does not add or
 claim production-edge HTTP behavior.
@@ -9,7 +8,7 @@ claim production-edge HTTP behavior.
 ## Default Non-V8 Cases
 
 `conformance.http.default_dispatch` runs the existing `core.http.dispatch` executable under
-an ENGINE-19 name. It proves the documented synthetic dispatch lane:
+the conformance HTTP lane. It proves the documented synthetic dispatch lane:
 
 - GET/POST/PUT/PATCH/DELETE metadata can reach the engine boundary;
 - route miss returns the documented route-not-found diagnostic;

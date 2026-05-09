@@ -72,7 +72,7 @@ constructor injection, and broader response writing remain separate implementati
 
 ## Server Config Metadata
 
-The runtime consumes Slop-owned server metadata emitted by the current compiler/config
+The runtime consumes Sloppy-owned server metadata emitted by the current compiler/config
 pipeline for `sloppy run`: host, port, max connections, max request body bytes, request
 timeout, keep-alive enablement, keep-alive idle timeout, max requests per connection, and
 explicit inbound TLS listener settings.
@@ -120,7 +120,7 @@ injection use the inferred config keys
 `Sloppy:Providers:sqlite:<name>:database` unless inline/manual provider metadata is used
 for an explicit policy override.
 
-Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
+Credential-bearing fields must not be persisted in Plan metadata. Use redacted values,
 config references, or secret-source references. Generated Framework provider wrappers carry
 the logical config key and the runtime environment variable name needed to resolve PostgreSQL
 or SQL Server connection strings; they must not embed the connection string value in generated
@@ -139,7 +139,7 @@ TypeScript build system.
 - Package-manager metadata.
 - Arbitrary import graph resolution.
 - Public plugin extension points.
-- Public alpha or production-readiness claims.
+- public release or production-readiness claims.
 - Performance claims from Plan validation or artifact smoke tests.
 
 ## Source Docs
@@ -148,4 +148,4 @@ TypeScript build system.
 - `docs/compiler-supported-syntax.md`
 - `docs/execution-model.md`
 - `docs/security-permissions.md`
-- `docs/project/core-api-platform-map.md`
+- `docs/internals/platform-boundaries.md`

@@ -1,10 +1,8 @@
-# Alpha Dogfood Catalog
+# Dogfood Catalog
 
-Status: ALPHA-INFRA-01 dogfood/test-app catalog.
-
-This directory does not introduce new runtime behavior. It names the current executable
-or blocked dogfood targets so alpha infrastructure can report example evidence honestly.
-The machine-readable catalog is `alpha-dogfood.json`.
+This directory does not introduce new runtime behavior. It names the current executable,
+gated, and blocked dogfood targets so example evidence can be reported honestly. The
+machine-readable catalog is `dogfood.json`.
 
 Current runnable or diagnosable targets:
 

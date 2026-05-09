@@ -1,7 +1,7 @@
 /*
  * src/platform/libuv/process.c
  *
- * Small Slop-owned process runner. Libuv process handles stay in platform code so callers
+ * Small Sloppy-owned process runner. Libuv process handles stay in platform code so callers
  * pass argv directly and never need shell command strings for tool handoff.
  */
 #include "sloppy/platform_process.h"

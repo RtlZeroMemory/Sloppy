@@ -55,7 +55,7 @@
   ],
   "nonClaims": [
     "This audit is not final legal review.",
-    "This audit does not authorize a public alpha release.",
+    "This audit does not authorize a public release.",
     "This audit does not make live providers, TLS, V8, or every platform supported."
   ]
 }

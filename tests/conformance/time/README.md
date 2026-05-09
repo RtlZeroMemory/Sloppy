@@ -1,7 +1,6 @@
 # Time Conformance
 
-Status: CORE-TIME-01.I evidence index.
-
+This directory is the evidence index.
 Time conformance is split by lane:
 
 - default native diagnostics: `core.diagnostics.foundation` pins JSON goldens for timeout,
@@ -17,5 +16,5 @@ Time conformance is split by lane:
   through the owner-thread scheduler and inactive `__sloppy.time` registration.
 
 This is not Node timer compatibility, a global fake-timer system, a cron parser,
-package-manager behavior, public alpha documentation, benchmark evidence, or unrelated
+package-manager behavior, public release documentation, benchmark evidence, or unrelated
 network/crypto/process implementation.

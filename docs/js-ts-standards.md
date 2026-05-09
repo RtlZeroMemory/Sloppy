@@ -37,7 +37,7 @@ These standards govern:
 - Do not use browser DOM APIs in the bootstrap stdlib.
 - Do not depend on npm packages in the bootstrap stdlib.
 - Do not use dynamic imports unless a future scoped task documents the boundary and tests.
-- CORE-WORKER-01 allows the single bridge-gated dynamic `import(modulePath)` in
+- The worker bridge allows the single bridge-gated dynamic `import(modulePath)` in
   `stdlib/sloppy/workers.js` for `Worker.start()` bootstrap module execution. It must stay
   behind that API and must not become general package, Node, or npm resolution.
 - Avoid top-level side effects except intentional export initialization.
@@ -67,7 +67,7 @@ Rules:
 - Avoid computed method names for compiler-extractable APIs.
 - Avoid runtime-generated routes in examples intended for compiler extraction.
 - Avoid conditionally registered routes in compiler-extractable examples.
-- Do not use decorators unless a future EPIC explicitly adopts them.
+- Do not use decorators unless a scoped source doc explicitly adopts and tests them.
 - Compiler-extractable examples must use literal route strings and explicit calls.
 
 ## API Design Rules
@@ -146,9 +146,9 @@ Static scanners are lint gates. They are not substitutes for behavior tests.
 
 ## Anti-Overengineering for JS/TS
 
-Forbidden unless a future scoped EPIC explicitly adopts and tests the behavior:
+Forbidden unless a future scoped source doc explicitly adopts and tests the behavior:
 
-- dependency injection framework complexity beyond the current service skeleton;
+- dependency injection framework complexity beyond the current service container;
 - decorators;
 - plugin registries;
 - global singletons;

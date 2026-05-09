@@ -1,6 +1,6 @@
 # Crypto Password Example
 
-Status: source example. This example documents the async password
+This example documents the async password
 hashing, verification, and rehash policy shape.
 
 ```js
@@ -15,4 +15,4 @@ Password hashing is async in the public API and offloaded from the V8 owner thre
 V8 lane. Password values must not be logged, printed, placed in diagnostics, or committed to
 goldens. This example has no synchronous password hashing API,
 no custom password hashing algorithm, no WebCrypto/Node/Bun compatibility promise,
-no package-manager behavior, no public alpha claim, and no benchmark claim.
+no package-manager behavior, no public release claim, and no benchmark claim.

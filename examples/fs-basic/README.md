@@ -1,6 +1,6 @@
 # Filesystem Basic Example
 
-Status: filesystem source example. This source example documents the intended
+This filesystem source example documents the intended
 `sloppy/fs` app-facing shape; full source-input execution remains gated by the V8 runtime
 lane and current compiler support.
 

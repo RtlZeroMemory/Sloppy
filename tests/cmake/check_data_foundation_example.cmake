@@ -63,7 +63,7 @@ foreach(required_pattern IN ITEMS
         "no SQL is executed"
         "filesystem and network capabilities are not enforced"
         "examples/sqlserver-basic/"
-        "future bare `\"sloppy\"` import is planned only")
+        "bare `\"sloppy\"` imports are the current source shape")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
         "examples/data-foundation/README.md is missing required status text")

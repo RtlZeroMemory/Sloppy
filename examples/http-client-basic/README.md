@@ -6,5 +6,5 @@ per-origin pooling, and strict outbound-network metadata.
 
 The example is source-shape evidence only. It does not prove HTTPS/TLS execution, custom
 certificate validation, proxy policy, UDP, WebSocket, live external network access,
-Node/Bun/Deno compatibility, Fetch compatibility, package-manager behavior, public alpha
+Node/Bun/Deno compatibility, Fetch compatibility, package-manager behavior, public release
 documentation, benchmark evidence, or production performance.

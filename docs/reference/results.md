@@ -1,0 +1,60 @@
+# Results Reference
+
+`Results` helpers (from `stdlib/sloppy/results.js`) return frozen response descriptors.
+
+## Descriptor Shape
+
+Common fields:
+
+- `__sloppyResult: true`
+- `kind`
+- `status`
+- `contentType` (omitted for empty responses)
+- `headers` (`undefined` or frozen plain object)
+- `body` (omitted for empty responses)
+
+Optional extra fields:
+
+- `location` on `Results.created(...)`
+
+## Helpers
+
+| Helper | Kind | Status behavior | Content type |
+| --- | --- | --- | --- |
+| `Results.ok(value?, options?)` | `json` | default `200` | `application/json; charset=utf-8` |
+| `Results.created(location, value?, options?)` | `json` | default `201` | `application/json; charset=utf-8` |
+| `Results.accepted(value?, options?)` | `json` | default `202` | `application/json; charset=utf-8` |
+| `Results.noContent()` | `empty` | `204` | none |
+| `Results.notFound(value?, options?)` | `json` | default `404` | `application/json; charset=utf-8` |
+| `Results.badRequest(value?, options?)` | `json` | default `400` | `application/json; charset=utf-8` |
+| `Results.status(code, value?, options?)` | `json` or `empty` | explicit | JSON type for non-empty form |
+| `Results.problem(problemOrMessage?, options?)` | `problem` | default `500` | `application/problem+json; charset=utf-8` |
+| `Results.text(body, options?)` | `text` | default `200` | `text/plain; charset=utf-8` |
+| `Results.json(value, options?)` | `json` | default `200` | `application/json; charset=utf-8` |
+| `Results.html(body, options?)` | `html` | default `200` | `text/html; charset=utf-8` |
+| `Results.bytes(body, options?)` | `bytes` | default `200` | default `application/octet-stream` |
+
+## Option Validation
+
+Shared option checks:
+
+- `status` must be an integer in `100..999`.
+- `headers` must be a plain object when provided.
+- `contentType` (when used) must be a non-empty string with no control characters.
+
+Helper-specific checks:
+
+- `Results.created(location, ...)` requires non-empty string `location`.
+- `Results.bytes(body, ...)` accepts `ArrayBuffer` or any typed-array/DataView (`ArrayBuffer.isView` path).
+
+## Problem Result Normalization
+
+- `Results.problem()` -> `{ title: "Sloppy problem", status }`
+- `Results.problem("text")` -> `{ title: "text", status }`
+- `Results.problem(object)` -> `{ status, ...object }`
+- non-string/non-object problem values throw.
+
+## Limits
+
+- Descriptor API only; not a streaming writer API.
+- No response trailers or chunk-control API.

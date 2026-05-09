@@ -11,7 +11,6 @@ This covers:
 
 - local commands;
 - bounded-context PR model;
-- agent workflow;
 - review modes;
 - blocking versus non-blocking findings;
 - follow-up issue rules;
@@ -41,8 +40,7 @@ Use `.\tools\windows\dev.ps1 clean` to remove only `build/<preset>`. It does not
 
 Preferred PR shape:
 
-- one roadmap EPIC;
-- one coherent module/foundation slice;
+- one coherent behavior slice;
 - docs updated with any behavior change;
 - tests for the touched slice;
 - no kitchen-sink refactors;
@@ -50,26 +48,15 @@ Preferred PR shape:
 
 Examples:
 
-- good: "EPIC 02: SlStr/SlBytes views and tests";
-- good: "EPIC 04: diagnostic formatter and first snapshots";
+- good: "core bytes view overflow guards and tests";
+- good: "provider diagnostics redaction coverage and docs";
 - bad: "core primitives, diagnostics, router, and compiler cleanup".
-
-## Agent Workflow
-
-Agent assistance is part of the repository workflow, but the contract is outcome-based:
-read the source docs, keep the context bounded, implement only the scoped behavior, report
-evidence honestly, and promote repeated review feedback into docs/checks/tools.
-
-Use targeted independent reviewers or subagents for high-risk slices such as C safety, V8
-boundaries, concurrency, providers, permissions/security, diagnostics redaction, packaging,
-release evidence, and repository-wide documentation cleanup. Trivial changes do not need a
-specialist sweep.
 
 ## Review Modes
 
-Spec compliance review:
+Contract review:
 
-- matches roadmap EPIC/task;
+- matches the issue, docs, and acceptance criteria;
 - does not implement out-of-scope runtime features;
 - updates docs/ADRs when architecture changes.
 
@@ -130,9 +117,10 @@ Do not use follow-ups to defer required tests, safety fixes, or architecture dec
 
 ## Keeping Speed Without Lowering Quality
 
-Speed comes from bounded coherent PRs, clear acceptance criteria, reusable prompts, and
-automated gates. It does not come from merging vague code and promising to clean it up
-later, and it does not require splitting one coherent bounded context into many tiny PRs.
+Speed comes from bounded coherent PRs, clear acceptance criteria, reusable review
+checklists, and automated gates. It does not come from merging vague code and promising to
+clean it up later, and it does not require splitting one coherent bounded context into many
+tiny PRs.
 
 ## Source And Review Archive Hygiene
 
@@ -154,7 +142,7 @@ Prefer a tracked-file-only archive process after commits exist.
 
 Developer workflow is healthy when:
 
-- each implementation PR maps to a current issue/task or explicitly states why it is
+- each implementation PR maps to a current issue or explicitly states why it is
   trivial docs-only cleanup;
 - gates are run and reported honestly;
 - review comments distinguish blocking from non-blocking;

@@ -1,7 +1,7 @@
 # Modules Basic Example
 
-Status: Bootstrap module skeleton example.
-
+Bootstrap module example.
+This is a static API-shape example (not runnable in the current runtime lane).
 This example shows the current JavaScript-only `Sloppy.module(...)` API shape:
 
 - `DataModule` registers a fake in-memory service.
@@ -24,5 +24,5 @@ What does not work yet:
 - this example does not emit `app.plan.json`;
 - the current bounded `sloppy run` path does not load this source-stdlib module example;
 - the `data` module is not a real data provider;
-- module package loading and native plugins are future work;
-- the future bare `"sloppy"` import is planned only.
+- module package loading and native plugins are outside this example;
+- bare `"sloppy"` imports are the current source shape for this example.

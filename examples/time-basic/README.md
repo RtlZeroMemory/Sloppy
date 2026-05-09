@@ -1,6 +1,6 @@
 # Time Basic Example
 
-Status: source example. This example documents the intended `sloppy/time`
+This example documents the intended `sloppy/time`
 delay and timeout shape; execution remains lane-specific like the other app-host examples.
 
 ```js

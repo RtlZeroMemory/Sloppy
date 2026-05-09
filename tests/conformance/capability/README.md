@@ -1,6 +1,6 @@
 # Capability Conformance
 
-Status: native registry/provider-admission policy covered; SQLite bridge enforcement
+Native registry and provider-admission policy are covered; SQLite bridge enforcement is
 V8-gated.
 
 Source fixtures: `tests/unit/core/test_capability.c`,

@@ -165,7 +165,7 @@ typedef struct SlPostgresPoolOptions
 } SlPostgresPoolOptions;
 
 /*
- * Tiny caller-owned pool skeleton. It has no waiting queue, background threads, health
+ * Tiny caller-owned pool. It has no waiting queue, background threads, health
  * checks, idle pruning, or thread-safety. Exhaustion returns a diagnostic immediately.
  * sl_postgres_pool_open copies the connection string into the supplied arena; the pool
  * remains valid only until that arena is reset or destroyed.

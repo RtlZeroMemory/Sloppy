@@ -388,5 +388,5 @@ endforeach()
 foreach(deferred_pattern IN ITEMS "app.run" "app.listen" "app.build" "addJsonFile" "addEnv" "addConsole")
     reject_substring(
         "${app_js}" "${deferred_pattern}"
-        "app.js includes future app-host API outside EPIC-12 skeleton scope")
+        "app.js includes app-host API outside the documented bootstrap scope")
 endforeach()

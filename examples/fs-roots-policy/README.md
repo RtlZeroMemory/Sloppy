@@ -1,7 +1,6 @@
 # Filesystem Roots And Policy Example
 
-Status: filesystem policy example.
-
+This is a filesystem policy example.
 Named roots are the recommended Sloppy filesystem policy shape:
 
 ```js

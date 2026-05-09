@@ -1,81 +1,39 @@
 # Developer Ergonomics
 
-Sloppy's product wedge is a deliberate backend developer loop: compile known application
-shape, validate artifacts, run a bounded native app-host, and report clear diagnostics when
-the current subset cannot support a behavior.
+Sloppy's ergonomics model is "predictability over magic." The developer loop is
+built around explicit phases and explicit failure.
 
-## Current Developer Loop
+## Why This Loop Exists
 
-The supported source-input path is:
+- compile to known artifacts;
+- validate plan and startup invariants before dispatch;
+- keep runtime boundaries explicit (engine, provider, capability, and packaging
+  lanes);
+- return diagnostics when behavior is unsupported instead of emulating another
+  platform.
 
-```powershell
-sloppy build
-sloppy run
-sloppy run src/main.ts --once GET /health
-sloppy run --artifacts .sloppy --once GET /
-```
+This reduces "works by accident" behavior and makes evidence easier to trust.
 
-`sloppy build` compiles the configured `src/main.ts` source graph into Plan-backed
-artifacts without entering V8. `sloppy run` and `sloppy run <source.js|source.ts>` compile
-first, validate artifacts, and then enter the artifact runtime. Runtime execution requires
-a V8-enabled build. Default non-V8 evidence proves compile/artifact validation only, not
-handler execution.
+## Current Shape
 
-## App API Shape
+`src/main.c` reflects a split command model:
 
-The intended app-facing shape is a small app-host facade:
+- build/run for execution paths;
+- routes/capabilities/doctor/audit/openapi for metadata-oriented inspection.
 
-```js
-import { Sloppy, Results } from "sloppy";
+`src/core/plan_parse.c` and `src/core/app_host.c` enforce the corresponding
+runtime model: strict parsing, startup validation, and clear unsupported
+diagnostics.
 
-const app = Sloppy.create();
+## Evidence-Oriented Ergonomics
 
-app.mapGet("/", () => Results.text("Sloppy is alive"));
+Developers get clearer boundaries when evidence lanes stay separate:
 
-export default app;
-```
-
-The bootstrap stdlib also exposes builder, module, config, logging, service, result,
-schema, provider, and core API facades. Some examples are API-shape fixtures rather than
-runnable artifact apps; public docs and example READMEs must say which lane they belong to.
-
-## Implemented Subset
-
-Current implementation supports a narrow compiler/runtime subset:
-
-- compiler extraction for supported static source graphs;
-- deterministic Plan/artifact/source-map emission;
-- artifact validation and V8-gated artifact execution;
-- bounded route dispatch and supported result descriptors;
-- route/query/request/connection context in scoped runtime lanes;
-- bounded HTTP/1.1 server config controls for the development runtime;
-- feature-gated core API facades where bridge support exists;
-- metadata CLI commands such as routes, doctor, audit, and OpenAPI skeleton output.
-
-## Limitations
-
-- No public alpha docs launch.
-- No production server claim.
-- No Node/Bun/Deno/npm behavior.
-- No package-manager behavior.
-- No full TypeScript type checking or arbitrary import graph resolution.
-- No broad framework tutorial until that surface lands.
-- No benchmark or performance claim from smoke evidence.
-- No provider readiness claim beyond the lanes that actually ran.
+- non-V8 success does not imply JS handler execution;
+- native provider tests do not imply live environment readiness;
+- package layout success does not imply release readiness.
 
 ## Documentation Rules
 
-Developer-facing docs should prefer current behavior, source docs, explicit limitations,
-and runnable commands. Historical issue handles belong in project archives or issue
-snapshots, not in user-facing examples or current product overview docs.
-
-When a new ergonomic surface lands, update the source doc, public skeleton page or example
-README, tests, and evidence report together.
-
-## Source Docs
-
-- `docs/compiler-supported-syntax.md`
-- `docs/app-plan.md`
-- `docs/execution-model.md`
-- `docs/public/README.md`
-- `stdlib/sloppy/README.md`
+For the current phase, ergonomics docs should describe implemented behavior,
+name non-goals directly, and avoid borrowed Node/package-manager assumptions.

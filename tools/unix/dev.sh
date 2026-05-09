@@ -93,7 +93,7 @@ Commands:
   test-package  Extract a package outside the checkout and run smoke checks.
   build-v8      Build/package the pinned Sloppy-owned Linux x64 V8 SDK.
   npm-dry-run   Unavailable on Unix in this PR; use tools/windows/npm-dry-run.ps1 or hosted follow-up.
-  dogfood      Run or report ALPHA-INFRA dogfood/example evidence.
+  dogfood      Run or report dogfood/example evidence.
   clean         Remove the selected build directory.
   help          Print this help.
 

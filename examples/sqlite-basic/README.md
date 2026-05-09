@@ -1,6 +1,6 @@
 # SQLite Basic Example
 
-Status: SQLite provider API-shape example with native provider coverage in C tests and a
+This is a SQLite provider API-shape example with native provider coverage in C tests and a
 separate V8-gated SQLite runtime fixture.
 
 This example shows the intended bootstrap shape for registering SQLite as `data.main`,
@@ -46,4 +46,4 @@ What does not work yet:
 - PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL lane;
 - SQLite has no ORM, migrations, connection pooling expansion, public prepared statement
   handle, or mid-operation interruption support implemented;
-- the future bare `"sloppy"` import is planned only.
+- bare `"sloppy"` imports are the current source shape for this example.

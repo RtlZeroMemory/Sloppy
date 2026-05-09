@@ -85,7 +85,7 @@ struct SlAsyncCompletion
 };
 
 /*
- * Creates a Slop-owned async backend loop over caller-owned completion storage.
+ * Creates a Sloppy-owned async backend loop over caller-owned completion storage.
  *
  * The returned loop is arena-owned and must be disposed before the arena is reset. The
  * completion queue is fixed-capacity and bounded for every backend. Posting transfers
@@ -134,7 +134,7 @@ bool sl_async_loop_is_owner_thread(const SlAsyncLoop* loop);
 bool sl_async_loop_is_disposed(const SlAsyncLoop* loop);
 
 /*
- * Registers a Slop-owned readiness watch for a native dependency socket.
+ * Registers a Sloppy-owned readiness watch for a native dependency socket.
  *
  * This is intentionally narrower than exposing libuv: callers pass the integer socket
  * descriptor returned by their dependency boundary, receive Slop event bits, and keep all

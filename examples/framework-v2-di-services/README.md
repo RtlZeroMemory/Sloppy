@@ -1,6 +1,6 @@
 # Framework v2 DI Services Example
 
-Status: executable Framework v2 source-input example for request-scoped service
+This is an executable Framework v2 source-input example for request-scoped service
 injection.
 
 This example registers singleton, scoped, and transient services with literal service
