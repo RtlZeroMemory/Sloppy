@@ -64,12 +64,13 @@ Compiler extraction currently enforces:
 
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
 - Route availability still depends on emitted Plan metadata.
-- Middleware/filter functions currently execute in the bootstrap app-host handler path.
-  Compiler extraction and emitted Plan metadata for middleware will be added in a
-  separate compiler/runtime slice.
+- CORS-enabled bootstrap routes synthesize `OPTIONS` preflight route entries in the
+  app-host route table. Compiler extraction and emitted Plan metadata for CORS
+  policies will be added in a separate compiler/runtime slice.
 
 ## Limits
 
 - Sloppy currently follows the Sloppy router surface documented on this page.
+- Middleware/filter pipeline support is planned separately.
 - Package-managed route plugin discovery is planned separately from the current
   pre-alpha router.

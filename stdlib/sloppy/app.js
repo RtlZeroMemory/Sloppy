@@ -18,6 +18,7 @@ import {
     createControllerMapper,
     createRouteGroup,
     createRouterGroup,
+    normalizeCorsPolicy,
     registerRoute,
     snapshotRoute,
 } from "./internal/routes.js";
@@ -97,6 +98,7 @@ function createApp(host) {
         return seq;
     }
     const guard = createMutationGuard("app");
+    let corsPolicy = null;
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
     const directModules = new Set();
@@ -117,6 +119,10 @@ function createApp(host) {
 
     function getCurrentModule() {
         return currentModule;
+    }
+
+    function getCorsPolicy() {
+        return corsPolicy;
     }
 
     const app = {
@@ -159,6 +165,12 @@ function createApp(host) {
                 token: sqliteProviderToken(provider.name),
                 options,
             });
+        },
+
+        useCors(policy) {
+            assertAppMutable();
+            corsPolicy = normalizeCorsPolicy(policy);
+            return app;
         },
 
         useModule(moduleOrFactory) {
@@ -211,6 +223,7 @@ function createApp(host) {
                 maybeHandler,
                 undefined,
                 middleware,
+                corsPolicy,
             );
         },
 
@@ -226,6 +239,7 @@ function createApp(host) {
                 maybeHandler,
                 undefined,
                 middleware,
+                corsPolicy,
             );
         },
 
@@ -241,6 +255,7 @@ function createApp(host) {
                 maybeHandler,
                 undefined,
                 middleware,
+                corsPolicy,
             );
         },
 
@@ -256,6 +271,7 @@ function createApp(host) {
                 maybeHandler,
                 undefined,
                 middleware,
+                corsPolicy,
             );
         },
 
@@ -271,6 +287,7 @@ function createApp(host) {
                 maybeHandler,
                 undefined,
                 middleware,
+                corsPolicy,
             );
         },
 
@@ -304,6 +321,7 @@ function createApp(host) {
                 prefix,
                 () => middleware,
                 nextMiddlewareSequence,
+                getCorsPolicy,
             );
         },
 
@@ -321,6 +339,7 @@ function createApp(host) {
                 prefix,
                 Controller,
                 middleware,
+                getCorsPolicy,
             );
 
             if (configure === undefined) {
