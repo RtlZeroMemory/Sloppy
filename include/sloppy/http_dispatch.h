@@ -66,10 +66,14 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
 /*
  * Builds the HTTP Allow header value for a parsed request path against a dispatch table.
  *
- * The returned value is arena-owned and empty when no route pattern matches the path.
- * GET route bindings also advertise HEAD because inbound HEAD dispatches through GET
- * handlers with response body suppression at the transport boundary. OPTIONS is not
- * advertised unless a future runtime lane makes it a real native route binding.
+ * `arena`, `dispatch_table`, and `out_allow` are required. `path` must be non-empty and
+ * start with `/`. The returned value is arena-owned, remains valid until the arena is
+ * reset or freed, and is empty when no route pattern matches the path. Duplicate route
+ * methods are collapsed. Methods are emitted in deterministic runtime order:
+ * GET, HEAD, POST, PUT, PATCH, DELETE. GET route bindings also advertise HEAD because
+ * inbound HEAD dispatches through GET handlers with response body suppression at the
+ * transport boundary. OPTIONS is not advertised unless a future runtime lane makes it
+ * a real native route binding.
  */
 SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
                                                 const SlHttpDispatchTable* dispatch_table,

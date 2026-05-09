@@ -616,6 +616,12 @@ fn configuration_key_sensitivity_covers_alpha_secret_aliases() {
     assert!(config_key_is_diagnostic_sensitive(
         "Sloppy:HttpClient:Tls:CaBundlePath"
     ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:TrustStorePath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:CaPath"
+    ));
 }
 
 #[test]

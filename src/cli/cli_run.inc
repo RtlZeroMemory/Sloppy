@@ -1270,10 +1270,12 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     return sl_run_load_engine(app, stdlib_path, app_js_path);
 }
 
-static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
-                                 const char* content_type, SlStr body)
+static int sl_run_write_response_with_options(char* buffer, size_t capacity, unsigned status,
+                                              const char* content_type, SlStr body,
+                                              bool suppress_body)
 {
     SlHttpResponse response = {0};
+    SlHttpResponseWriteOptions options = {0};
     SlBytes bytes = {0};
     SlStatus write_status;
 
@@ -1283,7 +1285,9 @@ static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
 
     response = sl_http_response_text((uint16_t)status, body);
     response.content_type = sl_str_from_cstr(content_type);
-    write_status = sl_http_response_write(&response, (unsigned char*)buffer, capacity, &bytes);
+    options.suppress_body = suppress_body;
+    write_status = sl_http_response_write_with_options(&response, &options, (unsigned char*)buffer,
+                                                       capacity, &bytes);
     if (!sl_status_is_ok(write_status) || bytes.length > (size_t)INT32_MAX) {
         return -1;
     }
@@ -1327,9 +1331,11 @@ static SlStatus sl_run_method_not_allowed_response(SlRunApp* app, SlArena* arena
 
 static int sl_run_write_method_not_allowed_response(SlRunApp* app, SlArena* arena,
                                                     const SlHttpRequestHead* request,
-                                                    char* response, size_t response_capacity)
+                                                    char* response, size_t response_capacity,
+                                                    bool suppress_body)
 {
     SlHttpResponse method_response = {0};
+    SlHttpResponseWriteOptions options = {0};
     SlBytes response_bytes = {0};
     SlStatus status;
 
@@ -1339,15 +1345,18 @@ static int sl_run_write_method_not_allowed_response(SlRunApp* app, SlArena* aren
 
     status = sl_run_method_not_allowed_response(app, arena, request, &method_response);
     if (sl_status_is_ok(status)) {
-        status = sl_http_response_write(&method_response, (unsigned char*)response,
-                                        response_capacity, &response_bytes);
+        options.suppress_body = suppress_body;
+        status = sl_http_response_write_with_options(&method_response, &options,
+                                                     (unsigned char*)response, response_capacity,
+                                                     &response_bytes);
         if (sl_status_is_ok(status) && response_bytes.length <= (size_t)INT32_MAX) {
             return (int)response_bytes.length;
         }
     }
 
-    return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
-                                 sl_str_from_cstr("Method Not Allowed\n"));
+    return sl_run_write_response_with_options(
+        response, response_capacity, 405U, "text/plain; charset=utf-8",
+        sl_str_from_cstr("Method Not Allowed\n"), suppress_body);
 }
 
 static SlHttpMethod sl_run_method_from_cstr(const char* method)
@@ -1508,8 +1517,10 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
 {
     SlArena dispatch_arena = {0};
     SlHttpResponse result = {0};
+    SlHttpResponseWriteOptions write_options = {0};
     SlBytes response_bytes = {0};
     SlDiag diag = {0};
+    bool suppress_body = false;
     SlStatus status;
 
     if (app == NULL || request == NULL || response == NULL || dispatch_storage == NULL ||
@@ -1518,11 +1529,13 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         return -1;
     }
 
+    suppress_body = request->method == SL_HTTP_METHOD_HEAD;
+    write_options.suppress_body = suppress_body;
     status =
         sl_run_dispatch_response_with_storage(app, request, NULL, &dispatch_arena, &result, &diag);
     if (sl_status_is_ok(status)) {
-        status = sl_http_response_write(&result, (unsigned char*)response, response_capacity,
-                                        &response_bytes);
+        status = sl_http_response_write_with_options(
+            &result, &write_options, (unsigned char*)response, response_capacity, &response_bytes);
         if (!sl_status_is_ok(status) || response_bytes.length > (size_t)INT32_MAX) {
             status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         }
@@ -1535,46 +1548,52 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
     {
         return sl_run_write_method_not_allowed_response(app, &dispatch_arena, request, response,
-                                                        response_capacity);
+                                                        response_capacity, suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
         diag.code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
     {
-        return sl_run_write_response(response, response_capacity, 501U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Request body framing is not supported\n"));
+        return sl_run_write_response_with_options(
+            response, response_capacity, 501U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Request body framing is not supported\n"), suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
         diag.code == SL_DIAG_HTTP_BODY_LIMIT)
     {
-        return sl_run_write_response(response, response_capacity, 413U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Payload Too Large\n"));
+        return sl_run_write_response_with_options(
+            response, response_capacity, 413U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Payload Too Large\n"), suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
         diag.code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
     {
-        return sl_run_write_response(response, response_capacity, 415U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Unsupported Media Type\n"));
+        return sl_run_write_response_with_options(
+            response, response_capacity, 415U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Unsupported Media Type\n"), suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT && diag.code == SL_DIAG_MALFORMED_JSON)
     {
-        return sl_run_write_response(response, response_capacity, 400U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Malformed JSON\n"));
+        return sl_run_write_response_with_options(
+            response, response_capacity, 400U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Malformed JSON\n"), suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
         diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
     {
-        return sl_run_write_response(response, response_capacity, 404U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Not Found\n"));
+        return sl_run_write_response_with_options(response, response_capacity, 404U,
+                                                  "text/plain; charset=utf-8",
+                                                  sl_str_from_cstr("Not Found\n"), suppress_body);
     }
 
     (void)diag;
-    return sl_run_write_response(response, response_capacity, 500U, "text/plain; charset=utf-8",
-                                 sl_str_from_cstr("Sloppy handler failed\n"));
+    return sl_run_write_response_with_options(
+        response, response_capacity, 500U, "text/plain; charset=utf-8",
+        sl_str_from_cstr("Sloppy handler failed\n"), suppress_body);
 }
 
 static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,

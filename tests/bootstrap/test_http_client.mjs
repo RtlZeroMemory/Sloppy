@@ -845,6 +845,16 @@ await assertRejectsMessage(
 );
 
 await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", { tls: { insecureSkipVerify: "yes" } }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await assertRejectsMessage(
+    async () => HttpClient.create({ tls: { trustStorePath: 123 } }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await assertRejectsMessage(
     () => HttpClient.request({ url: "http://127.0.0.1/", text: "a", bytes: new Uint8Array([1]) }),
     /SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY/,
 );

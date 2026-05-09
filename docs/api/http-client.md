@@ -1,9 +1,7 @@
 # HTTP Client
 
-Status: Experimental.
-
-`HttpClient` is the cleartext HTTP/1.1 outbound client exposed from `sloppy`
-and `sloppy/net`.
+`HttpClient` is the experimental cleartext HTTP/1.1 outbound client exposed
+from `sloppy` and `sloppy/net`.
 
 ```ts
 import { HttpClient } from "sloppy";

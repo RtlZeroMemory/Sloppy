@@ -913,6 +913,14 @@ const HTTP_CLIENT_TLS_OPTION_KEYS = new Set([
     "clientPrivateKeyPassphrase",
     "insecureSkipVerify",
 ]);
+const HTTP_CLIENT_TLS_STRING_OPTION_KEYS = new Set([
+    "caPath",
+    "caBundlePath",
+    "trustStorePath",
+    "clientCertificatePath",
+    "clientPrivateKeyPath",
+    "clientPrivateKeyPassphrase",
+]);
 const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
     "authorization",
     "cookie",
@@ -1185,6 +1193,20 @@ function normalizeHttpTlsOptions(value, operation) {
                 "HttpClientInvalidOptionsError",
                 "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
                 `${operation} tls option ${key} is not supported.`,
+            );
+        }
+        if (HTTP_CLIENT_TLS_STRING_OPTION_KEYS.has(key) && typeof value[key] !== "string") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option ${key} must be a string.`,
+            );
+        }
+        if (key === "insecureSkipVerify" && typeof value[key] !== "boolean") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option insecureSkipVerify must be a boolean.`,
             );
         }
     }

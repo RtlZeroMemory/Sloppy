@@ -2081,7 +2081,11 @@ static int test_redaction_helper(void)
                                            "privateKeyPath=C:/keys/dev.key "
                                            "clientCertificatePath=C:/certs/client.crt "
                                            "clientPrivateKeyPath=C:/keys/client.key "
-                                           "caBundlePath=C:/ca/root.pem"),
+                                           "caBundlePath=C:/ca/root.pem "
+                                           "trustStorePath=C:/trust/store.pem "
+                                           "keyPath=C:/keys/legacy.key "
+                                           "certPath=C:/certs/legacy.crt "
+                                           "caPath=C:/ca/legacy.pem"),
                           &redacted),
                       SL_STATUS_OK) != 0)
     {
@@ -2097,7 +2101,9 @@ static int test_redaction_helper(void)
                                        "certificatePath=<redacted> privateKeyPath=<redacted> "
                                        "clientCertificatePath=<redacted> "
                                        "clientPrivateKeyPath=<redacted> "
-                                       "caBundlePath=<redacted>")) != 0)
+                                       "caBundlePath=<redacted> "
+                                       "trustStorePath=<redacted> keyPath=<redacted> "
+                                       "certPath=<redacted> caPath=<redacted>")) != 0)
     {
         return 102;
     }

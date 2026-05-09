@@ -2191,6 +2191,37 @@ static int test_head_response_suppresses_body_and_preserves_content_length(void)
     return 0;
 }
 
+static int test_method_not_allowed_response_can_advertise_head(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nAllow: GET, HEAD\r\nContent-Length: 19\r\n\r\nMethod Not Allowed\n";
+    SlHttpHeader allow_header = {};
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    allow_header.name = sl_str_from_cstr("Allow");
+    allow_header.value = sl_str_from_cstr("GET, HEAD");
+
+    config = small_config(nullptr);
+    dispatch.response = sl_http_response_text(405U, sl_str_from_cstr("Method Not Allowed\n"));
+    dispatch.response.headers = &allow_header;
+    dispatch.response.header_count = 1U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "POST /ok HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_POST || expect_bytes_equal(response, expected) != 0)
+    {
+        return 91;
+    }
+
+    return 0;
+}
+
 static int test_streaming_response_writes_chunked_frames(void)
 {
     static const char expected[] =
@@ -3035,7 +3066,7 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
     config.dispatch_user = &dispatch;
     if (run_localhost_request(&config,
                               "POST / HTTP/1.1\r\nHost: local\r\nExpect: 100-continue\r\n"
-                              "Content-Type: text/plain\r\nContent-Length: 5\r\n\r\n",
+                              "Content-Type: text/plain\r\nContent-Length: 5\r\n\r\nabc",
                               &response, &server, &dispatch) != 0 ||
         dispatch.count != 0U ||
         server.connections[0].last_diag.code != SL_DIAG_INVALID_HTTP_REQUEST ||
@@ -3463,6 +3494,7 @@ static int run_named_transport_case(const char* name)
             test_localhost_transport_smoke_success_and_dispatch_statuses,
             test_localhost_transport_smoke_body_success_and_rejections,
             test_head_response_suppresses_body_and_preserves_content_length,
+            test_method_not_allowed_response_can_advertise_head,
             test_dispatch_failures_map_to_safe_responses);
     }
     if (strcmp(name, "keep_alive") == 0) {
@@ -3592,6 +3624,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_head_response_suppresses_body_and_preserves_content_length();
+    if (result != 0) {
+        return result;
+    }
+    result = test_method_not_allowed_response_can_advertise_head();
     if (result != 0) {
         return result;
     }

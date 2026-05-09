@@ -32,10 +32,12 @@ typedef enum SlHttpResponseConnectionPolicy
 
 typedef struct SlHttpResponseWriteOptions
 {
+    /* Defaults to Connection: close when options is NULL or this field is zero. */
     SlHttpResponseConnectionPolicy connection;
     /*
      * Writes response metadata including the original Content-Length, but omits the
      * body bytes on the wire. Used for HEAD responses after normal GET dispatch.
+     * Status 204 and 304 always omit body bytes regardless of this flag.
      */
     bool suppress_body;
 } SlHttpResponseWriteOptions;
@@ -88,6 +90,11 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);
+/*
+ * Variant of `sl_http_response_write` with optional write controls. `options` may be NULL,
+ * which is equivalent to Connection: close and `suppress_body == false`. The caller retains
+ * ownership of `response`, `options`, and `buffer`; `out_bytes` borrows `buffer`.
+ */
 SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
                                              const SlHttpResponseWriteOptions* options,
                                              unsigned char* buffer, size_t capacity,
