@@ -76,6 +76,10 @@ helper call is statically supported. The recorded `kind` follows the descriptor
 kind from this page: `noContent` records `empty`, `badRequest` and `notFound`
 record `json`, and `problem` records `problem`.
 
+That metadata feeds `sloppy openapi`, route inspection, and generated handler
+evidence. Dynamic response writer APIs are not inferred as Plan response
+metadata yet.
+
 ## Limits
 
 - Descriptor API only; not a streaming writer API.

@@ -62,7 +62,8 @@ source location pointing at the offending JSON path.
 - `capabilities[]` — token, kind, provider, access, metadata
 - `required_features[]`
 - `server` — host, port, max connections, body limits, timeouts, TLS metadata
-- `config` — environment-resolved keys the compiler saw
+- `config` — environment-resolved keys, requirements, and literal defaults the
+  compiler saw
 
 Strings and arrays are interned where it matters
 (`src/core/intern.c`) — repeated route patterns, handler IDs, and
@@ -112,6 +113,10 @@ look like credential strings (anything matching the configured
 provider connection-string patterns, anything explicitly tagged secret).
 The compiler is expected to never emit credentials into the Plan in the
 first place; this sweep is a belt-and-braces check.
+
+Config defaults are allowed only as the literal values already visible in source
+or resolved non-secret configuration metadata. Secret defaults are not a
+substitute for runtime secret retrieval and should not appear in Plan metadata.
 
 If your app's source somehow ends up with a literal password, you'll
 get a Plan rejection at startup with a diagnostic pointing at the field.

@@ -35,8 +35,9 @@ The compiler reads supported source and emits Plan metadata for:
 - top-level `app.group(...)` and group method chains;
 - literal `app.mapHealthChecks(...)` calls;
 - route options — string literal patterns, route names, tags;
-- top-level service registrations
-  (`addSingleton/addScoped/addTransient` with literal token strings);
+- top-level `app.services` and `builder.services` registrations
+  (`addSingleton/addScoped/addTransient` with literal token strings and
+  inline non-capturing factories);
 - top-level capability declarations
   (`capabilities.addDatabase("token", { ... })`);
 - typed handler parameter bindings (Framework v2): `Route<T>`,
@@ -75,8 +76,11 @@ Confirmed unsupported (each has a fixture or diagnostic code):
 - HTTP methods other than GET/POST/PUT/PATCH/DELETE
   (`fixtures/unsupported-http-method/`,
   `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
-- Controller mappings and constructor injection are not compiler-extracted yet.
-- Sloppy default imports (`SLOPPYC_E_UNSUPPORTED_SLOPPY_DEFAULT_IMPORT`).
+- Middleware, CORS, RequestId, RequestLogging, Testing imports, and controller
+  mappings are not compiler-extracted yet; each fails with a specific
+  diagnostic instead of being omitted from the Plan.
+- Sloppy default imports (`fixtures/unsupported-sloppy-default-import/`,
+  `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`).
 
 What the compiler tolerates outside route-extraction code (helper
 functions, modules) is broader, but:
@@ -176,3 +180,6 @@ provider injections, and service capabilities from these types.
   handler.
 - **No top-level await.** Initialize lazily inside services or
   handlers.
+- **Config defaults are honored by typed injection.** `Config<"KEY">` reads the
+  environment first, then falls back to a literal default from
+  `app.config.getString("KEY", "default")` when the source declares one.

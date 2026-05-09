@@ -13,7 +13,8 @@ as one of these categories:
 - source maps: success fixtures with `expected/app.js.map`;
 - compiler inference coverage: realistic supported apps, partial completeness,
   provider-kind database metadata, function-module source graph entries, route
-  tags, health metadata, and invalid provider/effect shapes.
+  tags, health metadata, full AppGraph framework extraction, and invalid
+  provider/effect shapes.
 
 Fixtures may contain multiple source files under fixture-local subdirectories, such as
 `modules/`. Optional project config such as `appsettings.json` lives beside the fixture
@@ -23,3 +24,8 @@ The provider fixtures are intentionally not SQLite-only. Generated provider exec
 covered by provider-specific V8 bridge lanes, and Plan metadata uses `capabilityKind` and `providerKind`
 so PostgreSQL, SQL Server, and later non-database providers do not get forced into a
 hardcoded SQLite model.
+
+Rejected framework-surface fixtures are part of the contract. Middleware, CORS,
+RequestId, RequestLogging, controller mapping, Testing imports, and captured
+health checks must fail with explicit diagnostics until compiler artifacts can
+represent those behaviors honestly.

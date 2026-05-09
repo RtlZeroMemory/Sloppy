@@ -61,6 +61,8 @@ pub(crate) use schema::ts_type_span;
 use schema::*;
 mod effects;
 use effects::*;
+mod framework_features;
+use framework_features::*;
 
 #[derive(Debug, Eq, PartialEq)]
 enum CliCommand {
@@ -215,6 +217,8 @@ struct AppState {
     http_client_imported: bool,
     workers_imported: bool,
     problem_details_imported: bool,
+    request_id_imported: bool,
+    request_logging_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -260,6 +264,8 @@ impl AppState {
             http_client_imported: false,
             workers_imported: false,
             problem_details_imported: false,
+            request_id_imported: false,
+            request_logging_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1560,6 +1566,17 @@ fn extract_import(
                 ("Sloppy", "Sloppy") => state.sloppy_imported = true,
                 ("Results", "Results") => state.results_imported = true,
                 ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
+                ("RequestId", "RequestId") => state.request_id_imported = true,
+                ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
+                ("Testing", "Testing") => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+                        "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+                    )
+                    .with_path(path)
+                    .with_span(specifier.span)
+                    .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+                }
                 ("data", "data") => state.data_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -1579,6 +1596,9 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
         "Sloppy"
             | "Results"
             | "ProblemDetails"
+            | "RequestId"
+            | "RequestLogging"
+            | "Testing"
             | "data"
             | "schema"
             | "Email"
@@ -1812,6 +1832,12 @@ fn extract_expression_statement(
     {
         state.service_registrations.push(registration);
         return Ok(());
+    }
+
+    if let Some(diagnostic) =
+        unsupported_framework_feature_diagnostic(path, &statement.expression, state)
+    {
+        return Err(diagnostic);
     }
 
     let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
@@ -3733,7 +3759,10 @@ fn app_service_registration_call(
     let Some(chain) = static_member_chain(&call.callee) else {
         return Ok(None);
     };
-    if chain.len() != 3 || chain[1] != "services" || !state.app_vars.contains(chain[0]) {
+    if chain.len() != 3
+        || chain[1] != "services"
+        || !(state.app_vars.contains(chain[0]) || state.builder_vars.contains(chain[0]))
+    {
         return Ok(None);
     }
     let lifetime = match chain[2] {
@@ -7767,6 +7796,25 @@ fn framework_provider_config_entries(app: &ExtractedApp) -> String {
     format!("[{entries}]")
 }
 
+fn framework_config_default_entries(app: &ExtractedApp) -> String {
+    let mut entries = Vec::new();
+    let mut seen = BTreeSet::new();
+    for read in &app.config_reads {
+        let Some(default_value) = &read.default_value else {
+            continue;
+        };
+        if !seen.insert(normalize_config_key(&read.key)) {
+            continue;
+        }
+        entries.push(format!(
+            "[{}, {}]",
+            serde_json::to_string(&read.key).unwrap_or_else(|_| "\"\"".to_string()),
+            serde_json::to_string(default_value).unwrap_or_else(|_| "null".to_string())
+        ));
+    }
+    format!("[{}]", entries.join(", "))
+}
+
 fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> {
     let explicit_services = app
         .service_registrations
@@ -7806,6 +7854,13 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .handler
             .emitted_source
             .contains("__sloppy_framework_arg")
+    });
+    let needs_framework_config_bindings = app.routes.iter().any(|route| {
+        route
+            .handler
+            .bindings
+            .iter()
+            .any(|binding| binding.kind == "config")
     });
     let queue_service_entries = framework_queue_service_entries(app);
     let needs_framework_services = needs_framework_arg_helper
@@ -7939,7 +7994,20 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             );
         }
     }
-    if needs_framework_arg_helper {
+    if needs_framework_config_bindings {
+        let provider_configs = framework_provider_config_entries(app);
+        let config_defaults = framework_config_default_entries(app);
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!("const __sloppy_framework_provider_configs = new Map({provider_configs});"),
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!("const __sloppy_framework_config_defaults = new Map({config_defaults});"),
+        );
+    } else if needs_framework_arg_helper {
         let provider_configs = framework_provider_config_entries(app);
         push_generated_line(
             &mut output,
@@ -7986,11 +8054,19 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut generated_line,
             "  if (binding.kind === \"injection\") { return __sloppy_framework_injection(scope, binding); }",
         );
-        push_generated_line(
-            &mut output,
-            &mut generated_line,
-            "  if (binding.kind === \"config\") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }",
-        );
+        if needs_framework_config_bindings {
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  if (binding.kind === \"config\") { const value = Environment.get(binding.name); if (value !== undefined) { return value; } if (__sloppy_framework_config_defaults.has(binding.name)) { return __sloppy_framework_config_defaults.get(binding.name); } throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); }",
+            );
+        } else {
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  if (binding.kind === \"config\") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }",
+            );
+        }
         push_generated_line(&mut output, &mut generated_line, "  let value;");
         push_generated_line(
             &mut output,

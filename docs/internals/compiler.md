@@ -29,6 +29,7 @@ compiler/
       configuration.rs
       schema.rs
       effects.rs
+      framework_features.rs
     parser.rs                Oxc parser setup
     resolver.rs              import resolution
     module_graph.rs          source graph model
@@ -42,9 +43,12 @@ compiler/
     compiler_fixture_harness.rs
 ```
 
-`src/sloppyc.rs` still owns most extraction. `src/graph.rs` owns the internal
-AppGraph data types copied out of parser lifetimes. `src/plan_emit.rs` consumes
-that graph for Plan JSON so the Plan shape is separated from extraction.
+`src/sloppyc.rs` still owns most extraction. The files under `src/sloppyc/`
+hold focused extraction helpers for configuration, schema, effects, and
+recognized framework features that must fail closed until AppGraph can represent
+them. `src/graph.rs` owns the internal AppGraph data types copied out of parser
+lifetimes. `src/plan_emit.rs` consumes that graph for Plan JSON so the Plan
+shape is separated from extraction.
 
 ## Main Concepts
 
@@ -69,6 +73,10 @@ requirements, and source spans.
 Route metadata includes literal route names, literal route option tags, tags
 inherited from `app.group(...).withTags(...)`, and compiler-extracted health
 endpoint kind/check names from `app.mapHealthChecks(...)`.
+
+Generated typed-handler wrappers read `Config<"KEY">` from the environment
+first. If AppGraph recorded a literal default for the same key, the wrapper uses
+that default instead of throwing for a missing environment value.
 
 ## Lifecycle
 
@@ -118,6 +126,8 @@ Compiler evidence lives in:
 
 - unit tests in `compiler/src/sloppyc_tests.rs`
 - fixture inputs and expected artifacts under `compiler/tests/fixtures/`
+- `compiler/tests/fixtures/full-framework-app-graph/` for the broad supported
+  AppGraph extraction contract
 - `compiler/tests/compiler_fixture_harness.rs`
 - native Plan/CLI/runtime tests under `tests/`
 
@@ -138,8 +148,10 @@ Run the full repository gates when compiler output or CLI metadata changes.
 - npm and `node_modules` resolution are outside the current source graph.
 - Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
   remains responsible for that.
-- Middleware, CORS, and request logging execute in the bootstrap app-host path
-  today. Plan metadata for those surfaces needs a compiler/runtime slice that
-  can represent emitted artifacts honestly.
+- Middleware, CORS, RequestId, RequestLogging, and controller mapping execute in
+  the bootstrap app-host path today. The compiler recognizes those source
+  surfaces and rejects them with specific diagnostics instead of silently
+  ignoring them until AppGraph, Plan, and generated artifacts can represent the
+  behavior honestly.
 - Controller constructor injection and broader response-writing APIs are still
   future compiler work.

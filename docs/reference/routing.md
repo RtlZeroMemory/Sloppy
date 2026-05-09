@@ -37,6 +37,9 @@ Compiler normalization also accepts framework `/:name` segments and converts the
 - nested groups compose parent + child patterns.
 - group metadata supports `withTags(...tags)` and `withName(name)`.
 - bootstrap groups support `use(fn)` for group-local middleware/filter functions.
+- compiler extraction rejects `group.use(fn)` with
+  `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE` until middleware can be represented in
+  AppGraph and generated artifacts.
 
 ## Route Metadata
 

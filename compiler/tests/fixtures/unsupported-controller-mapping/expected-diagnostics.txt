@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-controller-mapping/input.js:6:1: SLOPPYC_E_UNSUPPORTED_CONTROLLER: controller mapping is recognized but not extracted into AppGraph yet
+  --> <compiler>/tests/fixtures/unsupported-controller-mapping/input.js:6:1
+   |
+6 | app.mapController("/users", UsersController);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Use explicit top-level route declarations for compiler-extracted apps.

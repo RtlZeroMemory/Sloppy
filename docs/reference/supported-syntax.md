@@ -36,6 +36,12 @@ Unsupported specifiers/import names fail with:
 
 Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
 
+`RequestId`, `RequestLogging`, and `Testing` are framework exports from
+`"sloppy"`, but they are not compiled app-source surfaces yet. `Testing`
+imports fail with `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`. Request ID and
+request logging middleware fail with specific diagnostics when used in compiler
+input.
+
 ## Route Extraction Rules
 
 Route declarations must be top-level statements on app/group receivers.
@@ -68,6 +74,41 @@ Common route failures:
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_NAME`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS`
 - `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`
+
+Health checks must be inline functions that do not capture module-level locals.
+Captured values fail with `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`.
+
+## Framework Features Recognized But Not Emitted
+
+These app-host features are real JavaScript framework APIs, but current compiler
+artifacts do not encode their behavior:
+
+- `app.use(fn)` and `group.use(fn)` middleware:
+  `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`
+- `app.useCors(policy)`: `SLOPPYC_E_UNSUPPORTED_CORS`
+- `app.use(RequestId.defaults(...))`: `SLOPPYC_E_UNSUPPORTED_REQUEST_ID`
+- `app.use(RequestLogging.defaults(...))`:
+  `SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`
+- `app.mapController(...)` / `app.controller(...)`:
+  `SLOPPYC_E_UNSUPPORTED_CONTROLLER`
+
+The compiler rejects these calls instead of accepting a Plan that would omit
+runtime behavior.
+
+## Services And Config
+
+Literal service registrations are supported on both `app.services` and
+`builder.services`:
+
+- `addSingleton("Token", () => value)`
+- `addScoped("Token", () => value)`
+- `addTransient("Token", () => value)`
+
+Factories must be inline functions that do not capture unsupported identifiers.
+
+`Config<"KEY">` typed parameters read the environment value first. When the
+source also contains a literal `app.config.getString("KEY", "default")` default,
+the generated wrapper uses that default if the environment value is absent.
 
 ## Pattern Rules
 
@@ -106,4 +147,7 @@ Representative typed-binding diagnostics:
 
 ## Provider Bridge Limitation
 
-Compiler metadata recognizes sqlite/postgres/sqlserver providers, but generated executable provider bridge is currently sqlite-only. Non-sqlite provider handler execution is rejected with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
+Compiler metadata recognizes sqlite/postgres/sqlserver providers, but generated
+executable provider bridge is currently sqlite-only for static provider handles.
+Non-sqlite provider handler execution is rejected with
+`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.

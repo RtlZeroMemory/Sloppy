@@ -94,6 +94,11 @@ A thrown or rejected check is unhealthy.
 any check returned `false`, `{ ok: false }`, or threw — body shape is the
 same.
 
+For compiler input, health-check functions must be inline and must not capture
+module-level locals. Captured values are rejected with
+`SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS` so generated health handlers do not depend
+on hidden closure state.
+
 ## Status
 
 Health-check routes run in the bootstrap app-host handler path. `sloppyc`

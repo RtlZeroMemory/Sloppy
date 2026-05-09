@@ -89,8 +89,15 @@ Current enforced constraints include:
 
 Compiler rejects unsupported shapes with `SLOPPYC_E_*` diagnostics and source spans.
 
+`Config<"KEY">` bindings are validated as compiler metadata too. Generated code
+reads the environment value first and uses a literal default recorded from
+`app.config.getString("KEY", "default")` when the environment value is absent.
+
 ## Limits
 
 - Full TypeScript typechecking is outside the current validation surface.
 - Arbitrary external schema libraries require explicit adapter work.
 - Decorator-based validation belongs to a later framework design if the runtime adopts it.
+- Middleware, CORS, RequestId, RequestLogging, and controller validation are not
+  Plan-backed compiler validation surfaces yet; compiler input that uses them
+  fails closed with specific diagnostics.

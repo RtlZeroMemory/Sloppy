@@ -71,9 +71,11 @@ normal provider config key before opening the active bridge. Queue injection mat
 inferred `queue.<name>` capability and, unless the source explicitly registers that token,
 adds a default singleton service registration that is resolved through the request scope
 and backed by `WorkQueue.create("<name>")`.
-`Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
-TypeScript lowering, controller
-constructor injection, and broader response writing remain future implementation work.
+`Config<"KEY">` reads the matching environment value. If the compiler recorded a
+literal config default for that key, generated JavaScript uses the default when
+the environment value is absent. Custom validators, arbitrary TypeScript
+lowering, controller constructor injection, middleware, CORS, RequestId,
+RequestLogging, and broader response writing remain future implementation work.
 
 ## Server Config Metadata
 

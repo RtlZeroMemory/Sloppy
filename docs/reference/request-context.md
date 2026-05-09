@@ -29,6 +29,8 @@ Typed handler wrappers map parameters through generated helper code:
 - `Route<T>` -> `ctx.route[name]`
 - `Query<T>` -> `ctx.query[name]`
 - `Header<"name", T>` -> `ctx.request.headers.get("name")`
+- `Config<"KEY">` -> environment value, falling back to a compiler-recorded
+  literal default when one exists
 - `RequestContext`, `SlopRequest`, `SlopResponse`, `CancellationSignal`, `Deadline` -> `ctx`
 
 Generated wrapper behavior also:

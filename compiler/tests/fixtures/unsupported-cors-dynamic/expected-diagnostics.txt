@@ -1,0 +1,5 @@
+<compiler>/tests/fixtures/unsupported-cors-dynamic/input.js:5:13: SLOPPYC_E_UNSUPPORTED_CORS: dynamic CORS policies are not supported by compiler extraction
+  --> <compiler>/tests/fixtures/unsupported-cors-dynamic/input.js:5:13
+   |
+5 | app.useCors(policy);
+   |             ^^^^^^

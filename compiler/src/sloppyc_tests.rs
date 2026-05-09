@@ -3235,52 +3235,53 @@ fn typed_framework_metadata_fixture_expected_outputs_stay_current() {
 #[test]
 fn app_graph_dogfood_fixture_expected_outputs_stay_current() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let fixture_name = "app-graph-dogfood";
-    let fixture = root
-        .join("tests/fixtures")
-        .join(fixture_name)
-        .join("input.ts");
-    let source = fs::read_to_string(&fixture).expect("fixture input should exist");
-    let mut app = extract(&fixture, &source).expect("app graph dogfood fixture should extract");
-    super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
-        .expect("fixture configuration should load")
-        .apply_to_app(&mut app)
-        .expect("fixture configuration should apply");
-
-    let emitted_js = super::emit_app_js(&app);
-    let expected_js = fs::read_to_string(
-        root.join("tests/fixtures")
+    for fixture_name in ["app-graph-dogfood", "full-framework-app-graph"] {
+        let fixture = root
+            .join("tests/fixtures")
             .join(fixture_name)
-            .join("expected/app.js"),
-    )
-    .expect("expected app.js should exist");
-    assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
+            .join("input.ts");
+        let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+        let mut app = extract(&fixture, &source).expect("app graph dogfood fixture should extract");
+        super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
+            .expect("fixture configuration should load")
+            .apply_to_app(&mut app)
+            .expect("fixture configuration should apply");
 
-    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
-    let emitted_plan = super::emit_plan(
-        &app,
-        &super::sha256_hex(&emitted_js.source),
-        &super::sha256_hex(&emitted_source_map),
-    )
-    .expect("plan should emit");
-    let expected_plan = fs::read_to_string(
-        root.join("tests/fixtures")
-            .join(fixture_name)
-            .join("expected/app.plan.json"),
-    )
-    .expect("expected app.plan.json should exist");
-    assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+        let emitted_js = super::emit_app_js(&app);
+        let expected_js = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js"),
+        )
+        .expect("expected app.js should exist");
+        assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
 
-    let expected_source_map = fs::read_to_string(
-        root.join("tests/fixtures")
-            .join(fixture_name)
-            .join("expected/app.js.map"),
-    )
-    .expect("expected app.js.map should exist");
-    assert_eq!(
-        emitted_source_map, expected_source_map,
-        "{fixture_name} app.js.map"
-    );
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let emitted_plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let expected_plan = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.plan.json"),
+        )
+        .expect("expected app.plan.json should exist");
+        assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+
+        let expected_source_map = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js.map"),
+        )
+        .expect("expected app.js.map should exist");
+        assert_eq!(
+            emitted_source_map, expected_source_map,
+            "{fixture_name} app.js.map"
+        );
+    }
 }
 
 #[test]
@@ -3459,6 +3460,127 @@ export default app;
         "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION"
     );
     assert!(diagnostic.message.contains("makeGreeting"));
+}
+
+#[test]
+fn builder_service_registration_extracts_service_factory() {
+    let source = r#"import { Sloppy, Results, Service } from "sloppy";
+type GreetingService = { greeting: string };
+const builder = Sloppy.createBuilder();
+builder.services.addSingleton("GreetingService", () => ({ greeting: "hello" }));
+const app = builder.build();
+app.get("/users", (service: Service<GreetingService>) => Results.ok({ service }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("builder service registrations should extract");
+    assert_eq!(app.service_registrations.len(), 1);
+    assert_eq!(app.service_registrations[0].token, "GreetingService");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+        "__sloppy_framework_services.addSingleton(\"GreetingService\", () => ({ greeting: \"hello\" }));"
+    ));
+}
+
+#[test]
+fn typed_config_injection_uses_plan_default_when_environment_is_absent() {
+    let source = r#"import { Sloppy, Results, Config } from "sloppy";
+const app = Sloppy.create();
+const requiredGreeting = app.config.getString("App:Greeting");
+const greeting = app.config.getString("App:Greeting", "hello");
+app.get("/", (message: Config<"App:Greeting">) => Results.ok({ message }));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("config default should extract");
+    assert!(app
+        .config_reads
+        .iter()
+        .any(|read| read.key == "App:Greeting"
+            && read.default_value == Some(serde_json::json!("hello"))));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+        "const __sloppy_framework_config_defaults = new Map([[\"App:Greeting\", \"hello\"]]);"
+    ));
+    assert!(emitted_js.source.contains(
+        "if (__sloppy_framework_config_defaults.has(binding.name)) { return __sloppy_framework_config_defaults.get(binding.name); }"
+    ));
+}
+
+#[test]
+fn recognized_unemitted_framework_features_fail_closed() {
+    for (source, code) in [
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.use((ctx, next) => next());
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const api = app.group("/api");
+api.use((ctx, next) => next());
+api.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const policy = { origins: ["https://app.example.com"] };
+const app = Sloppy.create();
+app.useCors(policy);
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_CORS",
+        ),
+        (
+            r#"import { Sloppy, Results, RequestId } from "sloppy";
+const app = Sloppy.create();
+app.use(RequestId.defaults({ generator: () => "req-1" }));
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
+        ),
+        (
+            r#"import { Sloppy, Results, RequestLogging } from "sloppy";
+const includeRoute = true;
+const app = Sloppy.create();
+app.use(RequestLogging.defaults({ includeRoute }));
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+function UsersController() {}
+const app = Sloppy.create();
+app.mapController("/users", UsersController);
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_CONTROLLER",
+        ),
+        (
+            r#"import { Sloppy, Results, Testing } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("recognized unsupported framework surface should fail");
+        assert_eq!(diagnostic.code, code);
+    }
 }
 
 #[test]
@@ -3974,6 +4096,13 @@ fn rejected_fixture_diagnostics_stay_current() {
         ("non-sqlite-provider-bridge", "input.js"),
         ("unsupported-provider-method", "input.js"),
         ("unsupported-route-options-dynamic-tags", "input.js"),
+        ("unsupported-app-middleware", "input.js"),
+        ("unsupported-cors-dynamic", "input.js"),
+        ("unsupported-request-id-dynamic", "input.js"),
+        ("unsupported-request-logging-dynamic", "input.js"),
+        ("unsupported-controller-mapping", "input.js"),
+        ("unsupported-testing-import", "input.js"),
+        ("unsupported-health-captured-check", "input.js"),
     ] {
         let fixture = root
             .join("tests/fixtures")

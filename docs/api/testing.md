@@ -30,6 +30,10 @@ harnesses that load stdlib modules directly. The app test host is for tests; app
 source compiled into runtime artifacts should keep importing the framework and
 runtime APIs it uses in production.
 
+`Testing` is not a compiler input API. `sloppyc` rejects `import { Testing } from
+"sloppy"` with `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`; use it from JavaScript
+tests that execute the app-host surface.
+
 ## Requests
 
 Use method helpers for common cases:
