@@ -142,6 +142,7 @@ add_executable(
     benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_logging.c
     benchmarks/bench_memory.c)
 target_link_libraries(sloppy_bench PRIVATE sloppy_core)
 target_include_directories(

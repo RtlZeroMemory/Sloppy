@@ -314,7 +314,12 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "setMinimumLevel(level)"
-        "addMemorySink()"
+        "setQueueCapacity(capacity)"
+        "addRedactionKey(key)"
+        "addMemorySink(options = undefined)"
+        "writeTo"
+        "forCategory(nextCategory)"
+        "isEnabled(level)"
         "trace(message, fields)"
         "debug(message, fields)"
         "info(message, fields)"

@@ -11,6 +11,8 @@ builder.services.addSingleton("message", () => "Hello from Sloppy");
 
 const app = builder.build();
 
+app.log.info("hello example configured", { example: "hello" });
+
 app.mapGet("/", ({ services }) => Results.text(services.get("message")))
     .withName("Hello.Index");
 

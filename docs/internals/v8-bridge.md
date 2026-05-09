@@ -37,6 +37,12 @@ diagnostic structures (`SlDiag`), byte slices (`SlBytes`), and parsed
 plan/route metadata. Anything that started life as a `v8::Local<…>`
 ends up materialized as Sloppy memory before the function returns.
 
+Request log calls cross the bridge as bounded structured events. The bridge
+passes scalar field values into `SlLogEventBuilder`, rejects unsupported field
+values, and never exposes the native logging runtime pointer to JavaScript.
+Disabled levels return before message conversion, field enumeration, event
+construction, or queue submission.
+
 ## Invariants
 
 These hold at the C ABI boundary. They are enforced by code review,
@@ -63,6 +69,9 @@ boundary scanners, and the way the public headers are declared.
 7. **Source maps remap exception traces.** Thrown JS errors get their
    stack remapped through the Plan-recorded source map before showing
    in diagnostics.
+8. **Logging stays bounded.** `ctx.log` methods support shallow scalar
+   fields only, attach request ID and route metadata from the native
+   request context, and submit through the Sloppy-owned logging runtime.
 
 ## Owner-thread model
 
@@ -125,5 +134,7 @@ The bridge does not:
   intrinsics expose those.
 - Run outside the owner thread.
 - Persist V8 state across `engine_shutdown` and `engine_init`.
+- Own logging sink I/O. The bridge only converts JS log calls into native
+  structured events; sinks and flushing belong to `src/core/logging.c`.
 
 For the public-facing model see [about/v8-bridge.md](../about/v8-bridge.md).

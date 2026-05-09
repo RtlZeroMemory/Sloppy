@@ -60,7 +60,16 @@ configuration lives in `appsettings.json`. See
     "greeting": "hello"
   },
   "logging": {
-    "minimumLevel": "info"
+    "minimumLevel": "info",
+    "queueCapacity": 64,
+    "console": {
+      "enabled": true,
+      "format": "pretty"
+    },
+    "file": {
+      "path": "app.jsonl",
+      "format": "jsonl"
+    }
   }
 }
 ```
@@ -77,6 +86,10 @@ configuration lives in `appsettings.json`. See
 Configuration keys are case-insensitive and use `:` as the separator
 internally — both `"app:greeting"` and the nested `{ "app": { "greeting": ... } }`
 form work.
+
+`logging.file.path` is used by `sloppy run` for the native JSONL file sink. The
+current runtime opens it in append mode and expects the parent directory to
+already exist.
 
 For typed access in code, see [API: config](../api/config.md).
 

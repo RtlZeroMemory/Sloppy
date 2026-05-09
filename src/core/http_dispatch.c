@@ -1083,6 +1083,9 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.query_param_count = query.param_count;
 
     validation_route = sl_http_dispatch_find_validation_route(plan, binding);
+    request_context.route_pattern =
+        binding->pattern == NULL ? sl_str_empty() : binding->pattern->source;
+    request_context.route_name = validation_route == NULL ? sl_str_empty() : validation_route->name;
     if (validation_route != NULL) {
         status = sl_request_validation_validate(arena, plan, validation_route, &request_context,
                                                 out_result, out_diag);

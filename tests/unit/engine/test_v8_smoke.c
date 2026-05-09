@@ -1,6 +1,7 @@
 #include "sloppy/app_host.h"
 #include "sloppy/engine.h"
 #include "sloppy/fs.h"
+#include "sloppy/logging.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -2911,6 +2912,136 @@ static int test_request_context_reports_actual_method(void)
     return 0;
 }
 
+static int test_request_context_log_writes_native_event(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[2048];
+    unsigned char logging_storage[262144];
+    unsigned char snapshot_storage[65536];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena logging_arena = {0};
+    SlArena snapshot_arena = {0};
+    SlLogRuntimeConfig logging_config = sl_log_runtime_config_default();
+    SlLogRuntime* logging = NULL;
+    SlLogSink* memory = NULL;
+    SlLogMemorySnapshot snapshot = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    SlRouteParam route_params[1] = {
+        {.name = sl_str_from_cstr("name"), .value = sl_str_from_cstr("Ada")},
+    };
+
+    context.request_id = 42U;
+    context.route_params = route_params;
+    context.route_param_count = 1U;
+    context.route_name = sl_str_from_cstr("Users.Get");
+    context.route_pattern = sl_str_from_cstr("/users/{name}");
+    logging_config.minimum_level = SL_LOG_LEVEL_INFO;
+    logging_config.queue_capacity = 4U;
+    logging_config.sink_capacity = 1U;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&logging_arena, logging_storage, sizeof(logging_storage)) != 0 ||
+        init_arena(&snapshot_arena, snapshot_storage, sizeof(snapshot_storage)) != 0 ||
+        expect_status(sl_log_runtime_create(&logging_arena, &logging_config, &logging),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_create(&logging_arena, 4U, &memory), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(logging, memory), SL_STATUS_OK) != 0)
+    {
+        return 80;
+    }
+    options.logging = logging;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        (void)sl_log_runtime_shutdown(logging);
+        return 81;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-context-log.js"),
+                          sl_str_from_cstr(
+                              "globalThis.sloppy_context_log = function (ctx) {"
+                              "  if (!ctx.log.isEnabled('info')) throw new Error('disabled');"
+                              "  if (String(ctx.log.debug).indexOf('[native code]') !== -1) {"
+                              "    throw new Error('disabled log crossed native bridge');"
+                              "  }"
+                              "  const disabledFields = {"
+                              "    get expensive() { throw new Error('disabled field converted'); }"
+                              "  };"
+                              "  ctx.log.debug({ toString() {"
+                              "    throw new Error('disabled message converted');"
+                              "  } }, disabledFields);"
+                              "  ctx.log.forCategory('users').info('user fetched', {"
+                              "    userId: '123', token: 'SECRET_VALUE', ok: true, attempt: 3"
+                              "  });"
+                              "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                              "    contentType: 'application/json; charset=utf-8', body: {"
+                              "      requestId: ctx.requestId, routeName: ctx.routeName,"
+                              "      routePattern: ctx.routePattern, name: ctx.route.name"
+                              "    } };"
+                              "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_log_runtime_shutdown(logging);
+        return 82;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_context_log"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_log_runtime_shutdown(logging);
+        return 83;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"requestId\":\"42\",\"routeName\":\"Users.Get\","
+                           "\"routePattern\":\"/users/{name}\",\"name\":\"Ada\"}") != 0 ||
+        expect_status(sl_log_runtime_flush(logging), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_snapshot(memory, &snapshot_arena, &snapshot),
+                      SL_STATUS_OK) != 0 ||
+        snapshot.count != 1U)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_log_runtime_shutdown(logging);
+        return 84;
+    }
+
+    if (snapshot.events[0].level != SL_LOG_LEVEL_INFO ||
+        !sl_str_equal(sl_log_event_category(&snapshot.events[0]), sl_str_from_cstr("users")) ||
+        !sl_str_equal(sl_log_event_message(&snapshot.events[0]),
+                      sl_str_from_cstr("user fetched")) ||
+        !sl_str_equal(sl_log_event_request_id(&snapshot.events[0]), sl_str_from_cstr("42")) ||
+        !sl_str_equal(sl_log_event_route_pattern(&snapshot.events[0]),
+                      sl_str_from_cstr("/users/{name}")) ||
+        snapshot.events[0].field_count != 4U || !snapshot.events[0].fields[1].redacted ||
+        !sl_str_equal(sl_log_field_text_value(&snapshot.events[0].fields[1]),
+                      sl_str_from_cstr("[REDACTED]")) ||
+        !snapshot.events[0].fields[2].bool_value || snapshot.events[0].fields[3].i64_value != 3)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_log_runtime_shutdown(logging);
+        return 85;
+    }
+
+    sl_engine_destroy(engine);
+    if (expect_status(sl_log_runtime_shutdown(logging), SL_STATUS_OK) != 0) {
+        return 86;
+    }
+    return 0;
+}
+
 static int test_request_context_exposes_headers_and_body(void)
 {
     unsigned char engine_storage[8192];
@@ -5502,6 +5633,11 @@ int main(int argc, char** argv)
     }
 
     result = test_request_context_reports_actual_method();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_log_writes_native_event();
     if (result != 0) {
         return result;
     }

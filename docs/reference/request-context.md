@@ -14,6 +14,7 @@ Default context (when handler is called without explicit context) includes:
 - `log`
 - `request` with app-host method/path metadata when the route wrapper knows it
 - `route` (empty object by default)
+- `routeName`
 - `routePattern`
 - `requestId` when `RequestId.defaults()` middleware is installed before the handler
 

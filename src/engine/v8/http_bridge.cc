@@ -11,6 +11,7 @@
 #include "sloppy/container.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -34,6 +35,13 @@ void http_v8_request_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& a
 void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_trace_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_debug_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_warn_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_error_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_is_enabled_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_log_for_category_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 
 const char* http_v8_string_key_name(SlV8HttpStringKey key)
 {
@@ -71,6 +79,8 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "kind";
     case SL_V8_HTTP_STRING_LOCATION:
         return "location";
+    case SL_V8_HTTP_STRING_LOG:
+        return "log";
     case SL_V8_HTTP_STRING_METHOD:
         return "method";
     case SL_V8_HTTP_STRING_PATH:
@@ -87,8 +97,14 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "reason";
     case SL_V8_HTTP_STRING_REQUEST:
         return "request";
+    case SL_V8_HTTP_STRING_REQUEST_ID:
+        return "requestId";
     case SL_V8_HTTP_STRING_ROUTE:
         return "route";
+    case SL_V8_HTTP_STRING_ROUTE_NAME:
+        return "routeName";
+    case SL_V8_HTTP_STRING_ROUTE_PATTERN:
+        return "routePattern";
     case SL_V8_HTTP_STRING_SCHEME:
         return "scheme";
     case SL_V8_HTTP_STRING_SECURE:
@@ -103,6 +119,20 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "text";
     case SL_V8_HTTP_STRING_THROW_IF_ABORTED:
         return "throwIfAborted";
+    case SL_V8_HTTP_STRING_TRACE:
+        return "trace";
+    case SL_V8_HTTP_STRING_DEBUG:
+        return "debug";
+    case SL_V8_HTTP_STRING_INFO:
+        return "info";
+    case SL_V8_HTTP_STRING_WARN:
+        return "warn";
+    case SL_V8_HTTP_STRING_ERROR:
+        return "error";
+    case SL_V8_HTTP_STRING_IS_ENABLED:
+        return "isEnabled";
+    case SL_V8_HTTP_STRING_FOR_CATEGORY:
+        return "forCategory";
     case SL_V8_HTTP_STRING_COUNT:
     default:
         return nullptr;
@@ -124,6 +154,14 @@ const char* http_v8_private_key_name(SlV8HttpPrivateKey key)
         return "__sloppyBodyKind";
     case SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT:
         return "__sloppyHeaderSnapshot";
+    case SL_V8_HTTP_PRIVATE_LOG_CATEGORY:
+        return "__sloppyLogCategory";
+    case SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID:
+        return "__sloppyLogRequestId";
+    case SL_V8_HTTP_PRIVATE_LOG_ROUTE_NAME:
+        return "__sloppyLogRouteName";
+    case SL_V8_HTTP_PRIVATE_LOG_ROUTE_PATTERN:
+        return "__sloppyLogRoutePattern";
     case SL_V8_HTTP_PRIVATE_REASON:
         return "reason";
     case SL_V8_HTTP_PRIVATE_COUNT:
@@ -246,6 +284,41 @@ bool http_v8_cached_function(v8::Isolate* isolate, v8::Local<v8::Context> contex
     return true;
 }
 
+bool http_v8_cached_log_noop_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Function>* out)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::Local<v8::String> source;
+    v8::Local<v8::Script> script;
+    v8::Local<v8::Value> value;
+    v8::Local<v8::Function> function;
+
+    if (backend == nullptr || out == nullptr) {
+        return false;
+    }
+    if (!backend->http_log_noop_function.IsEmpty()) {
+        *out = backend->http_log_noop_function.Get(isolate);
+        return true;
+    }
+
+    if (!sl_status_is_ok(sl_v8_string_from_native_view(
+            backend, sl_str_from_cstr("(function sloppyLogDisabled(){})"), &source)) ||
+        !v8::Script::Compile(context, source).ToLocal(&script) ||
+        !script->Run(context).ToLocal(&value) || !value->IsFunction())
+    {
+        return false;
+    }
+    function = value.As<v8::Function>();
+    if (!function->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
+        return false;
+    }
+
+    backend->http_log_noop_function.Reset(isolate, function);
+    *out = function;
+    return true;
+}
+
 bool http_v8_prototype_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> prototype, SlV8HttpStringKey name,
                                     SlV8HttpFunctionKey function_key, v8::FunctionCallback callback)
@@ -325,6 +398,32 @@ bool http_v8_cached_prototype(v8::Isolate* isolate, v8::Local<v8::Context> conte
                                             SL_V8_HTTP_STRING_THROW_IF_ABORTED,
                                             SL_V8_HTTP_FUNCTION_SIGNAL_THROW_IF_ABORTED,
                                             http_v8_signal_throw_if_aborted_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_LOGGER:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_TRACE,
+                                            SL_V8_HTTP_FUNCTION_LOG_TRACE,
+                                            http_v8_log_trace_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_DEBUG,
+                                            SL_V8_HTTP_FUNCTION_LOG_DEBUG,
+                                            http_v8_log_debug_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_INFO,
+                                            SL_V8_HTTP_FUNCTION_LOG_INFO,
+                                            http_v8_log_info_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_WARN,
+                                            SL_V8_HTTP_FUNCTION_LOG_WARN,
+                                            http_v8_log_warn_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_ERROR,
+                                            SL_V8_HTTP_FUNCTION_LOG_ERROR,
+                                            http_v8_log_error_callback) ||
+            !http_v8_prototype_set_function(
+                isolate, context, prototype, SL_V8_HTTP_STRING_IS_ENABLED,
+                SL_V8_HTTP_FUNCTION_LOG_IS_ENABLED, http_v8_log_is_enabled_callback) ||
+            !http_v8_prototype_set_function(
+                isolate, context, prototype, SL_V8_HTTP_STRING_FOR_CATEGORY,
+                SL_V8_HTTP_FUNCTION_LOG_FOR_CATEGORY, http_v8_log_for_category_callback))
         {
             return false;
         }
@@ -588,6 +687,387 @@ bool http_v8_get_private_value(v8::Isolate* isolate, v8::Local<v8::Context> cont
     }
 
     return true;
+}
+
+void http_v8_log_throw_type_error(v8::Isolate* isolate, const char* message)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+
+    if (backend != nullptr &&
+        sl_v8_throw_type_error_from_native_view(backend, sl_str_from_cstr(message)))
+    {
+        return;
+    }
+    isolate->ThrowException(
+        v8::Exception::TypeError(v8::String::NewFromUtf8(isolate, message).ToLocalChecked()));
+}
+
+bool http_v8_set_private_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                v8::Local<v8::Object> object, SlV8HttpPrivateKey name, SlStr value)
+{
+    v8::Local<v8::String> local_value;
+
+    if (!sl_status_is_ok(http_v8_to_local_string(isolate, value, &local_value))) {
+        return false;
+    }
+    return http_v8_set_private_value(isolate, context, object, name, local_value);
+}
+
+bool http_v8_get_private_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                v8::Local<v8::Object> object, SlV8HttpPrivateKey name,
+                                std::string* out)
+{
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr || !http_v8_get_private_value(isolate, context, object, name, &value)) {
+        return false;
+    }
+    if (!value->IsString()) {
+        out->clear();
+        return true;
+    }
+    *out = http_v8_value_to_string(isolate, value);
+    return true;
+}
+
+bool http_v8_log_level_from_value(v8::Isolate* isolate, v8::Local<v8::Value> value,
+                                  SlLogLevel* out_level)
+{
+    std::string level_text;
+    SlStatus status;
+
+    if (out_level == nullptr || !value->IsString()) {
+        return false;
+    }
+    level_text = http_v8_value_to_string(isolate, value);
+    status = sl_log_level_from_str(http_v8_str_from_string(level_text), out_level);
+    return sl_status_is_ok(status) && *out_level != SL_LOG_LEVEL_OFF;
+}
+
+bool http_v8_log_append_field(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              SlLogEventBuilder* builder, const std::string& key,
+                              v8::Local<v8::Value> value)
+{
+    SlStatus status;
+
+    if (key.empty()) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log field keys must be non-empty strings.");
+        return false;
+    }
+
+    if (value->IsNull()) {
+        status = sl_log_event_builder_add_null(builder, http_v8_str_from_string(key));
+    }
+    else if (value->IsBoolean()) {
+        status = sl_log_event_builder_add_bool(builder, http_v8_str_from_string(key),
+                                               value->BooleanValue(isolate));
+    }
+    else if (value->IsInt32()) {
+        status = sl_log_event_builder_add_i64(
+            builder, http_v8_str_from_string(key),
+            static_cast<int64_t>(value->Int32Value(context).FromMaybe(0)));
+    }
+    else if (value->IsUint32()) {
+        status = sl_log_event_builder_add_i64(
+            builder, http_v8_str_from_string(key),
+            static_cast<int64_t>(value->Uint32Value(context).FromMaybe(0U)));
+    }
+    else if (value->IsNumber()) {
+        double number = value->NumberValue(context).FromMaybe(0.0);
+        if (!std::isfinite(number)) {
+            http_v8_log_throw_type_error(isolate, "Sloppy log number fields must be finite.");
+            return false;
+        }
+        status = sl_log_event_builder_add_f64(builder, http_v8_str_from_string(key), number);
+    }
+    else if (value->IsString()) {
+        std::string text = http_v8_value_to_string(isolate, value);
+        status = sl_log_event_builder_add_string(builder, http_v8_str_from_string(key),
+                                                 http_v8_str_from_string(text));
+    }
+    else {
+        http_v8_log_throw_type_error(
+            isolate, "Sloppy log fields support null, boolean, number, and string values.");
+        return false;
+    }
+
+    if (!sl_status_is_ok(status)) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log field exceeded bounded event capacity.");
+        return false;
+    }
+    return true;
+}
+
+bool http_v8_log_append_fields(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               SlLogEventBuilder* builder, v8::Local<v8::Value> fields)
+{
+    v8::Local<v8::Object> object;
+    v8::Local<v8::Array> names;
+
+    if (fields->IsUndefined() || fields->IsNull()) {
+        return true;
+    }
+    if (!fields->IsObject() || fields->IsArray() || fields->IsFunction()) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log fields must be a shallow plain object.");
+        return false;
+    }
+
+    object = fields.As<v8::Object>();
+    if (!object->GetOwnPropertyNames(context).ToLocal(&names)) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log fields could not be enumerated.");
+        return false;
+    }
+    if (names->Length() > SL_LOG_MAX_FIELDS) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log fields exceed the maximum field count.");
+        return false;
+    }
+
+    for (uint32_t index = 0U; index < names->Length(); index += 1U) {
+        v8::Local<v8::Value> key_value;
+        v8::Local<v8::Value> value;
+        std::string key;
+
+        if (!names->Get(context, index).ToLocal(&key_value) || !key_value->IsString() ||
+            !object->Get(context, key_value).ToLocal(&value))
+        {
+            http_v8_log_throw_type_error(isolate, "Sloppy log field keys must be strings.");
+            return false;
+        }
+        key = http_v8_value_to_string(isolate, key_value);
+        if (!http_v8_log_append_field(isolate, context, builder, key, value)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+SlV8HttpStringKey http_v8_log_method_key(SlLogLevel level)
+{
+    switch (level) {
+    case SL_LOG_LEVEL_TRACE:
+        return SL_V8_HTTP_STRING_TRACE;
+    case SL_LOG_LEVEL_DEBUG:
+        return SL_V8_HTTP_STRING_DEBUG;
+    case SL_LOG_LEVEL_INFO:
+        return SL_V8_HTTP_STRING_INFO;
+    case SL_LOG_LEVEL_WARN:
+        return SL_V8_HTTP_STRING_WARN;
+    case SL_LOG_LEVEL_ERROR:
+        return SL_V8_HTTP_STRING_ERROR;
+    case SL_LOG_LEVEL_OFF:
+    default:
+        return SL_V8_HTTP_STRING_COUNT;
+    }
+}
+
+bool http_v8_logger_shadow_disabled_method(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                           v8::Local<v8::Object> logger, SlLogLevel level)
+{
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    SlV8HttpStringKey method_name = http_v8_log_method_key(level);
+    v8::Local<v8::String> key;
+    v8::Local<v8::Function> noop;
+
+    if (backend == nullptr || method_name == SL_V8_HTTP_STRING_COUNT) {
+        return false;
+    }
+    if (backend->logging != nullptr && sl_log_runtime_is_enabled(backend->logging, level)) {
+        return true;
+    }
+    if (!sl_status_is_ok(http_v8_cached_string(isolate, method_name, &key)) ||
+        !http_v8_cached_log_noop_function(isolate, context, &noop))
+    {
+        return false;
+    }
+    return logger
+        ->DefineOwnProperty(context, key, noop,
+                            static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete))
+        .FromMaybe(false);
+}
+
+bool http_v8_logger_shadow_disabled_methods(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                            v8::Local<v8::Object> logger)
+{
+    return http_v8_logger_shadow_disabled_method(isolate, context, logger, SL_LOG_LEVEL_TRACE) &&
+           http_v8_logger_shadow_disabled_method(isolate, context, logger, SL_LOG_LEVEL_DEBUG) &&
+           http_v8_logger_shadow_disabled_method(isolate, context, logger, SL_LOG_LEVEL_INFO) &&
+           http_v8_logger_shadow_disabled_method(isolate, context, logger, SL_LOG_LEVEL_WARN) &&
+           http_v8_logger_shadow_disabled_method(isolate, context, logger, SL_LOG_LEVEL_ERROR);
+}
+
+bool http_v8_make_logger_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                SlStr category, SlStr request_id, SlStr route_name,
+                                SlStr route_pattern, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> logger = v8::Object::New(isolate);
+    v8::Local<v8::Object> prototype;
+
+    if (out == nullptr ||
+        !http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_LOGGER, &prototype) ||
+        !logger->SetPrototype(context, prototype).FromMaybe(false) ||
+        !http_v8_set_private_string(isolate, context, logger, SL_V8_HTTP_PRIVATE_LOG_CATEGORY,
+                                    category) ||
+        !http_v8_set_private_string(isolate, context, logger, SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID,
+                                    request_id) ||
+        !http_v8_set_private_string(isolate, context, logger, SL_V8_HTTP_PRIVATE_LOG_ROUTE_NAME,
+                                    route_name) ||
+        !http_v8_set_private_string(isolate, context, logger, SL_V8_HTTP_PRIVATE_LOG_ROUTE_PATTERN,
+                                    route_pattern) ||
+        !http_v8_logger_shadow_disabled_methods(isolate, context, logger) ||
+        !logger->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        return false;
+    }
+
+    *out = logger;
+    return true;
+}
+
+void http_v8_log_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args, SlLogLevel level)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    std::string message;
+    std::string category;
+    std::string request_id;
+    std::string route_name;
+    std::string route_pattern;
+    SlLogEventBuilder builder = {};
+    SlLogEvent event = {};
+    SlStatus status;
+
+    if (backend == nullptr || backend->logging == nullptr ||
+        !sl_log_runtime_is_enabled(backend->logging, level))
+    {
+        return;
+    }
+    if (args.Length() < 1 || args[0]->IsUndefined() || args[0]->IsSymbol()) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log message must be a stringable value.");
+        return;
+    }
+
+    message = http_v8_value_to_string(isolate, args[0]);
+    if (!http_v8_get_private_string(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_LOG_CATEGORY,
+                                    &category) ||
+        !http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID, &request_id) ||
+        !http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_ROUTE_NAME, &route_name) ||
+        !http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_ROUTE_PATTERN, &route_pattern))
+    {
+        http_v8_log_throw_type_error(isolate,
+                                     "Sloppy log method was called with an invalid receiver.");
+        return;
+    }
+
+    status = sl_log_event_builder_init(&builder, level, http_v8_str_from_string(message));
+    if (sl_status_is_ok(status) && !category.empty()) {
+        status = sl_log_event_builder_set_category(&builder, http_v8_str_from_string(category));
+    }
+    if (sl_status_is_ok(status) && !request_id.empty()) {
+        status = sl_log_event_builder_set_request_id(&builder, http_v8_str_from_string(request_id));
+    }
+    if (sl_status_is_ok(status) && (!route_name.empty() || !route_pattern.empty())) {
+        status = sl_log_event_builder_set_route(&builder, http_v8_str_from_string(route_name),
+                                                http_v8_str_from_string(route_pattern));
+    }
+    if (!sl_status_is_ok(status)) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log event exceeded bounded event capacity.");
+        return;
+    }
+    if (args.Length() >= 2 && !http_v8_log_append_fields(isolate, context, &builder, args[1])) {
+        return;
+    }
+    status = sl_log_event_builder_finish(&builder, &event);
+    if (!sl_status_is_ok(status)) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log event could not be completed.");
+        return;
+    }
+    (void)sl_log_runtime_submit(backend->logging, &event);
+}
+
+void http_v8_log_trace_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    http_v8_log_write_callback(args, SL_LOG_LEVEL_TRACE);
+}
+
+void http_v8_log_debug_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    http_v8_log_write_callback(args, SL_LOG_LEVEL_DEBUG);
+}
+
+void http_v8_log_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    http_v8_log_write_callback(args, SL_LOG_LEVEL_INFO);
+}
+
+void http_v8_log_warn_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    http_v8_log_write_callback(args, SL_LOG_LEVEL_WARN);
+}
+
+void http_v8_log_error_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    http_v8_log_write_callback(args, SL_LOG_LEVEL_ERROR);
+}
+
+void http_v8_log_is_enabled_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    SlLogLevel level = SL_LOG_LEVEL_OFF;
+
+    if (args.Length() < 1 || !http_v8_log_level_from_value(isolate, args[0], &level)) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log level is invalid.");
+        return;
+    }
+    args.GetReturnValue().Set(backend != nullptr && backend->logging != nullptr &&
+                              sl_log_runtime_is_enabled(backend->logging, level));
+}
+
+void http_v8_log_for_category_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string category;
+    std::string request_id;
+    std::string route_name;
+    std::string route_pattern;
+    v8::Local<v8::Object> logger;
+
+    if (args.Length() < 1 || !args[0]->IsString()) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log category must be a string.");
+        return;
+    }
+    category = http_v8_value_to_string(isolate, args[0]);
+    if (category.empty()) {
+        http_v8_log_throw_type_error(isolate, "Sloppy log category must be non-empty.");
+        return;
+    }
+    if (!http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID, &request_id) ||
+        !http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_ROUTE_NAME, &route_name) ||
+        !http_v8_get_private_string(isolate, context, args.This(),
+                                    SL_V8_HTTP_PRIVATE_LOG_ROUTE_PATTERN, &route_pattern) ||
+        !http_v8_make_logger_object(isolate, context, http_v8_str_from_string(category),
+                                    http_v8_str_from_string(request_id),
+                                    http_v8_str_from_string(route_name),
+                                    http_v8_str_from_string(route_pattern), &logger))
+    {
+        http_v8_log_throw_type_error(isolate, "Sloppy category logger could not be created.");
+        return;
+    }
+
+    args.GetReturnValue().Set(logger);
 }
 
 bool http_v8_make_uint8_array(v8::Isolate* isolate, SlBytes bytes, v8::Local<v8::Uint8Array>* out)
@@ -1664,6 +2144,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     v8::Local<v8::Object> request = v8::Object::New(isolate);
     v8::Local<v8::Object> body_object = v8::Object::New(isolate);
     v8::Local<v8::Object> connection = v8::Object::New(isolate);
+    v8::Local<v8::Object> logger;
     v8::Local<v8::Object> body_prototype;
     v8::Local<v8::Object> request_prototype;
     v8::Local<v8::Value> body_bytes_value = v8::Undefined(isolate);
@@ -1715,6 +2196,12 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
 
     request_id = std::to_string(request_context->request_id);
     connection_id = std::to_string(request_context->connection_id);
+    if (!http_v8_make_logger_object(
+            isolate, context, sl_str_from_cstr("request"), http_v8_str_from_string(request_id),
+            request_context->route_name, request_context->route_pattern, &logger))
+    {
+        return false;
+    }
     if (request_context->request->body.length != 0U) {
         v8::Local<v8::Uint8Array> body_bytes;
         if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
@@ -1763,7 +2250,11 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         return false;
     }
 
-    if (!http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
+    if (!http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_NAME,
+                                         request_context->route_name) ||
+        !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_ROUTE_PATTERN,
+                                         request_context->route_pattern) ||
+        !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
                                          http_v8_str_from_string(request_id)) ||
         !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_METHOD,
                                          method) ||
@@ -1793,7 +2284,10 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                          request) ||
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_CONNECTION,
                                          connection) ||
-        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_SIGNAL, signal))
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_SIGNAL, signal) ||
+        !http_v8_set_string_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST_ID,
+                                         http_v8_str_from_string(request_id)) ||
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_LOG, logger))
     {
         return false;
     }

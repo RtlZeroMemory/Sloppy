@@ -13,10 +13,12 @@ typedef struct SlRunApp
     unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char engine_arena_storage[SL_RUN_ARENA_BYTES];
+    unsigned char logging_arena_storage[SL_RUN_LOGGING_ARENA_BYTES];
     SlScopeCleanup app_cleanups[SL_RUN_APP_SCOPE_MAX_CLEANUPS];
     SlArena plan_arena;
     SlArena route_arena;
     SlArena engine_arena;
+    SlArena logging_arena;
     SlPlan plan;
     SlInternTable plan_metadata_interns;
     SlRuntimeFeatureSet runtime_features;
@@ -24,13 +26,20 @@ typedef struct SlRunApp
     SlBytes app_js_bytes;
     SlBytes source_map_bytes;
     SlEngine* engine;
+    SlLogRuntime* logging;
+    SlLogSink* logging_console_sink;
+    SlLogSink* logging_file_sink;
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
     char artifacts_path[SL_RUN_PATH_MAX_BYTES];
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
     char config_tls_certificate_path[SL_RUN_PATH_MAX_BYTES];
     char config_tls_private_key_path[SL_RUN_PATH_MAX_BYTES];
+    char config_logging_file_path[SL_RUN_PATH_MAX_BYTES];
+    SlLogLevel config_logging_minimum_level;
+    SlLogConsoleFormat config_logging_console_format;
     uint16_t config_port;
+    uint64_t config_logging_queue_capacity;
     uint64_t config_max_connections;
     uint64_t config_max_request_body_bytes;
     uint64_t config_keep_alive_idle_timeout_ms;
@@ -39,6 +48,7 @@ typedef struct SlRunApp
     uint64_t next_request_id;
     bool config_tls_enabled;
     bool config_keep_alive_enabled;
+    bool config_logging_console_enabled;
     bool config_has_host;
     bool config_has_port;
     bool config_has_max_connections;
@@ -50,6 +60,11 @@ typedef struct SlRunApp
     bool config_has_tls_enabled;
     bool config_has_tls_certificate_path;
     bool config_has_tls_private_key_path;
+    bool config_has_logging_minimum_level;
+    bool config_has_logging_queue_capacity;
+    bool config_has_logging_console_enabled;
+    bool config_has_logging_console_format;
+    bool config_has_logging_file_path;
 } SlRunApp;
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
@@ -348,6 +363,114 @@ static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
     return true;
 }
 
+static bool sl_run_plan_config_copy_path(char* buffer, size_t capacity, const char* artifacts_path,
+                                         yyjson_val* value)
+{
+    SlStr path = value != NULL && yyjson_is_str(value)
+                     ? sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value))
+                     : sl_str_empty();
+    SlCliSpan path_span = {path.ptr, path.length};
+
+    return sl_status_is_ok(sl_str_validate_no_nul(path)) &&
+           (sl_run_path_span_is_absolute(path_span)
+                ? sl_run_copy_span_cstr(buffer, capacity, path_span)
+                : sl_run_join_path(buffer, capacity, artifacts_path, path_span));
+}
+
+static bool sl_run_plan_config_parse_log_level(yyjson_val* value, SlLogLevel* out)
+{
+    SlStr text = value != NULL && yyjson_is_str(value)
+                     ? sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value))
+                     : sl_str_empty();
+
+    return out != NULL && sl_status_is_ok(sl_log_level_from_str(text, out));
+}
+
+static bool sl_run_plan_config_parse_log_console_format(yyjson_val* value,
+                                                        SlLogConsoleFormat* out)
+{
+    if (out == NULL || value == NULL || !yyjson_is_str(value)) {
+        return false;
+    }
+    if (sl_run_json_string_equals_cstr(value, "pretty")) {
+        *out = SL_LOG_CONSOLE_FORMAT_PRETTY;
+        return true;
+    }
+    if (sl_run_json_string_equals_cstr(value, "jsonl")) {
+        *out = SL_LOG_CONSOLE_FORMAT_JSONL;
+        return true;
+    }
+    return false;
+}
+
+static int sl_run_apply_logging_config_metadata_entry(SlRunApp* app, yyjson_val* key,
+                                                      yyjson_val* value)
+{
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:MinimumLevel")) {
+        if (!sl_run_plan_config_parse_log_level(value, &app->config_logging_minimum_level)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:MinimumLevel must be a log level string\n");
+            return 1;
+        }
+        app->config_has_logging_minimum_level = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:QueueCapacity") ||
+        sl_run_json_string_equals_cstr(key, "Sloppy:Logging:queueCapacity"))
+    {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_logging_queue_capacity) ||
+            !sl_run_plan_config_u64_fits_size_t(app->config_logging_queue_capacity))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:QueueCapacity must be a positive integer\n");
+            return 1;
+        }
+        app->config_has_logging_queue_capacity = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:Console:Enabled")) {
+        if (!sl_run_plan_config_parse_bool(value, &app->config_logging_console_enabled)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:Console:Enabled must be a boolean\n");
+            return 1;
+        }
+        app->config_has_logging_console_enabled = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:Console:Format")) {
+        if (!sl_run_plan_config_parse_log_console_format(value,
+                                                         &app->config_logging_console_format))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:Console:Format must be pretty or jsonl\n");
+            return 1;
+        }
+        app->config_has_logging_console_format = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:File:Path")) {
+        if (!sl_run_plan_config_copy_path(app->config_logging_file_path,
+                                          sizeof(app->config_logging_file_path),
+                                          app->artifacts_path, value))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:File:Path must be a safe path string\n");
+            return 1;
+        }
+        app->config_has_logging_file_path = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Logging:File:Format")) {
+        if (!sl_run_json_string_equals_cstr(value, "jsonl")) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Logging:File:Format must be jsonl\n");
+            return 1;
+        }
+        return 0;
+    }
+    return -1;
+}
+
 static int sl_run_apply_tls_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
 {
     if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:Enabled")) {
@@ -407,6 +530,7 @@ static int sl_run_apply_tls_config_metadata_entry(SlRunApp* app, yyjson_val* key
 static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
 {
     int tls_result = 0;
+    int logging_result = 0;
 
     if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
         if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
@@ -488,6 +612,10 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         tls_result = sl_run_apply_tls_config_metadata_entry(app, key, value);
         if (tls_result >= 0) {
             return tls_result;
+        }
+        logging_result = sl_run_apply_logging_config_metadata_entry(app, key, value);
+        if (logging_result >= 0) {
+            return logging_result;
         }
     }
 
@@ -800,6 +928,7 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
     options.runtime_features = app == NULL ? NULL : &app->runtime_features;
+    options.logging = app == NULL ? NULL : app->logging;
     options.source_map = app == NULL ? (SlBytes){0} : app->source_map_bytes;
     options.source_map_source_name =
         app_js_path == NULL ? sl_str_empty() : sl_str_from_cstr(app_js_path);
@@ -815,6 +944,95 @@ static void sl_run_engine_cleanup(void* payload, void* user)
         sl_engine_destroy(*engine);
         *engine = NULL;
     }
+}
+
+static SlStatus sl_run_log_console_writer(SlBytes bytes, void* user)
+{
+    FILE* stream = user == NULL ? stderr : (FILE*)user;
+
+    if (bytes.length != 0U && bytes.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return fwrite(bytes.ptr, 1U, bytes.length, stream) == bytes.length
+               ? sl_status_ok()
+               : sl_status_from_code(SL_STATUS_INTERNAL);
+}
+
+static void sl_run_logging_cleanup(void* payload, void* user)
+{
+    SlLogRuntime** runtime = (SlLogRuntime**)payload;
+
+    (void)user;
+    if (runtime != NULL && *runtime != NULL) {
+        (void)sl_log_runtime_shutdown(*runtime);
+        *runtime = NULL;
+    }
+}
+
+static int sl_run_setup_logging(SlRunApp* app)
+{
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL) {
+        return 1;
+    }
+
+    config.minimum_level = app->config_logging_minimum_level;
+    config.queue_capacity = (size_t)app->config_logging_queue_capacity;
+    config.sink_capacity = app->config_has_logging_file_path ? 2U : 1U;
+
+    status = sl_log_runtime_create(&app->logging_arena, &config, &app->logging);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize logging runtime\n");
+        return 1;
+    }
+
+    if (app->config_logging_console_enabled) {
+        status = sl_log_console_sink_create(&app->logging_arena, app->config_logging_console_format,
+                                            sl_run_log_console_writer, stderr,
+                                            &app->logging_console_sink);
+        if (sl_status_is_ok(status)) {
+            status = sl_log_runtime_add_sink(app->logging, app->logging_console_sink);
+        }
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_cstr(stderr, "sloppy run: failed to initialize logging console sink\n");
+            return 1;
+        }
+    }
+
+    if (app->config_has_logging_file_path) {
+        status = sl_log_file_sink_create(&app->logging_arena,
+                                         sl_str_from_cstr(app->config_logging_file_path),
+                                         SL_LOG_DEFAULT_FILE_BUFFER_BYTES,
+                                         &app->logging_file_sink);
+        if (sl_status_is_ok(status)) {
+            status = sl_log_runtime_add_sink(app->logging, app->logging_file_sink);
+        }
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_cstr(stderr, "sloppy run: failed to initialize logging file sink\n");
+            return 1;
+        }
+    }
+
+    status = sl_log_runtime_start(app->logging);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to start logging dispatcher\n");
+        return 1;
+    }
+
+    status = sl_app_lifecycle_add_cleanup(&app->lifecycle, sl_run_logging_cleanup,
+                                          (void*)&app->logging, NULL, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag(
+            "sloppy run: failed to register logging shutdown cleanup: ", &app->engine_arena, &diag);
+        (void)sl_log_runtime_shutdown(app->logging);
+        app->logging = NULL;
+        return 1;
+    }
+
+    return 0;
 }
 
 static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
@@ -1111,10 +1329,14 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char* app_js_path)
 {
     SlStr source = {0};
-    SlEngineOptions options = sl_run_v8_options(app, app_js_path);
+    SlEngineOptions options = {0};
     SlDiag diag = {0};
     SlStatus status;
 
+    if (sl_run_setup_logging(app) != 0) {
+        return 1;
+    }
+    options = sl_run_v8_options(app, app_js_path);
     status = sl_engine_create(&options, &app->engine_arena, &app->engine);
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
         sl_cli_write_cstr(stderr, "sloppy run: sloppy run requires V8-enabled build\n");
@@ -1125,8 +1347,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
-    /* app->lifecycle runs LIFO; register sl_run_engine_cleanup first so engine teardown runs last.
-     */
+    /* app->lifecycle runs LIFO; engine teardown runs before logging shutdown. */
     status = sl_app_lifecycle_add_cleanup(&app->lifecycle, sl_run_engine_cleanup,
                                           (void*)&app->engine, NULL, &diag);
     if (!sl_status_is_ok(status)) {
@@ -1174,6 +1395,10 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
     }
 
     *app = (SlRunApp){0};
+    app->config_logging_minimum_level = SL_LOG_LEVEL_INFO;
+    app->config_logging_queue_capacity = SL_LOG_DEFAULT_QUEUE_CAPACITY;
+    app->config_logging_console_enabled = true;
+    app->config_logging_console_format = SL_LOG_CONSOLE_FORMAT_PRETTY;
     if (!sl_run_copy_cstr(app->artifacts_path, sizeof(app->artifacts_path), artifacts_path)) {
         sl_run_write_command_message(command_name, "invalid artifacts directory\n");
         return 1;
@@ -1183,7 +1408,9 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         !sl_status_is_ok(sl_arena_init(&app->route_arena, app->route_arena_storage,
                                        sizeof(app->route_arena_storage))) ||
         !sl_status_is_ok(sl_arena_init(&app->engine_arena, app->engine_arena_storage,
-                                       sizeof(app->engine_arena_storage))))
+                                       sizeof(app->engine_arena_storage))) ||
+        !sl_status_is_ok(sl_arena_init(&app->logging_arena, app->logging_arena_storage,
+                                       sizeof(app->logging_arena_storage))))
     {
         return 1;
     }

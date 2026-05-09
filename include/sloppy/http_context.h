@@ -60,6 +60,8 @@ typedef struct SlHttpRequestContext
      * A NULL token represents a live request with no configured deadline.
      */
     const SlCancellationToken* cancellation;
+    SlStr route_name;
+    SlStr route_pattern;
 } SlHttpRequestContext;
 
 /*

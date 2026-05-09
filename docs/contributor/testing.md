@@ -126,6 +126,16 @@ checking the diagnostic code or the cleanup behavior is incomplete.
   measurement, not pass/fail. Don't use benchmark smoke as correctness
   evidence; don't claim performance numbers from a smoke run.
 
+Logging has focused native stress and benchmark coverage:
+
+```powershell
+ctest --test-dir build/windows-dev -R "core.logging.structured|stress.logging.structured" --output-on-failure
+build/windows-dev/sloppy_bench.exe --smoke --format json --bench logging.enabled.five_fields
+```
+
+Use the stress test for queue pressure, flushing, and shutdown regressions. Use
+the benchmark smoke only to check that the benchmark harness still runs.
+
 ## Conformance and CTest
 
 CTest fixtures under `tests/conformance/` drive the CLI end-to-end —

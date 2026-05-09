@@ -871,6 +871,10 @@ async function flushMicrotasks(count = 6) {
 
     const memorySink = builder.logging.addMemorySink();
     builder.logging.setMinimumLevel("info");
+    builder.logging.setQueueCapacity(8);
+    builder.logging.addRedactionKey("customSecret");
+    builder.logging.writeTo.console({ format: "jsonl" });
+    builder.logging.writeTo.file({ path: "logs/app.jsonl" });
     assertThrowsMessage(() => builder.logging.setMinimumLevel("verbose"), /log level/);
 
     let singletonCalls = 0;
@@ -957,6 +961,30 @@ async function flushMicrotasks(count = 6) {
     });
     assert.notEqual(memorySink.entries()[0].fields, fields);
     assert.equal(Object.isFrozen(memorySink.entries()[0].fields), true);
+    assert.equal(app.log.isEnabled("debug"), false);
+    assert.equal(app.log.isEnabled("info"), true);
+
+    const userLog = app.log.forCategory("users");
+    userLog.warn("loaded user", {
+        id: 7,
+        ok: true,
+        token: "SECRET_TOKEN_SHOULD_NOT_APPEAR",
+        customSecret: "SECRET_CUSTOM_SHOULD_NOT_APPEAR",
+        empty: null,
+    });
+    assert.equal(memorySink.entries().length, 2);
+    assert.equal(memorySink.entries()[1].category, "users");
+    assert.deepEqual(memorySink.entries()[1].fields, {
+        id: 7,
+        ok: true,
+        token: "[REDACTED]",
+        customSecret: "[REDACTED]",
+        empty: null,
+    });
+    assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_TOKEN_SHOULD_NOT_APPEAR"), false);
+    assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_CUSTOM_SHOULD_NOT_APPEAR"), false);
+    assertThrowsMessage(() => app.log.info("bad", { nested: {} }), /fields support/);
+    assertThrowsMessage(() => app.log.info("bad", { tooMany: 1, a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1, h: 1 }), /at most 8/);
 
     app.mapGet("/", ({ config, log, services }) => {
         log.info("handler", { route: "/" });
@@ -1327,9 +1355,13 @@ async function flushMicrotasks(count = 6) {
             this.greeting = greeting;
         }
 
-        get({ route, services }) {
+        get({ route, routeName, routePattern, services }) {
             actionSawServices = services !== undefined;
-            return Results.ok({ message: this.greeting.greet(route.id ?? "demo") });
+            return Results.ok({
+                message: this.greeting.greet(route.id ?? "demo"),
+                routeName,
+                routePattern,
+            });
         }
     }
 
@@ -1345,8 +1377,14 @@ async function flushMicrotasks(count = 6) {
     assert.equal(route.metadata.action, "get");
     assert.deepEqual(route.handler({ route: { id: 42 }, services: app.services.createScope() }).body, {
         message: "hello-42",
+        routeName: "Users.Get",
+        routePattern: "/users/{id:int}",
     });
-    assert.deepEqual(route.handler().body, { message: "hello-demo" });
+    assert.deepEqual(route.handler().body, {
+        message: "hello-demo",
+        routeName: "Users.Get",
+        routePattern: "/users/{id:int}",
+    });
     assert.equal(disposedScoped, 1);
     assert.equal(actionSawServices, true);
 
@@ -2209,7 +2247,12 @@ async function flushMicrotasks(count = 6) {
     const app = builder.build();
     app.use(RequestId.defaults({ generator: () => "req-log-1" }));
     app.use(RequestLogging.defaults());
-    app.get("/items/{id:int}", (ctx) => Results.status(202, { requestId: ctx.requestId }));
+    app.get("/items/{id:int}", (ctx) => Results.status(202, {
+        requestId: ctx.requestId,
+        routeName: ctx.routeName,
+        routePattern: ctx.routePattern,
+        id: ctx.route.id,
+    })).withName("Items.Get");
     const response = await app.__getRoutes()[0].handler({
         route: { id: "7" },
         request: {
@@ -2220,12 +2263,20 @@ async function flushMicrotasks(count = 6) {
         },
     });
     assert.equal(response.status, 202);
+    assert.deepEqual(response.body, {
+        requestId: "req-log-1",
+        routeName: "Items.Get",
+        routePattern: "/items/{id:int}",
+        id: "7",
+    });
     assert.equal(sink.entries().length, 1);
     assert.equal(sink.entries()[0].level, "info");
     assert.equal(sink.entries()[0].message, "request completed");
     assert.equal(sink.entries()[0].fields.method, "GET");
     assert.equal(sink.entries()[0].fields.path, "/items/7?debug=true");
     assert.equal(sink.entries()[0].fields.route, "/items/{id:int}");
+    assert.equal(sink.entries()[0].fields.routePattern, "/items/{id:int}");
+    assert.equal(sink.entries()[0].fields.routeName, "Items.Get");
     assert.equal(sink.entries()[0].fields.status, 202);
     assert.equal(sink.entries()[0].fields.requestId, "req-log-1");
     assert.equal(Number.isInteger(sink.entries()[0].fields.durationMs), true);
@@ -2243,6 +2294,7 @@ async function flushMicrotasks(count = 6) {
         path: "/short",
         status: 418,
         route: "/short",
+        routePattern: "/short",
         requestId: "req-short",
     });
 
@@ -2354,6 +2406,7 @@ async function flushMicrotasks(count = 6) {
         path: "/hidden",
         status: 200,
         route: "/hidden",
+        routePattern: "/hidden",
     });
     assert.equal(Object.hasOwn(noReqIdSink.entries()[0].fields, "requestId"), false);
 
