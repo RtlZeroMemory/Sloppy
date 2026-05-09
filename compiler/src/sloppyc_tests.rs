@@ -73,6 +73,29 @@ fn build_args_accept_environment_and_runtime_overrides() {
                 port: Some(5173),
                 config_dir: None,
                 config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+                timings_json: None,
+            },
+        }
+    );
+}
+
+#[test]
+fn build_args_accept_timings_json_output() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("app.js"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--timings-json"),
+            OsString::from("artifacts/bench/timings.json"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("app.js"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: CompileOptions {
+                timings_json: Some(std::path::PathBuf::from("artifacts/bench/timings.json")),
+                ..CompileOptions::default()
             },
         }
     );
@@ -162,6 +185,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         port: Some(6000),
         config_dir: None,
         config_overrides: Vec::new(),
+        timings_json: None,
     };
     let config =
         super::ConfigurationModel::load(&input, &options, &[]).expect("configuration should load");
@@ -287,6 +311,7 @@ export default app;
         port: None,
         config_dir: None,
         config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+        timings_json: None,
     };
     let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)
         .expect("configuration should load");
@@ -3826,8 +3851,7 @@ export default app;
         .contains("const __sloppy_typed_handler = async (input)"));
     let handler_start = emitted_js
         .handler_generated_starts
-        .iter()
-        .find(|start| start.handler_id == 1)
+        .first()
         .expect("handler start should be recorded");
     let first_mapping = emitted_js
         .mappings

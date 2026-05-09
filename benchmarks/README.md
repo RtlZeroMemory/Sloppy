@@ -10,6 +10,9 @@ There are two benchmark layers:
 - `tools/windows/bench.ps1 -Suite ...` is the BENCH-01 local runtime comparison engine for
   controlled Sloppy/Node/Bun/Deno workloads. It validates responses before timing them and
   writes structured JSON.
+- `tools/windows/bench-compiler.ps1` is the compiler scalability harness for
+  deterministic source-input projects. It measures `sloppyc` compile time,
+  phase timings, process working set, and emitted artifact sizes.
 
 Run native smoke/list checks locally:
 
@@ -35,9 +38,19 @@ Run the local runtime engine:
 .\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
 ```
 
+Run compiler scalability smoke and scale reports:
+
+```powershell
+.\tools\windows\bench-compiler.ps1 -Suite smoke -Out artifacts\bench\compiler-smoke.json
+.\tools\windows\bench-compiler.ps1 -Suite scale -Size small,medium -Out artifacts\bench\compiler-scale-smoke.json
+.\tools\windows\bench-compiler.ps1 -Compare artifacts\bench\compiler-before.json artifacts\bench\compiler-after.json
+```
+
 The Unix wrapper preserves the command shape and native `sloppy_bench` path. The BENCH-01
 local runtime comparison engine is currently Windows-first; Unix reports that lane as
 `UNAVAILABLE` until a matching process/HTTP runner is implemented.
+The Unix compiler wrapper is available at `tools/unix/bench-compiler.sh` and
+uses the same Node-backed generator and compiler harness.
 
 Debug numbers are not meaningful. Smoke mode only validates the harness starts and each default
 benchmark path can execute a tiny iteration count; smoke output is not a performance
@@ -172,6 +185,12 @@ Local runtime JSON uses `schemaVersion: 1`. Each report includes:
 - Per-workload status, correctness details, p50/p95/p99 latency, throughput, startup time,
   error count, process CPU/memory counters where available, and reserved allocation/copying
   fields.
+
+Compiler benchmark JSON also uses `schemaVersion: 1`. Each report includes
+Git/host/compiler metadata plus one benchmark entry per size. Entries record
+project shape, status, duration, sampled peak working set, artifact byte sizes,
+compiler phase timings, and source counters. See
+`docs/contributor/compiler-performance.md` for the schema and workflow.
 
 Use compare mode to compare two reports from the same machine and similar load conditions.
 Do not compare a laptop run against a CI VM or a dirty Debug build against a clean Release

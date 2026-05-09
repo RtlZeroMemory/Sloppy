@@ -67,6 +67,7 @@ compiler fails closed rather than emitting a partial Plan.
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
 | OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
+| Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
@@ -86,3 +87,5 @@ compiler fails closed rather than emitting a partial Plan.
 
 - Production hardening, public release polish, and application dependency workflows are separate product work.
 - Default local checks do not provide full cross-platform parity coverage.
+- Compiler benchmark reports are local measurement artifacts. They are not
+  compatibility guarantees or public performance comparisons.

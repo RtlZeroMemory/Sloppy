@@ -3,6 +3,7 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use oxc_allocator::Allocator;
@@ -83,6 +84,7 @@ pub struct CompileOptions {
     pub port: Option<u16>,
     pub config_dir: Option<PathBuf>,
     pub config_overrides: Vec<(String, String)>,
+    pub timings_json: Option<PathBuf>,
 }
 
 impl CompileOptions {
@@ -93,6 +95,7 @@ impl CompileOptions {
             port: None,
             config_dir: None,
             config_overrides: Vec::new(),
+            timings_json: None,
         }
     }
 }
@@ -140,6 +143,70 @@ pub struct CompileError {
     pub code: i32,
     pub diagnostic: Diagnostic,
     pub source: Option<String>,
+}
+
+#[derive(Debug)]
+struct CompileMetrics {
+    schema_version: u32,
+    started_at_unix_ms: u128,
+    phases_ms: BTreeMap<&'static str, u128>,
+    counters: BTreeMap<&'static str, u64>,
+    artifacts: BTreeMap<&'static str, u64>,
+}
+
+impl CompileMetrics {
+    fn new() -> Self {
+        let started_at_unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        Self {
+            schema_version: 1,
+            started_at_unix_ms,
+            phases_ms: BTreeMap::new(),
+            counters: BTreeMap::new(),
+            artifacts: BTreeMap::new(),
+        }
+    }
+
+    fn add_phase(&mut self, name: &'static str, duration: Duration) {
+        *self.phases_ms.entry(name).or_insert(0) += duration.as_millis();
+    }
+
+    fn set_counter(&mut self, name: &'static str, value: u64) {
+        self.counters.insert(name, value);
+    }
+
+    fn set_artifact_bytes(&mut self, name: &'static str, value: usize) {
+        self.artifacts.insert(name, value as u64);
+    }
+
+    fn record_app(&mut self, app: &ExtractedApp) {
+        self.set_counter("filesParsed", app.source_files.len() as u64);
+        self.set_counter(
+            "sourceBytes",
+            app.source_files
+                .iter()
+                .map(|file| file.source.len() as u64)
+                .sum(),
+        );
+        self.set_counter("routes", app.routes.len() as u64);
+        self.set_counter("handlers", app.routes.len() as u64);
+        self.set_counter("schemas", app.schemas.len() as u64);
+        self.set_counter("services", app.service_registrations.len() as u64);
+        self.set_counter("providers", app.capabilities.len() as u64);
+        self.set_counter("configReads", app.config_reads.len() as u64);
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "schemaVersion": self.schema_version,
+            "startedAtUnixMs": self.started_at_unix_ms,
+            "phases": self.phases_ms,
+            "counters": self.counters,
+            "artifacts": self.artifacts
+        })
+    }
 }
 
 struct HandlerExtractionContext<'a> {
@@ -480,6 +547,12 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
             options
                 .config_overrides
                 .push((key.to_string(), value.to_string()));
+        } else if arg == "--timings-json" || arg == "--diagnostics-timing-json" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(format!("build requires a file after {arg}"));
+            }
+            options.timings_json = Some(PathBuf::from(&values[index]));
         } else if arg.starts_with('-') {
             return CliCommand::Invalid(format!("unsupported build option '{arg}'"));
         } else if input.is_none() {
@@ -515,7 +588,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>]\n",
+        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json <file>]\n",
     );
     text
 }
@@ -538,6 +611,9 @@ pub fn compile_file(
 }
 
 fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), Box<CompileError>> {
+    let mut metrics = options.timings_json.as_ref().map(|_| CompileMetrics::new());
+
+    let read_start = Instant::now();
     let source = fs::read_to_string(input).map_err(|error| {
         Box::new(CompileError {
             code: 1,
@@ -549,15 +625,20 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
             source: None,
         })
     })?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("readInputMs", read_start.elapsed());
+    }
 
-    let mut extracted = extract(input, &source).map_err(|diagnostic| {
-        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
-        Box::new(CompileError {
-            code: 1,
-            diagnostic,
-            source: diagnostic_source,
-        })
-    })?;
+    let mut extracted =
+        extract_with_metrics(input, &source, metrics.as_mut()).map_err(|diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
+            Box::new(CompileError {
+                code: 1,
+                diagnostic,
+                source: diagnostic_source,
+            })
+        })?;
+    let config_start = Instant::now();
     let configuration = ConfigurationModel::load(input, options, &extracted.config_reads).map_err(
         |diagnostic| {
             let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
@@ -568,6 +649,9 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
             })
         },
     )?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("configurationMs", config_start.elapsed());
+    }
     configuration
         .apply_to_app(&mut extracted)
         .map_err(|diagnostic| {
@@ -578,7 +662,10 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
                 source: diagnostic_source,
             })
         })?;
-    write_artifacts(out_dir, &extracted).map_err(|diagnostic| {
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.record_app(&extracted);
+    }
+    write_artifacts(out_dir, &extracted, metrics.as_mut()).map_err(|diagnostic| {
         let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
@@ -586,6 +673,16 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
             source: diagnostic_source,
         })
     })?;
+    if let (Some(metrics), Some(path)) = (metrics.as_ref(), options.timings_json.as_ref()) {
+        write_timings_json(path, metrics).map_err(|diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
+            Box::new(CompileError {
+                code: 1,
+                diagnostic,
+                source: diagnostic_source,
+            })
+        })?;
+    }
     Ok(())
 }
 
@@ -644,11 +741,42 @@ fn read_artifact(path: &Path, name: &str) -> Result<String, Box<CompileError>> {
     })
 }
 
+fn write_timings_json(path: &Path, metrics: &CompileMetrics) -> Result<(), Diagnostic> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_OUTPUT",
+                    format!("failed to create timings output directory: {error}"),
+                )
+                .with_path(parent)
+            })?;
+        }
+    }
+    let value = metrics.to_json();
+    let mut contents = serde_json::to_string_pretty(&value).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to serialize timings JSON: {error}"),
+        )
+        .with_path(path)
+    })?;
+    contents.push('\n');
+    fs::write(path, contents).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to write timings JSON: {error}"),
+        )
+        .with_path(path)
+    })
+}
+
 #[derive(Debug, Clone)]
 struct ModuleGraph {
     entry_dir: PathBuf,
     visiting: BTreeSet<PathBuf>,
     modules: BTreeMap<PathBuf, CachedModule>,
+    source_file_names: BTreeSet<String>,
     source_files: Vec<SourceFile>,
     uses_time_runtime: bool,
     uses_crypto_runtime: bool,
@@ -680,6 +808,7 @@ impl ModuleGraph {
             entry_dir: fs::canonicalize(&entry_dir).unwrap_or(entry_dir),
             visiting: BTreeSet::new(),
             modules: BTreeMap::new(),
+            source_file_names: BTreeSet::new(),
             source_files: Vec::new(),
             uses_time_runtime: false,
             uses_crypto_runtime: false,
@@ -695,7 +824,7 @@ impl ModuleGraph {
 
     fn record_source(&mut self, path: &Path, source: &str) -> String {
         let name = source_map_source_name(path);
-        if !self.source_files.iter().any(|file| file.name == name) {
+        if self.source_file_names.insert(name.clone()) {
             self.source_files.push(SourceFile {
                 name: name.clone(),
                 source: source.to_string(),
@@ -705,19 +834,33 @@ impl ModuleGraph {
     }
 }
 
+#[cfg(test)]
 fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
+    extract_with_metrics(path, source, None)
+}
+
+fn extract_with_metrics(
+    path: &Path,
+    source: &str,
+    metrics: Option<&mut CompileMetrics>,
+) -> Result<ExtractedApp, Diagnostic> {
     let mut graph = ModuleGraph::new(path);
-    extract_entry(path, source, &mut graph)
+    extract_entry(path, source, &mut graph, metrics)
 }
 
 fn extract_entry(
     path: &Path,
     source: &str,
     graph: &mut ModuleGraph,
+    mut metrics: Option<&mut CompileMetrics>,
 ) -> Result<ExtractedApp, Diagnostic> {
     let source_type = source_type_for_path(path, ParseContext::Entry)?;
+    let parse_start = Instant::now();
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("parseEntryMs", parse_start.elapsed());
+    }
 
     if let Some(error) = parsed.errors.into_iter().next() {
         return Err(
@@ -731,6 +874,7 @@ fn extract_entry(
     state.noncrypto_hash_security_context_visible = noncrypto_hash_security_context_visible(source);
     state.checksum_security_context_visible = checksum_security_context_visible(source);
     state.schema_names = collect_schema_declaration_names(&parsed.program.body);
+    let extract_start = Instant::now();
     for statement in &parsed.program.body {
         if state.dynamic_import.is_none() {
             state.dynamic_import = statement_dynamic_import_span(statement);
@@ -783,6 +927,9 @@ fn extract_entry(
             extract_expression_statement(path, source, &source_name, &mut state, statement)?;
         }
     }
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("extractMs", extract_start.elapsed());
+    }
 
     if let Some(span) = state.dynamic_import {
         return Err(Diagnostic::new(
@@ -832,6 +979,7 @@ fn extract_entry(
         .with_hint(hint));
     }
 
+    let module_graph_start = Instant::now();
     for (local_name, span) in state.used_modules.clone() {
         let Some(imported) = state
             .imported_modules
@@ -849,7 +997,7 @@ fn extract_entry(
                 "Import a named function module and pass it directly to app.useModule(...).",
             ));
         };
-        let module_routes = extract_relative_module(graph, &imported)?;
+        let module_routes = extract_relative_module(graph, &imported, metrics.as_deref_mut())?;
         let module = FunctionModule {
             name: imported.export_name.clone(),
             source_name: source_map_source_name(&imported.path),
@@ -859,6 +1007,9 @@ fn extract_entry(
             .entry((module.source_name.clone(), module.name.clone()))
             .or_insert(module);
         state.routes.extend(module_routes);
+    }
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("resolveModuleGraphMs", module_graph_start.elapsed());
     }
 
     let Some(default_export) = state.default_export.as_deref() else {
@@ -895,12 +1046,13 @@ fn extract_entry(
         .with_path(path));
     }
 
+    let app_graph_start = Instant::now();
     append_cors_preflight_routes(path, &mut state.routes)?;
 
     let mut route_keys = BTreeSet::new();
     let mut route_names = BTreeSet::new();
     for route in &state.routes {
-        let key = format!("{} {}", route.method, route.pattern);
+        let key = (route.method, route.pattern.as_str());
         if !route_keys.insert(key) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_DUPLICATE_ROUTE",
@@ -963,6 +1115,9 @@ fn extract_entry(
             .capabilities
             .iter()
             .any(|capability| capability.capability_kind == "queue");
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("appGraphMs", app_graph_start.elapsed());
+    }
 
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
@@ -5691,6 +5846,7 @@ fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<PathBuf>
 fn extract_relative_module(
     graph: &mut ModuleGraph,
     imported: &ImportedModule,
+    mut metrics: Option<&mut CompileMetrics>,
 ) -> Result<Vec<Route>, Diagnostic> {
     if graph.visiting.contains(&imported.path) {
         return Err(Diagnostic::new(
@@ -5708,6 +5864,7 @@ fn extract_relative_module(
     }
     graph.visiting.insert(imported.path.clone());
 
+    let read_start = Instant::now();
     let source = fs::read_to_string(&imported.path).map_err(|error| {
         Diagnostic::new(
             "SLOPPYC_E_INPUT",
@@ -5715,13 +5872,20 @@ fn extract_relative_module(
         )
         .with_path(&imported.path)
     })?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("readInputMs", read_start.elapsed());
+    }
     let source_name = graph.record_source(&imported.path, &source);
     graph.noncrypto_hash_security_context_visible |=
         noncrypto_hash_security_context_visible(&source);
     graph.checksum_security_context_visible |= checksum_security_context_visible(&source);
     let source_type = source_type_for_path(&imported.path, ParseContext::Module)?;
+    let parse_start = Instant::now();
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &source, source_type).parse();
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("parseModulesMs", parse_start.elapsed());
+    }
     if let Some(error) = parsed.errors.into_iter().next() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_PARSE",
@@ -5732,6 +5896,7 @@ fn extract_relative_module(
 
     let mut exports = BTreeMap::<String, Vec<Route>>::new();
     let mut duplicate_exports = BTreeSet::<String>::new();
+    let extract_start = Instant::now();
     for statement in &parsed.program.body {
         match statement {
             Statement::ImportDeclaration(import) => {
@@ -5871,6 +6036,9 @@ fn extract_relative_module(
                 .with_span(statement.span()));
             }
         }
+    }
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("extractMs", extract_start.elapsed());
     }
 
     graph.visiting.remove(&imported.path);
@@ -9165,7 +9333,11 @@ fn join_route_patterns(prefix: &str, child: &str) -> String {
     }
 }
 
-fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic> {
+fn write_artifacts(
+    out_dir: &Path,
+    app: &ExtractedApp,
+    mut metrics: Option<&mut CompileMetrics>,
+) -> Result<(), Diagnostic> {
     validate_output_dir(out_dir)?;
     fs::create_dir_all(out_dir).map_err(|error| {
         Diagnostic::new(
@@ -9175,13 +9347,32 @@ fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic>
         .with_path(out_dir)
     })?;
 
+    let bundle_start = Instant::now();
     let app_js = emit_app_js(app);
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("bundleEmitMs", bundle_start.elapsed());
+        metrics.set_artifact_bytes("appJsBytes", app_js.source.len());
+    }
+    let source_map_start = Instant::now();
     let source_map = emit_source_map(app, &app_js);
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("sourceMapMs", source_map_start.elapsed());
+        metrics.set_artifact_bytes("sourceMapBytes", source_map.len());
+    }
+    let plan_start = Instant::now();
     let plan = emit_plan(app, &sha256_hex(&app_js.source), &sha256_hex(&source_map))?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("planEmitMs", plan_start.elapsed());
+        metrics.set_artifact_bytes("planBytes", plan.len());
+    }
 
+    let write_start = Instant::now();
     write_artifact(out_dir, "app.js", &app_js.source)?;
     write_artifact(out_dir, "app.js.map", &source_map)?;
     write_artifact(out_dir, "app.plan.json", &plan)?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("writeMs", write_start.elapsed());
+    }
     Ok(())
 }
 
@@ -9350,9 +9541,9 @@ fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> 
 }
 
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
-    let mut output = String::new();
-    let mut mappings = Vec::new();
-    let mut handler_generated_starts = Vec::new();
+    let mut output = String::with_capacity(estimate_app_js_capacity(app));
+    let mut mappings = Vec::with_capacity(app.routes.len());
+    let mut handler_generated_starts = Vec::with_capacity(app.routes.len());
     let mut generated_line = 0usize;
     let needs_provider_open_helper = app.routes.iter().any(|route| {
         route
@@ -9903,6 +10094,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(&mut output, &mut generated_line, "");
     }
 
+    let source_indices = source_indices_by_name(app);
     for (index, route) in app.routes.iter().enumerate() {
         let id = index + 1;
         let prefix = format!("globalThis.__sloppy_handler_{id} = ");
@@ -9915,7 +10107,6 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             route.handler.source_map_column_offset
         };
         handler_generated_starts.push(HandlerGeneratedStart {
-            handler_id: id,
             generated_line: handler_start_line,
             generated_column: handler_start_column,
         });
@@ -9925,7 +10116,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &route.handler.source,
             source_map_start_line,
             source_map_start_column,
-            source_index_for(app, &route.handler.source_name),
+            source_index_for(&source_indices, &route.handler.source_name),
         ));
 
         output.push_str(&prefix);
@@ -9946,6 +10137,24 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         mappings,
         handler_generated_starts,
     }
+}
+
+fn source_indices_by_name(app: &ExtractedApp) -> BTreeMap<&str, usize> {
+    app.source_files
+        .iter()
+        .enumerate()
+        .map(|(index, file)| (file.name.as_str(), index))
+        .collect()
+}
+
+fn estimate_app_js_capacity(app: &ExtractedApp) -> usize {
+    let handler_bytes = app
+        .routes
+        .iter()
+        .map(|route| route.handler.emitted_source.len() + 96)
+        .sum::<usize>();
+    let helper_bytes = app.helper_sources.iter().map(String::len).sum::<usize>();
+    handler_bytes + helper_bytes + 8192
 }
 
 fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
@@ -9978,8 +10187,7 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
             let id = index + 1;
             let generated = emitted_js
                 .handler_generated_starts
-                .iter()
-                .find(|start| start.handler_id == id)
+                .get(index)
                 .map(|start| generated_location_json(start.generated_line, start.generated_column))
                 .unwrap_or_else(|| json!(null));
             json!({
@@ -10215,11 +10423,8 @@ fn handler_source_mappings(
     mappings
 }
 
-fn source_index_for(app: &ExtractedApp, source_name: &str) -> usize {
-    app.source_files
-        .iter()
-        .position(|file| file.name == source_name)
-        .unwrap_or(0)
+fn source_index_for(source_indices: &BTreeMap<&str, usize>, source_name: &str) -> usize {
+    source_indices.get(source_name).copied().unwrap_or(0)
 }
 
 fn encode_source_map_mappings(mappings: &[SourceMapMapping]) -> String {
