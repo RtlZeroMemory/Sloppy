@@ -2,7 +2,7 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Results, ProblemDetails, data, System, Environment, Process, Signals, __createFrameworkServiceProvider } = __sloppyRuntime;
+const { Results, ProblemDetails, data, System, Environment, Process, ProcessHandle, Signals, OsError, __createFrameworkServiceProvider } = __sloppyRuntime;
 const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("ClockService", () => ({ now: "2026-01-01T00:00:00Z" }));
 const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"read","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}]]);
