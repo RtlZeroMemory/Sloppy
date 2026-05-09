@@ -3521,6 +3521,16 @@ export default app;
         ),
         (
             r#"import { Sloppy, Results } from "sloppy";
+function middleware(ctx, next) { return next(); }
+const app = Sloppy.create();
+app.use(middleware);
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 const api = app.group("/api");
 api.use((ctx, next) => next());
@@ -3528,6 +3538,26 @@ api.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
             "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+function middleware(ctx, next) { return next(); }
+const app = Sloppy.create();
+const api = app.group("/api");
+api.use(middleware);
+api.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.useCors({ origins: ["https://app.example.com"] });
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_CORS",
         ),
         (
             r#"import { Sloppy, Results } from "sloppy";
@@ -3542,11 +3572,29 @@ export default app;
         (
             r#"import { Sloppy, Results, RequestId } from "sloppy";
 const app = Sloppy.create();
+app.use(RequestId.defaults({ header: "x-request-id", responseHeader: true, trustIncoming: false }));
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
+        ),
+        (
+            r#"import { Sloppy, Results, RequestId } from "sloppy";
+const app = Sloppy.create();
 app.use(RequestId.defaults({ generator: () => "req-1" }));
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
             "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
+        ),
+        (
+            r#"import { Sloppy, Results, RequestLogging } from "sloppy";
+const app = Sloppy.create();
+app.use(RequestLogging.defaults({ includeRoute: true, includeDuration: false, includeRequestId: true }));
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING",
         ),
         (
             r#"import { Sloppy, Results, RequestLogging } from "sloppy";
@@ -3562,6 +3610,16 @@ export default app;
             r#"import { Sloppy, Results } from "sloppy";
 function UsersController() {}
 const app = Sloppy.create();
+app.controller("/users", UsersController);
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_CONTROLLER",
+        ),
+        (
+            r#"import { Sloppy, Results } from "sloppy";
+function UsersController() {}
+const app = Sloppy.create();
 app.mapController("/users", UsersController);
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
@@ -3570,6 +3628,14 @@ export default app;
         ),
         (
             r#"import { Sloppy, Results, Testing } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
+            r#"import { Sloppy, Results, Testing as TestHost } from "sloppy";
 const app = Sloppy.create();
 app.get("/", () => Results.ok({ ok: true }));
 export default app;

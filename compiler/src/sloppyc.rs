@@ -1558,6 +1558,15 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
+            if imported == "Testing" {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+                    "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+                )
+                .with_path(path)
+                .with_span(specifier.span)
+                .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+            }
             if sloppy_root_import_name_supported(imported) && imported != local {
                 state.unsupported_import_alias = true;
                 state.unsupported_import_name = Some((imported.to_string(), specifier.span));
@@ -1568,15 +1577,6 @@ fn extract_import(
                 ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
                 ("RequestId", "RequestId") => state.request_id_imported = true,
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
-                ("Testing", "Testing") => {
-                    return Err(Diagnostic::new(
-                        "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
-                        "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
-                    )
-                    .with_path(path)
-                    .with_span(specifier.span)
-                    .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
-                }
                 ("data", "data") => state.data_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
