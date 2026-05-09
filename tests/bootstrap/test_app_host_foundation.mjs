@@ -968,6 +968,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(beforeFreeze[0].method, "GET");
     assert.equal(beforeFreeze[0].pattern, "/");
     assert.equal(beforeFreeze[0].name, "Hello.Index");
+    assert.deepEqual(beforeFreeze[0].metadata.middleware, { count: 0 });
     assert.equal(beforeFreeze[0].handler().body, "second: Hello from Sloppy");
     assert.equal(beforeFreeze[1].method, "GET");
     assert.equal(beforeFreeze[1].pattern, "/users/{id:int}");
@@ -975,6 +976,7 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(beforeFreeze[1].metadata.tags, ["Users"]);
     assert.equal(beforeFreeze[1].metadata.groupName, "Users");
     assert.equal(beforeFreeze[1].metadata.groupPrefix, "/users");
+    assert.deepEqual(beforeFreeze[1].metadata.middleware, { count: 0 });
     assert.equal(beforeFreeze[1].metadata.query, querySchema);
     assert.deepEqual(beforeFreeze[1].handler().body, { id: "demo" });
 
@@ -994,6 +996,85 @@ async function flushMicrotasks(count = 6) {
     app.services.dispose();
     assert.equal(singletonDisposals, 1);
     assertThrowsMessage(() => app.services.get("message"), /provider is disposed/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let scopedDisposals = 0;
+    builder.services.addScoped("request", () => ({
+        dispose() {
+            scopedDisposals += 1;
+        },
+    }));
+    const app = builder.build();
+    const events = [];
+
+    app.use(async (context, next) => {
+        events.push("global:before");
+        context.services.get("request");
+        const result = await next();
+        events.push("global:after");
+        return result;
+    });
+
+    const api = app.group("/api");
+    app.use((context, next) => {
+        events.push(`late:${context.route.id ?? "none"}`);
+        return next();
+    });
+    api.use(async (context, next) => {
+        events.push("group:before");
+        await Promise.resolve();
+        const result = await next();
+        events.push("group:after");
+        return result;
+    });
+    api.get("/items/{id:int}", ({ services }) => {
+        assert.equal(typeof services.get("request").dispose, "function");
+        events.push("handler");
+        return Results.ok({ ok: true });
+    });
+    api.get("/short", () => {
+        events.push("short-handler");
+        return Results.ok({ unreachable: true });
+    });
+
+    const routes = app.__getRoutes();
+    assert.equal(routes[0].metadata.middleware.count, 3);
+    assert.deepEqual((await routes[0].handler({ route: { id: 7 }, services: app.services.createScope() })).body, {
+        ok: true,
+    });
+    assert.deepEqual(events, [
+        "global:before",
+        "late:7",
+        "group:before",
+        "handler",
+        "group:after",
+        "global:after",
+    ]);
+    assert.equal(scopedDisposals, 0);
+
+    app.use((context) => {
+        context.services.get("request");
+        return Results.status(418, { short: true });
+    });
+    app.get("/short", () => Results.ok({ unreachable: true }));
+    const shortCircuit = app.__getRoutes()[2];
+    assert.equal(shortCircuit.metadata.middleware.count, 3);
+    assert.deepEqual((await shortCircuit.handler()).body, { short: true });
+    assert.equal(scopedDisposals, 1);
+
+    assertThrowsMessage(() => app.use("bad"), /provider descriptor/);
+    assertThrowsMessage(() => api.use("bad"), /middleware must be a function/);
+    assertThrowsMessage(() => {
+        const twice = Sloppy.create();
+        twice.use((context, next) => {
+            next();
+            return next();
+        });
+        twice.get("/twice", () => Results.ok({}));
+        twice.__getRoutes()[0].handler();
+    }, /next\(\) must not be called more than once/);
 }
 
 {

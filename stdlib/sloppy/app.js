@@ -89,6 +89,13 @@ function validateMergedProviderOptions(provider, options) {
 function createApp(host) {
     const routes = [];
     const workerResources = [];
+    const middleware = [];
+    const middlewareSequence = { value: 0 };
+    function nextMiddlewareSequence() {
+        const seq = middlewareSequence.value;
+        middlewareSequence.value = seq + 1;
+        return seq;
+    }
     const guard = createMutationGuard("app");
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
@@ -122,6 +129,10 @@ function createApp(host) {
             assertAppMutable();
             if (isProblemDetailsDescriptor(provider)) {
                 problemDetails = provider;
+                return app;
+            }
+            if (typeof provider === "function") {
+                middleware.push({ fn: provider, sequence: nextMiddlewareSequence() });
                 return app;
             }
             if (isWorkerResource(provider)) {
@@ -198,6 +209,8 @@ function createApp(host) {
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
+                undefined,
+                middleware,
             );
         },
 
@@ -211,6 +224,8 @@ function createApp(host) {
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
+                undefined,
+                middleware,
             );
         },
 
@@ -224,6 +239,8 @@ function createApp(host) {
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
+                undefined,
+                middleware,
             );
         },
 
@@ -237,6 +254,8 @@ function createApp(host) {
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
+                undefined,
+                middleware,
             );
         },
 
@@ -250,6 +269,8 @@ function createApp(host) {
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
+                undefined,
+                middleware,
             );
         },
 
@@ -275,7 +296,15 @@ function createApp(host) {
 
         mapGroup(prefix) {
             assertAppMutable();
-            return createRouteGroup(routes, routeHost, assertAppMutable, getCurrentModule, prefix);
+            return createRouteGroup(
+                routes,
+                routeHost,
+                assertAppMutable,
+                getCurrentModule,
+                prefix,
+                () => middleware,
+                nextMiddlewareSequence,
+            );
         },
 
         group(prefix) {
@@ -291,6 +320,7 @@ function createApp(host) {
                 currentModule,
                 prefix,
                 Controller,
+                middleware,
             );
 
             if (configure === undefined) {

@@ -27,11 +27,11 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 | API | Behavior |
 | --- | --- |
 | `config`, `log`, `services`, `capabilities` | Built providers. |
-| `use(providerOrWorkerOrProblemDetails)` | Accepts worker resources, Sloppy provider descriptors, and `ProblemDetails.defaults()` error handling descriptors. Current provider kind accepted by app validation: `sqlite`. |
+| `use(value)` | Accepts middleware functions, worker resources, Sloppy provider descriptors, and `ProblemDetails.defaults()` error handling descriptors. Current provider kind accepted by app validation: `sqlite`. |
 | `useModule(moduleOrFactory)` | Accepts route-only `Sloppy.module(...)` or named synchronous function modules. |
 | `mapGet/mapPost/mapPut/mapPatch/mapDelete` | Route registration methods. |
 | `get/post/put/patch/delete` | Aliases for `map*`. |
-| `mapGroup` / `group` | Route grouping helpers. |
+| `mapGroup` / `group` | Route grouping helpers with group-local middleware support. |
 | `mapController` / `controller` | Controller mapper APIs. |
 | `freeze()` / `isFrozen()` | Freeze app mutation state. |
 | `__getRoutes()`, `__debug()`, `__getModuleGraph()`, `__getPlanContributions()` | Tested introspection helpers used by tooling/tests. |
@@ -52,6 +52,32 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 - Duplicate module registration is rejected.
 - Route-only module descriptors can be used directly with `app.useModule(...)`.
 - Function modules must be named and synchronous.
+
+## Middleware And Endpoint Filters
+
+Bootstrap app-host middleware uses this shape:
+
+```ts
+app.use(async (ctx, next) => {
+  const result = await next();
+  return result;
+});
+```
+
+Current behavior:
+
+- `app.use(fn)` registers global middleware for routes registered after the middleware.
+- `group.use(fn)` registers group-local middleware for routes registered in that group.
+- Middleware runs in registration order before the handler.
+- Middleware can short-circuit by returning a `Results.*` descriptor without calling `next()`.
+- Async middleware and async handlers are supported.
+- The app-host-created request service scope is disposed after the final middleware or
+  handler result settles.
+- Route snapshots expose `metadata.middleware.count` for tooling and tests.
+
+Middleware currently runs in the bootstrap app-host route handler path. Compiler
+extraction and emitted Plan metadata will gain first-class middleware lowering in a
+separate compiler/runtime slice.
 
 ## Provider Descriptors In Framework Registration
 

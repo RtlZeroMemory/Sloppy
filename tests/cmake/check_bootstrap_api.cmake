@@ -292,12 +292,14 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "function registerRoute("
-        "function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix)"
+        "function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix,"
         "function createRouterGroup(prefix, configure)"
         "mapGet: createMapMethod(\"GET\")"
         "function createControllerMapper("
         "withTags(...tags)"
         "withName(name)"
+        "use(middleware)"
+        "middleware:"
         "groupPrefix"
         "groupName"
         "handler must be a function"
@@ -383,6 +385,7 @@ foreach(required_pattern IN ITEMS
         "mapGroup(prefix)"
         "freeze()"
         "isFrozen()"
+        "use(provider)"
         "__getRoutes()"
         "__debug()"
         "__getModuleGraph()"
