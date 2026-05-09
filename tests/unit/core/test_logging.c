@@ -174,9 +174,13 @@ static int test_jsonl_serialization(void)
 static int test_json_field_validation_and_parseable_jsonl(void)
 {
     SlLogEventBuilder builder = {0};
+    SlLogEventBuilder redacted_builder = {0};
     SlLogEvent event = {0};
+    SlLogEvent redacted_event = {0};
     char buffer[SL_LOG_MAX_JSONL_BYTES];
+    char redacted_buffer[SL_LOG_MAX_JSONL_BYTES];
     SlBytes bytes = {0};
+    SlBytes redacted_bytes = {0};
 
     if (expect_status(sl_log_event_builder_init(&builder, SL_LOG_LEVEL_INFO,
                                                 sl_str_from_cstr("json payloads")),
@@ -221,6 +225,28 @@ static int test_json_field_validation_and_parseable_jsonl(void)
         !json_parseable(bytes))
     {
         return 17;
+    }
+
+    if (expect_status(sl_log_event_builder_init(&redacted_builder, SL_LOG_LEVEL_INFO,
+                                                sl_str_from_cstr("redacted json")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_builder_add_json(&redacted_builder, sl_str_from_cstr("token"),
+                                                    sl_str_from_cstr("{\"token\":\"abc\"}")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_builder_finish(&redacted_builder, &redacted_event),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_event_apply_redaction(&redacted_event, NULL, 0U), SL_STATUS_OK) != 0 ||
+        redacted_event.redacted_count != 1U ||
+        expect_status(sl_log_event_serialize_jsonl(&redacted_event, redacted_buffer,
+                                                   sizeof(redacted_buffer), &redacted_bytes),
+                      SL_STATUS_OK) != 0)
+    {
+        return 18;
+    }
+    if (!bytes_contains(redacted_bytes, "\"token\":\"[REDACTED]\"") ||
+        !json_parseable(redacted_bytes))
+    {
+        return 19;
     }
     return 0;
 }
@@ -636,6 +662,7 @@ typedef struct SubmitRaceState
     SlLogEvent event;
     SlStatus last_status;
     size_t attempts;
+    size_t max_attempts;
 } SubmitRaceState;
 
 static void submit_race_main(void* user)
@@ -645,7 +672,9 @@ static void submit_race_main(void* user)
     if (state == NULL || state->runtime == NULL) {
         return;
     }
-    for (state->attempts = 0U; state->attempts < 4096U; state->attempts += 1U) {
+    size_t limit = state->max_attempts == 0U ? 4096U : state->max_attempts;
+
+    for (state->attempts = 0U; state->attempts < limit; state->attempts += 1U) {
         state->last_status = sl_log_runtime_submit(state->runtime, &state->event);
         if (sl_status_code(state->last_status) == SL_STATUS_INVALID_STATE) {
             return;
@@ -705,6 +734,70 @@ static int test_submit_racing_shutdown_does_not_crash(void)
     return 0;
 }
 
+static int test_memory_sink_snapshot_concurrent_dispatch_is_stable(void)
+{
+    static unsigned char storage[2097152];
+    static unsigned char snapshot_storage[524288];
+    SlArena arena = {0};
+    SlArena snapshot_arena = {0};
+    SlLogRuntimeConfig config = sl_log_runtime_config_default();
+    SlLogRuntime* runtime = NULL;
+    SlLogSink* memory = NULL;
+    SlPlatformThread* thread = NULL;
+    SubmitRaceState state = {0};
+    size_t index = 0U;
+
+    config.queue_capacity = 128U;
+    config.sink_capacity = 1U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&snapshot_arena, snapshot_storage, sizeof(snapshot_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_create(&arena, &config, &runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_memory_sink_create(&arena, 64U, &memory), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_add_sink(runtime, memory), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_start(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(build_login_event(SL_LOG_LEVEL_INFO, &state.event), SL_STATUS_OK) != 0)
+    {
+        return 65;
+    }
+
+    state.runtime = runtime;
+    state.last_status = sl_status_ok();
+    state.max_attempts = 20000U;
+    if (expect_status(sl_platform_thread_start(&arena, submit_race_main, &state, &thread),
+                      SL_STATUS_OK) != 0)
+    {
+        return 66;
+    }
+
+    for (index = 0U; index < 256U; index += 1U) {
+        SlArenaMark mark = sl_arena_mark(&snapshot_arena);
+        SlLogMemorySnapshot snapshot = {0};
+        if (expect_status(sl_log_memory_sink_snapshot(memory, &snapshot_arena, &snapshot),
+                          SL_STATUS_OK) != 0)
+        {
+            return 67;
+        }
+        if (snapshot.count > 64U || (snapshot.count != 0U && snapshot.events == NULL)) {
+            return 68;
+        }
+        if (expect_status(sl_arena_reset_to(&snapshot_arena, mark), SL_STATUS_OK) != 0) {
+            return 69;
+        }
+    }
+
+    sl_platform_thread_join(thread);
+    if (sl_status_code(state.last_status) != SL_STATUS_OK) {
+        return 70;
+    }
+    if (expect_status(sl_log_runtime_flush(runtime), SL_STATUS_OK) != 0 ||
+        expect_status(sl_log_runtime_shutdown(runtime), SL_STATUS_OK) != 0)
+    {
+        return 71;
+    }
+    return 0;
+}
+
 static int test_stress_pressure_smoke(void)
 {
     unsigned char storage[262144];
@@ -743,13 +836,18 @@ static int test_stress_pressure_smoke(void)
 
 int main(int argc, char** argv)
 {
-    int (*tests[])(void) = {
-        test_event_builder_fields_and_redaction,        test_jsonl_serialization,
-        test_json_field_validation_and_parseable_jsonl, test_runtime_memory_queue_pressure,
-        test_runtime_shutdown_public_apis_remain_safe,  test_runtime_sink_registration_lifecycle,
-        test_custom_sink_state_and_failure_accounting,  test_console_sink_pretty_and_jsonl,
-        test_file_sink_append_flush_and_missing_parent, test_threaded_dispatch_shutdown,
-        test_submit_racing_shutdown_does_not_crash};
+    int (*tests[])(void) = {test_event_builder_fields_and_redaction,
+                            test_jsonl_serialization,
+                            test_json_field_validation_and_parseable_jsonl,
+                            test_runtime_memory_queue_pressure,
+                            test_runtime_shutdown_public_apis_remain_safe,
+                            test_runtime_sink_registration_lifecycle,
+                            test_custom_sink_state_and_failure_accounting,
+                            test_console_sink_pretty_and_jsonl,
+                            test_file_sink_append_flush_and_missing_parent,
+                            test_threaded_dispatch_shutdown,
+                            test_submit_racing_shutdown_does_not_crash,
+                            test_memory_sink_snapshot_concurrent_dispatch_is_stable};
     size_t index = 0U;
 
     if (argc > 1 && strcmp(argv[1], "--stress") == 0) {

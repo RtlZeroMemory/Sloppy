@@ -73,7 +73,9 @@ a flush callback.
 Memory sink:
 
 - bounded ring buffer for tests and bridge inspection;
-- tracks overwritten entries separately from runtime queue drops.
+- tracks overwritten entries separately from runtime queue drops;
+- snapshots copy entries under the sink lock, so callers receive a stable copy
+  even while the dispatcher is writing.
 
 Console sink:
 
@@ -92,7 +94,10 @@ File sink:
 Custom sinks:
 
 - use Sloppy-owned callbacks for tests and future adapters;
-- receive redacted native events.
+- receive redacted native events;
+- run synchronously on the dispatcher thread when the runtime has been started,
+  or on the caller performing `drain`/`flush` before dispatcher start. Keep
+  callbacks short and avoid re-entering the same sink from a callback.
 
 ## Lifecycle
 
@@ -100,6 +105,11 @@ Custom sinks:
 shutdown cleanup after engine creation. Cleanup order destroys the engine first,
 then flushes and shuts down logging. That keeps `ctx.log` callbacks from racing
 against closed sinks while still flushing queued events at app shutdown.
+
+Shutdown is terminal and idempotent. It stops accepting submissions and closes
+sinks, but keeps the runtime mutexes and condition variable valid for the
+arena-owned handle. Post-shutdown public APIs can report shutdown state, flush
+or snapshot safely, and do not lock destroyed synchronization primitives.
 
 ## Tests And Benchmarks
 

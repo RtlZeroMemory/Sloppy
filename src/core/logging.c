@@ -37,6 +37,7 @@ struct SlLogSink
 {
     SlLogSinkKind kind;
     void* state;
+    SlPlatformMutex* mutex;
     SlLogSinkWriteFn write;
     SlLogSinkFlushFn flush;
     SlLogSinkCloseFn close;
@@ -72,6 +73,16 @@ struct SlLogRuntime
     bool dispatcher_started;
     bool shutdown;
 };
+
+/*
+ * Lock order for logging runtime code:
+ * runtime->mutex protects queue/runtime counters;
+ * runtime->sink_mutex protects sink-list publication/iteration;
+ * sink->mutex protects per-sink state and sink counters.
+ *
+ * Code may take sink_mutex before sink->mutex. Snapshot APIs only take sink->mutex.
+ * Runtime code must not hold runtime->mutex while invoking sink callbacks.
+ */
 
 static SlStr sl_log_literal(const char* ptr, size_t length)
 {
@@ -807,7 +818,12 @@ static SlStatus sl_log_dispatch_to_sink(SlLogSink* sink, const SlLogEvent* event
 {
     SlStatus status;
 
-    if (sink == NULL || sink->write == NULL || sink->closed) {
+    if (sink == NULL || sink->mutex == NULL || sink->write == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    sl_platform_mutex_lock(sink->mutex);
+    if (sink->closed) {
+        sl_platform_mutex_unlock(sink->mutex);
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     status = sink->write(sink, event);
@@ -817,7 +833,56 @@ static SlStatus sl_log_dispatch_to_sink(SlLogSink* sink, const SlLogEvent* event
     else {
         sink->failure_count += 1U;
     }
+    sl_platform_mutex_unlock(sink->mutex);
     return status;
+}
+
+static SlStatus sl_log_flush_sink(SlLogSink* sink, uint64_t* out_sink_failure)
+{
+    SlStatus status = sl_status_ok();
+
+    if (out_sink_failure != NULL) {
+        *out_sink_failure = 0U;
+    }
+    if (sink == NULL) {
+        return sl_status_ok();
+    }
+    if (sink->mutex == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    sl_platform_mutex_lock(sink->mutex);
+    if (sink->flush != NULL && !sink->closed) {
+        status = sink->flush(sink);
+        if (!sl_status_is_ok(status)) {
+            sink->failure_count += 1U;
+            if (out_sink_failure != NULL) {
+                *out_sink_failure = 1U;
+            }
+        }
+    }
+    sl_platform_mutex_unlock(sink->mutex);
+    return status;
+}
+
+static void sl_log_close_sink(SlLogSink* sink)
+{
+    SlLogSinkCloseFn close_fn = NULL;
+
+    if (sink == NULL || sink->mutex == NULL) {
+        return;
+    }
+    sl_platform_mutex_lock(sink->mutex);
+    if (sink->closed) {
+        sl_platform_mutex_unlock(sink->mutex);
+        return;
+    }
+    close_fn = sink->close;
+    sink->closed = true;
+    sl_platform_mutex_unlock(sink->mutex);
+
+    if (close_fn != NULL) {
+        close_fn(sink);
+    }
 }
 
 static void sl_log_runtime_dispatch_event(SlLogRuntime* runtime, const SlLogEvent* event)
@@ -1143,17 +1208,12 @@ SlStatus sl_log_runtime_flush(SlLogRuntime* runtime)
 
     sl_platform_mutex_lock(runtime->sink_mutex);
     for (index = 0U; index < runtime->sink_count; index += 1U) {
-        SlLogSink* sink = runtime->sinks[index];
-        if (sink != NULL && sink->flush != NULL && !sink->closed) {
-            SlStatus status = sink->flush(sink);
-            if (!sl_status_is_ok(status) && sl_status_is_ok(first_failure)) {
-                first_failure = status;
-            }
-            if (!sl_status_is_ok(status)) {
-                sink->failure_count += 1U;
-                sink_failures += 1U;
-            }
+        uint64_t sink_failure = 0U;
+        SlStatus status = sl_log_flush_sink(runtime->sinks[index], &sink_failure);
+        if (!sl_status_is_ok(status) && sl_status_is_ok(first_failure)) {
+            first_failure = status;
         }
+        sink_failures += sink_failure;
     }
     sl_platform_mutex_unlock(runtime->sink_mutex);
 
@@ -1198,14 +1258,7 @@ SlStatus sl_log_runtime_shutdown(SlLogRuntime* runtime)
     status = sl_log_runtime_flush(runtime);
     sl_platform_mutex_lock(runtime->sink_mutex);
     for (index = 0U; index < runtime->sink_count; index += 1U) {
-        SlLogSink* sink = runtime->sinks[index];
-        if (sink != NULL && sink->close != NULL && !sink->closed) {
-            sink->close(sink);
-            sink->closed = true;
-        }
-        else if (sink != NULL) {
-            sink->closed = true;
-        }
+        sl_log_close_sink(runtime->sinks[index]);
     }
     sl_platform_mutex_unlock(runtime->sink_mutex);
     return status;
@@ -1279,8 +1332,11 @@ SlStatus sl_log_memory_sink_create(SlArena* arena, size_t capacity, SlLogSink** 
     *sink = (SlLogSink){0};
     *state = (SlLogMemorySinkState){0};
 
-    status = sl_arena_array_alloc(arena, capacity, sizeof(SlLogEvent), _Alignof(SlLogEvent),
-                                  &event_storage);
+    status = sl_platform_mutex_create(arena, &sink->mutex);
+    if (sl_status_is_ok(status)) {
+        status = sl_arena_array_alloc(arena, capacity, sizeof(SlLogEvent), _Alignof(SlLogEvent),
+                                      &event_storage);
+    }
     if (sl_status_is_ok(status)) {
         status =
             sl_ring_queue_init(&state->events, event_storage.ptr, sizeof(SlLogEvent), capacity);
@@ -1305,16 +1361,27 @@ SlStatus sl_log_memory_sink_snapshot(const SlLogSink* sink, SlArena* arena,
     size_t index = 0U;
     SlStatus status;
 
-    if (sink == NULL || sink->kind != SL_LOG_SINK_MEMORY || state == NULL || arena == NULL ||
-        out_snapshot == NULL)
+    if (sink == NULL || sink->kind != SL_LOG_SINK_MEMORY || sink->mutex == NULL || state == NULL ||
+        arena == NULL || out_snapshot == NULL)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_snapshot = (SlLogMemorySnapshot){0};
+    sl_platform_mutex_lock(sink->mutex);
+    if (state->events.count == 0U) {
+        out_snapshot->overwritten_events = state->overwritten_events;
+        sl_platform_mutex_unlock(sink->mutex);
+        return sl_status_ok();
+    }
     status = sl_arena_array_alloc(arena, state->events.count, sizeof(SlLogEvent),
                                   _Alignof(SlLogEvent), &storage);
     if (!sl_status_is_ok(status)) {
+        sl_platform_mutex_unlock(sink->mutex);
         return status;
+    }
+    if (storage.ptr == NULL) {
+        sl_platform_mutex_unlock(sink->mutex);
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
     events = (SlLogEvent*)storage.ptr;
     for (index = 0U; index < state->events.count; index += 1U) {
@@ -1324,6 +1391,7 @@ SlStatus sl_log_memory_sink_snapshot(const SlLogSink* sink, SlArena* arena,
     out_snapshot->events = events;
     out_snapshot->count = state->events.count;
     out_snapshot->overwritten_events = state->overwritten_events;
+    sl_platform_mutex_unlock(sink->mutex);
     return sl_status_ok();
 }
 
@@ -1445,6 +1513,10 @@ SlStatus sl_log_console_sink_create(SlArena* arena, SlLogConsoleFormat format,
     state = (SlLogConsoleSinkState*)state_memory;
     *sink = (SlLogSink){0};
     *state = (SlLogConsoleSinkState){0};
+    status = sl_platform_mutex_create(arena, &sink->mutex);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     state->format = format;
     state->writer = writer;
     state->writer_user = writer_user;
@@ -1573,7 +1645,10 @@ SlStatus sl_log_file_sink_create(SlArena* arena, SlStr path, size_t buffer_bytes
     *state = (SlLogFileSinkState){0};
     state->buffer = (unsigned char*)buffer_storage.ptr;
     state->capacity = buffer_bytes;
-    status = sl_fs_open_file(arena, path, SL_FS_FILE_ACCESS_APPEND, true, &state->file, NULL);
+    status = sl_platform_mutex_create(arena, &sink->mutex);
+    if (sl_status_is_ok(status)) {
+        status = sl_fs_open_file(arena, path, SL_FS_FILE_ACCESS_APPEND, true, &state->file, NULL);
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1627,6 +1702,10 @@ SlStatus sl_log_custom_sink_create(SlArena* arena, SlLogCustomSinkWriteFn write,
     }
     sink = (SlLogSink*)sink_memory;
     *sink = (SlLogSink){0};
+    status = sl_platform_mutex_create(arena, &sink->mutex);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     sink->kind = SL_LOG_SINK_CUSTOM;
     sink->state = state;
     sink->write = sl_log_custom_sink_write;
@@ -1646,9 +1725,14 @@ SlLogSinkSnapshot sl_log_sink_snapshot(const SlLogSink* sink)
     if (sink == NULL) {
         return snapshot;
     }
+    if (sink->mutex == NULL) {
+        return snapshot;
+    }
+    sl_platform_mutex_lock(sink->mutex);
     snapshot.kind = sink->kind;
     snapshot.write_count = sink->write_count;
     snapshot.failure_count = sink->failure_count;
     snapshot.closed = sink->closed;
+    sl_platform_mutex_unlock(sink->mutex);
     return snapshot;
 }

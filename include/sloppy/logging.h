@@ -202,10 +202,20 @@ bool sl_log_runtime_is_enabled(const SlLogRuntime* runtime, SlLogLevel level);
 SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event);
 SlStatus sl_log_runtime_drain(SlLogRuntime* runtime);
 SlStatus sl_log_runtime_flush(SlLogRuntime* runtime);
+/*
+ * Shutdown is terminal and idempotent. The arena-owned runtime handle remains safe for
+ * public logging APIs after shutdown; synchronization primitives stay valid until the
+ * arena backing the runtime is reset or disposed.
+ */
 SlStatus sl_log_runtime_shutdown(SlLogRuntime* runtime);
 SlLogRuntimeSnapshot sl_log_runtime_snapshot(const SlLogRuntime* runtime);
 
 SlStatus sl_log_memory_sink_create(SlArena* arena, size_t capacity, SlLogSink** out_sink);
+/*
+ * Copies the current memory sink entries into `arena` under the sink lock. The returned
+ * snapshot is stable and may be taken concurrently with runtime dispatch. Snapshot storage
+ * is owned by `arena` and remains valid until that arena is reset or disposed.
+ */
 SlStatus sl_log_memory_sink_snapshot(const SlLogSink* sink, SlArena* arena,
                                      SlLogMemorySnapshot* out_snapshot);
 SlStatus sl_log_console_sink_create(SlArena* arena, SlLogConsoleFormat format,
