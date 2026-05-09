@@ -1654,6 +1654,8 @@ async function flushMicrotasks(count = 6) {
 
 {
     const app = Sloppy.create();
+    app.get("/profile/{slug}", () => Results.text("param"));
+    app.get("/profile/settings", () => Results.text("static"));
     app.get("/hello", () => Results.text("hello"));
     app.get("/json", () => Results.json({ ok: true }));
     app.get("/users/{id:int}/comments/{slug}", (ctx) => {
@@ -1681,15 +1683,17 @@ async function flushMicrotasks(count = 6) {
 
     assert.equal((await host.get("/hello")).status, 200);
     assert.equal(await (await host.get("/hello")).text(), "hello");
+    assert.equal((await host.get("/profile/settings")).status, 200);
+    assert.equal(await (await host.get("/profile/settings")).text(), "static");
     assert.deepEqual(await (await host.get("/json")).json(), { ok: true });
-    assert.deepEqual(await (await host.get("/users/42/comments/intro?q=Ada+Lovelace&repeat=one&repeat=two")).json(), {
+    assert.deepEqual(await (await host.get("/users/42/comments/%E2%9C%93?q=Ada+%E2%9C%93&repeat=one&repeat=two")).json(), {
         id: "42",
-        slug: "intro",
-        q: "Ada Lovelace",
+        slug: "\u2713",
+        q: "Ada \u2713",
         repeat: "two",
         method: "GET",
-        path: "/users/42/comments/intro",
-        rawTarget: "/users/42/comments/intro?q=Ada+Lovelace&repeat=one&repeat=two",
+        path: "/users/42/comments/\u2713",
+        rawTarget: "/users/42/comments/%E2%9C%93?q=Ada+%E2%9C%93&repeat=one&repeat=two",
     });
     assert.equal((await host.get("/missing")).status, 404);
     assert.equal((await host.put("/hello")).status, 405);
@@ -1952,6 +1956,39 @@ async function flushMicrotasks(count = 6) {
     assert.equal(created, 2);
     assert.equal(disposed, 2);
     await host.close();
+
+    let releaseSlowHandler;
+    let rootDisposed = 0;
+    const slowHandlerCanFinish = new Promise((resolve) => {
+        releaseSlowHandler = resolve;
+    });
+    let markSlowHandlerStarted;
+    const slowHandlerStarted = new Promise((resolve) => {
+        markSlowHandlerStarted = resolve;
+    });
+    const slowBuilder = Sloppy.createBuilder();
+    slowBuilder.services.addSingleton("root", () => ({
+        dispose() {
+            rootDisposed += 1;
+        },
+    }));
+    const slowApp = slowBuilder.build();
+    slowApp.get("/slow", async (ctx) => {
+        ctx.services.get("root");
+        markSlowHandlerStarted();
+        await slowHandlerCanFinish;
+        return Results.ok({ ok: true });
+    });
+    const slowHost = createTestHost(slowApp);
+    const slowResponse = slowHost.get("/slow");
+    await slowHandlerStarted;
+    const closeSlowHost = slowHost.close();
+    await Promise.resolve();
+    assert.equal(rootDisposed, 0);
+    releaseSlowHandler();
+    assert.equal((await slowResponse).status, 200);
+    await closeSlowHost;
+    assert.equal(rootDisposed, 1);
 }
 
 {
@@ -1963,6 +2000,12 @@ async function flushMicrotasks(count = 6) {
     await assertRejectsMessage(() => host.get("/"), /closed/);
     await assertRejectsMessage(() => createTestHost(Sloppy.create()).request("TRACE", "/"), /method/);
     await assertRejectsMessage(() => createTestHost(Sloppy.create()).get("relative"), /target/);
+    await assertRejectsMessage(() => createTestHost(Sloppy.create()).get("/%E0%A4"), /valid UTF-8/);
+    const queryApp = Sloppy.create();
+    queryApp.get("/", () => Results.ok({ ok: true }));
+    const queryHost = createTestHost(queryApp);
+    await assertRejectsMessage(() => queryHost.get("/?bad=%GG"), /two hex digits/);
+    await queryHost.close();
     await assertRejectsMessage(
         () => createTestHost(Sloppy.create()).get("/", { headers: { "bad header": "1" } }),
         /header names/,

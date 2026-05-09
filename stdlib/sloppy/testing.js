@@ -163,32 +163,25 @@ function splitTarget(target) {
     }
 
     const queryIndex = target.indexOf("?");
-    const path = queryIndex < 0 ? target : target.slice(0, queryIndex);
+    const rawPath = queryIndex < 0 ? target : target.slice(0, queryIndex);
     const queryString = queryIndex < 0 ? "" : target.slice(queryIndex + 1);
-    if (path.length === 0 || !path.startsWith("/")) {
+    if (rawPath.length === 0 || !rawPath.startsWith("/")) {
         throw new TypeError("Sloppy test host target path must start with '/'.");
     }
+    const path = decodePercentComponent(rawPath, "path", false);
     return { path, queryString, rawTarget: target };
 }
 
-function decodeQueryComponent(value) {
-    let output = "";
-    for (let index = 0; index < value.length; index += 1) {
-        const ch = value[index];
-        if (ch === "+") {
-            output += " ";
-        } else if (ch === "%") {
-            const hex = value.slice(index + 1, index + 3);
-            if (!/^[0-9A-Fa-f]{2}$/u.test(hex)) {
-                throw new TypeError("Sloppy test host query percent escapes must use two hex digits.");
-            }
-            output += String.fromCharCode(Number.parseInt(hex, 16));
-            index += 2;
-        } else {
-            output += ch;
-        }
+function decodePercentComponent(value, subject, plusAsSpace) {
+    const encoded = plusAsSpace ? value.replace(/\+/gu, " ") : value;
+    if (/%(?![0-9A-Fa-f]{2})/u.test(encoded)) {
+        throw new TypeError(`Sloppy test host ${subject} percent escapes must use two hex digits.`);
     }
-    return output;
+    try {
+        return decodeURIComponent(encoded);
+    } catch {
+        throw new TypeError(`Sloppy test host ${subject} percent escapes must be valid UTF-8.`);
+    }
 }
 
 function parseQuery(queryString) {
@@ -201,7 +194,7 @@ function parseQuery(queryString) {
         const equals = pair.indexOf("=");
         const name = equals < 0 ? pair : pair.slice(0, equals);
         const value = equals < 0 ? "" : pair.slice(equals + 1);
-        query[decodeQueryComponent(name)] = decodeQueryComponent(value);
+        query[decodePercentComponent(name, "query", true)] = decodePercentComponent(value, "query", true);
     }
     return Object.freeze(query);
 }
@@ -512,39 +505,66 @@ function createTestHost(app) {
     app.freeze();
     const routes = snapshotRoutes(app);
     let closed = false;
+    let activeRequests = 0;
+    let closePromise = undefined;
+    let drainWaiters = [];
+
+    function finishRequest() {
+        activeRequests -= 1;
+        if (closed && activeRequests === 0) {
+            const waiters = drainWaiters;
+            drainWaiters = [];
+            for (const resolve of waiters) {
+                resolve();
+            }
+        }
+    }
+
+    function waitForDrain() {
+        if (activeRequests === 0) {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+            drainWaiters.push(resolve);
+        });
+    }
 
     async function request(method, target, options = undefined) {
         if (closed) {
             throw new Error("Sloppy test host is closed.");
         }
-
-        const normalizedMethod = normalizeMethod(method);
-        const normalizedOptions = normalizeOptions(options);
-        const targetParts = splitTarget(target);
-        const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
-        const bodyBytes = normalizeRequestBody(normalizedOptions, headerEntries);
-        const headers = createHeadersLike(headerEntries);
-        const match = findRoute(routes, normalizedMethod, targetParts.path);
-
-        if (match.route === undefined) {
-            return match.methodMismatch
-                ? responseFromText(405, "Method Not Allowed\n")
-                : responseFromText(404, "Not Found\n");
-        }
-
-        const bodyKind = bodyKindForRequest(headers, bodyBytes);
-        if (bodyKind === "malformed-json") {
-            return responseFromText(400, "Malformed JSON\n");
-        }
-        if (bodyKind === "unsupported" && bodyBytes.byteLength !== 0) {
-            return responseFromText(415, "Unsupported Media Type\n");
-        }
-
-        const context = createContext(app, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes);
+        activeRequests += 1;
         try {
-            return responseFromResult(await match.route.handler(context));
+            const normalizedMethod = normalizeMethod(method);
+            const normalizedOptions = normalizeOptions(options);
+            const targetParts = splitTarget(target);
+            const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
+            const bodyBytes = normalizeRequestBody(normalizedOptions, headerEntries);
+            const headers = createHeadersLike(headerEntries);
+            const match = findRoute(routes, normalizedMethod, targetParts.path);
+
+            if (match.route === undefined) {
+                return match.methodMismatch
+                    ? responseFromText(405, "Method Not Allowed\n")
+                    : responseFromText(404, "Not Found\n");
+            }
+
+            const bodyKind = bodyKindForRequest(headers, bodyBytes);
+            if (bodyKind === "malformed-json") {
+                return responseFromText(400, "Malformed JSON\n");
+            }
+            if (bodyKind === "unsupported" && bodyBytes.byteLength !== 0) {
+                return responseFromText(415, "Unsupported Media Type\n");
+            }
+
+            const context = createContext(app, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes);
+            try {
+                return responseFromResult(await match.route.handler(context));
+            } finally {
+                await context.services.dispose();
+            }
         } finally {
-            await context.services.dispose();
+            finishRequest();
         }
     }
 
@@ -569,11 +589,15 @@ function createTestHost(app) {
             return request("OPTIONS", target, options);
         },
         async close() {
-            if (closed) {
-                return undefined;
+            if (closePromise !== undefined) {
+                return closePromise;
             }
             closed = true;
-            return app.services.dispose();
+            closePromise = (async () => {
+                await waitForDrain();
+                return app.services.dispose();
+            })();
+            return closePromise;
         },
     };
     return Object.freeze(host);
