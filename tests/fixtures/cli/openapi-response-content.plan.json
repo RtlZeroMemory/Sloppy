@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-openapi-response-content-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-openapi-response-content-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Responses.Json"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Responses.Text"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Responses.Html"
+    },
+    {
+      "id": 4,
+      "exportName": "__sloppy_handler_4",
+      "displayName": "Responses.Bytes"
+    },
+    {
+      "id": 5,
+      "exportName": "__sloppy_handler_5",
+      "displayName": "Responses.Problem"
+    },
+    {
+      "id": 6,
+      "exportName": "__sloppy_handler_6",
+      "displayName": "Responses.Empty"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/json",
+      "handlerId": 1,
+      "name": "Responses.Json",
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/text",
+      "handlerId": 2,
+      "name": "Responses.Text",
+      "response": {
+        "kind": "text",
+        "helper": "text",
+        "status": 200
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/html",
+      "handlerId": 3,
+      "name": "Responses.Html",
+      "response": {
+        "kind": "html",
+        "helper": "html",
+        "status": 200
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/bytes",
+      "handlerId": 4,
+      "name": "Responses.Bytes",
+      "response": {
+        "kind": "bytes",
+        "helper": "bytes",
+        "status": 200
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/problem",
+      "handlerId": 5,
+      "name": "Responses.Problem",
+      "response": {
+        "kind": "problem",
+        "helper": "problem",
+        "status": 500
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/empty",
+      "handlerId": 6,
+      "name": "Responses.Empty",
+      "response": {
+        "kind": "empty",
+        "helper": "noContent",
+        "status": 204
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    }
+  ]
+}

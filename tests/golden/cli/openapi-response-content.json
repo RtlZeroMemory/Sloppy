@@ -1,0 +1,104 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "status": "plan-supported-subset",
+    "unknownMetadata": "explicit-partial-markers",
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/bytes": {
+      "get": {
+        "operationId": "Responses.Bytes",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "bytes", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } }
+        }
+      }
+    },
+    "/empty": {
+      "get": {
+        "operationId": "Responses.Empty",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "204": { "description": "noContent" }
+        }
+      }
+    },
+    "/html": {
+      "get": {
+        "operationId": "Responses.Html",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "html", "content": { "text/html": { "schema": { "type": "string" } } } }
+        }
+      }
+    },
+    "/json": {
+      "get": {
+        "operationId": "Responses.Json",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["native-json-serialization", "static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } }
+        }
+      }
+    },
+    "/problem": {
+      "get": {
+        "operationId": "Responses.Problem",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "500": { "description": "problem", "content": { "application/problem+json": { "schema": { "type": "object", "properties": { "status": { "type": "integer" }, "title": { "type": "string" }, "detail": { "type": "string" } } } } } }
+        }
+      }
+    },
+    "/text": {
+      "get": {
+        "operationId": "Responses.Text",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "text", "content": { "text/plain": { "schema": { "type": "string" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

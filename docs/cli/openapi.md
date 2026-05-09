@@ -49,6 +49,23 @@ A minimal OpenAPI 3 skeleton in JSON form:
 }
 ```
 
+## Response content
+
+Each response with a Plan-recorded `Results.*` kind gets a `content` entry
+keyed by media type:
+
+| Plan response kind | Media type                  | Schema                                  |
+| ------------------ | --------------------------- | --------------------------------------- |
+| `json`             | `application/json`          | `x-slop-partial` until shape declared   |
+| `problem`          | `application/problem+json`  | `{ status, title, detail }`             |
+| `text`             | `text/plain`                | `{ type: "string" }`                    |
+| `html`             | `text/html`                 | `{ type: "string" }`                    |
+| `bytes`            | `application/octet-stream`  | `{ type: "string", format: "binary" }`  |
+| `empty`            | none                        | status and description only             |
+
+JSON responses carry `x-slop-partial` until the compiler records a declared
+response body schema.
+
 ## Sloppy extensions
 
 The output uses `x-slop-*` extension fields for things OpenAPI doesn't
@@ -75,8 +92,9 @@ suitable for diffing.
 
 - Full request body schemas beyond what the Plan emitted from
   `schema.object(...)` (partials get `x-slop-partial`).
-- Full response schemas (the Plan carries the visible `Results.*`
-  status codes today; richer response shapes are partials).
+- Declared `application/json` response body schemas (the Plan carries the
+  visible `Results.*` kinds and status codes today; the JSON entry is a
+  `x-slop-partial`).
 - Security schemes.
 - Servers or external-docs metadata.
 

@@ -65,7 +65,7 @@
         "x-slop-optimization-candidates": ["static-route-dispatch"],
         "parameters": [],
         "responses": {
-          "200": { "description": "text" }
+          "200": { "description": "text", "content": { "text/plain": { "schema": { "type": "string" } } } }
         }
       }
     }
