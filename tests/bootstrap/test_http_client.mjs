@@ -324,10 +324,14 @@ function startPersistentHttpServer(handler) {
 const HTTP2_PREFACE = Buffer.from("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", "ascii");
 const HTTP2_FRAME_DATA = 0x0;
 const HTTP2_FRAME_HEADERS = 0x1;
+const HTTP2_FRAME_RST_STREAM = 0x3;
 const HTTP2_FRAME_SETTINGS = 0x4;
+const HTTP2_FRAME_GOAWAY = 0x7;
 const HTTP2_FLAG_END_STREAM = 0x1;
 const HTTP2_FLAG_ACK = 0x1;
 const HTTP2_FLAG_END_HEADERS = 0x4;
+const HTTP2_ERROR_NO_ERROR = 0x0;
+const HTTP2_ERROR_CANCEL = 0x8;
 
 const HTTP2_HPACK_STATIC = [
     undefined,
@@ -407,6 +411,28 @@ function h2Frame(type, flags, streamId, payload = Buffer.alloc(0)) {
     frame[8] = streamId & 0xff;
     payload.copy(frame, 9);
     return frame;
+}
+
+function h2Uint32(value) {
+    const bytes = Buffer.alloc(4);
+    bytes[0] = (value >>> 24) & 0xff;
+    bytes[1] = (value >>> 16) & 0xff;
+    bytes[2] = (value >>> 8) & 0xff;
+    bytes[3] = value & 0xff;
+    return bytes;
+}
+
+function h2RstStreamFrame(streamId, errorCode = HTTP2_ERROR_CANCEL) {
+    return h2Frame(HTTP2_FRAME_RST_STREAM, 0, streamId, h2Uint32(errorCode));
+}
+
+function h2GoawayFrame(lastStreamId, errorCode = HTTP2_ERROR_NO_ERROR) {
+    return h2Frame(
+        HTTP2_FRAME_GOAWAY,
+        0,
+        0,
+        Buffer.concat([h2Uint32(lastStreamId & 0x7fffffff), h2Uint32(errorCode)]),
+    );
 }
 
 function h2ReadFrame(buffer) {
@@ -563,6 +589,16 @@ function startHttp2Server(handler, options = {}) {
                 },
                 { connectionId, streamId },
             );
+            if (response?.rstStream === true) {
+                socket.write(h2RstStreamFrame(streamId, response.errorCode));
+                streams.delete(streamId);
+                return;
+            }
+            if (response?.goaway === true) {
+                socket.write(h2GoawayFrame(response.lastStreamId ?? 0, response.errorCode));
+                streams.delete(streamId);
+                return;
+            }
             const status = response?.status ?? 200;
             const contentType = response?.contentType ?? "text/plain";
             const body = Buffer.from(response?.body ?? "h2 ok", "utf8");
@@ -1157,6 +1193,82 @@ await withNodeNetBridge(async () => {
     } finally {
         await server.close();
         fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const received = [];
+    let releaseBoth;
+    const bothStreamsReceived = new Promise((resolve) => {
+        releaseBoth = resolve;
+    });
+    const server = await startHttp2Server(async (request, context) => {
+        const pathHeader = request.headers.get(":path");
+        received.push({ connectionId: context.connectionId, streamId: context.streamId, path: pathHeader });
+        if (received.length === 2) {
+            releaseBoth();
+        }
+        await bothStreamsReceived;
+        if (pathHeader === "/reset") {
+            return { rstStream: true };
+        }
+        return { body: `survived ${pathHeader}` };
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            protocol: "h2c",
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const reset = client.get("/reset", { timeoutMs: 1000 });
+        const sibling = client.get("/sibling", { timeoutMs: 1000 });
+
+        await assertRejectsMessage(() => reset, /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/);
+        const siblingResponse = await sibling;
+        assert.equal(await siblingResponse.text(), "survived /sibling");
+        assert.equal(server.connectionCount, 1);
+        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const received = [];
+    let releaseBoth;
+    let sentGoaway = false;
+    const bothStreamsReceived = new Promise((resolve) => {
+        releaseBoth = resolve;
+    });
+    const server = await startHttp2Server(async (request, context) => {
+        received.push({ connectionId: context.connectionId, streamId: context.streamId });
+        if (received.length === 2) {
+            releaseBoth();
+        }
+        await bothStreamsReceived;
+        if (!sentGoaway) {
+            sentGoaway = true;
+            return { goaway: true, lastStreamId: 1 };
+        }
+        return { body: "should not complete" };
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            protocol: "h2c",
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const first = client.get("/goaway-a", { timeoutMs: 1000 });
+        const second = client.get("/goaway-b", { timeoutMs: 1000 });
+
+        await assertRejectsMessage(() => first, /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/);
+        await assertRejectsMessage(() => second, /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/);
+        assert.equal(server.connectionCount, 1);
+        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+    } finally {
+        await server.close();
     }
 });
 

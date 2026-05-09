@@ -1244,6 +1244,12 @@ jobs:
         shell: bash
         run: ctest --preset "${{ matrix.preset }}" --output-on-failure
 
+      - name: Set up Go for HTTP/2 conformance tools
+        if: matrix.name == 'linux-clang'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
       - name: Install HTTP/2 conformance tools
         if: matrix.name == 'linux-clang'
         shell: bash

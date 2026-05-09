@@ -248,9 +248,11 @@ connection draining) is the responsibility of an in-front reverse proxy.
   checked allocation sizes, and bounded stream/event lifetime.
 - **HTTP/2 protocol unit tests** cover frame validation, HPACK/session adapter
   behavior, request mapping, stream reset/GOAWAY handling, and dispatch.
-- **External HTTP/2 conformance** runs full h2spec, curl, nghttp, and h2load
-  smoke coverage against a live Sloppy h2c transport server in the Linux clang
-  CI lane.
+- **External HTTP/2 conformance** runs full h2spec against a live Sloppy h2c
+  transport server in the Linux clang CI lane. The wrapper reports curl,
+  nghttp, and h2load smoke lanes separately; those count as coverage only when
+  the corresponding lane prints `PASS`, not when the tool is missing or
+  unavailable.
 
 ## Not implemented
 

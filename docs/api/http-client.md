@@ -146,6 +146,15 @@ eligible.
   final non-1xx response. It validates response `content-length`, enforces a
   conservative frame-size cap until peer SETTINGS are processed, ACKs peer
   SETTINGS, and splits large request header blocks into CONTINUATION frames.
+- HTTP/2 client pooling is alpha. The client reuses h2/h2c sessions and can run
+  concurrent streams, but it does not yet enforce peer
+  `SETTINGS_MAX_CONCURRENT_STREAMS`, track outbound connection/stream send
+  windows, delay large request bodies until `WINDOW_UPDATE`, or adjust active
+  request send windows after peer `SETTINGS_INITIAL_WINDOW_SIZE`; this is
+  tracked in #1015.
+- Peer `GOAWAY` retires the pooled HTTP/2 connection and fails active streams
+  conservatively. The client does not yet drain already-accepted streams by
+  `last_stream_id`; this is tracked in #1015.
 - HTTP/3, gRPC, WebTransport, and WebSocket-over-h2 are not included.
 - `tls` is experimental. It accepts string path options `caPath`,
   `caBundlePath`, `trustStorePath`, `clientCertificatePath`,
