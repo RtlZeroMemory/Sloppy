@@ -16,6 +16,7 @@
     "sloppy/problem-details.js",
     "sloppy/results.js",
     "sloppy/schema.js",
+    "sloppy/testing.js",
     "sloppy/app.js",
     "sloppy/internal/capabilities.js",
     "sloppy/internal/config.js",

@@ -4,7 +4,7 @@ This page documents the current JavaScript framework surface from `stdlib/sloppy
 
 ## Imports
 
-Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`, `ProblemDetails`, `schema`, `data`, `sql`).
+Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`, `ProblemDetails`, `Testing`, `schema`, `data`, `sql`).
 
 Provider descriptor registration currently has one runtime module:
 
@@ -255,3 +255,26 @@ Options:
 - Handler execution through `sloppy run` requires V8.
 - ProblemDetails currently provides safe global handler-error mapping. Production error
   policy, request logging, and exception taxonomy are separate framework areas.
+
+## App Test Host
+
+`Testing.createHost(app)` creates a first-party in-memory host for JavaScript
+app-host tests. It freezes the app, snapshots routes, and dispatches
+HTTP-like requests through route matching, middleware, results, ProblemDetails,
+CORS preflight routes, health checks, and scoped services.
+
+Use it for fast framework and handler tests:
+
+```ts
+import { Sloppy, Results, Testing } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/hello/{name}", (ctx) => Results.json({ hello: ctx.route.name }));
+
+const host = Testing.createHost(app);
+const response = await host.get("/hello/Ada");
+```
+
+Use `sloppy run --once` for compiled artifacts, Plan validation, native
+dispatch, V8 handler execution, generated typed bindings, provider bridges, and
+package/runtime layout checks.
