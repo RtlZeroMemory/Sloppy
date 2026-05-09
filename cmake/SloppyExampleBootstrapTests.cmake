@@ -77,6 +77,10 @@
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
     add_test(
+        NAME examples.fs.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_fs_examples.cmake")
+    add_test(
         NAME examples.core_integration.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")

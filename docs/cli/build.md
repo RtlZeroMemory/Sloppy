@@ -51,8 +51,10 @@ an already-built Plan.
 ```
 
 `app.plan.json` is what every other command (`routes`, `audit`,
-`openapi`, …) reads. It's fully deterministic given the same source —
-hashing it for cache keys is fine.
+`openapi`, …) reads. It is deterministic for the same source tree, config
+directory, environment overlay, environment-derived config values, CLI
+overrides, and compiler version. Hashing those inputs plus the Plan is fine
+for cache keys.
 
 Don't check generated artifacts (`.sloppy/`) into source control by
 default; they regenerate from source. Intentional fixtures and test

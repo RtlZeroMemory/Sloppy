@@ -133,12 +133,13 @@ sloppy run --environment Staging
 
 1. Parse CLI flags and resolve project config.
 2. If source input, invoke `sloppyc build` and write artifacts.
-3. Read `app.plan.json`, validate schema, hashes, and required features.
-4. Stage the bootstrap stdlib.
-5. Initialize the native logging runtime.
-6. Initialize the V8 isolate and engine bridge.
-7. Evaluate the artifact bundle and register handlers.
-8. Build the route table and start the listener (or run the `--once`
+3. Read `app.plan.json`, validate schema, hashes, target metadata, and required features.
+4. Prepare capabilities, server config, logging config, and the Plan-backed route table.
+5. Stage the bootstrap stdlib.
+6. Initialize the native logging runtime.
+7. Initialize the V8 isolate and engine bridge.
+8. Evaluate the artifact bundle and register handlers.
+9. Start the listener (or run the `--once`
    request).
 
 If any step fails the runtime exits with a diagnostic and a non-zero status.

@@ -8,6 +8,9 @@ This page starts with the curated set, then lists every example directory with
 its current role. If a row says "fixture", treat it as test evidence rather
 than a tutorial.
 
+For a complete evidence-oriented inventory, see `examples/README.md` in the
+repository.
+
 ## Start here
 
 | Example | Shows |
@@ -120,8 +123,9 @@ explicit handler-parameter binding.
 
 ### request-context
 
-Exercises every field on `ctx`: route params, query parsing, header lookup,
-JSON and text body parsing.
+Exercises the source-input/native request context fields currently covered by
+the example: route params, query parsing, method, decoded path, and raw target.
+Headers and body helpers are covered by the broader runtime/test-host suites.
 
 ### framework-v2-di-services
 
@@ -136,23 +140,22 @@ Loads config from `addObject`, reads with typed getters, demonstrates the
 ### framework-v2-sqlite-crud
 
 CRUD app using `Sqlite<"main">` typed injection. The typed-handler version of
-the [SQLite walkthrough](sqlite.md). SQLite is the only provider with
-end-to-end typed-handler injection today.
+the [SQLite walkthrough](sqlite.md).
 
 ### framework-v2-postgres-crud
 
 Same shape, PostgreSQL provider. Requires `libpq` and a running database. The
-example reads its connection string from the `SLOPPY_POSTGRES_TEST_URL`
-environment variable. Typed-handler injection for PostgreSQL is not implemented
-yet (`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`); the example uses the explicit
-module + service factory shape.
+example reads its connection string from
+`Sloppy__Providers__postgres__main__connectionString`. The compiler emits typed
+provider metadata/wrappers; live execution depends on the PostgreSQL bridge,
+provider config, and service setup.
 
 ### framework-v2-sqlserver-crud
 
 Same shape, SQL Server provider. Requires an ODBC driver and a connection
-string in `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. As with PostgreSQL,
-typed-handler injection is not implemented yet; the example uses explicit
-module + service factory.
+string in `Sloppy__Providers__sqlserver__main__connectionString`. The compiler
+emits typed provider metadata/wrappers; live execution depends on the SQL
+Server bridge, provider config, and driver support.
 
 ### framework-v2-validation-errors
 

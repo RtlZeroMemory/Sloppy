@@ -23,7 +23,8 @@ A minimal OpenAPI 3 document in JSON form:
 - Path parameters extracted from `{name}` / `{name:str}` / `{name:int}`
   patterns.
 - Method names mapped to OpenAPI operations.
-- Route names from `.withName(...)` become operation IDs.
+- Route names from `.withName(...)` or route metadata options such as
+  `{ name: "Users.List" }` become operation IDs.
 - Tags from `app.group(...).withTags(...)`, route metadata options, and
   route-level tags propagate.
 

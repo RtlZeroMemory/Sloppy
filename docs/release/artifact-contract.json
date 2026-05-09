@@ -20,6 +20,7 @@
     "FAIL",
     "SKIPPED",
     "UNAVAILABLE",
+    "DEFERRED",
     "NOT RUN"
   ],
   "archiveMatrix": [

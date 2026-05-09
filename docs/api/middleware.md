@@ -77,4 +77,5 @@ console.log(routes[0].metadata.middleware.count);
 
 Middleware runs in the bootstrap app-host handler path. Compiler extraction
 and emitted Plan metadata for middleware are planned in a later compiler
-slice.
+slice, so source-input builds reject `app.use(fn)` today instead of silently
+dropping the middleware.

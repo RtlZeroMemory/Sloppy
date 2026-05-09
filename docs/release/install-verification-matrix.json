@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "matrix": "sloppy.release-install-verification",
-  "statusVocabulary": ["PASS", "FAIL", "SKIPPED", "UNAVAILABLE", "NOT RUN"],
+  "statusVocabulary": ["PASS", "FAIL", "SKIPPED", "UNAVAILABLE", "DEFERRED", "NOT RUN"],
   "lanes": [
     {
       "id": "windows-archive",

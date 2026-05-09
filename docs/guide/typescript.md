@@ -159,14 +159,13 @@ app.post("/users", (
 The compiler emits Plan metadata for route bindings, body schemas,
 provider injections, and service capabilities from these types.
 
-> **SQLite is the only provider with end-to-end executable injection
-> today.** The compiler recognizes `Postgres<"name">` and
-> `SqlServer<"name">` and emits Plan metadata for them, but the
-> executable bridge is sqlite-only — non-SQLite typed handlers fail
-> with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. Use the explicit
-> `Sloppy.module(...).services(...)` + `data.<provider>.open(...)`
-> pattern from [api/data.md](../api/data.md) for PostgreSQL and SQL
-> Server.
+`Sqlite<"name">`, `Postgres<"name">`, and `SqlServer<"name">` all emit
+provider metadata and generated typed-injection wrappers. SQLite is the
+strongest local path. PostgreSQL and SQL Server execution also need the
+matching connection-string config, active provider bridge, and live service
+dependencies. `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` is reserved for
+unsupported static non-SQLite provider handles such as
+`app.provider("postgres:main")`.
 
 ## Common gotchas
 

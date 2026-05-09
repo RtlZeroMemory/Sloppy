@@ -2,7 +2,7 @@
 
 This filesystem source example documents the intended
 `sloppy/fs` app-facing shape; full source-input execution remains gated by the V8 runtime
-runtime path and current compiler support.
+path and current compiler support.
 
 This example uses project-relative paths for local development:
 

@@ -23,6 +23,10 @@ export default app;
 
 ```
 $ sloppy run src/main.ts --once GET /hello/Ada
+HTTP/1.1 200 OK
+content-type: application/json; charset=utf-8
+content-length: 15
+
 {"hello":"Ada"}
 ```
 
@@ -45,7 +49,7 @@ today are:
   [docs/contributor/building-from-source.md](docs/contributor/building-from-source.md).
   Windows x64 is the most validated lane; Linux builds work; macOS and
   arm64 still need work.
-- **Build a local archive** — `dev.ps1 package` produces a per-platform
+- **Build a local archive** — `.\tools\windows\dev.ps1 package` produces a per-platform
   archive under `artifacts/packages/` that can be extracted and put on
   `PATH`. See [docs/install.md](docs/install.md).
 
@@ -115,10 +119,14 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
 ## What's pre-alpha
 
-- Production hardening (graceful drain, broader TLS posture, HTTP/2/3).
-- A framework feature pack — CORS, middleware/endpoint filters,
-  health checks, ProblemDetails, OpenAPI completion — is upcoming
-  work, not yet implemented.
+- Production hardening (long graceful drain, broader TLS posture, HTTP/2/3).
+- Some framework features are app-host only today. Middleware, CORS, request
+  IDs, request logging, controllers, health checks, and ProblemDetails run in
+  the bootstrap app-host/test-host path; compiler source input rejects the
+  surfaces it cannot encode yet.
+- OpenAPI is generated from current Plan metadata. Security schemes, richer
+  response schemas, CORS, middleware, request IDs, request logging, and
+  controller behavior are outside emitted OpenAPI metadata today.
 - Public release distribution (GitHub Release archives, npm launcher).
 - Cross-platform polish: Windows x64 is the most validated lane.
 - npm app dependency support — Sloppy apps don't import `node_modules`

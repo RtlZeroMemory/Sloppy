@@ -34,7 +34,7 @@ want to invoke `sloppy` from anywhere.
 
 ## Build a local archive
 
-`dev.ps1 package` produces a per-platform archive under
+`.\tools\windows\dev.ps1 package` produces a per-platform archive under
 `artifacts/packages/`. This is the same shape that release distribution
 will eventually use.
 

@@ -23,6 +23,9 @@ Run one deterministic request with a V8-enabled build:
 
 This is still dev-only. Route `{id:int}` validates the matched path segment, but the handler
 receives `route.id` as the string `"123"`. Query values are strings, repeated query keys use
-last-wins behavior, and `%XX`/`+` query decoding is supported. Request body parsing,
-headers in context, middleware, streaming, cookies, and content negotiation are not
-implemented yet.
+last-wins behavior, and `%XX`/`+` query decoding is supported.
+
+Headers and JSON/text/byte body helpers exist in the broader request-context runtime and
+app test host lanes. This small example intentionally stays on fields that `sloppy run
+--once` can exercise from only a method and target. Middleware, streaming request APIs,
+cookies, and content negotiation are separate surfaces.

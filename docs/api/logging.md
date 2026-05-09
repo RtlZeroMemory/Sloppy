@@ -61,8 +61,10 @@ const usersLog = ctx.log.forCategory("users");
 usersLog.info("profile loaded", { userId: ctx.route.id });
 ```
 
-Request-context loggers use the `request` category by default. `app.log` uses the
-application logger category used by the current host surface.
+Native request-context loggers use the `request` category by default. The
+bootstrap app-host/test-host path passes the app logger into route context, so
+its default category is the app-host category unless you call
+`ctx.log.forCategory(...)`.
 
 ## Fields
 

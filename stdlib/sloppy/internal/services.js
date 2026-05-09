@@ -193,6 +193,16 @@ function createServiceProvider(registrations, capabilities) {
             get(token) {
                 return resolve(scope, token);
             },
+            tryGet(token) {
+                validateServiceToken(token);
+                if (providerDisposed) {
+                    throw new Error("Sloppy service provider is disposed.");
+                }
+                if (!registrations.has(token)) {
+                    return undefined;
+                }
+                return resolve(scope, token);
+            },
             __disposed() {
                 return false;
             },
@@ -303,6 +313,19 @@ function createServiceProvider(registrations, capabilities) {
             get(token) {
                 return resolve(scope, token);
             },
+            tryGet(token) {
+                validateServiceToken(token);
+                if (providerDisposed) {
+                    throw new Error("Sloppy service provider is disposed.");
+                }
+                if (disposed) {
+                    throw new Error("Sloppy service scope is disposed.");
+                }
+                if (!registrations.has(token)) {
+                    return undefined;
+                }
+                return resolve(scope, token);
+            },
             dispose() {
                 if (disposed) {
                     return undefined;
@@ -356,6 +379,21 @@ function createServiceProvider(registrations, capabilities) {
             const registration = registrations.get(token);
             if (registration === undefined) {
                 throw new Error(`Sloppy service '${token}' is not registered.`);
+            }
+            if (registration.lifetime !== "singleton") {
+                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);
+            }
+            return resolve(rootScope, token);
+        },
+
+        tryGet(token) {
+            validateServiceToken(token);
+            if (providerDisposed) {
+                throw new Error("Sloppy service provider is disposed.");
+            }
+            const registration = registrations.get(token);
+            if (registration === undefined) {
+                return undefined;
             }
             if (registration.lifetime !== "singleton") {
                 throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);

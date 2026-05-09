@@ -506,7 +506,7 @@ Forbidden:
 - do not hand-roll ad hoc string append loops;
 - do not manually track string offsets when `SlStringBuilder` or `SlByteBuilder` fits;
 - do not use `sprintf`, `snprintf`, `strcat`, `strcpy`, or `strlen`-based construction for
-  internal buffers unless the code is an apvalidated boundary helper;
+  internal buffers unless the code is a validated boundary helper;
 - do not assume NUL termination for `SlStr` or `SlBytes`;
 - do not allocate hidden heap buffers for convenience;
 - do not create new local mini-builders;

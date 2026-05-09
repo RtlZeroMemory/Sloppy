@@ -98,8 +98,12 @@ Inbound TLS is opt-in OpenSSL plumbing in
 Sloppy:Server:Tls:Enabled = true
 Sloppy:Server:Tls:CertificatePath = path/to/cert.pem
 Sloppy:Server:Tls:PrivateKeyPath  = path/to/key.pem
-Sloppy:Server:Tls:Passphrase      = (passphrase or env reference)
 ```
+
+The lower-level libuv/OpenSSL transport supports passphrase-protected private
+keys. `sloppy run` config metadata does not carry a TLS private-key passphrase
+today; that needs the same non-redacted runtime secret hand-off used for other
+secret-bearing config.
 
 Path validation rejects:
 
@@ -153,8 +157,8 @@ the repository profile). We acknowledge and coordinate disclosure.
   diagnostic shapes; drift is a test failure.
 - **V8 bridge boundary tests** verify that native pointers don't escape
   and that resource generation checks work.
-- **TLS conformance** lanes (V8-gated, opt-in) cover certificate path
-  validation and handshake behavior.
+- **TLS transport** lanes cover certificate path validation and handshake
+  behavior. V8-gated run lanes cover compiled handler execution separately.
 
 ## See also
 

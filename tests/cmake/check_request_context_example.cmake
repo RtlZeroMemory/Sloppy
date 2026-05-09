@@ -37,8 +37,8 @@ foreach(required IN ITEMS
         "receives `route.id` as the string"
         "last-wins"
         "request.rawTarget"
-        "body parsing"
-        "implemented yet")
+        "Headers and JSON/text/byte body helpers"
+        "--once")
     string(FIND "${readme_source}" "${required}" found_index)
     if(found_index EQUAL -1)
         message(FATAL_ERROR "request-context README missing honest scope text: ${required}")

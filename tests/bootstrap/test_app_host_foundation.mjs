@@ -930,6 +930,8 @@ async function flushMicrotasks(count = 6) {
 
     const scope = app.services.createScope();
     assert.equal(scope.get("message"), "Hello from Sloppy");
+    assert.equal(scope.tryGet("message"), "Hello from Sloppy");
+    assert.equal(scope.tryGet("missing"), undefined);
     assert.equal(scope.get("message"), "Hello from Sloppy");
     assert.equal(singletonCalls, 1);
     assert.equal(scope.get("request-id").value, 1);
@@ -944,9 +946,13 @@ async function flushMicrotasks(count = 6) {
     assert.equal(scopedDisposals, 1);
     assert.equal(transientDisposals, 2);
     assertThrowsMessage(() => scope.get("message"), /scope is disposed/);
+    assertThrowsMessage(() => scope.tryGet("missing"), /scope is disposed/);
     assert.equal(app.services.createScope().get("request-id").value, 2);
     assert.equal(app.services.get("message"), "Hello from Sloppy");
+    assert.equal(app.services.tryGet("message"), "Hello from Sloppy");
+    assert.equal(app.services.tryGet("missing"), undefined);
     assertThrowsMessage(() => app.services.get("request-id"), /root service resolution/);
+    assertThrowsMessage(() => app.services.tryGet("request-id"), /root service resolution/);
     app.services.get("disposable-singleton");
 
     const fields = { route: "/" };

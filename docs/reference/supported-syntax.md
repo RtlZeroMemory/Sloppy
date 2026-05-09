@@ -147,7 +147,12 @@ Representative typed-binding diagnostics:
 
 ## Provider Bridge Limitation
 
-Compiler metadata recognizes sqlite/postgres/sqlserver providers, but generated
-executable provider bridge is currently sqlite-only for static provider handles.
-Non-sqlite provider handler execution is rejected with
+Compiler metadata recognizes sqlite/postgres/sqlserver providers. Framework v2
+typed provider parameters emit generated wrappers for all three provider kinds,
+with PostgreSQL and SQL Server execution gated on provider config, active bridge
+support, and live service dependencies.
+
+Generated static provider handles are narrower: `app.provider("sqlite:main")`
+is the current executable static-handle path. Static non-SQLite handles such as
+`app.provider("postgres:main")` are rejected with
 `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.

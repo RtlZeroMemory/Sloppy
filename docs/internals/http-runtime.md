@@ -196,7 +196,11 @@ connection draining) is the responsibility of an in-front reverse proxy.
   the full Plan-backed dispatch path with synthetic requests.
 - **Conformance** runs `--once` requests through the real CLI for
   golden response checking.
-- **Live HTTP** lanes (V8-gated) hit a running listener via libuv.
+- **Transport tests** exercise the running libuv listener, keep-alive,
+  `HEAD`, `405`, `417`, TLS configuration, and response serialization.
+- **V8-gated run lanes** execute compiled handlers through `sloppy run --once`.
+  Listener-to-V8 socket coverage is tracked separately from synthetic
+  `--once` dispatch.
 
 ## Not implemented
 

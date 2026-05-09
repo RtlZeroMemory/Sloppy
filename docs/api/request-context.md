@@ -8,8 +8,11 @@ app.get("/users/{id:int}", (ctx) => {
 });
 ```
 
-`ctx` carries everything Sloppy knows about the current request, plus
-the app-level objects you'll usually need.
+`ctx` carries everything Sloppy knows about the current request. The
+bootstrap app-host/test-host path adds app-level objects directly on the
+context. The native/V8 run path exposes the request, route/query metadata,
+request ID, logger, signal, and deadline; generated typed wrappers materialize
+services and config arguments when the compiled handler declares them.
 
 ## Shape
 
@@ -22,10 +25,10 @@ the app-level objects you'll usually need.
 | `ctx.deadline`     | deadline              | Per-request deadline metadata                      |
 | `ctx.routeName`    | string                | Matched route name, when known                     |
 | `ctx.routePattern` | string                | Matched route pattern, when known                  |
-| `ctx.services`     | service scope         | Per-request DI scope                               |
-| `ctx.config`       | `ConfigProvider`      | App config (read-only)                             |
 | `ctx.log`          | `Logger`              | Request logger                                     |
-| `ctx.capabilities` | capability provider   | Capabilities declared at build time                |
+| `ctx.services`     | service scope         | App-host/test-host direct field; compiler-generated wrappers use request scopes for `Service<T>` |
+| `ctx.config`       | `ConfigProvider`      | App-host/test-host direct field; compiled `Config<"KEY">` parameters are materialized by generated wrappers |
+| `ctx.capabilities` | capability provider   | App-host/test-host direct field                    |
 
 ## `ctx.route`
 
@@ -127,9 +130,9 @@ the runtime computed from server timeouts.
 
 ## `ctx.services`
 
-A scoped service resolver. Each request gets its own scope; scoped
-services are constructed once per request and disposed when the
-request ends.
+In the bootstrap app-host/test-host path, `ctx.services` is a scoped service
+resolver. Each request gets its own scope; scoped services are constructed once
+per request and disposed when the request ends.
 
 ```ts
 app.get("/users/{id:int}", (ctx) => {
@@ -140,6 +143,10 @@ app.get("/users/{id:int}", (ctx) => {
 
 See [services](services.md) for lifetimes, disposal, and resolution
 rules.
+
+In compiler source input, prefer typed `Service<T>` handler parameters for
+compiled artifacts. The generated wrapper creates and disposes the request
+scope around the handler call.
 
 ## `ctx.requestId`
 
@@ -156,8 +163,8 @@ app.get("/status", (ctx) => {
 
 ## `ctx.config`, `ctx.log`, `ctx.capabilities`
 
-These mirror `app.config`, `app.log`, and `app.capabilities` — the same
-objects you registered on the builder.
+In the bootstrap app-host/test-host path, these mirror `app.config`, `app.log`,
+and `app.capabilities` — the same objects you registered on the builder.
 
 ```ts
 app.get("/", (ctx) => {
@@ -168,7 +175,9 @@ app.get("/", (ctx) => {
 
 `ctx.log` supports `trace`, `debug`, `info`, `warn`, `error`, `isEnabled`, and
 `forCategory`. In native runs, `ctx.log` writes to the native logging queue and
-configured sinks. See [logging](logging.md).
+configured sinks. Native request contexts do not directly expose `ctx.config`,
+`ctx.services`, or `ctx.capabilities`; use typed handler parameters when a
+compiled artifact needs those values. See [logging](logging.md).
 
 ## Not yet
 

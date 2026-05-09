@@ -51,7 +51,7 @@ known limitations, and checksum references.
 
 The supported status vocabulary is `supported`, `experimental`, `source-build only`,
 `planned`, `blocked`, `unavailable`, and `untested`. Evidence reports use `PASS`, `FAIL`,
-`SKIPPED`, `UNAVAILABLE`, and `NOT RUN`.
+`SKIPPED`, `UNAVAILABLE`, `DEFERRED`, and `NOT RUN`.
 
 ## npm
 

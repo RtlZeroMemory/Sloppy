@@ -86,4 +86,5 @@ mapper.get("/{id:int}", "get"); // CORS applies to this route
 
 CORS preflight and response-header injection run in the bootstrap app-host
 handler path. Compiler extraction and Plan-level CORS metadata for emitted
-artifacts are planned in a separate compiler slice.
+artifacts are planned in a separate compiler slice, so source-input builds
+reject `app.useCors(...)` today instead of silently dropping the policy.

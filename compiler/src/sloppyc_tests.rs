@@ -576,8 +576,10 @@ fn configuration_load_anchors_tls_paths_to_config_dir() {
     )
     .expect("appsettings should be written");
 
-    let mut options = CompileOptions::default();
-    options.config_dir = Some(root.clone());
+    let options = CompileOptions {
+        config_dir: Some(root.clone()),
+        ..Default::default()
+    };
     let model = ConfigurationModel::load(&root.join("src/main.ts"), &options, &[])
         .expect("configuration should load");
     let keys = model.plan_keys();
