@@ -72,6 +72,15 @@ function Copy-DirectoryContents {
         Copy-Item -Destination $Destination -Recurse -Force
 }
 
+function Copy-NpmTemplateGitignorePlaceholders {
+    param([string]$TemplatesRoot)
+
+    Get-ChildItem -LiteralPath $TemplatesRoot -Recurse -Force -File -Filter ".gitignore" |
+        ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $_.DirectoryName "gitignore") -Force
+        }
+}
+
 function Get-PlatformPackageName {
     param([object]$Manifest)
 
@@ -183,6 +192,7 @@ try {
         }
         Copy-Item -LiteralPath $source -Destination $platformStage -Recurse -Force
     }
+    Copy-NpmTemplateGitignorePlaceholders -TemplatesRoot (Join-Path $platformStage "templates")
 
     Assert-NoNativeInstallScripts -PackageJsonPath (Join-Path $runtimeStage "package.json")
     Assert-NoNativeInstallScripts -PackageJsonPath (Join-Path $platformStage "package.json")
@@ -214,6 +224,12 @@ try {
         New-Item -ItemType Directory -Force -Path $createRoot | Out-Null
         Invoke-Native $node.Source @($launcher, "create", "tmp-npm-app", "--template", "minimal-api") -WorkingDirectory $createRoot
         $createdApp = Join-Path $createRoot "tmp-npm-app"
+        if (-not (Test-Path -LiteralPath (Join-Path $createdApp ".gitignore") -PathType Leaf)) {
+            throw "npm dry-run create smoke did not create .gitignore."
+        }
+        if (Test-Path -LiteralPath (Join-Path $createdApp "gitignore")) {
+            throw "npm dry-run create smoke leaked template gitignore placeholder."
+        }
         Invoke-Native $node.Source @($launcher, "build") -WorkingDirectory $createdApp
         Push-Location $createdApp
         try {

@@ -104,6 +104,14 @@ copy_dir_contents() {
   cp -R "$source"/. "$destination"/
 }
 
+materialize_npm_template_gitignores() {
+  local templates_root="$1"
+  local gitignore=""
+  while IFS= read -r -d '' gitignore; do
+    cp "$gitignore" "$(dirname "$gitignore")/gitignore"
+  done < <(find "$templates_root" -type f -name .gitignore -print0)
+}
+
 runtime_stage="$stage_root/sloppy"
 platform_stage="$stage_root/$platform_package_dir"
 copy_dir_contents "$repo_root/packages/npm/sloppy" "$runtime_stage"
@@ -114,6 +122,7 @@ for entry in bin stdlib templates examples docs manifest.json LICENSE README.md;
   [[ -e "$source" ]] || { echo "Archive package is missing npm platform package content: $entry" >&2; exit 1; }
   cp -R "$source" "$platform_stage/"
 done
+materialize_npm_template_gitignores "$platform_stage/templates"
 
 node "$repo_root/tools/unix/scripts/validate-npm-package-policy.mjs" "$runtime_stage/package.json"
 node "$repo_root/tools/unix/scripts/validate-npm-package-policy.mjs" "$platform_stage/package.json"
@@ -144,6 +153,8 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
   mkdir -p "$create_root"
   (cd "$create_root" && node "$launcher" create tmp-npm-app --template minimal-api)
   created_app="$create_root/tmp-npm-app"
+  [[ -f "$created_app/.gitignore" ]] || { echo "npm launcher create smoke did not create .gitignore." >&2; exit 1; }
+  [[ ! -e "$created_app/gitignore" ]] || { echo "npm launcher create smoke leaked template gitignore placeholder." >&2; exit 1; }
   (cd "$created_app" && node "$launcher" build)
   set +e
   run_output="$(cd "$created_app" && node "$launcher" run --once GET /health 2>&1)"

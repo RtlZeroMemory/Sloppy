@@ -117,6 +117,14 @@ static bool sl_create_join_span_path(char* buffer, size_t capacity, const char* 
     return sl_run_join_path(buffer, capacity, dir, sl_cli_span_from_str(leaf));
 }
 
+static SlStr sl_create_template_target_name(SlStr source_name)
+{
+    if (source_name.length == 9U && memcmp(source_name.ptr, "gitignore", 9U) == 0) {
+        return sl_str_from_cstr(".gitignore");
+    }
+    return source_name;
+}
+
 static bool sl_create_copy_package_template_path(char* buffer, size_t capacity,
                                                 const char* executable_path,
                                                 const char* template_name)
@@ -233,11 +241,12 @@ static int sl_create_copy_directory(const char* source_dir, const char* target_d
 
     for (index = 0U; index < list.count; index += 1U) {
         SlStr name = sl_owned_str_as_view(list.entries[index].name);
+        SlStr target_name = sl_create_template_target_name(name);
         char source_path[SL_RUN_PATH_MAX_BYTES];
         char target_path[SL_RUN_PATH_MAX_BYTES];
 
         if (!sl_create_join_span_path(source_path, sizeof(source_path), source_dir, name) ||
-            !sl_create_join_span_path(target_path, sizeof(target_path), target_dir, name))
+            !sl_create_join_span_path(target_path, sizeof(target_path), target_dir, target_name))
         {
             sl_cli_write_cstr(stderr, "sloppy create: template path is too long\n");
             return 1;

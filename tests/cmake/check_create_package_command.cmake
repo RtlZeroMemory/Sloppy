@@ -16,6 +16,9 @@ set(project_name "created-api")
 set(project_dir "${work_dir}/${project_name}")
 set(default_project_name "created-api-default")
 set(default_project_dir "${work_dir}/${default_project_name}")
+set(placeholder_work_dir "${work_dir}/placeholder-template")
+set(placeholder_project_name "created-api-placeholder")
+set(placeholder_project_dir "${placeholder_work_dir}/${placeholder_project_name}")
 file(REMOVE_RECURSE "${work_dir}")
 file(MAKE_DIRECTORY "${work_dir}")
 file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${work_dir}")
@@ -56,6 +59,29 @@ if(NOT default_create_result EQUAL 0)
 endif()
 if(NOT EXISTS "${default_project_dir}/.gitignore")
     message(FATAL_ERROR "sloppy create without --no-git did not copy .gitignore")
+endif()
+
+file(MAKE_DIRECTORY "${placeholder_work_dir}")
+file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${placeholder_work_dir}")
+file(RENAME
+    "${placeholder_work_dir}/templates/minimal-api/.gitignore"
+    "${placeholder_work_dir}/templates/minimal-api/gitignore")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${placeholder_project_name}" --template minimal-api --format json
+    WORKING_DIRECTORY "${placeholder_work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE placeholder_create_result
+    OUTPUT_VARIABLE placeholder_create_stdout
+    ERROR_VARIABLE placeholder_create_stderr)
+
+if(NOT placeholder_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create with npm gitignore placeholder failed\nstdout:\n${placeholder_create_stdout}\nstderr:\n${placeholder_create_stderr}")
+endif()
+if(NOT EXISTS "${placeholder_project_dir}/.gitignore")
+    message(FATAL_ERROR "sloppy create did not restore npm gitignore placeholder as .gitignore")
+endif()
+if(EXISTS "${placeholder_project_dir}/gitignore")
+    message(FATAL_ERROR "sloppy create leaked npm gitignore placeholder as gitignore")
 endif()
 
 set(occupied_file_name "occupied-file")
