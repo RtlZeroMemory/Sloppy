@@ -172,8 +172,20 @@ Add `.sloppy/` to `.gitignore`. It's reproducible from source.
 
 ## What about `node_modules`?
 
-Sloppy apps don't import npm packages. The compiler resolves `"sloppy"` and
-relative paths only. If you need a third-party utility, vendor it into
-your repo or split the work into a service the Sloppy app calls. See
+Sloppy apps don't import npm packages. The compiler resolves `"sloppy"`,
+the `sloppy/*` stdlib subpaths, and relative paths within the source root.
+If you need a third-party utility, vendor it into your repo or split the
+work into a service the Sloppy app calls. See
 [about/why-no-node-modules.md](../about/why-no-node-modules.md) for the
 reasoning.
+
+Beyond `"sloppy"` itself, the stdlib subpaths cover filesystem, network,
+operating system, time, crypto, codec, and worker work:
+
+- [`sloppy/fs`](../api/filesystem.md)
+- [`sloppy/net`](../api/network.md) (and [`HttpClient`](../api/http-client.md))
+- [`sloppy/os`](../api/os.md)
+- [`sloppy/time`](../api/time.md)
+- [`sloppy/crypto`](../api/crypto.md)
+- [`sloppy/codec`](../api/codec.md)
+- [`sloppy/workers`](../api/workers.md)

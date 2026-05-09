@@ -2967,7 +2967,7 @@ export default app;
 #[test]
 fn sloppy_net_import_emits_plan_required_feature() {
     let source = r#"import { Sloppy, Results } from "sloppy";
-import { TcpClient, TcpListener, TcpConnection, NetworkAddress } from "sloppy/net";
+import { TcpClient, TcpListener, TcpConnection, LocalEndpoint, UnixSocket, NamedPipe, NetworkAddress, SloppyNetError } from "sloppy/net";
 const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 export default app;
@@ -2978,7 +2978,7 @@ export default app;
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains(
-            "const { Results, TcpClient, TcpListener, TcpConnection, NetworkAddress } = __sloppyRuntime;"
+            "const { Results, TcpClient, TcpListener, TcpConnection, LocalEndpoint, UnixSocket, NamedPipe, NetworkAddress, SloppyNetError } = __sloppyRuntime;"
         ));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
@@ -3000,7 +3000,7 @@ export default app;
 #[test]
 fn sloppy_os_import_emits_plan_required_feature() {
     let source = r#"import { Sloppy, Results } from "sloppy";
-import { System, Environment, Process, Signals } from "sloppy/os";
+import { System, Environment, Process, ProcessHandle, Signals, OsError } from "sloppy/os";
 const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 export default app;
@@ -3012,7 +3012,7 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js
         .source
-        .contains("const { Results, System, Environment, Process, Signals } = __sloppyRuntime;"));
+        .contains("const { Results, System, Environment, Process, ProcessHandle, Signals, OsError } = __sloppyRuntime;"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,

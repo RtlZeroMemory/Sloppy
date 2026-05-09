@@ -114,6 +114,14 @@ lib/sloppy/bootstrap/sloppy/
 ## Source Docs
 
 - `docs/api/README.md`
+- `docs/api/filesystem.md` — `sloppy/fs`
+- `docs/api/network.md` — `sloppy/net`
+- `docs/api/http-client.md` — `HttpClient`
+- `docs/api/os.md` — `sloppy/os`
+- `docs/api/time.md` — `sloppy/time`
+- `docs/api/crypto.md` — `sloppy/crypto`
+- `docs/api/codec.md` — `sloppy/codec`
+- `docs/api/workers.md` — `sloppy/workers`
 - `docs/contributor/js-ts-standards.md`
 - `docs/reference/supported-syntax.md`
 - `docs/reference/providers.md`

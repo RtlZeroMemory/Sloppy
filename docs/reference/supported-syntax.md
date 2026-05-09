@@ -44,6 +44,35 @@ Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
 `Testing` is a framework test helper; compiler input rejects it with
 `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`.
 
+### Stdlib subpath imports
+
+The compiler accepts named, unaliased imports from each stdlib subpath listed
+below. Each subpath emits the matching `stdlib.*` runtime feature into the
+Plan when imported. Default imports and import aliases are rejected with
+`SLOPPYC_E_UNSUPPORTED_IMPORT`; unsupported names fail with the same code.
+
+| Subpath | Supported names | Plan feature |
+| --- | --- | --- |
+| `sloppy/fs` | `File`, `Directory`, `FileHandle`, `FileWatcher`, `Path` | `stdlib.fs` |
+| `sloppy/net` | `HttpClient`, `TcpClient`, `TcpListener`, `TcpConnection`, `LocalEndpoint`, `UnixSocket`, `NamedPipe`, `NetworkAddress`, `SloppyNetError` | `stdlib.net` (`HttpClient` emits `stdlib.httpclient`) |
+| `sloppy/os` | `System`, `Environment`, `Process`, `ProcessHandle`, `Signals`, `OsError` | `stdlib.os` |
+| `sloppy/time` | `Time`, `Deadline`, `CancellationController`, `TimeoutError`, `CancelledError`, `InvalidDeadlineError`, `TimerDisposedError` | `stdlib.time` |
+| `sloppy/crypto` | `Random`, `Hash`, `Hmac`, `Password`, `ConstantTime`, `Secret`, `NonCryptoHash` | `stdlib.crypto` |
+| `sloppy/codec` | `Base64`, `Base64Url`, `Hex`, `Text`, `Binary`, `Compression`, `Checksums` | `stdlib.codec` |
+| `sloppy/workers` | `BackgroundService`, `WorkQueue`, `WorkerPool`, `Worker`, `WorkerCancellationController`, `WorkerCancellationSignal`, `SloppyWorkerError` | `stdlib.workers` |
+
+Examples:
+
+```ts
+import { File, Directory } from "sloppy/fs";
+import { HttpClient } from "sloppy/net";
+import { System, Environment, Process, Signals } from "sloppy/os";
+import { Time, Deadline, CancellationController } from "sloppy/time";
+import { Random, Hash, Hmac, Secret } from "sloppy/crypto";
+import { Base64, Hex, Text, Binary } from "sloppy/codec";
+import { BackgroundService, WorkQueue } from "sloppy/workers";
+```
+
 ## Route Extraction Rules
 
 Route declarations must be top-level statements on app/group receivers.

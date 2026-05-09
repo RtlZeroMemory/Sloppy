@@ -60,6 +60,27 @@ repository.
 | [`workers-background-service`](#workers-background-service) | Long-running service alongside the HTTP server |
 | [`workers-workerpool`](#workers-workerpool) | Bounded pool of worker isolates |
 
+## Stdlib (filesystem, network, OS, time, crypto, codec)
+
+These are API-shape fixtures rather than full tutorials, but they are the
+shortest path to seeing each stdlib module in real source. Reference docs:
+[Filesystem](../api/filesystem.md), [Network](../api/network.md),
+[HTTP Client](../api/http-client.md), [OS](../api/os.md),
+[Time](../api/time.md), [Crypto](../api/crypto.md),
+[Codec](../api/codec.md).
+
+| Example | Shows |
+| --- | --- |
+| `fs-basic`, `fs-streams`, `fs-watch`, `fs-roots-policy` | `sloppy/fs` read/write, streaming handles, watchers, named-root paths |
+| `net-tcp-client`, `net-tcp-server`, `net-tcp-echo`, `net-deadline-cancel` | `sloppy/net` TCP client/server, deadlines, cancellation |
+| `net-local-ipc`, `net-policy-strict` | `LocalEndpoint` IPC; HTTP client origin policy |
+| `http-client-basic` | `HttpClient` outbound usage |
+| `os-runtime-api`, `core-process-time-codec` | `sloppy/os` `System`, `Environment`, `Process.run`/`start`, `Signals` |
+| `time-basic`, `time-deadline-cancellation`, `time-interval-schedule`, `time-fake-clock` | `sloppy/time` delays, deadlines, intervals, `Time.fakeClock` |
+| `crypto-random-token`, `crypto-hash-hmac`, `crypto-password`, `crypto-secret-constant-time` | `sloppy/crypto` randomness, hashing, HMAC, Argon2id, `Secret` |
+| `codec-base64-hex`, `codec-text-binary`, `codec-checksums`, `codec-compression`, `codec-streaming-compression` | `sloppy/codec` encodings, binary I/O, gzip |
+| `core-fs-time-codec`, `core-network-time-codec`, `core-worker-time` | combined stdlib usage with deadlines |
+
 ---
 
 ## How to run one

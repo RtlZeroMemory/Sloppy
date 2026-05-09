@@ -81,7 +81,14 @@ compiler fails closed rather than emitting a partial Plan.
 | Request logging | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestLogging.defaults(...)`; dynamic option values fail closed. Native `ctx.log` is direct logging. |
 | HTTP server | n/a | Plan/server config metadata | supported | experimental dev server | HTTP/1.1 plus server HTTP/2 over TLS ALPN, h2c prior knowledge, and h2c Upgrade. Not a production edge. |
 | Inbound TLS | n/a | config metadata | supported paths | experimental | Certificate/key paths are Plan-visible today; diagnostics redact TLS material. |
-| HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | HTTP/1.1 by default; explicit h2/h2c supported. Pooled h2 multiplexing and automatic ALPN selection are not included yet. |
+| HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | HTTP/1.1 by default; explicit h2/h2c supported. `https://` needs the private outbound TLS bridge. Pooled h2 multiplexing and automatic ALPN selection are not part of the committed surface in this branch. |
+| Filesystem stdlib | supported | supported from `sloppy/fs` | `stdlib.fs` feature emitted | V8 bridge required | No Node `fs` compatibility. |
+| Network stdlib (TCP, local IPC) | supported | supported from `sloppy/net` | `stdlib.net` feature emitted | V8 bridge required | `HttpClient` supports explicit h2/h2c; no standalone DNS, UDP, or WebSocket API. |
+| OS stdlib (System, Environment, Process, ProcessHandle, Signals, OsError) | supported | supported from `sloppy/os` | `stdlib.os` feature emitted | V8 bridge required | No Node `process`/`child_process` compatibility; no process identity helpers. |
+| Time stdlib | supported | supported from `sloppy/time` | `stdlib.time` feature emitted | V8 bridge for scheduling; pure JS for `Deadline`, `CancellationController`, `Time.fakeClock` | No global `setTimeout`/`setInterval`. |
+| Crypto stdlib | supported | supported from `sloppy/crypto` | `stdlib.crypto` feature emitted | V8 bridge required (platform-delegated) | SHA-256/384/512, HMAC-SHA-256, Argon2id, OS CSPRNG, xxHash64. |
+| Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | No Node `Buffer`. |
+| Workers stdlib | supported app-host | supported from `sloppy/workers` | `stdlib.workers` feature emitted | pure JS for `BackgroundService`/`WorkQueue`; V8 bridge for `WorkerPool.run` and `Worker.start` | App shutdown does not yet auto-stop background services. |
 | Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for proof classification. |
 | Package/install path | n/a | n/a | package layout | experimental | Local archives and local npm tarball proof exist; public release/npm packages are not published. |
 
