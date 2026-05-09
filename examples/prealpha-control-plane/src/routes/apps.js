@@ -15,13 +15,13 @@ export function appsModule(app) {
         const body = ctx.request.json();
         if (body === null || Array.isArray(body) || typeof body !== "object" ||
             typeof body.name !== "string" || body.name.length === 0 ||
-            typeof body.projectId === "undefined") {
+            !Number.isInteger(body.projectId) || body.projectId <= 0) {
             return Results.badRequest({ code: "APP_INVALID", message: "projectId and name are required" });
         }
 
         await db.exec("create table if not exists apps (id integer primary key, project_id integer not null, name text not null, environment text not null)", []);
         await db.exec("insert into apps (project_id, name, environment) values (?, ?, ?)", [body.projectId, body.name, body.environment ?? "Development"]);
-        const created = await db.queryOne("select id, project_id, name, environment from apps where name = ?", [body.name]);
+        const created = await db.queryOne("select id, project_id, name, environment from apps where id = last_insert_rowid()", []);
         return Results.created(`/apps/${created.id}`, created);
     }).withName("Apps.Create");
 

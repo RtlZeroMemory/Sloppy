@@ -13,7 +13,7 @@ export function buildsModule(app) {
 
         await db.exec("create table if not exists builds (id integer primary key, app_id integer not null, commit_sha text not null, status text not null)", []);
         await db.exec("insert into builds (app_id, commit_sha, status) values (?, ?, ?)", [ctx.route.id, body.commit, "queued"]);
-        const build = await db.queryOne("select id, app_id, commit_sha, status from builds where commit_sha = ?", [body.commit]);
+        const build = await db.queryOne("select id, app_id, commit_sha, status from builds where id = last_insert_rowid()", []);
         return Results.created(`/apps/${ctx.route.id}/builds/${build.id}`, build);
     }).withName("Builds.Create");
 

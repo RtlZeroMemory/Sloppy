@@ -21,6 +21,7 @@ class FakeControlPlaneDb {
     #nextAppId = 3;
     #nextBuildId = 2;
     #nextDeploymentId = 1;
+    #lastInsertRowId = 0;
 
     constructor() {
         this.projects = [];
@@ -41,12 +42,14 @@ class FakeControlPlaneDb {
             return;
         }
         if (statement.includes("insert into projects (slug,")) {
-            this.projects.push({
+            const row = {
                 id: this.#nextProjectId,
                 slug: params[0],
                 name: params[1],
                 owner: params[2],
-            });
+            };
+            this.projects.push(row);
+            this.#lastInsertRowId = row.id;
             this.#nextProjectId += 1;
             return;
         }
@@ -56,12 +59,14 @@ class FakeControlPlaneDb {
             return;
         }
         if (statement.includes("insert into apps (project_id,")) {
-            this.apps.push({
+            const row = {
                 id: this.#nextAppId,
                 project_id: Number(params[0]),
                 name: params[1],
                 environment: params[2],
-            });
+            };
+            this.apps.push(row);
+            this.#lastInsertRowId = row.id;
             this.#nextAppId += 1;
             return;
         }
@@ -71,23 +76,27 @@ class FakeControlPlaneDb {
             return;
         }
         if (statement.includes("insert into builds (app_id,")) {
-            this.builds.push({
+            const row = {
                 id: this.#nextBuildId,
                 app_id: Number(params[0]),
                 commit_sha: params[1],
                 status: params[2],
-            });
+            };
+            this.builds.push(row);
+            this.#lastInsertRowId = row.id;
             this.#nextBuildId += 1;
             return;
         }
 
         if (statement.includes("insert into deployments (app_id,")) {
-            this.deployments.push({
+            const row = {
                 id: this.#nextDeploymentId,
                 app_id: Number(params[0]),
                 build_id: Number(params[1]),
                 status: params[2],
-            });
+            };
+            this.deployments.push(row);
+            this.#lastInsertRowId = row.id;
             this.#nextDeploymentId += 1;
             return;
         }
@@ -129,19 +138,18 @@ class FakeControlPlaneDb {
         if (statement.includes("from projects where id")) {
             return this.projects.find((project) => project.id === Number(params[0])) ?? null;
         }
-        if (statement.includes("from apps where name")) {
-            return this.apps.find((app) => app.name === params[0]) ?? null;
+        if (statement.includes("from apps where id = last_insert_rowid()")) {
+            return this.apps.find((app) => app.id === this.#lastInsertRowId) ?? null;
         }
         if (statement.includes("from apps where id")) {
             return this.apps.find((app) => app.id === Number(params[0])) ?? null;
         }
-        if (statement.includes("from builds where commit_sha")) {
-            return this.builds.find((build) => build.commit_sha === params[0]) ?? null;
+        if (statement.includes("from builds where id = last_insert_rowid()")) {
+            return this.builds.find((build) => build.id === this.#lastInsertRowId) ?? null;
         }
-        if (statement.includes("from deployments where app_id")) {
-            return this.deployments.find((deployment) => deployment.app_id === Number(params[0])) ?? null;
+        if (statement.includes("from deployments where id = last_insert_rowid()")) {
+            return this.deployments.find((deployment) => deployment.id === this.#lastInsertRowId) ?? null;
         }
-
         throw new Error(`unexpected queryOne statement: ${sql}`);
     }
 
@@ -156,6 +164,7 @@ class FakeControlPlaneDb {
             row[column] = column.endsWith("_id") || column === "id" ? Number(params[index]) : params[index];
         }
         collection.push(row);
+        this.#lastInsertRowId = row.id;
     }
 }
 
@@ -216,6 +225,36 @@ function appWithProvider(app, db) {
             return Reflect.get(target, property, receiver);
         },
     });
+}
+
+async function assertInvalidAppProjectIdValuesReturn400(host) {
+    const invalidBodies = [
+        { label: "missing", json: { name: "invalid-app" } },
+        { label: "null", json: { projectId: null, name: "invalid-app" } },
+        { label: "string", json: { projectId: "1", name: "invalid-app" } },
+        { label: "float", json: { projectId: 1.5, name: "invalid-app" } },
+        { label: "zero", json: { projectId: 0, name: "invalid-app" } },
+        { label: "negative", json: { projectId: -1, name: "invalid-app" } },
+    ];
+
+    for (const { label, json } of invalidBodies) {
+        assert.equal((await host.post("/apps", { json })).status, 400, `invalid app projectId ${label}`);
+    }
+}
+
+async function assertInvalidDeploymentBuildIdValuesReturn400(host) {
+    const invalidBodies = [
+        { label: "missing", json: {} },
+        { label: "null", json: { buildId: null } },
+        { label: "string", json: { buildId: "2" } },
+        { label: "float", json: { buildId: 2.5 } },
+        { label: "zero", json: { buildId: 0 } },
+        { label: "negative", json: { buildId: -2 } },
+    ];
+
+    for (const { label, json } of invalidBodies) {
+        assert.equal((await host.post("/apps/1/deployments", { json })).status, 400, `invalid deployment buildId ${label}`);
+    }
 }
 
 const imported = await importRouteModulesFromExampleCopy();
@@ -314,6 +353,20 @@ try {
         name: "dogfood-api",
         environment: "Development",
     });
+    const firstDuplicateApp = await (await host.post("/apps", {
+        json: { projectId: 1, name: "duplicate-api", environment: "Development" },
+    })).json();
+    const secondDuplicateApp = await (await host.post("/apps", {
+        json: { projectId: 1, name: "duplicate-api", environment: "Staging" },
+    })).json();
+    assert.equal(firstDuplicateApp.id, 4);
+    assert.deepEqual(secondDuplicateApp, {
+        id: 5,
+        project_id: 1,
+        name: "duplicate-api",
+        environment: "Staging",
+    });
+    await assertInvalidAppProjectIdValuesReturn400(host);
     assert.equal((await host.post("/apps", { json: { projectId: 1 } })).status, 400);
     assert.equal((await host.get("/apps/3")).status, 200);
 
@@ -327,8 +380,21 @@ try {
         commit_sha: "feedface",
         status: "queued",
     });
+    const firstRetryBuild = await (await host.post("/apps/1/builds", {
+        json: { commit: "repeat-sha" },
+    })).json();
+    const secondRetryBuild = await (await host.post("/apps/1/builds", {
+        json: { commit: "repeat-sha" },
+    })).json();
+    assert.equal(firstRetryBuild.id, 3);
+    assert.deepEqual(secondRetryBuild, {
+        id: 4,
+        app_id: 1,
+        commit_sha: "repeat-sha",
+        status: "queued",
+    });
     assert.equal((await host.post("/apps/1/builds", { json: {} })).status, 400);
-    assert.equal((await (await host.get("/apps/1/builds")).json()).length, 2);
+    assert.equal((await (await host.get("/apps/1/builds")).json()).length, 4);
 
     const createdDeployment = await host.post("/apps/1/deployments", {
         json: { buildId: 2 },
@@ -340,6 +406,20 @@ try {
         build_id: 2,
         status: "started",
     });
+    const firstRetryDeployment = await (await host.post("/apps/1/deployments", {
+        json: { buildId: 3 },
+    })).json();
+    const secondRetryDeployment = await (await host.post("/apps/1/deployments", {
+        json: { buildId: 4 },
+    })).json();
+    assert.equal(firstRetryDeployment.id, 2);
+    assert.deepEqual(secondRetryDeployment, {
+        id: 3,
+        app_id: 1,
+        build_id: 4,
+        status: "started",
+    });
+    await assertInvalidDeploymentBuildIdValuesReturn400(host);
     assert.equal((await host.post("/apps/1/deployments", { json: {} })).status, 400);
 
     const diagnostics = await (await host.get("/diagnostics/recent")).json();
