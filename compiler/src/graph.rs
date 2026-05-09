@@ -82,7 +82,6 @@ pub(crate) struct SourceMapMapping {
 
 #[derive(Debug)]
 pub(crate) struct HandlerGeneratedStart {
-    pub(crate) handler_id: usize,
     pub(crate) generated_line: usize,
     pub(crate) generated_column: usize,
 }

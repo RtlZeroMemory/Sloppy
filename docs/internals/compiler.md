@@ -84,6 +84,13 @@ that default instead of throwing for a missing environment value.
 relative imports, extracts the AppGraph, applies configuration metadata, and
 writes artifacts into the requested output directory.
 
+`sloppyc build <input> --out <dir> --timings-json <file>` writes a structured
+timing report for compiler-performance work. The alias
+`--diagnostics-timing-json <file>` writes the same report for diagnostic tooling
+call sites. The report records phase timings, source counters, and artifact
+sizes without changing normal compiler output. Timing collection is opt-in and
+intended for local benchmark evidence.
+
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
 results; they do not link to the compiler library.
@@ -100,6 +107,8 @@ results; they do not link to the compiler library.
   of being silently ignored.
 - Generated provider bridges remain honest about runtime support. Static
   non-SQLite provider handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
+- Compiler performance evidence comes from local benchmark reports and timing
+  JSON, not from public claims or benchmark smoke tests.
 
 ## Failure Behavior
 
@@ -129,6 +138,7 @@ Compiler evidence lives in:
 - `compiler/tests/fixtures/full-framework-app-graph/` for the broad supported
   AppGraph extraction contract
 - `compiler/tests/compiler_fixture_harness.rs`
+- `compiler/tests/compiler_scale_smoke.rs` for the medium scale smoke guard
 - native Plan/CLI/runtime tests under `tests/`
 
 Use these gates for compiler changes:
@@ -142,6 +152,8 @@ tools/windows/dev.ps1 test
 ```
 
 Run the full repository gates when compiler output or CLI metadata changes.
+For compiler performance work, also run the benchmark workflow documented in
+`docs/contributor/compiler-performance.md`.
 
 ## Current Limits
 
