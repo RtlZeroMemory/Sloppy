@@ -9571,6 +9571,9 @@ fn argument_is_inline_json_safe_value(
         | Argument::NumericLiteral(_)
         | Argument::BooleanLiteral(_)
         | Argument::NullLiteral(_) => true,
+        Argument::TemplateLiteral(template) => template.expressions.iter().all(|expression| {
+            expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        }),
         Argument::ArrayExpression(array) => array.elements.iter().all(|element| {
             array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
         }),
@@ -9650,6 +9653,9 @@ fn expression_is_inline_json_safe_value(
         | Expression::NumericLiteral(_)
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_) => true,
+        Expression::TemplateLiteral(template) => template.expressions.iter().all(|expression| {
+            expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        }),
         Expression::ArrayExpression(array) => array.elements.iter().all(|element| {
             array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
         }),

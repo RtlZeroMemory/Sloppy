@@ -4,6 +4,7 @@ List the routes a Plan declares. Read-only; doesn't enter V8.
 
 ```sh
 sloppy routes --plan <path> [--format text|json]
+sloppy routes --artifacts <dir> [--format text|json]
 ```
 
 Use `--plan <path>` for either an `app.plan.json` file directly or a directory

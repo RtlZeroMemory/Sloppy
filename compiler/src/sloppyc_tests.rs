@@ -1782,6 +1782,25 @@ export default app;
 }
 
 #[test]
+fn accepts_template_literal_result_arguments_from_context() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/apps/{id}/builds", (ctx) => Results.created(`/apps/${ctx.route.id}/builds/b_002`, {
+  appId: ctx.route.id,
+  status: "queued"
+}));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("context-only template literal result should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .source
+        .contains("`/apps/${ctx.route.id}/builds/b_002`"));
+}
+
+#[test]
 fn problem_details_defaults_wraps_compiled_handler_errors() {
     let source = r#"import { Sloppy, Results, ProblemDetails } from "sloppy";
 const app = Sloppy.create();

@@ -7,7 +7,7 @@ export function buildsModule(app) {
         { id: "b_001", appId: ctx.route.id, commit: "local", status: "passed" }
     ])).withName("Builds.List");
 
-    apps.post("/{id}/builds", (ctx) => Results.created("/apps/app_001/builds/b_002", {
+    apps.post("/{id}/builds", (ctx) => Results.created(`/apps/${ctx.route.id}/builds/b_002`, {
         id: "b_002",
         appId: ctx.route.id,
         commit: "local",
