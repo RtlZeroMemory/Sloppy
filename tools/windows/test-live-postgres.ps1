@@ -12,7 +12,7 @@ $env:Sloppy__Providers__postgres__main__connectionString = $env:SLOPPY_POSTGRES_
 
 function Assert-DockerAvailable {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "UNAVAILABLE: Docker CLI is required for the PostgreSQL live-provider lane."
+        throw "UNAVAILABLE: Docker CLI is required for the PostgreSQL integration checks."
     }
     docker info | Out-Null
 }

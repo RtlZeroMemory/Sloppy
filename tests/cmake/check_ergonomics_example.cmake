@@ -50,7 +50,7 @@ foreach(required_pattern IN ITEMS
         "route groups"
         "result helpers"
         "schema metadata"
-        "not on the `sloppy run --artifacts` lane"
+        "not executed with `sloppy run --artifacts`"
         "`sloppyc` compilation and route-group/schema extraction are still pending"
         "`app.plan.json` is not emitted"
         "Validation metadata is not wired to automatic `400` responses yet"

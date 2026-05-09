@@ -12,7 +12,7 @@ const shouldUpgrade = await Password.needsRehash(encodedHash);
 ```
 
 Password hashing is async in the public API and offloaded from the V8 owner thread in the
-V8 lane. Password values must not be logged, printed, placed in diagnostics, or committed to
+V8-enabled runtime. Password values must not be logged, printed, placed in diagnostics, or committed to
 goldens.
 
 ## Limitations

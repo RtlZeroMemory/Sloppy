@@ -7,12 +7,13 @@ built around explicit phases and explicit failure.
 
 - compile to known artifacts;
 - validate plan and startup invariants before dispatch;
-- keep runtime boundaries explicit (engine, provider, capability, and packaging
-  lanes);
+- keep runtime boundaries explicit (engine, provider, capability, and
+  packaging);
 - return diagnostics when behavior is unsupported instead of emulating another
   platform.
 
-This reduces "works by accident" behavior and makes evidence easier to trust.
+This reduces "works by accident" behavior and makes failures easier to
+understand.
 
 ## Current Shape
 
@@ -25,13 +26,13 @@ This reduces "works by accident" behavior and makes evidence easier to trust.
 runtime model: strict parsing, startup validation, and clear unsupported
 diagnostics.
 
-## Evidence-Oriented Ergonomics
+## Boundary-Oriented Ergonomics
 
-Developers get clearer boundaries when evidence lanes stay separate:
+Developers get clearer behavior when checks are scoped to the feature they run:
 
 - non-V8 success does not imply JS handler execution;
-- native provider tests do not imply live environment readiness;
-- package layout success does not imply release readiness.
+- native provider tests do not imply a live database is configured;
+- package layout success does not imply public release work is complete.
 
 ## Documentation Rules
 

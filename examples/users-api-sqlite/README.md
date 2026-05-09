@@ -13,17 +13,12 @@ artifact path:
 - a relative function module under `modules/users.js`;
 - `sloppy.json` and `appsettings.json` project configuration.
 
-## Status
-
-This is a V8-gated framework example used by the localhost transport conformance
-lane and source-input fixture checks.
-
 ## Requirements
 
 - A V8-enabled `sloppy` runtime.
 - SQLite bridge support in that runtime.
 
-## Run Command
+## Run
 
 From this example directory:
 
@@ -65,7 +60,7 @@ After building artifacts, these commands inspect the Plan:
 ..\..\build\windows-dev\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
-## Limitations
+## Current Limits
 
 This example focuses on SQLite provider integration and localhost transport flow. PostgreSQL
 and SQL Server are covered by separate examples, and streaming APIs are not included in

@@ -43,7 +43,7 @@ The compiler can emit route metadata for the supported source subset:
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
 
 The native runtime validates route metadata, builds a deterministic route table, and
-dispatches supported requests through V8 in the V8 lane. For Framework v2 metadata, the
+dispatches supported requests through V8 when the runtime is V8-enabled. For Framework v2 metadata, the
 native dispatcher also consumes Plan-backed route/query/header scalar bindings and
 schema-backed JSON body metadata to fail invalid requests with a safe `400`
 `application/problem+json` response before calling the handler. Dynamic route registration,
@@ -82,7 +82,7 @@ TLS remains opt-in. Cleartext HTTP is the default. Enabling TLS requires
 `Sloppy:Server:Tls:PrivateKeyPath`. Relative certificate and private-key paths in Plan metadata
 are resolved under the loaded artifact directory; absolute paths are preserved when explicitly
 emitted by config. Passphrase-protected private keys remain available only through the native
-transport config until Sloppy has a non-redacted runtime secret retrieval lane. Malformed, zero,
+transport config until Sloppy has non-redacted runtime secret retrieval. Malformed, zero,
 unsupported, range-overflowing, missing certificate/key, unsafe path, or embedded-NUL values fail
 closed before serving work. Route-level limits and trusted proxy policy are not Plan metadata yet.
 
@@ -112,7 +112,7 @@ provider/capability requirements. The normal case does not require
 `Sqlite<"main">` implies `sqlite/main` plus `data.main`, and
 `SqlServer<"main">` implies `sqlserver/main` plus `data.main`. `WorkQueue<"emails">`
 implies a `queue.emails` capability. Runtime injection depends on normal provider config
-and the active provider bridge for the current lane. PostgreSQL and SQL Server typed
+and the active provider bridge for the current runtime path. PostgreSQL and SQL Server typed
 injection use the inferred config keys
 `Sloppy:Providers:postgres:<name>:connectionString` and
 `Sloppy:Providers:sqlserver:<name>:connectionString`; SQLite uses
@@ -138,7 +138,7 @@ TypeScript build system.
 - Package-manager metadata.
 - Arbitrary import graph resolution.
 - Public plugin extension points.
-- Release readiness.
+- Public release hardening.
 - Benchmark-backed performance comparisons.
 
 ## Source Docs

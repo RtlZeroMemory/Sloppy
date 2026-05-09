@@ -16,7 +16,7 @@ Current boundaries include:
 - capability checks are policy enforcement points, not containerization or
   kernel-level isolation.
 
-The goal is predictable failure and safer evidence:
+The goal is predictable failure with useful, redacted diagnostics:
 
 - malformed/unsafe metadata fails closed;
 - diagnostics stay useful without leaking secrets;

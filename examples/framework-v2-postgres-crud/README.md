@@ -10,15 +10,10 @@ This example shows the Framework v2 shape for a users API backed by PostgreSQL:
 - request `signal` and `deadline` passed to database calls;
 - `Results.ok`, `Results.notFound`, and `Results.created`.
 
-## Status
-
-This is an opt-in live-provider example. It needs a PostgreSQL service and
-provider connection string at runtime.
-
 ## Requirements
 
 - A V8-enabled `sloppy` runtime.
-- A PostgreSQL test database with a `users` table.
+- A PostgreSQL service with a test database and `users` table.
 - `Sloppy__Providers__postgres__main__connectionString` set in the environment.
 
 Example table shape:
@@ -31,9 +26,9 @@ create table users (
 );
 ```
 
-## Run Command
+## Run
 
-Use the live PostgreSQL lane:
+Set the connection string and run the PostgreSQL integration checks:
 
 ```powershell
 $env:Sloppy__Providers__postgres__main__connectionString = "postgres://<user>:<password>@<host>:<port>/<db>"
@@ -42,7 +37,7 @@ $env:Sloppy__Providers__postgres__main__connectionString = "postgres://<user>:<p
 
 ## Expected Result
 
-The live lane runs the PostgreSQL native and bridge tests selected by:
+The script runs the PostgreSQL native and bridge tests selected by:
 
 ```powershell
 ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.postgres\.live_provider|conformance\.postgres\.(native_live|bridge_live)"
@@ -55,12 +50,12 @@ from the PostgreSQL database.
 
 - `app.ts`: `Postgres<"main">` injection and PostgreSQL SQL statements.
 - Generated `.sloppy/app.plan.json`: inferred `postgres/main` provider metadata.
-- `docs/how-to/run-live-postgres-checks.md`: live-lane setup.
+- `docs/how-to/run-live-postgres-checks.md`: PostgreSQL setup.
 
-## Limitations
+## Current Limits
 
-Schema setup is manual for this example. It depends on a working live PostgreSQL
-service and valid credentials.
+Schema setup is manual for this example. Migrations, ORM-style modeling,
+deployment guidance, and package dependency support are future work.
 
 ## Related Docs
 

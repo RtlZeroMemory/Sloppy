@@ -22,7 +22,7 @@ What works today:
 
 Current limitations:
 
-- This source-stdlib example is documentation-first and is not on the `sloppy run --artifacts` lane.
+- This source-stdlib example is documentation-first and is not executed with `sloppy run --artifacts`.
 - `sloppyc` compilation and route-group/schema extraction are still pending for this shape.
 - `app.plan.json` is not emitted for this example yet.
 - The current bounded `sloppy run` path does not load this source shape, materialize a request

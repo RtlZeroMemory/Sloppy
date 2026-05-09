@@ -2,7 +2,7 @@
 
 Bootstrap app-host example.
 This example shows the minimal app-host builder flow: config, logging, services, route
-mapping, and a text result descriptor. Runtime lane notes follow after the code.
+mapping, and a text result descriptor. Runtime notes follow after the code.
 
 ```js
 import { Sloppy, Results } from "sloppy";
@@ -42,18 +42,18 @@ Current limitations:
 
 - `sloppyc` does not compile this example or extract routes from it yet.
 - `app.plan.json` is not emitted for this example.
-- This source-stdlib example is not on the `sloppy run --artifacts` lane.
+- This source-stdlib example is not executed with `sloppy run --artifacts`.
 - `app.run` and `app.listen` are not available yet.
 - Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
   use the Sloppy facade import shape that `sloppyc` recognizes.
 
-Runtime lane:
+Runtime Command:
 
 ```powershell
 sloppy run examples/hello/app.js
 ```
 
-That command is not the current execution lane for this example. Until compiler extraction,
+That command is not the current execution path for this example. Until compiler extraction,
 ESM bootstrap loading, app-plan emission for this broader source shape, and V8 bootstrap
 loading land, this directory remains an API-shape/documentation example. Use
 `examples/compiler-hello/` for the current `sloppy run --artifacts` path.

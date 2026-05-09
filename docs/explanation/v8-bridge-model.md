@@ -19,6 +19,6 @@ Current bridge behavior emphasizes ownership and deterministic failure:
 Provider and core intrinsics are also installed through explicit bridge modules,
 not by exposing native pointers to JavaScript.
 
-This is why default non-V8 evidence and V8-enabled evidence are separate lanes:
-non-V8 validates native/runtime contracts, while V8 lanes validate JS execution
-and bridge behavior.
+Building artifacts does not require V8. Running handlers does. The default
+non-V8 build validates native/runtime contracts, while V8-enabled checks
+exercise JavaScript execution and bridge behavior.

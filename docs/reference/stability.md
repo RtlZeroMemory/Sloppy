@@ -29,7 +29,7 @@ Parser behavior:
 - runtime minimum version
 - route/handler consistency and related startup validation
 
-## Provider and Runtime Lane Stability
+## Provider and Runtime Stability
 
 - Provider metadata supports `sqlite`, `postgres`, `sqlserver`.
 - Compiler-generated executable provider bridge is sqlite-only.

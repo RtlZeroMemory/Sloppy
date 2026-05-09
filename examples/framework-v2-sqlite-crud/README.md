@@ -10,17 +10,12 @@ This example shows a small Framework v2 users API backed by SQLite:
 - request `signal` and `deadline` passed to database calls;
 - `Results.ok`, `Results.notFound`, and `Results.created`.
 
-## Status
-
-This is the local executable provider example. The database is `:memory:`, so
-each run starts from the seeded users in `app.ts`.
-
 ## Requirements
 
 - A V8-enabled `sloppy` runtime.
 - The SQLite provider bridge available in that runtime.
 
-## Run Command
+## Run
 
 From the repository root:
 
@@ -43,11 +38,11 @@ The response body is a JSON array with the seeded users:
 - Generated `.sloppy/app.plan.json`: inferred provider/capability metadata and
   route bindings after `sloppy build`.
 
-## Limitations
+## Current Limits
 
 This example is not an ORM or migration layer. It covers the SQLite Framework v2
-path for the current runtime lane; PostgreSQL, SQL Server, and live external
-database behavior use separate examples and lanes.
+path for the current runtime. PostgreSQL and SQL Server examples need external
+database setup.
 
 ## Related Docs
 

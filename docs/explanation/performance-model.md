@@ -49,8 +49,8 @@ conversion. HTTP server throughput needs a separate workload and report.
 
 ## Future Phase
 
-Measured benchmark lanes should become meaningful only when a scoped task defines the path,
-methodology, and release-build evidence to collect.
+Measured benchmark checks should become meaningful only when a scoped task
+defines the path, methodology, and release-build data to collect.
 
 ## Product Positioning
 

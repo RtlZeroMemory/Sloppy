@@ -20,8 +20,9 @@ SQL Server is deliberately explicit about build/runtime gating: when ODBC suppor
 is not enabled, provider APIs return `unsupported` diagnostics rather than fake
 success.
 
-This model explains why provider docs name the exact surface: an API can exist
-before every live service and bridge lane is available on every machine.
+This model explains why provider docs name the exact surface: a provider may be
+visible to the compiler before every runtime path is available on every
+machine.
 
 ## Surface Separation
 
@@ -42,16 +43,16 @@ driver availability for service execution.
 
 ## Runtime Surfaces
 
-| Surface | Validation path |
+| Surface | Where It Is Exercised |
 | --- | --- |
 | SQLite descriptor registration | stdlib/bootstrap descriptor tests or compiler fixture using `app.use(sqlite(...))` |
 | Static SQLite provider handle | compiler fixture or example using `app.provider("sqlite:main")` |
 | Typed provider metadata | compiler Framework v2 metadata fixtures |
 | Runtime data API options | stdlib/provider tests and native provider tests |
-| PostgreSQL service execution | live-provider PostgreSQL lane with service configuration |
-| SQL Server service execution | live-provider SQL Server lane with ODBC driver and service configuration |
-| V8 bridge provider execution | V8-enabled bridge lane for that provider |
+| PostgreSQL service execution | PostgreSQL integration checks with service configuration |
+| SQL Server service execution | SQL Server integration checks with ODBC driver and service configuration |
+| V8 bridge provider execution | V8-enabled provider bridge checks |
 
 SQL Server currently has runtime API and typed-injection surfaces. Live SQL
-Server execution also needs the SQL Server lane, an ODBC driver, connection
+Server execution also needs SQL Server setup, an ODBC driver, connection
 configuration, and async-driver support for the true-async bridge path.

@@ -1,6 +1,6 @@
 # TCP Echo Example
 
-This source example keeps the echo loop in the scoped TCP lane: ephemeral loopback
+This source example keeps the echo loop in scoped TCP runtime behavior: ephemeral loopback
 listen, async accept, `readChunks`, bounded read/write calls, endpoint metadata, and
 cleanup for accepted and outbound connections.
 

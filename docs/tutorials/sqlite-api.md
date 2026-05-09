@@ -83,14 +83,8 @@ export default app;
 `run --once GET /users` loaded those artifacts, executed the users module
 handler, and returned rows from the SQLite provider path.
 
-## Evidence Boundaries
+## If V8 Is Missing
 
-Default evidence (non-V8 build):
-
-- Source-input and project build lanes can emit artifacts.
-- `run` is expected to fail with `requires V8-enabled build`.
-
-V8-gated evidence:
-
-- Successful `/users` execution and response content are V8-gated runtime
-  evidence.
+Non-V8 builds can compile the example and emit `.sloppy` artifacts, but handler
+execution needs V8. If `run` prints `requires V8-enabled build`, rebuild with
+the V8 preset from the contributor guide and run the request again.

@@ -117,6 +117,7 @@ Common enforced errors:
 
 - `app.use(...)` provider validation is currently sqlite-only.
 - `app.provider("sqlite:main")` is the current static provider handle path; non-SQLite static handles are diagnostic-only.
-- Typed PostgreSQL and SQL Server injection is not default evidence for live database execution.
+- Typed PostgreSQL and SQL Server injection still needs live database setup for
+  execution.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
-- Handler execution through `sloppy run` remains V8-gated.
+- Handler execution through `sloppy run` requires V8.

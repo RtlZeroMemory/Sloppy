@@ -27,12 +27,12 @@ Plan before execution so tooling and the host can reason about the app directly.
 ## Current Status
 
 Sloppy is pre-alpha. Windows x64 is the most complete validated local
-development lane today. Linux and macOS remain product targets, but their local
-developer lanes are less complete.
+development path today. Linux and macOS remain product targets, but their local
+developer workflows are less complete.
 
 Runtime handler execution requires a V8-enabled build or package. Provider,
-package, live-database, benchmark, and platform work each has its own check
-lane.
+package, live-database, benchmark, and platform work may need extra setup or
+separate checks.
 
 ## Install Or Try
 
@@ -96,15 +96,15 @@ Important repository areas:
 | `tools/` | Windows and Unix contributor scripts. |
 | `docs/` | Product, contributor, and internals documentation. |
 
-## Current Boundaries
+## What Works Today
 
 - Production hardening is still future work.
-- Runtime handler execution is V8-gated.
+- Runtime handler execution requires V8.
 - Package archives are local/experimental distribution artifacts.
 - The npm launcher package is not a general application dependency manager.
 - Third-party app package resolution is outside the current runtime surface.
-- V8, package, live-provider, stress, fuzz, and benchmark work use separate
-  checks from the default non-V8 lane.
+- V8 execution, package archives, live providers, stress tests, fuzzing, and
+  benchmarks use separate setup from the default non-V8 build.
 
 ## Docs
 
@@ -127,32 +127,6 @@ Agent-specific operating rules:
 
 - [AGENTS.md](AGENTS.md)
 - [AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md)
-
-## Command Map
-
-Runtime and metadata commands:
-
-```text
-sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--environment <name>] [--host <host>] [--port <port>]
-sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>] [--environment <name>] [--host <host>] [--port <port>] [--once METHOD TARGET]
-sloppy routes --plan <path> [--format text|json]
-sloppy capabilities --plan <path> [--format text|json]
-sloppy doctor [--plan <path>] [--format text|json]
-sloppy audit --plan <path> [--format text|json]
-sloppy openapi --plan <path> [--output <path>]
-```
-
-`sloppyc` compiler command:
-
-```text
-sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>]
-```
-
-`sloppy run <source>` compiles first, then runs artifacts.
-`sloppy run --artifacts <dir>` runs existing artifacts.
-`sloppy build --artifacts ...` is rejected.
-
-Full details: [CLI reference](docs/reference/cli.md).
 
 ## License
 

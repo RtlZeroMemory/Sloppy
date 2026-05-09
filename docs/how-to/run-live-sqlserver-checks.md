@@ -1,9 +1,9 @@
 # How To Run Live SQL Server Checks
 
-Run the opt-in SQL Server live-provider test lane on Windows.
+Run the SQL Server integration checks on Windows.
 
-This lane is for live SQL Server provider execution. It is separate from
-compiler metadata checks, default native tests, and non-live framework examples.
+These checks use a real SQL Server database, so they need the Microsoft ODBC
+Driver and either Docker or an existing SQL Server instance.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ compiler metadata checks, default native tests, and non-live framework examples.
 
 ## Steps
 
-1. Run the live lane with Docker-managed SQL Server.
+1. Run the checks with Docker-managed SQL Server.
 
 ```powershell
 .\tools\windows\test-live-sqlserver.ps1
@@ -35,13 +35,14 @@ ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.sqls
 
 ## Expected Result
 
-- CTest reports passing results for the matched SQL Server live-provider tests.
-- Matched tests include native live checks and V8 bridge live checks when the
+- CTest reports passing results for the matched SQL Server integration tests.
+- Matched tests include native checks and V8 bridge checks when the
   V8-enabled preset and ODBC async behavior are available.
 - Docker mode starts SQL Server, applies `tests/live/sqlserver/init.sql`, and tears the container down.
 
 ## Common Failures
 
-- `UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server live-provider lane.`
-- `UNAVAILABLE: Docker CLI is required for the SQL Server live-provider lane.`
-- `driver async support is unavailable`: true-async bridge evidence is skipped in this environment.
+- `UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server integration checks.`
+- `UNAVAILABLE: Docker CLI is required for the SQL Server integration checks.`
+- `driver async support is unavailable`: the installed driver cannot run the
+  true-async SQL Server bridge check in this environment.

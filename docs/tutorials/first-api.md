@@ -22,6 +22,10 @@ If you are contributing from a checkout instead of using an installed runtime,
 build first with [Building from source](../contributor/building-from-source.md)
 and put the built `sloppy` on `PATH`.
 
+If `sloppy run` says it requires a V8-enabled build, your CLI can build
+artifacts but cannot execute handlers yet. Use a V8-enabled package or build the
+Windows V8 preset from the contributor guide.
+
 ## Create The Project
 
 Create a new project folder:
@@ -129,5 +133,3 @@ Expected response body:
 `build` compiled source input into Plan-backed artifacts inside `.sloppy`.
 `run --artifacts` loaded those artifacts, matched `/hello/{name}`, and executed
 the handler.
-
-The runtime executes the emitted artifacts.

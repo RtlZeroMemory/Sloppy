@@ -49,7 +49,7 @@ error path.
 - Diagnostics must not expose secrets, tokens, raw provider connection strings, private
   keys, request bodies marked as sensitive, or native pointers.
 - V8 exceptions and panics must not cross the ABI boundary unsafely.
-- Optional evidence lanes must not be described as default evidence.
+- Optional checks should be listed separately from the default build/test result.
 
 ## Source Locations
 
@@ -64,9 +64,9 @@ Redaction is required for environment/config secrets, provider connection string
 passphrases, private keys, tokens, and any field explicitly marked as secret. Tests should
 cover both the presence of useful context and the absence of the secret value.
 
-## Evidence
+## Test Coverage
 
-Diagnostics need negative-path tests. Good evidence includes malformed inputs, unsupported
+Diagnostics need negative-path tests. Good coverage includes malformed inputs, unsupported
 syntax, missing files, invalid metadata, capability denial, provider failure, cancellation,
 timeout, shutdown, and V8-gated exception cases where applicable. Goldens are semantic
 contracts, not output dumps.
@@ -75,5 +75,4 @@ contracts, not output dumps.
 
 Deferred diagnostics work includes localization, richer structured categories and fix-it
 metadata, IDE/protocol integration, broader CLI JSON output plumbing, and more complete
-cross-lane coverage for V8, live providers, package verification, stress, and benchmark
-evidence.
+coverage for V8, live providers, package verification, stress, and benchmark cases.

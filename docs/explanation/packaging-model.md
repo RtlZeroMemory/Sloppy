@@ -2,22 +2,23 @@
 
 ## Purpose
 
-This document explains what Sloppy build/distribution lanes currently mean, and
-where their current boundaries are.
+This document explains how Sloppy builds and packages local development
+artifacts today.
 
 ## Build Model
 
-`tools/windows/dev.ps1` is the canonical Windows wrapper. It separates lanes by
-intent:
+`tools/windows/dev.ps1` is the canonical Windows wrapper. It separates commands
+by task:
 
-- `doctor` checks dependency/tooling readiness;
-- `configure`, `build`, and `test` drive the local build lane;
+- `doctor` checks dependency and tooling setup;
+- `configure`, `build`, and `test` drive the local build;
 - `lint` and `format-check` enforce code/doc standards;
-- `package` and `test-package` are separate artifact lanes;
+- `package` and `test-package` create and check local archives;
 - V8 mode is explicit (`OFF`, `AUTO`, `REQUIRED`) and independent from default
   non-V8 builds.
 
-This keeps default build success separate from V8, provider, and release lanes.
+This keeps default build success separate from V8 execution, live providers, and
+package behavior.
 
 ## Distribution Model
 
@@ -32,12 +33,12 @@ Current packaging behavior is explicit:
 - optional V8 runtime binaries are included only by explicit opt-in;
 - checksum and manifest files are produced for artifact verification.
 
-## Verification Boundaries
+## Current Boundaries
 
-Build/distribution validation must stay lane-specific:
+Different checks answer different questions:
 
 - default build/test success is separate from V8 runtime execution;
-- package creation is separate from public distribution readiness;
+- package creation is separate from public distribution work;
 - presence of optional runtime files is separate from feature conformance;
 - npm dry-run packaging installs the runtime, not app-level npm dependencies.
 

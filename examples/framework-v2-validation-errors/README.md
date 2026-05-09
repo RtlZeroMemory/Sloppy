@@ -7,5 +7,5 @@ invoked.
 
 ## Limitations
 
-Negative-path coverage lives in the validation conformance lane. Unsupported
-body formats are outside this example.
+Negative-path coverage lives in validation conformance tests. Unsupported body
+formats are outside this example.

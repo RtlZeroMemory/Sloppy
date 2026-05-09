@@ -36,13 +36,13 @@ What works today:
 
 Current limitations:
 
-- this source-stdlib example is not on the `sloppy run --artifacts` lane;
+- this source-stdlib example is not executed with `sloppy run --artifacts`;
 - `sloppyc` does not compile this example yet;
 - `app.plan.json` is not emitted for this example;
 - the current bounded `sloppy run` path does not load this source-stdlib SQLite example directly;
 - executable SQLite runtime coverage currently lives in the internal V8-gated artifact fixture;
 - PostgreSQL and SQL Server providers are covered by their own examples and tests;
-- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL lane;
+- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL checks;
 - SQLite has no ORM, migrations, expanded pooling, public prepared statement handles, or
   mid-operation interruption support implemented;
 - bare `"sloppy"` imports are the current source shape for this example.

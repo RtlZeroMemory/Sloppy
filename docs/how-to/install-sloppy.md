@@ -10,9 +10,9 @@ Install Sloppy from a local package archive and verify the runtime CLI.
 Current package status:
 
 - Windows x64 local archives are the most validated local package path.
-- Linux archives exist as an experimental package lane when built by the release
+- Linux archives are experimental when built by the release
   scripts.
-- macOS and Windows arm64 package/runtime lanes are not currently the primary
+- macOS and Windows arm64 packages are not currently the primary
   local install path.
 - The npm launcher package is not a general runtime package manager for Sloppy
   apps. Treat npm app dependency behavior as planned/not available unless a

@@ -10,11 +10,6 @@ This example shows the Framework v2 shape for a users API backed by SQL Server:
 - `output inserted...` for create responses;
 - request `signal` and `deadline` passed to database calls.
 
-## Status
-
-This is an opt-in live-provider example. It needs SQL Server, the Microsoft ODBC
-driver, and a connection string at runtime.
-
 ## Requirements
 
 - A V8-enabled `sloppy` runtime.
@@ -32,9 +27,9 @@ create table users (
 );
 ```
 
-## Run Command
+## Run
 
-Use the live SQL Server lane:
+Set the connection string and run the SQL Server integration checks:
 
 ```powershell
 $env:Sloppy__Providers__sqlserver__main__connectionString = "Driver={ODBC Driver 18 for SQL Server};Server=tcp:127.0.0.1,1433;Database=sloppy_test;UID=<user>;PWD=<password>;Encrypt=yes;TrustServerCertificate=yes;"
@@ -43,7 +38,7 @@ $env:Sloppy__Providers__sqlserver__main__connectionString = "Driver={ODBC Driver
 
 ## Expected Result
 
-The live lane runs the SQL Server native and bridge tests selected by:
+The script runs the SQL Server native and bridge tests selected by:
 
 ```powershell
 ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.sqlserver\.live_provider|conformance\.sqlserver\.(native_live|bridge_live)"
@@ -56,13 +51,14 @@ JSON rows from SQL Server.
 
 - `app.ts`: `SqlServer<"main">` injection and SQL Server statements.
 - Generated `.sloppy/app.plan.json`: inferred `sqlserver/main` provider metadata.
-- `docs/how-to/run-live-sqlserver-checks.md`: live-lane setup and unavailable
+- `docs/how-to/run-live-sqlserver-checks.md`: SQL Server setup and unavailable
   driver cases.
 
-## Limitations
+## Current Limits
 
 Schema setup is manual for this example. It also depends on an installed ODBC
-driver and available async SQL Server support in the live lane.
+driver and available async SQL Server support. Migrations, ORM-style modeling,
+deployment guidance, and package dependency support are future work.
 
 ## Related Docs
 

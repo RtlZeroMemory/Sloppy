@@ -1,6 +1,6 @@
 # How To Package Sloppy
 
-Create an experimental Windows package archive and run the package smoke lane.
+Create and test an experimental Windows package archive.
 
 ## Prerequisites
 
@@ -31,11 +31,13 @@ Create an experimental Windows package archive and run the package smoke lane.
 
 - `artifacts/packages/sloppy-windows-x64.zip` is created.
 - `artifacts/packages/SHA256SUMS.txt` is created.
-- Package smoke passes after extracting outside the checkout and validating layout, checksums, and CLI behavior.
+- The package test extracts the archive outside the checkout and validates
+  layout, checksums, and CLI behavior.
 
 ## Common Failures
 
 - `No Windows package archive found under ...`: run `dev.ps1 package` first.
 - `Required package input is missing`: runtime/compiler binaries were not built for the selected configuration.
-- `requires V8-enabled build` during package smoke: artifact execution is not V8-enabled in that package.
+- `requires V8-enabled build` during package testing: artifact execution is not
+  V8-enabled in that package.
 - Assuming npm app dependency support: packaging does not add `node_modules` support for Sloppy apps.

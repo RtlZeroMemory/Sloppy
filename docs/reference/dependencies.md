@@ -40,7 +40,7 @@ Do not outsource these to framework or runtime dependencies:
 
 Dependency availability and feature behavior are separate validation questions.
 
-- A dependency can be installed while a feature lane is still unvalidated.
-- Missing optional dependencies should not be reported as passed feature lanes.
+- A dependency can be installed while a feature is still untested in the current setup.
+- Missing optional dependencies should be reported as unavailable for that feature.
 - Package-time dependency bundling is not equivalent to runtime compatibility
   status.

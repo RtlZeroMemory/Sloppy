@@ -13,18 +13,18 @@ Compiler-emitted plans currently target:
 
 ## Status Table
 
-| Surface | Current state | Validation lane |
+| Surface | Current state | Check |
 | --- | --- | --- |
-| Windows x64 local development | Most complete local lane. | Default Windows checks and V8-enabled Windows checks. |
+| Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
 | Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
-| macOS local development | Product target, less complete in the current local lane. | Unix script checks where available. |
-| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-gated checks. |
-| Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Live-provider checks. |
+| macOS local development | Product target, less complete today. | Unix script checks where available. |
+| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled checks. |
+| Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Live-provider integration checks. |
 
 ## V8 Execution Gate
 
 - Handler execution requires a V8-enabled runtime build.
-- Non-V8 lanes can still compile and validate artifacts, and `doctor` reports V8 as a warning state.
+- Non-V8 builds can still compile and validate artifacts, and `doctor` reports V8 as a warning state.
 
 ## Provider Live Checks
 
@@ -42,6 +42,6 @@ Examples from doctor output:
 
 ## Current Limits
 
-- Runtime/provider/package lanes are not fully validated on every OS yet.
+- Runtime/provider/package checks are not fully validated on every OS yet.
 - Current `sloppy run` target enforcement is still centered on `windows-x64`
   Plan targets.

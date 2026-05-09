@@ -1,7 +1,7 @@
 # Time Basic Example
 
 This example documents the intended `sloppy/time`
-delay and timeout shape; execution remains lane-specific like the other app-host examples.
+delay and timeout shape; execution depends on the same runtime setup as the other app-host examples.
 
 ```js
 import { Time } from "sloppy/time";

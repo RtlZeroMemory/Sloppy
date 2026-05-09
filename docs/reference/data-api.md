@@ -112,8 +112,8 @@ Definition methods:
 - `query`, `queryOne`, `exec`
 - optional transaction hooks or transaction handler
 
-Fake-provider tests validate runtime shape only. Live database behavior uses the
-provider live lanes.
+Fake-provider tests validate runtime shape only. Live database behavior uses
+provider integration checks.
 
 ## Limits
 

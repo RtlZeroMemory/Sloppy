@@ -53,7 +53,7 @@ foreach(required_pattern IN ITEMS
         "V8-enabled runtime tests cover the real SQLite JS-to-native bridge"
         "`data.sqlite.open({ database: \":memory:\", capability: \"data.main\" })` opens a native"
         "V8 runtime installs the SQLite bridge intrinsics"
-        "not on the `sloppy run --artifacts` lane"
+        "not executed with `sloppy run --artifacts`"
         "`sloppyc` does not compile this example"
         "`app.plan.json` is not emitted"
         "executable SQLite runtime coverage currently lives in the internal V8-gated artifact fixture"

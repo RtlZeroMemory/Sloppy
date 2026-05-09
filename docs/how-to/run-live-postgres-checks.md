@@ -1,9 +1,9 @@
 # How To Run Live PostgreSQL Checks
 
-Run the opt-in PostgreSQL live-provider test lane on Windows.
+Run the PostgreSQL integration checks on Windows.
 
-This lane is for live PostgreSQL provider execution. It is separate from
-compiler metadata checks, default native tests, and non-live framework examples.
+These checks use a real PostgreSQL service, so they need Docker or an existing
+database and connection credentials.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ compiler metadata checks, default native tests, and non-live framework examples.
 
 ## Steps
 
-1. Run the live lane with Docker-managed PostgreSQL.
+1. Run the checks with Docker-managed PostgreSQL.
 
 ```powershell
 .\tools\windows\test-live-postgres.ps1
@@ -35,13 +35,14 @@ ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.post
 
 ## Expected Result
 
-- CTest reports passing results for the matched PostgreSQL live-provider tests.
-- Matched tests include native live checks and V8 bridge live checks when the
+- CTest reports passing results for the matched PostgreSQL integration tests.
+- Matched tests include native checks and V8 bridge checks when the
   V8-enabled preset is available.
 - Docker mode starts and tears down `tests/live/postgres/compose.yml`.
 
 ## Common Failures
 
-- `UNAVAILABLE: Docker CLI is required for the PostgreSQL live-provider lane.`
+- `UNAVAILABLE: Docker CLI is required for the PostgreSQL integration checks.`
 - Connection/auth failures against your external PostgreSQL service when using `-NoDocker`.
-- Treating default non-live test results as PostgreSQL live evidence.
+- Default non-live checks do not connect to PostgreSQL; use this page when you
+  need to verify a real PostgreSQL service.

@@ -17,7 +17,7 @@ What works today:
 
 Current limitations:
 
-- this source-stdlib example is not on the `sloppy run --artifacts` lane;
+- this source-stdlib example is not executed with `sloppy run --artifacts`;
 - `sloppyc` does not compile this example yet;
 - `app.plan.json` is not emitted for this example;
 - the current bounded `sloppy run` path does not load this source-stdlib data example;

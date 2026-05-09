@@ -26,7 +26,7 @@ foreach(required IN ITEMS
         "sloppy build"
         "sloppy run --artifacts .sloppy --once GET /hello/Ada"
         "{\"hello\":\"Ada\"}"
-        "The runtime executes the emitted artifacts")
+        "matched `/hello/{name}`, and executed")
     require_file_substring("${first_api}" "${required}" "first API tutorial is missing MAIN contract text")
 endforeach()
 

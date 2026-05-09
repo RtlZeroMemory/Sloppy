@@ -8,17 +8,17 @@ Current provider kinds are:
 
 ## Provider Surfaces
 
-Provider support is intentionally split by surface. Do not read support in one
-surface as support in every other surface.
+Provider support is split across several surfaces. A provider may be visible to
+the compiler before every runtime path is available.
 
 | Surface | Current provider shape | Current status |
 | --- | --- | --- |
 | Framework descriptor registration | `app.use(sqlite("main", ...))` from `sloppy/providers/sqlite` | SQLite descriptor admission only |
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
-| Framework v2 typed injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge/config/live lane |
+| Framework v2 typed injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
-| Native/live tests | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service lanes are opt-in |
-| V8 bridge live tests | `conformance.<provider>.bridge_live` | Separate from native-only evidence and default non-V8 evidence |
+| Native/live tests | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
+| V8 bridge live tests | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
 ## Framework Descriptor Contract
 
@@ -62,12 +62,12 @@ Current behavior by provider:
 
 | Marker | Compiler metadata | Runtime requirements |
 | --- | --- | --- |
-| `Sqlite<"main">` | emits `sqlite/main` provider and `data.main` capability requirements | active SQLite bridge/config; V8 lane for handler execution |
-| `Postgres<"main">` | emits `postgres/main` provider and `data.main` capability requirements | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, and live/provider lane for service execution |
-| `SqlServer<"main">` | emits `sqlserver/main` provider and `data.main` capability requirements | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, ODBC driver with async support for true-async bridge evidence |
+| `Sqlite<"main">` | emits `sqlite/main` provider and `data.main` capability requirements | active SQLite bridge/config; V8-enabled runtime for handler execution |
+| `Postgres<"main">` | emits `postgres/main` provider and `data.main` capability requirements | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, and live PostgreSQL service setup |
+| `SqlServer<"main">` | emits `sqlserver/main` provider and `data.main` capability requirements | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, and an ODBC driver with async support |
 
 When documenting PostgreSQL or SQL Server, name the typed-injection/runtime API
-surface and the lane that executed it.
+surface and the runtime path being used.
 
 ## Runtime Open Contracts
 
@@ -109,9 +109,9 @@ Provider APIs require active runtime bridge namespaces under `globalThis.__slopp
 
 If unavailable, calls fail with `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and redacted diagnostics.
 
-V8 bridge availability is separate from native provider availability. A native
-provider test can pass while the JavaScript bridge or live service lane remains
-unrun, skipped, or unavailable.
+V8 bridge availability is separate from native provider availability. A provider
+can be available to native tests before the JavaScript bridge or live service is
+configured on the current machine.
 
 ## Transactions
 
@@ -129,12 +129,12 @@ Redaction behavior includes:
 - sqlserver: `redactConnectionString(...)`
 - sqlserver doctor metadata redacts sensitive fields (`PWD`, `Password`, access-token fields)
 
-## Runtime-Lane Limits
+## Runtime Limits
 
 - Compiler-generated static provider handler bridge is sqlite-only;
   non-sqlite static provider handlers fail with
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - Fake provider APIs (`data.createFakeProvider`) validate shape and behavior
-  contracts only. Live database behavior uses provider live lanes.
+  contracts only. Live database behavior uses provider integration checks.
 - Missing live-provider dependencies are reported as skipped or unavailable.
-  live-provider, V8, and benchmark lanes are separate.
+  Live-provider, V8, and benchmark checks are separate.

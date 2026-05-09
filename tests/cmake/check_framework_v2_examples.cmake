@@ -157,7 +157,7 @@ foreach(required_pattern IN ITEMS
         "Results.notFound")
     require_substring(
         "${postgres_app}" "${required_pattern}"
-        "Framework v2 PostgreSQL example is missing expected live-lane shape")
+        "Framework v2 PostgreSQL example is missing expected live provider shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
         "capabilities.addDatabase"
@@ -183,7 +183,7 @@ foreach(required_pattern IN ITEMS
         "Results.notFound")
     require_substring(
         "${sqlserver_app}" "${required_pattern}"
-        "Framework v2 SQL Server example is missing expected live-lane shape")
+        "Framework v2 SQL Server example is missing expected live provider shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
         "capabilities.addDatabase"
@@ -205,22 +205,20 @@ endforeach()
 
 file(READ "${example_root}/framework-v2-postgres-crud/README.md" postgres_readme)
 foreach(required_pattern IN ITEMS
-        "opt-in live-provider example"
         "PostgreSQL service"
-        "live lane"
+        "PostgreSQL integration checks"
         "connection string")
     require_substring(
         "${postgres_readme}" "${required_pattern}"
-        "Framework v2 PostgreSQL README is missing live-lane boundary text")
+        "Framework v2 PostgreSQL README is missing live provider setup text")
 endforeach()
 
 file(READ "${example_root}/framework-v2-sqlserver-crud/README.md" sqlserver_readme)
 foreach(required_pattern IN ITEMS
-        "opt-in live-provider example"
-        "live lane"
+        "SQL Server integration checks"
         "driver cases"
         "Microsoft ODBC Driver 18")
     require_substring(
         "${sqlserver_readme}" "${required_pattern}"
-        "Framework v2 SQL Server README is missing live-lane boundary text")
+        "Framework v2 SQL Server README is missing live provider setup text")
 endforeach()

@@ -15,14 +15,14 @@ if (-not (Get-OdbcDriver -Name $driver -ErrorAction SilentlyContinue)) {
     $driver = "ODBC Driver 17 for SQL Server"
 }
 if (-not (Get-OdbcDriver -Name $driver -ErrorAction SilentlyContinue)) {
-    throw "UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server live-provider lane."
+    throw "UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server integration checks."
 }
 $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING = "Driver={$driver};Server=tcp:127.0.0.1,51433;Database=sloppy_test;UID=sa;PWD=$password;Encrypt=yes;TrustServerCertificate=yes;"
 $env:Sloppy__Providers__sqlserver__main__connectionString = $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING
 
 function Assert-DockerAvailable {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "UNAVAILABLE: Docker CLI is required for the SQL Server live-provider lane."
+        throw "UNAVAILABLE: Docker CLI is required for the SQL Server integration checks."
     }
     docker info | Out-Null
 }

@@ -38,4 +38,5 @@ cd examples/users-api-sqlite
 
 - `sloppy run: sloppy run requires V8-enabled build`.
 - Missing provider database config for `sqlite:main`: add `Sloppy:Providers:sqlite:main:database` in appsettings.
-- Running non-SQLite API-shape examples: API-shape examples alone are not live SQLite execution evidence.
+- Running a non-SQLite API-shape example: use the SQLite examples when you need
+  to see real SQLite query execution.

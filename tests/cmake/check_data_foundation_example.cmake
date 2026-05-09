@@ -54,7 +54,7 @@ foreach(required_pattern IN ITEMS
         "Bootstrap data/capabilities foundation example"
         "What works today"
         "Current limitations"
-        "not on the `sloppy run --artifacts` lane"
+        "not executed with `sloppy run --artifacts`"
         "`sloppyc` does not compile this example"
         "`app.plan.json` is not emitted"
         "real SQLite provider is covered by native C tests"

@@ -48,7 +48,7 @@ foreach(required_pattern IN ITEMS
         "Bootstrap module example"
         "What to inspect"
         "Current limitations"
-        "not on the `sloppy run --artifacts` lane"
+        "not executed with `sloppy run --artifacts`"
         "`sloppyc` does not compile this example"
         "`app.plan.json` is not emitted"
         "not a real data provider"

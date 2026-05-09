@@ -33,7 +33,7 @@ export Sloppy__Providers__sqlserver__main__connectionString="$SLOPPY_SQLSERVER_T
 
 if [ "$no_docker" -eq 0 ]; then
   if ! command -v docker >/dev/null 2>&1; then
-    printf 'UNAVAILABLE: Docker CLI is required for the SQL Server live-provider lane.\n' >&2
+    printf 'UNAVAILABLE: Docker CLI is required for the SQL Server integration checks.\n' >&2
     exit 1
   fi
   docker info >/dev/null
