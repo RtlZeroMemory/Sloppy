@@ -1420,6 +1420,7 @@ class HttpConnectionPool {
     constructor(options) {
         this._options = options;
         this._entries = new Map();
+        this._http2Entries = new Map();
     }
 
     _entry(originKey) {
@@ -1487,6 +1488,145 @@ class HttpConnectionPool {
         entry.total -= 1;
         await connection.close().catch(() => {});
         this._prune(originKey, entry);
+    }
+
+    _http2Entry(originKey) {
+        let entry = this._http2Entries.get(originKey);
+        if (entry === undefined) {
+            entry = { sessions: [], total: 0, pending: undefined };
+            this._http2Entries.set(originKey, entry);
+        }
+        return entry;
+    }
+
+    _pruneHttp2(originKey, entry) {
+        entry.sessions = entry.sessions.filter((record) => !record.session.closed);
+        if (entry.total === 0 && entry.sessions.length === 0 && entry.pending === undefined) {
+            this._http2Entries.delete(originKey);
+        }
+    }
+
+    _findReusableHttp2Session(entry) {
+        for (const record of entry.sessions) {
+            if (!record.session.closed && record.session.acceptsStreams) {
+                if (record.timer !== undefined) {
+                    clearTimeout(record.timer);
+                    record.timer = undefined;
+                }
+                return record.session;
+            }
+        }
+        return undefined;
+    }
+
+    async acquireHttp2(originKey, connect) {
+        const entry = this._http2Entry(originKey);
+        const reusable = this._findReusableHttp2Session(entry);
+        if (reusable !== undefined) {
+            return { session: reusable, reused: true };
+        }
+        if (entry.pending !== undefined) {
+            const session = await entry.pending;
+            if (!session.closed && session.acceptsStreams) {
+                return { session, reused: true };
+            }
+        }
+        if (entry.total >= this._options.maxConnectionsPerOrigin) {
+            throw httpClientError(
+                "HttpClientPoolExhaustedError",
+                "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
+                "HTTP client connection pool exhausted for origin.",
+            );
+        }
+        entry.total += 1;
+        entry.pending = connect().then((session) => {
+            const record = { session, timer: undefined };
+            entry.sessions.push(record);
+            session.onClose(() => {
+                if (record.timer !== undefined) {
+                    clearTimeout(record.timer);
+                    record.timer = undefined;
+                }
+                entry.sessions = entry.sessions.filter((candidate) => candidate !== record);
+                entry.total = Math.max(0, entry.total - 1);
+                this._pruneHttp2(originKey, entry);
+            });
+            return session;
+        });
+        try {
+            return { session: await entry.pending, reused: false };
+        } catch (error) {
+            entry.total = Math.max(0, entry.total - 1);
+            this._pruneHttp2(originKey, entry);
+            throw error;
+        } finally {
+            entry.pending = undefined;
+            this._pruneHttp2(originKey, entry);
+        }
+    }
+
+    peekHttp2(originKey) {
+        const entry = this._http2Entries.get(originKey);
+        if (entry === undefined) {
+            return undefined;
+        }
+        return this._findReusableHttp2Session(entry);
+    }
+
+    adoptHttp2(originKey, session) {
+        const entry = this._http2Entry(originKey);
+        if (entry.total >= this._options.maxConnectionsPerOrigin) {
+            session.close().catch(() => {});
+            throw httpClientError(
+                "HttpClientPoolExhaustedError",
+                "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
+                "HTTP client connection pool exhausted for origin.",
+            );
+        }
+        const record = { session, timer: undefined };
+        entry.total += 1;
+        entry.sessions.push(record);
+        session.onClose(() => {
+            if (record.timer !== undefined) {
+                clearTimeout(record.timer);
+                record.timer = undefined;
+            }
+            entry.sessions = entry.sessions.filter((candidate) => candidate !== record);
+            entry.total = Math.max(0, entry.total - 1);
+            this._pruneHttp2(originKey, entry);
+        });
+        return session;
+    }
+
+    releaseHttp2(originKey, session) {
+        const entry = this._http2Entries.get(originKey);
+        if (entry === undefined) {
+            session.close().catch(() => {});
+            return;
+        }
+        const record = entry.sessions.find((candidate) => candidate.session === session);
+        if (record === undefined) {
+            session.close().catch(() => {});
+            return;
+        }
+        if (session.closed) {
+            this._pruneHttp2(originKey, entry);
+            return;
+        }
+        if (session.activeStreamCount > 0) {
+            return;
+        }
+        if (this._options.idleTimeoutMs === 0) {
+            session.close().catch(() => {});
+            return;
+        }
+        if (record.timer !== undefined) {
+            clearTimeout(record.timer);
+        }
+        record.timer = setTimeout(() => {
+            record.timer = undefined;
+            session.close().catch(() => {});
+        }, this._options.idleTimeoutMs);
     }
 }
 
@@ -2403,6 +2543,7 @@ const HTTP2_DEFAULT_DYNAMIC_TABLE_BYTES = 4096;
 const HTTP2_SETTING_ENABLE_PUSH = 0x2;
 const HTTP2_SETTING_MAX_FRAME_SIZE = 0x5;
 const HTTP2_SETTING_MAX_HEADER_LIST_SIZE = 0x6;
+const HTTP2_ERROR_CANCEL = 0x8;
 
 const HTTP2_HPACK_STATIC = [
     undefined,
@@ -2874,6 +3015,10 @@ function http2WindowUpdateFrame(streamId, increment) {
     return http2Frame(HTTP2_FRAME_WINDOW_UPDATE, 0, streamId, http2Uint32(increment));
 }
 
+function http2RstStreamFrame(streamId, errorCode = HTTP2_ERROR_CANCEL) {
+    return http2Frame(HTTP2_FRAME_RST_STREAM, 0, streamId, http2Uint32(errorCode));
+}
+
 function hpackInteger(value, prefixBits, prefixMask) {
     const maxPrefix = (1 << prefixBits) - 1;
     const bytes = [];
@@ -3235,6 +3380,476 @@ function parseHttp2Headers(headers, maxHeaderBytes) {
     return { status, headers: regular, contentLength };
 }
 
+class Http2ClientSession {
+    constructor(connection, pool, originKey) {
+        this._connection = connection;
+        this._pool = pool;
+        this._originKey = originKey;
+        this._closed = false;
+        this._acceptsStreams = true;
+        this._pending = new Uint8Array(0);
+        this._dynamicTable = [];
+        this._streams = new Map();
+        this._nextStreamId = 1;
+        this._peerMaxFrameSize = HTTP2_DEFAULT_MAX_FRAME_SIZE;
+        this._peerMaxHeaderListSize = Infinity;
+        this._pendingHeaderStream = 0;
+        this._writeQueue = Promise.resolve();
+        this._closeListeners = new Set();
+        this._reader = undefined;
+    }
+
+    get closed() {
+        return this._closed;
+    }
+
+    get acceptsStreams() {
+        return !this._closed && this._acceptsStreams && this._nextStreamId < 0x7fffffff;
+    }
+
+    get activeStreamCount() {
+        return this._streams.size;
+    }
+
+    onClose(listener) {
+        if (this._closed) {
+            listener();
+            return;
+        }
+        this._closeListeners.add(listener);
+    }
+
+    async start() {
+        await this._write(
+            http2Concat([
+                HTTP2_CLIENT_PREFACE,
+                http2Frame(HTTP2_FRAME_SETTINGS, 0, 0, http2Setting(HTTP2_SETTING_ENABLE_PUSH, 0)),
+            ]),
+        );
+        this._reader = this._readLoop();
+        this._reader.catch(() => {});
+    }
+
+    async close() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        this._acceptsStreams = false;
+        await this._connection.close().catch(() => {});
+        this._notifyClosed();
+    }
+
+    abort() {
+        return this.close();
+    }
+
+    _notifyClosed() {
+        const listeners = Array.from(this._closeListeners);
+        this._closeListeners.clear();
+        for (const listener of listeners) {
+            listener();
+        }
+    }
+
+    async _write(bytes) {
+        if (this._closed) {
+            throw new Error("SLOPPY_E_NET_CONNECTION_CLOSED");
+        }
+        const write = this._writeQueue.then(() => this._connection.write(bytes));
+        this._writeQueue = write.catch(() => {});
+        await write;
+    }
+
+    _newStream(request) {
+        if (!this.acceptsStreams) {
+            throw new Error("SLOPPY_E_NET_CONNECTION_CLOSED");
+        }
+        const streamId = this._nextStreamId;
+        this._nextStreamId += 2;
+        const stream = {
+            streamId,
+            request,
+            headerBlocks: [],
+            dataChunks: [],
+            headerBlockBytes: 0,
+            totalBodyBytes: 0,
+            response: undefined,
+            headerBlockEndsStream: false,
+            settled: false,
+            resolve: undefined,
+            reject: undefined,
+        };
+        stream.promise = new Promise((resolve, reject) => {
+            stream.resolve = resolve;
+            stream.reject = reject;
+        });
+        this._streams.set(streamId, stream);
+        return stream;
+    }
+
+    async request(request, lifecycle) {
+        const stream = this._newStream(request);
+        const previousAbort = lifecycle.abort;
+        lifecycle.connection = this;
+        lifecycle.abort = (reason) => {
+            const error = reason === "timeout" ? httpRequestTimeoutError() : httpRequestCancelledError();
+            this.cancelStream(stream.streamId, error).catch(() => {});
+        };
+        try {
+            const headers = hpackEncodeRequestHeaders(request);
+            const frames = http2HeaderFrames(
+                stream.streamId,
+                headers,
+                request.body.byteLength === 0,
+                this._peerMaxFrameSize,
+            );
+            frames.push(...http2DataFrames(stream.streamId, request.body));
+            await this._write(http2Concat(frames));
+            return await stream.promise;
+        } catch (error) {
+            this._finishStream(stream.streamId, undefined, error);
+            throw error;
+        } finally {
+            if (lifecycle.connection === this) {
+                lifecycle.connection = undefined;
+            }
+            if (lifecycle.abort !== previousAbort) {
+                lifecycle.abort = previousAbort;
+            }
+        }
+    }
+
+    async cancelStream(streamId, error) {
+        if (!this._streams.has(streamId)) {
+            return;
+        }
+        this._finishStream(streamId, undefined, error);
+        if (!this._closed) {
+            await this._write(http2RstStreamFrame(streamId)).catch(() => {});
+        }
+    }
+
+    _finishStream(streamId, response, error) {
+        const stream = this._streams.get(streamId);
+        if (stream === undefined || stream.settled) {
+            return;
+        }
+        stream.settled = true;
+        this._streams.delete(streamId);
+        if (error !== undefined) {
+            stream.reject(error);
+        } else {
+            stream.resolve(response);
+        }
+        this._pool?.releaseHttp2(this._originKey, this);
+    }
+
+    _failAll(error) {
+        for (const streamId of Array.from(this._streams.keys())) {
+            this._finishStream(streamId, undefined, error);
+        }
+    }
+
+    async _readLoop() {
+        try {
+            while (!this._closed) {
+                const frame = await this._readFrame();
+                await this._handleFrame(frame);
+            }
+        } catch (error) {
+            if (!this._closed) {
+                this._failAll(error);
+            }
+        } finally {
+            this._closed = true;
+            this._acceptsStreams = false;
+            this._failAll(new Error("SLOPPY_E_NET_CONNECTION_CLOSED"));
+            await this._connection.close().catch(() => {});
+            this._notifyClosed();
+        }
+    }
+
+    async _readFrame() {
+        while (this._pending.byteLength < 9) {
+            const chunk = await this._connection.read({ maxBytes: 8192 });
+            this._pending = http2Concat([this._pending, chunk]);
+        }
+        const frame = parseHttp2FrameHeader(this._pending, 0);
+        if (frame.length > this._peerMaxFrameSize) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 peer frame exceeded the current max frame size.",
+            );
+        }
+        while (this._pending.byteLength < 9 + frame.length) {
+            const chunk = await this._connection.read({ maxBytes: 8192 });
+            this._pending = http2Concat([this._pending, chunk]);
+        }
+        const payload = this._pending.slice(9, 9 + frame.length);
+        this._pending = this._pending.slice(9 + frame.length);
+        return { ...frame, payload };
+    }
+
+    async _handleFrame(frame) {
+        if (frame.type === HTTP2_FRAME_SETTINGS) {
+            await this._handleSettings(frame);
+            return;
+        }
+        if (frame.type === HTTP2_FRAME_PING) {
+            await this._handlePing(frame);
+            return;
+        }
+        if (frame.type === HTTP2_FRAME_GOAWAY) {
+            this._acceptsStreams = false;
+            this._failAll(
+                httpClientError(
+                    "HttpClientConnectError",
+                    "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                    "HTTP/2 peer sent GOAWAY before the response completed.",
+                ),
+            );
+            await this.close();
+            return;
+        }
+        const stream = this._streams.get(frame.streamId);
+        if (stream === undefined) {
+            return;
+        }
+        if (frame.type === HTTP2_FRAME_RST_STREAM) {
+            this._finishStream(
+                frame.streamId,
+                undefined,
+                httpClientError(
+                    "HttpClientConnectError",
+                    "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                    "HTTP/2 stream was reset by the peer.",
+                ),
+            );
+            return;
+        }
+        if (frame.type === HTTP2_FRAME_HEADERS || frame.type === HTTP2_FRAME_CONTINUATION) {
+            await this._handleHeaderFrame(stream, frame);
+            return;
+        }
+        if (frame.type === HTTP2_FRAME_DATA) {
+            await this._handleDataFrame(stream, frame);
+        }
+    }
+
+    async _handleSettings(frame) {
+        const payload = frame.payload;
+        if (frame.streamId !== 0 || ((frame.flags & HTTP2_FLAG_ACK) !== 0 && frame.length !== 0)) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 SETTINGS frame is malformed.",
+            );
+        }
+        if ((frame.flags & HTTP2_FLAG_ACK) !== 0) {
+            return;
+        }
+        if (payload.byteLength % 6 !== 0) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 SETTINGS payload is malformed.",
+            );
+        }
+        for (let offset = 0; offset < payload.byteLength; offset += 6) {
+            const id = (payload[offset] << 8) | payload[offset + 1];
+            const value =
+                payload[offset + 2] * 0x1000000 +
+                (payload[offset + 3] << 16) +
+                (payload[offset + 4] << 8) +
+                payload[offset + 5];
+            if (id === HTTP2_SETTING_MAX_FRAME_SIZE) {
+                if (value < HTTP2_DEFAULT_MAX_FRAME_SIZE || value > 16777215) {
+                    throw httpClientError(
+                        "HttpClientMalformedResponseError",
+                        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP/2 SETTINGS_MAX_FRAME_SIZE is invalid.",
+                    );
+                }
+                this._peerMaxFrameSize = value;
+            } else if (id === HTTP2_SETTING_MAX_HEADER_LIST_SIZE) {
+                this._peerMaxHeaderListSize = value;
+            }
+        }
+        await this._write(http2Frame(HTTP2_FRAME_SETTINGS, HTTP2_FLAG_ACK, 0));
+    }
+
+    async _handlePing(frame) {
+        if (frame.streamId !== 0 || frame.length !== 8) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 PING frame is malformed.",
+            );
+        }
+        if ((frame.flags & HTTP2_FLAG_ACK) === 0) {
+            await this._write(http2Frame(HTTP2_FRAME_PING, HTTP2_FLAG_ACK, 0, frame.payload));
+        }
+    }
+
+    async _handleHeaderFrame(stream, frame) {
+        let payload = frame.payload;
+        if (frame.type === HTTP2_FRAME_CONTINUATION) {
+            if (this._pendingHeaderStream !== frame.streamId) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 CONTINUATION frame is out of sequence.",
+                );
+            }
+        } else if (this._pendingHeaderStream !== 0) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response started a new header block before END_HEADERS.",
+            );
+        }
+        if ((frame.flags & 0x8) !== 0) {
+            payload = http2UnpadPayload(payload);
+        }
+        if (frame.type === HTTP2_FRAME_HEADERS && (frame.flags & 0x20) !== 0) {
+            if (payload.byteLength < 5) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 response priority field is incomplete.",
+                );
+            }
+            payload = payload.slice(5);
+        }
+        stream.headerBlockBytes += payload.byteLength;
+        if (stream.headerBlockBytes > stream.request.maxHeaderBytes) {
+            throw httpClientError(
+                "HttpClientHeaderLimitError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response headers exceeded the configured limit.",
+            );
+        }
+        stream.headerBlocks.push(payload);
+        stream.headerBlockEndsStream =
+            stream.headerBlockEndsStream || (frame.flags & HTTP2_FLAG_END_STREAM) !== 0;
+        if ((frame.flags & HTTP2_FLAG_END_HEADERS) === 0) {
+            this._pendingHeaderStream = frame.streamId;
+            return;
+        }
+
+        const blockEndedStream = stream.headerBlockEndsStream;
+        const decoded = hpackDecodeHeaders(http2Concat(stream.headerBlocks), this._dynamicTable);
+        const parsed = parseHttp2Headers(
+            decoded,
+            Math.min(stream.request.maxHeaderBytes, this._peerMaxHeaderListSize),
+        );
+        if (parsed.status >= 100 && parsed.status < 200) {
+            if (blockEndedStream) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 informational response ended the stream.",
+                );
+            }
+        } else if (stream.response === undefined) {
+            stream.response = parsed;
+        }
+        stream.headerBlocks.length = 0;
+        stream.headerBlockBytes = 0;
+        stream.headerBlockEndsStream = false;
+        this._pendingHeaderStream = 0;
+        if (blockEndedStream && stream.response !== undefined) {
+            this._finishStream(stream.streamId, this._buildResponse(stream));
+        }
+    }
+
+    async _handleDataFrame(stream, frame) {
+        let payload = frame.payload;
+        if (stream.response === undefined) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response DATA arrived before final response headers.",
+            );
+        }
+        if ((frame.flags & 0x8) !== 0) {
+            payload = http2UnpadPayload(payload);
+        }
+        stream.totalBodyBytes += payload.byteLength;
+        const bodyForbidden =
+            stream.request.method === "HEAD" || isHttpBodyForbiddenStatus(stream.response.status);
+        if (bodyForbidden && payload.byteLength !== 0) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response included DATA for a body-forbidden response.",
+            );
+        }
+        if (
+            stream.response.contentLength !== undefined &&
+            stream.totalBodyBytes > stream.response.contentLength
+        ) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response body exceeded declared content-length.",
+            );
+        }
+        if (stream.totalBodyBytes > stream.request.maxResponseBytes) {
+            throw httpClientError(
+                "HttpClientResponseLimitError",
+                "SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
+                "HTTP response body exceeded the configured limit.",
+            );
+        }
+        if (payload.byteLength > 0) {
+            await this._write(
+                http2Concat([
+                    http2WindowUpdateFrame(0, payload.byteLength),
+                    http2WindowUpdateFrame(stream.streamId, payload.byteLength),
+                ]),
+            );
+            stream.dataChunks.push(payload);
+        }
+        if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
+            this._finishStream(stream.streamId, this._buildResponse(stream));
+        }
+    }
+
+    _buildResponse(stream) {
+        const response = stream.response;
+        if (response === undefined) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response ended before response headers were received.",
+            );
+        }
+        const bodyForbidden =
+            stream.request.method === "HEAD" || isHttpBodyForbiddenStatus(response.status);
+        if (
+            !bodyForbidden &&
+            response.contentLength !== undefined &&
+            stream.totalBodyBytes !== response.contentLength
+        ) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response body length did not match declared content-length.",
+            );
+        }
+        return new HttpClientResponse(
+            response.status,
+            "",
+            new HttpHeaderBag(response.headers),
+            bodyForbidden ? new Uint8Array(0) : concatHttpBytes(stream.dataChunks, stream.totalBodyBytes),
+            false,
+        );
+    }
+}
+
 async function readHttp2Response(connection, request) {
     let pending = new Uint8Array(0);
     const dynamicTable = [];
@@ -3487,10 +4102,97 @@ async function readHttp2Response(connection, request) {
     );
 }
 
-async function sendHttp2RequestOnce(request, lifecycle) {
-    let connection;
+async function connectHttp2Transport(request, explicitH2) {
+    assertHttpNetworkAllowed(request.network, request.url);
+    if (request.url.scheme === "http") {
+        const bridge = requireNetBridge();
+        const remainingMs = httpRemainingMs(request.expiresAtMs);
+        if (remainingMs <= 0) {
+            throw httpRequestTimeoutError();
+        }
+        return {
+            connection: new TcpConnection(
+                bridge,
+                await bridge.connect({
+                    host: request.url.host,
+                    port: request.url.port,
+                    timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
+                    noDelay: true,
+                }),
+            ),
+            protocol: "h2c",
+        };
+    }
+    const bridge = requireNetBridge();
+    const remainingMs = httpRemainingMs(request.expiresAtMs);
+    if (remainingMs <= 0) {
+        throw httpRequestTimeoutError();
+    }
+    if (typeof bridge.connectTls !== "function") {
+        throw httpClientTlsUnavailableError();
+    }
+    if (bridge.tlsAlpn !== true) {
+        if (explicitH2) {
+            throw httpClientError(
+                "HttpClientTlsUnavailableError",
+                "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+                "HTTP/2 over TLS requires an ALPN-capable outbound TLS bridge.",
+            );
+        }
+        return undefined;
+    }
+    assertHttpTlsBridgeCapabilities(bridge, request.tls, request.operation);
+    const handle = await bridge.connectTls({
+        host: request.url.host,
+        port: request.url.port,
+        timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
+        noDelay: true,
+        serverName: request.url.host,
+        tls: request.tls,
+        alpnProtocols: ["h2", "http/1.1"],
+    });
+    const connection = new TcpConnection(bridge, handle);
+    if (handle.selectedProtocol !== "h2") {
+        if (explicitH2) {
+            await connection.close().catch(() => {});
+            throw httpClientError(
+                "HttpClientConnectError",
+                "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                "HTTP/2 TLS connection did not negotiate h2 with ALPN.",
+            );
+        }
+        return { connection, protocol: "http/1.1" };
+    }
+    return { connection, protocol: "h2" };
+}
+
+async function openHttp2ClientSession(request, pool, originKey) {
+    const transport = await connectHttp2Transport(request, true);
+    const session = new Http2ClientSession(transport.connection, pool, originKey);
     try {
-        assertHttpNetworkAllowed(request.network, request.url);
+        await session.start();
+        return session;
+    } catch (error) {
+        await session.close().catch(() => {});
+        throw error;
+    }
+}
+
+async function sendHttp1RequestOnConnection(request, connection, lifecycle, keepAlive) {
+    lifecycle.connection = connection;
+    try {
+        await connection.write(serializeHttpRequest(request, keepAlive));
+        return await readHttpResponse(connection, request);
+    } finally {
+        if (lifecycle.connection === connection) {
+            lifecycle.connection = undefined;
+        }
+    }
+}
+
+async function sendHttp2RequestOnce(request, pool, lifecycle) {
+    let session;
+    try {
         if (request.protocol === "h2c" && request.url.scheme !== "http") {
             throw httpClientError(
                 "HttpClientInvalidOptionsError",
@@ -3505,63 +4207,57 @@ async function sendHttp2RequestOnce(request, lifecycle) {
                 "HTTP/2 h2 requires an https:// URL.",
             );
         }
-        const bridge = requireNetBridge();
-        const remainingMs = httpRemainingMs(request.expiresAtMs);
-        if (remainingMs <= 0) {
-            throw httpRequestTimeoutError();
+        const originKey = httpOriginKey(request.url);
+        if (pool !== undefined) {
+            const lease = await pool.acquireHttp2(originKey, () =>
+                openHttp2ClientSession(request, pool, originKey),
+            );
+            return await lease.session.request(request, lifecycle);
         }
-        const connectOptions = {
-            host: request.url.host,
-            port: request.url.port,
-            timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
-            noDelay: true,
-        };
-        if (request.url.scheme === "https") {
-            if (typeof bridge.connectTls !== "function") {
-                throw httpClientTlsUnavailableError();
-            }
-            if (bridge.tlsAlpn !== true) {
-                throw httpClientError(
-                    "HttpClientTlsUnavailableError",
-                    "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-                    "HTTP/2 over TLS requires an ALPN-capable outbound TLS bridge.",
-                );
-            }
-            assertHttpTlsBridgeCapabilities(bridge, request.tls, request.operation);
-            const handle = await bridge.connectTls({
-                ...connectOptions,
-                serverName: request.url.host,
-                tls: request.tls,
-                alpnProtocols: ["h2", "http/1.1"],
-            });
-            if (handle.selectedProtocol !== "h2") {
-                throw httpClientError(
-                    "HttpClientConnectError",
-                    "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
-                    "HTTP/2 TLS connection did not negotiate h2 with ALPN.",
-                );
-            }
-            connection = new TcpConnection(bridge, handle);
-        } else {
-            connection = new TcpConnection(bridge, await bridge.connect(connectOptions));
-        }
-        lifecycle.connection = connection;
-        const headers = hpackEncodeRequestHeaders(request);
-        const frames = [
-            HTTP2_CLIENT_PREFACE,
-            http2Frame(HTTP2_FRAME_SETTINGS, 0, 0, http2Setting(HTTP2_SETTING_ENABLE_PUSH, 0)),
-            ...http2HeaderFrames(1, headers, request.body.byteLength === 0),
-        ];
-        frames.push(...http2DataFrames(1, request.body));
-        await connection.write(http2Concat(frames));
-        return await readHttp2Response(connection, request);
+        session = await openHttp2ClientSession(request, undefined, originKey);
+        return await session.request(request, lifecycle);
     } finally {
-        if (lifecycle.connection === connection) {
-            lifecycle.connection = undefined;
+        if (pool === undefined && session !== undefined) {
+            await session.close().catch(() => {});
         }
-        if (connection !== undefined) {
-            await connection.close().catch(() => {});
+    }
+}
+
+async function sendHttpAutoTlsRequestOnce(request, pool, lifecycle) {
+    const originKey = httpOriginKey(request.url);
+    const existing = pool?.peekHttp2(originKey);
+    if (existing !== undefined) {
+        return await existing.request(request, lifecycle);
+    }
+
+    const transport = await connectHttp2Transport(request, false);
+    if (transport === undefined) {
+        return undefined;
+    }
+    if (transport.protocol !== "h2") {
+        try {
+            return await sendHttp1RequestOnConnection(request, transport.connection, lifecycle, false);
+        } finally {
+            await transport.connection.close().catch(() => {});
         }
+    }
+
+    const session = new Http2ClientSession(transport.connection, undefined, originKey);
+    try {
+        await session.start();
+        if (pool !== undefined) {
+            pool.adoptHttp2(originKey, session);
+            return await session.request(request, lifecycle);
+        } else {
+            try {
+                return await session.request(request, lifecycle);
+            } finally {
+                await session.close().catch(() => {});
+            }
+        }
+    } catch (error) {
+        await session.close().catch(() => {});
+        throw error;
     }
 }
 
@@ -3771,7 +4467,13 @@ function isStalePooledConnectionError(error) {
 
 async function sendHttpRequestOnce(request, pool, lifecycle) {
     if (request.protocol === "h2" || request.protocol === "h2c") {
-        return await sendHttp2RequestOnce(request, lifecycle);
+        return await sendHttp2RequestOnce(request, pool, lifecycle);
+    }
+    if (request.protocol === "auto" && request.url.scheme === "https") {
+        const negotiated = await sendHttpAutoTlsRequestOnce(request, pool, lifecycle);
+        if (negotiated !== undefined) {
+            return negotiated;
+        }
     }
     let connection;
     let originKey;
@@ -3936,6 +4638,13 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
     let cancelReason;
     let cleanupCancellation = () => {};
     const lifecycle = { connection: undefined };
+    const abortLifecycle = (reason) => {
+        if (typeof lifecycle.abort === "function") {
+            lifecycle.abort(reason);
+            return;
+        }
+        lifecycle.connection?.abort().catch(() => {});
+    };
     const run = async () => {
         return await sendHttpRequestWithRedirects(normalized, pool, lifecycle);
     };
@@ -3958,13 +4667,13 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
                 cleanupCancellation = subscribeHttpCancellation(normalized.signal, (reason) => {
                     cancelled = true;
                     cancelReason = reason;
-                    lifecycle.connection?.abort().catch(() => {});
+                    abortLifecycle("cancel");
                     reject(httpRequestCancelledError());
                 });
                 if (normalized.timeoutDelayMs !== Infinity) {
                     timeoutId = setTimeout(() => {
                         timedOut = true;
-                        lifecycle.connection?.abort().catch(() => {});
+                        abortLifecycle("timeout");
                         reject(httpRequestTimeoutError());
                     }, normalized.timeoutDelayMs);
                 }

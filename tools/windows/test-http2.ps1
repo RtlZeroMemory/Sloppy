@@ -22,11 +22,10 @@ function Write-Evidence {
     Write-Host "$Lane`t$Status`t$Detail"
 }
 
-function Test-Tool {
+function Resolve-Tool {
     param([string]$Name)
 
-    $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    return $null -ne $command
+    return Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
 function Invoke-OptionalTool {
@@ -36,7 +35,8 @@ function Invoke-OptionalTool {
         [string[]]$Arguments
     )
 
-    if (-not (Test-Tool $Tool)) {
+    $command = Resolve-Tool $Tool
+    if ($null -eq $command) {
         Write-Evidence $Lane "UNAVAILABLE" "$Tool is not on PATH"
         return
     }
@@ -45,13 +45,27 @@ function Invoke-OptionalTool {
         return
     }
 
-    & $Tool @Arguments
+    & $command.Source @Arguments
     if ($LASTEXITCODE -eq 0) {
         Write-Evidence $Lane "PASS" "$Tool completed"
     } else {
         Write-Evidence $Lane "FAIL" "$Tool exited with code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
+}
+
+function Invoke-CurlHttp2 {
+    $command = Resolve-Tool "curl.exe"
+    if ($null -eq $command) {
+        Write-Evidence "http2.curl" "UNAVAILABLE" "curl.exe is not on PATH"
+        return
+    }
+    $version = & $command.Source --version
+    if ($LASTEXITCODE -ne 0 -or -not (($version -join "`n") -match '\bHTTP2\b')) {
+        Write-Evidence "http2.curl" "UNAVAILABLE" "curl.exe was built without HTTP/2 support"
+        return
+    }
+    Invoke-OptionalTool "http2.curl" "curl.exe" @("--http2", "--fail", "--silent", "--show-error", $Url)
 }
 
 $ranExternal = $H2Spec -or $Curl -or $Nghttp -or $H2LoadSmoke
@@ -66,18 +80,24 @@ if ($LASTEXITCODE -eq 0) {
 
 if (-not $ranExternal -or $H2Spec) {
     $h2specArgs = @()
+    $h2specLane = "http2.h2spec"
     if (-not [string]::IsNullOrWhiteSpace($Url)) {
-        $target = [Uri]$Url
+        try {
+            $target = [Uri]$Url
+        } catch {
+            Write-Evidence $h2specLane "FAIL" "malformed -Url '$Url'"
+            exit 1
+        }
         $port = if ($target.Port -gt 0) { $target.Port } elseif ($target.Scheme -eq "http") { 80 } else { 443 }
         $h2specArgs = @("-h", $target.Host, "-p", [string]$port)
         if ($target.Scheme -eq "https") {
             $h2specArgs += "-t"
         }
     }
-    Invoke-OptionalTool "http2.h2spec" "h2spec" $h2specArgs
+    Invoke-OptionalTool $h2specLane "h2spec" $h2specArgs
 }
 if (-not $ranExternal -or $Curl) {
-    Invoke-OptionalTool "http2.curl" "curl.exe" @("--http2", "--fail", "--silent", "--show-error", $Url)
+    Invoke-CurlHttp2
 }
 if (-not $ranExternal -or $Nghttp) {
     Invoke-OptionalTool "http2.nghttp" "nghttp" @("-nv", $Url)

@@ -247,10 +247,10 @@ function createTestTlsMaterial() {
     };
 }
 
-function startHttpsServer(handler, tlsMaterial) {
+function startHttpsServer(handler, tlsMaterial, options = {}) {
     let nextConnectionId = 1;
     const server = tls.createServer(
-        { key: tlsMaterial.key, cert: tlsMaterial.cert },
+        { key: tlsMaterial.key, cert: tlsMaterial.cert, ALPNProtocols: options.alpnProtocols },
         async (socket) => {
             const connectionId = nextConnectionId;
             nextConnectionId += 1;
@@ -529,26 +529,40 @@ function hpackDecodeRequestHeaders(block) {
 
 function startHttp2Server(handler, options = {}) {
     const sockets = new Set();
+    let nextConnectionId = 1;
     const onSocket = (socket) => {
+        const connectionId = nextConnectionId;
+        nextConnectionId += 1;
         let buffer = Buffer.alloc(0);
         let sawPreface = false;
-        let responded = false;
-        let requestHeaders = [];
-        let requestBody = Buffer.alloc(0);
+        const streams = new Map();
         sockets.add(socket);
         socket.on("close", () => sockets.delete(socket));
         socket.on("error", () => {});
 
+        const streamState = (streamId) => {
+            let state = streams.get(streamId);
+            if (state === undefined) {
+                state = { headers: [], body: Buffer.alloc(0), responded: false };
+                streams.set(streamId, state);
+            }
+            return state;
+        };
+
         const respond = async (streamId) => {
-            if (responded) {
+            const state = streamState(streamId);
+            if (state.responded) {
                 return;
             }
-            responded = true;
-            const headerMap = new Map(requestHeaders);
-            const response = await handler({
-                headers: headerMap,
-                body: requestBody,
-            });
+            state.responded = true;
+            const headerMap = new Map(state.headers);
+            const response = await handler(
+                {
+                    headers: headerMap,
+                    body: state.body,
+                },
+                { connectionId, streamId },
+            );
             const status = response?.status ?? 200;
             const contentType = response?.contentType ?? "text/plain";
             const body = Buffer.from(response?.body ?? "h2 ok", "utf8");
@@ -564,6 +578,7 @@ function startHttp2Server(handler, options = {}) {
                     h2Frame(HTTP2_FRAME_DATA, HTTP2_FLAG_END_STREAM, streamId, body),
                 ]),
             );
+            streams.delete(streamId);
         };
 
         const parse = () => {
@@ -590,14 +605,15 @@ function startHttp2Server(handler, options = {}) {
                     continue;
                 }
                 if (frame.type === HTTP2_FRAME_HEADERS) {
-                    requestHeaders = hpackDecodeRequestHeaders(frame.payload);
+                    streamState(frame.streamId).headers = hpackDecodeRequestHeaders(frame.payload);
                     if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
                         void respond(frame.streamId).catch(() => socket.destroy());
                     }
                     continue;
                 }
                 if (frame.type === HTTP2_FRAME_DATA) {
-                    requestBody = Buffer.concat([requestBody, frame.payload]);
+                    const state = streamState(frame.streamId);
+                    state.body = Buffer.concat([state.body, frame.payload]);
                     if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
                         void respond(frame.streamId).catch(() => socket.destroy());
                     }
@@ -635,6 +651,9 @@ function startHttp2Server(handler, options = {}) {
             const address = server.address();
             resolve({
                 url: `${scheme}://127.0.0.1:${address.port}`,
+                get connectionCount() {
+                    return nextConnectionId - 1;
+                },
                 close: () =>
                     new Promise((done) => {
                         for (const socket of sockets) {
@@ -977,6 +996,164 @@ await withNodeNetBridge(async () => {
         assert.equal(observed.headers.get(":method"), "GET");
         assert.equal(observed.headers.get(":scheme"), "https");
         assert.equal(observed.headers.get(":path"), "/secure");
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const received = [];
+    let releaseBoth;
+    const bothStreamsReceived = new Promise((resolve) => {
+        releaseBoth = resolve;
+    });
+    const server = await startHttp2Server(async (request, context) => {
+        const pathHeader = request.headers.get(":path");
+        received.push({ connectionId: context.connectionId, streamId: context.streamId, path: pathHeader });
+        if (received.length === 2) {
+            releaseBoth();
+        }
+        await bothStreamsReceived;
+        return { body: `h2c ${pathHeader}` };
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            protocol: "h2c",
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const [first, second] = await Promise.all([
+            client.get("/pooled-a", { timeoutMs: 1000 }),
+            client.get("/pooled-b", { timeoutMs: 1000 }),
+        ]);
+
+        assert.equal(await first.text(), "h2c /pooled-a");
+        assert.equal(await second.text(), "h2c /pooled-b");
+        assert.equal(server.connectionCount, 1);
+        assert.deepEqual(received.map((entry) => entry.connectionId), [1, 1]);
+        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-h2-pool-"));
+    const trustStorePath = path.join(tempDir, "server.crt");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    const received = [];
+    let releaseBoth;
+    const bothStreamsReceived = new Promise((resolve) => {
+        releaseBoth = resolve;
+    });
+    const server = await startHttp2Server(async (request, context) => {
+        const pathHeader = request.headers.get(":path");
+        received.push({ connectionId: context.connectionId, streamId: context.streamId, path: pathHeader });
+        if (received.length === 2) {
+            releaseBoth();
+        }
+        await bothStreamsReceived;
+        return { body: `h2 ${pathHeader}` };
+    }, { tlsMaterial });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            protocol: "h2",
+            tls: { trustStorePath },
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const [first, second] = await Promise.all([
+            client.get("/tls-pooled-a", { timeoutMs: 1000 }),
+            client.get("/tls-pooled-b", { timeoutMs: 1000 }),
+        ]);
+
+        assert.equal(await first.text(), "h2 /tls-pooled-a");
+        assert.equal(await second.text(), "h2 /tls-pooled-b");
+        assert.equal(server.connectionCount, 1);
+        assert.deepEqual(received.map((entry) => entry.connectionId), [1, 1]);
+        assert.deepEqual(received.map((entry) => entry.streamId), [1, 3]);
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-auto-h2-"));
+    const trustStorePath = path.join(tempDir, "server.crt");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    let observed;
+    const server = await startHttp2Server((request) => {
+        observed = request;
+        return { body: "auto h2 ok" };
+    }, { tlsMaterial });
+
+    try {
+        const response = await HttpClient.get(`${server.url}/auto-h2`, {
+            protocol: "auto",
+            tls: { trustStorePath },
+        });
+
+        assert.equal(await response.text(), "auto h2 ok");
+        assert.equal(observed.headers.get(":scheme"), "https");
+        assert.equal(observed.headers.get(":path"), "/auto-h2");
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-auto-http1-"));
+    const trustStorePath = path.join(tempDir, "server.crt");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    let observed;
+    const server = await startHttpsServer((request) => {
+        observed = request;
+        return "HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nauto http1 ok";
+    }, tlsMaterial, { alpnProtocols: ["http/1.1"] });
+
+    try {
+        const response = await HttpClient.get(`${server.url}/auto-http1`, {
+            protocol: "auto",
+            tls: { trustStorePath },
+        });
+
+        assert.equal(await response.text(), "auto http1 ok");
+        assert.equal(observed.version, "HTTP/1.1");
+        assert.equal(observed.target, "/auto-http1");
+    } finally {
+        await server.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sloppy-http-client-h2-failclosed-"));
+    const trustStorePath = path.join(tempDir, "server.crt");
+    const tlsMaterial = createTestTlsMaterial();
+    fs.writeFileSync(trustStorePath, tlsMaterial.cert);
+    const server = await startHttpsServer(
+        () => "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
+        tlsMaterial,
+        { alpnProtocols: ["http/1.1"] },
+    );
+
+    try {
+        await assertRejectsMessage(
+            () =>
+                HttpClient.get(`${server.url}/must-not-downgrade`, {
+                    protocol: "h2",
+                    tls: { trustStorePath },
+                }),
+            /SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED/,
+        );
     } finally {
         await server.close();
         fs.rmSync(tempDir, { recursive: true, force: true });

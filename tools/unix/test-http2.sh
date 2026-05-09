@@ -41,6 +41,7 @@ Usage: tools/unix/test-http2.sh [--preset NAME] [--url URL] [--h2spec] [--curl] 
 
 Runs local HTTP/2 CTest lanes and optional external HTTP/2 tools. External
 tools report UNAVAILABLE when missing and SKIPPED when no --url is provided.
+--h2spec runs the full h2spec suite.
 EOF
       exit 0
       ;;
@@ -91,6 +92,18 @@ run_optional_tool() {
   fi
 }
 
+run_curl_http2() {
+  if ! command -v curl >/dev/null 2>&1; then
+    evidence "http2.curl" "UNAVAILABLE" "curl is not on PATH"
+    return
+  fi
+  if ! curl --version | grep -Eq '\bHTTP2\b'; then
+    evidence "http2.curl" "UNAVAILABLE" "curl was built without HTTP/2 support"
+    return
+  fi
+  run_optional_tool "http2.curl" "curl" --http2 --fail --silent --show-error "$url"
+}
+
 build_dir="$repo_root/build/$(host_preset)"
 if [[ ! -d "$build_dir" ]]; then
   evidence "http2.local_ctest" "UNAVAILABLE" "build preset directory not found: $build_dir"
@@ -101,25 +114,37 @@ ctest --test-dir "$build_dir" -R 'core\.http2|conformance\.transport\.http2_' --
 evidence "http2.local_ctest" "PASS" "core and transport HTTP/2 lanes passed"
 
 if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_h2spec" == "1" ]]; then
+  h2spec_lane="http2.h2spec"
   if [[ -n "$url" ]]; then
     h2spec_host="$(python3 - "$url" <<'PY'
 import sys
 from urllib.parse import urlparse
 u = urlparse(sys.argv[1])
+if u.scheme not in ("http", "https") or not u.hostname:
+    raise SystemExit(1)
 port = u.port or (80 if u.scheme == "http" else 443)
 print(u.hostname or "")
 print(port)
+print(u.scheme)
 PY
-)"
+)" || {
+      evidence "$h2spec_lane" "FAIL" "malformed --url: $url"
+      exit 1
+    }
     h2spec_host_name="$(printf '%s\n' "$h2spec_host" | sed -n '1p')"
     h2spec_port="$(printf '%s\n' "$h2spec_host" | sed -n '2p')"
-    run_optional_tool "http2.h2spec" "h2spec" -h "$h2spec_host_name" -p "$h2spec_port"
+    h2spec_scheme="$(printf '%s\n' "$h2spec_host" | sed -n '3p')"
+    h2spec_args=(-h "$h2spec_host_name" -p "$h2spec_port")
+    if [[ "$h2spec_scheme" == "https" ]]; then
+      h2spec_args+=(-t)
+    fi
+    run_optional_tool "$h2spec_lane" "h2spec" "${h2spec_args[@]}"
   else
-    run_optional_tool "http2.h2spec" "h2spec"
+    run_optional_tool "$h2spec_lane" "h2spec"
   fi
 fi
 if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_curl" == "1" ]]; then
-  run_optional_tool "http2.curl" "curl" --http2 --fail --silent --show-error "$url"
+  run_curl_http2
 fi
 if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_nghttp" == "1" ]]; then
   run_optional_tool "http2.nghttp" "nghttp" -nv "$url"

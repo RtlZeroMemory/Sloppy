@@ -42,8 +42,7 @@ typedef struct SlHttp2DispatchStream
     int32_t stream_id;
     bool active;
     bool headers_seen;
-    SlArenaMark mark;
-    bool mark_valid;
+    bool complete_pending;
     SlHttp2HeaderList headers;
     SlByteBuilder body;
 } SlHttp2DispatchStream;
@@ -57,6 +56,7 @@ typedef struct SlHttp2ServerDispatcher
     SlHttp2DispatchStream* streams;
     size_t active_streams;
     SlDiag last_diag;
+    bool peer_goaway_received;
     bool initialized;
 } SlHttp2ServerDispatcher;
 
@@ -73,6 +73,8 @@ SlStatus sl_http2_server_dispatcher_process_pending(SlHttp2ServerDispatcher* dis
 SlStatus sl_http2_server_dispatcher_drain_output(SlHttp2ServerDispatcher* dispatcher,
                                                  SlBytes* out_bytes);
 size_t sl_http2_server_dispatcher_active_streams(const SlHttp2ServerDispatcher* dispatcher);
+bool sl_http2_server_dispatcher_peer_goaway_received(const SlHttp2ServerDispatcher* dispatcher);
+bool sl_http2_server_dispatcher_close_without_goaway(const SlHttp2ServerDispatcher* dispatcher);
 
 #ifdef __cplusplus
 }

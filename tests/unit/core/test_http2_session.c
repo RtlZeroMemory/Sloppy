@@ -25,14 +25,33 @@ static SlHttp2HeaderField h2_header(const char* name, const char* value)
         .name = sl_str_from_cstr(name), .value = sl_str_from_cstr(value), .sensitive = false};
 }
 
-static int expect_header(const SlHttp2HeaderList* headers, size_t index, const char* name,
-                         const char* value)
+static bool header_list_has(const SlHttp2HeaderList* headers, const char* name, const char* value)
 {
-    if (headers == NULL || index >= headers->count) {
-        return 1;
+    if (headers == NULL) {
+        return false;
     }
-    return expect_true(sl_str_equal(headers->fields[index].name, sl_str_from_cstr(name)) &&
-                       sl_str_equal(headers->fields[index].value, sl_str_from_cstr(value)));
+    for (size_t index = 0U; index < headers->count; index += 1U) {
+        if (sl_str_equal(headers->fields[index].name, sl_str_from_cstr(name)) &&
+            sl_str_equal(headers->fields[index].value, sl_str_from_cstr(value)))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const SlHttp2Event* find_event(const SlHttp2EventList* events, SlHttp2EventType type,
+                                      int32_t stream_id)
+{
+    if (events == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < events->count; index += 1U) {
+        if (events->events[index].type == type && events->events[index].stream_id == stream_id) {
+            return &events->events[index];
+        }
+    }
+    return NULL;
 }
 
 static int pump(SlHttp2Session* from, SlHttp2Session* to)
@@ -93,6 +112,9 @@ static int test_client_server_request_response_round_trip(void)
     SlHttp2HeaderList response_headers = {
         .fields = response_fields, .count = sizeof(response_fields) / sizeof(response_fields[0])};
     SlHttp2EventList events = {0};
+    const SlHttp2Event* request_event = NULL;
+    const SlHttp2Event* response_event = NULL;
+    const SlHttp2Event* data_event = NULL;
     int32_t stream_id = 0;
 
     if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
@@ -115,10 +137,10 @@ static int test_client_server_request_response_round_trip(void)
     }
 
     events = sl_http2_session_events(&server);
-    if (events.count < 1U || events.events[0].type != SL_HTTP2_EVENT_REQUEST_HEADERS ||
-        events.events[0].stream_id != 1 || !events.events[0].end_stream ||
-        expect_header(&events.events[0].headers, 0U, ":method", "GET") != 0 ||
-        expect_header(&events.events[0].headers, 3U, ":path", "/hello") != 0)
+    request_event = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, 1);
+    if (request_event == NULL || !request_event->end_stream ||
+        !header_list_has(&request_event->headers, ":method", "GET") ||
+        !header_list_has(&request_event->headers, ":path", "/hello"))
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
@@ -136,10 +158,11 @@ static int test_client_server_request_response_round_trip(void)
     }
 
     events = sl_http2_session_events(&client);
-    if (events.count < 3U || events.events[0].type != SL_HTTP2_EVENT_RESPONSE_HEADERS ||
-        events.events[0].stream_id != 1 || events.events[1].type != SL_HTTP2_EVENT_DATA ||
-        !sl_bytes_equal(events.events[1].data, bytes_from_cstr("ok")) ||
-        expect_header(&events.events[0].headers, 0U, ":status", "200") != 0)
+    response_event = find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, 1);
+    data_event = find_event(&events, SL_HTTP2_EVENT_DATA, 1);
+    if (response_event == NULL || data_event == NULL ||
+        !sl_bytes_equal(data_event->data, bytes_from_cstr("ok")) ||
+        !header_list_has(&response_event->headers, ":status", "200"))
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);

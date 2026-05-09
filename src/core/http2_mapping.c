@@ -233,6 +233,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     SlStr target = {0};
     SlStr authority = {0};
     SlStr host = {0};
+    SlStr effective_authority = {0};
     SlStr content_type = {0};
     SlStr content_length = {0};
     SlHttpHeader* copied_headers = NULL;
@@ -342,16 +343,17 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         }
     }
 
+    effective_authority = sl_str_is_empty(authority) ? host : authority;
     if (method.ptr == NULL || method.length == 0U || scheme.ptr == NULL || scheme.length == 0U ||
-        target.ptr == NULL || target.length == 0U || authority.ptr == NULL ||
-        authority.length == 0U || target.ptr[0] != '/' ||
+        target.ptr == NULL || target.length == 0U || target.ptr[0] != '/' ||
         target.length > limits.max_target_length ||
         (!sl_str_equal(scheme, sl_str_from_cstr("http")) &&
          !sl_str_equal(scheme, sl_str_from_cstr("https"))) ||
         (connection->scheme.ptr != NULL && connection->scheme.length != 0U &&
          !sl_str_equal(scheme, connection->scheme)) ||
         sl_str_equal_ci_ascii(method, sl_str_from_cstr("CONNECT")) ||
-        (!sl_str_is_empty(host) && !sl_str_equal(host, authority)) ||
+        (!sl_str_is_empty(authority) && !sl_str_is_empty(host) &&
+         !sl_str_equal(host, authority)) ||
         (has_content_length && declared_content_length != body.length))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -368,7 +370,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         return status;
     }
 
-    if (!sl_str_is_empty(authority)) {
+    if (!sl_str_is_empty(effective_authority)) {
         regular_header_count += 1U;
     }
     if (regular_header_count > limits.max_headers) {
@@ -387,8 +389,8 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
 
     copied_headers = (SlHttpHeader*)header_storage;
     regular_header_count = 0U;
-    if (!sl_str_is_empty(authority)) {
-        status = sl_http2_copy_header(arena, sl_str_from_cstr("host"), authority,
+    if (!sl_str_is_empty(effective_authority)) {
+        status = sl_http2_copy_header(arena, sl_str_from_cstr("host"), effective_authority,
                                       &copied_headers[regular_header_count]);
         if (!sl_status_is_ok(status)) {
             (void)sl_http_request_fail(out_request, out_diag);
@@ -401,7 +403,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         if (header->name.length != 0U && header->name.ptr[0] == ':') {
             continue;
         }
-        if (!sl_str_is_empty(authority) &&
+        if (!sl_str_is_empty(effective_authority) &&
             sl_str_equal_ci_ascii(header->name, sl_str_from_cstr("host")))
         {
             continue;
@@ -434,9 +436,9 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     out_request->state = SL_HTTP_REQUEST_STATE_READING;
     connection->state = SL_HTTP_CONNECTION_STATE_READING_REQUEST;
 
-    status = sl_http_request_body_reader_begin(out_request,
-                                               has_content_type ? content_type : sl_str_empty(),
-                                               body.length, &reader, out_diag);
+    status = sl_http_request_body_reader_begin(
+        out_request, has_content_type ? content_type : sl_str_from_cstr("application/octet-stream"),
+        body.length, &reader, out_diag);
     if (!sl_status_is_ok(status)) {
         (void)sl_http_request_fail(out_request, out_diag);
         return status;

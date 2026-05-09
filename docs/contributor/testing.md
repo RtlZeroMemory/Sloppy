@@ -176,11 +176,12 @@ HTTP/2 changes should include the smallest native protocol lane that proves
 the contract: frame/HPACK/session unit tests for parser behavior,
 `conformance.transport.http2_h2c` for cleartext prior knowledge,
 `conformance.transport.http2_h2c_upgrade` for HTTP/1.1 Upgrade, and
-`conformance.transport.http2_tls_alpn` for TLS ALPN selection. External tools
-such as h2spec, nghttp, curl, and h2load are optional lanes; report them as
-`SKIPPED` or `UNAVAILABLE` when the tool is missing. The current wrappers do
-not by themselves prove external conformance; h2spec/nghttp/h2load CI coverage
-is tracked in #1011 until a tool-backed job runs in CI.
+`conformance.transport.http2_tls_alpn` for TLS ALPN selection. The Linux clang
+CI lane also runs a live h2c Sloppy transport server through full h2spec, curl,
+nghttp, and h2load smoke coverage. Local external tools remain optional; report
+them as `SKIPPED` or `UNAVAILABLE` when a tool is missing or no live `--url` /
+`-Url` target is provided. Wrapper existence by itself is not conformance
+evidence.
 
 ## When tests get rejected at review
 

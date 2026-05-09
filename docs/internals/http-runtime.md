@@ -152,13 +152,14 @@ HTTP/1.1 keep-alive is sequential: a single connection processes one request at
 a time, then either closes or waits for the next request up to the idle
 timeout. HTTP/1.1 pipelining is not implemented.
 
-HTTP/2 server connections are multiplexed. TLS listeners enter HTTP/2 only
-through ALPN `h2`; cleartext listeners accept h2c prior knowledge only on a
-fresh connection and accept HTTP/1.1 Upgrade to h2c. Upgrade requests with a
-body are handled by nghttp2's upgrade contract: the upgraded stream is request
-stream 1 and body bytes are not treated as an HTTP/1.1 request body after the
-protocol switch. A keep-alive HTTP/1.1 connection cannot switch to h2 by later
-sending the prior-knowledge preface.
+HTTP/2 server connections are multiplexed and experimental; this path is not
+yet hardened for production edge use. TLS listeners enter HTTP/2 only through
+ALPN `h2`; cleartext listeners accept h2c prior knowledge only on a fresh
+connection and accept HTTP/1.1 Upgrade to h2c. Upgrade requests with a body are
+handled by nghttp2's upgrade contract: the upgraded stream is request stream 1
+and body bytes are not treated as an HTTP/1.1 request body after the protocol
+switch. A keep-alive HTTP/1.1 connection cannot switch to h2 by later sending
+the prior-knowledge preface.
 
 The HTTP/2 dispatcher keeps stream state separate from the HTTP backend
 connection state so multiple streams can have independent request lifecycles on
@@ -168,8 +169,8 @@ windows are owned by the HTTP/2 session adapter. Server push is disabled.
 ## Response writing
 
 For HTTP/1.1, `sl_http_response_write` serializes fixed response descriptors
-into a single buffer inside the per-request arena, then hands them to the
-transport for write. Headers are normalized to lowercase; `Content-Length` is
+into `connection->response_storage`, then the transport writes that
+per-connection buffer. Headers are normalized to lowercase; `Content-Length` is
 computed from the body. Streaming responses are transport-owned and use bounded
 HTTP/1.1 chunked frames.
 
@@ -247,6 +248,9 @@ connection draining) is the responsibility of an in-front reverse proxy.
   checked allocation sizes, and bounded stream/event lifetime.
 - **HTTP/2 protocol unit tests** cover frame validation, HPACK/session adapter
   behavior, request mapping, stream reset/GOAWAY handling, and dispatch.
+- **External HTTP/2 conformance** runs full h2spec, curl, nghttp, and h2load
+  smoke coverage against a live Sloppy h2c transport server in the Linux clang
+  CI lane.
 
 ## Not implemented
 
@@ -257,5 +261,3 @@ connection draining) is the responsibility of an in-front reverse proxy.
   basic header passthrough.
 - HTTP/1.1 pipelining.
 - Server push public API or server push frames.
-- External h2spec/nghttp/h2load CI conformance is not part of the default lane
-  yet; wrappers exist and the CI lane is tracked in #1011.
