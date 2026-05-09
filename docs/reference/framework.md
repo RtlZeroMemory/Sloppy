@@ -32,6 +32,7 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 | `useModule(moduleOrFactory)` | Accepts route-only `Sloppy.module(...)` or named synchronous function modules. |
 | `mapGet/mapPost/mapPut/mapPatch/mapDelete` | Route registration methods. |
 | `get/post/put/patch/delete` | Aliases for `map*`. |
+| `mapHealthChecks(options?)` | Registers bootstrap health, liveness, and readiness routes. |
 | `mapGroup` / `group` | Route grouping helpers with group-local middleware support. |
 | `mapController` / `controller` | Controller mapper APIs. |
 | `freeze()` / `isFrozen()` | Freeze app mutation state. |
@@ -108,6 +109,75 @@ Only SQLite descriptors are currently accepted by `app.use(...)`. PostgreSQL and
 SQL Server appear through typed injection and runtime data APIs, not through
 `app.use(postgres(...))` or `app.use(sqlserver(...))` descriptor modules.
 
+## Health Checks
+
+`app.mapHealthChecks(options?)` registers the current bootstrap health route
+set:
+
+- aggregate health: `GET /health`
+- liveness: `GET /health/live`
+- readiness: `GET /health/ready`
+
+Paths can be customized:
+
+```ts
+app.mapHealthChecks({
+  path: "/status",
+  livenessPath: "/status/live",
+  readinessPath: "/status/ready",
+});
+```
+
+Health checks are functions or named check objects:
+
+```ts
+app.mapHealthChecks({
+  checks: [
+    function cache() {
+      return true;
+    },
+    {
+      name: "worker-loop",
+      liveness: true,
+      readiness: false,
+      async check() {
+        return { ok: true };
+      },
+    },
+    {
+      name: "database",
+      check() {
+        return false;
+      },
+    },
+  ],
+});
+```
+
+Check functions receive the same handler context shape as regular bootstrap
+handlers, including `services`, `capabilities`, `config`, `log`, and `route`.
+Function checks are readiness checks by default. Object checks can opt into
+liveness with `liveness: true` and can opt out of readiness with
+`readiness: false`. Liveness has no dependency checks by default, so the
+liveness endpoint reports the process route table as reachable unless a check
+explicitly targets liveness.
+
+Healthy responses use status `200`; unhealthy responses use status `503`.
+Response bodies contain only the health status and per-check names/statuses:
+
+```json
+{
+  "status": "unhealthy",
+  "checks": [
+    { "name": "database", "status": "unhealthy" }
+  ]
+}
+```
+
+Check return details and thrown error messages are intentionally omitted from
+the health response. Detailed failure logging belongs in the logging and
+diagnostics surfaces.
+
 ## Static Provider Handles
 
 The current static provider handle syntax is:
@@ -178,6 +248,9 @@ Options:
 - `app.provider("sqlite:main")` is the current static provider handle path; non-SQLite static handles are diagnostic-only.
 - Typed PostgreSQL and SQL Server injection still needs live database setup for
   execution.
+- Health checks currently register bootstrap route-table entries. Deployment
+  health policy, authentication, and load-balancer integration are separate
+  framework/deployment areas.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` requires V8.
 - ProblemDetails currently provides safe global handler-error mapping. Production error

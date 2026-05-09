@@ -48,9 +48,10 @@ lib/sloppy/bootstrap/sloppy/
   facades, and core API namespaces.
 - `app.js` provides the bootstrap builder/app/module surface used by examples and tests:
   `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, `Router.group(...)`,
-  route registration, app-host CORS policy/preflight handling, route-only
-  `app.useModule(...)`, explicit controller mapping, group metadata,
-  config/log/services/capabilities facades, structural freeze behavior, and debug snapshots.
+  route registration, middleware/filter registration, app-host CORS policy/preflight
+  handling, health/readiness/liveness routes, route-only `app.useModule(...)`,
+  explicit controller mapping, group metadata, config/log/services/capabilities facades,
+  structural freeze behavior, and debug snapshots.
 - `internal/capabilities.js`, `internal/config.js`, `internal/logging.js`,
   `internal/modules.js`, `internal/routes.js`, `internal/services.js`, and
   `internal/shared.js` hold app-host implementation helpers. They are staged bootstrap
@@ -82,8 +83,7 @@ lib/sloppy/bootstrap/sloppy/
   provider-specific lane separately documents and tests active native interruption.
 - Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
   facades use opaque Sloppy-owned objects, not public slot/generation fields.
-- Node, Bun, Deno, Web API, and npm compatibility are separate compatibility
-  tracks.
+- Node, Bun, Deno, Web API, and npm support are planned separately.
 - Benchmark, operations, and release readiness are covered by dedicated docs and gates.
 
 ## Future Work
@@ -92,7 +92,7 @@ lib/sloppy/bootstrap/sloppy/
 - Public handler registration APIs will be documented when the runtime support lands.
 - Full compiler extraction and arbitrary import rewriting are compiler/runtime work.
 - ORM, migrations, and schema-management behavior belong to future database provider work.
-- Middleware, module packages, native plugins, and full app lifecycle integration are
+- Module packages, native plugins, and full app lifecycle integration are
   planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
   logging sinks, async service factories, typed DI tokens, and native service graph
