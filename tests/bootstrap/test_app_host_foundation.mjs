@@ -25,6 +25,7 @@ import {
     Results,
     Secret,
     Sloppy,
+    Testing,
     Time,
     TimerDisposedError,
     TimeoutError,
@@ -32,6 +33,7 @@ import {
     UnixSocket,
 } from "../../stdlib/sloppy/index.js";
 import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
+import { createTestHost } from "../../stdlib/sloppy/testing.js";
 
 function assertThrowsMessage(fn, expected) {
     assert.throws(fn, (error) => {
@@ -1650,6 +1652,370 @@ async function flushMicrotasks(count = 6) {
         assertThrowsMessage(() => conflictApp.mapHealthChecks(), /already registered/);
         assert.equal(conflictApp.__getRoutes().length, before);
     }
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/profile/{slug}", () => Results.text("param"));
+    app.get("/profile/settings", () => Results.text("static"));
+    app.get("/hello", () => Results.text("hello"));
+    app.get("/json", () => Results.json({ ok: true }));
+    app.get("/users/{id:int}/comments/{slug}", (ctx) => {
+        return Results.json({
+            id: ctx.route.id,
+            slug: ctx.route.slug,
+            q: ctx.query.q,
+            repeat: ctx.query.repeat,
+            method: ctx.request.method,
+            path: ctx.request.path,
+            rawTarget: ctx.request.rawTarget,
+        });
+    });
+    app.post("/hello", () => Results.text("posted"));
+    app.put("/resource", () => Results.json({ method: "PUT" }));
+    app.patch("/resource", () => Results.json({ method: "PATCH" }));
+    app.delete("/resource", () => Results.noContent());
+
+    const host = createTestHost(app);
+    const testingHost = Testing.createHost(Sloppy.create());
+    assert.equal(testingHost.get instanceof Function, true);
+    await testingHost.close();
+    assert.equal(app.isFrozen(), true);
+    assertThrowsMessage(() => app.get("/late", () => Results.text("late")), /app is frozen/);
+
+    assert.equal((await host.get("/hello")).status, 200);
+    assert.equal(await (await host.get("/hello")).text(), "hello");
+    assert.equal((await host.get("/profile/settings")).status, 200);
+    assert.equal(await (await host.get("/profile/settings")).text(), "static");
+    assert.deepEqual(await (await host.get("/json")).json(), { ok: true });
+    assert.deepEqual(await (await host.get("/users/42/comments/%E2%9C%93?q=Ada+%E2%9C%93&repeat=one&repeat=two")).json(), {
+        id: "42",
+        slug: "\u2713",
+        q: "Ada \u2713",
+        repeat: "two",
+        method: "GET",
+        path: "/users/42/comments/\u2713",
+        rawTarget: "/users/42/comments/%E2%9C%93?q=Ada+%E2%9C%93&repeat=one&repeat=two",
+    });
+    assert.equal((await host.get("/missing")).status, 404);
+    assert.equal((await host.put("/hello")).status, 405);
+    assert.deepEqual(await (await host.request("POST", "/hello")).text(), "posted");
+    assert.deepEqual(await (await host.put("/resource")).json(), { method: "PUT" });
+    assert.deepEqual(await (await host.patch("/resource")).json(), { method: "PATCH" });
+    assert.equal((await host.delete("/resource")).status, 204);
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.post("/json", (ctx) => Results.json({
+        body: ctx.request.json(),
+        contentType: ctx.request.contentType,
+    }));
+    app.post("/text", (ctx) => Results.text(ctx.request.text()));
+    app.post("/bytes", (ctx) => Results.bytes(ctx.request.bytes()));
+    app.post("/body-json", (ctx) => Results.json(ctx.request.body.json()));
+    app.post("/body-text", (ctx) => Results.text(ctx.request.body.text()));
+
+    const host = createTestHost(app);
+    assert.deepEqual(await (await host.post("/json", { json: { name: "Ada" } })).json(), {
+        body: { name: "Ada" },
+        contentType: "application/json; charset=utf-8",
+    });
+    assert.equal(await (await host.post("/text", { text: "hello" })).text(), "hello");
+    assert.deepEqual(
+        Array.from(await (await host.post("/bytes", {
+            headers: { "content-type": "application/octet-stream" },
+            body: new Uint8Array([1, 2, 3]),
+        })).bytes()),
+        [1, 2, 3],
+    );
+    assert.deepEqual(await (await host.post("/body-json", { json: { ok: true } })).json(), { ok: true });
+    assert.equal(await (await host.post("/body-text", { text: "body text" })).text(), "body text");
+    assert.equal((await host.post("/json", {
+        headers: { "content-type": "application/json" },
+        body: "{",
+    })).status, 400);
+    assert.equal((await host.post("/text", {
+        headers: { "content-type": "application/x-custom" },
+        body: "hello",
+    })).status, 415);
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/headers", (ctx) => {
+        return Results.json({
+            request: ctx.request.headers.get("x-test"),
+            entries: Array.from(ctx.request.headers.entries()),
+        }, { headers: { "x-response": "ok" } });
+    });
+    app.get("/created", () => Results.created("/headers/1", { id: 1 }));
+    app.get("/ok", () => Results.ok({ ok: true }));
+    app.get("/no-content", () => Results.noContent());
+    app.get("/not-found", () => Results.notFound({ missing: true }));
+    app.get("/bad-request", () => Results.badRequest({ bad: true }));
+    app.get("/problem", () => Results.problem("broken"));
+
+    const host = createTestHost(app);
+    const response = await host.get("/headers", {
+        headers: {
+            "X-Test": "one",
+            "x-test": "two",
+        },
+    });
+    assert.equal(response.headers.get("X-Response"), "ok");
+    assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
+    assert.deepEqual(await response.json(), {
+        request: "one, two",
+        entries: [["x-test", "one, two"]],
+    });
+    const created = await host.get("/created");
+    assert.equal(created.status, 201);
+    assert.equal(created.headers.get("location"), "/headers/1");
+    assert.deepEqual(await (await host.get("/ok")).json(), { ok: true });
+    assert.equal((await host.get("/no-content")).status, 204);
+    assert.deepEqual(Array.from(await (await host.get("/no-content")).bytes()), []);
+    assert.equal((await host.get("/not-found")).status, 404);
+    assert.equal((await host.get("/bad-request")).status, 400);
+    assert.equal((await host.get("/problem")).headers.get("content-type"), "application/problem+json; charset=utf-8");
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    const events = [];
+    app.use(async (ctx, next) => {
+        events.push("global:before");
+        const response = await next();
+        events.push("global:after");
+        return response;
+    });
+    const api = app.group("/api");
+    app.use((ctx, next) => {
+        events.push("late");
+        return next();
+    });
+    api.use((ctx, next) => {
+        events.push(`group:${ctx.route.id}`);
+        return next();
+    });
+    api.get("/items/{id:int}", () => {
+        events.push("handler");
+        return Results.ok({ ok: true });
+    });
+    app.use(() => Results.status(418, { short: true }));
+    app.get("/short", () => Results.ok({ unreachable: true }));
+
+    const host = createTestHost(app);
+    assert.deepEqual(await (await host.get("/api/items/7")).json(), { ok: true });
+    assert.deepEqual(events, ["global:before", "late", "group:7", "handler", "global:after"]);
+    const short = await host.get("/short");
+    assert.equal(short.status, 418);
+    assert.deepEqual(await short.json(), { short: true });
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.use(ProblemDetails.defaults());
+    app.use((ctx, next) => {
+        next();
+        return next();
+    });
+    app.get("/twice", () => Results.ok({}));
+
+    const response = await createTestHost(app).get("/twice");
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.equal(body.code, "SLOPPY_E_HANDLER_ERROR");
+}
+
+{
+    const app = Sloppy.create();
+    app.use(ProblemDetails.defaults());
+    app.get("/sync", () => {
+        throw new Error("SECRET_SYNC_SHOULD_NOT_LEAK");
+    });
+    app.get("/async", async () => {
+        throw new Error("SECRET_ASYNC_SHOULD_NOT_LEAK");
+    });
+
+    const host = createTestHost(app);
+    for (const target of ["/sync", "/async"]) {
+        const response = await host.get(target);
+        assert.equal(response.status, 500);
+        const text = await response.text();
+        assert.equal(text.includes("SECRET_"), false);
+        assert.equal(JSON.parse(text).code, "SLOPPY_E_HANDLER_ERROR");
+    }
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.useCors({
+        origins: ["https://app.example"],
+        headers: ["x-requested-with"],
+        exposedHeaders: ["x-total-count"],
+    });
+    app.get("/items", () => Results.json([], { headers: { "x-total-count": "0" } }));
+
+    const host = createTestHost(app);
+    const actual = await host.get("/items", { headers: { Origin: "https://app.example" } });
+    assert.equal(actual.headers.get("access-control-allow-origin"), "https://app.example");
+    assert.equal(actual.headers.get("access-control-expose-headers"), "x-total-count");
+
+    const allowedPreflight = await host.options("/items", {
+        headers: {
+            Origin: "https://app.example",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "X-Requested-With",
+        },
+    });
+    assert.equal(allowedPreflight.status, 204);
+    assert.equal(allowedPreflight.headers.get("access-control-allow-methods"), "GET");
+
+    const deniedPreflight = await host.options("/items", {
+        headers: {
+            Origin: "https://app.example",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Authorization",
+        },
+    });
+    assert.equal(deniedPreflight.status, 403);
+    await host.close();
+}
+
+{
+    const healthyApp = Sloppy.create();
+    healthyApp.mapHealthChecks();
+    const healthyHost = createTestHost(healthyApp);
+    assert.deepEqual(await (await healthyHost.get("/health")).json(), { status: "healthy", checks: [] });
+    await healthyHost.close();
+
+    const app = Sloppy.create();
+    const secret = "readiness-password=secret";
+    app.mapHealthChecks({
+        checks: [
+            function cache() {
+                return true;
+            },
+            {
+                name: "database",
+                check() {
+                    return { ok: false, details: secret };
+                },
+            },
+        ],
+    });
+
+    const host = createTestHost(app);
+    assert.deepEqual(await (await host.get("/health/live")).json(), { status: "healthy", checks: [] });
+    const readiness = await host.get("/health/ready");
+    assert.equal(readiness.status, 503);
+    const readinessText = await readiness.text();
+    assert.equal(readinessText.includes(secret), false);
+    assert.deepEqual(JSON.parse(readinessText), {
+        status: "unhealthy",
+        checks: [
+            { name: "cache", status: "healthy" },
+            { name: "database", status: "unhealthy" },
+        ],
+    });
+    await host.close();
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let created = 0;
+    let disposed = 0;
+    builder.services.addScoped("request", () => {
+        created += 1;
+        return {
+            dispose() {
+                disposed += 1;
+            },
+        };
+    });
+    const app = builder.build();
+    app.use(ProblemDetails.defaults());
+    app.get("/service", (ctx) => {
+        assert.equal(ctx.services.get("request"), ctx.services.get("request"));
+        return Results.ok({ ok: true });
+    });
+    app.get("/throw", (ctx) => {
+        ctx.services.get("request");
+        throw new Error("service failure");
+    });
+
+    const host = createTestHost(app);
+    await host.get("/service");
+    assert.equal(created, 1);
+    assert.equal(disposed, 1);
+    await host.get("/throw");
+    assert.equal(created, 2);
+    assert.equal(disposed, 2);
+    await host.close();
+
+    let releaseSlowHandler;
+    let rootDisposed = 0;
+    const slowHandlerCanFinish = new Promise((resolve) => {
+        releaseSlowHandler = resolve;
+    });
+    let markSlowHandlerStarted;
+    const slowHandlerStarted = new Promise((resolve) => {
+        markSlowHandlerStarted = resolve;
+    });
+    const slowBuilder = Sloppy.createBuilder();
+    slowBuilder.services.addSingleton("root", () => ({
+        dispose() {
+            rootDisposed += 1;
+        },
+    }));
+    const slowApp = slowBuilder.build();
+    slowApp.get("/slow", async (ctx) => {
+        ctx.services.get("root");
+        markSlowHandlerStarted();
+        await slowHandlerCanFinish;
+        return Results.ok({ ok: true });
+    });
+    const slowHost = createTestHost(slowApp);
+    const slowResponse = slowHost.get("/slow");
+    await slowHandlerStarted;
+    const closeSlowHost = slowHost.close();
+    await Promise.resolve();
+    assert.equal(rootDisposed, 0);
+    releaseSlowHandler();
+    assert.equal((await slowResponse).status, 200);
+    await closeSlowHost;
+    assert.equal(rootDisposed, 1);
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/", () => Results.ok({ ok: true }));
+    const host = createTestHost(app);
+
+    await host.close();
+    await assertRejectsMessage(() => host.get("/"), /closed/);
+    await assertRejectsMessage(() => createTestHost(Sloppy.create()).request("TRACE", "/"), /method/);
+    await assertRejectsMessage(() => createTestHost(Sloppy.create()).get("relative"), /target/);
+    await assertRejectsMessage(() => createTestHost(Sloppy.create()).get("/%E0%A4"), /valid UTF-8/);
+    const queryApp = Sloppy.create();
+    queryApp.get("/", () => Results.ok({ ok: true }));
+    const queryHost = createTestHost(queryApp);
+    await assertRejectsMessage(() => queryHost.get("/?bad=%GG"), /two hex digits/);
+    await queryHost.close();
+    await assertRejectsMessage(
+        () => createTestHost(Sloppy.create()).get("/", { headers: { "bad header": "1" } }),
+        /header names/,
+    );
+    await assertRejectsMessage(
+        () => createTestHost(Sloppy.create()).post("/", { text: "x", json: { x: true } }),
+        /one body source/,
+    );
 }
 
 {

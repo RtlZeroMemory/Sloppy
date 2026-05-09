@@ -13,6 +13,7 @@ stdlib/sloppy/
   app.js
   results.js
   schema.js
+  testing.js
   data.js
   fs.js
   net.js
@@ -68,6 +69,9 @@ lib/sloppy/bootstrap/sloppy/
   one structured entry per completed app-host request through the existing logger.
 - `schema.js` provides the current validation metadata surface for strings, numbers,
   integers, booleans, arrays, optional fields, and object shapes.
+- `testing.js` provides the bootstrap app test host for in-memory JS app-host
+  dispatch through route handlers, middleware, results, CORS, health checks, and
+  scoped services.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.

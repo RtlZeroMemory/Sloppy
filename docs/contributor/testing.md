@@ -49,6 +49,12 @@ fixtures          source/data inputs reused across tests
 When in doubt, pick the smallest unit that exercises the thing you
 care about and don't accidentally test V8/HTTP/the kitchen sink.
 
+For Sloppy app framework behavior, prefer the app test host when the contract
+is route matching, request context materialization, middleware order, result
+conversion, ProblemDetails, CORS, health checks, or request service cleanup.
+Use `sloppy run --once` for compiled artifacts, native dispatch, V8 execution,
+generated typed bindings, package layout, and provider bridge behavior.
+
 ## Writing a good unit test
 
 - Name the contract being tested in the test name. `test_route_pattern_int_param_strict_trailing_slash`

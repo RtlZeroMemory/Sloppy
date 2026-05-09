@@ -162,6 +162,7 @@ set(
     providers/sqlite.js
     results.js
     schema.js
+    testing.js
     internal/capabilities.js
     internal/config.js
     internal/intrinsics.js

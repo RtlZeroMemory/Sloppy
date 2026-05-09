@@ -16,6 +16,7 @@ configuration, services, validation, or data access.
 - [Middleware](middleware.md) — `app.use(fn)`, `group.use(fn)`, pipeline order
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
 - [Health checks](health.md) — `app.mapHealthChecks(options?)`, liveness/readiness
+- [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper
 - [Services](services.md) — singleton/scoped/transient DI, disposal
