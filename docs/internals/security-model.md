@@ -108,10 +108,12 @@ Path validation rejects:
 - missing certificate or key files;
 - unreadable / oversized inputs.
 
-Outbound `HttpClient` HTTPS requests use OpenSSL through the private
-`__sloppy.net.connectTls` V8 bridge in `src/engine/v8/intrinsics_net.cc`.
-TLS state stays inside the resource-table TCP connection; JavaScript sees only
-slot/generation handles and copied buffers.
+Outbound `HttpClient` HTTPS/TLS is experimental. It uses OpenSSL through the
+private `__sloppy.net.connectTls` V8 bridge in
+`src/engine/v8/intrinsics_net.cc` when that bridge is present. TLS state stays
+inside the resource-table TCP connection; JavaScript sees only slot/generation
+handles and copied buffers. Trust-store and client-certificate option names may
+still change before a broader stability contract exists.
 
 Not implemented today: ALPN selection beyond HTTP/1.1, server-side mTLS,
 custom certificate verifier callbacks, OCSP stapling, HSTS hardening.

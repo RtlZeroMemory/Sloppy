@@ -257,6 +257,17 @@ bool net_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return object->Set(context, key, function).FromMaybe(false);
 }
 
+bool net_v8_set_bool(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                     v8::Local<v8::Object> object, const char* name, bool value)
+{
+    v8::Local<v8::String> key;
+
+    if (!sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr(name), &key))) {
+        return false;
+    }
+    return object->Set(context, key, v8::Boolean::New(isolate, value)).FromMaybe(false);
+}
+
 std::string net_v8_diag_message(const SlV8NetRequest& request)
 {
     SlStr code = sl_diag_code_name(request.diag.code);
@@ -330,6 +341,16 @@ SlStatus net_v8_tls_feed_tcp(NetV8Connection& connection, SlArena& arena, SlDiag
         sl_tcp_connection_read(connection.native, &arena, kNetTlsIoBytes, &encrypted, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (encrypted.length == 0U) {
+        if (out_diag != nullptr) {
+            *out_diag = {};
+            out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+            out_diag->code = SL_DIAG_NET_CONNECTION_CLOSED;
+            out_diag->message = sl_str_from_cstr("TCP connection closed during TLS I/O");
+            out_diag->primary_span = sl_source_span_unknown();
+        }
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     if (encrypted.length > static_cast<size_t>(INT_MAX)) {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
@@ -2466,6 +2487,11 @@ bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
                              net_v8_close_local_server) ||
         !net_v8_set_function(isolate, context, net, "abortLocalServer",
                              net_v8_abort_local_server) ||
+        !net_v8_set_bool(isolate, context, net, "tlsCaPath", true) ||
+        !net_v8_set_bool(isolate, context, net, "tlsCaBundlePath", true) ||
+        !net_v8_set_bool(isolate, context, net, "tlsTrustStorePath", true) ||
+        !net_v8_set_bool(isolate, context, net, "tlsClientCertificate", true) ||
+        !net_v8_set_bool(isolate, context, net, "tlsInsecureSkipVerify", true) ||
         !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("net"), &key)))
     {
         return false;

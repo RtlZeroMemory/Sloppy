@@ -427,6 +427,12 @@ function createNodeNetBridge() {
     }
 
     return {
+        tlsCaPath: true,
+        tlsCaBundlePath: true,
+        tlsTrustStorePath: true,
+        tlsClientCertificate: true,
+        tlsInsecureSkipVerify: true,
+
         connect(options) {
             return connectSocket(
                 options,
@@ -504,10 +510,10 @@ function createNodeNetBridge() {
     };
 }
 
-async function withNodeNetBridge(fn) {
+async function withNetBridge(bridge, fn) {
     const previousSloppy = globalThis.__sloppy;
     try {
-        globalThis.__sloppy = { net: createNodeNetBridge() };
+        globalThis.__sloppy = { net: bridge };
         await fn();
     } finally {
         if (previousSloppy === undefined) {
@@ -516,6 +522,10 @@ async function withNodeNetBridge(fn) {
             globalThis.__sloppy = previousSloppy;
         }
     }
+}
+
+async function withNodeNetBridge(fn) {
+    await withNetBridge(createNodeNetBridge(), fn);
 }
 
 await withNodeNetBridge(async () => {
@@ -1083,6 +1093,34 @@ await withNodeNetBridge(async () => {
         assert.equal(observed.method, "GET");
         assert.equal(observed.target, "/verified");
 
+        const mutableTls = { trustStorePath };
+        const stableClient = HttpClient.create({ baseUrl: server.url, tls: mutableTls });
+        const stableDescriptor = stableClient.__sloppyHttpClientOptions;
+        assert.equal(Object.isFrozen(stableDescriptor), true);
+        assert.equal(Object.isFrozen(stableDescriptor.tls), true);
+        assert.equal(stableDescriptor.tls.enabled, true);
+        assert.equal(stableDescriptor.tls.hasTrustStorePath, true);
+        assert.equal(stableDescriptor.tls.trustStorePath, undefined);
+        mutableTls.trustStorePath = path.join(tempDir, "missing-cert.pem");
+        const snapshot = await stableClient.get("/snapshot");
+        assert.equal(await snapshot.text(), "secureok");
+
+        const secretClient = HttpClient.create({
+            baseUrl: server.url,
+            tls: {
+                trustStorePath,
+                clientCertificatePath: "C:\\secret\\client.crt",
+                clientPrivateKeyPath: "C:\\secret\\client.key",
+                clientPrivateKeyPassphrase: "do-not-retain",
+            },
+        });
+        const secretDescriptor = secretClient.__sloppyHttpClientOptions.tls;
+        assert.equal(secretDescriptor.hasClientCertificate, true);
+        assert.equal(secretDescriptor.hasClientPrivateKeyPassphrase, true);
+        assert.equal(secretDescriptor.clientCertificatePath, undefined);
+        assert.equal(secretDescriptor.clientPrivateKeyPath, undefined);
+        assert.equal(secretDescriptor.clientPrivateKeyPassphrase, undefined);
+
         await assertRejectsMessage(
             () => HttpClient.get(`${server.url}/untrusted`),
             /SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED/,
@@ -1107,10 +1145,40 @@ await assertRejectsMessage(
     /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
 );
 
+await withNetBridge(
+    {
+        connect() {
+            throw new Error("plain HTTP connect should not be used for HTTPS");
+        },
+    },
+    async () => {
+        await assertRejectsMessage(
+            () => HttpClient.get("https://127.0.0.1/"),
+            /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
+        );
+    },
+);
+
 await assertRejectsMessage(
     async () => HttpClient.create({ tls: "C:\\secret\\ca.pem" }),
     /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
 );
+
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", { tls: { insecureSkipVerify: true } }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+{
+    const cleartextClient = HttpClient.create({
+        baseUrl: "http://127.0.0.1",
+        tls: { trustStorePath: "C:\\secret\\ca.pem" },
+    });
+    await assertRejectsMessage(
+        () => cleartextClient.request("/"),
+        /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+    );
+}
 
 await assertRejectsMessage(
     () => HttpClient.get("http://127.0.0.1/", { tls: { privateKey: "secret" } }),
@@ -1125,6 +1193,34 @@ await assertRejectsMessage(
 await assertRejectsMessage(
     async () => HttpClient.create({ tls: { trustStorePath: 123 } }),
     /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await withNetBridge(
+    {
+        connect() {
+            throw new Error("plain HTTP connect should not be used for TLS capability checks");
+        },
+        connectTls() {
+            throw new Error("TLS bridge should not dial unsupported TLS options");
+        },
+    },
+    async () => {
+        const cases = [
+            { caPath: "C:\\secret\\ca.pem" },
+            { caBundlePath: "C:\\secret\\bundle.pem" },
+            { trustStorePath: "C:\\secret\\trust.pem" },
+            { clientCertificatePath: "C:\\secret\\client.crt" },
+            { clientPrivateKeyPath: "C:\\secret\\client.key" },
+            { clientPrivateKeyPassphrase: "do-not-use" },
+            { insecureSkipVerify: true },
+        ];
+        for (const tlsOptions of cases) {
+            await assertRejectsMessage(
+                () => HttpClient.get("https://127.0.0.1/", { tls: tlsOptions }),
+                /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+            );
+        }
+    },
 );
 
 await assertRejectsMessage(

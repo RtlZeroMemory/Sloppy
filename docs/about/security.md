@@ -66,9 +66,11 @@ under the `sloppy:server:tls:*` namespace (`enabled`, `certificatePath`,
 `privateKeyPath`); environment variable form is
 `SLOPPY__SERVER__TLS__ENABLED`, etc.
 
-Outbound `HttpClient` HTTPS requests also use OpenSSL through a private V8
-bridge. The public API accepts trust-store and client-certificate path options,
-but diagnostics redact those paths and any private-key passphrase.
+Outbound `HttpClient` HTTPS/TLS is experimental. It uses OpenSSL through a
+private V8 bridge when that bridge is present. The public API accepts
+trust-store and client-certificate path options, but those option names may
+still change before a broader stability contract exists. Diagnostics redact
+those paths and any private-key passphrase.
 
 Out of scope today: ALPN selection beyond HTTP/1.1, server-side mTLS,
 custom certificate verifier callbacks, OCSP stapling, and HSTS hardening. For

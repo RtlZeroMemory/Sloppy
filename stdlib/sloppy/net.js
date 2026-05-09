@@ -1213,6 +1213,117 @@ function normalizeHttpTlsOptions(value, operation) {
     return Object.freeze({ ...value });
 }
 
+function hasHttpTlsOption(tls, key) {
+    return Object.prototype.hasOwnProperty.call(tls, key);
+}
+
+function hasHttpTlsOptions(tls) {
+    return tls !== undefined && tls !== null && Object.keys(tls).length > 0;
+}
+
+function assertHttpTlsAllowedForScheme(url, tls, operation) {
+    if (url.scheme === "https" || !hasHttpTlsOptions(tls)) {
+        return;
+    }
+    throw httpClientError(
+        "HttpClientInvalidOptionsError",
+        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        `${operation} tls options are only valid for https:// URLs.`,
+    );
+}
+
+function sanitizeHttpTlsDescriptor(tls) {
+    if (!hasHttpTlsOptions(tls)) {
+        return Object.freeze({ enabled: false });
+    }
+    return Object.freeze({
+        enabled: true,
+        hasCaPath: hasHttpTlsOption(tls, "caPath"),
+        hasCaBundlePath: hasHttpTlsOption(tls, "caBundlePath"),
+        hasTrustStorePath: hasHttpTlsOption(tls, "trustStorePath"),
+        hasClientCertificate:
+            hasHttpTlsOption(tls, "clientCertificatePath") ||
+            hasHttpTlsOption(tls, "clientPrivateKeyPath"),
+        hasClientPrivateKeyPassphrase: hasHttpTlsOption(tls, "clientPrivateKeyPassphrase"),
+        insecureSkipVerify: tls.insecureSkipVerify === true,
+    });
+}
+
+function sanitizeHttpClientOptionsDescriptor(baseOptions, normalizedTls, poolOptions) {
+    if (baseOptions === undefined) {
+        return undefined;
+    }
+    const descriptor = { ...baseOptions };
+    if (Object.prototype.hasOwnProperty.call(baseOptions, "tls")) {
+        descriptor.tls = sanitizeHttpTlsDescriptor(normalizedTls);
+    } else {
+        delete descriptor.tls;
+    }
+    if (poolOptions !== undefined) {
+        descriptor.pool = poolOptions;
+    }
+    return Object.freeze(descriptor);
+}
+
+function createHttpClientBaseOptions(baseOptions, normalizedTls, poolOptions) {
+    if (baseOptions === undefined) {
+        return undefined;
+    }
+    const internal = { ...baseOptions, tls: normalizedTls };
+    if (poolOptions !== undefined) {
+        internal.pool = poolOptions;
+    }
+    return Object.freeze(internal);
+}
+
+function assertHttpTlsBridgeCapability(bridge, tls, key, capability, operation) {
+    if (!hasHttpTlsOption(tls, key) || bridge[capability] === true) {
+        return;
+    }
+    throw httpClientError(
+        "HttpClientInvalidOptionsError",
+        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        `${operation} tls option ${key} is not supported by the active TLS bridge.`,
+    );
+}
+
+function assertHttpTlsBridgeCapabilities(bridge, tls, operation) {
+    if (!hasHttpTlsOptions(tls)) {
+        return;
+    }
+    assertHttpTlsBridgeCapability(bridge, tls, "caPath", "tlsCaPath", operation);
+    assertHttpTlsBridgeCapability(bridge, tls, "caBundlePath", "tlsCaBundlePath", operation);
+    assertHttpTlsBridgeCapability(bridge, tls, "trustStorePath", "tlsTrustStorePath", operation);
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientCertificatePath",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientPrivateKeyPath",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientPrivateKeyPassphrase",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "insecureSkipVerify",
+        "tlsInsecureSkipVerify",
+        operation,
+    );
+}
+
 function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
     const raw = requestObject.network ?? baseOptions?.network;
     if (raw === undefined || raw === null || raw === false) {
@@ -2298,6 +2409,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
         requestObject.tls === undefined ? baseOptions?.tls : requestObject.tls,
         operation,
     );
+    assertHttpTlsAllowedForScheme(url, tls, operation);
     const maxRequestBytes =
         parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
         HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -2485,6 +2597,7 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
             if (typeof bridge.connectTls !== "function") {
                 throw httpClientTlsUnavailableError();
             }
+            assertHttpTlsBridgeCapabilities(bridge, request.tls, request.operation);
             return new TcpConnection(
                 bridge,
                 await bridge.connectTls({
@@ -2731,9 +2844,15 @@ function postJsonRequest(baseOptions, url, value, options = undefined, pool = un
 }
 
 function createHttpClientFacade(baseOptions = undefined) {
-    baseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
-    normalizeHttpTlsOptions(baseOptions?.tls, "HttpClient.create");
-    const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
+    const rawBaseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
+    const normalizedTls = normalizeHttpTlsOptions(rawBaseOptions?.tls, "HttpClient.create");
+    const poolOptions = normalizeHttpPoolOptions(rawBaseOptions?.pool, "HttpClient.create");
+    baseOptions = createHttpClientBaseOptions(rawBaseOptions, normalizedTls, poolOptions);
+    const descriptor = sanitizeHttpClientOptionsDescriptor(
+        rawBaseOptions,
+        normalizedTls,
+        poolOptions,
+    );
     const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
     const client = {
         request(request, options = undefined) {
@@ -2774,7 +2893,7 @@ function createHttpClientFacade(baseOptions = undefined) {
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {
-        value: baseOptions,
+        value: descriptor,
         enumerable: false,
     });
     return Object.freeze(client);

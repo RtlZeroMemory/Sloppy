@@ -56,16 +56,19 @@ produce an empty body.
 ## Current Boundaries
 
 - `http://` URLs are supported over the runtime TCP bridge.
-- `https://` URLs use the private outbound TLS bridge when the runtime exposes
-  it. Missing bridge support fails closed with
-  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`.
-- `tls` accepts string path options `caPath`, `caBundlePath`,
-  `trustStorePath`, `clientCertificatePath`, `clientPrivateKeyPath`, and
-  `clientPrivateKeyPassphrase`, plus boolean `insecureSkipVerify`.
-  Certificate validation failures use
+- `https://` URLs use the experimental private outbound TLS bridge when the
+  runtime exposes it. Missing bridge support fails closed with
+  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`; HTTP support alone does not
+  imply HTTPS support.
+- `tls` is experimental. It accepts string path options `caPath`,
+  `caBundlePath`, `trustStorePath`, `clientCertificatePath`,
+  `clientPrivateKeyPath`, and `clientPrivateKeyPassphrase`, plus boolean
+  `insecureSkipVerify`. These option names may still change before a broader
+  stability contract exists. Certificate validation failures use
   `SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED`; hostname
   mismatches use `SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH`. TLS paths and
-  passphrases are not echoed in diagnostics.
+  passphrases are not echoed in diagnostics. TLS options on `http://` requests
+  are invalid rather than ignored.
 - Request bodies are bounded before dispatch. Use `maxRequestBytes` and
   `maxResponseBytes` for per-call limits.
 - Cross-origin redirects strip sensitive headers by default and can be denied
