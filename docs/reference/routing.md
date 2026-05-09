@@ -68,6 +68,10 @@ Compiler extraction currently enforces:
 ## Runtime Dispatch Notes
 
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
+- Incoming `HEAD` matches the corresponding `GET` route and suppresses response
+  body bytes at the transport boundary.
+- Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
+  the route table can match the request path. `GET` routes also advertise `HEAD`.
 - Route availability still depends on emitted Plan metadata.
 - CORS-enabled bootstrap routes synthesize `OPTIONS` preflight route entries in the
   app-host route table. Compiler extraction and emitted Plan metadata for CORS

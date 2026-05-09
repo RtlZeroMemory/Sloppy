@@ -22,9 +22,13 @@ app.delete(pattern, handler)
 `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and `mapDelete` are aliases — same
 behavior, longer name.
 
-`HEAD` and `OPTIONS` are not directly registrable verbs. `OPTIONS` is
-auto-installed by [`app.useCors(policy)`](cors.md) for preflight; otherwise
-incoming `HEAD`/`OPTIONS` requests get `405 Method Not Allowed`.
+`HEAD` and `OPTIONS` are not directly registrable verbs. Incoming `HEAD`
+requests match the corresponding `GET` route and return the same headers
+without response body bytes. `OPTIONS` is auto-installed by
+[`app.useCors(policy)`](cors.md) for preflight; otherwise incoming `OPTIONS`
+requests get `405 Method Not Allowed`. When the Plan-backed runtime can identify
+the matched route path, a `405` response includes an `Allow` header with the
+supported methods for that path. `GET` routes also advertise `HEAD`.
 
 ## Route patterns
 
@@ -156,8 +160,8 @@ Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 
 ## What's not supported yet
 
-- HEAD handling
-- Streaming or chunked request bodies
+- Direct HEAD route registration
+- Streaming request bodies exposed directly to handlers
 - `multipart/form-data` and file uploads
 - Custom matchers beyond `{name}` / `{name:int}`
 - Per-route limits at the API surface (server-wide limits exist via config)

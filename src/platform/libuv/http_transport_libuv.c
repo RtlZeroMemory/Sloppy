@@ -433,6 +433,9 @@ static SlStr sl_http_transport_body_for_status(uint16_t status)
     case 415U:
         return sl_http_transport_literal("Unsupported Media Type\n",
                                          sizeof("Unsupported Media Type\n") - 1U);
+    case 417U:
+        return sl_http_transport_literal("Expectation Failed\n",
+                                         sizeof("Expectation Failed\n") - 1U);
     case 501U:
         return sl_http_transport_literal("Request body framing is not supported\n",
                                          sizeof("Request body framing is not supported\n") - 1U);
@@ -995,6 +998,8 @@ static const char* sl_http_transport_reason(uint16_t status)
         return "Accepted";
     case 204U:
         return "No Content";
+    case 304U:
+        return "Not Modified";
     case 400U:
         return "Bad Request";
     case 404U:
@@ -1007,6 +1012,8 @@ static const char* sl_http_transport_reason(uint16_t status)
         return "Payload Too Large";
     case 415U:
         return "Unsupported Media Type";
+    case 417U:
+        return "Expectation Failed";
     case 500U:
         return "Internal Server Error";
     case 501U:
@@ -1331,7 +1338,7 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     reason = sl_http_transport_reason(response->status);
-    if (reason == NULL || response->status == 204U) {
+    if (reason == NULL || response->status == 204U || response->status == 304U) {
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
     status = sl_byte_builder_init_fixed(&builder, connection->response_storage,
@@ -1564,6 +1571,9 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
     SlStatus status;
     SlBytes bytes = {0};
     SlHttpResponseWriteOptions write_options = {0};
+    bool suppress_body = false;
+    SlHttpResponse head_stream_response = {0};
+    const SlHttpResponse* fixed_response = response;
 
     if (connection == NULL || response == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1592,26 +1602,37 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
     write_options.connection = connection->keep_alive_after_write
                                    ? SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE
                                    : SL_HTTP_RESPONSE_CONNECTION_CLOSE;
+    suppress_body = connection->request.head.method == SL_HTTP_METHOD_HEAD;
+    write_options.suppress_body = suppress_body;
     if (response->kind == SL_HTTP_RESPONSE_STREAM) {
-        status = sl_http_transport_write_stream_head(connection, response, out_diag);
-        if (!sl_status_is_ok(status)) {
-            return sl_http_transport_connection_diag(
-                connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
-                sl_status_code(status),
-                sl_http_transport_literal("HTTP streaming response serialization failed",
-                                          sizeof("HTTP streaming response serialization failed") -
-                                              1U),
-                sl_http_transport_literal("streaming response bytes must fit configured caps",
-                                          sizeof("streaming response bytes must fit configured "
-                                                 "caps") -
-                                              1U));
+        if (suppress_body) {
+            head_stream_response = *response;
+            head_stream_response.kind = SL_HTTP_RESPONSE_EMPTY;
+            head_stream_response.body = sl_bytes_empty();
+            head_stream_response.stream_chunks = NULL;
+            head_stream_response.stream_chunk_count = 0U;
+            fixed_response = &head_stream_response;
         }
-        return sl_status_ok();
+        else {
+            status = sl_http_transport_write_stream_head(connection, response, out_diag);
+            if (!sl_status_is_ok(status)) {
+                return sl_http_transport_connection_diag(
+                    connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+                    sl_status_code(status),
+                    sl_http_transport_literal(
+                        "HTTP streaming response serialization failed",
+                        sizeof("HTTP streaming response serialization failed") - 1U),
+                    sl_http_transport_literal(
+                        "streaming response bytes must fit configured caps",
+                        sizeof("streaming response bytes must fit configured caps") - 1U));
+            }
+            return sl_status_ok();
+        }
     }
 
-    status =
-        sl_http_response_write_with_options(response, &write_options, connection->response_storage,
-                                            connection->response_storage_size, &bytes);
+    status = sl_http_response_write_with_options(fixed_response, &write_options,
+                                                 connection->response_storage,
+                                                 connection->response_storage_size, &bytes);
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
@@ -2054,6 +2075,14 @@ static bool sl_http_transport_transfer_encoding_is_chunked(SlStr value)
     return sl_str_equal_ci_ascii(value, sl_str_from_cstr("chunked"));
 }
 
+static bool sl_http_transport_expect_header_present(SlBytes head)
+{
+    size_t count = 0U;
+
+    return sl_http_transport_head_header_value(head, sl_str_from_cstr("Expect"), NULL, &count) &&
+           count != 0U;
+}
+
 static size_t sl_http_transport_find_header_end(SlBytes bytes)
 {
     size_t index = 0U;
@@ -2486,6 +2515,19 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
         }
         sl_http_transport_stop_timer(&connection->platform->header_timer,
                                      &connection->platform->header_timer_initialized);
+    }
+
+    if (sl_http_transport_expect_header_present(
+            sl_bytes_from_parts(connection->accumulation, connection->head_length)))
+    {
+        (void)sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_UNSUPPORTED,
+            sl_http_transport_literal("HTTP Expect header is not supported",
+                                      sizeof("HTTP Expect header is not supported") - 1U),
+            sl_http_transport_literal("send the request body without Expect: 100-continue",
+                                      sizeof("send the request body without Expect: 100-continue") -
+                                          1U));
+        return sl_http_transport_write_error_response(connection, 417U, out_diag);
     }
 
     {

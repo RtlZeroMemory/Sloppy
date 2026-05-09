@@ -395,12 +395,23 @@ async function flushMicrotasks(count = 6) {
 {
     assert.equal(typeof HttpClient.create, "function");
     assert.equal(typeof HttpClient.get, "function");
+    assert.equal(typeof HttpClient.post, "function");
+    assert.equal(typeof HttpClient.put, "function");
+    assert.equal(typeof HttpClient.patch, "function");
+    assert.equal(typeof HttpClient.delete, "function");
+    assert.equal(typeof HttpClient.head, "function");
     assert.equal(typeof HttpClient.getJson, "function");
     assert.equal(typeof HttpClient.postJson, "function");
     assert.equal(typeof HttpClient.text, "function");
     assert.equal(typeof HttpClient.json, "function");
     assert.equal(typeof HttpClient.bytes, "function");
     const client = HttpClient.create({ baseUrl: "http://api.example.test" });
+    assert.equal(typeof client.get, "function");
+    assert.equal(typeof client.post, "function");
+    assert.equal(typeof client.put, "function");
+    assert.equal(typeof client.patch, "function");
+    assert.equal(typeof client.delete, "function");
+    assert.equal(typeof client.head, "function");
     assert.equal(typeof client.getJson, "function");
     assert.equal(typeof client.postJson, "function");
     await assertRejectsMessage(

@@ -105,6 +105,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Accepted";
     case 204U:
         return "No Content";
+    case 304U:
+        return "Not Modified";
     case 400U:
         return "Bad Request";
     case 404U:
@@ -117,6 +119,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Payload Too Large";
     case 415U:
         return "Unsupported Media Type";
+    case 417U:
+        return "Expectation Failed";
     case 500U:
         return "Internal Server Error";
     case 501U:
@@ -124,6 +128,11 @@ static const char* sl_http_response_reason(uint16_t status)
     default:
         return NULL;
     }
+}
+
+static bool sl_http_response_status_has_no_body(uint16_t status)
+{
+    return status == 204U || status == 304U;
 }
 
 static bool sl_http_response_content_type_valid(SlStr content_type)
@@ -376,7 +385,7 @@ static SlStatus sl_http_response_append_head(SlByteBuilder* builder, const SlHtt
         return status;
     }
 
-    if (response->status != 204U) {
+    if (!sl_http_response_status_has_no_body(response->status)) {
         status = sl_http_response_append_content_length(builder, body_length);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -393,8 +402,10 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
 {
     const char* reason = NULL;
     SlBytes body = {0};
+    SlBytes wire_body = {0};
     SlByteBuilder builder = {0};
     bool has_content_type = false;
+    bool suppress_body = false;
     SlHttpResponseConnectionPolicy connection_policy = SL_HTTP_RESPONSE_CONNECTION_CLOSE;
     SlStatus status;
 
@@ -419,14 +430,18 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     }
     if (options != NULL) {
         connection_policy = options->connection;
+        suppress_body = options->suppress_body;
     }
 
     if (response->kind == SL_HTTP_RESPONSE_STREAM) {
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
 
-    body = response->status == 204U ? sl_bytes_empty() : response->body;
-    has_content_type = response->content_type.length != 0U && response->status != 204U;
+    body =
+        sl_http_response_status_has_no_body(response->status) ? sl_bytes_empty() : response->body;
+    wire_body = suppress_body ? sl_bytes_empty() : body;
+    has_content_type = response->content_type.length != 0U &&
+                       !sl_http_response_status_has_no_body(response->status);
 
     status = sl_byte_builder_init_fixed(&builder, buffer, capacity);
     if (!sl_status_is_ok(status)) {
@@ -438,7 +453,7 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_byte_builder_append_bytes(&builder, body);
+    status = sl_byte_builder_append_bytes(&builder, wire_body);
     if (!sl_status_is_ok(status)) {
         return status;
     }

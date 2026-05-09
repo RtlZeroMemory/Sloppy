@@ -37,7 +37,7 @@ Default environment is `Development`.
 | `Sloppy:Server:RequestTimeoutMs` | `30000` |
 | `Sloppy:Runtime:V8MicrotaskDrainLimit` | `64` |
 
-TLS `CertificatePath` and `PrivateKeyPath` values are absolutized against config directory before Plan emission.
+TLS `CertificatePath` and `PrivateKeyPath` values are absolutized against config directory before Plan emission. Diagnostic messages redact TLS certificate, private-key, client-certificate, CA-bundle, and trust-store path values.
 
 ## JSON File Requirements
 
@@ -107,6 +107,8 @@ Current requirement contracts:
 ## Redaction
 
 Sensitive config keys are redacted in emitted plan values (`<redacted>`), including keys containing segments such as `password`, `secret`, `token`, `apiKey`, `privateKey`, `passphrase`, and `connectionString`.
+
+Diagnostic redaction is stricter than current Plan redaction: TLS material path keys such as `certificatePath`, `privateKeyPath`, `clientCertificatePath`, `caBundlePath`, and `trustStorePath` are redacted from diagnostics. Inbound server certificate and private-key paths still appear in Plan config metadata today because `sloppy run` consumes those paths to configure the dev TLS listener.
 
 ## Limits
 

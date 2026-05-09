@@ -904,6 +904,23 @@ const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 const HTTP_CLIENT_DEFAULT_MAX_REDIRECTS = 5;
 const HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS = 30000;
 const HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN = 8;
+const HTTP_CLIENT_TLS_OPTION_KEYS = new Set([
+    "caPath",
+    "caBundlePath",
+    "trustStorePath",
+    "clientCertificatePath",
+    "clientPrivateKeyPath",
+    "clientPrivateKeyPassphrase",
+    "insecureSkipVerify",
+]);
+const HTTP_CLIENT_TLS_STRING_OPTION_KEYS = new Set([
+    "caPath",
+    "caBundlePath",
+    "trustStorePath",
+    "clientCertificatePath",
+    "clientPrivateKeyPath",
+    "clientPrivateKeyPassphrase",
+]);
 const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
     "authorization",
     "cookie",
@@ -1157,6 +1174,154 @@ function normalizeHttpPoolOptions(value, operation) {
         );
     }
     return Object.freeze({ maxConnectionsPerOrigin, idleTimeoutMs });
+}
+
+function normalizeHttpTlsOptions(value, operation) {
+    if (value === undefined) {
+        return Object.freeze({});
+    }
+    if (!isPlainObject(value)) {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} tls must be a plain object when provided.`,
+        );
+    }
+    for (const key of Object.keys(value)) {
+        if (!HTTP_CLIENT_TLS_OPTION_KEYS.has(key)) {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option ${key} is not supported.`,
+            );
+        }
+        if (HTTP_CLIENT_TLS_STRING_OPTION_KEYS.has(key) && typeof value[key] !== "string") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option ${key} must be a string.`,
+            );
+        }
+        if (key === "insecureSkipVerify" && typeof value[key] !== "boolean") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} tls option insecureSkipVerify must be a boolean.`,
+            );
+        }
+    }
+    return Object.freeze({ ...value });
+}
+
+function hasHttpTlsOption(tls, key) {
+    return Object.prototype.hasOwnProperty.call(tls, key);
+}
+
+function hasHttpTlsOptions(tls) {
+    return tls !== undefined && tls !== null && Object.keys(tls).length > 0;
+}
+
+function assertHttpTlsAllowedForScheme(url, tls, operation) {
+    if (url.scheme === "https" || !hasHttpTlsOptions(tls)) {
+        return;
+    }
+    throw httpClientError(
+        "HttpClientInvalidOptionsError",
+        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        `${operation} tls options are only valid for https:// URLs.`,
+    );
+}
+
+function sanitizeHttpTlsDescriptor(tls) {
+    if (!hasHttpTlsOptions(tls)) {
+        return Object.freeze({ enabled: false });
+    }
+    return Object.freeze({
+        enabled: true,
+        hasCaPath: hasHttpTlsOption(tls, "caPath"),
+        hasCaBundlePath: hasHttpTlsOption(tls, "caBundlePath"),
+        hasTrustStorePath: hasHttpTlsOption(tls, "trustStorePath"),
+        hasClientCertificate:
+            hasHttpTlsOption(tls, "clientCertificatePath") ||
+            hasHttpTlsOption(tls, "clientPrivateKeyPath"),
+        hasClientPrivateKeyPassphrase: hasHttpTlsOption(tls, "clientPrivateKeyPassphrase"),
+        insecureSkipVerify: tls.insecureSkipVerify === true,
+    });
+}
+
+function sanitizeHttpClientOptionsDescriptor(baseOptions, normalizedTls, poolOptions) {
+    if (baseOptions === undefined) {
+        return undefined;
+    }
+    const descriptor = { ...baseOptions };
+    if (Object.prototype.hasOwnProperty.call(baseOptions, "tls")) {
+        descriptor.tls = sanitizeHttpTlsDescriptor(normalizedTls);
+    } else {
+        delete descriptor.tls;
+    }
+    if (poolOptions !== undefined) {
+        descriptor.pool = poolOptions;
+    }
+    return Object.freeze(descriptor);
+}
+
+function createHttpClientBaseOptions(baseOptions, normalizedTls, poolOptions) {
+    if (baseOptions === undefined) {
+        return undefined;
+    }
+    const internal = { ...baseOptions, tls: normalizedTls };
+    if (poolOptions !== undefined) {
+        internal.pool = poolOptions;
+    }
+    return Object.freeze(internal);
+}
+
+function assertHttpTlsBridgeCapability(bridge, tls, key, capability, operation) {
+    if (!hasHttpTlsOption(tls, key) || bridge[capability] === true) {
+        return;
+    }
+    throw httpClientError(
+        "HttpClientInvalidOptionsError",
+        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        `${operation} tls option ${key} is not supported by the active TLS bridge.`,
+    );
+}
+
+function assertHttpTlsBridgeCapabilities(bridge, tls, operation) {
+    if (!hasHttpTlsOptions(tls)) {
+        return;
+    }
+    assertHttpTlsBridgeCapability(bridge, tls, "caPath", "tlsCaPath", operation);
+    assertHttpTlsBridgeCapability(bridge, tls, "caBundlePath", "tlsCaBundlePath", operation);
+    assertHttpTlsBridgeCapability(bridge, tls, "trustStorePath", "tlsTrustStorePath", operation);
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientCertificatePath",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientPrivateKeyPath",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "clientPrivateKeyPassphrase",
+        "tlsClientCertificate",
+        operation,
+    );
+    assertHttpTlsBridgeCapability(
+        bridge,
+        tls,
+        "insecureSkipVerify",
+        "tlsInsecureSkipVerify",
+        operation,
+    );
 }
 
 function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
@@ -1417,22 +1582,15 @@ function parseAbsoluteHttpUrl(url, operation) {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} requires an absolute http:// URL or a baseUrl-relative path.`,
+            `${operation} requires an absolute http:// or https:// URL or a baseUrl-relative path.`,
         );
     }
     const scheme = url.slice(0, schemeEnd).toLowerCase();
-    if (scheme === "https") {
-        throw httpClientError(
-            "HttpClientTlsUnavailableError",
-            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-            "HTTPS requires a configured TLS backend; no custom TLS fallback is available.",
-        );
-    }
-    if (scheme !== "http") {
+    if (scheme !== "http" && scheme !== "https") {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} supports http:// URLs only.`,
+            `${operation} supports http:// and https:// URLs only.`,
         );
     }
 
@@ -1507,8 +1665,9 @@ function parseAbsoluteHttpUrl(url, operation) {
         );
     }
 
-    const port = parseHttpPort(portText, operation) ?? 80;
-    const headerPort = port === 80 ? "" : `:${port}`;
+    const defaultPort = scheme === "https" ? 443 : 80;
+    const port = parseHttpPort(portText, operation) ?? defaultPort;
+    const headerPort = port === defaultPort ? "" : `:${port}`;
     const resolvedHostHeader = `${hostHeader}${headerPort}`;
     if (hasHttpControlChars(resolvedHostHeader) || hasHttpControlChars(target)) {
         throw httpClientError(
@@ -2246,6 +2405,11 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
     appendHttpHeaders(headers, requestObject.headers, operation);
     const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
     const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
+    const tls = normalizeHttpTlsOptions(
+        requestObject.tls === undefined ? baseOptions?.tls : requestObject.tls,
+        operation,
+    );
+    assertHttpTlsAllowedForScheme(url, tls, operation);
     const maxRequestBytes =
         parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
         HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -2293,6 +2457,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
         maxResponseBytes,
         redirects,
         network,
+        tls,
         operation,
         expiresAtMs,
     });
@@ -2323,6 +2488,30 @@ function serializeHttpRequest(request, keepAlive = false) {
 
 function mapHttpTransportError(error) {
     const message = String(error?.message ?? error);
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH")) {
+        return httpClientError(
+            "HttpClientTlsHostnameMismatchError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH",
+            "HTTP client TLS hostname verification failed.",
+            { cause: error },
+        );
+    }
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED")) {
+        return httpClientError(
+            "HttpClientTlsCertificateValidationError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED",
+            "HTTP client TLS certificate validation failed.",
+            { cause: error },
+        );
+    }
+    if (message.includes("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE")) {
+        return httpClientError(
+            "HttpClientTlsUnavailableError",
+            "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+            "HTTP client TLS backend is unavailable.",
+            { cause: error },
+        );
+    }
     if (message.includes("SLOPPY_E_NET_DNS_FAILURE")) {
         return httpClientError(
             "HttpClientDnsError",
@@ -2352,6 +2541,14 @@ function mapHttpTransportError(error) {
         "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
         "HTTP client transport operation failed.",
         { cause: error },
+    );
+}
+
+function httpClientTlsUnavailableError() {
+    return httpClientError(
+        "HttpClientTlsUnavailableError",
+        "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+        "HTTPS requires the private outbound TLS bridge.",
     );
 }
 
@@ -2389,12 +2586,28 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
         if (remainingMs <= 0) {
             throw httpRequestTimeoutError();
         }
-        return await TcpClient.connect({
+        const bridge = requireNetBridge();
+        const connectOptions = {
             host: request.url.host,
             port: request.url.port,
             timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
             noDelay: true,
-        });
+        };
+        if (request.url.scheme === "https") {
+            if (typeof bridge.connectTls !== "function") {
+                throw httpClientTlsUnavailableError();
+            }
+            assertHttpTlsBridgeCapabilities(bridge, request.tls, request.operation);
+            return new TcpConnection(
+                bridge,
+                await bridge.connectTls({
+                    ...connectOptions,
+                    serverName: request.url.host,
+                    tls: request.tls,
+                }),
+            );
+        }
+        return new TcpConnection(bridge, await bridge.connect(connectOptions));
     };
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -2631,8 +2844,15 @@ function postJsonRequest(baseOptions, url, value, options = undefined, pool = un
 }
 
 function createHttpClientFacade(baseOptions = undefined) {
-    baseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
-    const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
+    const rawBaseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
+    const normalizedTls = normalizeHttpTlsOptions(rawBaseOptions?.tls, "HttpClient.create");
+    const poolOptions = normalizeHttpPoolOptions(rawBaseOptions?.pool, "HttpClient.create");
+    baseOptions = createHttpClientBaseOptions(rawBaseOptions, normalizedTls, poolOptions);
+    const descriptor = sanitizeHttpClientOptionsDescriptor(
+        rawBaseOptions,
+        normalizedTls,
+        poolOptions,
+    );
     const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
     const client = {
         request(request, options = undefined) {
@@ -2643,6 +2863,18 @@ function createHttpClientFacade(baseOptions = undefined) {
         },
         post(url, options = undefined) {
             return sendHttpRequest(baseOptions, url, options, "POST", pool);
+        },
+        put(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "PUT", pool);
+        },
+        patch(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "PATCH", pool);
+        },
+        delete(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "DELETE", pool);
+        },
+        head(url, options = undefined) {
+            return sendHttpRequest(baseOptions, url, options, "HEAD", pool);
         },
         getJson(url, options = undefined) {
             return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
@@ -2661,7 +2893,7 @@ function createHttpClientFacade(baseOptions = undefined) {
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {
-        value: baseOptions,
+        value: descriptor,
         enumerable: false,
     });
     return Object.freeze(client);
@@ -2679,6 +2911,18 @@ const HttpClient = Object.freeze({
     },
     post(url, options = undefined) {
         return sendHttpRequest(undefined, url, options, "POST");
+    },
+    put(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "PUT");
+    },
+    patch(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "PATCH");
+    },
+    delete(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "DELETE");
+    },
+    head(url, options = undefined) {
+        return sendHttpRequest(undefined, url, options, "HEAD");
     },
     getJson(url, options = undefined) {
         return sendHttpBodyRequest(undefined, url, options, "json");

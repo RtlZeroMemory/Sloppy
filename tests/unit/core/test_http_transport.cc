@@ -2166,6 +2166,62 @@ static int test_dispatch_success_writes_response_and_closes(void)
     return 0;
 }
 
+static int test_head_response_suppresses_body_and_preserves_content_length(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 6\r\n\r\n";
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    config = small_config(nullptr);
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("hello\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "HEAD /ok HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_HEAD || expect_bytes_equal(response, expected) != 0)
+    {
+        return 90;
+    }
+
+    return 0;
+}
+
+static int test_method_not_allowed_response_can_advertise_head(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nAllow: GET, HEAD\r\nContent-Length: 19\r\n\r\nMethod Not Allowed\n";
+    SlHttpHeader allow_header = {};
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    allow_header.name = sl_str_from_cstr("Allow");
+    allow_header.value = sl_str_from_cstr("GET, HEAD");
+
+    config = small_config(nullptr);
+    dispatch.response = sl_http_response_text(405U, sl_str_from_cstr("Method Not Allowed\n"));
+    dispatch.response.headers = &allow_header;
+    dispatch.response.header_count = 1U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "POST /ok HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_POST || expect_bytes_equal(response, expected) != 0)
+    {
+        return 91;
+    }
+
+    return 0;
+}
+
 static int test_streaming_response_writes_chunked_frames(void)
 {
     static const char expected[] =
@@ -2830,6 +2886,7 @@ static int test_localhost_transport_smoke_success_and_dispatch_statuses(void)
     static const char created[] =
         "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Type: text/plain; "
         "charset=utf-8\r\nContent-Length: 8\r\n\r\ncreated\n";
+    static const char not_modified[] = "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n";
     static const char not_found[] =
         "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Type: text/plain; "
         "charset=utf-8\r\nContent-Length: 10\r\n\r\nNot Found\n";
@@ -2867,6 +2924,19 @@ static int test_localhost_transport_smoke_success_and_dispatch_statuses(void)
         expect_bytes_equal(response, created) != 0)
     {
         return 151;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.response = sl_http_response_text(304U, sl_str_from_cstr("ignored\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config, "GET /cached HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_GET || expect_str_equal(dispatch.path, "/cached") != 0 ||
+        expect_bytes_equal(response, not_modified) != 0)
+    {
+        return 155;
     }
 
     config = small_config(nullptr);
@@ -2933,8 +3003,12 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
     static const char unsupported_body[] =
         "HTTP/1.1 501 Not Implemented\r\nConnection: close\r\nContent-Type: text/plain; "
         "charset=utf-8\r\nContent-Length: 38\r\n\r\nRequest body framing is not supported\n";
+    static const char expectation_failed[] =
+        "HTTP/1.1 417 Expectation Failed\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 19\r\n\r\nExpectation Failed\n";
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
     SlBytes response = {};
 
     config = small_config(nullptr);
@@ -2982,6 +3056,23 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
     }
     if (expect_bytes_equal(response, unsupported_body) != 0) {
         return 165;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.status_code = SL_STATUS_CANCELLED;
+    dispatch.diag_code = SL_DIAG_APP_LIFECYCLE;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config,
+                              "POST / HTTP/1.1\r\nHost: local\r\nExpect: 100-continue\r\n"
+                              "Content-Type: text/plain\r\nContent-Length: 5\r\n\r\nabc",
+                              &response, &server, &dispatch) != 0 ||
+        dispatch.count != 0U ||
+        server.connections[0].last_diag.code != SL_DIAG_INVALID_HTTP_REQUEST ||
+        expect_bytes_equal(response, expectation_failed) != 0)
+    {
+        return 166;
     }
 
     return 0;
@@ -3399,9 +3490,12 @@ static int run_named_transport_case(const char* name)
         return 2;
     }
     if (strcmp(name, "localhost_basic") == 0) {
-        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_localhost_transport_smoke_success_and_dispatch_statuses,
-                                       test_localhost_transport_smoke_body_success_and_rejections,
-                                       test_dispatch_failures_map_to_safe_responses);
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(
+            test_localhost_transport_smoke_success_and_dispatch_statuses,
+            test_localhost_transport_smoke_body_success_and_rejections,
+            test_head_response_suppresses_body_and_preserves_content_length,
+            test_method_not_allowed_response_can_advertise_head,
+            test_dispatch_failures_map_to_safe_responses);
     }
     if (strcmp(name, "keep_alive") == 0) {
         return test_keep_alive_two_sequential_requests_reuse_connection();
@@ -3526,6 +3620,14 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_head_response_suppresses_body_and_preserves_content_length();
+    if (result != 0) {
+        return result;
+    }
+    result = test_method_not_allowed_response_can_advertise_head();
     if (result != 0) {
         return result;
     }

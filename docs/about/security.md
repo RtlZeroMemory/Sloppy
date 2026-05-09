@@ -18,6 +18,11 @@ documents what Sloppy does today and what it doesn't.
   `data.<provider>.open({ connectionString })` are kept on the config
   side and don't appear in Plan metadata or in default diagnostic
   output.
+- **TLS material references in diagnostics.** Diagnostic redaction
+  treats TLS certificate, private-key, client-certificate, and CA
+  bundle, and trust-store path keys as sensitive. Current Plan
+  metadata still carries inbound server certificate and private-key
+  paths so `sloppy run` can configure the development TLS listener.
 - **Diagnostic source contexts.** Diagnostic snippets show source
   lines but not the values of variables visible at that location —
   there's no "captured locals" output.
@@ -56,14 +61,21 @@ That trade is intentional.
 
 ## TLS
 
-Inbound TLS exists as opt-in plumbing through OpenSSL. Configuration
-keys live under the `sloppy:server:tls:*` namespace
-(`enabled`, `certificatePath`, `privateKeyPath`); environment variable
-form is `SLOPPY__SERVER__TLS__ENABLED`, etc.
+Inbound TLS exists as opt-in plumbing through OpenSSL. Configuration keys live
+under the `sloppy:server:tls:*` namespace (`enabled`, `certificatePath`,
+`privateKeyPath`); environment variable form is
+`SLOPPY__SERVER__TLS__ENABLED`, etc.
 
-Out of scope today: ALPN selection beyond HTTP/1.1, mTLS, custom
-certificate verification, and HSTS hardening. For production you'll
-generally want a reverse proxy in front handling TLS termination.
+Outbound `HttpClient` HTTPS/TLS is experimental. It uses OpenSSL through a
+private V8 bridge when that bridge is present. The public API accepts
+trust-store and client-certificate path options, but those option names may
+still change before a broader stability contract exists. Diagnostics redact
+those paths and any private-key passphrase.
+
+Out of scope today: ALPN selection beyond HTTP/1.1, server-side mTLS,
+custom certificate verifier callbacks, OCSP stapling, and HSTS hardening. For
+production you'll generally want a reverse proxy in front handling TLS
+termination.
 
 ## Reporting issues
 

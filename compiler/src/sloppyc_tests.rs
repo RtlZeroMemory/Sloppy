@@ -6,8 +6,9 @@ use std::{
 
 use super::{
     canonical_config_key, checksum_security_context_visible, command_from_args,
-    config_key_is_sensitive, extract, noncrypto_hash_security_context_visible,
-    route_pattern_supported, CliCommand, CompileOptions, ConfigurationModel,
+    config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract,
+    noncrypto_hash_security_context_visible, redact_config_value, route_pattern_supported,
+    CliCommand, CompileOptions, ConfigurationModel,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -479,7 +480,7 @@ fn configuration_plan_redacts_pwd_alias_values() {
 }
 
 #[test]
-fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
+fn configuration_plan_keeps_tls_paths_for_runtime_but_redacts_diagnostic_hints() {
     let mut config = super::ConfigurationModel {
         environment: "Development".to_string(),
         values: std::collections::BTreeMap::new(),
@@ -525,6 +526,20 @@ fn configuration_plan_redacts_tls_passphrase_but_not_paths() {
     assert!(!keys
         .iter()
         .any(|key| key.value.to_string().contains("secret")));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:Server:Tls:CertificatePath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:Server:Tls:PrivateKeyPath"
+    ));
+    assert_eq!(
+        redact_config_value("Sloppy:Server:Tls:CertificatePath", "certs/server.crt"),
+        "<redacted>"
+    );
+    assert_eq!(
+        redact_config_value("Sloppy:Server:Tls:PrivateKeyPath", "C:/keys/server.key"),
+        "<redacted>"
+    );
 }
 
 #[test]
@@ -586,6 +601,27 @@ fn configuration_key_sensitivity_covers_alpha_secret_aliases() {
         "Sloppy:Providers:postgres:main:connectionString"
     ));
     assert!(!config_key_is_sensitive("Sloppy:Server:Tls:PrivateKeyPath"));
+    assert!(!config_key_is_sensitive(
+        "Sloppy:HttpClient:Tls:ClientCaPath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:ClientCertificatePath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:ClientPrivateKeyPath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:ClientCaPath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:CaBundlePath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:TrustStorePath"
+    ));
+    assert!(config_key_is_diagnostic_sensitive(
+        "Sloppy:HttpClient:Tls:CaPath"
+    ));
 }
 
 #[test]

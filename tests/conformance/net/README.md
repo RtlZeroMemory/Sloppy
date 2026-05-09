@@ -27,10 +27,11 @@ Network conformance is split by lane:
   the ESM stdlib with deterministic native-hook fakes and verifies `TcpClient`,
   `TcpListener`, `TcpConnection`, `LocalEndpoint`, `UnixSocket`, `NamedPipe`, and
   `NetworkAddress` surface behavior;
-- outbound HTTP client coverage: `bootstrap.stdlib.http_client` verifies the cleartext
-  HTTP/1.1 request/response lane over the TCP bridge with deterministic loopback
-  status/header/body, body-consumption, malformed-response, body-limit, HTTPS-unavailable,
-  ambiguous-body, bounded stream/deadline/cancellation, per-origin pooling, pool
+- outbound HTTP client coverage: `bootstrap.stdlib.http_client` verifies the HTTP/1.1
+  request/response lane over the TCP bridge and private TLS bridge with deterministic
+  loopback status/header/body, HTTPS trust-store and insecure-skip verification,
+  body-consumption, malformed-response, body-limit, ambiguous-body, bounded
+  stream/deadline/cancellation, per-origin pooling, pool
   exhaustion, redirect loop/max, cross-origin sensitive-header stripping/denial,
   strict-network denial, and DNS-failure checks;
 - compiler/tooling coverage: Rust compiler tests cover `sloppy/net` import activation for
@@ -43,7 +44,7 @@ Network conformance is split by lane:
 Local IPC coverage adds POSIX-gated Unix domain socket native tests, Windows-gated named
 pipe native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring,
 and doctor/audit/source-example coverage under the same `stdlib.net` feature.
-TLS, HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket,
+HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket,
 direct WinSock/epoll/kqueue/io_uring public APIs, crypto implementation,
 package-manager behavior, release docs, benchmark reports, stress/torture, and
 external live-network validation are separate work.
