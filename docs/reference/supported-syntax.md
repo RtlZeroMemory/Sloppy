@@ -36,11 +36,9 @@ Unsupported specifiers/import names fail with:
 
 Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
 
-`RequestId`, `RequestLogging`, and `Testing` are framework exports from
-`"sloppy"`, but they are not compiled app-source surfaces yet. `Testing`
-imports fail with `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`. Request ID and
-request logging middleware fail with specific diagnostics when used in compiler
-input.
+`RequestId` and `RequestLogging` are supported for static middleware defaults.
+`Testing` is a framework test helper; compiler input rejects it with
+`SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`.
 
 ## Route Extraction Rules
 
@@ -56,6 +54,13 @@ Supported route metadata:
 - `app.get("/path", { name: "Name", tags: ["tag"] }, handler)`
 - `app.group("/prefix").withTags("tag")`
 - `app.mapHealthChecks(...)` with literal paths and literal check metadata
+- top-level `app.use(fn)` and `group.use(fn)` middleware with inline or
+  top-level static functions;
+- top-level `app.useCors({...})` with literal policy objects;
+- top-level `app.use(RequestId.defaults({...}))` and
+  `app.use(RequestLogging.defaults({...}))` with static options;
+- top-level `app.mapController(...)` / `app.controller(...)` with a top-level
+  plain controller class and literal mapper calls;
 
 Route metadata options must be literal objects. `name` must be a non-empty
 string literal. `tags` must be an array of non-empty string literals.
@@ -78,22 +83,22 @@ Common route failures:
 Health checks must be inline functions that do not capture module-level locals.
 Captured values fail with `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`.
 
-## Framework Features Recognized But Not Emitted
+## Framework Static Subset
 
-These app-host features are real JavaScript framework APIs, but current compiler
-artifacts do not encode their behavior:
+These app-host features are emitted when they stay inside the static subset:
 
-- `app.use(fn)` and `group.use(fn)` middleware:
-  `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`
-- `app.useCors(policy)`: `SLOPPYC_E_UNSUPPORTED_CORS`
-- `app.use(RequestId.defaults(...))`: `SLOPPYC_E_UNSUPPORTED_REQUEST_ID`
-- `app.use(RequestLogging.defaults(...))`:
-  `SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`
-- `app.mapController(...)` / `app.controller(...)`:
-  `SLOPPYC_E_UNSUPPORTED_CONTROLLER`
+- middleware functions must be inline or top-level functions with supported
+  captures;
+- CORS policies must be literal objects;
+- RequestId options must be static and cannot use generator callbacks;
+- RequestLogging options must be static booleans;
+- controller mappings must target a top-level plain class and literal mapper
+  route calls.
 
-The compiler rejects these calls instead of accepting a Plan that would omit
-runtime behavior.
+Unsupported dynamic shapes fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`,
+`SLOPPYC_E_UNSUPPORTED_CORS`, `SLOPPYC_E_UNSUPPORTED_REQUEST_ID`,
+`SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`, or
+`SLOPPYC_E_UNSUPPORTED_CONTROLLER` instead of accepting a partial Plan.
 
 ## Services And Config
 
@@ -147,7 +152,12 @@ Representative typed-binding diagnostics:
 
 ## Provider Bridge Limitation
 
-Compiler metadata recognizes sqlite/postgres/sqlserver providers, but generated
-executable provider bridge is currently sqlite-only for static provider handles.
-Non-sqlite provider handler execution is rejected with
+Compiler metadata recognizes sqlite/postgres/sqlserver providers. Framework v2
+typed provider parameters emit generated wrappers for all three provider kinds,
+with PostgreSQL and SQL Server execution gated on provider config, active bridge
+support, and live service dependencies.
+
+Generated static provider handles are narrower: `app.provider("sqlite:main")`
+is the current executable static-handle path. Static non-SQLite handles such as
+`app.provider("postgres:main")` are rejected with
 `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.

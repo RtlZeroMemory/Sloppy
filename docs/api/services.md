@@ -56,7 +56,8 @@ builder.services.addScoped("repo", (scope) => {
 ```
 
 `scope.get(token)` resolves any registered service. `scope.tryGet(token)`
-returns `undefined` when the token isn't registered.
+returns `undefined` when the token isn't registered. Both APIs still enforce
+provider and scope disposal.
 
 `app.services` is the **root scope**. It only resolves singletons —
 asking for a scoped or transient service throws with a message telling

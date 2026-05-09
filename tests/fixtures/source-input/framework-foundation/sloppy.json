@@ -1,0 +1,5 @@
+{
+  "entry": "src/app.ts",
+  "outDir": ".sloppy/cache/dev/source-input",
+  "environment": "Development"
+}

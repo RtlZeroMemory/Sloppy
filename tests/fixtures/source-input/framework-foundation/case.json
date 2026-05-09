@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "lane": "source-input",
+  "mode": "positive",
+  "source": "src/app.ts",
+  "sloppyJson": "sloppy.json",
+  "environment": "Development",
+  "once": {
+    "method": "GET",
+    "target": "/api/status"
+  },
+  "expectedExit": 0,
+  "expected": {
+    "stdoutContains": [
+      "\"ok\":true"
+    ],
+    "stderrContains": [],
+    "artifactDir": ".sloppy/cache/dev/source-input",
+    "sourceMapSources": [
+      "app.ts"
+    ],
+    "planContains": [
+      "Status.Get",
+      "Summary.Get",
+      "\"method\": \"OPTIONS\"",
+      "\"middleware\"",
+      "\"cors\"",
+      "\"preflight\": true"
+    ],
+    "diagnosticCodes": []
+  },
+  "requiredFeatures": [
+    "http-routing",
+    "codec-json"
+  ],
+  "requiresV8": true,
+  "requiresPlatform": "any",
+  "requiresDependency": "sloppyc"
+}

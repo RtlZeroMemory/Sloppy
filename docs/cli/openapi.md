@@ -23,7 +23,8 @@ A minimal OpenAPI 3 document in JSON form:
 - Path parameters extracted from `{name}` / `{name:str}` / `{name:int}`
   patterns.
 - Method names mapped to OpenAPI operations.
-- Route names from `.withName(...)` become operation IDs.
+- Route names from `.withName(...)` or route metadata options such as
+  `{ name: "Users.List" }` become operation IDs.
 - Tags from `app.group(...).withTags(...)`, route metadata options, and
   route-level tags propagate.
 
@@ -88,7 +89,7 @@ directly model:
 These fields are stable across builds for a given source/compiler pair,
 suitable for diffing.
 
-## What it doesn't produce yet
+## Current limits
 
 - Full request body schemas beyond what the Plan emitted from
   `schema.object(...)` (partials get `x-slop-partial`).
@@ -97,8 +98,9 @@ suitable for diffing.
   `x-slop-partial`).
 - Security schemes.
 - Servers or external-docs metadata.
-- Middleware, CORS, RequestId, RequestLogging, and controller behavior that the
-  current compiler rejects before Plan emission.
+- Middleware, CORS, RequestId, RequestLogging, and controller behavior are
+  reflected only to the extent they are visible in current Plan route metadata;
+  OpenAPI does not model the full runtime pipeline semantics.
 
 This is enough for documentation and for sanity-checking that an API
 change matches the public contract. Pipe it into a fuller OpenAPI tool

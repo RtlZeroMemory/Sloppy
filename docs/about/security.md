@@ -37,11 +37,10 @@ documents what Sloppy does today and what it doesn't.
   capability checks as policy, not a sandbox; if you need process
   isolation, that's the OS's job.
 - **Authenticate or authorize end users.** Sloppy ships no auth stack
-  today. Implement auth as handlers or services that run before the
-  protected work, or terminate auth at an upstream API gateway.
-  Middleware/endpoint filters are upcoming framework work — once they
-  land, auth filters will be the natural shape, but they don't exist
-  yet.
+  today. Implement auth as handlers, services, or app-host middleware that
+  runs before protected work, or terminate auth at an upstream API gateway.
+  Compiler source input does not emit middleware yet, so compiled artifacts
+  should keep auth checks explicit in supported handler/service code.
 - **Encrypt secrets at rest.** Config files are plaintext. Use your
   platform's secret store (Kubernetes secrets, AWS Secrets Manager,
   Vault) and inject through environment variables read via
@@ -71,6 +70,10 @@ private V8 bridge when that bridge is present. The public API accepts
 trust-store and client-certificate path options, but those option names may
 still change before a broader stability contract exists. Diagnostics redact
 those paths and any private-key passphrase.
+
+The lower-level inbound transport can load passphrase-protected private keys.
+`sloppy run` config metadata currently carries only the inbound certificate and
+private-key paths, not a TLS passphrase value.
 
 Out of scope today: ALPN selection beyond HTTP/1.1, server-side mTLS,
 custom certificate verifier callbacks, OCSP stapling, and HSTS hardening. For

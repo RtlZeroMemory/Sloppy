@@ -1263,7 +1263,7 @@ static int sl_run_prepare_routes(SlRunApp* app)
 
     if (app->plan.route_count > SL_RUN_MAX_ROUTES) {
         sl_cli_write_cstr(
-            stderr, "sloppy run: app.plan.json contains more GET routes than the dev runtime can "
+            stderr, "sloppy run: app.plan.json contains more routes than the dev runtime can "
                     "materialize\n");
         return 1;
     }
@@ -1276,7 +1276,7 @@ static int sl_run_prepare_routes(SlRunApp* app)
 
     if (app->route_table.route_count == 0U) {
         sl_cli_write_cstr(stderr,
-                          "sloppy run: app.plan.json does not contain GET route metadata\n");
+                          "sloppy run: app.plan.json does not contain runnable route metadata\n");
         return 1;
     }
 

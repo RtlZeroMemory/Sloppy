@@ -7,6 +7,17 @@
 import { HttpClient } from "sloppy";
 ```
 
+Compiler source input should import `HttpClient` from `sloppy/net`:
+
+```ts
+import { HttpClient } from "sloppy/net";
+```
+
+The root export is available to JavaScript app-host code and tests. The
+compiler-recognized import path is the `sloppy/net` subpath because the emitted
+Plan records outbound HTTP client runtime feature metadata through the network
+stdlib lane.
+
 Use method helpers for common requests:
 
 ```ts

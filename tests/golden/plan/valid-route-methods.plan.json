@@ -15,13 +15,15 @@
     { "id": 2, "exportName": "__sloppy_handler_2", "displayName": "Users.Create" },
     { "id": 3, "exportName": "__sloppy_handler_3", "displayName": "Users.Replace" },
     { "id": 4, "exportName": "__sloppy_handler_4", "displayName": "Users.Patch" },
-    { "id": 5, "exportName": "__sloppy_handler_5", "displayName": "Users.Delete" }
+    { "id": 5, "exportName": "__sloppy_handler_5", "displayName": "Users.Delete" },
+    { "id": 6, "exportName": "__sloppy_handler_6", "displayName": "Users.Preflight" }
   ],
   "routes": [
     { "method": "GET", "pattern": "/users", "handlerId": 1, "name": "Users.List" },
     { "method": "POST", "pattern": "/users", "handlerId": 2, "name": "Users.Create" },
     { "method": "PUT", "pattern": "/users/{id:int}", "handlerId": 3, "name": "Users.Replace" },
     { "method": "PATCH", "pattern": "/users/{id:int}", "handlerId": 4, "name": "Users.Patch" },
-    { "method": "DELETE", "pattern": "/users/{id:int}", "handlerId": 5, "name": "Users.Delete" }
+    { "method": "DELETE", "pattern": "/users/{id:int}", "handlerId": 5, "name": "Users.Delete" },
+    { "method": "OPTIONS", "pattern": "/users", "handlerId": 6, "name": "Users.Preflight" }
   ]
 }

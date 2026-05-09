@@ -7,15 +7,13 @@
     "package-gated",
     "live-provider-gated",
     "blocked",
-    "unavailable",
-    "planned"
+    "unavailable"
   ],
   "resultVocabulary": [
     "PASS",
     "FAIL",
     "SKIPPED",
     "UNAVAILABLE",
-    "DEFERRED",
     "NOT RUN"
   ],
   "scenarios": [
@@ -88,36 +86,32 @@
     {
       "id": "http-app",
       "feature": "HTTP",
-      "status": "blocked",
-      "lane": "future feature app",
-      "blockedBy": [
-        706
-      ],
-      "reason": "HTTP server runtime work is owned by the HTTP server track and is not implemented in this catalog."
+      "status": "v8-gated",
+      "lane": "runtime transport",
+      "blockedBy": [],
+      "reason": "HTTP/1.1 server behavior is covered by transport and source-input run lanes. Positive app execution still requires a V8-enabled runtime."
     },
     {
       "id": "https-app",
       "feature": "HTTPS/TLS",
-      "status": "blocked",
-      "lane": "future feature app",
-      "blockedBy": [
-        717
-      ],
-      "reason": "Inbound TLS listener behavior is owned by the TLS listener track and is not implemented in this catalog."
+      "status": "v8-gated",
+      "lane": "experimental TLS transport",
+      "blockedBy": [],
+      "reason": "Inbound TLS listener support is experimental and covered by opt-in transport lanes. Positive app execution still requires a V8-enabled runtime."
     },
     {
       "id": "sqlite-app",
       "feature": "SQLite",
       "status": "v8-gated",
-      "lane": "future feature app",
+      "lane": "source-input framework-v2",
       "blockedBy": [],
-      "reason": "Native SQLite and scoped V8 bridge evidence exist in gated lanes, but a default dogfood app must wait for package/source-input V8 evidence to be recorded here."
+      "reason": "Typed SQLite provider metadata and wrappers are emitted for framework-v2 apps. Positive CRUD execution still requires the native provider bridge and a V8-enabled runtime."
     },
     {
       "id": "postgresql-app",
       "feature": "PostgreSQL",
       "status": "live-provider-gated",
-      "lane": "future live-provider app",
+      "lane": "live-provider app",
       "blockedBy": [],
       "reason": "PostgreSQL dogfood requires live-provider evidence and service configuration outside default CI."
     },
@@ -125,19 +119,18 @@
       "id": "sqlserver-app",
       "feature": "SQL Server",
       "status": "live-provider-gated",
-      "lane": "future live-provider app",
+      "lane": "live-provider app",
       "blockedBy": [],
       "reason": "SQL Server dogfood requires live-provider evidence, ODBC driver availability, and service configuration outside default CI."
     },
     {
       "id": "framework-v2-app",
       "feature": "Framework v2",
-      "status": "blocked",
-      "lane": "future framework app",
-      "blockedBy": [
-        666
-      ],
-      "reason": "Framework v2 compiler/runtime integration is outside this catalog and must not be faked here."
+      "status": "v8-gated",
+      "lane": "source-input framework-v2",
+      "sourceFixture": "tests/fixtures/source-input/framework-foundation",
+      "blockedBy": [],
+      "reason": "Framework v2 source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a V8-enabled runtime."
     }
   ]
 }

@@ -44,6 +44,8 @@ pub(crate) fn emit_plan(
                 || route.handler.runtime_deferred
                 || !route.handler.effects.is_empty()
                 || route.health.is_some()
+                || !route.middleware.is_empty()
+                || route.cors.is_some()
         });
     let handlers = app
         .routes
@@ -125,6 +127,34 @@ pub(crate) fn emit_plan(
                     "checks": health.checks
                 });
             }
+            if !route.middleware.is_empty() {
+                route_json["middleware"] = json!(route
+                    .middleware
+                    .iter()
+                    .map(|middleware| {
+                        json!({
+                            "kind": middleware.kind,
+                            "sequence": middleware.sequence,
+                            "source": source_location_json(
+                                &middleware.source_name,
+                                &middleware.source_text,
+                                middleware.span
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
+            if let Some(cors) = &route.cors {
+                route_json["cors"] = json!({
+                    "origins": cors.origins,
+                    "methods": cors.methods,
+                    "headers": cors.headers,
+                    "exposedHeaders": cors.exposed_headers,
+                    "credentials": cors.credentials,
+                    "maxAgeSeconds": cors.max_age_seconds,
+                    "preflight": route.cors_preflight
+                });
+            }
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);
             }
@@ -144,7 +174,9 @@ pub(crate) fn emit_plan(
                 || route.handler.response.is_some()
                 || !route.handler.responses.is_empty()
                 || !route.handler.effects.is_empty()
-                || route.health.is_some();
+                || route.health.is_some()
+                || !route.middleware.is_empty()
+                || route.cors.is_some();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
                     .handler

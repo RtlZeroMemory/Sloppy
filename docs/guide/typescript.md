@@ -76,9 +76,11 @@ Confirmed unsupported (each has a fixture or diagnostic code):
 - HTTP methods other than GET/POST/PUT/PATCH/DELETE
   (`fixtures/unsupported-http-method/`,
   `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
-- Middleware, CORS, RequestId, RequestLogging, Testing imports, and controller
-  mappings are not compiler-extracted yet; each fails with a specific
-  diagnostic instead of being omitted from the Plan.
+- Dynamic middleware lookup, dynamic CORS policies, RequestId generator
+  callbacks, dynamic RequestLogging options, Testing imports, and dynamic
+  controller mappings fail with specific diagnostics instead of being omitted
+  from the Plan. Static middleware, CORS, RequestId, RequestLogging, and
+  controller subsets are compiler-extracted.
 - Sloppy default imports (`fixtures/unsupported-sloppy-default-import/`,
   `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`).
 
@@ -159,14 +161,13 @@ app.post("/users", (
 The compiler emits Plan metadata for route bindings, body schemas,
 provider injections, and service capabilities from these types.
 
-> **SQLite is the only provider with end-to-end executable injection
-> today.** The compiler recognizes `Postgres<"name">` and
-> `SqlServer<"name">` and emits Plan metadata for them, but the
-> executable bridge is sqlite-only — non-SQLite typed handlers fail
-> with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. Use the explicit
-> `Sloppy.module(...).services(...)` + `data.<provider>.open(...)`
-> pattern from [api/data.md](../api/data.md) for PostgreSQL and SQL
-> Server.
+`Sqlite<"name">`, `Postgres<"name">`, and `SqlServer<"name">` all emit
+provider metadata and generated typed-injection wrappers. SQLite is the
+strongest local path. PostgreSQL and SQL Server execution also need the
+matching connection-string config, active provider bridge, and live service
+dependencies. `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` is reserved for
+unsupported static non-SQLite provider handles such as
+`app.provider("postgres:main")`.
 
 ## Common gotchas
 

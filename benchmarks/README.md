@@ -61,7 +61,7 @@ Handler dispatch benchmarks are split by current runtime capability:
   current noop engine boundary, which is expected to report unsupported.
 - `http.dispatch.get.noop_unsupported` exercises synthetic parsed GET dispatch through the
   existing route matcher, manual dispatch table, plan lookup, and noop engine boundary.
-- V8 bridge benchmarks run only when the build is configured with an apvalidated V8 SDK and
+- V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
 
 `http.request_head.parse` is a microbenchmark for the complete-buffer request-head parser.

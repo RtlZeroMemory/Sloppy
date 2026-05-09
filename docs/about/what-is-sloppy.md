@@ -61,10 +61,13 @@ Real:
 
 Pre-alpha:
 
-- Production hardening (graceful drain, HTTP/2, broader TLS posture).
-- Framework features upcoming: CORS, ProblemDetails, middleware /
-  endpoint filters, health checks, OpenAPI completion. Not implemented
-  today.
+- Production hardening (long graceful drain, HTTP/2, broader TLS posture).
+- The app-host feature surface and compiler subset are intentionally narrow:
+  middleware, CORS, request IDs, request logging, controllers, health checks,
+  ProblemDetails, services, config, and typed providers have static compiler
+  coverage where the Plan can encode them; dynamic shapes fail closed.
+- OpenAPI is generated from Plan metadata today; security schemes, richer
+  response schemas, and full runtime-pipeline modeling are not represented.
 - Cross-platform polish: Windows is the most validated lane today.
 - Public release distribution (GitHub Release archives, npm launcher).
 

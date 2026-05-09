@@ -576,8 +576,10 @@ fn configuration_load_anchors_tls_paths_to_config_dir() {
     )
     .expect("appsettings should be written");
 
-    let mut options = CompileOptions::default();
-    options.config_dir = Some(root.clone());
+    let options = CompileOptions {
+        config_dir: Some(root.clone()),
+        ..Default::default()
+    };
     let model = ConfigurationModel::load(&root.join("src/main.ts"), &options, &[])
         .expect("configuration should load");
     let keys = model.plan_keys();
@@ -3556,22 +3558,89 @@ export default app;
 }
 
 #[test]
-fn recognized_unemitted_framework_features_fail_closed() {
+fn static_framework_surfaces_are_lowered_into_generated_handlers() {
+    let source = r#"import { Sloppy, Results, RequestId, RequestLogging } from "sloppy";
+class UsersController {
+  static inject = ["Repo"];
+  constructor(repo) {
+    this.repo = repo;
+  }
+  list(ctx) {
+    return Results.ok({ users: this.repo.list(), requestId: ctx.requestId });
+  }
+}
+const builder = Sloppy.createBuilder();
+builder.services.addSingleton("Repo", () => ({ list: () => ["ada"] }));
+const app = builder.build();
+function requireAuth(ctx, next) {
+  if (ctx.request.headers.get("authorization") !== "Bearer test") {
+    return Results.status(401);
+  }
+  return next();
+}
+app.use(RequestId.defaults({ header: "x-request-id", responseHeader: true, trustIncoming: true }));
+app.use(RequestLogging.defaults({ includeRoute: true, includeDuration: false, includeRequestId: true }));
+app.use(requireAuth);
+app.useCors({
+  origins: ["https://app.example.com"],
+  methods: ["GET"],
+  headers: ["authorization"],
+  exposedHeaders: ["x-request-id"],
+  credentials: true,
+  maxAgeSeconds: 600,
+});
+const api = app.group("/api");
+api.use((ctx, next) => next());
+api.get("/status", () => Results.ok({ ok: true })).withName("Status");
+app.mapController("/users", UsersController, (mapper) => {
+  mapper.get("/", "list", { tags: ["Users"] }).withName("Users.List");
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("static framework surfaces should extract");
+    assert_eq!(
+        app.routes.len(),
+        4,
+        "two GET routes plus two CORS preflight routes"
+    );
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.method == "OPTIONS" && route.pattern == "/api/status"));
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.method == "OPTIONS" && route.pattern == "/users"));
+    let status = app
+        .routes
+        .iter()
+        .find(|route| route.method == "GET" && route.pattern == "/api/status")
+        .expect("status route should exist");
+    assert_eq!(status.middleware.len(), 4);
+    assert!(status.cors.is_some());
+    let controller = app
+        .routes
+        .iter()
+        .find(|route| route.name.as_deref() == Some("Users.List"))
+        .expect("controller route should exist");
+    assert_eq!(controller.tags, vec!["Users"]);
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("__sloppy_run_middleware"));
+    assert!(emitted_js.source.contains("__sloppy_cors_preflight"));
+    assert!(emitted_js.source.contains("__sloppy_request_id"));
+    assert!(emitted_js.source.contains("__sloppy_request_logging"));
+    assert!(emitted_js.source.contains("new UsersController"));
+}
+
+#[test]
+fn unsupported_dynamic_framework_features_fail_closed() {
     for (source, code) in [
         (
             r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
-app.use((ctx, next) => next());
-app.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-        ),
-        (
-            r#"import { Sloppy, Results } from "sloppy";
-function middleware(ctx, next) { return next(); }
-const app = Sloppy.create();
-app.use(middleware);
+const middleware = [(_ctx, next) => next()];
+app.use(middleware[0]);
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
@@ -3580,35 +3649,6 @@ export default app;
         (
             r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
-const api = app.group("/api");
-api.use((ctx, next) => next());
-api.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-        ),
-        (
-            r#"import { Sloppy, Results } from "sloppy";
-function middleware(ctx, next) { return next(); }
-const app = Sloppy.create();
-const api = app.group("/api");
-api.use(middleware);
-api.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-        ),
-        (
-            r#"import { Sloppy, Results } from "sloppy";
-const app = Sloppy.create();
-app.useCors({ origins: ["https://app.example.com"] });
-app.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_CORS",
-        ),
-        (
-            r#"import { Sloppy, Results } from "sloppy";
 const policy = { origins: ["https://app.example.com"] };
 const app = Sloppy.create();
 app.useCors(policy);
@@ -3620,29 +3660,11 @@ export default app;
         (
             r#"import { Sloppy, Results, RequestId } from "sloppy";
 const app = Sloppy.create();
-app.use(RequestId.defaults({ header: "x-request-id", responseHeader: true, trustIncoming: false }));
-app.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
-        ),
-        (
-            r#"import { Sloppy, Results, RequestId } from "sloppy";
-const app = Sloppy.create();
 app.use(RequestId.defaults({ generator: () => "req-1" }));
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
             "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
-        ),
-        (
-            r#"import { Sloppy, Results, RequestLogging } from "sloppy";
-const app = Sloppy.create();
-app.use(RequestLogging.defaults({ includeRoute: true, includeDuration: false, includeRequestId: true }));
-app.get("/", () => Results.ok({ ok: true }));
-export default app;
-"#,
-            "SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING",
         ),
         (
             r#"import { Sloppy, Results, RequestLogging } from "sloppy";
@@ -3656,9 +3678,11 @@ export default app;
         ),
         (
             r#"import { Sloppy, Results } from "sloppy";
-function UsersController() {}
+class UsersController {}
 const app = Sloppy.create();
-app.controller("/users", UsersController);
+app.controller("/users", UsersController, (mapper) => {
+  mapper.get("/", "missing");
+});
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
@@ -3666,9 +3690,11 @@ export default app;
         ),
         (
             r#"import { Sloppy, Results } from "sloppy";
-function UsersController() {}
+const controller = class UsersController {};
 const app = Sloppy.create();
-app.mapController("/users", UsersController);
+app.mapController("/users", controller, (mapper) => {
+  mapper.get("/", "list");
+});
 app.get("/", () => Results.ok({ ok: true }));
 export default app;
 "#,
@@ -4210,7 +4236,6 @@ fn rejected_fixture_diagnostics_stay_current() {
         ("non-sqlite-provider-bridge", "input.js"),
         ("unsupported-provider-method", "input.js"),
         ("unsupported-route-options-dynamic-tags", "input.js"),
-        ("unsupported-app-middleware", "input.js"),
         ("unsupported-cors-dynamic", "input.js"),
         ("unsupported-request-id-dynamic", "input.js"),
         ("unsupported-request-logging-dynamic", "input.js"),

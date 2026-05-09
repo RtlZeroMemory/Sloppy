@@ -252,16 +252,21 @@ app.get("/users", (db: Sqlite<"main">) =>
 ```
 
 The compiler emits Plan metadata for `Sqlite<"name">`,
-`Postgres<"name">`, and `SqlServer<"name">` typed handler parameters,
-but **the executable provider bridge is SQLite-only today**.
-Non-SQLite typed handlers fail compilation with
-`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
+`Postgres<"name">`, and `SqlServer<"name">` typed handler parameters.
+Generated typed provider wrappers open the matching provider from runtime
+configuration:
 
-For PostgreSQL and SQL Server, use the explicit module shape shown
-above (`Sloppy.module(...).services(...)` with
-`data.postgres.open({ connectionString })` /
-`data.sqlserver.open({ connectionString })`). That pattern works for
-all three providers today.
+| Marker | Generated provider metadata | Runtime requirements |
+| --- | --- | --- |
+| `Sqlite<"main">` | `sqlite/main` provider plus `data.main` capability | V8-enabled runtime and SQLite bridge/config |
+| `Postgres<"main">` | `postgres/main` provider plus `data.main` capability | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, and live service setup |
+| `SqlServer<"main">` | `sqlserver/main` provider plus `data.main` capability | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, and ODBC driver support |
+
+The `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` diagnostic applies to
+compiler-generated **static** non-SQLite provider handles such as
+`app.provider("postgres:main")`, not to typed `Postgres<...>` or
+`SqlServer<...>` handler parameters. Use the explicit module shape shown above
+when you want to manage provider services manually.
 
 ## Errors
 

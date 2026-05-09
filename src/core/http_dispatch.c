@@ -129,8 +129,10 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
                                  sizeof("HTTP method is not supported by the framework runtime") -
                                      1U),
         sl_http_dispatch_literal(
-            "supported request methods are GET, HEAD, POST, PUT, PATCH, and DELETE",
-            sizeof("supported request methods are GET, HEAD, POST, PUT, PATCH, and DELETE") - 1U),
+            "supported request methods are GET, HEAD, POST, PUT, PATCH, DELETE, and OPTIONS",
+            sizeof("supported request methods are GET, HEAD, POST, PUT, PATCH, DELETE, and "
+                   "OPTIONS") -
+                1U),
         SL_STATUS_UNSUPPORTED);
 }
 
@@ -141,12 +143,13 @@ static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
 
 static bool sl_http_dispatch_request_method_runnable(SlHttpMethod method)
 {
-    return method == SL_HTTP_METHOD_HEAD || sl_http_method_supported(method);
+    return method == SL_HTTP_METHOD_HEAD || method == SL_HTTP_METHOD_OPTIONS ||
+           sl_http_method_supported(method);
 }
 
 static bool sl_http_dispatch_binding_method_runnable(SlHttpMethod method)
 {
-    return sl_http_method_supported(method);
+    return method == SL_HTTP_METHOD_OPTIONS || sl_http_method_supported(method);
 }
 
 static SlHttpMethod sl_http_dispatch_route_match_method(SlHttpMethod method)
@@ -160,8 +163,9 @@ static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* ou
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    return sl_http_method_supported(*out_method) ? sl_status_ok()
-                                                 : sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    return sl_http_dispatch_binding_method_runnable(*out_method)
+               ? sl_status_ok()
+               : sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
 
 static bool sl_http_dispatch_plan_route_matches_binding(const SlPlanRoute* route,
@@ -845,6 +849,7 @@ typedef struct SlHttpDispatchAllowSet
     bool put;
     bool patch;
     bool delete_;
+    bool options;
 } SlHttpDispatchAllowSet;
 
 static void sl_http_dispatch_allow_set_add(SlHttpDispatchAllowSet* methods, SlHttpMethod method)
@@ -872,8 +877,10 @@ static void sl_http_dispatch_allow_set_add(SlHttpDispatchAllowSet* methods, SlHt
     case SL_HTTP_METHOD_DELETE:
         methods->delete_ = true;
         break;
-    case SL_HTTP_METHOD_UNKNOWN:
     case SL_HTTP_METHOD_OPTIONS:
+        methods->options = true;
+        break;
+    case SL_HTTP_METHOD_UNKNOWN:
     default:
         break;
     }
@@ -882,7 +889,7 @@ static void sl_http_dispatch_allow_set_add(SlHttpDispatchAllowSet* methods, SlHt
 static bool sl_http_dispatch_allow_set_empty(const SlHttpDispatchAllowSet* methods)
 {
     return methods == NULL || (!methods->get && !methods->head && !methods->post && !methods->put &&
-                               !methods->patch && !methods->delete_);
+                               !methods->patch && !methods->delete_ && !methods->options);
 }
 
 static SlStatus sl_http_dispatch_allow_append(SlStringBuilder* builder, const char* method,
@@ -945,6 +952,7 @@ static SlStatus sl_http_dispatch_format_allow_header(SlArena* arena,
     SL_HTTP_DISPATCH_APPEND_ALLOW(methods->put, "PUT");
     SL_HTTP_DISPATCH_APPEND_ALLOW(methods->patch, "PATCH");
     SL_HTTP_DISPATCH_APPEND_ALLOW(methods->delete_, "DELETE");
+    SL_HTTP_DISPATCH_APPEND_ALLOW(methods->options, "OPTIONS");
 
 #undef SL_HTTP_DISPATCH_APPEND_ALLOW
 
