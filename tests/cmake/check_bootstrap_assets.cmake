@@ -9,6 +9,8 @@ set(required_bootstrap_assets
     net.js
     os.js
     problem-details.js
+    request-id.js
+    request-logging.js
     time.js
     workers.js
     index.js

@@ -15,6 +15,8 @@ export {
 } from "./net.js";
 export { Environment, OsError, Process, Signals, System } from "./os.js";
 export { ProblemDetails } from "./problem-details.js";
+export { RequestId } from "./request-id.js";
+export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";
 export { schema } from "./schema.js";
 export {

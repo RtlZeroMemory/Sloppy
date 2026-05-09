@@ -14,6 +14,8 @@
     "sloppy/workers.js",
     "sloppy/providers/sqlite.js",
     "sloppy/problem-details.js",
+    "sloppy/request-id.js",
+    "sloppy/request-logging.js",
     "sloppy/results.js",
     "sloppy/schema.js",
     "sloppy/app.js",

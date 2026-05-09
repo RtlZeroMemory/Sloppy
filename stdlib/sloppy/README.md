@@ -60,6 +60,10 @@ lib/sloppy/bootstrap/sloppy/
   handled by the engine/runtime bridge; response writing belongs to runtime conversion.
 - `problem-details.js` provides `ProblemDetails.defaults(...)` descriptors for safe
   route-handler error responses.
+- `request-id.js` provides `RequestId.defaults(...)` middleware for app-host request
+  IDs, trusted incoming ID admission, and optional response headers.
+- `request-logging.js` provides `RequestLogging.defaults(...)` middleware that writes
+  one structured entry per completed app-host request through the existing logger.
 - `schema.js` provides the current validation metadata surface for strings, numbers,
   integers, booleans, arrays, optional fields, and object shapes.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
@@ -95,7 +99,7 @@ lib/sloppy/bootstrap/sloppy/
 - Module packages, native plugins, and full app lifecycle integration are
   planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
-  logging sinks, async service factories, typed DI tokens, and native service graph
+  logging sinks, tracing, metrics, async service factories, typed DI tokens, and native service graph
   validation belong to later framework/runtime slices.
 
 ## Source Docs

@@ -394,38 +394,90 @@ function createCorsPreflightHandler(state) {
 
 
 
-function createHandlerContext(host) {
+const EMPTY_HEADERS = Object.freeze({
+    get() {
+        return undefined;
+    },
+    entries() {
+        return Object.freeze([]);
+    },
+});
+
+function createDefaultRequest(routeInfo) {
     return Object.freeze({
+        method: routeInfo.method,
+        path: routeInfo.pattern,
+        rawTarget: routeInfo.pattern,
+        headers: EMPTY_HEADERS,
+    });
+}
+
+function createHandlerContext(host, routeInfo) {
+    return {
         services: host.services.createScope(),
         capabilities: host.capabilities,
         config: host.config,
         log: host.log,
-        route: Object.freeze({}),
-    });
+        route: {},
+        routePattern: routeInfo.pattern,
+        request: createDefaultRequest(routeInfo),
+    };
 }
 
-function createRouteHandler(host, handler, middleware = [], corsPolicy = null) {
+function decorateProvidedContext(host, context, routeInfo) {
+    const nextContext = {
+        ...context,
+    };
+
+    nextContext.config ??= host.config;
+    nextContext.log ??= host.log;
+    nextContext.capabilities ??= host.capabilities;
+
+    if (nextContext.route === undefined || nextContext.route === null) {
+        nextContext.route = {};
+    }
+    if (nextContext.routePattern === undefined) {
+        nextContext.routePattern = routeInfo.pattern;
+    }
+    if (nextContext.request === undefined || nextContext.request === null) {
+        nextContext.request = createDefaultRequest(routeInfo);
+    } else {
+        nextContext.request = Object.freeze({
+            ...nextContext.request,
+            method: nextContext.request.method ?? routeInfo.method,
+            path: nextContext.request.path ?? routeInfo.pattern,
+            rawTarget: nextContext.request.rawTarget ?? nextContext.request.target ??
+                nextContext.request.path ?? routeInfo.pattern,
+            headers: nextContext.request.headers ?? EMPTY_HEADERS,
+        });
+    }
+
+    return nextContext;
+}
+
+function createRouteHandler(host, handler, middleware = [], corsPolicy = null, routeInfo) {
     return function routeHandler(context) {
         if (context !== undefined && context !== null) {
+            const providedContext = decorateProvidedContext(host, context, routeInfo);
             try {
                 const result = invokeMiddlewarePipeline(
-                    context,
+                    providedContext,
                     middleware,
-                    () => handler(context),
+                    () => handler(providedContext),
                 );
                 if (result !== null && typeof result === "object" && typeof result.then === "function") {
                     return Promise.resolve(result).then(
-                        (value) => finishWithCors(value, corsPolicy, context),
+                        (value) => finishWithCors(value, corsPolicy, providedContext),
                         (error) => handleRouteError(host, error),
                     );
                 }
-                return finishWithCors(result, corsPolicy, context);
+                return finishWithCors(result, corsPolicy, providedContext);
             } catch (error) {
                 return handleRouteError(host, error);
             }
         }
 
-        const ownedContext = createHandlerContext(host);
+        const ownedContext = createHandlerContext(host, routeInfo);
         try {
             const result = invokeMiddlewarePipeline(
                 ownedContext,
@@ -609,7 +661,13 @@ function registerRoute(
     const route = {
         method,
         pattern: args.pattern,
-        handler: createRouteHandler(host, args.handler, Object.freeze(orderedMiddleware), corsPolicy),
+        handler: createRouteHandler(
+            host,
+            args.handler,
+            Object.freeze(orderedMiddleware),
+            corsPolicy,
+            Object.freeze({ method, pattern: args.pattern }),
+        ),
         name: null,
         metadata: {
             ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
@@ -621,7 +679,15 @@ function registerRoute(
 
     routes.push(route);
     if (corsPolicy !== null) {
-        registerCorsPreflightRoute(routes, host, assertAppMutable, args.pattern, method, corsPolicy);
+        registerCorsPreflightRoute(
+            routes,
+            host,
+            assertAppMutable,
+            args.pattern,
+            method,
+            corsPolicy,
+            Object.freeze(orderedMiddleware),
+        );
     }
     return createEndpointBuilder(route, assertAppMutable);
 }
@@ -659,7 +725,15 @@ function corsPoliciesEqual(a, b) {
     );
 }
 
-function registerCorsPreflightRoute(routes, host, assertAppMutable, pattern, method, corsPolicy) {
+function registerCorsPreflightRoute(
+    routes,
+    host,
+    assertAppMutable,
+    pattern,
+    method,
+    corsPolicy,
+    middleware,
+) {
     const existing = routes.find((route) => route.method === "OPTIONS" &&
         route.pattern === pattern &&
         route.metadata?.cors?.preflight === true);
@@ -679,7 +753,13 @@ function registerCorsPreflightRoute(routes, host, assertAppMutable, pattern, met
     routes.push({
         method: "OPTIONS",
         pattern,
-        handler: createRouteHandler(host, createCorsPreflightHandler(state)),
+        handler: createRouteHandler(
+            host,
+            createCorsPreflightHandler(state),
+            middleware,
+            null,
+            Object.freeze({ method: "OPTIONS", pattern }),
+        ),
         name: null,
         metadata: {
             cors: {
@@ -705,7 +785,7 @@ function controllerInjectionTokens(controller) {
     return Object.freeze([...tokens]);
 }
 
-function createControllerHandler(host, Controller, action) {
+function createControllerHandler(host, Controller, action, routeInfo) {
     const inject = controllerInjectionTokens(Controller);
     const prototypeMethod = Controller.prototype?.[action];
 
@@ -714,7 +794,7 @@ function createControllerHandler(host, Controller, action) {
     }
 
     return function controllerHandler(context) {
-        let ctx = context ?? createHandlerContext(host);
+        let ctx = context ?? createHandlerContext(host, routeInfo);
         let ownsServices = context === undefined || context === null;
         if (ctx.services === undefined || ctx.services === null) {
             ctx = Object.freeze({
@@ -768,7 +848,12 @@ function createControllerMapper(
                 controller: Controller.name || "AnonymousController",
                 action,
             },
-            createControllerHandler(host, Controller, action),
+            createControllerHandler(
+                host,
+                Controller,
+                action,
+                Object.freeze({ method, pattern: composeRoutePattern(normalizedPrefix, pattern) }),
+            ),
             undefined,
             middleware,
             getCorsPolicy(),

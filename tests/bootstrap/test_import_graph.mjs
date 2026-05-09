@@ -15,6 +15,8 @@ const modules = [
     "time.js",
     "workers.js",
     "providers/sqlite.js",
+    "request-id.js",
+    "request-logging.js",
     "internal/capabilities.js",
     "internal/config.js",
     "internal/logging.js",
