@@ -30,6 +30,7 @@ Run the local runtime engine:
 ```powershell
 .\tools\windows\bench.ps1 -Suite http
 .\tools\windows\bench.ps1 -Suite http,route -Runtime sloppy,node,bun,deno
+.\tools\windows\bench.ps1 -Suite route.generated-table -Runtime sloppy,node,bun,deno
 .\tools\windows\bench.ps1 -Suite bridge -Runtime sloppy -Out artifacts\bench\sloppy-bridge.json
 .\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
 ```
@@ -39,7 +40,8 @@ local runtime comparison engine is currently Windows-first; Unix reports that la
 `UNAVAILABLE` until a matching process/HTTP runner is implemented.
 
 Debug numbers are not meaningful. Smoke mode only validates the harness starts and each default
-benchmark path can execute a tiny iteration count.
+benchmark path can execute a tiny iteration count; smoke output is not a performance
+conclusion. Use larger measured runs on the same machine for branch-to-branch comparisons.
 
 ## Methodology
 
@@ -103,7 +105,14 @@ The local runtime engine uses semantically equivalent HTTP workloads where pract
 
 - `http`: `/health`, small JSON, route parameter JSON, query decode, and small JSON
   POST acknowledgement.
-- `route`: route table sizes 10, 100, and 1000, with first/middle/last/missing targets.
+- `route.generated-table`: route table sizes 10, 100, and 1000, with
+  first/middle/last/missing targets. Sloppy, Node, Bun, and Deno all use explicit
+  generated route entries for this shape.
+- `route.compact-prefix`: route counts 10, 100, and 1000 with the same targets, but
+  comparator runtimes may use a compact `/routes/:id`/integer-bounds handler shape.
+  Sloppy is reported as `SKIPPED` for this shape until it can express an equivalent
+  compact-prefix app. Do not compare compact-prefix entries against generated-table
+  entries as apples-to-apples measurements.
 - `bridge`: Sloppy-only V8/result/request-context workloads. Source-input header
   facade coverage is reported as `SKIPPED` until the live runtime path can execute it;
   native V8 bridge microbenchmarks still cover header lookup.
@@ -125,6 +134,11 @@ default test failure.
 Response correctness is part of every measured HTTP workload: status, body, and relevant
 content type are checked before a request contributes latency data. Broken responses are
 reported as failed benchmark entries, not as measurements.
+
+Route benchmark results are meaningful only within the same `comparatorShape`
+(`generated-table` or `compact-prefix`). Route workload JSON includes `comparatorShape`,
+`routeCount`, and `routePosition` so comparisons can reject mismatched shapes instead of
+mixing different routing strategies.
 
 HTTP workload entries also include process-level CPU and memory snapshots for the measured
 window when the child process exposes them. CPU is reported as elapsed processor time, and

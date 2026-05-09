@@ -518,18 +518,18 @@ static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena*
 
 static int sl_cli_command_doctor(const SlCliOptions* options)
 {
-    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
-    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
-    unsigned char diag_arena_storage[SL_CLI_ARENA_BYTES];
+    unsigned char* json_storage = sl_cli_scratch_json_storage();
+    unsigned char* plan_arena_storage = sl_cli_scratch_plan_arena_storage();
+    unsigned char diag_arena_storage[SL_CLI_DIAG_ARENA_BYTES];
     SlArena plan_arena;
     SlArena diag_arena;
     yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
+    SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t index = 0U;
     bool emitted = false;
 
     if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))) ||
+            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)) ||
         !sl_status_is_ok(
             sl_arena_init(&diag_arena, diag_arena_storage, sizeof(diag_arena_storage))))
     {
@@ -538,7 +538,7 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
     }
 
     if (options->plan_path != NULL && sl_cli_load_metadata(options->plan_path, json_storage,
-                                                           &plan_arena, true, &doc, &metadata) != 0)
+                                                           &plan_arena, true, &doc, metadata) != 0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
@@ -553,12 +553,12 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
             sl_cli_doctor_emit(
                 options, &diag_arena, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
                 sl_cli_span_cstr("app plan parsed by native Plan v1 parser"), &emitted);
-            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, &metadata, &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, metadata, &emitted);
         }
-        for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit(options, &diag_arena, metadata.doctor_checks[index].id,
-                               metadata.doctor_checks[index].status,
-                               metadata.doctor_checks[index].message, &emitted);
+        for (index = 0U; index < metadata->doctor_check_count; index += 1U) {
+            sl_cli_doctor_emit(options, &diag_arena, metadata->doctor_checks[index].id,
+                               metadata->doctor_checks[index].status,
+                               metadata->doctor_checks[index].message, &emitted);
         }
         printf("\n  ]\n}\n");
     }
@@ -569,12 +569,12 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
             sl_cli_doctor_emit(
                 options, &diag_arena, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
                 sl_cli_span_cstr("app plan parsed by native Plan v1 parser"), &emitted);
-            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, &metadata, &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, metadata, &emitted);
         }
-        for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit(options, &diag_arena, metadata.doctor_checks[index].id,
-                               metadata.doctor_checks[index].status,
-                               metadata.doctor_checks[index].message, &emitted);
+        for (index = 0U; index < metadata->doctor_check_count; index += 1U) {
+            sl_cli_doctor_emit(options, &diag_arena, metadata->doctor_checks[index].id,
+                               metadata->doctor_checks[index].status,
+                               metadata->doctor_checks[index].message, &emitted);
         }
     }
 

@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
-$AllowedSuites = @("http", "route", "bridge", "concurrency", "middleware", "sqlite", "startup")
+$AllowedSuites = @("http", "route", "route.generated-table", "route.compact-prefix", "bridge", "concurrency", "middleware", "sqlite", "startup")
 $AllowedRuntimes = @("sloppy", "node", "bun", "deno")
 $Utf8NoBomEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -187,7 +187,7 @@ function New-BenchResult {
         [Nullable[double]]$StartupMs = $null,
         [Nullable[double]]$RequestsPerSecond = $null,
         [switch]$SuppressThroughput,
-        [hashtable]$Profile = $null,
+        [hashtable]$ProcessProfile = $null,
         [hashtable]$Correctness = $null,
         [hashtable]$Extra = $null
     )
@@ -228,8 +228,8 @@ function New-BenchResult {
         requestsPerSecond = $rps
         errorCount = $Errors
         startupMs = $StartupMs
-        cpu = $(if ($null -ne $Profile -and $Profile.ContainsKey("cpu")) { $Profile.cpu } else { $null })
-        memory = $(if ($null -ne $Profile -and $Profile.ContainsKey("memory")) { $Profile.memory } else { $null })
+        cpu = $(if ($null -ne $ProcessProfile -and $ProcessProfile.ContainsKey("cpu")) { $ProcessProfile.cpu } else { $null })
+        memory = $(if ($null -ne $ProcessProfile -and $ProcessProfile.ContainsKey("memory")) { $ProcessProfile.memory } else { $null })
         allocations = $null
         bytesCopied = $null
         correctness = $(if ($null -eq $Correctness) {
@@ -582,7 +582,7 @@ function Test-BenchResponse {
         return "expected content type containing $($Workload.expectedContentType), got $($Response.contentType)"
     }
 
-    if ($Workload.expectedBody -ne $null -and $Response.body -ne $Workload.expectedBody) {
+    if ($null -ne $Workload.expectedBody -and $Response.body -ne $Workload.expectedBody) {
         return "expected body '$($Workload.expectedBody)', got '$($Response.body)'"
     }
 
@@ -780,6 +780,8 @@ function Get-ConcurrencyWorkloads {
 }
 
 function Get-RouteWorkloads {
+    param([string]$ComparatorShape)
+
     $workloads = @()
     foreach ($count in @(10, 100, 1000)) {
         foreach ($position in @("first", "middle", "last", "missing")) {
@@ -795,10 +797,31 @@ function Get-RouteWorkloads {
             }
             $expectedStatus = $(if ($position -eq "missing") { 404 } else { 200 })
             $expectedBody = $(if ($position -eq "missing") { $null } else { "r$index" })
-            $workloads += @{ id = "route.$count.$position"; method = "GET"; path = "/routes/$index"; routeCount = $count; expectedStatus = $expectedStatus; expectedBody = $expectedBody }
+            $workloads += @{
+                id = "route.$ComparatorShape.$count.$position"
+                method = "GET"
+                path = "/routes/$index"
+                comparatorShape = $ComparatorShape
+                routeCount = $count
+                routePosition = $position
+                expectedStatus = $expectedStatus
+                expectedBody = $expectedBody
+            }
         }
     }
     return $workloads
+}
+
+function Get-BenchWorkloadExtra {
+    param([hashtable]$Workload)
+
+    $extra = @{}
+    foreach ($key in @("comparatorShape", "routeCount", "routePosition")) {
+        if ($Workload.ContainsKey($key)) {
+            $extra[$key] = $Workload[$key]
+        }
+    }
+    return $extra
 }
 
 function Get-BridgeWorkloads {
@@ -833,7 +856,7 @@ function Get-MiddlewareWorkloads {
         @{ id = "middleware.problem_details"; method = "GET"; path = "/middleware/problem"; expectedStatus = 500; expectedBodyContains = "SLOPPY_E_HANDLER_ERROR"; expectedContentType = "application/problem+json" },
         @{ id = "middleware.cors.normal"; method = "GET"; path = "/middleware/cors"; headers = @{ "origin" = "https://bench.local" }; expectedStatus = 200; expectedBody = "cors"; expectedContentType = "text/plain" },
         @{ id = "middleware.cors.preflight"; method = "OPTIONS"; path = "/middleware/cors"; headers = @{ "origin" = "https://bench.local"; "access-control-request-method" = "GET" }; expectedStatus = 204; expectedBody = "" },
-        @{ id = "middleware.health"; method = "GET"; path = "/health"; expectedStatus = 200; expectedBodyContains = "healthy"; expectedContentType = "application/json" }
+        @{ id = "middleware.health"; method = "GET"; path = "/middleware/health"; expectedStatus = 200; expectedBodyContains = "healthy"; expectedContentType = "application/json" }
     )
 }
 
@@ -844,6 +867,13 @@ function New-NodeBenchApp {
 const http = require("http");
 const port = Number(process.env.SLOPPY_BENCH_PORT || "0");
 const routeCount = Number(process.env.SLOPPY_BENCH_ROUTE_COUNT || "0");
+const routeShape = process.env.SLOPPY_BENCH_ROUTE_SHAPE || "generated-table";
+const routeTable = new Map();
+if (routeShape === "generated-table") {
+  for (let index = 0; index < routeCount; index += 1) {
+    routeTable.set(`/routes/${index}`, `r${index}`);
+  }
+}
 
 function send(res, status, body, contentType) {
   const text = body === undefined ? "" : body;
@@ -868,7 +898,11 @@ const server = http.createServer((req, res) => {
     req.on("end", () => send(res, 200, json({received: true}), "application/json; charset=utf-8"));
     return;
   }
-  if (req.method === "GET" && url.pathname.startsWith("/routes/")) {
+  if (req.method === "GET" && routeShape === "generated-table") {
+    const body = routeTable.get(url.pathname);
+    if (body !== undefined) return send(res, 200, body, "text/plain; charset=utf-8");
+  }
+  if (req.method === "GET" && routeShape === "compact-prefix" && url.pathname.startsWith("/routes/")) {
     const index = Number(url.pathname.slice(8));
     if (Number.isInteger(index) && index >= 0 && index < routeCount) return send(res, 200, `r${index}`, "text/plain; charset=utf-8");
   }
@@ -887,6 +921,13 @@ function New-BunBenchApp {
     $content = @'
 const port = Number(process.env.SLOPPY_BENCH_PORT || "0");
 const routeCount = Number(process.env.SLOPPY_BENCH_ROUTE_COUNT || "0");
+const routeShape = process.env.SLOPPY_BENCH_ROUTE_SHAPE || "generated-table";
+const routeTable = new Map();
+if (routeShape === "generated-table") {
+  for (let index = 0; index < routeCount; index += 1) {
+    routeTable.set(`/routes/${index}`, `r${index}`);
+  }
+}
 function response(status, body, contentType) {
   return new Response(body ?? "", { status, headers: contentType ? { "content-type": contentType } : {} });
 }
@@ -900,7 +941,11 @@ Bun.serve({
     if (req.method === "GET" && url.pathname.startsWith("/hello/")) return response(200, JSON.stringify({hello: decodeURIComponent(url.pathname.slice(7))}), "application/json; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/query") return response(200, JSON.stringify({x: url.searchParams.get("x"), y: url.searchParams.get("y")}), "application/json; charset=utf-8");
     if (req.method === "POST" && url.pathname === "/echo") { await req.text(); return response(200, JSON.stringify({received: true}), "application/json; charset=utf-8"); }
-    if (req.method === "GET" && url.pathname.startsWith("/routes/")) {
+    if (req.method === "GET" && routeShape === "generated-table") {
+      const body = routeTable.get(url.pathname);
+      if (body !== undefined) return response(200, body, "text/plain; charset=utf-8");
+    }
+    if (req.method === "GET" && routeShape === "compact-prefix" && url.pathname.startsWith("/routes/")) {
       const index = Number(url.pathname.slice(8));
       if (Number.isInteger(index) && index >= 0 && index < routeCount) return response(200, `r${index}`, "text/plain; charset=utf-8");
     }
@@ -917,6 +962,13 @@ function New-DenoBenchApp {
     $content = @'
 const port = Number(Deno.env.get("SLOPPY_BENCH_PORT") || "0");
 const routeCount = Number(Deno.env.get("SLOPPY_BENCH_ROUTE_COUNT") || "0");
+const routeShape = Deno.env.get("SLOPPY_BENCH_ROUTE_SHAPE") || "generated-table";
+const routeTable = new Map();
+if (routeShape === "generated-table") {
+  for (let index = 0; index < routeCount; index += 1) {
+    routeTable.set(`/routes/${index}`, `r${index}`);
+  }
+}
 function response(status, body, contentType) {
   return new Response(body ?? "", { status, headers: contentType ? { "content-type": contentType } : {} });
 }
@@ -927,7 +979,11 @@ Deno.serve({ hostname: "127.0.0.1", port }, async (req) => {
   if (req.method === "GET" && url.pathname.startsWith("/hello/")) return response(200, JSON.stringify({hello: decodeURIComponent(url.pathname.slice(7))}), "application/json; charset=utf-8");
   if (req.method === "GET" && url.pathname === "/query") return response(200, JSON.stringify({x: url.searchParams.get("x"), y: url.searchParams.get("y")}), "application/json; charset=utf-8");
   if (req.method === "POST" && url.pathname === "/echo") { await req.text(); return response(200, JSON.stringify({received: true}), "application/json; charset=utf-8"); }
-  if (req.method === "GET" && url.pathname.startsWith("/routes/")) {
+  if (req.method === "GET" && routeShape === "generated-table") {
+    const body = routeTable.get(url.pathname);
+    if (body !== undefined) return response(200, body, "text/plain; charset=utf-8");
+  }
+  if (req.method === "GET" && routeShape === "compact-prefix" && url.pathname.startsWith("/routes/")) {
     const index = Number(url.pathname.slice(8));
     if (Number.isInteger(index) && index >= 0 && index < routeCount) return response(200, `r${index}`, "text/plain; charset=utf-8");
   }
@@ -941,7 +997,8 @@ function New-SloppyBenchApp {
     param(
         [string]$ProjectDir,
         [string]$SuiteName,
-        [int]$RouteCount
+        [int]$RouteCount,
+        [string]$RouteShape = "generated-table"
     )
 
     $src = Join-Path $ProjectDir "src"
@@ -964,7 +1021,7 @@ function New-SloppyBenchApp {
     $lines.Add('app.get("/query", (ctx) => Results.json({ x: ctx.query.x, y: ctx.query.y }));')
     $lines.Add('app.post("/echo", () => Results.json({ received: true }));')
 
-    if ($SuiteName -eq "route") {
+    if ($SuiteName -like "route.*" -and $RouteShape -eq "generated-table") {
         for ($index = 0; $index -lt $RouteCount; $index += 1) {
             $lines.Add("app.get(""/routes/$index"", () => Results.text(""r$index""));")
         }
@@ -999,7 +1056,7 @@ function New-SloppyBenchApp {
         $lines.Add('shortCircuit.get("/short", () => Results.text("not reached"));')
         $lines.Add('app.useCors({ origins: ["https://bench.local"], methods: ["GET"], headers: ["x-bench"] });')
         $lines.Add('app.get("/middleware/cors", () => Results.text("cors"));')
-        $lines.Add('app.mapHealthChecks({ checks: [{ name: "bench", check: () => true }] });')
+        $lines.Add('app.mapHealthChecks({ path: "/middleware/health", checks: [{ name: "bench", check: () => true }] });')
         $lines.Add('app.use(ProblemDetails.defaults());')
         $lines.Add('app.get("/middleware/problem", () => { throw new Error("bench failure"); });')
     }
@@ -1039,12 +1096,22 @@ function Invoke-HttpSuiteForRuntime {
         [System.Collections.IDictionary]$RuntimeInfo,
         [string]$SuiteName,
         [hashtable[]]$Workloads,
-        [int]$RouteCount = 0
+        [int]$RouteCount = 0,
+        [string]$RouteShape = "generated-table"
     )
 
     if ($RuntimeInfo.status -ne "AVAILABLE") {
         return @($Workloads | ForEach-Object {
-                New-BenchResult $_.id $SuiteName $RuntimeName "UNAVAILABLE" $RuntimeInfo.reason $WarmupRequests $Requests
+                New-BenchResult $_.id $SuiteName $RuntimeName "UNAVAILABLE" $RuntimeInfo.reason $WarmupRequests $Requests -Extra (Get-BenchWorkloadExtra $_)
+            })
+    }
+
+    if ($SuiteName -eq "route.compact-prefix" -and $RuntimeName -eq "sloppy") {
+        return @($Workloads | ForEach-Object {
+                $reason = "Sloppy source-input route declarations currently emit generated route table entries; no equivalent compact-prefix app shape exists yet."
+                New-BenchResult $_.id $SuiteName $RuntimeName "SKIPPED" $reason $WarmupRequests $Requests `
+                    -Correctness @{ checked = $false; status = "SKIPPED"; details = $reason } `
+                    -Extra (Get-BenchWorkloadExtra $_)
             })
     }
 
@@ -1072,6 +1139,7 @@ function Invoke-HttpSuiteForRuntime {
             $process = Start-BenchProcess $RuntimeInfo.path @($script) $tempDir @{
                 SLOPPY_BENCH_PORT = $port
                 SLOPPY_BENCH_ROUTE_COUNT = $RouteCount
+                SLOPPY_BENCH_ROUTE_SHAPE = $RouteShape
             } $RuntimeName
         }
         elseif ($RuntimeName -eq "bun") {
@@ -1080,6 +1148,7 @@ function Invoke-HttpSuiteForRuntime {
             $process = Start-BenchProcess $RuntimeInfo.path @($script) $tempDir @{
                 SLOPPY_BENCH_PORT = $port
                 SLOPPY_BENCH_ROUTE_COUNT = $RouteCount
+                SLOPPY_BENCH_ROUTE_SHAPE = $RouteShape
             } $RuntimeName
         }
         elseif ($RuntimeName -eq "deno") {
@@ -1088,22 +1157,23 @@ function Invoke-HttpSuiteForRuntime {
             $process = Start-BenchProcess $RuntimeInfo.path @(
                 "run",
                 "--allow-net=127.0.0.1",
-                "--allow-env=SLOPPY_BENCH_PORT,SLOPPY_BENCH_ROUTE_COUNT",
+                "--allow-env=SLOPPY_BENCH_PORT,SLOPPY_BENCH_ROUTE_COUNT,SLOPPY_BENCH_ROUTE_SHAPE",
                 $script
             ) $tempDir @{
                 SLOPPY_BENCH_PORT = $port
                 SLOPPY_BENCH_ROUTE_COUNT = $RouteCount
+                SLOPPY_BENCH_ROUTE_SHAPE = $RouteShape
             } $RuntimeName
         }
         elseif ($RuntimeName -eq "sloppy") {
-            New-SloppyBenchApp $tempDir $SuiteName $RouteCount
+            New-SloppyBenchApp $tempDir $SuiteName $RouteCount $RouteShape
             try {
                 Invoke-SloppyBuild $RuntimeInfo $tempDir
             }
             catch {
                 $buildError = $_.Exception.Message
                 return @($Workloads | ForEach-Object {
-                        New-BenchResult $_.id $SuiteName $RuntimeName "FAIL" $buildError $WarmupRequests $Requests
+                        New-BenchResult $_.id $SuiteName $RuntimeName "FAIL" $buildError $WarmupRequests $Requests -Extra (Get-BenchWorkloadExtra $_)
                     })
             }
             $process = Start-BenchProcess $RuntimeInfo.path @(
@@ -1135,7 +1205,9 @@ function Invoke-HttpSuiteForRuntime {
                 $status = "UNAVAILABLE"
             }
             return @($Workloads | ForEach-Object {
-                    New-BenchResult $_.id $SuiteName $RuntimeName $status $reason $WarmupRequests $Requests -StartupMs $startupWatch.Elapsed.TotalMilliseconds
+                    New-BenchResult $_.id $SuiteName $RuntimeName $status $reason $WarmupRequests $Requests `
+                        -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
+                        -Extra (Get-BenchWorkloadExtra $_)
                 })
         }
 
@@ -1150,7 +1222,8 @@ function Invoke-HttpSuiteForRuntime {
                     $WarmupRequests `
                     $Requests `
                     -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
-                    -Correctness @{ checked = $false; status = "SKIPPED"; details = $workload.skipOnSloppy }
+                    -Correctness @{ checked = $false; status = "SKIPPED"; details = $workload.skipOnSloppy } `
+                    -Extra (Get-BenchWorkloadExtra $workload)
                 continue
             }
 
@@ -1158,6 +1231,11 @@ function Invoke-HttpSuiteForRuntime {
                 $measurement = Invoke-ConcurrentHttpWorkload $client $baseUrl $workload $process $WarmupRequests $Requests
                 $status = $(if ($measurement.errors -eq 0) { "PASS" } else { "FAIL" })
                 $reason = $(if ($measurement.errors -eq 0) { $null } else { $measurement.firstError })
+                $extra = Get-BenchWorkloadExtra $workload
+                $extra["concurrency"] = [int]$workload.concurrency
+                $extra["wallMs"] = $measurement.wallMs
+                $extra["measuredBatches"] = $measurement.measuredBatches
+                $extra["latencyModel"] = "concurrent batch wall time"
                 $results += New-BenchResult `
                     $workload.id `
                     $SuiteName `
@@ -1171,15 +1249,9 @@ function Invoke-HttpSuiteForRuntime {
                     -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
                     -RequestsPerSecond $measurement.requestsPerSecond `
                     -SuppressThroughput:($measurement.errors -ne 0) `
-                    -Profile $measurement.profile `
+                    -ProcessProfile $measurement.profile `
                     -Correctness @{ checked = $true; status = $status; details = $(if ($measurement.errors -eq 0) { "status, content-type, and body validated" } else { $measurement.firstError }) } `
-                    -Extra @{
-                        concurrency = [int]$workload.concurrency
-                        wallMs = $measurement.wallMs
-                        measuredBatches = $measurement.measuredBatches
-                        latencyModel = "concurrent batch wall time"
-                        routeCount = $(if ($workload.routeCount) { $workload.routeCount } else { $null })
-                    }
+                    -Extra $extra
                 continue
             }
 
@@ -1235,7 +1307,7 @@ function Invoke-HttpSuiteForRuntime {
             }
 
             $profileAfter = Get-BenchProcessSnapshot $process
-            $profile = Get-BenchProcessProfile $profileBefore $profileAfter $latencies.Count
+            $processProfile = Get-BenchProcessProfile $profileBefore $profileAfter $latencies.Count
             $status = $(if ($errors -eq 0) { "PASS" } else { "FAIL" })
             $reason = $(if ($errors -eq 0) { $null } else { $firstError })
             $results += New-BenchResult `
@@ -1249,9 +1321,9 @@ function Invoke-HttpSuiteForRuntime {
                 -LatenciesMs $latencies `
                 -Errors $errors `
                 -StartupMs $startupWatch.Elapsed.TotalMilliseconds `
-                -Profile $profile `
+                -ProcessProfile $processProfile `
                 -Correctness @{ checked = $true; status = $status; details = $(if ($errors -eq 0) { "status, content-type, and body validated" } else { $firstError }) } `
-                -Extra @{ routeCount = $(if ($workload.routeCount) { $workload.routeCount } else { $null }) }
+                -Extra (Get-BenchWorkloadExtra $workload)
         }
 
         return $results
@@ -1470,11 +1542,23 @@ foreach ($suiteName in $selectedSuites) {
             $allResults += Invoke-HttpSuiteForRuntime $runtimeName $runtimeInfo[$runtimeName] "http" (Get-HttpWorkloads)
         }
     }
-    elseif ($suiteName -eq "route") {
+    elseif ($suiteName -eq "route" -or $suiteName -eq "route.generated-table" -or $suiteName -eq "route.compact-prefix") {
+        $routeShapes = @()
+        if ($suiteName -eq "route") {
+            $routeShapes = @("generated-table", "compact-prefix")
+        }
+        elseif ($suiteName -eq "route.generated-table") {
+            $routeShapes = @("generated-table")
+        }
+        else {
+            $routeShapes = @("compact-prefix")
+        }
         foreach ($runtimeName in $selectedRuntimes) {
-            foreach ($count in @(10, 100, 1000)) {
-                $workloads = @(Get-RouteWorkloads | Where-Object { $_.routeCount -eq $count })
-                $allResults += Invoke-HttpSuiteForRuntime $runtimeName $runtimeInfo[$runtimeName] "route" $workloads $count
+            foreach ($shape in $routeShapes) {
+                foreach ($count in @(10, 100, 1000)) {
+                    $workloads = @(Get-RouteWorkloads $shape | Where-Object { $_.routeCount -eq $count })
+                    $allResults += Invoke-HttpSuiteForRuntime $runtimeName $runtimeInfo[$runtimeName] "route.$shape" $workloads $count $shape
+                }
             }
         }
     }

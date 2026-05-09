@@ -10,6 +10,8 @@
 #include "sloppy/runtime_contract.h"
 #include "sloppy/string.h"
 
+#include <stdio.h>
+
 static SlPlan sl_bench_plan(const SlPlanHandler* handlers, size_t handler_count)
 {
     SlPlan plan = {0};
@@ -135,7 +137,7 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     SlRoutePattern pattern = {0};
     SlHttpRequestHead request = {0};
     SlHttpRouteBinding binding = {SL_HTTP_METHOD_GET, &pattern, 1U, 0U};
-    SlHttpDispatchTable table = {&binding, 1U};
+    SlHttpDispatchTable table = {.routes = &binding, .route_count = 1U};
     SlPlanHandler handlers[] = {
         {1U, sl_str_from_cstr("getUserPost"),
          sl_str_from_cstr("GET /users/{id:int}/posts/{postId:int}")},
@@ -191,6 +193,121 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     *out_checksum = checksum;
     return sl_status_ok();
 }
+
+static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t target_index,
+                                                   bool expect_missing, uint64_t iterations,
+                                                   uint64_t* out_checksum)
+{
+    enum
+    {
+        SL_BENCH_MAX_ROUTES = 1000U
+    };
+    static unsigned char engine_storage[1024];
+    static unsigned char route_storage[1048576];
+    static unsigned char dispatch_storage[8192];
+    static SlPlanRoute routes[SL_BENCH_MAX_ROUTES];
+    static char pattern_storage[SL_BENCH_MAX_ROUTES][32];
+    char request_path[32];
+    SlArena engine_arena;
+    SlArena route_arena;
+    SlArena dispatch_arena;
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
+    SlPlan plan = sl_bench_plan(&handler, 1U);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    uint64_t checksum = 0U;
+    uint64_t index;
+    size_t route_index = 0U;
+    SlStatus status;
+
+    if (route_count == 0U || route_count > SL_BENCH_MAX_ROUTES || out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_bench_create_noop_engine(&engine_arena, &engine);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (route_index = 0U; route_index < route_count; route_index += 1U) {
+        (void)snprintf(pattern_storage[route_index], sizeof(pattern_storage[route_index]),
+                       "/routes/%zu", route_index);
+        routes[route_index] = (SlPlanRoute){0};
+        routes[route_index].method = sl_str_from_cstr("GET");
+        routes[route_index].pattern = sl_str_from_cstr(pattern_storage[route_index]);
+        routes[route_index].handler_id = 1U;
+    }
+    plan.routes = routes;
+    plan.route_count = route_count;
+    status = sl_http_route_table_build(&route_arena, &plan, &table, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_engine_destroy(engine);
+        return status;
+    }
+
+    (void)snprintf(request_path, sizeof(request_path), "/routes/%zu", target_index);
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr(request_path);
+    request.raw_target = request.path;
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlEngineResult result = {0};
+        sl_arena_reset(&dispatch_arena);
+        status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table.dispatch,
+                                               &request, &result, NULL);
+        if (expect_missing) {
+            if (sl_status_code(status) != SL_STATUS_OUT_OF_RANGE) {
+                sl_engine_destroy(engine);
+                return status;
+            }
+        }
+        else if (sl_status_code(status) != SL_STATUS_UNSUPPORTED) {
+            sl_engine_destroy(engine);
+            return status;
+        }
+        checksum += (uint64_t)sl_status_code(status);
+        checksum += (uint64_t)result.kind;
+    }
+
+    sl_engine_destroy(engine);
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+#define SL_BENCH_ROUTE_TABLE_FN(name, count, target, missing)                                      \
+    static SlStatus name(const SlBenchContext* context, uint64_t iterations,                       \
+                         uint64_t* out_checksum)                                                   \
+    {                                                                                              \
+        (void)context;                                                                             \
+        return sl_bench_route_table_dispatch_loop((count), (target), (missing), iterations,        \
+                                                  out_checksum);                                   \
+    }
+
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_10_first, 10U, 0U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_10_middle, 10U, 5U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_10_last, 10U, 9U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_10_missing, 10U, 11U, true)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_100_first, 100U, 0U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_100_middle, 100U, 50U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_100_last, 100U, 99U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_100_missing, 100U, 101U, true)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_1000_first, 1000U, 0U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_1000_middle, 1000U, 500U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_1000_last, 1000U, 999U, false)
+SL_BENCH_ROUTE_TABLE_FN(bench_route_table_1000_missing, 1000U, 1001U, true)
 
 static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* context,
                                                          uint64_t iterations,
@@ -301,6 +418,42 @@ static const SlBenchDefinition handler_definitions[] = {
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
      "not a server throughput benchmark; no sockets or response writer are involved", false},
+    {"route.dispatch.generated_table.10.first", "route",
+     "dispatch first static route in a generated 10-route table", 1000U, 100000U,
+     bench_route_table_10_first, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.10.middle", "route",
+     "dispatch middle static route in a generated 10-route table", 1000U, 100000U,
+     bench_route_table_10_middle, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.10.last", "route",
+     "dispatch last static route in a generated 10-route table", 1000U, 100000U,
+     bench_route_table_10_last, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.10.missing", "route",
+     "miss a static path in a generated 10-route table", 1000U, 100000U,
+     bench_route_table_10_missing, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.100.first", "route",
+     "dispatch first static route in a generated 100-route table", 1000U, 100000U,
+     bench_route_table_100_first, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.100.middle", "route",
+     "dispatch middle static route in a generated 100-route table", 1000U, 100000U,
+     bench_route_table_100_middle, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.100.last", "route",
+     "dispatch last static route in a generated 100-route table", 1000U, 100000U,
+     bench_route_table_100_last, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.100.missing", "route",
+     "miss a static path in a generated 100-route table", 1000U, 100000U,
+     bench_route_table_100_missing, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.1000.first", "route",
+     "dispatch first static route in a generated 1000-route table", 1000U, 100000U,
+     bench_route_table_1000_first, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.1000.middle", "route",
+     "dispatch middle static route in a generated 1000-route table", 1000U, 100000U,
+     bench_route_table_1000_middle, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.1000.last", "route",
+     "dispatch last static route in a generated 1000-route table", 1000U, 100000U,
+     bench_route_table_1000_last, "generated route table is built before timing", false},
+    {"route.dispatch.generated_table.1000.missing", "route",
+     "miss a static path in a generated 1000-route table", 1000U, 100000U,
+     bench_route_table_1000_missing, "generated route table is built before timing", false},
     {"http.body_reader.json_known_length", "handler",
      "bounded HTTP body reader with a declared JSON content length and chunked appends", 1000U,
      100000U, bench_http_body_reader_json_known_length,

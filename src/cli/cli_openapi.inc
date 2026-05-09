@@ -639,13 +639,13 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
 
 static int sl_cli_command_openapi(const SlCliOptions* options)
 {
-    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
-    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    unsigned char* json_storage = sl_cli_scratch_json_storage();
+    unsigned char* plan_arena_storage = sl_cli_scratch_plan_arena_storage();
     SlArena plan_arena;
     yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
-    char path_buffers[SL_CLI_MAX_ROUTES][512];
-    SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES] = {0};
+    SlCliMetadata* metadata = sl_cli_scratch_metadata();
+    static char path_buffers[SL_CLI_MAX_ROUTES][512];
+    static SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES];
     FILE* out = stdout;
 
     if (options->plan_path == NULL) {
@@ -653,7 +653,7 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         return 1;
     }
     if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
     {
         sl_cli_write_cstr(stderr, "sloppy openapi: failed to initialize plan validation arena\n");
         return 1;
@@ -673,7 +673,7 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         }
     }
     if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             &metadata) != 0)
+                             metadata) != 0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
@@ -683,15 +683,15 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         }
         return 1;
     }
-    sl_cli_sort_routes(&metadata);
-    if (sl_cli_openapi_prepare_paths(&metadata, path_buffers, openapi_paths) != 0) {
+    sl_cli_sort_routes(metadata);
+    if (sl_cli_openapi_prepare_paths(metadata, path_buffers, openapi_paths) != 0) {
         yyjson_doc_free(doc);
         if (out != stdout) {
             (void)fclose(out);
         }
         return 1;
     }
-    sl_cli_openapi_emit_document(out, &metadata, openapi_paths);
+    sl_cli_openapi_emit_document(out, metadata, openapi_paths);
 
     yyjson_doc_free(doc);
     if (out != stdout) {

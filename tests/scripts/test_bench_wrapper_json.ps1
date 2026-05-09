@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $benchScript = Join-Path $RepoRoot "tools/windows/bench.ps1"
 $stderrPath = Join-Path $env:TEMP ("sloppy-bench-json-stderr-{0}.log" -f ([Guid]::NewGuid()))
 $localRuntimeOut = Join-Path $env:TEMP ("sloppy-local-runtime-bench-{0}.json" -f ([Guid]::NewGuid()))
+$localRuntimeStderr = Join-Path $env:TEMP ("sloppy-local-runtime-bench-stderr-{0}.log" -f ([Guid]::NewGuid()))
 
 try {
     Push-Location $RepoRoot
@@ -25,9 +26,10 @@ try {
         throw "missing benchmark results"
     }
 
-    & $benchScript -Suite concurrency -Runtime node -WarmupRequests 0 -Requests 1 -Out $localRuntimeOut
+    & $benchScript -Suite concurrency -Runtime node -WarmupRequests 0 -Requests 1 -Out $localRuntimeOut 2> $localRuntimeStderr
     if ($LASTEXITCODE -ne 0) {
-        throw "bench.ps1 local runtime JSON smoke failed with exit code $LASTEXITCODE"
+        $stderr = Get-Content -LiteralPath $localRuntimeStderr -Raw -ErrorAction SilentlyContinue
+        throw "bench.ps1 local runtime JSON smoke failed with exit code $LASTEXITCODE. stderr: $stderr"
     }
 
     $localParsed = Get-Content -LiteralPath $localRuntimeOut -Raw | ConvertFrom-Json
@@ -57,4 +59,5 @@ finally {
     Pop-Location
     Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $localRuntimeOut -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $localRuntimeStderr -Force -ErrorAction SilentlyContinue
 }

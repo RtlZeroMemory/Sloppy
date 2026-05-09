@@ -467,9 +467,9 @@ static void sl_cli_audit_workers(const SlCliOptions* options, const SlCliMetadat
 
 static int sl_cli_command_audit(const SlCliOptions* options)
 {
-    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
+    unsigned char* json_storage = sl_cli_scratch_json_storage();
     yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
+    SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t findings = 0U;
     size_t errors = 0U;
 
@@ -477,7 +477,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
         sl_cli_write_cstr(stderr, "sloppy audit: --plan <path> is required\n");
         return 1;
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, NULL, false, &doc, &metadata) != 0) {
+    if (sl_cli_load_metadata(options->plan_path, json_storage, NULL, false, &doc, metadata) != 0) {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }
@@ -491,21 +491,21 @@ static int sl_cli_command_audit(const SlCliOptions* options)
         printf("Sloppy Audit\n\n");
     }
 
-    if (!sl_cli_span_empty(metadata.completeness) &&
-        sl_cli_span_equal_cstr(metadata.completeness, "invalid"))
+    if (!sl_cli_span_empty(metadata->completeness) &&
+        sl_cli_span_equal_cstr(metadata->completeness, "invalid"))
     {
         sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PLAN_INVALID",
                           "Plan completeness is invalid", "completeness", &findings, &errors);
     }
-    sl_cli_audit_routes(options, &metadata, &findings, &errors);
-    sl_cli_audit_modules(options, &metadata, &findings, &errors);
-    sl_cli_audit_providers(options, &metadata, &findings, &errors);
-    sl_cli_audit_capabilities(options, &metadata, &findings, &errors);
-    sl_cli_audit_config_requirements(options, &metadata, &findings, &errors);
-    sl_cli_audit_os_capabilities(options, &metadata, &findings, &errors);
-    sl_cli_audit_os_features(options, &metadata, &findings, &errors);
-    sl_cli_audit_http_clients(options, &metadata, &findings, &errors);
-    sl_cli_audit_workers(options, &metadata, &findings, &errors);
+    sl_cli_audit_routes(options, metadata, &findings, &errors);
+    sl_cli_audit_modules(options, metadata, &findings, &errors);
+    sl_cli_audit_providers(options, metadata, &findings, &errors);
+    sl_cli_audit_capabilities(options, metadata, &findings, &errors);
+    sl_cli_audit_config_requirements(options, metadata, &findings, &errors);
+    sl_cli_audit_os_capabilities(options, metadata, &findings, &errors);
+    sl_cli_audit_os_features(options, metadata, &findings, &errors);
+    sl_cli_audit_http_clients(options, metadata, &findings, &errors);
+    sl_cli_audit_workers(options, metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         printf("No findings.\n");

@@ -43,6 +43,10 @@ typedef struct SlHttpDispatchTable
 {
     const SlHttpRouteBinding* routes;
     size_t route_count;
+    const SlHttpRouteBinding** exact_route_buckets;
+    size_t exact_route_bucket_count;
+    const SlHttpRouteBinding* param_routes;
+    size_t param_route_count;
 } SlHttpDispatchTable;
 
 /*

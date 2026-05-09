@@ -9,6 +9,8 @@ json=0
 include_v8=0
 bench_name=""
 runtime_engine=0
+suite_value=""
+runtime_value=""
 out_path=""
 compare_before=""
 compare_after=""
@@ -52,8 +54,14 @@ while [[ $# -gt 0 ]]; do
       bench_name="${2:?missing value for --bench}"
       shift 2
       ;;
-    --suite|--runtime)
+    --suite)
       runtime_engine=1
+      suite_value="${2:?missing value for --suite}"
+      shift 2
+      ;;
+    --runtime)
+      runtime_engine=1
+      runtime_value="${2:?missing value for --runtime}"
       shift 2
       ;;
     --out)
@@ -152,4 +160,8 @@ if [[ -n "$bench_name" ]]; then
   args+=(--bench "$bench_name")
 fi
 
-"$bench_exe" "${args[@]}"
+if [[ "${#args[@]}" -gt 0 ]]; then
+  "$bench_exe" "${args[@]}"
+else
+  "$bench_exe"
+fi
