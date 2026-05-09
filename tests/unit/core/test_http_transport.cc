@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -53,6 +54,74 @@ static int expect_str_equal(SlStr actual, const char* expected)
 static int expect_bytes_equal(SlBytes actual, const char* expected)
 {
     return expect_true(sl_bytes_equal(actual, bytes_from_cstr(expected)));
+}
+
+static SlHttp2HeaderField h2_header(const char* name, const char* value)
+{
+    SlHttp2HeaderField field = {};
+    field.name = sl_str_from_cstr(name);
+    field.value = sl_str_from_cstr(value);
+    field.sensitive = false;
+    return field;
+}
+
+static bool h2_event_header_equals(const SlHttp2Event* event, const char* name, const char* value)
+{
+    if (event == nullptr) {
+        return false;
+    }
+    for (size_t index = 0U; index < event->headers.count; index += 1U) {
+        const SlHttp2HeaderField* field = &event->headers.fields[index];
+        if (sl_str_equal(field->name, sl_str_from_cstr(name)) &&
+            sl_str_equal(field->value, sl_str_from_cstr(value)))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool saw_h2_response_with_body(const SlHttp2EventList* events, int32_t stream_id,
+                                      const char* status, const char* body)
+{
+    bool saw_headers = false;
+    bool saw_body = false;
+
+    if (events == nullptr) {
+        return false;
+    }
+    for (size_t index = 0U; index < events->count; index += 1U) {
+        const SlHttp2Event* event = &events->events[index];
+        if (event->stream_id != stream_id) {
+            continue;
+        }
+        if (event->type == SL_HTTP2_EVENT_RESPONSE_HEADERS &&
+            h2_event_header_equals(event, ":status", status))
+        {
+            saw_headers = true;
+        }
+        if (event->type == SL_HTTP2_EVENT_DATA &&
+            sl_bytes_equal(event->data, bytes_from_cstr(body)))
+        {
+            saw_body = true;
+        }
+    }
+    return saw_headers && saw_body;
+}
+
+static size_t find_http1_header_end(SlBytes bytes)
+{
+    if (bytes.ptr == nullptr) {
+        return 0U;
+    }
+    for (size_t index = 0U; index + 3U < bytes.length; index += 1U) {
+        if (bytes.ptr[index] == '\r' && bytes.ptr[index + 1U] == '\n' &&
+            bytes.ptr[index + 2U] == '\r' && bytes.ptr[index + 3U] == '\n')
+        {
+            return index + 4U;
+        }
+    }
+    return 0U;
 }
 
 typedef struct ReadyHook
@@ -382,17 +451,33 @@ static int start_client_read(ClientConnect* client)
                : 2;
 }
 
+static int write_client_data(ClientConnect* client, SlBytes bytes);
+
 static int write_client_bytes(ClientConnect* client, const char* text)
 {
-    ClientWrite write = {};
     SlStr bytes = {};
-    uv_buf_t buffer = {};
 
-    if (client == nullptr || !client->connected || text == nullptr) {
+    if (text == nullptr) {
         return 1;
     }
     bytes = sl_str_from_cstr(text);
-    buffer = uv_buf_init(const_cast<char*>(bytes.ptr), static_cast<unsigned int>(bytes.length));
+    return write_client_data(
+        client,
+        sl_bytes_from_parts(reinterpret_cast<const unsigned char*>(bytes.ptr), bytes.length));
+}
+
+static int write_client_data(ClientConnect* client, SlBytes bytes)
+{
+    ClientWrite write = {};
+    uv_buf_t buffer = {};
+
+    if (client == nullptr || !client->connected || (bytes.ptr == nullptr && bytes.length != 0U) ||
+        bytes.length > UINT_MAX)
+    {
+        return 1;
+    }
+    buffer = uv_buf_init(reinterpret_cast<char*>(const_cast<unsigned char*>(bytes.ptr)),
+                         static_cast<unsigned int>(bytes.length));
     write.request.data = &write;
     if (uv_write(&write.request, reinterpret_cast<uv_stream_t*>(&client->handle), &buffer, 1U,
                  client_write_cb) != 0)
@@ -1027,6 +1112,162 @@ cleanup:
     return result;
 }
 
+static int tls_write_h2_bytes(BIO* bio, SlBytes bytes)
+{
+    if (bio == nullptr || (bytes.ptr == nullptr && bytes.length != 0U) || bytes.length > INT_MAX) {
+        return 1;
+    }
+    if (bytes.length == 0U) {
+        return 0;
+    }
+    return BIO_write(bio, bytes.ptr, static_cast<int>(bytes.length)) == (int)bytes.length ? 0 : 2;
+}
+
+static int tls_read_h2_until_response(BIO* bio, SlHttp2Session* session, int32_t stream_id,
+                                      const char* body)
+{
+    unsigned char buffer[2048];
+
+    if (bio == nullptr || session == nullptr || body == nullptr) {
+        return 1;
+    }
+    for (;;) {
+        size_t consumed = 0U;
+        int read_count = BIO_read(bio, buffer, static_cast<int>(sizeof(buffer)));
+        if (read_count > 0) {
+            SlHttp2EventList events = {};
+            if (expect_status(
+                    sl_http2_session_receive(
+                        session, sl_bytes_from_parts(buffer, (size_t)read_count), &consumed),
+                    SL_STATUS_OK) != 0 ||
+                consumed != (size_t)read_count)
+            {
+                return 2;
+            }
+            events = sl_http2_session_events(session);
+            if (saw_h2_response_with_body(&events, stream_id, "200", body)) {
+                return 0;
+            }
+            continue;
+        }
+        if (!BIO_should_retry(bio)) {
+            return 3;
+        }
+    }
+}
+
+static int tls_read_h2_once(BIO* bio, SlHttp2Session* session)
+{
+    unsigned char buffer[2048];
+    size_t consumed = 0U;
+    int read_count = 0;
+
+    if (bio == nullptr || session == nullptr) {
+        return 1;
+    }
+    read_count = BIO_read(bio, buffer, static_cast<int>(sizeof(buffer)));
+    if (read_count <= 0) {
+        return 2;
+    }
+    if (expect_status(sl_http2_session_receive(
+                          session, sl_bytes_from_parts(buffer, (size_t)read_count), &consumed),
+                      SL_STATUS_OK) != 0 ||
+        consumed != (size_t)read_count)
+    {
+        return 3;
+    }
+    return 0;
+}
+
+static int run_tls_h2_client(uint32_t port)
+{
+    SSL_CTX* context = nullptr;
+    BIO* bio = nullptr;
+    SSL* ssl = nullptr;
+    std::string endpoint = "127.0.0.1:" + std::to_string(port);
+    unsigned char client_storage[131072];
+    SlArena client_arena = {};
+    SlHttp2Session client_session = {};
+    SlHttp2SessionConfig client_config = {};
+    SlHttp2HeaderField fields[4] = {};
+    SlHttp2HeaderList headers = {};
+    SlBytes bytes = {};
+    const unsigned char* selected = nullptr;
+    unsigned int selected_length = 0U;
+    const unsigned char alpn[] = {2U, 'h', '2'};
+    int32_t stream_id = 0;
+    int result = 1;
+
+    context = SSL_CTX_new(TLS_client_method());
+    if (context == nullptr) {
+        return 2;
+    }
+    SSL_CTX_set_verify(context, SSL_VERIFY_NONE, nullptr);
+    if (SSL_CTX_set_alpn_protos(context, alpn, sizeof(alpn)) != 0) {
+        goto cleanup;
+    }
+    bio = BIO_new_ssl_connect(context);
+    if (bio == nullptr) {
+        goto cleanup;
+    }
+    BIO_get_ssl(bio, &ssl);
+    if (ssl == nullptr) {
+        goto cleanup;
+    }
+    SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+    BIO_set_conn_hostname(bio, endpoint.c_str());
+    if (BIO_do_connect(bio) <= 0 || BIO_do_handshake(bio) <= 0) {
+        goto cleanup;
+    }
+    SSL_get0_alpn_selected(ssl, &selected, &selected_length);
+    if (selected_length != 2U || selected == nullptr || selected[0] != 'h' || selected[1] != '2') {
+        goto cleanup;
+    }
+
+    client_config.role = SL_HTTP2_SESSION_ROLE_CLIENT;
+    fields[0] = h2_header(":method", "GET");
+    fields[1] = h2_header(":scheme", "https");
+    fields[2] = h2_header(":authority", "localhost");
+    fields[3] = h2_header(":path", "/tls-h2");
+    headers.fields = fields;
+    headers.count = sizeof(fields) / sizeof(fields[0]);
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_init(&client_session, &client_arena, &client_config),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_drain_output(&client_session, &bytes), SL_STATUS_OK) != 0 ||
+        tls_write_h2_bytes(bio, bytes) != 0)
+    {
+        goto cleanup;
+    }
+    if (tls_read_h2_once(bio, &client_session) != 0) {
+        goto cleanup;
+    }
+    if (expect_status(sl_http2_session_drain_output(&client_session, &bytes), SL_STATUS_OK) != 0 ||
+        tls_write_h2_bytes(bio, bytes) != 0 ||
+        expect_status(sl_http2_session_submit_request(&client_session, &headers, sl_bytes_empty(),
+                                                      &stream_id),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_drain_output(&client_session, &bytes), SL_STATUS_OK) != 0 ||
+        tls_write_h2_bytes(bio, bytes) != 0 ||
+        tls_read_h2_until_response(bio, &client_session, stream_id, "tls h2\n") != 0)
+    {
+        goto cleanup;
+    }
+
+    result = 0;
+
+cleanup:
+    sl_http2_session_dispose(&client_session);
+    if (bio != nullptr) {
+        BIO_free_all(bio);
+    }
+    if (context != nullptr) {
+        SSL_CTX_free(context);
+    }
+    return result;
+}
+
 static int test_https_loopback_reaches_handler_and_marks_scheme(void)
 {
     std::filesystem::path cert_path;
@@ -1081,6 +1322,10 @@ static int test_https_loopback_reaches_handler_and_marks_scheme(void)
         }
         uv_sleep(1U);
     }
+    if (client_result.load() == 999) {
+        result = 9024;
+        goto cleanup;
+    }
     if (client.joinable()) {
         client.join();
     }
@@ -1097,6 +1342,342 @@ static int test_https_loopback_reaches_handler_and_marks_scheme(void)
         result = 904;
         goto cleanup;
     }
+    result = 0;
+
+cleanup:
+    if (client.joinable()) {
+        (void)sl_http_transport_server_stop(&server, &diag);
+        client.join();
+    }
+    (void)sl_http_transport_server_stop(&server, &diag);
+    (void)sl_http_transport_server_dispose(&server, &diag);
+    std::filesystem::remove_all(cert_path.parent_path());
+    return result;
+}
+
+static int test_h2c_prior_knowledge_reaches_dispatch(void)
+{
+    unsigned char server_storage[131072];
+    unsigned char client_session_storage[131072];
+    SlArena server_arena = {};
+    SlArena client_session_arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    SlHttp2Session client_session = {};
+    SlHttp2SessionConfig client_config = {};
+    SlHttp2HeaderField request_fields[4] = {};
+    SlHttp2HeaderList request_headers = {};
+    SlHttp2EventList events = {};
+    DispatchHook dispatch = {};
+    ClientConnect client = {};
+    SlDiag diag = {};
+    SlBytes client_bytes = {};
+    size_t consumed = 0U;
+    int32_t stream_id = 0;
+    int result = 1;
+
+    config = small_config(nullptr);
+    config.request_arena_bytes = 65536U;
+    config.max_active_requests = 4U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("h2 ok\n"));
+
+    request_fields[0] = h2_header(":method", "GET");
+    request_fields[1] = h2_header(":scheme", "http");
+    request_fields[2] = h2_header(":authority", "localhost");
+    request_fields[3] = h2_header(":path", "/h2c");
+    request_headers.fields = request_fields;
+    request_headers.count = sizeof(request_fields) / sizeof(request_fields[0]);
+    client_config.role = SL_HTTP2_SESSION_ROLE_CLIENT;
+
+    if (expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&client_session_arena, client_session_storage,
+                                    sizeof(client_session_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &server_arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_init(&client_session, &client_session_arena, &client_config),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_drain_output(&client_session, &client_bytes),
+                      SL_STATUS_OK) != 0 ||
+        client_bytes.length == 0U ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        write_client_data(&client, client_bytes) != 0)
+    {
+        result = 9010;
+        goto cleanup;
+    }
+
+    for (size_t index = 0U; index < 1024U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 9011;
+            goto cleanup;
+        }
+        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        if (client.read_length != 0U && server.connections[0].write_completed) {
+            break;
+        }
+        uv_sleep(1U);
+    }
+
+    if (client.read_length == 0U ||
+        expect_status(sl_http2_session_receive(
+                          &client_session,
+                          sl_bytes_from_parts(client.read_buffer, client.read_length), &consumed),
+                      SL_STATUS_OK) != 0 ||
+        consumed != client.read_length)
+    {
+        result = 9015;
+        goto cleanup;
+    }
+    client.read_length = 0U;
+    consumed = 0U;
+
+    if (expect_status(sl_http2_session_submit_request(&client_session, &request_headers,
+                                                      sl_bytes_empty(), &stream_id),
+                      SL_STATUS_OK) != 0 ||
+        stream_id != 1 ||
+        expect_status(sl_http2_session_drain_output(&client_session, &client_bytes),
+                      SL_STATUS_OK) != 0 ||
+        client_bytes.length == 0U || write_client_data(&client, client_bytes) != 0)
+    {
+        result = 9016;
+        goto cleanup;
+    }
+    server.connections[0].write_completed = false;
+
+    for (size_t index = 0U; index < 1024U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 9017;
+            goto cleanup;
+        }
+        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        if (dispatch.count == 1U && client.read_length != 0U &&
+            server.connections[0].write_completed)
+        {
+            break;
+        }
+        uv_sleep(1U);
+    }
+
+    if (dispatch.count != 1U || dispatch.method != SL_HTTP_METHOD_GET ||
+        !sl_str_equal(dispatch.path, sl_str_from_cstr("/h2c")) ||
+        !sl_str_equal(dispatch.scheme, sl_str_from_cstr("http")) ||
+        !server.connections[0].http2_mode || server.backend.active_requests != 0U)
+    {
+        result = 9012;
+        goto cleanup;
+    }
+
+    if (expect_status(sl_http2_session_receive(
+                          &client_session,
+                          sl_bytes_from_parts(client.read_buffer, client.read_length), &consumed),
+                      SL_STATUS_OK) != 0 ||
+        consumed != client.read_length)
+    {
+        result = 9013;
+        goto cleanup;
+    }
+
+    events = sl_http2_session_events(&client_session);
+    if (!saw_h2_response_with_body(&events, stream_id, "200", "h2 ok\n")) {
+        result = 9014;
+        goto cleanup;
+    }
+
+    result = 0;
+
+cleanup:
+    sl_http2_session_dispose(&client_session);
+    stop_one_connection(&server, &client);
+    return result;
+}
+
+static int test_h2c_upgrade_reaches_dispatch_stream1(void)
+{
+    static const unsigned char settings_payload[] = {0x00U, 0x03U, 0x00U, 0x00U, 0x00U, 0x64U};
+    unsigned char server_storage[131072];
+    unsigned char client_session_storage[131072];
+    SlArena server_arena = {};
+    SlArena client_session_arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    SlHttp2Session client_session = {};
+    SlHttp2SessionConfig client_config = {};
+    SlHttp2EventList events = {};
+    DispatchHook dispatch = {};
+    ClientConnect client = {};
+    SlDiag diag = {};
+    SlBytes response = {};
+    SlBytes h2_bytes = {};
+    size_t header_end = 0U;
+    size_t consumed = 0U;
+    int result = 1;
+
+    config = small_config(nullptr);
+    config.request_arena_bytes = 65536U;
+    config.max_active_requests = 4U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("upgrade h2\n"));
+    client_config.role = SL_HTTP2_SESSION_ROLE_CLIENT;
+
+    if (expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&client_session_arena, client_session_storage,
+                                    sizeof(client_session_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &server_arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_init(&client_session, &client_session_arena, &client_config),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_upgrade_h2c(
+                          &client_session,
+                          sl_bytes_from_parts(settings_payload, sizeof(settings_payload)), false),
+                      SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        write_client_bytes(&client, "GET /upgrade HTTP/1.1\r\n"
+                                    "Host: localhost\r\n"
+                                    "Connection: Upgrade, HTTP2-Settings\r\n"
+                                    "Upgrade: h2c\r\n"
+                                    "HTTP2-Settings: AAMAAABk\r\n"
+                                    "\r\n") != 0)
+    {
+        result = 9030;
+        goto cleanup;
+    }
+
+    for (size_t index = 0U; index < 1024U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 9031;
+            goto cleanup;
+        }
+        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        response = sl_bytes_from_parts(client.read_buffer, client.read_length);
+        header_end = find_http1_header_end(response);
+        if (dispatch.count == 1U && header_end != 0U && response.length > header_end &&
+            server.connections[0].write_completed)
+        {
+            break;
+        }
+        uv_sleep(1U);
+    }
+
+    response = sl_bytes_from_parts(client.read_buffer, client.read_length);
+    header_end = find_http1_header_end(response);
+    if (header_end == 0U || response.length <= header_end || dispatch.count != 1U ||
+        dispatch.method != SL_HTTP_METHOD_GET ||
+        !sl_str_equal(dispatch.path, sl_str_from_cstr("/upgrade")) ||
+        !sl_str_equal(dispatch.scheme, sl_str_from_cstr("http")) ||
+        !server.connections[0].http2_mode || server.backend.active_requests != 0U ||
+        !sl_bytes_equal(sl_bytes_from_parts(response.ptr, header_end),
+                        bytes_from_cstr("HTTP/1.1 101 Switching Protocols\r\n"
+                                        "Connection: Upgrade\r\n"
+                                        "Upgrade: h2c\r\n"
+                                        "\r\n")))
+    {
+        result = 9032;
+        goto cleanup;
+    }
+
+    h2_bytes = sl_bytes_from_parts(response.ptr + header_end, response.length - header_end);
+    if (expect_status(sl_http2_session_receive(&client_session, h2_bytes, &consumed),
+                      SL_STATUS_OK) != 0 ||
+        consumed != h2_bytes.length)
+    {
+        result = 9033;
+        goto cleanup;
+    }
+
+    events = sl_http2_session_events(&client_session);
+    if (!saw_h2_response_with_body(&events, 1, "200", "upgrade h2\n")) {
+        result = 9034;
+        goto cleanup;
+    }
+
+    result = 0;
+
+cleanup:
+    sl_http2_session_dispose(&client_session);
+    stop_one_connection(&server, &client);
+    return result;
+}
+
+static int test_https_h2_alpn_reaches_dispatch(void)
+{
+    std::filesystem::path cert_path;
+    std::filesystem::path key_path;
+    std::string cert_path_text;
+    std::string key_path_text;
+    unsigned char storage[131072];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+    std::atomic<int> client_result{999};
+    std::thread client;
+    int result = 1;
+
+    if (write_generated_tls_fixture(&cert_path, &key_path) != 0) {
+        return 9020;
+    }
+    cert_path_text = cert_path.string();
+    key_path_text = key_path.string();
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("tls h2\n"));
+    config = small_config(nullptr);
+    config.request_arena_bytes = 65536U;
+    config.max_active_requests = 4U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(key_path_text.c_str());
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        result = 9021;
+        goto cleanup;
+    }
+
+    client = std::thread([&]() {
+        int code = run_tls_h2_client(sl_http_transport_server_bound_port(&server));
+        client_result.store(code);
+    });
+
+    for (size_t index = 0U; index < 4096U && client_result.load() == 999; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 9022;
+            goto cleanup;
+        }
+        uv_sleep(1U);
+    }
+    if (client.joinable()) {
+        client.join();
+    }
+    if (client_result.load() != 0 || dispatch.count != 1U ||
+        dispatch.method != SL_HTTP_METHOD_GET ||
+        !sl_str_equal(dispatch.path, sl_str_from_cstr("/tls-h2")) ||
+        !sl_str_equal(dispatch.scheme, sl_str_from_cstr("https")) ||
+        !server.connections[0].http2_mode || server.backend.active_requests != 0U)
+    {
+        result = 9023;
+        goto cleanup;
+    }
+
     result = 0;
 
 cleanup:
@@ -3536,6 +4117,15 @@ static int run_named_transport_case(const char* name)
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_https_loopback_reaches_handler_and_marks_scheme,
                                        test_https_close_notify_is_disconnect_cleanup_only);
     }
+    if (strcmp(name, "http2_h2c") == 0) {
+        return test_h2c_prior_knowledge_reaches_dispatch();
+    }
+    if (strcmp(name, "http2_h2c_upgrade") == 0) {
+        return test_h2c_upgrade_reaches_dispatch_stream1();
+    }
+    if (strcmp(name, "http2_tls_alpn") == 0) {
+        return test_https_h2_alpn_reaches_dispatch();
+    }
     if (strcmp(name, "https_tls_negative") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_https_listen_rejects_invalid_cert_key_and_passphrase,
                                        test_https_handshake_failure_and_active_shutdown_cleanup);
@@ -3676,6 +4266,18 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_https_close_notify_is_disconnect_cleanup_only();
+    if (result != 0) {
+        return result;
+    }
+    result = test_h2c_prior_knowledge_reaches_dispatch();
+    if (result != 0) {
+        return result;
+    }
+    result = test_h2c_upgrade_reaches_dispatch_stream1();
+    if (result != 0) {
+        return result;
+    }
+    result = test_https_h2_alpn_reaches_dispatch();
     if (result != 0) {
         return result;
     }

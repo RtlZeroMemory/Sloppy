@@ -12,6 +12,8 @@ find_package(xxHash CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(PostgreSQL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(NGHTTP2 REQUIRED IMPORTED_TARGET libnghttp2)
 if(SLOPPY_ENABLE_SQLSERVER)
     find_package(ODBC REQUIRED)
     message(STATUS "SQL Server provider: enabled through ODBC")
@@ -37,6 +39,9 @@ else()
     message(FATAL_ERROR "libuv dependency was found, but neither libuv::uv_a nor libuv::uv is available.")
 endif()
 
+set(SLOPPY_NGHTTP2_TARGET PkgConfig::NGHTTP2)
+
+
 if(TARGET xxHash::xxhash)
     set(SLOPPY_XXHASH_TARGET xxHash::xxhash)
 elseif(TARGET xxhash)
@@ -59,6 +64,7 @@ target_link_libraries(
             yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
             ${SLOPPY_LIBUV_TARGET}
+            ${SLOPPY_NGHTTP2_TARGET}
             ${SLOPPY_XXHASH_TARGET}
             OpenSSL::Crypto
             OpenSSL::SSL

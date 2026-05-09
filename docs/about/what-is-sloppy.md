@@ -56,12 +56,13 @@ Real:
 - Compiles a focused TypeScript/JS subset into deterministic Plans.
 - Runs handlers through an isolated V8 bridge.
 - SQLite end-to-end, with PostgreSQL and SQL Server in opt-in lanes.
-- Bounded HTTP/1.1 server, OpenSSL TLS plumbing, capability declarations,
-  service injection, structured logging, configuration with typed binding.
+- Bounded HTTP/1.1 server, HTTP/2 transport path, OpenSSL TLS plumbing,
+  capability declarations, service injection, structured logging,
+  configuration with typed binding.
 
 Pre-alpha:
 
-- Production hardening (long graceful drain, HTTP/2, broader TLS posture).
+- Production hardening (long graceful drain, broader TLS posture).
 - The app-host feature surface and compiler subset are intentionally narrow:
   middleware, CORS, request IDs, request logging, controllers, health checks,
   ProblemDetails, services, config, and typed providers have static compiler

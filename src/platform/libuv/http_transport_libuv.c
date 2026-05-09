@@ -17,6 +17,21 @@
 #include <openssl/ssl.h>
 #include <uv.h>
 
+#define SL_HTTP2_PREFACE_BYTES 24U
+
+static const unsigned char SL_HTTP2_PREFACE[SL_HTTP2_PREFACE_BYTES] = {
+    'P', 'R', 'I',  ' ',  '*',  ' ',  'H', 'T', 'T',  'P',  '/',  '2',
+    '.', '0', '\r', '\n', '\r', '\n', 'S', 'M', '\r', '\n', '\r', '\n'};
+static const char SL_HTTP2_H2C_UPGRADE_STATUS[] = "HTTP/1.1 101 Switching Protocols\r\n"
+                                                  "Connection: Upgrade\r\n"
+                                                  "Upgrade: h2c\r\n"
+                                                  "\r\n";
+#define SL_HTTP2_H2C_UPGRADE_STATUS_BYTES (sizeof(SL_HTTP2_H2C_UPGRADE_STATUS) - 1U)
+static const unsigned char SL_HTTP_TRANSPORT_ALPN_PROTOCOLS[] = {2U,  'h', '2', 8U,  'h', 't',
+                                                                 't', 'p', '/', '1', '.', '1'};
+static const unsigned char SL_HTTP_TRANSPORT_ALPN_HTTP11[] = {8U,  'h', 't', 't', 'p',
+                                                              '/', '1', '.', '1'};
+
 struct SlHttpPlatformConnection
 {
     uv_tcp_t handle;
@@ -48,6 +63,7 @@ struct SlHttpPlatformConnection
     bool writing;
     bool tls_enabled;
     bool tls_handshake_complete;
+    bool tls_alpn_h2;
     bool tls_writing;
     bool tls_shutdown_writing;
 };
@@ -361,6 +377,7 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
     }
     platform->tls_enabled = false;
     platform->tls_handshake_complete = false;
+    platform->tls_alpn_h2 = false;
     platform->tls_writing = false;
     platform->tls_shutdown_writing = false;
     platform->closing = false;
@@ -513,6 +530,62 @@ static bool sl_http_transport_header_value(const SlHttpRequestHead* head, SlStr 
     return false;
 }
 
+static bool sl_http_transport_request_header_value_count(const SlHttpRequestHead* head, SlStr name,
+                                                         SlStr* out_value, size_t* out_count)
+{
+    size_t count = 0U;
+
+    if (out_value != NULL) {
+        *out_value = sl_str_empty();
+    }
+    if (out_count != NULL) {
+        *out_count = 0U;
+    }
+    if (head == NULL || (head->header_count != 0U && head->headers == NULL)) {
+        return false;
+    }
+    for (size_t index = 0U; index < head->header_count; index += 1U) {
+        if (sl_str_equal_ci_ascii(head->headers[index].name, name)) {
+            if (out_value != NULL && count == 0U) {
+                *out_value = head->headers[index].value;
+            }
+            count += 1U;
+        }
+    }
+    if (out_count != NULL) {
+        *out_count = count;
+    }
+    return count != 0U;
+}
+
+static bool sl_http_transport_connection_header_has_token(SlStr value, SlStr token);
+
+static bool sl_http_transport_request_header_has_token(const SlHttpRequestHead* head, SlStr name,
+                                                       SlStr token, size_t* out_count)
+{
+    size_t count = 0U;
+    bool found = false;
+
+    if (out_count != NULL) {
+        *out_count = 0U;
+    }
+    if (head == NULL || (head->header_count != 0U && head->headers == NULL)) {
+        return false;
+    }
+    for (size_t index = 0U; index < head->header_count; index += 1U) {
+        if (sl_str_equal_ci_ascii(head->headers[index].name, name)) {
+            count += 1U;
+            if (sl_http_transport_connection_header_has_token(head->headers[index].value, token)) {
+                found = true;
+            }
+        }
+    }
+    if (out_count != NULL) {
+        *out_count = count;
+    }
+    return found;
+}
+
 static bool sl_http_transport_response_header_name_char_valid(char ch)
 {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
@@ -579,6 +652,10 @@ static void sl_http_transport_alloc_read(uv_handle_t* handle, size_t suggested_s
 static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buffer);
 static SlStatus sl_http_transport_tls_drain_handshake(SlHttpTransportConnection* connection,
                                                       SlDiag* out_diag);
+static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* connection,
+                                                     SlDiag* out_diag);
+static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* connection,
+                                                SlBytes bytes, SlDiag* out_diag);
 
 static bool sl_http_transport_request_terminal(SlHttpRequestState state)
 {
@@ -644,6 +721,35 @@ static int sl_http_transport_tls_passphrase_cb(char* buffer, int size, int rwfla
     return (int)passphrase.length;
 }
 
+static int sl_http_transport_tls_alpn_select_cb(SSL* ssl, const unsigned char** out,
+                                                unsigned char* outlen, const unsigned char* in,
+                                                unsigned int inlen, void* user)
+{
+    SlHttpTransportServer* server = (SlHttpTransportServer*)user;
+    const unsigned char* protocols = SL_HTTP_TRANSPORT_ALPN_HTTP11;
+    unsigned int protocol_length = (unsigned int)sizeof(SL_HTTP_TRANSPORT_ALPN_HTTP11);
+    unsigned char* selected = NULL;
+    unsigned char selected_length = 0U;
+
+    (void)ssl;
+    if (out == NULL || outlen == NULL || in == NULL || inlen == 0U) {
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+    if (server != NULL && server->config.dispatch != NULL) {
+        protocols = SL_HTTP_TRANSPORT_ALPN_PROTOCOLS;
+        protocol_length = (unsigned int)sizeof(SL_HTTP_TRANSPORT_ALPN_PROTOCOLS);
+    }
+    if (SSL_select_next_proto(&selected, &selected_length, protocols, protocol_length, in, inlen) !=
+        OPENSSL_NPN_NEGOTIATED)
+    {
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+
+    *out = selected;
+    *outlen = selected_length;
+    return SSL_TLSEXT_ERR_OK;
+}
+
 static void sl_http_transport_clear_tls_passphrase(SlHttpTransportServer* server)
 {
     if (server == NULL || server->platform == NULL || server->platform->tls_passphrase.ptr == NULL)
@@ -688,6 +794,7 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
     SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION);
     SSL_CTX_set_default_passwd_cb(context, sl_http_transport_tls_passphrase_cb);
     SSL_CTX_set_default_passwd_cb_userdata(context, server);
+    SSL_CTX_set_alpn_select_cb(context, sl_http_transport_tls_alpn_select_cb, server);
     if (SSL_CTX_use_certificate_chain_file(
             context, sl_owned_str_as_view(server->platform->tls_certificate_path).ptr) != 1)
     {
@@ -1150,6 +1257,210 @@ static SlStatus sl_http_transport_start_write_bytes(SlHttpTransportConnection* c
     return sl_status_ok();
 }
 
+static SlStatus sl_http_transport_http2_dispatch_adapter(SlHttpConnection* core, SlArena* arena,
+                                                         const SlHttpRequestLifecycle* request,
+                                                         SlHttpResponse* out_response,
+                                                         SlDiag* out_diag, void* user)
+{
+    SlHttpTransportConnection* connection = (SlHttpTransportConnection*)user;
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+
+    (void)core;
+    if (connection == NULL || server == NULL || server->config.dispatch == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return server->config.dispatch(connection, arena, request, out_response, out_diag,
+                                   server->config.dispatch_user);
+}
+
+static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* connection,
+                                                     SlDiag* out_diag)
+{
+    SlBytes bytes = {0};
+    SlStatus status;
+
+    if (connection == NULL || !connection->http2_dispatcher_started) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->platform != NULL && connection->platform->writing) {
+        return sl_status_ok();
+    }
+
+    status = sl_http2_server_dispatcher_drain_output(&connection->http2_dispatcher, &bytes);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 response serialization failed",
+                                      sizeof("HTTP/2 response serialization failed") - 1U),
+            sl_http_transport_literal("HTTP/2 frames must fit configured transport caps",
+                                      sizeof("HTTP/2 frames must fit configured transport caps") -
+                                          1U));
+    }
+    if (bytes.length == 0U) {
+        return sl_status_ok();
+    }
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
+}
+
+static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connection,
+                                             bool reset_request_arena, SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    SlHttp2DispatchConfig config = {0};
+    SlStatus status;
+
+    if (connection == NULL || server == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (server->config.dispatch == NULL) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_DISPATCH_FAILED, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("HTTP/2 dispatch callback is not configured",
+                                      sizeof("HTTP/2 dispatch callback is not configured") - 1U),
+            sl_http_transport_literal("configure the runtime dispatch hook before accepting h2",
+                                      sizeof("configure the runtime dispatch hook before "
+                                             "accepting h2") -
+                                          1U));
+    }
+
+    sl_http_transport_stop_timer(&connection->platform->header_timer,
+                                 &connection->platform->header_timer_initialized);
+    sl_http_transport_stop_timer(&connection->platform->body_timer,
+                                 &connection->platform->body_timer_initialized);
+    sl_http_transport_stop_timer(&connection->platform->request_timer,
+                                 &connection->platform->request_timer_initialized);
+    if (reset_request_arena) {
+        sl_arena_reset(&connection->request_arena);
+    }
+
+    config.dispatch = sl_http_transport_http2_dispatch_adapter;
+    config.dispatch_user = connection;
+    config.max_streams = server->config.max_active_requests == 0U
+                             ? SL_HTTP2_DISPATCH_DEFAULT_MAX_STREAMS
+                             : server->config.max_active_requests;
+    config.max_body_bytes = server->backend.options.parse.max_body_length;
+    config.max_response_body_bytes = server->config.max_response_bytes;
+    config.session.max_concurrent_streams =
+        config.max_streams > UINT32_MAX ? UINT32_MAX : (uint32_t)config.max_streams;
+    config.session.max_event_data_bytes = config.max_body_bytes;
+    config.session.max_outbound_bytes = server->config.max_response_bytes;
+
+    status = sl_http2_server_dispatcher_init(
+        &connection->http2_dispatcher, &connection->request_arena, &connection->core, &config);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TRANSPORT_CONFIG, sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 dispatcher initialization failed",
+                                      sizeof("HTTP/2 dispatcher initialization failed") - 1U),
+            sl_http_transport_literal("HTTP/2 connection state stays bounded per accepted slot",
+                                      sizeof("HTTP/2 connection state stays bounded per accepted "
+                                             "slot") -
+                                          1U));
+    }
+
+    connection->http2_mode = true;
+    connection->http2_dispatcher_started = true;
+    connection->core.scheme = connection->platform != NULL && connection->platform->tls_enabled
+                                  ? sl_str_from_cstr("https")
+                                  : sl_str_from_cstr("http");
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY;
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_http2_start(SlHttpTransportConnection* connection,
+                                              SlBytes initial_bytes, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    status = sl_http_transport_http2_init(connection, true, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (initial_bytes.length != 0U) {
+        status = sl_http_transport_http2_receive(connection, initial_bytes, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_http_transport_http2_flush_output(connection, out_diag);
+}
+
+static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* connection,
+                                                SlBytes bytes, SlDiag* out_diag)
+{
+    SlStatus status;
+    size_t consumed = 0U;
+
+    if (connection == NULL || !connection->http2_dispatcher_started) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http2_server_dispatcher_receive(&connection->http2_dispatcher, bytes, &consumed);
+    if (!sl_status_is_ok(status) || consumed != bytes.length) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_status_is_ok(status) ? SL_STATUS_INVALID_ARGUMENT : sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 frame input is malformed",
+                                      sizeof("HTTP/2 frame input is malformed") - 1U),
+            sl_http_transport_literal("invalid HTTP/2 connections are closed without exposing "
+                                      "socket details",
+                                      sizeof("invalid HTTP/2 connections are closed without "
+                                             "exposing socket details") -
+                                          1U));
+    }
+    return sl_http_transport_http2_flush_output(connection, out_diag);
+}
+
+static bool sl_http_transport_http2_preface_prefix_matches(SlBytes bytes)
+{
+    if (bytes.ptr == NULL || bytes.length == 0U || bytes.length > SL_HTTP2_PREFACE_BYTES) {
+        return false;
+    }
+    for (size_t index = 0U; index < bytes.length; index += 1U) {
+        if (bytes.ptr[index] != SL_HTTP2_PREFACE[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* connection,
+                                                    bool* out_handled, SlDiag* out_diag)
+{
+    SlBytes accumulated = {0};
+    SlBytes initial_frames = {0};
+
+    if (out_handled != NULL) {
+        *out_handled = false;
+    }
+    if (connection == NULL || out_handled == NULL || connection->http2_mode ||
+        connection->request_started || connection->head_length != 0U)
+    {
+        return sl_status_ok();
+    }
+
+    accumulated = sl_bytes_from_parts(connection->accumulation, connection->accumulation_length);
+    if (!sl_http_transport_http2_preface_prefix_matches(sl_bytes_from_parts(
+            accumulated.ptr, accumulated.length < SL_HTTP2_PREFACE_BYTES ? accumulated.length
+                                                                         : SL_HTTP2_PREFACE_BYTES)))
+    {
+        return sl_status_ok();
+    }
+
+    if (accumulated.length < SL_HTTP2_PREFACE_BYTES) {
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD;
+        *out_handled = true;
+        return sl_status_ok();
+    }
+
+    initial_frames = accumulated;
+    *out_handled = true;
+    return sl_http_transport_http2_start(connection, initial_frames, out_diag);
+}
+
 static SlStatus sl_http_transport_write_stream_next(SlHttpTransportConnection* connection,
                                                     SlDiag* out_diag)
 {
@@ -1478,6 +1789,18 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
                                      &platform->request_timer_initialized);
     }
     if (connection == NULL) {
+        return;
+    }
+
+    if (connection->http2_mode) {
+        connection->write_completed = true;
+        if (status != 0) {
+            (void)sl_http_connection_fail(&connection->core, NULL);
+            (void)sl_http_transport_connection_close(connection, NULL);
+            return;
+        }
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY;
+        (void)sl_http_transport_http2_flush_output(connection, NULL);
         return;
     }
 
@@ -2083,6 +2406,276 @@ static bool sl_http_transport_expect_header_present(SlBytes head)
            count != 0U;
 }
 
+static int sl_http_transport_base64url_value(char ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A';
+    }
+    if (ch >= 'a' && ch <= 'z') {
+        return ch - 'a' + 26;
+    }
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0' + 52;
+    }
+    if (ch == '-') {
+        return 62;
+    }
+    if (ch == '_') {
+        return 63;
+    }
+    return -1;
+}
+
+static bool sl_http_transport_base64url_decode(SlStr value, unsigned char* out, size_t out_capacity,
+                                               size_t* out_length)
+{
+    uint32_t accumulator = 0U;
+    unsigned int bits = 0U;
+    size_t output = 0U;
+    size_t padding = 0U;
+
+    if (out_length != NULL) {
+        *out_length = 0U;
+    }
+    value = sl_http_transport_trim_ascii_space(value);
+    if (out == NULL || out_length == NULL || (value.ptr == NULL && value.length != 0U)) {
+        return false;
+    }
+    if (value.length == 0U) {
+        return true;
+    }
+    if ((value.length % 4U) == 1U) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        int decoded = 0;
+
+        if (value.ptr[index] == '=') {
+            padding += 1U;
+            if (padding > 2U) {
+                return false;
+            }
+            continue;
+        }
+        if (padding != 0U) {
+            return false;
+        }
+
+        decoded = sl_http_transport_base64url_value(value.ptr[index]);
+        if (decoded < 0) {
+            return false;
+        }
+        accumulator = (accumulator << 6U) | (uint32_t)decoded;
+        bits += 6U;
+        if (bits >= 8U) {
+            bits -= 8U;
+            if (output >= out_capacity) {
+                return false;
+            }
+            out[output] = (unsigned char)((accumulator >> bits) & 0xffU);
+            output += 1U;
+        }
+    }
+
+    if (padding != 0U && (value.length % 4U) != 0U) {
+        return false;
+    }
+    if (bits != 0U && (accumulator & ((1U << bits) - 1U)) != 0U) {
+        return false;
+    }
+
+    *out_length = output;
+    return true;
+}
+
+static bool sl_http_transport_request_is_h2c_upgrade(SlHttpTransportConnection* connection,
+                                                     SlStr* out_settings, bool* out_malformed)
+{
+    SlHttpRequestHead* head = connection == NULL ? NULL : &connection->request.head;
+    SlStr settings = {0};
+    size_t upgrade_count = 0U;
+    size_t connection_count = 0U;
+    size_t settings_count = 0U;
+    bool upgrade_h2c = false;
+    bool connection_upgrade = false;
+    bool connection_settings = false;
+
+    if (out_settings != NULL) {
+        *out_settings = sl_str_empty();
+    }
+    if (out_malformed != NULL) {
+        *out_malformed = false;
+    }
+    if (connection == NULL || head == NULL || out_settings == NULL || out_malformed == NULL) {
+        return false;
+    }
+
+    upgrade_h2c = sl_http_transport_request_header_has_token(
+        head, sl_str_from_cstr("Upgrade"), sl_str_from_cstr("h2c"), &upgrade_count);
+    if (!upgrade_h2c) {
+        return false;
+    }
+
+    connection_upgrade = sl_http_transport_request_header_has_token(
+        head, sl_str_from_cstr("Connection"), sl_str_from_cstr("Upgrade"), &connection_count);
+    connection_settings = sl_http_transport_request_header_has_token(
+        head, sl_str_from_cstr("Connection"), sl_str_from_cstr("HTTP2-Settings"), NULL);
+    (void)sl_http_transport_request_header_value_count(head, sl_str_from_cstr("HTTP2-Settings"),
+                                                       &settings, &settings_count);
+
+    if ((connection->platform != NULL && connection->platform->tls_enabled) ||
+        head->version_major != 1U || head->version_minor != 1U || upgrade_count != 1U ||
+        connection_count == 0U || !connection_upgrade || !connection_settings ||
+        settings_count != 1U)
+    {
+        *out_malformed = true;
+        return true;
+    }
+
+    *out_settings = settings;
+    return true;
+}
+
+static SlStatus sl_http_transport_h2c_upgrade_response(SlHttpTransportConnection* connection,
+                                                       SlBytes http2_bytes, SlDiag* out_diag)
+{
+    SlByteBuilder builder = {0};
+    SlBytes bytes = {0};
+    SlStatus status;
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+
+    if (connection == NULL || (http2_bytes.ptr == NULL && http2_bytes.length != 0U)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_byte_builder_init_fixed(&builder, connection->response_storage,
+                                        connection->response_storage_size);
+    if (sl_status_is_ok(status)) {
+        status = sl_byte_builder_append_bytes(
+            &builder, sl_bytes_from_parts((const unsigned char*)SL_HTTP2_H2C_UPGRADE_STATUS,
+                                          SL_HTTP2_H2C_UPGRADE_STATUS_BYTES));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_byte_builder_append_bytes(&builder, http2_bytes);
+    }
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 upgrade response serialization failed",
+                                      sizeof("HTTP/2 upgrade response serialization failed") - 1U),
+            sl_http_transport_literal("h2c upgrade response frames must fit the response buffer",
+                                      sizeof("h2c upgrade response frames must fit the response "
+                                             "buffer") -
+                                          1U));
+    }
+
+    bytes = sl_byte_builder_view(&builder);
+    if (server == NULL || bytes.length > server->config.max_pending_write_bytes) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE, SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("HTTP/2 upgrade response exceeded pending write cap",
+                                      sizeof("HTTP/2 upgrade response exceeded pending write "
+                                             "cap") -
+                                          1U),
+            sl_http_transport_literal("h2c upgrade response frames must fit the pending write cap",
+                                      sizeof("h2c upgrade response frames must fit the pending "
+                                             "write cap") -
+                                          1U));
+    }
+
+    connection->response_length = bytes.length;
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
+}
+
+static SlStatus sl_http_transport_try_h2c_upgrade(SlHttpTransportConnection* connection,
+                                                  bool* out_upgraded, SlDiag* out_diag)
+{
+    SlStr settings_value = {0};
+    SlBytes settings_payload = {0};
+    SlBytes http2_bytes = {0};
+    SlStatus status;
+    void* settings_storage = NULL;
+    size_t settings_capacity = 0U;
+    size_t settings_length = 0U;
+    bool malformed = false;
+
+    if (out_upgraded != NULL) {
+        *out_upgraded = false;
+    }
+    if (connection == NULL || out_upgraded == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_http_transport_request_is_h2c_upgrade(connection, &settings_value, &malformed)) {
+        return sl_status_ok();
+    }
+    if (malformed) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP/2 h2c Upgrade request is invalid",
+                                      sizeof("HTTP/2 h2c Upgrade request is invalid") - 1U),
+            sl_http_transport_literal(
+                "h2c Upgrade requires HTTP/1.1, Upgrade: h2c, Connection tokens, and one "
+                "HTTP2-Settings header",
+                sizeof("h2c Upgrade requires HTTP/1.1, Upgrade: h2c, Connection tokens, and one "
+                       "HTTP2-Settings header") -
+                    1U));
+    }
+
+    if (settings_value.length != 0U) {
+        status = sl_checked_mul_size(settings_value.length, 3U, &settings_capacity);
+        if (sl_status_is_ok(status)) {
+            settings_capacity = (settings_capacity / 4U) + 3U;
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_arena_alloc(&connection->request_arena, settings_capacity, 1U,
+                                    &settings_storage);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (!sl_http_transport_base64url_decode(settings_value, (unsigned char*)settings_storage,
+                                                settings_capacity, &settings_length))
+        {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP/2 h2c settings are malformed",
+                                          sizeof("HTTP/2 h2c settings are malformed") - 1U),
+                sl_http_transport_literal("HTTP2-Settings must be base64url SETTINGS payload bytes",
+                                          sizeof("HTTP2-Settings must be base64url SETTINGS "
+                                                 "payload bytes") -
+                                              1U));
+        }
+        settings_payload =
+            sl_bytes_from_parts((const unsigned char*)settings_storage, settings_length);
+    }
+
+    status = sl_http_transport_http2_init(connection, false, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http2_server_dispatcher_upgrade_h2c(&connection->http2_dispatcher, settings_payload,
+                                                    &connection->request);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 h2c Upgrade state failed",
+                                      sizeof("HTTP/2 h2c Upgrade state failed") - 1U),
+            sl_http_transport_literal("HTTP2-Settings must decode to a valid SETTINGS payload",
+                                      sizeof("HTTP2-Settings must decode to a valid SETTINGS "
+                                             "payload") -
+                                          1U));
+    }
+    status = sl_http2_server_dispatcher_drain_output(&connection->http2_dispatcher, &http2_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_upgraded = true;
+    return sl_http_transport_h2c_upgrade_response(connection, http2_bytes, out_diag);
+}
+
 static size_t sl_http_transport_find_header_end(SlBytes bytes)
 {
     size_t index = 0U;
@@ -2444,6 +3037,13 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
             return status;
         }
         connection->body_reader_finished = true;
+    }
+    {
+        bool h2c_upgraded = false;
+        status = sl_http_transport_try_h2c_upgrade(connection, &h2c_upgraded, out_diag);
+        if (!sl_status_is_ok(status) || h2c_upgraded) {
+            return status;
+        }
     }
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY;
     if (connection->platform != NULL) {
@@ -2877,8 +3477,14 @@ static SlStatus sl_http_transport_tls_feed(SlHttpTransportConnection* connection
         ERR_clear_error();
         rc = SSL_accept(platform->tls_ssl);
         if (rc == 1) {
+            const unsigned char* selected = NULL;
+            unsigned int selected_length = 0U;
             platform->tls_handshake_complete = true;
             connection->core.scheme = sl_str_from_cstr("https");
+            SSL_get0_alpn_selected(platform->tls_ssl, &selected, &selected_length);
+            platform->tls_alpn_h2 = selected_length == 2U && selected != NULL &&
+                                    selected[0] == (unsigned char)'h' &&
+                                    selected[1] == (unsigned char)'2';
         }
         else {
             int error = SSL_get_error(platform->tls_ssl, rc);
@@ -3745,6 +4351,11 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
             (void)sl_http_request_close(&connection->request, NULL);
         }
     }
+    if (connection->http2_dispatcher_started) {
+        sl_http2_server_dispatcher_dispose(&connection->http2_dispatcher);
+        connection->http2_dispatcher_started = false;
+        connection->http2_mode = false;
+    }
     (void)sl_http_connection_close(&connection->core, out_diag);
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
     if (connection->platform != NULL && connection->platform->initialized &&
@@ -3774,10 +4385,14 @@ SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* conne
                                                 SlBytes bytes, SlDiag* out_diag)
 {
     SlStatus status;
+    bool http2_handled = false;
 
     sl_http_transport_clear_diag(out_diag);
     if (connection == NULL || (bytes.ptr == NULL && bytes.length != 0U)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->http2_mode) {
+        return sl_http_transport_http2_receive(connection, bytes, out_diag);
     }
     if (connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_ACCEPTED &&
         connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE &&
@@ -3822,6 +4437,14 @@ SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* conne
     if (!sl_status_is_ok(status)) {
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
         return status;
+    }
+    status = sl_http_transport_maybe_start_http2(connection, &http2_handled, out_diag);
+    if (!sl_status_is_ok(status)) {
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
+        return status;
+    }
+    if (http2_handled) {
+        return sl_status_ok();
     }
     status = sl_http_transport_try_complete_request(connection, out_diag);
     if (!sl_status_is_ok(status)) {

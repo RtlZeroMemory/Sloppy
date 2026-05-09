@@ -628,6 +628,21 @@ static SlStatus sl_http_check_request_line_length(SlHttpParseContext* ctx, SlByt
     return sl_status_ok();
 }
 
+static size_t sl_http_find_header_end(SlBytes bytes)
+{
+    if (bytes.ptr == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index + 3U < bytes.length; index += 1U) {
+        if (bytes.ptr[index] == '\r' && bytes.ptr[index + 1U] == '\n' &&
+            bytes.ptr[index + 2U] == '\r' && bytes.ptr[index + 3U] == '\n')
+        {
+            return index + 4U;
+        }
+    }
+    return 0U;
+}
+
 static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
                                        const SlHttpParseOptions* options)
 {
@@ -698,6 +713,12 @@ static SlStatus sl_http_parse_with_llhttp(SlHttpParseContext* ctx, SlBytes bytes
     out_parser->data = ctx;
 
     parse_error = llhttp_execute(out_parser, (const char*)bytes.ptr, bytes.length);
+    if (parse_error == HPE_PAUSED_UPGRADE && ctx->headers_complete &&
+        sl_http_find_header_end(bytes) == bytes.length)
+    {
+        ctx->request_complete = true;
+        return sl_status_ok();
+    }
     if (parse_error != HPE_OK) {
         if (ctx->diag_code != SL_DIAG_NONE) {
             return sl_status_from_code(sl_http_status_code_for_diag(ctx->diag_code));

@@ -127,6 +127,13 @@ typedef struct SlHttpConnection
      */
     SlStr scheme;
     size_t request_count;
+    /*
+     * Multiplexed transports, such as HTTP/2, may admit multiple request lifecycles over
+     * one connection without waiting for the connection state to return to OPEN between
+     * streams. HTTP/1 transports leave this false and retain the sequential keep-alive
+     * contract.
+     */
+    bool multiplexing;
     /* True only while this connection owns one backend active-connection slot. */
     bool slot_admitted;
 } SlHttpConnection;

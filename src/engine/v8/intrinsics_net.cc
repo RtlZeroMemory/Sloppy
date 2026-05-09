@@ -198,6 +198,8 @@ struct SlV8NetRequest
     std::string tls_client_certificate_path;
     std::string tls_client_private_key_path;
     std::string tls_client_private_key_passphrase;
+    std::vector<unsigned char> tls_alpn_protocols;
+    std::string tls_selected_alpn;
     SlLocalEndpointBackend local_backend = SL_LOCAL_ENDPOINT_BACKEND_AUTO;
     bool unlink_existing = false;
     bool has_permissions = false;
@@ -266,6 +268,21 @@ bool net_v8_set_bool(v8::Isolate* isolate, v8::Local<v8::Context> context,
         return false;
     }
     return object->Set(context, key, v8::Boolean::New(isolate, value)).FromMaybe(false);
+}
+
+bool net_v8_set_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       v8::Local<v8::Object> object, const char* name, const std::string& value)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::String> text;
+
+    if (!sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+        !sl_status_is_ok(
+            net_v8_to_local_string(isolate, sl_str_from_parts(value.data(), value.size()), &text)))
+    {
+        return false;
+    }
+    return object->Set(context, key, text).FromMaybe(false);
 }
 
 std::string net_v8_diag_message(const SlV8NetRequest& request)
@@ -467,6 +484,14 @@ bool net_v8_tls_attach(NetV8Connection& connection, SlV8NetRequest& request)
     connection.tls_write_bio = write_bio;
     SSL_set_connect_state(ssl);
     SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+    if (!request.tls_alpn_protocols.empty() &&
+        SSL_set_alpn_protos(ssl, request.tls_alpn_protocols.data(),
+                            static_cast<unsigned int>(request.tls_alpn_protocols.size())) != 0)
+    {
+        net_v8_set_diag(request, SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE,
+                        SL_STATUS_INVALID_ARGUMENT, "HTTP client TLS ALPN configuration failed");
+        return false;
+    }
     if (!request.tls_server_name.empty()) {
         bool server_name_is_ip = false;
         if (!request.tls_insecure_skip_verify) {
@@ -519,6 +544,13 @@ bool net_v8_tls_handshake(NetV8Connection& connection, SlV8NetRequest& request)
             return false;
         }
         if (rc == 1) {
+            const unsigned char* selected = nullptr;
+            unsigned int selected_length = 0U;
+            SSL_get0_alpn_selected(connection.tls_ssl, &selected, &selected_length);
+            if (selected != nullptr && selected_length > 0U) {
+                request.tls_selected_alpn.assign(reinterpret_cast<const char*>(selected),
+                                                 selected_length);
+            }
             connection.tls_active = true;
             return true;
         }
@@ -1578,6 +1610,13 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
                      .FromMaybe(false);
         }
         else {
+            if (request->operation == NetV8Operation::ConnectTls &&
+                !request->tls_selected_alpn.empty() &&
+                !net_v8_set_string(isolate, context, handle, "selectedProtocol",
+                                   request->tls_selected_alpn))
+            {
+                return sl_status_from_code(SL_STATUS_INTERNAL);
+            }
             ok = resolver->Resolve(context, handle).FromMaybe(false);
         }
     }
@@ -1852,6 +1891,41 @@ bool net_v8_read_optional_bool(v8::Isolate* isolate, v8::Local<v8::Context> cont
     return true;
 }
 
+bool net_v8_parse_alpn_protocols(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> options, SlV8NetRequest& request)
+{
+    v8::Local<v8::Value> value;
+    if (!net_v8_object_get(isolate, context, options, "alpnProtocols", &value) ||
+        value->IsUndefined())
+    {
+        return true;
+    }
+    if (!value->IsArray()) {
+        return false;
+    }
+
+    v8::Local<v8::Array> protocols = value.As<v8::Array>();
+    uint32_t length = protocols->Length();
+    if (length == 0U || length > 8U) {
+        return false;
+    }
+    request.tls_alpn_protocols.clear();
+    for (uint32_t index = 0U; index < length; ++index) {
+        v8::Local<v8::Value> item;
+        std::string protocol;
+        if (!protocols->Get(context, index).ToLocal(&item) ||
+            !sl_v8_std_string_from_value(isolate, item, &protocol) || protocol.empty() ||
+            protocol.size() > 255U || (protocol != "h2" && protocol != "http/1.1"))
+        {
+            return false;
+        }
+        request.tls_alpn_protocols.push_back(static_cast<unsigned char>(protocol.size()));
+        request.tls_alpn_protocols.insert(request.tls_alpn_protocols.end(), protocol.begin(),
+                                          protocol.end());
+    }
+    return true;
+}
+
 bool net_v8_parse_tls_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
                               v8::Local<v8::Object> options, SlV8NetRequest& request)
 {
@@ -1937,6 +2011,10 @@ void net_v8_connect_with_operation(const v8::FunctionCallbackInfo<v8::Value>& ar
         }
         if (!net_v8_parse_tls_options(isolate, context, options, *request)) {
             net_v8_throw_type_error(isolate, "__sloppy.net.connectTls tls options are invalid");
+            return;
+        }
+        if (!net_v8_parse_alpn_protocols(isolate, context, options, *request)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net.connectTls alpnProtocols are invalid");
             return;
         }
     }
@@ -2492,6 +2570,7 @@ bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
         !net_v8_set_bool(isolate, context, net, "tlsTrustStorePath", true) ||
         !net_v8_set_bool(isolate, context, net, "tlsClientCertificate", true) ||
         !net_v8_set_bool(isolate, context, net, "tlsInsecureSkipVerify", true) ||
+        !net_v8_set_bool(isolate, context, net, "tlsAlpn", true) ||
         !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("net"), &key)))
     {
         return false;

@@ -2,8 +2,8 @@
 
 The HTTP layer accepts bytes from a socket, parses them into a Sloppy
 request, matches a route, dispatches a handler through the V8 bridge,
-and writes a response. It's HTTP/1.1 only and aimed at the development
-loop — not a production-edge server.
+and writes a response. HTTP/1.1 and HTTP/2 share the same route/handler
+model; protocol-specific code stays in the transport and adapter layers.
 
 ## Layout
 
@@ -14,6 +14,11 @@ include/sloppy/
   http_response.h
   http_context.h
   http_backend.h         transport-facing types
+  http2_frame.h          HTTP/2 frame parse/write helpers
+  http2_hpack.h          HPACK adapter
+  http2_session.h        nghttp2-backed session boundary
+  http2_mapping.h        HTTP/2 header/body to Sloppy request mapping
+  http2_dispatch.h       server-side stream dispatcher
 
 src/core/
   http.c                 parser, method/header decoding
@@ -21,6 +26,11 @@ src/core/
   http_dispatch.c        Plan-backed route table + dispatch
   http_context.c         per-request context construction
   http_response.c        response serialization
+  http2_frame.c          frame validation and serialization
+  http2_hpack.c          HPACK encode/decode wrapper
+  http2_session.c        SETTINGS, streams, HPACK, flow-control session
+  http2_mapping.c        pseudo-header validation and request lifecycle build
+  http2_dispatch.c       stream-to-handler dispatch and response submission
   request_validation.c   body/content-type/limit gates
   route.c                pattern parser + match
 src/platform/libuv/
@@ -59,6 +69,12 @@ libuv write                        http_transport_libuv.c
    ▼
 end scope, run scope cleanups      scope.c
 ```
+
+HTTP/2 enters the same dispatch path after `http2_dispatch.c` maps a completed
+stream into `SlHttpRequestLifecycle`. `:method`, `:scheme`, `:authority`,
+`:path`, regular headers, and DATA bytes are validated before dispatch. The
+response descriptor is translated back into HTTP/2 HEADERS/DATA frames by the
+HTTP/2 dispatcher; handlers do not see a different API.
 
 ## Route table
 
@@ -130,19 +146,28 @@ Server-wide limits are read from Plan-emitted server config:
 These are baked into the Plan from `appsettings.{Environment}.json` /
 the env layer. Per-route limits are not surfaced today.
 
-## Keep-alive
+## Connection Models
 
-Keep-alive is sequential: a single connection processes one request at
+HTTP/1.1 keep-alive is sequential: a single connection processes one request at
 a time, then either closes or waits for the next request up to the idle
-timeout. There's no pipelining and no HTTP/2.
+timeout. HTTP/1.1 pipelining is not implemented.
+
+HTTP/2 connections are multiplexed. The HTTP/2 dispatcher keeps stream state
+separate from the HTTP backend connection state so multiple streams can have
+independent request lifecycles on one TCP/TLS connection. SETTINGS, HPACK,
+RST_STREAM, GOAWAY, and flow-control windows are owned by the HTTP/2 session
+adapter.
 
 ## Response writing
 
-`sl_http_response_write` serializes fixed response descriptors into a
-single buffer inside the per-request arena, then hands them to the
-transport for write. Headers are normalized to lowercase; `Content-Length`
-is computed from the body. Streaming responses are transport-owned and
-use bounded HTTP/1.1 chunked frames.
+For HTTP/1.1, `sl_http_response_write` serializes fixed response descriptors
+into a single buffer inside the per-request arena, then hands them to the
+transport for write. Headers are normalized to lowercase; `Content-Length` is
+computed from the body. Streaming responses are transport-owned and use bounded
+HTTP/1.1 chunked frames.
+
+For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
+HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.
 
 `204 No Content` and `304 Not Modified` never write `Content-Type`,
 `Content-Length`, or body bytes even if the handler descriptor includes a
@@ -168,8 +193,14 @@ sloppy:server:tls:certificatePath = path/to/cert.pem
 sloppy:server:tls:privateKeyPath  = path/to/key.pem
 ```
 
-ALPN negotiation is HTTP/1.1-only; mTLS, custom verification, HSTS are
-not implemented. For production, terminate TLS at a reverse proxy.
+TLS listeners advertise `h2` and `http/1.1` when the HTTP/2 dispatcher is
+configured. ALPN `h2` selects the HTTP/2 path; ALPN `http/1.1`, no ALPN, or a
+cleartext connection stays on the HTTP/1.1 path unless the peer sends the h2c
+prior-knowledge preface or a valid h2c Upgrade request.
+
+mTLS, custom verification callbacks, OCSP stapling, and HSTS are not
+implemented. For production, terminate TLS at a reverse proxy unless this
+development listener's TLS posture is sufficient for your lane.
 
 ## Cancellation and shutdown
 
@@ -201,12 +232,17 @@ connection draining) is the responsibility of an in-front reverse proxy.
 - **V8-gated run lanes** execute compiled handlers through `sloppy run --once`.
   Listener-to-V8 socket coverage is tracked separately from synthetic
   `--once` dispatch.
+- **HTTP/2 transport lanes** cover h2c prior knowledge, h2c Upgrade, and TLS
+  ALPN `h2` selection through the libuv transport.
+- **HTTP/2 protocol unit tests** cover frame validation, HPACK/session adapter
+  behavior, request mapping, stream reset/GOAWAY handling, and dispatch.
 
 ## Not implemented
 
-- HTTP/2, HTTP/3, WebSockets, SSE.
+- HTTP/3, WebSockets, SSE.
 - Streaming request or response APIs in JS.
 - Multipart/form-data and file uploads.
 - Per-route limits, trusted proxy / forwarded-header policy beyond
   basic header passthrough.
-- Pipelining.
+- HTTP/1.1 pipelining.
+- Server push public API.

@@ -3,6 +3,10 @@
 A Sloppy app dispatches requests by matching the request method and path
 against a route table built from your registrations.
 
+Routing is transport-neutral. The same route table and handler model are used
+for HTTP/1.1 and HTTP/2 requests; HTTP/2 pseudo-headers are translated into the
+same method, target, host, headers, and body shape before dispatch.
+
 ```ts
 app.get("/users/{id:int}", (ctx) =>
     Results.json({ id: ctx.route.id })

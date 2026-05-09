@@ -39,12 +39,17 @@ Default environment is `Development`.
 
 TLS `CertificatePath` and `PrivateKeyPath` values are absolutized against config directory before Plan emission. Diagnostic messages redact TLS certificate, private-key, client-certificate, CA-bundle, and trust-store path values.
 
+When inbound TLS is enabled, the development HTTP listener can negotiate
+`h2` or `http/1.1` with ALPN. There is no separate appsettings key for HTTP/2
+selection; the listener chooses the protocol from ALPN,
+cleartext h2c prior knowledge, h2c Upgrade, or the existing HTTP/1.1 parser.
+
 ## JSON File Requirements
 
 - Root value must be a JSON object.
 - Empty key segments are rejected.
 - Nested objects flatten to colon-delimited keys.
-- `${NAME}` placeholders are supported for string values; invalid placeholder forms are rejected.
+- `${NAME}` substitutions are supported for string values; invalid substitution forms are rejected.
 
 ## Environment Variable Mapping
 

@@ -904,6 +904,7 @@ const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 const HTTP_CLIENT_DEFAULT_MAX_REDIRECTS = 5;
 const HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS = 30000;
 const HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN = 8;
+const HTTP_CLIENT_PROTOCOLS = new Set(["auto", "http/1.1", "h2", "h2c"]);
 const HTTP_CLIENT_TLS_OPTION_KEYS = new Set([
     "caPath",
     "caBundlePath",
@@ -1321,6 +1322,18 @@ function assertHttpTlsBridgeCapabilities(bridge, tls, operation) {
         "insecureSkipVerify",
         "tlsInsecureSkipVerify",
         operation,
+    );
+}
+
+function normalizeHttpProtocol(baseOptions, requestObject, operation) {
+    const raw = requestObject.protocol ?? baseOptions?.protocol ?? "auto";
+    if (typeof raw === "string" && HTTP_CLIENT_PROTOCOLS.has(raw)) {
+        return raw;
+    }
+    throw httpClientError(
+        "HttpClientInvalidOptionsError",
+        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        `${operation} protocol must be "auto", "http/1.1", "h2", or "h2c".`,
     );
 }
 
@@ -2373,6 +2386,725 @@ async function readHttpResponse(connection, limits) {
     return parsed;
 }
 
+const HTTP2_CLIENT_PREFACE = Text.utf8.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+const HTTP2_FRAME_DATA = 0x0;
+const HTTP2_FRAME_HEADERS = 0x1;
+const HTTP2_FRAME_RST_STREAM = 0x3;
+const HTTP2_FRAME_SETTINGS = 0x4;
+const HTTP2_FRAME_PING = 0x6;
+const HTTP2_FRAME_GOAWAY = 0x7;
+const HTTP2_FRAME_WINDOW_UPDATE = 0x8;
+const HTTP2_FRAME_CONTINUATION = 0x9;
+const HTTP2_FLAG_END_STREAM = 0x1;
+const HTTP2_FLAG_ACK = 0x1;
+const HTTP2_FLAG_END_HEADERS = 0x4;
+const HTTP2_DEFAULT_MAX_FRAME_SIZE = 16384;
+const HTTP2_DEFAULT_DYNAMIC_TABLE_BYTES = 4096;
+const HTTP2_SETTING_ENABLE_PUSH = 0x2;
+
+const HTTP2_HPACK_STATIC = [
+    undefined,
+    [":authority", ""],
+    [":method", "GET"],
+    [":method", "POST"],
+    [":path", "/"],
+    [":path", "/index.html"],
+    [":scheme", "http"],
+    [":scheme", "https"],
+    [":status", "200"],
+    [":status", "204"],
+    [":status", "206"],
+    [":status", "304"],
+    [":status", "400"],
+    [":status", "404"],
+    [":status", "500"],
+    ["accept-charset", ""],
+    ["accept-encoding", "gzip, deflate"],
+    ["accept-language", ""],
+    ["accept-ranges", ""],
+    ["accept", ""],
+    ["access-control-allow-origin", ""],
+    ["age", ""],
+    ["allow", ""],
+    ["authorization", ""],
+    ["cache-control", ""],
+    ["content-disposition", ""],
+    ["content-encoding", ""],
+    ["content-language", ""],
+    ["content-length", ""],
+    ["content-location", ""],
+    ["content-range", ""],
+    ["content-type", ""],
+    ["cookie", ""],
+    ["date", ""],
+    ["etag", ""],
+    ["expect", ""],
+    ["expires", ""],
+    ["from", ""],
+    ["host", ""],
+    ["if-match", ""],
+    ["if-modified-since", ""],
+    ["if-none-match", ""],
+    ["if-range", ""],
+    ["if-unmodified-since", ""],
+    ["last-modified", ""],
+    ["link", ""],
+    ["location", ""],
+    ["max-forwards", ""],
+    ["proxy-authenticate", ""],
+    ["proxy-authorization", ""],
+    ["range", ""],
+    ["referer", ""],
+    ["refresh", ""],
+    ["retry-after", ""],
+    ["server", ""],
+    ["set-cookie", ""],
+    ["strict-transport-security", ""],
+    ["transfer-encoding", ""],
+    ["user-agent", ""],
+    ["vary", ""],
+    ["via", ""],
+    ["www-authenticate", ""],
+];
+
+const HTTP2_HPACK_NAME_INDEX = new Map();
+for (let index = 1; index < HTTP2_HPACK_STATIC.length; index += 1) {
+    const name = HTTP2_HPACK_STATIC[index][0];
+    if (!HTTP2_HPACK_NAME_INDEX.has(name)) {
+        HTTP2_HPACK_NAME_INDEX.set(name, index);
+    }
+}
+
+function http2Frame(type, flags, streamId, payload = new Uint8Array(0)) {
+    if (!(payload instanceof Uint8Array) || payload.byteLength > 0xffffff) {
+        throw httpClientError(
+            "HttpClientRequestLimitError",
+            "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+            "HTTP/2 frame payload exceeded the supported frame size.",
+        );
+    }
+    const frame = new Uint8Array(9 + payload.byteLength);
+    frame[0] = (payload.byteLength >>> 16) & 0xff;
+    frame[1] = (payload.byteLength >>> 8) & 0xff;
+    frame[2] = payload.byteLength & 0xff;
+    frame[3] = type;
+    frame[4] = flags;
+    frame[5] = (streamId >>> 24) & 0x7f;
+    frame[6] = (streamId >>> 16) & 0xff;
+    frame[7] = (streamId >>> 8) & 0xff;
+    frame[8] = streamId & 0xff;
+    frame.set(payload, 9);
+    return frame;
+}
+
+function http2Concat(parts) {
+    let total = 0;
+    for (const part of parts) {
+        total += part.byteLength;
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+        bytes.set(part, offset);
+        offset += part.byteLength;
+    }
+    return bytes;
+}
+
+function http2Uint32(value) {
+    return new Uint8Array([
+        (value >>> 24) & 0xff,
+        (value >>> 16) & 0xff,
+        (value >>> 8) & 0xff,
+        value & 0xff,
+    ]);
+}
+
+function http2Setting(id, value) {
+    return new Uint8Array([
+        (id >>> 8) & 0xff,
+        id & 0xff,
+        (value >>> 24) & 0xff,
+        (value >>> 16) & 0xff,
+        (value >>> 8) & 0xff,
+        value & 0xff,
+    ]);
+}
+
+function http2DataFrames(streamId, body) {
+    if (body.byteLength === 0) {
+        return [];
+    }
+    const frames = [];
+    for (let offset = 0; offset < body.byteLength; offset += HTTP2_DEFAULT_MAX_FRAME_SIZE) {
+        const end = Math.min(body.byteLength, offset + HTTP2_DEFAULT_MAX_FRAME_SIZE);
+        const flags = end === body.byteLength ? HTTP2_FLAG_END_STREAM : 0;
+        frames.push(http2Frame(HTTP2_FRAME_DATA, flags, streamId, body.slice(offset, end)));
+    }
+    return frames;
+}
+
+function http2UnpadPayload(payload) {
+    if (payload.byteLength === 0) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 padded frame is missing the Pad Length field.",
+        );
+    }
+    const padLength = payload[0];
+    if (padLength >= payload.byteLength) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 padded frame declares padding beyond the payload.",
+        );
+    }
+    return payload.slice(1, payload.byteLength - padLength);
+}
+
+function http2WindowUpdateFrame(streamId, increment) {
+    if (!Number.isInteger(increment) || increment <= 0 || increment > 0x7fffffff) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 flow-control increment is invalid.",
+        );
+    }
+    return http2Frame(HTTP2_FRAME_WINDOW_UPDATE, 0, streamId, http2Uint32(increment));
+}
+
+function hpackInteger(value, prefixBits, prefixMask) {
+    const maxPrefix = (1 << prefixBits) - 1;
+    const bytes = [];
+    if (value < maxPrefix) {
+        bytes.push(prefixMask | value);
+    } else {
+        bytes.push(prefixMask | maxPrefix);
+        value -= maxPrefix;
+        while (value >= 128) {
+            bytes.push((value % 128) + 128);
+            value = Math.floor(value / 128);
+        }
+        bytes.push(value);
+    }
+    return new Uint8Array(bytes);
+}
+
+function hpackReadInteger(bytes, offset, prefixBits) {
+    const maxPrefix = (1 << prefixBits) - 1;
+    let value = bytes[offset] & maxPrefix;
+    offset += 1;
+    if (value !== maxPrefix) {
+        return { value, offset };
+    }
+    let shift = 0;
+    while (offset < bytes.byteLength) {
+        const byte = bytes[offset];
+        offset += 1;
+        value += (byte & 0x7f) * (2 ** shift);
+        if ((byte & 0x80) === 0) {
+            return { value, offset };
+        }
+        shift += 7;
+    }
+    throw httpClientError(
+        "HttpClientMalformedResponseError",
+        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+        "HTTP/2 HPACK integer is incomplete.",
+    );
+}
+
+function hpackString(value) {
+    const bytes = Text.utf8.encode(value);
+    return http2Concat([hpackInteger(bytes.byteLength, 7, 0x00), bytes]);
+}
+
+function hpackReadString(bytes, offset) {
+    if (offset >= bytes.byteLength) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 HPACK string is incomplete.",
+        );
+    }
+    const huffman = (bytes[offset] & 0x80) !== 0;
+    const length = hpackReadInteger(bytes, offset, 7);
+    offset = length.offset;
+    if (huffman) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 HPACK Huffman response strings are not available in this bootstrap client lane.",
+        );
+    }
+    if (offset + length.value > bytes.byteLength) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 HPACK string length exceeds the header block.",
+        );
+    }
+    return {
+        value: Text.utf8.decode(bytes.slice(offset, offset + length.value)),
+        offset: offset + length.value,
+    };
+}
+
+function hpackHeader(name, value, sensitive = false) {
+    const normalized = name.toLowerCase();
+    if (normalized === ":method" && value === "GET") {
+        return hpackInteger(2, 7, 0x80);
+    }
+    if (normalized === ":method" && value === "POST") {
+        return hpackInteger(3, 7, 0x80);
+    }
+    if (normalized === ":path" && value === "/") {
+        return hpackInteger(4, 7, 0x80);
+    }
+    if (normalized === ":scheme" && value === "http") {
+        return hpackInteger(6, 7, 0x80);
+    }
+    if (normalized === ":scheme" && value === "https") {
+        return hpackInteger(7, 7, 0x80);
+    }
+    const nameIndex = HTTP2_HPACK_NAME_INDEX.get(normalized);
+    const prefix = sensitive ? 0x10 : 0x00;
+    const nameBytes = nameIndex === undefined ? hpackString(normalized) : new Uint8Array(0);
+    const indexedName = nameIndex === undefined ? hpackInteger(0, 4, prefix) : hpackInteger(nameIndex, 4, prefix);
+    return http2Concat([indexedName, nameBytes, hpackString(value)]);
+}
+
+function hpackEncodeRequestHeaders(request) {
+    const parts = [
+        hpackHeader(":method", request.method),
+        hpackHeader(":scheme", request.url.scheme),
+        hpackHeader(":authority", request.url.hostHeader),
+        hpackHeader(":path", request.url.target),
+    ];
+    if (!request.headers.has("accept")) {
+        parts.push(hpackHeader("accept", "*/*"));
+    }
+    for (const { name, value } of request.headers.values()) {
+        parts.push(hpackHeader(name, value, isHttpSensitiveHeader(name, value, new Set())));
+    }
+    if (request.body.byteLength > 0) {
+        parts.push(hpackHeader("content-length", String(request.body.byteLength)));
+    }
+    return http2Concat(parts);
+}
+
+function hpackIndexedHeader(index, dynamicTable) {
+    if (index > 0 && index < HTTP2_HPACK_STATIC.length) {
+        return HTTP2_HPACK_STATIC[index];
+    }
+    const dynamicIndex = index - HTTP2_HPACK_STATIC.length;
+    if (dynamicIndex >= 0 && dynamicIndex < dynamicTable.length) {
+        return dynamicTable[dynamicIndex];
+    }
+    throw httpClientError(
+        "HttpClientMalformedResponseError",
+        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+        "HTTP/2 HPACK header index is invalid.",
+    );
+}
+
+function hpackDynamicEntryBytes(header) {
+    return Text.utf8.encode(header[0]).byteLength + Text.utf8.encode(header[1]).byteLength + 32;
+}
+
+function hpackTrimDynamicTable(dynamicTable, maxBytes) {
+    let total = 0;
+    for (let index = 0; index < dynamicTable.length; index += 1) {
+        total += hpackDynamicEntryBytes(dynamicTable[index]);
+        if (total > maxBytes) {
+            dynamicTable.length = index;
+            return;
+        }
+    }
+}
+
+function hpackDecodeHeaders(block, dynamicTable, maxDynamicTableBytes = HTTP2_DEFAULT_DYNAMIC_TABLE_BYTES) {
+    const headers = [];
+    let offset = 0;
+    while (offset < block.byteLength) {
+        const byte = block[offset];
+        if ((byte & 0x80) !== 0) {
+            const indexed = hpackReadInteger(block, offset, 7);
+            offset = indexed.offset;
+            headers.push(hpackIndexedHeader(indexed.value, dynamicTable));
+            continue;
+        }
+        if ((byte & 0xe0) === 0x20) {
+            const update = hpackReadInteger(block, offset, 5);
+            offset = update.offset;
+            if (update.value > maxDynamicTableBytes) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 HPACK dynamic table size update exceeds the configured limit.",
+                );
+            }
+            hpackTrimDynamicTable(dynamicTable, update.value);
+            continue;
+        }
+        const incremental = (byte & 0x40) !== 0;
+        const prefixBits = incremental ? 6 : 4;
+        const nameRef = hpackReadInteger(block, offset, prefixBits);
+        offset = nameRef.offset;
+        let name;
+        if (nameRef.value === 0) {
+            const decodedName = hpackReadString(block, offset);
+            name = decodedName.value;
+            offset = decodedName.offset;
+        } else {
+            name = hpackIndexedHeader(nameRef.value, dynamicTable)[0];
+        }
+        const decodedValue = hpackReadString(block, offset);
+        offset = decodedValue.offset;
+        const header = [name, decodedValue.value];
+        headers.push(header);
+        if (incremental) {
+            if (hpackDynamicEntryBytes(header) <= maxDynamicTableBytes) {
+                dynamicTable.unshift(header);
+                hpackTrimDynamicTable(dynamicTable, maxDynamicTableBytes);
+            } else {
+                dynamicTable.length = 0;
+            }
+        }
+    }
+    return headers;
+}
+
+function parseHttp2FrameHeader(bytes, offset) {
+    const length = (bytes[offset] << 16) | (bytes[offset + 1] << 8) | bytes[offset + 2];
+    return {
+        length,
+        type: bytes[offset + 3],
+        flags: bytes[offset + 4],
+        streamId:
+            ((bytes[offset + 5] & 0x7f) << 24) |
+            (bytes[offset + 6] << 16) |
+            (bytes[offset + 7] << 8) |
+            bytes[offset + 8],
+    };
+}
+
+function http2HeaderListBytes(headers) {
+    let total = 0;
+    for (const [name, value] of headers) {
+        total += Text.utf8.encode(name).byteLength + Text.utf8.encode(value).byteLength + 32;
+    }
+    return total;
+}
+
+function parseHttp2Headers(headers, maxHeaderBytes) {
+    let status = undefined;
+    const regular = [];
+    let regularSeen = false;
+    if (http2HeaderListBytes(headers) > maxHeaderBytes) {
+        throw httpClientError(
+            "HttpClientHeaderLimitError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 response headers exceeded the configured limit.",
+        );
+    }
+    for (const [name, value] of headers) {
+        if (name === ":status") {
+            if (regularSeen || status !== undefined) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 response pseudo-headers are malformed.",
+                );
+            }
+            status = Number(value);
+        } else if (name.startsWith(":")) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response contains an unsupported pseudo-header.",
+            );
+        } else {
+            regularSeen = true;
+            if (
+                /[A-Z]/.test(name) ||
+                name.toLowerCase() === "connection" ||
+                name.toLowerCase() === "transfer-encoding"
+            ) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 response contains an invalid header field.",
+                );
+            }
+            regular.push([name, value]);
+        }
+    }
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 response is missing a valid :status header.",
+        );
+    }
+    return { status, headers: regular };
+}
+
+async function readHttp2Response(connection, request) {
+    let pending = new Uint8Array(0);
+    const dynamicTable = [];
+    const headerBlocks = [];
+    const dataChunks = [];
+    let headerBlockBytes = 0;
+    let totalBodyBytes = 0;
+    let response = undefined;
+    let pendingHeaderStream = 0;
+    let headerBlockEndsStream = false;
+
+    while (true) {
+        while (pending.byteLength < 9) {
+            const chunk = await connection.read({ maxBytes: 8192 });
+            pending = http2Concat([pending, chunk]);
+        }
+        const frame = parseHttp2FrameHeader(pending, 0);
+        if (pending.byteLength < 9 + frame.length) {
+            const chunk = await connection.read({ maxBytes: 8192 });
+            pending = http2Concat([pending, chunk]);
+            continue;
+        }
+        let payload = pending.slice(9, 9 + frame.length);
+        pending = pending.slice(9 + frame.length);
+
+        if (frame.type === HTTP2_FRAME_SETTINGS) {
+            if (frame.streamId !== 0 || ((frame.flags & HTTP2_FLAG_ACK) !== 0 && frame.length !== 0)) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 SETTINGS frame is malformed.",
+                );
+            }
+            if ((frame.flags & HTTP2_FLAG_ACK) === 0) {
+                await connection.write(http2Frame(HTTP2_FRAME_SETTINGS, HTTP2_FLAG_ACK, 0));
+            }
+            continue;
+        }
+        if (frame.type === HTTP2_FRAME_PING) {
+            if (frame.streamId !== 0 || frame.length !== 8) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 PING frame is malformed.",
+                );
+            }
+            if ((frame.flags & HTTP2_FLAG_ACK) === 0) {
+                await connection.write(http2Frame(HTTP2_FRAME_PING, HTTP2_FLAG_ACK, 0, payload));
+            }
+            continue;
+        }
+        if (frame.type === HTTP2_FRAME_GOAWAY) {
+            if (response !== undefined) {
+                continue;
+            }
+            throw httpClientError(
+                "HttpClientConnectError",
+                "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                "HTTP/2 peer sent GOAWAY before the response completed.",
+            );
+        }
+        if (frame.streamId !== 1) {
+            continue;
+        }
+        if (frame.type === HTTP2_FRAME_RST_STREAM) {
+            throw httpClientError(
+                "HttpClientConnectError",
+                "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                "HTTP/2 stream was reset by the peer.",
+            );
+        }
+        if (frame.type === HTTP2_FRAME_HEADERS || frame.type === HTTP2_FRAME_CONTINUATION) {
+            if (frame.type === HTTP2_FRAME_CONTINUATION) {
+                if (pendingHeaderStream !== frame.streamId) {
+                    throw httpClientError(
+                        "HttpClientMalformedResponseError",
+                        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP/2 CONTINUATION frame is out of sequence.",
+                    );
+                }
+            } else if (pendingHeaderStream !== 0) {
+                throw httpClientError(
+                    "HttpClientMalformedResponseError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 response started a new header block before END_HEADERS.",
+                );
+            }
+            if ((frame.flags & 0x8) !== 0) {
+                payload = http2UnpadPayload(payload);
+            }
+            if (frame.type === HTTP2_FRAME_HEADERS && (frame.flags & 0x20) !== 0) {
+                if (payload.byteLength < 5) {
+                    throw httpClientError(
+                        "HttpClientMalformedResponseError",
+                        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP/2 response priority field is incomplete.",
+                    );
+                }
+                payload = payload.slice(5);
+            }
+            headerBlockBytes += payload.byteLength;
+            if (headerBlockBytes > request.maxHeaderBytes) {
+                throw httpClientError(
+                    "HttpClientHeaderLimitError",
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 response headers exceeded the configured limit.",
+                );
+            }
+            headerBlocks.push(payload);
+            headerBlockEndsStream = headerBlockEndsStream || (frame.flags & HTTP2_FLAG_END_STREAM) !== 0;
+            if ((frame.flags & HTTP2_FLAG_END_HEADERS) !== 0) {
+                const decoded = hpackDecodeHeaders(http2Concat(headerBlocks), dynamicTable);
+                if (response === undefined) {
+                    response = parseHttp2Headers(decoded, request.maxHeaderBytes);
+                }
+                headerBlocks.length = 0;
+                headerBlockBytes = 0;
+                pendingHeaderStream = 0;
+            } else {
+                pendingHeaderStream = frame.streamId;
+            }
+            if (headerBlockEndsStream && pendingHeaderStream === 0) {
+                break;
+            }
+            continue;
+        }
+        if (frame.type === HTTP2_FRAME_DATA) {
+            if ((frame.flags & 0x8) !== 0) {
+                payload = http2UnpadPayload(payload);
+            }
+            totalBodyBytes += payload.byteLength;
+            if (totalBodyBytes > request.maxResponseBytes) {
+                throw httpClientError(
+                    "HttpClientResponseLimitError",
+                    "SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
+                    "HTTP response body exceeded the configured limit.",
+                );
+            }
+            if (payload.byteLength > 0) {
+                await connection.write(
+                    http2Concat([
+                        http2WindowUpdateFrame(0, payload.byteLength),
+                        http2WindowUpdateFrame(1, payload.byteLength),
+                    ]),
+                );
+            }
+            dataChunks.push(payload);
+            if ((frame.flags & HTTP2_FLAG_END_STREAM) !== 0) {
+                break;
+            }
+        }
+    }
+
+    if (response === undefined) {
+        throw httpClientError(
+            "HttpClientMalformedResponseError",
+            "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+            "HTTP/2 response ended before response headers were received.",
+        );
+    }
+
+    const bodyForbidden = request.method === "HEAD" || isHttpBodyForbiddenStatus(response.status);
+    return new HttpClientResponse(
+        response.status,
+        "",
+        new HttpHeaderBag(response.headers),
+        bodyForbidden ? new Uint8Array(0) : concatHttpBytes(dataChunks, totalBodyBytes),
+        false,
+    );
+}
+
+async function sendHttp2RequestOnce(request, lifecycle) {
+    let connection;
+    try {
+        assertHttpNetworkAllowed(request.network, request.url);
+        if (request.protocol === "h2c" && request.url.scheme !== "http") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                "HTTP/2 h2c requires an http:// URL.",
+            );
+        }
+        if (request.protocol === "h2" && request.url.scheme !== "https") {
+            throw httpClientError(
+                "HttpClientInvalidOptionsError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                "HTTP/2 h2 requires an https:// URL.",
+            );
+        }
+        const bridge = requireNetBridge();
+        const remainingMs = httpRemainingMs(request.expiresAtMs);
+        if (remainingMs <= 0) {
+            throw httpRequestTimeoutError();
+        }
+        const connectOptions = {
+            host: request.url.host,
+            port: request.url.port,
+            timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
+            noDelay: true,
+        };
+        if (request.url.scheme === "https") {
+            if (typeof bridge.connectTls !== "function") {
+                throw httpClientTlsUnavailableError();
+            }
+            if (bridge.tlsAlpn !== true) {
+                throw httpClientError(
+                    "HttpClientTlsUnavailableError",
+                    "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+                    "HTTP/2 over TLS requires an ALPN-capable outbound TLS bridge.",
+                );
+            }
+            assertHttpTlsBridgeCapabilities(bridge, request.tls, request.operation);
+            const handle = await bridge.connectTls({
+                ...connectOptions,
+                serverName: request.url.host,
+                tls: request.tls,
+                alpnProtocols: ["h2", "http/1.1"],
+            });
+            if (handle.selectedProtocol !== "h2") {
+                throw httpClientError(
+                    "HttpClientConnectError",
+                    "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                    "HTTP/2 TLS connection did not negotiate h2 with ALPN.",
+                );
+            }
+            connection = new TcpConnection(bridge, handle);
+        } else {
+            connection = new TcpConnection(bridge, await bridge.connect(connectOptions));
+        }
+        lifecycle.connection = connection;
+        const headers = hpackEncodeRequestHeaders(request);
+        const frames = [
+            HTTP2_CLIENT_PREFACE,
+            http2Frame(HTTP2_FRAME_SETTINGS, 0, 0, http2Setting(HTTP2_SETTING_ENABLE_PUSH, 0)),
+            http2Frame(
+                HTTP2_FRAME_HEADERS,
+                HTTP2_FLAG_END_HEADERS | (request.body.byteLength === 0 ? HTTP2_FLAG_END_STREAM : 0),
+                1,
+                headers,
+            ),
+        ];
+        frames.push(...http2DataFrames(1, request.body));
+        await connection.write(http2Concat(frames));
+        return await readHttp2Response(connection, request);
+    } finally {
+        if (lifecycle.connection === connection) {
+            lifecycle.connection = undefined;
+        }
+        if (connection !== undefined) {
+            await connection.close().catch(() => {});
+        }
+    }
+}
+
 function normalizeHttpOptionsObject(value, operation) {
     if (value === undefined || value === null) {
         return undefined;
@@ -2405,6 +3137,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
     appendHttpHeaders(headers, requestObject.headers, operation);
     const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
     const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
+    const protocol = normalizeHttpProtocol(baseOptions, requestObject, operation);
     const tls = normalizeHttpTlsOptions(
         requestObject.tls === undefined ? baseOptions?.tls : requestObject.tls,
         operation,
@@ -2457,6 +3190,7 @@ async function normalizeHttpRequest(baseOptions, request, options, defaultMethod
         maxResponseBytes,
         redirects,
         network,
+        protocol,
         tls,
         operation,
         expiresAtMs,
@@ -2576,6 +3310,9 @@ function isStalePooledConnectionError(error) {
 }
 
 async function sendHttpRequestOnce(request, pool, lifecycle) {
+    if (request.protocol === "h2" || request.protocol === "h2c") {
+        return await sendHttp2RequestOnce(request, lifecycle);
+    }
     let connection;
     let originKey;
     let reusable = false;

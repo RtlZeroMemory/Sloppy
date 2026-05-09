@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+preset=""
+url=""
+run_h2spec=0
+run_curl=0
+run_nghttp=0
+run_h2load=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --preset)
+      preset="${2:?missing value for --preset}"
+      shift 2
+      ;;
+    --url)
+      url="${2:?missing value for --url}"
+      shift 2
+      ;;
+    --h2spec)
+      run_h2spec=1
+      shift
+      ;;
+    --curl)
+      run_curl=1
+      shift
+      ;;
+    --nghttp)
+      run_nghttp=1
+      shift
+      ;;
+    --h2load-smoke)
+      run_h2load=1
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: tools/unix/test-http2.sh [--preset NAME] [--url URL] [--h2spec] [--curl] [--nghttp] [--h2load-smoke]
+
+Runs local HTTP/2 CTest lanes and optional external HTTP/2 tools. External
+tools report UNAVAILABLE when missing and SKIPPED when no --url is provided.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "sloppy http2 test: unknown option '$1'" >&2
+      exit 2
+      ;;
+  esac
+done
+
+host_preset() {
+  if [[ -n "$preset" ]]; then
+    printf '%s\n' "$preset"
+    return
+  fi
+  case "$(uname -s)" in
+    Darwin) printf 'macos-clang\n' ;;
+    Linux) printf 'linux-clang\n' ;;
+    *)
+      echo "sloppy http2 test: unsupported Unix platform: $(uname -s)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+evidence() {
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3"
+}
+
+run_optional_tool() {
+  local lane="$1"
+  local tool="$2"
+  shift 2
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    evidence "$lane" "UNAVAILABLE" "$tool is not on PATH"
+    return
+  fi
+  if [[ -z "$url" ]]; then
+    evidence "$lane" "SKIPPED" "provide --url to run $tool against a live HTTP/2 endpoint"
+    return
+  fi
+  if "$tool" "$@"; then
+    evidence "$lane" "PASS" "$tool completed"
+  else
+    local code=$?
+    evidence "$lane" "FAIL" "$tool exited with code $code"
+    exit "$code"
+  fi
+}
+
+build_dir="$repo_root/build/$(host_preset)"
+ctest --test-dir "$build_dir" -R 'core\.http2|conformance\.transport\.http2_' --output-on-failure
+evidence "http2.local_ctest" "PASS" "core and transport HTTP/2 lanes passed"
+
+if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_h2spec" == "1" ]]; then
+  if [[ -n "$url" ]]; then
+    h2spec_host="$(python3 - "$url" <<'PY'
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+port = u.port or (80 if u.scheme == "http" else 443)
+print(u.hostname or "")
+print(port)
+PY
+)"
+    h2spec_host_name="$(printf '%s\n' "$h2spec_host" | sed -n '1p')"
+    h2spec_port="$(printf '%s\n' "$h2spec_host" | sed -n '2p')"
+    run_optional_tool "http2.h2spec" "h2spec" -h "$h2spec_host_name" -p "$h2spec_port"
+  else
+    run_optional_tool "http2.h2spec" "h2spec"
+  fi
+fi
+if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_curl" == "1" ]]; then
+  run_optional_tool "http2.curl" "curl" --http2 --fail --silent --show-error "$url"
+fi
+if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_nghttp" == "1" ]]; then
+  run_optional_tool "http2.nghttp" "nghttp" -nv "$url"
+fi
+if [[ "$run_h2spec$run_curl$run_nghttp$run_h2load" == "0000" || "$run_h2load" == "1" ]]; then
+  run_optional_tool "http2.h2load" "h2load" -n 10 -c 1 "$url"
+fi

@@ -121,6 +121,35 @@ static int test_parse_headers(void)
     return 0;
 }
 
+static int test_parse_bodyless_upgrade_head(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 125;
+    }
+
+    status = parse_request(&arena,
+                           "GET /upgrade HTTP/1.1\r\n"
+                           "Host: example.test\r\n"
+                           "Connection: Upgrade, HTTP2-Settings\r\n"
+                           "Upgrade: h2c\r\n"
+                           "HTTP2-Settings: AAMAAABk\r\n"
+                           "\r\n",
+                           NULL, &request, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || request.method != SL_HTTP_METHOD_GET ||
+        expect_str_equal(request.path, "/upgrade") != 0 || request.header_count != 4U ||
+        request.body.length != 0U)
+    {
+        return 126;
+    }
+
+    return 0;
+}
+
 static int test_parse_body_bytes(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -970,6 +999,7 @@ int main(void)
     static const HttpTestCase tests[] = {
         {test_parse_valid_targets},
         {test_parse_headers},
+        {test_parse_bodyless_upgrade_head},
         {test_parse_body_bytes},
         {test_parse_non_nul_terminated_request_storage},
         {test_parse_binary_body_bytes},

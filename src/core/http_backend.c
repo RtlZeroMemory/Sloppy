@@ -224,10 +224,20 @@ static void sl_http_backend_options_init(SlHttpBackendOptions* out,
 
 static bool sl_http_connection_can_begin_request(const SlHttpConnection* connection)
 {
-    return connection != NULL && connection->backend != NULL && connection->slot_admitted &&
-           connection->backend->state == SL_HTTP_BACKEND_STATE_STARTED &&
-           (connection->state == SL_HTTP_CONNECTION_STATE_ACCEPTED ||
-            connection->state == SL_HTTP_CONNECTION_STATE_OPEN);
+    if (connection == NULL || connection->backend == NULL || !connection->slot_admitted ||
+        connection->backend->state != SL_HTTP_BACKEND_STATE_STARTED)
+    {
+        return false;
+    }
+    if (connection->state == SL_HTTP_CONNECTION_STATE_ACCEPTED ||
+        connection->state == SL_HTTP_CONNECTION_STATE_OPEN)
+    {
+        return true;
+    }
+    return connection->multiplexing &&
+           (connection->state == SL_HTTP_CONNECTION_STATE_READING_REQUEST ||
+            connection->state == SL_HTTP_CONNECTION_STATE_DISPATCHING ||
+            connection->state == SL_HTTP_CONNECTION_STATE_WRITING_RESPONSE);
 }
 
 static bool sl_http_request_terminal(SlHttpRequestState state)
@@ -274,6 +284,24 @@ static void sl_http_request_terminal_cancel(SlHttpRequestLifecycle* request,
         request->connection->state = SL_HTTP_CONNECTION_STATE_CLOSING;
     }
     sl_http_request_release_admission(request);
+}
+
+static void sl_http_request_set_connection_after_stream_terminal(SlHttpRequestLifecycle* request,
+                                                                 SlHttpConnectionState fallback)
+{
+    SlHttpConnection* connection = request == NULL ? NULL : request->connection;
+    SlHttpBackend* backend = connection == NULL ? NULL : connection->backend;
+
+    if (connection == NULL) {
+        return;
+    }
+    if (connection->multiplexing && backend != NULL &&
+        backend->state == SL_HTTP_BACKEND_STATE_STARTED)
+    {
+        connection->state = SL_HTTP_CONNECTION_STATE_OPEN;
+        return;
+    }
+    connection->state = fallback;
 }
 
 static SlStr sl_http_backend_trim_ascii_space(SlStr value)
@@ -386,9 +414,8 @@ static SlStatus sl_http_body_reader_fail(SlHttpBodyReader* reader, SlHttpBodyRea
         }
         else {
             reader->request->state = SL_HTTP_REQUEST_STATE_FAILED;
-            if (reader->request->connection != NULL) {
-                reader->request->connection->state = SL_HTTP_CONNECTION_STATE_CLOSING;
-            }
+            sl_http_request_set_connection_after_stream_terminal(reader->request,
+                                                                 SL_HTTP_CONNECTION_STATE_CLOSING);
             sl_http_request_release_admission(reader->request);
         }
     }
@@ -607,7 +634,7 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
     if (arena == NULL || connection == NULL || connection->backend == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (connection->state == SL_HTTP_CONNECTION_STATE_CLOSING &&
+    if (connection->state == SL_HTTP_CONNECTION_STATE_CLOSING && !connection->multiplexing &&
         !connection->backend->options.keep_alive_enabled)
     {
         return sl_http_backend_keep_alive_unsupported(out_diag);
@@ -902,10 +929,11 @@ SlStatus sl_http_request_complete(SlHttpRequestLifecycle* request, SlDiag* out_d
     }
 
     request->state = SL_HTTP_REQUEST_STATE_COMPLETED;
-    request->connection->state = request->connection->backend != NULL &&
-                                         request->connection->backend->options.keep_alive_enabled
-                                     ? SL_HTTP_CONNECTION_STATE_OPEN
-                                     : SL_HTTP_CONNECTION_STATE_CLOSING;
+    sl_http_request_set_connection_after_stream_terminal(
+        request, request->connection->backend != NULL &&
+                         request->connection->backend->options.keep_alive_enabled
+                     ? SL_HTTP_CONNECTION_STATE_OPEN
+                     : SL_HTTP_CONNECTION_STATE_CLOSING);
     sl_http_request_release_admission(request);
     return sl_status_ok();
 }
@@ -921,7 +949,7 @@ SlStatus sl_http_request_fail(SlHttpRequestLifecycle* request, SlDiag* out_diag)
     if (request->state != SL_HTTP_REQUEST_STATE_FAILED) {
         request->state = SL_HTTP_REQUEST_STATE_FAILED;
     }
-    request->connection->state = SL_HTTP_CONNECTION_STATE_ERROR;
+    sl_http_request_set_connection_after_stream_terminal(request, SL_HTTP_CONNECTION_STATE_ERROR);
     sl_http_request_release_admission(request);
     return sl_status_ok();
 }

@@ -28,9 +28,10 @@ Network conformance is split by lane:
   `TcpListener`, `TcpConnection`, `LocalEndpoint`, `UnixSocket`, `NamedPipe`, and
   `NetworkAddress` surface behavior;
 - outbound HTTP client coverage: `bootstrap.stdlib.http_client` verifies the HTTP/1.1
-  request/response lane over the TCP bridge and private TLS bridge with deterministic
-  loopback status/header/body, HTTPS trust-store and insecure-skip verification,
-  body-consumption, malformed-response, body-limit, ambiguous-body, bounded
+  request/response lane and explicit HTTP/2 `h2c`/TLS `h2` lanes over the TCP and
+  private TLS bridges with deterministic loopback status/header/body, HTTPS
+  trust-store and insecure-skip verification, body-consumption,
+  malformed-response, body-limit, ambiguous-body, bounded
   stream/deadline/cancellation, per-origin pooling, pool
   exhaustion, redirect loop/max, cross-origin sensitive-header stripping/denial,
   strict-network denial, and DNS-failure checks;
@@ -40,6 +41,14 @@ Network conformance is split by lane:
   registration, `stdlib.httpclient` activation of that private bridge dependency, TCP
   client/listener loopback smoke, LocalEndpoint bridge/path validation, promise settlement
   through the V8 owner-thread path, and inactive-feature gating when a V8 SDK is configured.
+- HTTP/2 transport coverage: `core.http2_frame`, `core.http2_hpack`,
+  `core.http2_session`, `core.http2_mapping`, and `core.http2_dispatch` cover the native
+  protocol units. `conformance.transport.http2_h2c`,
+  `conformance.transport.http2_h2c_upgrade`, and
+  `conformance.transport.http2_tls_alpn` cover the libuv listener paths.
+  Optional external-tool smoke wrappers live at `tools/windows/test-http2.ps1`
+  and `tools/unix/test-http2.sh`; they report missing h2spec, curl, nghttp,
+  and h2load lanes as `UNAVAILABLE` or `SKIPPED`.
 
 Local IPC coverage adds POSIX-gated Unix domain socket native tests, Windows-gated named
 pipe native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring,

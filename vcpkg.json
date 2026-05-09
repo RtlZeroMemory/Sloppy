@@ -8,6 +8,7 @@
     "libuv",
     "llhttp",
     "libsodium",
+    "nghttp2",
     "openssl",
     "libpq",
     "sqlite3",

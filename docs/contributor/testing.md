@@ -161,6 +161,7 @@ CTest naming convention groups them by area:
 conformance.foundation.*
 conformance.http.*
 conformance.transport.*
+conformance.transport.http2_*
 conformance.sqlite.*
 conformance.capability.*
 conformance.package.*
@@ -170,6 +171,14 @@ benchmark.*
 
 When a CI run skips a conformance lane, it's reported as `SKIPPED` /
 `UNAVAILABLE`, never folded into the default count.
+
+HTTP/2 changes should include the smallest native protocol lane that proves
+the contract: frame/HPACK/session unit tests for parser behavior,
+`conformance.transport.http2_h2c` for cleartext prior knowledge,
+`conformance.transport.http2_h2c_upgrade` for HTTP/1.1 Upgrade, and
+`conformance.transport.http2_tls_alpn` for TLS ALPN selection. External tools
+such as h2spec, nghttp, curl, and h2load are optional lanes; report them as
+`SKIPPED` or `UNAVAILABLE` when the tool is missing.
 
 ## When tests get rejected at review
 

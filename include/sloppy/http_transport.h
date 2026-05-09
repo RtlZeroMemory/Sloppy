@@ -3,6 +3,7 @@
 
 #include "sloppy/arena.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/http2_dispatch.h"
 #include "sloppy/http_backend.h"
 #include "sloppy/http_response.h"
 #include "sloppy/status.h"
@@ -152,7 +153,10 @@ struct SlHttpTransportConnection
     bool close_after_write;
     bool keep_alive_after_write;
     bool streaming_response;
+    bool http2_mode;
+    bool http2_dispatcher_started;
     SlHttpResponse active_response;
+    SlHttp2ServerDispatcher http2_dispatcher;
     size_t stream_chunk_index;
     bool stream_final_written;
     SlDiag last_diag;
