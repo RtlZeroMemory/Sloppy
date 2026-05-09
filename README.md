@@ -1,3 +1,5 @@
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/d19a275c-f53b-4585-a1b8-86bf3af85aef" />
+
 # Sloppy
 
 > Pre-alpha · TypeScript backend runtime with a compiler that knows your app
