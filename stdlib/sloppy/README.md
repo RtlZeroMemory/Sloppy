@@ -48,9 +48,9 @@ lib/sloppy/bootstrap/sloppy/
   facades, and core API namespaces.
 - `app.js` provides the bootstrap builder/app/module surface used by examples and tests:
   `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, `Router.group(...)`,
-  route registration, route-only `app.useModule(...)`, explicit controller mapping, group
-  metadata, config/log/services/capabilities facades, structural freeze behavior, and debug
-  snapshots.
+  route registration, middleware/filter registration, route-only `app.useModule(...)`,
+  explicit controller mapping, group metadata, config/log/services/capabilities facades,
+  structural freeze behavior, and debug snapshots.
 - `internal/capabilities.js`, `internal/config.js`, `internal/logging.js`,
   `internal/modules.js`, `internal/routes.js`, `internal/services.js`, and
   `internal/shared.js` hold app-host implementation helpers. Public imports come from the
@@ -88,14 +88,14 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Current Boundaries
 
-- `app.run`, `app.listen`, or `app.build`;
-- public handler registration APIs;
-- full compiler extraction or arbitrary import rewriting;
-- ORM, migrations, or schema-management behavior for database providers;
-- middleware, module packages, native plugins, or full app lifecycle integration;
-- config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
-  logging sinks, async service factories, typed DI tokens, or native service graph
-  validation.
+- `app.run`, `app.listen`, and `app.build` belong to later app lifecycle work.
+- Public handler registration APIs will be documented when the runtime support lands.
+- Full compiler extraction and arbitrary import rewriting are compiler/runtime work.
+- ORM, migrations, and schema-management behavior belong to future database provider work.
+- Module packages, native plugins, and full app lifecycle integration are planned separately.
+- Config file/environment/CLI loading inside the JS stdlib itself, secret managers, native
+  logging sinks, async service factories, typed DI tokens, and native service graph
+  validation belong to later framework/runtime slices.
 
 ## Source Docs
 

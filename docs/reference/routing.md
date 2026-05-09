@@ -34,6 +34,7 @@ Compiler normalization also accepts framework `/:name` segments and converts the
 - group prefixes are normalized (for example `/users/` -> `/users`).
 - nested groups compose parent + child patterns.
 - group metadata supports `withTags(...tags)` and `withName(name)`.
+- bootstrap groups support `use(fn)` for group-local middleware/filter functions.
 
 ## Route Metadata
 
@@ -63,9 +64,12 @@ Compiler extraction currently enforces:
 
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
 - Route availability still depends on emitted Plan metadata.
+- Middleware/filter functions currently execute in the bootstrap app-host handler path.
+  Compiler extraction and emitted Plan metadata for middleware will be added in a
+  separate compiler/runtime slice.
 
 ## Limits
 
-- No Node-style router behavior contract.
-- No middleware/filter pipeline contract in this layer.
-- No package-manager route plugin model.
+- Sloppy currently follows the Sloppy router surface documented on this page.
+- Package-managed route plugin discovery is planned separately from the current
+  pre-alpha router.

@@ -150,9 +150,13 @@ Returning anything else fails the request with a runtime diagnostic.
 
 What's on `ctx` is documented in [request-context](request-context.md).
 
+## Middleware
+
+Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
+(group-local). See [middleware](middleware.md).
+
 ## What's not supported yet
 
-- Middleware and per-route filters — upcoming framework work
 - Automatic OPTIONS / preflight responses, CORS — upcoming framework work
 - HEAD handling
 - Streaming or chunked request bodies

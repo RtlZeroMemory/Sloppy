@@ -26,6 +26,28 @@ function validateHandler(handler) {
     }
 }
 
+function validateMiddleware(middleware) {
+    if (typeof middleware !== "function") {
+        throw new TypeError("Sloppy middleware must be a function.");
+    }
+}
+
+function validateMiddlewareEntry(entry) {
+    if (entry === null || typeof entry !== "object") {
+        throw new TypeError("Sloppy middleware entries must carry { fn, sequence }.");
+    }
+    validateMiddleware(entry.fn);
+    if (typeof entry.sequence !== "number") {
+        throw new TypeError("Sloppy middleware entries must carry a numeric sequence.");
+    }
+}
+
+function orderedMiddlewareFunctions(entries) {
+    return [...entries]
+        .sort((a, b) => a.sequence - b.sequence)
+        .map((entry) => entry.fn);
+}
+
 function validateController(controller) {
     if (typeof controller !== "function") {
         throw new TypeError("Sloppy controller must be a constructor function.");
@@ -87,11 +109,73 @@ function finishRouteError(host, error, cleanup) {
     }
 }
 
-function createRouteHandler(host, handler) {
+function invokeMiddlewarePipeline(context, middleware, terminal) {
+    let index = -1;
+
+    function dispatch(nextIndex) {
+        if (nextIndex <= index) {
+            throw new Error("Sloppy middleware next() must not be called more than once.");
+        }
+
+        index = nextIndex;
+        const current = middleware[nextIndex];
+        if (current === undefined) {
+            return terminal();
+        }
+
+        let nextCalled = false;
+        let downstreamPromise;
+        function next() {
+            if (nextCalled) {
+                throw new Error("Sloppy middleware next() must not be called more than once.");
+            }
+
+            nextCalled = true;
+            const downstream = dispatch(nextIndex + 1);
+            downstreamPromise = Promise.resolve(downstream);
+            return downstream;
+        }
+
+        const middlewareReturn = current(context, next);
+        if (!nextCalled) {
+            return middlewareReturn;
+        }
+
+        // Fail closed: a middleware that calls next() must chain its return
+        // value to downstream completion. Awaiting downstreamPromise here keeps
+        // the request scope alive until downstream settles, even if the
+        // middleware ignored the next() return value.
+        return Promise.resolve(middlewareReturn).then(
+            (value) => downstreamPromise.then(() => value),
+            (error) => downstreamPromise.then(
+                () => {
+                    throw error;
+                },
+                () => {
+                    throw error;
+                },
+            ),
+        );
+    }
+
+    return dispatch(0);
+}
+
+function middlewareMetadata(middleware) {
+    return Object.freeze({
+        count: middleware.length,
+    });
+}
+
+function createRouteHandler(host, handler, middleware) {
     return function routeHandler(context) {
         if (context !== undefined && context !== null) {
             try {
-                const result = handler(context);
+                const result = invokeMiddlewarePipeline(
+                    context,
+                    middleware,
+                    () => handler(context),
+                );
                 if (result !== null && typeof result === "object" && typeof result.then === "function") {
                     return Promise.resolve(result).catch((error) => handleRouteError(host, error));
                 }
@@ -103,7 +187,11 @@ function createRouteHandler(host, handler) {
 
         const ownedContext = createHandlerContext(host);
         try {
-            const result = handler(ownedContext);
+            const result = invokeMiddlewarePipeline(
+                ownedContext,
+                middleware,
+                () => handler(ownedContext),
+            );
             if (result !== null && typeof result === "object" && typeof result.then === "function") {
                 return Promise.resolve(result).then(
                     (value) => finishWithCleanup(value, () => ownedContext.services.dispose()),
@@ -242,25 +330,31 @@ function registerRoute(
     optionsOrHandler,
     maybeHandler,
     metadataBase,
+    middleware = [],
 ) {
     const args = normalizeMapArguments(pattern, optionsOrHandler, maybeHandler);
 
     assertAppMutable();
     validatePattern(args.pattern);
     validateHandler(args.handler);
+    for (const current of middleware) {
+        validateMiddlewareEntry(current);
+    }
 
     if (routes.some((route) => route.method === method && route.pattern === args.pattern)) {
         throw new Error(`Sloppy route '${method} ${args.pattern}' is already registered.`);
     }
 
+    const orderedMiddleware = orderedMiddlewareFunctions(middleware);
     const route = {
         method,
         pattern: args.pattern,
-        handler: createRouteHandler(host, args.handler),
+        handler: createRouteHandler(host, args.handler, Object.freeze(orderedMiddleware)),
         name: null,
         metadata: {
             ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
             ...((currentModule !== null) ? { module: currentModule } : {}),
+            middleware: middlewareMetadata(orderedMiddleware),
         },
     };
 
@@ -325,6 +419,7 @@ function createControllerMapper(
     currentModule,
     prefix,
     Controller,
+    middleware = [],
 ) {
     const normalizedPrefix = normalizeGroupPrefix(prefix);
     validateController(Controller);
@@ -344,6 +439,8 @@ function createControllerMapper(
                 action,
             },
             createControllerHandler(host, Controller, action),
+            undefined,
+            middleware,
         );
     }
 
@@ -366,12 +463,21 @@ function createControllerMapper(
     });
 }
 
-function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix) {
+function createRouteGroup(
+    routes,
+    host,
+    assertAppMutable,
+    getCurrentModule,
+    prefix,
+    getInheritedMiddleware = () => [],
+    nextMiddlewareSequence = () => 0,
+) {
     const groupMetadata = {
         prefix: normalizeGroupPrefix(prefix),
         tags: [],
         name: null,
     };
+    const groupMiddleware = [];
 
     function createMapMethod(method) {
         return function mapRoute(pattern, optionsOrHandler, maybeHandler) {
@@ -390,6 +496,7 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
                     tags: groupMetadata.tags,
                     name: groupMetadata.name,
                 },
+                [...getInheritedMiddleware(), ...groupMiddleware],
             );
         };
     }
@@ -418,6 +525,14 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
             return group;
         },
 
+        use(middleware) {
+            assertAppMutable();
+            validateMiddleware(middleware);
+
+            groupMiddleware.push({ fn: middleware, sequence: nextMiddlewareSequence() });
+            return group;
+        },
+
         mapGet: createMapMethod("GET"),
         mapPost: createMapMethod("POST"),
         mapPut: createMapMethod("PUT"),
@@ -436,6 +551,8 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
                 assertAppMutable,
                 getCurrentModule,
                 composeRoutePattern(groupMetadata.prefix, childPrefix),
+                () => [...getInheritedMiddleware(), ...groupMiddleware],
+                nextMiddlewareSequence,
             );
         },
     };
