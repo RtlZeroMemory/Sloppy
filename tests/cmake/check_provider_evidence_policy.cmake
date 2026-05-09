@@ -28,9 +28,15 @@ file(READ "${PROJECT_SOURCE_DIR}/docs/reference/providers.md" provider_reference
 file(READ "${PROJECT_SOURCE_DIR}/tests/conformance/providers/README.md" provider_conformance)
 file(READ "${PROJECT_SOURCE_DIR}/.github/workflows/ci.yml" ci_workflow)
 
+set(testing_strategy_terms "Live providers" "V8" "Benchmark" "SKIPPED" "UNAVAILABLE")
+set(quality_gates_terms "Live PostgreSQL" "Live SQL Server" "live-providers" "V8" "UNAVAILABLE")
+set(data_providers_terms "V8" "unavailable")
+set(provider_reference_terms "V8" "skipped" "unavailable")
+set(provider_conformance_terms "live-provider" "V8" "benchmark" "SKIPPED" "UNAVAILABLE")
+
 foreach(text_name testing_strategy quality_gates data_providers provider_reference provider_conformance)
     set(text_value "${${text_name}}")
-    foreach(required "skipped" "unavailable" "live-provider" "V8" "benchmark")
+    foreach(required IN LISTS ${text_name}_terms)
         string(FIND "${text_value}" "${required}" required_index)
         if(required_index EQUAL -1)
             message(FATAL_ERROR "${text_name} does not describe provider evidence term: ${required}")

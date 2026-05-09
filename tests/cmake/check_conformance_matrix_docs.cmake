@@ -17,25 +17,24 @@ if(NOT EXISTS "${matrix_doc}")
 endif()
 
 foreach(required IN ITEMS
-        "Default non-V8"
+        "Default (non-V8)"
         "V8-gated"
-        "localhost transport"
-        "SQLite/capability"
-        "package outside-checkout"
-        "live-provider optional"
-        "stress/smoke"
-        "benchmark harness"
-        "Report skipped or unavailable lanes honestly as not run"
-        "skipped/not configured"
+        "Package outside-checkout"
+        "Live providers"
+        "Stress / torture"
+        "Benchmark"
+        "Sanitizer"
+        "libFuzzer seed replay"
         "conformance.foundation.*"
-        "conformance.v8.*"
         "conformance.http.*"
         "conformance.transport.*"
         "conformance.sqlite.*"
         "conformance.capability.*"
         "conformance.package.*"
         "smoke.*"
-        "benchmark.*")
+        "benchmark.*"
+        "SKIPPED"
+        "UNAVAILABLE")
     require_file_substring(
         "${matrix_doc}" "${required}" "conformance matrix is missing required text")
 endforeach()

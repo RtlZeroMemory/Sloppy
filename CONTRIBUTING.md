@@ -48,7 +48,7 @@ present blocked checks as successful checks.
 4. Run the relevant checks before opening a PR.
 5. Review staged files for generated artifacts or scope creep before push.
 
-## Validation Reporting
+## Evidence Reporting
 
 Use these statuses when reporting PR validation:
 
