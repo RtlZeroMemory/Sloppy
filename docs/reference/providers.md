@@ -17,8 +17,8 @@ the compiler before every runtime path is available.
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
 | Framework v2 typed injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
-| Native/live tests | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
-| V8 bridge live tests | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
+| Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
+| V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
 ## Framework Descriptor Contract
 
@@ -136,5 +136,5 @@ Redaction behavior includes:
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - Fake provider APIs (`data.createFakeProvider`) validate shape and behavior
   contracts only. Live database behavior uses provider integration checks.
-- Missing live-provider dependencies are reported as skipped or unavailable.
-  Live-provider, V8, and benchmark checks are separate.
+- Missing service dependencies are reported as skipped or unavailable.
+  Service-backed providers, V8 execution, and benchmarks use separate checks.

@@ -8,4 +8,4 @@ per-origin pooling, and strict outbound-network metadata.
 
 This example is limited to the outbound `HttpClient` API shape shown in source.
 Live external network behavior, TLS policy, proxy policy, UDP, and WebSocket
-behavior are separate examples or runtime lanes.
+behavior are separate examples or future runtime work.

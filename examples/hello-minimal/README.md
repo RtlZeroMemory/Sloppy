@@ -1,7 +1,16 @@
 # Hello Minimal Example
 
-This is an executable source-input example for the currently supported framework subset.
-Run from this directory with a V8-enabled build:
+This example demonstrates the smallest useful Sloppy app: a health route and a
+parameterized JSON route using the current framework subset.
+
+## Requirements
+
+- A V8-enabled Sloppy build or package for handler execution.
+- PowerShell examples below assume Windows paths.
+
+## Run
+
+From this directory:
 
 ```powershell
 ..\..\build\windows-relwithdebinfo\sloppy.exe build
@@ -15,16 +24,20 @@ Run from the repository root:
 .\build\windows-relwithdebinfo\sloppy.exe run examples/hello-minimal/src/main.ts --once GET /hello/Ada
 ```
 
-The example demonstrates `sloppy run`, `sloppy.json`, a TypeScript-extension
-source file in the supported JavaScript subset, route binding, and explicit
-`Results.text`/`Results.json` helpers.
+## Expected Result
 
-Routes:
+- `GET /health` returns `ok`.
+- `GET /hello/Ada` returns `{"hello":"Ada"}`.
 
-- `GET /health`
-- `GET /hello/{name}`
+## What To Inspect
 
-Expected tooling after building artifacts:
+- `sloppy.json`: the source-input configuration.
+- `src/main.ts`: route binding and explicit `Results.text`/`Results.json`
+  helpers.
+- `.sloppy/app.plan.json`: generated route and handler metadata after
+  `sloppy build`.
+
+After building artifacts, inspect the generated app with:
 
 ```powershell
 ..\..\build\windows-relwithdebinfo\sloppy.exe routes --plan .sloppy\app.plan.json
@@ -32,7 +45,7 @@ Expected tooling after building artifacts:
 ..\..\build\windows-relwithdebinfo\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
-## Limitations
+## Current Limits
 
 This example requires V8 for handler execution and covers only the two routes
 shown above.

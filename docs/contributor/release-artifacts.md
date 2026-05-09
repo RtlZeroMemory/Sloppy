@@ -1,7 +1,7 @@
 # Release Artifacts
 
-Release artifact work is dry-run and package-smoke evidence unless a scoped
-release task changes the contract.
+Release artifact work is dry-run package validation unless a scoped release
+task changes the contract.
 
 Important files:
 
@@ -23,9 +23,9 @@ Local checks:
 .\tools\windows\dev.ps1 test-package
 ```
 
-Policy reminders:
+Workflow reminders:
 
-- package checks validate the package lane only;
+- package checks validate package behavior only;
 - dry-run workflow is manual (`workflow_dispatch`) and read-only;
-- checksum and archive verification must stay in the release lane;
-- package smoke is outside-checkout validation.
+- checksum and archive verification belong to the release workflow;
+- package testing extracts and validates the archive outside the checkout.

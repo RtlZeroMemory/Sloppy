@@ -18,13 +18,13 @@ Do:
 
 - update docs when behavior or workflow changes;
 - include concrete commands and expected outcomes;
-- keep status statements aligned with validation lanes;
+- keep status statements aligned with the checks that currently cover the behavior;
 - delete stale pages and duplicated planning material.
 
 Do not:
 
 - add `Type:` or `Status:` metadata lines;
-- keep prompt transcripts or planning dumps as current docs;
+- keep planning notes or task transcripts as current docs;
 - use fake examples;
-- describe production/readiness/performance/compatibility states beyond the
-  validation currently available.
+- describe production, performance, compatibility, or release states beyond
+  current validation.

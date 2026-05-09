@@ -15,7 +15,7 @@ Create and test an experimental Windows package archive.
 .\tools\windows\dev.ps1 package -Preset windows-relwithdebinfo
 ```
 
-2. Smoke-test the newest package archive.
+2. Test the newest package archive.
 
 ```powershell
 .\tools\windows\dev.ps1 test-package -Preset windows-relwithdebinfo

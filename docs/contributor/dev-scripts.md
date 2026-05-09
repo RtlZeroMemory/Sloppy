@@ -24,8 +24,8 @@ Command summary:
 - `test`: run CTest and compiler tests.
 - `format-check`: C/C++ and Rust formatting checks.
 - `lint`: standards, docs, governance, release-policy, and hygiene checks.
-- `analyze`: advanced static-analysis lane target.
-- `package`/`test-package`: outside-checkout package lane.
+- `analyze`: advanced static-analysis target.
+- `package`/`test-package`: create and test a package outside the checkout.
 
 Unix wrappers use `tools/unix/dev.sh` with the same command names where
 implemented.

@@ -16,13 +16,12 @@ boundaries, and tests.
 
 ## Build/Tooling Reviewer
 
-Checks CMake, scripts, CI, test integration, current Windows-lane/cross-platform assumptions, and
+Checks CMake, scripts, CI, test integration, current Windows and cross-platform assumptions, and
 generated artifact hygiene.
 
 Reject required jobs that are made green by silently skipping their purpose. Optional V8,
 package, live-provider, advanced static analysis, fuzz/property, stress/torture, sanitizer,
-and benchmark lanes must
-be reported separately from default evidence.
+and benchmark checks must be reported separately from default checks.
 
 ## Simplicity / Overengineering Reviewer
 
@@ -93,7 +92,7 @@ JS/TS checklist:
 - compiler-extractable examples avoid dynamic patterns;
 - `tools/windows/check-js-ts-standards.ps1` passes.
 - status/performance/runtime-support statements are aligned with source docs and
-  backed by the relevant validation lane.
+  backed by the relevant validation.
 
 Rust compiler/tooling checklist:
 
@@ -111,9 +110,10 @@ Rust compiler/tooling checklist:
 Checks only the original acceptance criteria, confirmed blocking feedback, and no new scope
 creep.
 
-The final verifier should reject optional lanes reported as pass, benchmark smoke reported
-as correctness or performance evidence, goldens updated only to match current output, stale
-docs, unsupported public/product statements, and unreviewed generated artifacts.
+The final verifier should reject optional checks reported as passed when they
+were not run, benchmark smoke reported as correctness or performance validation,
+goldens updated only to match current output, stale docs, unsupported
+public/product statements, and unreviewed generated artifacts.
 
 ## Blocking vs Non-blocking
 

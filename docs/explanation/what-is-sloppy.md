@@ -8,10 +8,12 @@ JavaScript subset. It is built from three parts that deliberately stay separate:
 - a Rust compiler (`sloppyc`) that emits runtime artifacts;
 - an isolated C++ V8 bridge used only when V8 is explicitly enabled.
 
-The product idea is not "run arbitrary Node-style source directly." The idea is
-"compile first, validate first, execute known artifacts." That lets the runtime
-reason about routes, handlers, providers, and capabilities before handler code
-runs.
+The product idea is to make backend app shape visible before serving requests:
+compile first, validate first, execute known artifacts. The app-host ergonomics
+are meant to feel familiar to backend developers: create an app, register
+routes and providers, return results. Sloppy adds a stricter compilation and
+Plan step so the runtime can reason about routes, handlers, providers, and
+capabilities before handler code runs.
 
 Current source shows this boundary explicitly:
 
@@ -23,5 +25,5 @@ Current source shows this boundary explicitly:
 - `src/engine/v8/*` keeps V8 internals isolated behind Sloppy-owned APIs.
 
 Sloppy currently runs Sloppy-built artifacts. Node-style dependency resolution,
-`node_modules`, production operations, and package-manager app dependencies are
-separate future design areas.
+`node_modules`, production operations, and package-manager app dependencies may
+come later, but they are not part of the current pre-alpha runtime.

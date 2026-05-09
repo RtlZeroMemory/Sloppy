@@ -2,8 +2,8 @@
 
 This guide is for human contributors working in the Sloppy repository.
 
-Automation-specific operating rules are documented in
-[AGENTS.md](AGENTS.md) and [AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md).
+Repository automation notes are documented in [AGENTS.md](AGENTS.md) and
+[AGENTS_CONTRIBUTING.md](AGENTS_CONTRIBUTING.md).
 
 ## Start Here
 
@@ -38,7 +38,7 @@ When a change affects runtime execution or other V8-adjacent behavior, also run:
 ```
 
 If a required tool or SDK is missing, report that failure directly. Do not
-present blocked lanes as successful lanes.
+present blocked checks as successful checks.
 
 ## Working Rules
 
@@ -48,9 +48,9 @@ present blocked lanes as successful lanes.
 4. Run the relevant checks before opening a PR.
 5. Review staged files for generated artifacts or scope creep before push.
 
-## Evidence Reporting
+## Validation Reporting
 
-Use only these lane statuses in PR evidence:
+Use these statuses when reporting PR validation:
 
 - `PASS`
 - `FAIL`
@@ -59,13 +59,13 @@ Use only these lane statuses in PR evidence:
 - `DEFERRED`
 - `NOT RUN`
 
-If you skip an optional lane, report it clearly as not run. Report non-V8, V8, package,
-live-provider, stress, and benchmark lanes separately.
+If you skip an optional check, report it clearly as not run. Keep non-V8,
+V8-enabled, package, live-provider, stress, and benchmark results separate.
 
 ## Documentation Expectations
 
 - Write for readers, not for planning ceremony.
-- Keep docs aligned with current implementation evidence.
+- Keep docs aligned with current implementation and validation.
 - Keep Diataxis page intent clear (tutorial/how-to/reference/explanation).
 - Avoid stale planning language and unsupported statements.
 
@@ -73,6 +73,6 @@ live-provider, stress, and benchmark lanes separately.
 
 - Clear contract and non-goals.
 - Tests for expected and negative paths when applicable.
-- Honest lane report with run/skip reasons.
+- Validation summary with run and skip reasons.
 - Goldens updated only when intended and explained.
 - Secret/redaction checks when the change touches diagnostics or outputs.

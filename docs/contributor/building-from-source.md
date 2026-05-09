@@ -1,11 +1,11 @@
 # Building From Source
 
 Sloppy is cross-platform by design. Windows x64 is the most complete validated
-local contributor lane today. These instructions are for contributors working
+local contributor workflow today. These instructions are for contributors working
 inside the repository. Product tutorials assume an installed or extracted
 `sloppy` executable instead.
 
-## Windows x64 Default Lane
+## Windows x64 Default Build
 
 From the repository root:
 
@@ -20,11 +20,11 @@ From the repository root:
 Notes:
 
 - `configure` defaults to `windows-dev`.
-- The default lane is non-V8 unless V8 is explicitly enabled.
+- The default build is non-V8 unless V8 is explicitly enabled.
 - `test` runs CTest for the selected preset and compiler tests when Cargo is
   available.
 
-## Windows V8 Lane
+## Windows V8 Build
 
 Run this separately for runtime/app-host/compiler/provider/configuration/V8 work:
 
@@ -35,7 +35,7 @@ Run this separately for runtime/app-host/compiler/provider/configuration/V8 work
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
-`dev.ps1` rejects `windows-dev` + `-EnableV8` because the local V8 SDK lane is
+`dev.ps1` rejects `windows-dev` + `-EnableV8` because the local V8 SDK is
 release/RelWithDebInfo compatible.
 
 ## Useful Windows Commands
@@ -53,11 +53,11 @@ release/RelWithDebInfo compatible.
 
 Use `.\tools\windows\dev.ps1 help` for command options and parameter details.
 
-## Unix Lane
+## Unix Workflow
 
 Unix wrappers use the same command shape where implemented. Linux x64 is the
 active Unix target for local package/runtime work; macOS support is still less
-validated than the Windows lane.
+validated than the Windows workflow.
 
 ```sh
 ./tools/unix/bootstrap.sh
@@ -82,7 +82,7 @@ Never commit real credentials.
 
 ## Reporting
 
-For each lane, report one of `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
+For each check or build configuration, report one of `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
 `DEFERRED`, or `NOT RUN`.
 
 Never report success for a command you did not run.

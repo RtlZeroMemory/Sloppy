@@ -1,19 +1,22 @@
 # Why Sloppy Does Not Load node_modules
 
-Sloppy intentionally avoids `node_modules` resolution in the current phase.
+Sloppy does not load application dependencies from `node_modules` in the
+current pre-alpha runtime.
 
-The reason is architectural, not accidental: Sloppy is designed around
-compile-time structure extraction and strict artifact validation. Arbitrary npm
-graph resolution would weaken that deterministic contract unless Sloppy also
-owned a much larger compatibility and package policy surface.
+The reason is architectural. Sloppy's compiler needs to understand the app
+graph. During pre-alpha it follows Sloppy imports and supported relative
+modules, then emits a deterministic Plan. Loading arbitrary npm dependency
+graphs would require a separate design for package resolution, bundling,
+diagnostics, compatibility, and security.
 
 Current code and packaging scripts keep this boundary explicit:
 
 - runtime execution flows through compiler artifacts and validated plans;
-- package scripts call out that distribution is experimental and "no package
-  manager";
+- package scripts call out that distribution is experimental and does not add
+  application package-manager support;
 - npm-oriented dry-run packaging is a launcher/distribution path for Sloppy
   binaries, not app dependency compatibility.
 
-So "npm package exists" and "Sloppy apps are npm dependency-compatible" are
-different statements. Only the first is in scope today.
+npm may still be used to install the Sloppy CLI in a later distribution shape.
+Application dependency support may come later, but it is not part of the
+current pre-alpha runtime.

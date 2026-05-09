@@ -12,4 +12,4 @@ behavior.
 ```
 
 If SDK resolution fails, keep the exact resolver error in your report and mark
-the lane `UNAVAILABLE`.
+the V8-enabled check `UNAVAILABLE`.

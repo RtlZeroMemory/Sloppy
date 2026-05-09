@@ -17,7 +17,7 @@ A diagnostic can include:
 - related spans;
 - hints;
 - source frames supplied at render time;
-- JSON rendering for machine-readable lanes.
+- JSON rendering for machine-readable output.
 
 Diagnostics are data first. Text rendering and JSON rendering are views over the same
 contract.
@@ -34,7 +34,7 @@ Implemented diagnostic coverage includes:
 - route parsing and matching errors;
 - HTTP parser, backend, transport, request body, response writer, and timeout diagnostics;
 - capability denial and provider metadata diagnostics;
-- V8 exception mapping and source-map primary-span remapping in V8-gated lanes;
+- V8 exception mapping and source-map primary-span remapping in V8-enabled runs;
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
 - golden snapshots for representative negative paths.
 

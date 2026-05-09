@@ -26,13 +26,13 @@ Plan before execution so tooling and the host can reason about the app directly.
 
 ## Current Status
 
-Sloppy is pre-alpha. Windows x64 is the most complete validated local
-development path today. Linux and macOS remain product targets, but their local
+Sloppy is pre-alpha. Windows x64 is currently the most polished local
+development path. Linux and macOS remain product targets, but their local
 developer workflows are less complete.
 
-Runtime handler execution requires a V8-enabled build or package. Provider,
-package, live-database, benchmark, and platform work may need extra setup or
-separate checks.
+Runtime handler execution requires a V8-enabled build or package. SQL Server
+and PostgreSQL examples need external database setup. Production hardening,
+application dependency support, and public release packaging are future work.
 
 ## Install Or Try
 
@@ -103,8 +103,8 @@ Important repository areas:
 - Package archives are local/experimental distribution artifacts.
 - The npm launcher package is not a general application dependency manager.
 - Third-party app package resolution is outside the current runtime surface.
-- V8 execution, package archives, live providers, stress tests, fuzzing, and
-  benchmarks use separate setup from the default non-V8 build.
+- V8 execution, package archives, live databases, stress tests, fuzzing, and
+  benchmarks use setup beyond the default non-V8 build.
 
 ## Docs
 

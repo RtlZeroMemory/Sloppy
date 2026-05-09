@@ -13,20 +13,20 @@ Compiler-emitted plans currently target:
 
 ## Status Table
 
-| Surface | Current state | Check |
+| Surface | Current state | How to check it |
 | --- | --- | --- |
 | Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
 | Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
 | macOS local development | Product target, less complete today. | Unix script checks where available. |
-| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled checks. |
-| Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Live-provider integration checks. |
+| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled test run. |
+| Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Integration checks with configured services. |
 
-## V8 Execution Gate
+## V8 Execution
 
 - Handler execution requires a V8-enabled runtime build.
 - Non-V8 builds can still compile and validate artifacts, and `doctor` reports V8 as a warning state.
 
-## Provider Live Checks
+## Provider Integration Checks
 
 Default local checks do not start live database services by default.
 

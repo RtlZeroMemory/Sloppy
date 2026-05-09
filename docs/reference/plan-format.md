@@ -68,7 +68,7 @@ adds a default singleton service registration that is resolved through the reque
 and backed by `WorkQueue.create("<name>")`.
 `Config<"KEY">` reads the matching environment value. Custom validators, arbitrary
 TypeScript lowering, controller
-constructor injection, and broader response writing remain separate implementation lanes.
+constructor injection, and broader response writing remain future implementation work.
 
 ## Server Config Metadata
 
