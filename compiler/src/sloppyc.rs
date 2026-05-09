@@ -1460,12 +1460,23 @@ fn sloppy_codec_import_name_supported(name: &str) -> bool {
 fn sloppy_net_import_name_supported(name: &str) -> bool {
     matches!(
         name,
-        "TcpClient" | "TcpListener" | "TcpConnection" | "NetworkAddress" | "HttpClient"
+        "HttpClient"
+            | "TcpClient"
+            | "TcpListener"
+            | "TcpConnection"
+            | "LocalEndpoint"
+            | "UnixSocket"
+            | "NamedPipe"
+            | "NetworkAddress"
+            | "SloppyNetError"
     )
 }
 
 fn sloppy_os_import_name_supported(name: &str) -> bool {
-    matches!(name, "System" | "Environment" | "Process" | "Signals")
+    matches!(
+        name,
+        "System" | "Environment" | "Process" | "ProcessHandle" | "Signals" | "OsError"
+    )
 }
 
 fn sloppy_workers_import_name_supported(name: &str) -> bool {
@@ -10116,11 +10127,22 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "TcpClient",
             "TcpListener",
             "TcpConnection",
+            "LocalEndpoint",
+            "UnixSocket",
+            "NamedPipe",
             "NetworkAddress",
+            "SloppyNetError",
         ]);
     }
     if app.uses_os_runtime {
-        runtime_exports.extend(["System", "Environment", "Process", "Signals"]);
+        runtime_exports.extend([
+            "System",
+            "Environment",
+            "Process",
+            "ProcessHandle",
+            "Signals",
+            "OsError",
+        ]);
     } else if needs_framework_environment {
         runtime_exports.push("Environment");
     }
