@@ -1,4 +1,5 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/b7a3e1a5-9f8a-43aa-8df5-4edd8e8fdaf5" />
+<img width="909" height="584" alt="SLOPPY2" src="https://github.com/user-attachments/assets/38e7450b-51a1-4cba-951e-77dc4fb66ba6" />
+
 
 # Sloppy
 
