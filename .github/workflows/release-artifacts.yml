@@ -133,11 +133,11 @@ jobs:
       - name: Release artifact dry-run
         shell: pwsh
         run: |
-          $args = @("-Preset", "windows-release")
+          $releaseArgs = @("-Preset", "windows-release")
           if ("${{ inputs.run_package_smoke }}" -ne "true") {
-            $args += "-SkipSmoke"
+            $releaseArgs += "-SkipSmoke"
           }
-          .\tools\windows\release-dry-run.ps1 @args
+          .\tools\windows\release-dry-run.ps1 @releaseArgs
 
       - name: npm launcher dry-run from Windows archive
         shell: pwsh
