@@ -139,6 +139,11 @@ runtime provider bridges, or the packaged stdlib layout.
 Socket binding, package archives, TLS, keep-alive, streaming transport behavior,
 and live database setup are covered by separate integration lanes.
 
+`tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` is the largest current
+app-host example. It imports `examples/prealpha-control-plane` route modules,
+mounts a fake SQLite provider, and checks the app contract before the same
+project enters compiler/source-input/V8 lanes.
+
 ## Lifecycle
 
 Call `host.close()` when a test is finished. It closes the app-level service

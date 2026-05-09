@@ -71,7 +71,9 @@ lib/sloppy/bootstrap/sloppy/
   integers, booleans, arrays, optional fields, and object shapes.
 - `testing.js` provides the bootstrap app test host for in-memory JS app-host
   dispatch through route handlers, middleware, results, CORS, health checks, and
-  scoped services.
+  scoped services. The dogfood proof in
+  `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
+  `examples/prealpha-control-plane` route modules through this host.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.

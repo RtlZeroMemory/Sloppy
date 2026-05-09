@@ -86,6 +86,10 @@ After construction, every app exposes:
 `app.get` and `app.mapGet` (and the equivalents for other verbs) are aliases —
 pick one style and stick with it.
 
+For in-memory app tests, build the app normally and pass it to
+`Testing.createHost(app)` or `createTestHost(app)` from `sloppy/testing`. See
+[App test host](testing.md) for request/response helpers and lifecycle rules.
+
 ## Modules
 
 A module groups capabilities, services, and routes under a name.

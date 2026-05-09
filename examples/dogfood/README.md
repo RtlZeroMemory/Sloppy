@@ -9,6 +9,8 @@ Current runnable or diagnosable targets:
   artifact fixture under `compiler/tests/fixtures/hello-mapget/expected`.
 - `hello-source-input`: uses `examples/hello-minimal/src/main.ts` through the source-input
   fixture harness.
+- `prealpha-control-plane`: uses `examples/prealpha-control-plane/` through project-mode
+  source input and the app test host proof suite.
 - `package-hello-artifact`: uses the package outside-checkout smoke fixture when a package
   archive is provided.
 
@@ -17,4 +19,5 @@ are listed with their current blocked or gated status until the required runtime
 available.
 
 Default non-V8 dogfood runs validate clear diagnostics for V8-required
-examples. Positive execution of the hello handlers requires a V8-enabled build.
+examples. Positive execution of the hello handlers and the pre-alpha control
+plane requires a V8-enabled build.

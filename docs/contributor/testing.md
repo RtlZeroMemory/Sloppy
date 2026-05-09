@@ -62,6 +62,13 @@ conversion, ProblemDetails, CORS, health checks, or request service cleanup.
 Use `sloppy run --once` for compiled artifacts, native dispatch, V8 execution,
 generated typed bindings, package layout, and provider bridge behavior.
 
+The dogfood control-plane proof deliberately uses both. The app-host test
+imports `examples/prealpha-control-plane/src/routes/*.js` and checks bodies,
+headers, query/path params, CORS, ProblemDetails, service-scope disposal, and
+negative paths. The CTest source-input lanes compile the same project, inspect
+the emitted plan/tooling outputs, assert non-V8 diagnostics, and run one
+V8-gated synthetic request when V8 is enabled.
+
 ## Writing a good unit test
 
 - Name the contract being tested in the test name. `test_route_pattern_int_param_strict_trailing_slash`

@@ -113,6 +113,7 @@ reported through:
 .\tools\windows\dev.ps1 dogfood -Preset windows-relwithdebinfo -EnableV8
 ```
 
-`dogfood.ps1` reuses the existing source-input and package smoke harnesses. Without a
-V8-enabled build it reports V8-required examples as unavailable diagnostics, not positive
-execution. Without `-PackagePath` it reports package-mode dogfood as skipped.
+`dogfood.ps1` reuses the existing source-input, pre-alpha control-plane, and package
+smoke harnesses. Without a V8-enabled build it reports V8-required examples as
+unavailable diagnostics, not positive execution. Without `-PackagePath` it reports
+package-mode dogfood as skipped.
