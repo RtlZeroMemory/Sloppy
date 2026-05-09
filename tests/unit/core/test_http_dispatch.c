@@ -327,8 +327,8 @@ static int test_allow_header_lists_matching_methods_and_head_for_get(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
-    SlPlanHandler handlers[3];
-    SlPlanRoute routes[3];
+    SlPlanHandler handlers[4];
+    SlPlanRoute routes[4];
     SlPlan plan = {0};
     SlHttpRouteTable table = {0};
     SlStr allow = sl_str_from_cstr("stale");
@@ -343,6 +343,9 @@ static int test_allow_header_lists_matching_methods_and_head_for_get(void)
     handlers[2].id = 3U;
     handlers[2].export_name = sl_str_from_cstr("__sloppy_handler_3");
     handlers[2].display_name = sl_str_from_cstr("Health.Get");
+    handlers[3].id = 4U;
+    handlers[3].export_name = sl_str_from_cstr("__sloppy_handler_4");
+    handlers[3].display_name = sl_str_from_cstr("Users.Preflight");
 
     routes[0].method = sl_str_from_cstr("GET");
     routes[0].pattern = sl_str_from_cstr("/users/{id}");
@@ -353,12 +356,15 @@ static int test_allow_header_lists_matching_methods_and_head_for_get(void)
     routes[2].method = sl_str_from_cstr("GET");
     routes[2].pattern = sl_str_from_cstr("/health");
     routes[2].handler_id = 3U;
+    routes[3].method = sl_str_from_cstr("OPTIONS");
+    routes[3].pattern = sl_str_from_cstr("/users/{id}");
+    routes[3].handler_id = 4U;
 
     plan.version = SL_PLAN_CURRENT_VERSION;
     plan.handlers = handlers;
-    plan.handler_count = 3U;
+    plan.handler_count = 4U;
     plan.routes = routes;
-    plan.route_count = 3U;
+    plan.route_count = 4U;
 
     if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
         expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
@@ -369,7 +375,7 @@ static int test_allow_header_lists_matching_methods_and_head_for_get(void)
     if (expect_status(sl_http_dispatch_allow_header_for_path(
                           &arena, &table.dispatch, sl_str_from_cstr("/users/123"), &allow),
                       SL_STATUS_OK) != 0 ||
-        expect_str_equal(allow, "GET, HEAD, PATCH") != 0)
+        expect_str_equal(allow, "GET, HEAD, PATCH, OPTIONS") != 0)
     {
         return 77;
     }

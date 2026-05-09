@@ -1,6 +1,0 @@
-<compiler>/tests/fixtures/unsupported-app-middleware/input.js:4:9: SLOPPYC_E_UNSUPPORTED_MIDDLEWARE: app middleware functions are recognized but not emitted by the compiler-generated pipeline yet
-  --> <compiler>/tests/fixtures/unsupported-app-middleware/input.js:4:9
-   |
-4 | app.use((ctx, next) => next());
-   |         ^^^^^^^^^^^^^^^^^^^^^
-hint: Use explicit route handlers or defer app.use(fn) until compiler middleware emission lands.

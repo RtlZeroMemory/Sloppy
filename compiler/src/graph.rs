@@ -20,6 +20,9 @@ pub(crate) struct Route {
     pub(crate) name: Option<String>,
     pub(crate) tags: Vec<String>,
     pub(crate) health: Option<HealthRouteMetadata>,
+    pub(crate) middleware: Vec<RouteMiddlewareMetadata>,
+    pub(crate) cors: Option<CorsPolicyMetadata>,
+    pub(crate) cors_preflight: bool,
     pub(crate) span: Span,
     pub(crate) source_path: PathBuf,
     pub(crate) source_name: String,
@@ -129,6 +132,26 @@ pub(crate) struct ProblemDetailsDescriptor {
 pub(crate) struct HealthRouteMetadata {
     pub(crate) kind: &'static str,
     pub(crate) checks: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RouteMiddlewareMetadata {
+    pub(crate) kind: String,
+    pub(crate) source: String,
+    pub(crate) sequence: usize,
+    pub(crate) source_name: String,
+    pub(crate) source_text: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CorsPolicyMetadata {
+    pub(crate) origins: Vec<String>,
+    pub(crate) methods: Vec<String>,
+    pub(crate) headers: Vec<String>,
+    pub(crate) exposed_headers: Vec<String>,
+    pub(crate) credentials: bool,
+    pub(crate) max_age_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone)]

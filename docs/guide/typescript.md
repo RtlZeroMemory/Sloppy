@@ -76,9 +76,11 @@ Confirmed unsupported (each has a fixture or diagnostic code):
 - HTTP methods other than GET/POST/PUT/PATCH/DELETE
   (`fixtures/unsupported-http-method/`,
   `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
-- Middleware, CORS, RequestId, RequestLogging, Testing imports, and controller
-  mappings are not compiler-extracted yet; each fails with a specific
-  diagnostic instead of being omitted from the Plan.
+- Dynamic middleware lookup, dynamic CORS policies, RequestId generator
+  callbacks, dynamic RequestLogging options, Testing imports, and dynamic
+  controller mappings fail with specific diagnostics instead of being omitted
+  from the Plan. Static middleware, CORS, RequestId, RequestLogging, and
+  controller subsets are compiler-extracted.
 - Sloppy default imports (`fixtures/unsupported-sloppy-default-import/`,
   `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`).
 

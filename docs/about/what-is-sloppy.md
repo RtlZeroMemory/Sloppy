@@ -62,12 +62,12 @@ Real:
 Pre-alpha:
 
 - Production hardening (long graceful drain, HTTP/2, broader TLS posture).
-- The app-host feature surface is ahead of compiler emission in a few areas:
+- The app-host feature surface and compiler subset are intentionally narrow:
   middleware, CORS, request IDs, request logging, controllers, health checks,
-  and ProblemDetails exist in the bootstrap app-host/test-host path, while
-  compiler source input rejects surfaces it cannot encode yet.
+  ProblemDetails, services, config, and typed providers have static compiler
+  coverage where the Plan can encode them; dynamic shapes fail closed.
 - OpenAPI is generated from Plan metadata today; security schemes, richer
-  response schemas, and app-host-only behavior are separate follow-up work.
+  response schemas, and full runtime-pipeline modeling are not represented.
 - Cross-platform polish: Windows is the most validated lane today.
 - Public release distribution (GitHub Release archives, npm launcher).
 

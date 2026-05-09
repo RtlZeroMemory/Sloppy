@@ -1045,6 +1045,7 @@ async function flushMicrotasks(count = 6) {
     app.services.dispose();
     assert.equal(singletonDisposals, 1);
     assertThrowsMessage(() => app.services.get("message"), /provider is disposed/);
+    assertThrowsMessage(() => app.services.tryGet("message"), /provider is disposed/);
 }
 
 {

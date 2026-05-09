@@ -1,5 +1,6 @@
-<compiler>/tests/fixtures/unsupported-request-id-dynamic/input.js:4:41: SLOPPYC_E_UNSUPPORTED_REQUEST_ID: RequestId generator callbacks and dynamic options are not executable by the compiler-generated pipeline yet
+<compiler>/tests/fixtures/unsupported-request-id-dynamic/input.js:4:41: SLOPPYC_E_UNSUPPORTED_REQUEST_ID: RequestId generator callbacks are unsupported in compiler source input
   --> <compiler>/tests/fixtures/unsupported-request-id-dynamic/input.js:4:41
    |
 4 | app.use(RequestId.defaults({ generator: () => "req-1" }));
    |                                         ^^^^^^^^^^^^^
+hint: Use static RequestId options in compiler input; generator callbacks remain an app-host test helper.

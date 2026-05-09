@@ -36,10 +36,11 @@ typedef enum SlHttpMethod
 } SlHttpMethod;
 
 /*
- * Shared framework method set. These helpers intentionally return false for HEAD/OPTIONS
- * even though the parser recognizes those tokens: route metadata is still limited to GET,
- * POST, PUT, PATCH, and DELETE. The transport dispatch path handles incoming HEAD by
- * matching GET routes and suppressing the response body.
+ * Shared directly registrable framework method set. These helpers intentionally return
+ * false for HEAD/OPTIONS even though the parser recognizes those tokens: source-level
+ * route registration is still limited to GET, POST, PUT, PATCH, and DELETE. The transport
+ * dispatch path handles incoming HEAD by matching GET routes and generated CORS preflight
+ * routes can still bind OPTIONS through Plan metadata.
  */
 bool sl_http_method_supported(SlHttpMethod method);
 SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method);

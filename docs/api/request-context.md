@@ -179,7 +179,7 @@ configured sinks. Native request contexts do not directly expose `ctx.config`,
 `ctx.services`, or `ctx.capabilities`; use typed handler parameters when a
 compiled artifact needs those values. See [logging](logging.md).
 
-## Not yet
+## Current limits
 
 - A streaming response writer.
 - Multipart / form-data and file uploads.

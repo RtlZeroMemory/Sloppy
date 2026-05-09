@@ -28,4 +28,5 @@ last-wins behavior, and `%XX`/`+` query decoding is supported.
 Headers and JSON/text/byte body helpers exist in the broader request-context runtime and
 app test host lanes. This small example intentionally stays on fields that `sloppy run
 --once` can exercise from only a method and target. Middleware, streaming request APIs,
-cookies, and content negotiation are separate surfaces.
+cookies, and content negotiation are not covered by this request-context
+example.

@@ -1,0 +1,25 @@
+{
+  "sourceMap": "present",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "handler": "Status.Get"
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/status",
+      "handler": "OPTIONS /api/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/summary",
+      "handler": "Summary.Get"
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/summary",
+      "handler": "OPTIONS /api/summary"
+    }
+  ]
+}

@@ -201,7 +201,7 @@ static int expect_handler(const SlPlan* plan, SlHandlerId id, const char* export
 
 static int expect_valid_route_methods(const SlPlan* plan)
 {
-    if (plan == NULL || plan->route_count != 5U) {
+    if (plan == NULL || plan->route_count != 6U) {
         return 1;
     }
 
@@ -219,7 +219,10 @@ static int expect_valid_route_methods(const SlPlan* plan)
         plan->routes[3].handler_id != 4U ||
         !sl_str_equal(plan->routes[4].method, sl_str_from_cstr("DELETE")) ||
         !sl_str_equal(plan->routes[4].pattern, sl_str_from_cstr("/users/{id:int}")) ||
-        plan->routes[4].handler_id != 5U)
+        plan->routes[4].handler_id != 5U ||
+        !sl_str_equal(plan->routes[5].method, sl_str_from_cstr("OPTIONS")) ||
+        !sl_str_equal(plan->routes[5].pattern, sl_str_from_cstr("/users")) ||
+        plan->routes[5].handler_id != 6U)
     {
         return 2;
     }
@@ -312,7 +315,7 @@ static int test_valid_fixture_matrix(void)
          NULL, 1U, 0U},
         {"tests/golden/plan/valid-route-section.plan.json", 1U, "__sloppy_handler_1", "Home", NULL,
          NULL, 1U, 0U},
-        {"tests/golden/plan/valid-route-methods.plan.json", 5U, "__sloppy_handler_1", "Users.List",
+        {"tests/golden/plan/valid-route-methods.plan.json", 6U, "__sloppy_handler_1", "Users.List",
          "__sloppy_handler_2", "Users.Create", 1U, 2U},
         {"tests/golden/plan/valid-provider-section.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U},

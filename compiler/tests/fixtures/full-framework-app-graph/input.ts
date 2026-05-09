@@ -8,6 +8,8 @@ import {
   Header,
   Query,
   RequestContext,
+  RequestId,
+  RequestLogging,
   Route,
   Service,
 } from "sloppy";
@@ -34,13 +36,44 @@ type ClockService = {
   now: string;
 };
 
+class ProjectSummaryController {
+  static inject = ["ClockService"];
+
+  constructor(clock) {
+    this.clock = clock;
+  }
+
+  summary(ctx) {
+    return Results.ok({
+      at: this.clock.now,
+      route: ctx.routeName,
+      requestId: ctx.requestId,
+    });
+  }
+}
+
+function auditMiddleware(ctx, next) {
+  return next();
+}
+
 const app = Sloppy.create();
 app.use(sqlite("main", { database: ":memory:" }));
 app.use(ProblemDetails.defaults({ detail: "never" }));
 app.services.addSingleton("ClockService", () => ({ now: "2026-01-01T00:00:00Z" }));
+app.use(RequestId.defaults({ header: "x-request-id", responseHeader: true, trustIncoming: true }));
+app.use(RequestLogging.defaults({ includeRoute: true, includeDuration: false, includeRequestId: true }));
+app.use(auditMiddleware);
+app.useCors({
+  origins: ["https://app.example.com"],
+  headers: ["authorization", "content-type"],
+  exposedHeaders: ["x-request-id"],
+  credentials: true,
+  maxAgeSeconds: 600,
+});
 
 const db = app.provider("sqlite:main");
 const api = app.group("/api").withTags("api");
+api.use((ctx, next) => next());
 const projects = api.group("/projects").withTags("projects");
 const greeting = app.config.getString("App:Greeting", "hello");
 
@@ -87,6 +120,10 @@ app.mapHealthChecks({
     { name: "database", readiness: true, check: () => true },
     { name: "scheduler", liveness: true, readiness: false, check() { return true; } },
   ],
+});
+
+app.mapController("/api/project-summary", ProjectSummaryController, (mapper) => {
+  mapper.get("/", "summary", { tags: ["controller"] }).withName("Projects.Summary");
 });
 
 app.useModule(healthModule);

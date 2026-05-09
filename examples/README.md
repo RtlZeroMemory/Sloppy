@@ -12,15 +12,15 @@ handler execution requires a V8-enabled build.
 | --- | --- | --- | --- | --- |
 | `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
-| `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
+| `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
 | `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | V8 lane returns JSON request context fields. |
 | `users-api-sqlite` | runnable with `sloppy run --once` | `ctest -R conformance.users_api_sqlite.*run_once` | SQLite source-input conformance app | V8/SQLite lane returns seeded users. |
 | `framework-v2-hello` | runnable with source input | `ctest -R conformance.framework_v2_hello` | Typed route binding and request context | V8 lane returns `{"hello":"Ada"}`. |
 | `framework-v2-di-services` | runnable with source input | `ctest -R conformance.framework_v2_di_services_example.run_once` | Singleton/scoped/transient service injection | V8 lane returns deterministic service values. |
 | `framework-v2-sqlite-crud` | runnable with source input | `ctest -R conformance.framework_v2_sqlite_crud` | Typed SQLite provider injection and CRUD shape | V8/SQLite lane returns seeded SQLite users. |
-| `configured-api` | compile-only / tooling fixture | `ctest -R "conformance.configured_api|examples.configured_api"` | Project config and Plan inspection | Emits artifacts and CLI metadata; no positive handler execution claim. |
-| `modules-api` | compile-only / tooling fixture | `ctest -R "conformance.modules_api|examples.modules_api"` | Function module source-input workflow | Emits artifacts and CLI metadata. |
-| `validation-errors` | compile-only / tooling fixture | `ctest -R "conformance.validation_errors|examples.validation_errors"` | Plan validation metadata and OpenAPI/doctor output | Emits artifacts and CLI metadata. |
+| `configured-api` | compile-only / tooling fixture | `ctest -R "conformance.configured_api\|examples.configured_api"` | Project config and Plan inspection | Emits artifacts and CLI metadata; no positive handler execution claim. |
+| `modules-api` | compile-only / tooling fixture | `ctest -R "conformance.modules_api\|examples.modules_api"` | Function module source-input workflow | Emits artifacts and CLI metadata. |
+| `validation-errors` | compile-only / tooling fixture | `ctest -R "conformance.validation_errors\|examples.validation_errors"` | Plan validation metadata and OpenAPI/doctor output | Emits artifacts and CLI metadata. |
 | `framework-v2-explicit-binding` | compile-only / tooling fixture | `ctest -R conformance.framework_v2_explicit_binding` | `Route`, `Query`, `Body`, `Header`, `RequestContext` binding metadata | Emits artifacts and CLI metadata. |
 | `framework-v2-validation-errors` | compile-only / tooling fixture | `ctest -R conformance.framework_v2_validation_errors` | Schema-backed body binding diagnostics | Emits artifacts and CLI metadata. |
 | `framework-v2-postgres-crud` | live-provider example | `.\tools\windows\test-live-postgres.ps1` | Typed PostgreSQL provider shape | Requires V8, libpq, connection-string config, and live PostgreSQL service; default lane skips/unavailable when missing. |
@@ -48,7 +48,7 @@ handler execution requires a V8-enabled build.
 | `data-foundation` | API-shape fixture | `ctest -R examples.data_foundation.api_shape` | Provider/capability descriptors | Static example check only. |
 | `dogfood` | machine-readable catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Dogfood scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
 | `ergonomics` | API-shape fixture | `ctest -R examples.ergonomics.api_shape` | Route groups, Results helpers, config/log/services shape | Static example check only. |
-| `framework-v2-controller` | API-shape fixture | `ctest -R examples.framework_v2.api_shape` | Controller mapper and DI shape | App-host fixture; compiler source input rejects controller mapping. |
+| `framework-v2-controller` | API-shape fixture | `ctest -R examples.framework_v2.api_shape` | Controller mapper and DI shape | App-host fixture; compiler source input covers the static controller mapping subset in compiler fixtures. |
 | `fs-basic` | API-shape fixture | `ctest -R examples.fs.api_shape` | Directory/File helpers and deadline option | Static example check only. |
 | `fs-roots-policy` | API-shape fixture | `ctest -R examples.fs.api_shape` | Logical root path shape | Static example check only. |
 | `fs-streams` | API-shape fixture | `ctest -R examples.fs.api_shape` | File stream/line iteration shape | Static example check only. |

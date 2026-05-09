@@ -75,16 +75,18 @@ mappers see the *current* app policy at the time each child route registers,
 so this is fine:
 
 ```ts
-const mapper = app.mapController("/users", UsersController, (users) => {
-    users.get("/", "list");
-});
 app.useCors({ origins: ["https://app.example.com"] });
-mapper.get("/{id:int}", "get"); // CORS applies to this route
+
+app.mapController("/users", UsersController, (users) => {
+    users.get("/", "list");
+    users.get("/{id:int}", "get");
+});
 ```
 
 ## Status
 
 CORS preflight and response-header injection run in the bootstrap app-host
-handler path. Compiler extraction and Plan-level CORS metadata for emitted
-artifacts are planned in a separate compiler slice, so source-input builds
-reject `app.useCors(...)` today instead of silently dropping the policy.
+handler path. Compiler source input supports literal `app.useCors({...})`
+policies, emits Plan-level CORS metadata, and adds generated `OPTIONS`
+preflight routes to emitted artifacts. Dynamic policy objects are rejected
+with `SLOPPYC_E_UNSUPPORTED_CORS` instead of being silently dropped.

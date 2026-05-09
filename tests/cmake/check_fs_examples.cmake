@@ -1,6 +1,11 @@
 if(NOT DEFINED PROJECT_SOURCE_DIR)
     message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
 endif()
+if(PROJECT_SOURCE_DIR STREQUAL "" OR PROJECT_SOURCE_DIR STREQUAL "/")
+    get_filename_component(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+else()
+    get_filename_component(PROJECT_SOURCE_DIR "${PROJECT_SOURCE_DIR}" ABSOLUTE)
+endif()
 
 function(require_substring haystack needle description)
     string(FIND "${haystack}" "${needle}" found_index)
@@ -33,8 +38,9 @@ foreach(example_name IN LISTS fs_examples)
     endif()
     file(READ "${app_path}" app_source)
     file(READ "${readme_path}" readme_source)
+    string(TOLOWER "${readme_source}" readme_source_lower)
     require_substring("${app_source}" "from \"sloppy/fs\"" "${example_name} must use sloppy/fs")
-    require_substring("${readme_source}" "example" "${example_name} README needs useful example text")
+    require_substring("${readme_source_lower}" "example" "${example_name} README needs useful example text")
     foreach(forbidden_pattern IN ITEMS
             "node:fs"
             "require(\"fs\")"

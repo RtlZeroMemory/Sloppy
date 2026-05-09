@@ -37,9 +37,8 @@ Compiler normalization also accepts framework `/:name` segments and converts the
 - nested groups compose parent + child patterns.
 - group metadata supports `withTags(...tags)` and `withName(name)`.
 - bootstrap groups support `use(fn)` for group-local middleware functions.
-- compiler extraction rejects `group.use(fn)` with
-  `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE` until middleware can be represented in
-  AppGraph and generated artifacts.
+- compiler extraction emits static `group.use(fn)` middleware when the function
+  shape is supported.
 
 ## Route Metadata
 
@@ -73,13 +72,12 @@ Compiler extraction currently enforces:
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
   the route table can match the request path. `GET` routes also advertise `HEAD`.
 - Route availability still depends on emitted Plan metadata.
-- CORS-enabled bootstrap routes synthesize `OPTIONS` preflight route entries in the
-  app-host route table. Compiler extraction and emitted Plan metadata for CORS
-  policies will be added in a separate compiler/runtime slice.
+- CORS-enabled routes synthesize `OPTIONS` preflight route entries in the
+  app-host route table and in compiler-emitted Plan metadata for static CORS
+  policies.
 
 ## Limits
 
 - Sloppy routing currently follows Sloppy app/group registration and supported
-  route patterns. Node-style router APIs are planned separately.
-- Package-manager route plugins are planned separately from the current
-  pre-alpha route table.
+  route patterns. Node-style router APIs are not part of the current surface.
+- Package-manager route plugins are outside the current pre-alpha route table.

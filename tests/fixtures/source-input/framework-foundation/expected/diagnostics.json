@@ -1,0 +1,9 @@
+{
+  "contract": "A valid source-input fixture for consolidated framework surfaces does not produce diagnostic errors.",
+  "diagnosticCodes": [],
+  "redaction": {
+    "mustNotContain": [
+      "SECRET_SHOULD_NOT_APPEAR"
+    ]
+  }
+}

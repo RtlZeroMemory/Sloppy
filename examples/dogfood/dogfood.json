@@ -7,15 +7,13 @@
     "package-gated",
     "live-provider-gated",
     "blocked",
-    "unavailable",
-    "planned"
+    "unavailable"
   ],
   "resultVocabulary": [
     "PASS",
     "FAIL",
     "SKIPPED",
     "UNAVAILABLE",
-    "DEFERRED",
     "NOT RUN"
   ],
   "scenarios": [
@@ -113,7 +111,7 @@
       "id": "postgresql-app",
       "feature": "PostgreSQL",
       "status": "live-provider-gated",
-      "lane": "future live-provider app",
+      "lane": "live-provider app",
       "blockedBy": [],
       "reason": "PostgreSQL dogfood requires live-provider evidence and service configuration outside default CI."
     },
@@ -121,7 +119,7 @@
       "id": "sqlserver-app",
       "feature": "SQL Server",
       "status": "live-provider-gated",
-      "lane": "future live-provider app",
+      "lane": "live-provider app",
       "blockedBy": [],
       "reason": "SQL Server dogfood requires live-provider evidence, ODBC driver availability, and service configuration outside default CI."
     },
@@ -130,8 +128,9 @@
       "feature": "Framework v2",
       "status": "v8-gated",
       "lane": "source-input framework-v2",
+      "sourceFixture": "tests/fixtures/source-input/framework-foundation",
       "blockedBy": [],
-      "reason": "Framework v2 source-input extraction and app-host test evidence exist. Positive emitted-app execution still requires a V8-enabled runtime."
+      "reason": "Framework v2 source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a V8-enabled runtime."
     }
   ]
 }

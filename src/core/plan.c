@@ -37,7 +37,7 @@ bool sl_plan_route_method_supported(SlStr method)
 {
     SlHttpMethod http_method = SL_HTTP_METHOD_UNKNOWN;
     return sl_status_is_ok(sl_http_method_from_str(method, &http_method)) &&
-           sl_http_method_supported(http_method);
+           (sl_http_method_supported(http_method) || http_method == SL_HTTP_METHOD_OPTIONS);
 }
 
 bool sl_plan_route_method_runnable(SlStr method)

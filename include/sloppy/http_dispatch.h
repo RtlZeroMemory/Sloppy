@@ -20,9 +20,9 @@ extern "C" {
  * Manual route binding for bounded Plan-backed HTTP dispatch.
  *
  * The binding borrows a parsed route pattern. The caller must keep the pattern arena alive
- * for the duration of dispatch. GET, POST, PUT, PATCH, and DELETE bindings are runnable
- * when they are present in Sloppy Plan metadata. Incoming HEAD requests match GET bindings;
- * the transport suppresses the response body on the wire.
+ * for the duration of dispatch. GET, POST, PUT, PATCH, DELETE, and generated OPTIONS
+ * bindings are runnable when they are present in Sloppy Plan metadata. Incoming HEAD
+ * requests match GET bindings; the transport suppresses the response body on the wire.
  */
 typedef struct SlHttpRouteBinding
 {
@@ -70,10 +70,9 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
  * start with `/`. The returned value is arena-owned, remains valid until the arena is
  * reset or freed, and is empty when no route pattern matches the path. Duplicate route
  * methods are collapsed. Methods are emitted in deterministic runtime order:
- * GET, HEAD, POST, PUT, PATCH, DELETE. GET route bindings also advertise HEAD because
- * inbound HEAD dispatches through GET handlers with response body suppression at the
- * transport boundary. OPTIONS is not advertised unless a future runtime lane makes it
- * a real native route binding.
+ * GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. GET route bindings also advertise HEAD
+ * because inbound HEAD dispatches through GET handlers with response body suppression at
+ * the transport boundary.
  */
 SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
                                                 const SlHttpDispatchTable* dispatch_table,
@@ -89,7 +88,7 @@ SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
  * stored in `arena`.
  *
  * Failure behavior:
- * - methods outside GET/HEAD/POST/PUT/PATCH/DELETE fail with SL_STATUS_UNSUPPORTED;
+ * - methods outside GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS fail with SL_STATUS_UNSUPPORTED;
  * - matching path with the wrong method fails with SL_STATUS_UNSUPPORTED;
  * - unsupported transfer codings fail with SL_STATUS_UNSUPPORTED; bounded
  *   Transfer-Encoding: chunked bodies may reach dispatch after transport decoding;

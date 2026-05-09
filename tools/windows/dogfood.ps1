@@ -43,7 +43,7 @@ function Assert-DogfoodManifest {
 
     Assert-True ($Manifest.schemaVersion -eq 1) "Dogfood catalog schemaVersion must be 1."
     $allowed = @($Manifest.statusVocabulary)
-    foreach ($required in @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable", "planned")) {
+    foreach ($required in @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable")) {
         Assert-True ($allowed -contains $required) "Dogfood catalog statusVocabulary missing '$required'."
     }
 
@@ -144,7 +144,7 @@ function Add-Result {
 function Invoke-SelfTest {
     $fixture = [pscustomobject]@{
         schemaVersion = 1
-        statusVocabulary = @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable", "planned")
+        statusVocabulary = @("available", "v8-gated", "package-gated", "live-provider-gated", "blocked", "unavailable")
         scenarios = @(
             [pscustomobject]@{ id = "hello-artifact"; status = "v8-gated"; reason = "requires V8" },
             [pscustomobject]@{ id = "hello-source-input"; status = "v8-gated"; reason = "requires V8" },
@@ -172,7 +172,7 @@ Assert-DogfoodManifest -Manifest $manifest
 
 $results = [System.Collections.Generic.List[object]]::new()
 foreach ($scenario in @($manifest.scenarios)) {
-    if ([string]$scenario.status -in @("blocked", "unavailable", "planned", "live-provider-gated")) {
+    if ([string]$scenario.status -in @("blocked", "unavailable", "live-provider-gated")) {
         Add-Result -Results $results -Lane ([string]$scenario.id) -Status "UNAVAILABLE" -Reason ([string]$scenario.reason)
     } elseif ([string]$scenario.status -eq "v8-gated") {
         $scenarioId = [string]$scenario.id

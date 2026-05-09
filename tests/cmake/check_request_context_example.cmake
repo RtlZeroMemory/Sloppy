@@ -1,6 +1,11 @@
 if(NOT DEFINED PROJECT_SOURCE_DIR)
     message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
 endif()
+if(PROJECT_SOURCE_DIR STREQUAL "" OR PROJECT_SOURCE_DIR STREQUAL "/")
+    get_filename_component(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+else()
+    get_filename_component(PROJECT_SOURCE_DIR "${PROJECT_SOURCE_DIR}" ABSOLUTE)
+endif()
 
 set(example_dir "${PROJECT_SOURCE_DIR}/examples/request-context")
 set(app_js "${example_dir}/app.js")

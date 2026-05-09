@@ -60,21 +60,22 @@ fn unsupported_request_id_call(
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
-                    "RequestId generator callbacks and dynamic options are not executable by the compiler-generated pipeline yet",
+                    "RequestId generator callbacks are unsupported in compiler source input",
                 )
                 .with_path(path)
-                .with_span(span),
+                .with_span(span)
+                .with_hint("Use static RequestId options in compiler input; generator callbacks remain an app-host test helper."),
             );
         }
     }
     Some(
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_REQUEST_ID",
-            "RequestId middleware is recognized but not emitted by the compiler-generated pipeline yet",
+            "RequestId middleware shape is not supported by compiler extraction",
         )
         .with_path(path)
         .with_span(call.span)
-        .with_hint("Keep RequestId.defaults() in JavaScript app-host tests or defer it until compiler middleware emission lands."),
+        .with_hint("Use RequestId.defaults() with a static options object."),
     )
 }
 
@@ -129,11 +130,11 @@ fn unsupported_request_logging_call(
     Some(
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING",
-            "RequestLogging middleware is recognized but not emitted by the compiler-generated pipeline yet",
+            "RequestLogging middleware shape is not supported by compiler extraction",
         )
         .with_path(path)
         .with_span(call.span)
-        .with_hint("Keep RequestLogging.defaults() in JavaScript app-host tests or defer it until compiler middleware emission lands."),
+        .with_hint("Use RequestLogging.defaults() with static boolean options."),
     )
 }
 
@@ -173,11 +174,11 @@ fn unsupported_cors_call(
     Some(
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_CORS",
-            "CORS policies are recognized but not emitted by the compiler-generated Plan/native route table yet",
+            "CORS policy shape is not supported by compiler extraction",
         )
         .with_path(path)
         .with_span(call.span)
-        .with_hint("Plan v1 route metadata does not yet carry generated OPTIONS preflight routes."),
+        .with_hint("Use app.useCors(...) with one literal policy object."),
     )
 }
 
@@ -199,11 +200,11 @@ fn unsupported_controller_call(
     Some(
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_CONTROLLER",
-            "controller mapping is recognized but not extracted into AppGraph yet",
+            "controller mapping shape is not supported by compiler extraction",
         )
         .with_path(path)
         .with_span(call.span)
-        .with_hint("Use explicit top-level route declarations for compiler-extracted apps."),
+        .with_hint("Use a top-level plain controller class and literal mapper callback."),
     )
 }
 
@@ -223,11 +224,11 @@ fn unsupported_middleware_call(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-                "route group middleware is recognized but not extracted into AppGraph yet",
+                "route group middleware shape is not supported by compiler extraction",
             )
             .with_path(path)
             .with_span(call.span)
-            .with_hint("Use route-local handlers or defer group middleware until compiler middleware emission lands."),
+            .with_hint("Use inline or top-level middleware functions with supported captures."),
         );
     }
     if !state.app_vars.contains(receiver) || call.arguments.len() != 1 {
@@ -241,17 +242,17 @@ fn unsupported_middleware_call(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-                "app middleware functions are recognized but not emitted by the compiler-generated pipeline yet",
+                "app middleware shape is not supported by compiler extraction",
             )
             .with_path(path)
             .with_span(argument_span(argument).unwrap_or(call.span))
-            .with_hint("Use explicit route handlers or defer app.use(fn) until compiler middleware emission lands."),
+            .with_hint("Use inline or top-level middleware functions with supported captures."),
         );
     }
     Some(
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_MIDDLEWARE",
-            "app.use only supports extracted providers and ProblemDetails in compiler input today",
+            "app.use only supports extracted providers, ProblemDetails, RequestId, RequestLogging, and middleware functions in compiler input",
         )
         .with_path(path)
         .with_span(call.span),

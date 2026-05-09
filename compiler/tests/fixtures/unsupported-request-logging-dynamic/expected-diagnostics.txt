@@ -1,4 +1,4 @@
-<compiler>/tests/fixtures/unsupported-request-logging-dynamic/input.js:5:35: SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING: RequestLogging options must be literal booleans for compiler extraction
+<compiler>/tests/fixtures/unsupported-request-logging-dynamic/input.js:5:35: SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING: RequestLogging options must be boolean literals
   --> <compiler>/tests/fixtures/unsupported-request-logging-dynamic/input.js:5:35
    |
 5 | app.use(RequestLogging.defaults({ includeRoute }));
