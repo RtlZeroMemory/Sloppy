@@ -1,13 +1,17 @@
-# Building From Source
+# Building from source
 
-Sloppy is cross-platform by design. Windows x64 is the most complete validated
-local contributor workflow today. These instructions are for contributors working
-inside the repository. Product tutorials assume an installed or extracted
-`sloppy` executable instead.
+Sloppy is C + Rust + C++ (V8 bridge). Building from source means CMake
+for the runtime, Cargo for the compiler, and an optional V8 SDK for
+runtime execution.
 
-## Windows x64 Default Build
+Windows x64 is the most validated lane. Linux x64 works; macOS and arm64
+need work.
 
-From the repository root:
+## Windows
+
+From a PowerShell that has Visual Studio's C++ tools on `PATH` (a
+Developer PowerShell prompt, or a regular shell after running
+`vcvarsall.bat`):
 
 ```powershell
 .\tools\windows\bootstrap.ps1
@@ -17,47 +21,35 @@ From the repository root:
 .\tools\windows\dev.ps1 test
 ```
 
-Notes:
+`bootstrap.ps1` fetches dependencies into `.sdeps/`. `doctor` reports
+what's available. `configure` defaults to the `windows-dev` preset
+(non-V8). The built binaries live under `build\<preset>\`.
 
-- `configure` defaults to `windows-dev`.
-- The default build is non-V8 unless V8 is explicitly enabled.
-- `test` runs CTest for the selected preset and compiler tests when Cargo is
-  available.
-
-## Windows V8 Build
-
-Run this separately for runtime/app-host/compiler/provider/configuration/V8 work:
+To build with V8 enabled (required to run handlers):
 
 ```powershell
-.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
 .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
-`dev.ps1` rejects `windows-dev` + `-EnableV8` because the local V8 SDK is
-release/RelWithDebInfo compatible.
+`dev.ps1` rejects `windows-dev` + `-EnableV8` because the V8 SDK is
+RelWithDebInfo-compatible.
 
-## Useful Windows Commands
+Other handy commands:
 
 ```powershell
-.\tools\windows\dev.ps1 help
-.\tools\windows\dev.ps1 clean
-.\tools\windows\dev.ps1 format-check
-.\tools\windows\dev.ps1 lint
-.\tools\windows\dev.ps1 package
-.\tools\windows\dev.ps1 test-package
-.\tools\windows\dev.ps1 dogfood
-.\tools\windows\dev.ps1 analyze
+.\tools\windows\dev.ps1 help            # all commands and flags
+.\tools\windows\dev.ps1 clean           # remove build/<preset> only
+.\tools\windows\dev.ps1 format-check    # clang-format / cargo fmt
+.\tools\windows\dev.ps1 lint            # standards + boundary scans
+.\tools\windows\dev.ps1 analyze         # advanced static analysis
+.\tools\windows\dev.ps1 package         # local package archive
+.\tools\windows\dev.ps1 test-package    # smoke the package outside the checkout
 ```
 
-Use `.\tools\windows\dev.ps1 help` for command options and parameter details.
-
-## Unix Workflow
-
-Unix wrappers use the same command shape where implemented. Linux x64 is the
-active Unix target for local package/runtime work; macOS support is still less
-validated than the Windows workflow.
+## Linux
 
 ```sh
 ./tools/unix/bootstrap.sh
@@ -67,22 +59,77 @@ validated than the Windows workflow.
 ./tools/unix/dev.sh test
 ```
 
-## Common Environment Variables
+Same command shape. Unix wrappers are thinner than the Windows ones —
+some Windows-only commands aren't implemented yet.
 
-| Variable | Use |
-| --- | --- |
-| `VCPKG_ROOT` | Optional vcpkg root when `.sdeps/vcpkg` is not bootstrapped. |
-| `SLOPPY_V8_ROOT` or `-V8Root` | Explicit V8 SDK root when using V8 scripts. |
-| `SLOPPY_POSTGRES_TEST_URL` | Live PostgreSQL provider test URL. |
-| `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` | Live SQL Server ODBC connection string. |
-| `Sloppy__Providers__postgres__main__connectionString` | App/provider config override for PostgreSQL `main`. |
-| `Sloppy__Providers__sqlserver__main__connectionString` | App/provider config override for SQL Server `main`. |
+## What you need installed
 
-Never commit real credentials.
+| Tool         | Purpose                                                   |
+| ------------ | --------------------------------------------------------- |
+| CMake ≥ 3.25 | Build system                                              |
+| Ninja        | Default generator                                         |
+| Clang/MSVC   | C/C++ compiler (clang-cl on Windows is the default)       |
+| Rust toolchain | Compiler (`rustup` is fine; latest stable)              |
+| Git          | Submodule fetches in `.sdeps`                             |
+| Python 3     | Some helper scripts                                       |
 
-## Reporting
+`tools/windows/dev.ps1 doctor` (and the Unix equivalent) reports what's
+missing.
 
-For each check or build configuration, report one of `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
-`DEFERRED`, or `NOT RUN`.
+## Optional dependencies
 
-Never report success for a command you did not run.
+Picked up automatically when present, ignored when absent:
+
+| Dependency  | Enables                              |
+| ----------- | ------------------------------------ |
+| V8 SDK      | JavaScript handler execution         |
+| OpenSSL     | Inbound TLS                          |
+| libpq       | PostgreSQL provider                  |
+| ODBC driver | SQL Server provider                  |
+| libsodium   | Password hashing                     |
+| vcpkg       | Convenience for native deps on Windows |
+
+Set `VCPKG_ROOT` if you want to use a vcpkg root other than the one
+`.sdeps/vcpkg` would bootstrap.
+
+## Environment variables
+
+| Variable                             | Purpose                                            |
+| ------------------------------------ | -------------------------------------------------- |
+| `VCPKG_ROOT`                         | Override default vcpkg root                        |
+| `SLOPPY_V8_ROOT` / `-V8Root`         | Explicit V8 SDK root for V8 builds                 |
+| `SLOPPY_POSTGRES_TEST_URL`           | Live PostgreSQL provider test URL                  |
+| `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` | Live SQL Server connection string             |
+
+Don't commit credentials. The `.gitignore` covers obvious local files;
+the rest is on you.
+
+## Output layout
+
+```
+build/
+  <preset>/
+    sloppy.exe          (or sloppy on Unix)
+    sloppyc.exe
+    libsloppy_*.{a,lib}
+    tests/...
+
+compiler/
+  target/               Cargo build output
+
+artifacts/
+  packages/             local package archives from `package`
+```
+
+Adding `build\<preset>\` to your `PATH` lets you invoke `sloppy` from
+anywhere as if you'd installed it.
+
+## When something goes wrong
+
+Run `sloppy doctor` against your built binary first — it surfaces most
+environment issues. If the build itself is broken, `dev.ps1 doctor`
+reports the toolchain side; CMake errors generally include a clear
+"missing X" line.
+
+For V8 SDK resolution issues specifically, see
+[v8-sdk.md](v8-sdk.md).

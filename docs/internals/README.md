@@ -1,0 +1,17 @@
+# Internals
+
+Implementation-level documentation for contributors working on the Sloppy
+codebase itself. If you're using Sloppy to build an application, you want
+[api/](../api/README.md) and [guide/](../guide/README.md) instead.
+
+- [Architecture](architecture.md) — top-level layering: compiler, app host, runtime, bridge
+- [Runtime](runtime.md) — startup, dispatch, shutdown
+- [Compiler](compiler.md) — `sloppyc` internals
+- [Plan](plan.md) — Plan parsing, validation, schema evolution
+- [V8 bridge](v8-bridge.md) — boundaries, ownership rules, isolation
+- [HTTP runtime](http-runtime.md) — parser, transport, dispatch
+- [Async runtime](async-runtime.md) — owner-thread model, cancellation
+- [Provider runtime](provider-runtime.md) — provider executor and bridges
+- [Memory model](memory-model.md) — arenas, lifetimes, ownership
+- [Platform boundaries](platform-boundaries.md) — what crosses `src/platform/`
+- [Security model](security-model.md) — capability checks, redaction, the V8 bridge as a boundary

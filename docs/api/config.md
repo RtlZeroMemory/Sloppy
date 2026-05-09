@@ -1,0 +1,158 @@
+# Config
+
+Configuration is structured key/value data with typed accessors. Register
+sources on the builder, then read them from services, modules, and handlers.
+
+```ts
+const builder = Sloppy.createBuilder();
+
+builder.config.addObject({
+    "app:greeting": "hello",
+    "server:port": 5173,
+});
+
+const app = builder.build();
+
+app.get("/", (ctx) =>
+    Results.text(ctx.config.getString("app:greeting"))
+);
+```
+
+## Sources
+
+Today the builder accepts in-memory objects:
+
+```ts
+builder.config.addObject({ "app:name": "demo" });
+```
+
+File and environment sources are wired up by the runtime when present (the
+`appsettings.json` overlay, environment variables matching the configured
+prefix). Source ordering follows registration order — later sources override
+earlier ones for the same key.
+
+> Experimental: the public surface for adding env or file sources from the
+> builder is in flux. For now, prefer `addObject` for code-driven config and
+> let the runtime layer in environment values automatically.
+
+## Key normalization
+
+Keys are case-insensitive and use `:` as a path separator. Internally they
+are normalized to uppercase:
+
+```ts
+builder.config.addObject({ "app:Name": "demo" });
+
+ctx.config.getString("APP:NAME");      // "demo"
+ctx.config.getString("app:name");      // "demo"
+```
+
+For provider config, Sloppy auto-prefixes provider keys:
+
+```
+sloppy.json provider name "main"
+sqlite options       →  SLOPPY:PROVIDERS:SQLITE:MAIN:*
+postgres options     →  SLOPPY:PROVIDERS:POSTGRES:MAIN:*
+sqlserver options    →  SLOPPY:PROVIDERS:SQLSERVER:MAIN:*
+```
+
+You usually don't write these keys by hand — `app.use(...)` and `data.*` open
+calls bind them automatically.
+
+## Reading values
+
+`ctx.config` and `app.config` both expose:
+
+| Method                                | Returns                            |
+| ------------------------------------- | ---------------------------------- |
+| `get(key, fallback?)`                 | Raw value or `fallback`            |
+| `has(key)`                            | `boolean`                          |
+| `require(key)`                        | Raw value, throws if missing       |
+| `getString(key, fallback?)`           | `string`                           |
+| `getInt(key, fallback?)`              | `number` (integer)                 |
+| `getNumber(key, fallback?)`           | `number`                           |
+| `getBool(key, fallback?)`             | `boolean`                          |
+| `getDuration(key, fallback?)`         | `number` (milliseconds)            |
+| `getSize(key, fallback?)`             | `number` (bytes)                   |
+| `getBytes(key, fallback?)`            | `number` (bytes; alias)            |
+| `getArray(key, fallback?)`            | array                              |
+| `getObject(key, fallback?)`           | plain object                       |
+| `getSecret(key)`                      | `ConfigSecretValue` (see below)    |
+| `bind(prefix, schema?)`               | typed snapshot bound under prefix  |
+
+The typed getters parse strings into the expected type, so `addObject` can
+mix raw types with strings:
+
+```ts
+builder.config.addObject({
+    "server:port": "5173",        // parsed as int
+    "server:request-limit": "1mb",// parsed as 1_048_576
+    "server:idle-timeout": "30s", // parsed as 30_000 ms
+});
+```
+
+### Duration units
+
+`getDuration` parses suffixes: `ms`, `s`, `m`, `h`. A bare number is
+milliseconds.
+
+```
+"500ms" → 500
+"30s"   → 30000
+"5m"    → 300000
+"2h"    → 7200000
+```
+
+### Size units
+
+`getSize` / `getBytes` parses both decimal (`kb`, `mb`, `gb` = 1000⁻based)
+and binary (`kib`, `mib`, `gib` = 1024-based) suffixes.
+
+```
+"512b"  → 512
+"1kb"   → 1000
+"1kib"  → 1024
+"1mb"   → 1000000
+```
+
+## Secrets
+
+Sensitive values are wrapped:
+
+```ts
+const secret = ctx.config.getSecret("db:password");
+const value = secret.value();
+```
+
+The wrapper exists so secrets don't accidentally end up in logs, snapshots,
+or diagnostics. `secret.toString()` returns `"[redacted]"`.
+
+## Binding
+
+`config.bind(prefix, schema?)` returns a frozen object with typed fields
+under `prefix`:
+
+```ts
+const server = ctx.config.bind("server", {
+    port:        { type: "int", default: 5173 },
+    host:        { type: "string", default: "127.0.0.1" },
+    requestLimit:{ type: "size", default: "1mb" },
+});
+
+server.port;          // number
+server.requestLimit;  // bytes
+```
+
+Schemas accept descriptors with:
+
+| Field         | Notes                                              |
+| ------------- | -------------------------------------------------- |
+| `type`        | `"string"`, `"int"`/`"integer"`, `"number"`, `"bool"`/`"boolean"`, `"duration"`, `"size"`/`"bytes"`, `"array"`, `"object"`, `"secret"` |
+| `default`     | value used when the key is missing                 |
+| `required`    | `true` to throw when the key is missing            |
+| `enum`/`values` | allowed values                                    |
+| `min` / `max` | numeric bounds                                     |
+| `secret`      | mark string fields as secret                       |
+
+Without a schema, `bind` returns a plain object containing every key under
+the prefix as a raw value.

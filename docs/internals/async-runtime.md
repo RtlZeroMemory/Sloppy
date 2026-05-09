@@ -1,166 +1,189 @@
-# Concurrency And Async Model
+# Async runtime
 
-Sloppy concurrency is owner-thread based. Native worker threads and platform callbacks may
-complete work, but JavaScript execution enters a V8 isolate only through the owning engine
-thread and documented bridge boundaries.
+Sloppy is single-owner-thread per V8 isolate. Native work — disk I/O,
+sockets, provider drivers — runs off-thread but reports results back
+to the owner thread, which is the only place JavaScript executes.
 
-## Purpose
+This page documents the rules. Most of them protect one invariant:
+**JavaScript-visible state settles exactly once, on the owner thread**.
 
-This page records the ownership, cancellation, deadline, and late-completion
-rules that keep runtime async work deterministic.
+## Layout
 
-## Where It Lives
+```text
+src/core/
+  async_backend.c               readiness/wakeup driver (libuv-backed)
+  async_backend_internal.h
+  loop.c                        owner-thread run loop
+  cancellation.c                signal sources, shared signal model
+  scope.c                       lifetime/cleanup containers
 
-- `src/engine/v8/*` owns V8 owner-thread entry and Promise settlement.
-- `src/platform/libuv/*` owns libuv-backed transport and readiness callbacks.
-- `src/data/*` owns provider executor modes and provider-specific async state.
-- `stdlib/sloppy/*` exposes JavaScript worker, time, provider, and framework
-  APIs that sit on top of those native boundaries.
+src/engine/v8/
+  engine_v8.cc                  microtask drain, Promise settlement
+  intrinsics_*                  JS↔native call/return marshalling
 
-## Main Concepts
+src/platform/libuv/             socket/timer/process readiness
+src/data/                       provider-specific async state machines
 
-Async work is scoped by owner, queue, capability, and cleanup lifetime. Native
-work can complete later than the request or resource that submitted it, so
-ownership transfer, cancellation, timeout, shutdown, and discard paths must be
-explicit.
-
-```mermaid
-flowchart LR
-    Request[Request/app owner] --> Admit[Admission check]
-    Admit --> Queue[Bounded queue or async state machine]
-    Queue --> Native[Native work or readiness wait]
-    Native --> Completion[Completion record]
-    Completion --> Owner[Owner thread/runtime callback]
-    Owner --> Settle[Settle Promise/result once]
-    Settle --> Cleanup[Cleanup scope]
-
-    Cancel[Cancellation/timeout/shutdown] --> CleanupOnly[Late completion cleanup-only]
-    Native -. may finish after owner ended .-> CleanupOnly
+stdlib/sloppy/
+  workers.js                    cancellation primitives, queues, pools
+  time.js                       deadline + cancellation surfaces
 ```
 
-## Lifecycle
+## Owner threads
 
-A request creates request-owned state, admits native or provider work through the
-owning subsystem, posts completion back to the owner thread or runtime callback,
-settles caller-visible state once, and then runs cleanup. Shutdown rejects new
-work, drains or cancels admitted work according to subsystem policy, and treats
-late completions as cleanup-only.
+Every V8 isolate has one owner thread. The bridge stamps the thread on
+isolate creation; every entry point asserts it before touching V8.
 
-## Async Owner Matrix
+| Isolate                | Owner thread                         |
+| ---------------------- | ------------------------------------ |
+| Main app isolate       | Main run-loop thread                 |
+| Per-worker isolate     | That worker's thread                 |
 
-| Work type | Owner | Admission boundary | Completion boundary |
-| --- | --- | --- | --- |
-| V8 handler Promise | V8 owner thread | bounded microtask contract | owner isolate settlement |
-| HTTP transport | transport/app host | connection/request limits | request cleanup and response writer |
-| SQLite provider work | provider executor | serialized blocking queue | owner-thread Promise settlement |
-| PostgreSQL provider work | provider runtime | nonblocking libpq state machine | owner-thread Promise settlement |
-| SQL Server provider work | provider runtime | ODBC async mode availability | owner-thread Promise settlement |
-| Worker queue/pool | worker resource | bounded queue/backpressure | resource-owned result/cancellation |
+Native completions originating off-thread don't enter the isolate
+directly. They post a completion record through the async backend and
+the owner thread picks it up during its run loop.
 
-## Invariants
+## End-to-end shape
 
-- V8 isolate entry is owner-thread only.
-- Platform callbacks do not invoke JavaScript directly.
-- Completion records own or retain every value they need after submission.
-- Failed admission does not transfer ownership.
-- Cleanup callbacks run at most once.
+```text
+JS handler awaits db.query(...)
+   │  V8 owner thread
+   ▼
+provider intrinsic submits an async op + Promise
+   │  src/engine/v8/intrinsics_*
+   ▼
+provider executor admits, picks mode, kicks driver
+   │  src/core/provider_executor.c → src/data/<provider>.c
+   ▼
+driver progress drives readiness via async backend
+   │  src/core/async_backend.c (libuv polling)
+   ▼
+completion record produced (off-thread or on-thread)
+   │
+   ▼
+owner thread run loop notices, runs continuation
+   │  src/core/loop.c
+   ▼
+intrinsic resolves/rejects the awaiting Promise
+   │  V8 owner thread (microtask drain)
+   ▼
+JS handler resumes
+```
 
-## Failure Behavior
+## Cancellation
 
-Unsupported async features fail with deterministic diagnostics. Queue overflow,
-timeout, cancellation, stale handle use, shutdown, and provider unavailability
-must not report success after the owning scope ended.
+`SlCancellationToken` (`include/sloppy/cancellation.h`) is the native
+cancellation primitive. JS exposes it through
+`WorkerCancellationController` / `WorkerCancellationSignal`
+(`stdlib/sloppy/workers.js`).
 
-## Public API Relationship
+A signal carries:
 
-Public APIs such as workers, provider calls, timers, HTTP request handling, and
-typed handler injection depend on these internals, but the public surface does
-not expose libuv handles, OS handles, V8 isolate details, or native resource
-pointers.
+- `cancelled` — terminal flag (cannot reverse)
+- `reason` — opaque value supplied at cancel time
+- `addEventListener("abort", fn)` — for consumers that need to react
 
-## Tests And Evidence
+Any operation that takes `{ signal }` reads it before submission and
+honors the cancelled state immediately:
 
-Coverage lives in worker bootstrap tests, V8 smoke tests, HTTP transport tests,
-provider conformance tests, source-input fixtures, and stress/torture lanes when
-explicitly run. V8 isolate execution and live-provider behavior use their own
-lanes.
+```text
+if (signal.cancelled) → fail with cancellation error, no submission
+if signal cancels mid-flight → cancel driver work where supported,
+                               release admission slot, settle Promise
+```
 
-## Current Limits
+The same surface is composed for deadlines: `{ deadline }` and
+`{ timeoutMs }` are sugar that builds an internal token.
 
-The current runtime has a bounded owner-thread microtask drain, not a Node
-event loop compatibility layer. Web Worker compatibility, public streaming
-APIs, and production hardening are future work.
+## Late completions
 
-## Core Rules
+A late completion is when native work returns *after* its caller has
+already given up (deadline expired, signal cancelled, request scope
+ended).
 
-- V8 isolate access is owner-thread only.
-- Platform callbacks never expose OS or libuv handles outside platform/runtime boundaries.
-- Native async completions post back into Sloppy-owned completion paths.
-- Cancellation, timeout, shutdown, and late completion are explicit terminal states.
-- Cleanup is once-only and tied to request, app, resource, or provider lifetime.
-- Optional async/provider/stress evidence lanes are separate from default evidence.
+The rule: **late completions only run cleanup**.
 
-## Request And App Lifetimes
+- The Promise has already settled with a cancellation/timeout error.
+- The driver result is freed by the provider's cleanup.
+- Any per-operation arena allocation is released to the request arena.
+- Nothing JS-visible is updated.
 
-The app owns startup resources until shutdown. A request owns request-scoped arena storage,
-cleanup registrations, cancellation/deadline state, and resource references for the
-duration of handler dispatch. Request cleanup runs after success, failure, cancellation, or
-timeout. Independently closable resources still belong in resource-table entries and must
-be closed through registered cleanup when request-scoped.
+This is enforced by the executor and by scope-bound cleanup
+registration. Code reviewers look for "settle once" wherever a
+completion record could race with cancellation.
 
-## V8 Async Boundary
+## Scopes and cleanup
 
-Direct async handlers are supported only when the returned Promise settles during the
-bounded V8 owner-thread microtask drain. This is a bounded owner-thread drain rather than
-a Node-style timer/fetch/process layer or arbitrary pending-native-async runtime. If a
-Promise cannot settle within the scoped owner-thread drain contract, the runtime must fail
-clearly rather than report partial/default validation as success.
+Every async operation is owned by *some* scope:
 
-## Provider Work
+- **Request scope** — created at HTTP dispatch, ends after response
+  write or terminal failure.
+- **App scope** — startup to shutdown; owns singletons and
+  background-service handles.
+- **Worker scope** — per worker isolate.
 
-Provider work is separated from generic async completion. Provider descriptors, admission,
-capability checks, executor mode, bounded queues, cancellation, deadline behavior, and late
-completion must remain provider-owned runtime contracts. SQLite-class blocking work may use
-serialized/offloaded provider execution where the scoped lane supports it. PostgreSQL
-JavaScript provider work uses a provider-owned nonblocking libpq state machine with
-Sloppy-owned socket readiness watches and owner-thread Promise settlement. SQL Server
-JavaScript provider work uses ODBC asynchronous connection/statement mode and Sloppy-owned
-V8 continuations; drivers that cannot enable async behavior must be reported as
-unsupported rather than hidden behind a blocking worker.
+Cleanup runs in reverse-registration order at scope end. A cleanup is
+always called exactly once: scope end, cancellation, or shutdown — pick
+the first to fire.
 
-## HTTP Transport
+## V8 microtask drain
 
-The HTTP transport lives behind platform/runtime abstractions. It owns bounded connection
-and request admission, read/header/body/request/write timeouts, disconnect handling,
-shutdown terminal paths, bounded sequential keep-alive, and scoped chunked handling.
+The bridge drains V8 microtasks during `engine_dispatch` after a
+handler returns. The drain is bounded (configured per dispatch) — long
+chains of awaits can't keep the dispatcher hostage.
 
-Transport callbacks must not enter V8 directly. Dispatch crosses into the engine through
-the runtime-owned handler boundary after request parsing, capability checks, and lifecycle
-setup. Pipelining, public request/response streaming APIs, HTTP/2, HTTP/3,
-WebSockets, production graceful drain, and scalable async HTTP are future scoped
-work.
+What this means for handlers:
 
-## Time And Deadlines
+- Returning a Promise settles within the drain window or the dispatch
+  reports a deterministic failure.
+- A handler that awaits multi-second background work should queue it
+  via `WorkQueue` and return `Results.accepted({ jobId })`, not block
+  the dispatch.
 
-Time APIs provide Sloppy-owned delay, deadline, cancellation, interval, scheduled job, and
-fake-clock semantics where the active runtime bridge is available. Deadline-aware APIs must
-observe pre-cancelled and expired inputs before work submission. Native work that has
-already been submitted may still complete later; late completion must be cleanup-only and
-must not double-settle caller-visible state.
+This is intentionally not a Node-style event loop. There is no
+`setTimeout` that survives across requests, no global pending-async
+state. Every async operation is rooted in a scope.
 
-## Evidence Requirements
+## Worker isolates
 
-Concurrency and async PRs should include:
+`WorkerPool` and `Worker` allocate per-worker V8 isolates. Each has its
+own owner thread. Cross-worker communication is structured (typed
+messages); workers don't share heap state.
 
-- source docs and invariants under review;
-- owner-thread and native-thread boundaries;
-- cancellation/deadline/shutdown outcomes;
-- late-completion behavior;
-- cleanup-once checks;
-- negative paths for overflow, timeout, cancellation, invalid lifecycle, and unsupported
-  features;
-- separate reporting for default, V8, provider, stress/torture, sanitizer, and benchmark
-  lanes.
+Worker shutdown drains in-flight messages within their deadlines, then
+disposes the isolate. A worker that's stuck in an infinite loop is
+forced down at shutdown timeout.
 
-Skipped optional lanes must be reported as not run. Benchmark or stress smoke
-is harness coverage, not a production or performance conclusion.
+## Shutdown ordering
+
+```text
+1. transport: stop accepting new connections
+2. transport: stop accepting new requests on existing connections
+3. wait for in-flight requests to complete or hit deadlines
+4. drain provider runtime: cancel in-flight ops, close pools
+5. shut down workers
+6. shutdown engine bridge (release isolates)
+7. release app arena
+```
+
+Each step has its own timeout. The runtime never wedges on shutdown —
+forced cleanup runs after the deadline.
+
+## Tests
+
+- **V8 microtask bound** unit tests cover bounded-drain semantics.
+- **Provider cancellation** tests cover deadline and signal handling
+  per provider.
+- **Late-completion** tests assert cleanup-only behavior.
+- **Stress / torture** lanes (opt-in) hammer cancellation/late
+  completion paths under load.
+
+## Not implemented
+
+- Node-style global event loop (timers, intervals, immediates spanning
+  request scopes).
+- Public streaming response/request APIs.
+- Cross-worker shared memory.
+- A fetch-style `AbortSignal` wired into HTTP request lifecycles —
+  cancellation today flows through provider/worker APIs that take
+  `{ signal }` explicitly.

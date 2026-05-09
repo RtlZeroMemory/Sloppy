@@ -1,138 +1,132 @@
-# Review Playbook
+# Review playbook
 
-## Contract Reviewer
+What reviewers look for. Use this as a checklist when reviewing or as
+a self-check before requesting review.
 
-Checks that the change matches the issue, docs/ADRs, and acceptance criteria. Also checks
-for scope creep and required doc updates.
+## Correctness and contracts
 
-For large PRs, compare the diff against the `Implementation Contract for Reviewers`.
-Reject missing source docs, unclear non-goals, or validation that does not cover
-the stated contract.
+- The change does what the PR description says it does.
+- Behavior changes are reflected in the relevant docs and tests.
+- The PR is bounded — no drive-by refactors that double the diff.
+- For larger changes, the PR body lists the source docs/contracts the
+  change implements and the non-goals.
 
-## C Safety Reviewer
+## Boundaries
 
-Checks ownership, bounds, overflow, cleanup, error paths, resource lifetime, platform
-boundaries, and tests.
+- **Platform.** No OS APIs outside `src/platform/`. No OS headers in
+  core code. No `#ifdef` for OS branches outside platform code. See
+  [internals/platform-boundaries.md](../internals/platform-boundaries.md).
+- **V8.** No V8 types outside `src/engine/v8/`. JS never receives a
+  raw native pointer.
+- **Engine bridge invariants.** Owner-thread checks, copy-across,
+  bounded microtask drain. See
+  [internals/v8-bridge.md](../internals/v8-bridge.md).
+- **Provider isolation.** Native pointers never leak; redaction
+  preserved.
 
-## Build/Tooling Reviewer
+## Memory safety (C-side)
 
-Checks CMake, scripts, CI, test integration, current Windows and cross-platform assumptions, and
-generated artifact hygiene.
+- Ownership documented at API boundaries (borrowed view, arena copy,
+  scope-bound, resource-table).
+- Checked arithmetic for sizes and offsets (`include/sloppy/checked_math.h`).
+- No `malloc`/`free` outside allocator modules.
+- No VLAs.
+- Cleanups registered on the right scope; called once.
+- Late completions only do cleanup; never settle JS state.
 
-Reject required jobs that are made green by silently skipping their purpose. Optional V8,
-package, live-provider, advanced static analysis, fuzz/property, stress/torture, sanitizer,
-and benchmark checks must be reported separately from default checks.
+The contract: [internals/memory-model.md](../internals/memory-model.md).
 
-## Simplicity / Overengineering Reviewer
+## Tests
 
-Checks:
+- Tests assert documented intent, not "current output".
+- Negative paths covered for any contract that can reject input or
+  clean up resources.
+- Goldens have an explicit reason for any change.
+- Optional lanes reported separately.
+- New behavior has at least one test that fails when the contract
+  is violated.
 
-- Is the PR solving the scoped problem directly?
-- Did it introduce abstractions not required by the task?
-- Are there speculative extension points?
-- Are helpers making code clearer or hiding logic?
-- Are there too many options/flags/callbacks?
-- Can a reviewer reason locally about ownership and errors?
-- Would deleting an abstraction make the code safer/easier?
+## Diagnostics
 
-Blocking examples:
+- Failures produce structured `SlDiag` with stable codes and useful
+  hints.
+- Secret-bearing values redacted from diagnostics.
+- Source locations preserved where applicable.
 
-- new global registry without current use;
-- unnecessary vtable/provider interface for one implementation, unless it is a documented
-  architectural boundary;
-- macro DSL;
-- cross-module abstraction not in docs/ADR;
-- public API added "for future use";
-- large generic helper with no tests and one caller.
+## Build and tooling
 
-Non-blocking examples:
+- CMake, Cargo, and CTest updated when relevant.
+- `lint`, `format-check`, and standards scanners pass.
+- No generated artifacts staged.
 
-- function could be a little shorter;
-- naming preference;
-- minor helper extraction disagreement.
+## Simplicity
 
-## Comment Quality Reviewer
+The PR does the scoped task directly. Common over-engineering smells:
 
-Checks:
+- New global registry, plugin point, or vtable for one implementation.
+- Macro DSL added "for future use".
+- Public API expanded for hypothetical callers.
+- Generic helper with no tests and one caller.
+- Wrapper layer that just renames the underlying API.
 
-- Are public APIs documented with ownership/lifetime?
-- Are non-obvious safety checks explained?
-- Are platform/V8/threading boundaries commented?
-- Are comments accurate and not stale?
-- Are comments explaining necessary complexity or hiding avoidable complexity?
-- Are there noisy comments that restate obvious code?
-- Are TODOs linked to a task or clear follow-up?
+If you can delete an abstraction without making the code worse, do it.
 
-Blocking examples:
+## Comments
 
-- public API with unclear ownership/lifetime;
-- non-obvious unsafe-looking code without rationale;
-- stale comment contradicts implementation;
-- platform/engine boundary code lacks boundary comment;
-- TODO with correctness impact but no issue/task.
+- Public APIs document ownership and lifetime.
+- Non-obvious safety checks have a one-line rationale.
+- Platform/V8/threading boundaries are commented at the boundary.
+- Stale comments are removed or updated.
+- TODOs link to a concrete issue or include enough context to act on.
 
-Non-blocking examples:
+Comments that restate obvious code are removed.
 
-- simple private helper lacks comment but is obvious;
-- minor wording imvalidatement.
+## Public API and ergonomics (for stdlib, examples, and tooling)
 
-## Ergonomics/API Reviewer
+- Public examples use `Sloppy.create()` / `app.<verb>` / `Results.*` —
+  not internal helpers.
+- Diagnostics are actionable.
+- No Node globals, no npm assumptions.
+- No descriptor shape drift (frozen objects stay frozen).
+- Compiler-extractable examples avoid dynamic patterns.
 
-Checks that public API examples remain clean, diagnostics are helpful, framework-soup drift
-is avoided, and low-level primitive-first UX does not leak into user-facing surfaces unless
-the code is internal.
+## Compiler / Rust-side checks
 
-JS/TS checklist:
+- Output deterministic and path-normalized.
+- No `unwrap()` / `expect()` / `panic!` / `todo!` / `unimplemented!` /
+  `dbg!` in production code without an explicit allow reason.
+- Diagnostics carry source context.
+- Golden updates intentional and explained.
+- `cargo fmt`, `cargo clippy -D warnings`, `cargo test` pass.
 
-- no Node globals/imports in `stdlib/sloppy/`;
-- no npm or package-manager assumptions;
-- descriptor shape is stable and documented;
-- examples are honest about current runtime/compiler support;
-- errors are deterministic and redact secrets;
-- compiler-extractable examples avoid dynamic patterns;
-- `tools/windows/check-js-ts-standards.ps1` passes.
-- status/performance/runtime-support statements are aligned with source docs and
-  backed by the relevant validation.
+## Blocking vs non-blocking
 
-Rust compiler/tooling checklist:
+Block on:
 
-- output is deterministic and path-normalized;
-- no `unwrap()`, `expect()`, `panic!`, `todo!`, `unimplemented!`, or `dbg!` in production
-  code without explicit allow reason;
-- diagnostics include source context where possible;
-- golden tests are updated intentionally;
-- traits, macros, and abstractions are not overbuilt;
-- `tools/windows/check-rust-standards.ps1` passes;
-- `cargo fmt`, `cargo clippy -D warnings`, and `cargo test` pass.
-
-## Final Verifier
-
-Checks only the original acceptance criteria, confirmed blocking feedback, and no new scope
-creep.
-
-The final verifier should reject optional checks reported as passed when they
-were not run, benchmark smoke reported as correctness or performance validation,
-goldens updated only to match current output, stale docs, unsupported
-public/product statements, and unreviewed generated artifacts.
-
-## Blocking vs Non-blocking
-
-Blocking:
-
-- architecture violation;
-- memory safety bug;
+- correctness bug;
+- memory safety risk;
+- platform/V8 boundary violation;
 - missing required tests;
-- broken build;
-- failed quality gate;
-- platform/V8 boundary leak;
-- scope creep.
-- speculative abstraction that obscures ownership, error paths, or task scope.
-- stale or missing comment on required ownership, safety, platform, engine, or threading
-  rationale.
+- broken build or failed gate;
+- scope creep;
+- speculative abstraction that obscures ownership/error paths;
+- stale or missing comment on an ownership/safety/threading rationale.
 
-Non-blocking:
+Don't block on:
 
 - naming preference;
-- future enhancement;
 - optional refactor;
-- style nit not covered by standards.
+- style nit not covered by a standard;
+- "I would have done it differently".
+
+Non-blocking findings that point at real issues become follow-up
+issues — not requirements for this PR.
+
+## Final sweep before approval
+
+1. Diff matches the PR description.
+2. No unrelated changes.
+3. Required tests added or explained as N/A.
+4. Docs updated.
+5. CI green for required lanes.
+6. PR body still accurate after the last revision.

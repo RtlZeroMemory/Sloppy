@@ -1,157 +1,155 @@
-# Runtime Internals
+# Runtime
 
-## Purpose
+The runtime is the C kernel that boots a Sloppy app, loads its Plan,
+runs handlers through the V8 bridge, and tears everything down. The
+entrypoint is `src/main.c`; most of the work happens in `src/core/`.
 
-Sloppy executes validated artifacts through a native app-host. It is a
-compile-then-run model even when users invoke source-input shortcuts.
+## Startup sequence
 
-## Where It Lives
-
-- `src/main.c` owns CLI mode selection and source/artifact command dispatch.
-- `src/core/app_host.c` owns startup validation, app lifecycle, request
-  dispatch, and feature activation.
-- `src/core/plan_parse.c` owns Plan parsing before app-host validation.
-- `src/core/http_dispatch.c` and `src/platform/libuv/http_transport_libuv.c`
-  connect route metadata to HTTP execution.
-
-## Main Concepts
-
-The runtime executes artifacts, not arbitrary source trees. Source-input
-commands compile first, then run through the same Plan/artifact path. Startup is
-fail-closed: no handler dispatch occurs until plan, target, feature, provider,
-route, and artifact checks pass.
-
-## Lifecycle
-
-The runtime parses CLI arguments, compiles source input when requested, loads
-the artifact directory, parses `app.plan.json`, validates app-host invariants,
-initializes the selected engine lane, registers generated handlers, accepts
-bounded request work, dispatches through Plan metadata, then cleans up request
-and app-owned resources.
-
-```mermaid
-flowchart TD
-    Args[CLI arguments] --> Mode{Input mode}
-    Mode -->|source| Compile[Run sloppyc build]
-    Mode -->|artifacts| LoadArtifacts[Load artifact directory]
-    Compile --> LoadArtifacts
-    LoadArtifacts --> ReadPlan[Read app.plan.json]
-    ReadPlan --> ParsePlan[Parse Plan into arena-owned structures]
-    ParsePlan --> ValidateHost[Validate app-host invariants]
-    ValidateHost --> ActivateFeatures[Activate required features]
-    ActivateFeatures --> InitEngine[Initialize noop or V8 engine]
-    InitEngine --> EvalBundle[Evaluate app.js when V8 is enabled]
-    EvalBundle --> RegisterHandlers[Register handlers]
-    RegisterHandlers --> AcceptRequest[Accept one-shot or transport request]
-    AcceptRequest --> Dispatch[Dispatch by Plan route and handler ID]
-    Dispatch --> Cleanup[Run request cleanup]
-    Cleanup --> Shutdown[App shutdown cleanup]
-```
-
-## Runtime State Owners
-
-| State | Owner | Lifetime | Failure path |
-| --- | --- | --- | --- |
-| Parsed CLI options | `src/main.c` | command invocation | command diagnostic and nonzero exit |
-| Source-input artifacts | `sloppyc` via CLI wrapper | command/cache directory | compiler diagnostics; runtime never sees partial success |
-| Parsed Plan | `src/core/plan_parse.c` arena | app startup | rollback and Plan diagnostic |
-| App host | `src/core/app_host.c` | app lifetime | startup diagnostic; no request dispatch |
-| Request scope | app host/request dispatch | one request | cleanup after success, error, timeout, or cancellation |
-| Engine instance | engine bridge | app lifetime | engine diagnostic and shutdown cleanup |
-| Provider handles | provider runtime/resource table | resource/request/app scope | provider diagnostic and resource cleanup |
-
-## Invariants
-
-- Source-input is compile-then-run.
-- Artifact execution requires a valid Plan and bundle hash relationship.
-- Handler IDs and route metadata must be internally consistent.
-- The noop engine validates native runtime paths without JavaScript handler execution.
-- Feature activation must satisfy `requiredFeatures` before use.
-
-## Failure Behavior
-
-Bad CLI shape, compiler failure, missing artifact files, Plan parse failure,
-target mismatch, unsupported runtime feature, duplicate routes, missing handler
-references, and engine initialization failures stop startup or request dispatch
-with diagnostics rather than partial success.
-
-## Public API Relationship
-
-The public `sloppy build`, `sloppy run`, `routes`, `capabilities`, `doctor`,
-`audit`, and `openapi` commands are thin entrypoints over these internals. User
-docs should describe command behavior without exposing app-host structs.
-
-## Tests And Evidence
-
-Coverage comes from CLI tests, Plan goldens, app-host unit tests, source-input
-fixtures, HTTP dispatch tests, V8-gated handler execution tests, and package
-outside-checkout smoke tests.
-
-## Implementation Notes
-
-Runtime code should treat compiler output as untrusted input. Even source-input
-commands go through artifact loading and Plan validation so that `sloppy run
-src/main.ts` and `sloppy run --artifacts .sloppy` share the same runtime
-contract. CLI convenience must not bypass Plan parsing, feature activation,
-target checks, or artifact hash relationships.
-
-## Current Limits
-
-Package-manager app behavior, production-edge HTTP, public streaming, full
-platform parity, and benchmark-backed performance comparisons are future scoped
-work.
-
-## Current Executable Path
-
-The supported path is:
+`sl_cli_command_run` (in `src/cli/cli_run.inc`) runs every step. They
+are all fail-closed — any error before `dispatch` aborts startup with a
+diagnostic and a non-zero exit.
 
 ```text
-source app -> sloppyc build -> app.plan.json/app.js/app.js.map -> sloppy run artifacts
+1. parse CLI options                    src/cli/cli_common.inc
+2. resolve project config               sloppy.json + appsettings*
+3. compile source input (if any)        sloppyc handoff
+4. read app.plan.json                   src/core/plan_parse.c
+5. validate Plan                        plan_parse.c + app_host.c
+6. stage bootstrap stdlib               src/core/app_host.c
+7. activate required features           src/core/features.c
+8. initialize engine bridge             src/engine/engine.c → v8/*
+9. evaluate generated bundle            src/engine/v8/engine_v8.cc
+10. register handlers                   bridge intrinsics
+11. build native route table            src/core/route.c
+12. accept work (--once or listener)    src/platform/libuv/*
 ```
 
-`src/main.c` exposes `build` and `run` as separate commands and keeps artifact
-introspection commands (`routes`, `capabilities`, `doctor`, `audit`, `openapi`)
-alongside them.
+After step 12 the runtime is in steady state. Shutdown reverses 11→1
+in cleanup order.
 
-Source-input run is still compile-first. The default source artifact cache path
-is explicit (`.sloppy/cache/dev/source-input` in `src/main.c`).
+## Plan validation
 
-## Startup Sequence
+`sl_plan_parse` returns an arena-owned `SlPlan`. Validation rejects, in
+order:
 
-The runtime model is fail-closed:
+- unknown or unsupported `schemaVersion`;
+- target/runtime version mismatch;
+- artifact files missing or hash mismatch;
+- duplicate `(method, pattern)` route pairs;
+- duplicate non-empty route names;
+- handler IDs that don't appear in the handler table;
+- duplicate provider or capability tokens;
+- secret-bearing fields in Plan metadata that should have been redacted.
 
-1. Parse command mode.
-2. Compile if the input mode is source.
-3. Parse and validate the plan (`src/core/plan_parse.c`).
-4. Validate host startup invariants (`src/core/app_host.c`).
-5. Initialize engine lane (noop or V8).
-6. Register generated handlers in the engine bridge.
-7. Dispatch requests only after metadata/handler validation succeeds.
+The strictness is intentional. The runtime treats compiler output as
+untrusted input.
 
-In current app-host validation, artifacts are constrained to a dev-host contract:
-`windows-x64` + `v8` target and runtime minimum compatibility checks are enforced
-before serving.
+## Feature activation
 
-## Engine Modes
+`requiredFeatures[]` is a list of strings — `"stdlib"`, `"http"`,
+`"sqlite"`, `"postgres"`, `"sqlserver"`, `"workers"`, `"crypto"`,
+`"codec"`, `"net"`, `"os"`, `"fs"`, `"time"`. The activation loop in
+`src/core/features.c` checks each against the runtime feature registry
+and errors out if any is unavailable on this build.
 
-Default lanes validate native behavior without V8 execution. V8-enabled lanes
-add JavaScript handler execution and bridge behavior. They are reported
-separately by design.
+A feature being declared in the Plan is *not* the same as the JS API
+surface for that feature being implemented end-to-end. Features gate
+runtime initialization; coverage is a separate question
+([reference/stability.md](../reference/stability.md)).
 
-Within `src/engine/v8/engine_v8.cc`, dispatch uses registered handler IDs and
-owner-thread checks. Promise and exception outcomes are translated into Sloppy
-diagnostics.
+## Engine bridge
 
-## Metadata Contracts
+The engine bridge in `src/engine/engine.c` exposes engine-neutral
+operations to the rest of the runtime: initialize, evaluate bundle,
+register handler, dispatch handler, shutdown.
 
-Execution is gated by plan correctness, not best effort:
+`src/engine/v8/engine_v8.cc` is the V8 implementation. The noop
+implementation lives alongside it for builds without V8 — every
+operation returns an "unsupported" diagnostic, which lets metadata
+commands run without V8 present.
 
-- plan version, required sections, and metadata relationships are validated;
-- secret-bearing plan fields are rejected;
-- missing handler references or duplicate route/provider/capability identities
-  fail startup.
+V8 invariants are documented in [v8-bridge.md](v8-bridge.md).
 
-## Non-Goals
+## Request dispatch
 
-Package-manager app behavior, release hardening, and benchmark-backed
-performance comparisons are future scoped work.
+The transport layer (`src/platform/libuv/http_transport_libuv.c`)
+parses request bytes into `SlHttpRequest`. `sl_http_dispatch_dispatch`
+in `src/core/http_dispatch.c` then:
+
+1. matches the request against the route table;
+2. enforces method, content-type, and body limits;
+3. opens a per-request scope (`src/core/scope.c`);
+4. materializes route params, query, and headers into the request
+   context;
+5. calls into the bridge with the matched handler ID and the context;
+6. converts the returned result descriptor into an HTTP response;
+7. closes the scope, running scope-owned cleanups.
+
+A request's scope is the cleanup container — every per-request resource
+(provider handles, allocations, transient services) is registered with
+it. End of scope is end of life for those resources.
+
+## Cleanup ordering
+
+Cleanups run **latest-registered first** at every scope boundary.
+
+```text
+request scope dispose:
+  for each cleanup in reverse order:
+    invoke async dispose / dispose / close
+  release arena
+  release request memory
+
+app scope dispose:
+  drain pending request scopes
+  shutdown provider runtime
+  shutdown engine bridge
+  release app arena
+```
+
+Late completions (provider results that arrive after request
+cancellation, native callbacks that fire after the listener stopped)
+only ever run their own cleanup. The runtime never notifies a
+JavaScript handle that has already been disposed.
+
+## CLI mode selection
+
+`src/main.c` parses the top-level command and dispatches to a per-command
+function in `src/cli/cli_*.inc`. The metadata commands (`routes`,
+`capabilities`, `doctor`, `audit`, `openapi`) reuse the Plan parser but
+skip the engine init steps; they don't enter V8 at all.
+
+```text
+src/main.c::main
+  ├─ "build"          → cli_run.inc / sloppyc handoff
+  ├─ "run"            → cli_run.inc::sl_cli_command_run
+  ├─ "routes"         → cli_routes.inc
+  ├─ "capabilities"   → cli_metadata.inc / cli_lookup.inc
+  ├─ "doctor"         → cli_doctor.inc
+  ├─ "audit"          → cli_audit.inc
+  └─ "openapi"        → cli_openapi.inc
+```
+
+Source-input `sloppy run src/main.ts` invokes `sloppyc build` first,
+writes artifacts to a deterministic cache (`.sloppy/cache/dev/source-input`
+by default, see `SL_RUN_DEFAULT_SOURCE_OUT_DIR` in `src/main.c`), then
+executes the same artifact path.
+
+## What you can rely on
+
+- The run path is the same regardless of `--once` vs listener.
+- The Plan loaded by `sloppy run` is the same Plan inspected by
+  `sloppy routes` / `audit` / `openapi`.
+- Engine bridge calls are owner-thread only; cross-thread access fails
+  before touching V8.
+- Diagnostics never embed unredacted secrets (see
+  [security-model.md](security-model.md)).
+
+## Where to read next
+
+- [Plan](plan.md) — schema and validation
+- [V8 bridge](v8-bridge.md) — engine boundaries
+- [HTTP runtime](http-runtime.md) — parser through transport
+- [Async runtime](async-runtime.md) — cancellation, deadlines, late completion
+- [Memory model](memory-model.md) — arenas and ownership

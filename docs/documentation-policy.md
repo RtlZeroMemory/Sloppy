@@ -1,53 +1,54 @@
 # Documentation Policy
 
-Documentation is part of Sloppy's correctness story. A change is incomplete if
-the next reader is sent to stale behavior, old task history, or unsupported
-product statements.
+Documentation is part of how Sloppy ships. A change is incomplete if the
+next reader is sent to stale behavior or unsupported claims.
 
-## Source Of Truth
+## Source of truth
 
-Current docs must be written from current source code, public headers, compiler
-code, stdlib code, CLI code, scripts, tests, examples, generated artifacts, and
-commands actually run.
+Current docs are written from current source code, public headers,
+compiler code, stdlib code, CLI code, scripts, tests, examples, and
+commands actually run. Old docs are discovery material. GitHub issues
+own the live roadmap and task state.
 
-Old docs are discovery material only. GitHub issues own live roadmap and task
-state.
+## Where things live
 
-## Documentation Shapes
+`docs/` is organized for the reader, not for the author:
 
-- Tutorial: guided learning with a working result.
-- How-to: one concrete task with exact steps and expected output.
-- Reference: lookup material for commands, APIs, config, diagnostics, and
-  status.
-- Explanation: architecture, design reasoning, and mental models.
-- Contributor: build, test, package, review, release, and docs operations.
-- Internals: implementation boundaries, lifecycles, invariants, and validation
-  context.
+- `docs/install.md`, `docs/quickstart.md` — start here
+- `docs/api/` — first-party TypeScript API
+- `docs/cli/` — `sloppy` and `sloppyc` commands
+- `docs/guide/` — task-shaped walkthroughs and project conventions
+- `docs/reference/` — exhaustive lookup material
+- `docs/about/` — design notes, background, motivation
+- `docs/internals/` — implementation-level docs for contributors
+- `docs/contributor/` — building, testing, releasing
+- `docs/release/` — release artifact policy
+- `docs/skills/` — agent skill playbooks
+- `docs/glossary.md` — vocabulary
 
-The directory is the page type. Do not add visible metadata lines to tell the
-reader what they are reading; make the title, introduction, and structure do
-that work.
+A page is the type of its directory. The title and structure should make
+that obvious; you don't need a metadata header announcing it.
 
-## What To Delete
+## What to delete
 
-Delete stale execution transcripts, issue snapshots, task copies, duplicate
-planning layers, dry status pages, fake examples, and docs that cannot be
-verified against the current implementation.
+Delete stale execution transcripts, issue snapshots, task copies, dry
+status pages, fake examples, and docs that don't match the current
+implementation. Archive only material with durable historical value.
 
-Archive only rare material with durable historical value. Archives must not be
-linked as current truth.
+Automation operating instructions (agent rules, evidence-lane policy,
+review playbooks for AI reviewers) live under `AGENTS.md`, `CLAUDE.md`,
+and `AGENTS_CONTRIBUTING.md` — not in reader-facing product or
+contributor docs.
 
-Automation operating instructions belong in `AGENTS.md` and
-`AGENTS_CONTRIBUTING.md`, not in reader-facing contributor or product docs.
+## Code, tests, docs move together
 
-## Code, Tests, Docs Move Together
+Behavior, API, module-boundary, diagnostic, CLI, example, or workflow
+changes update the relevant docs and tests in the same change. Tests
+verify documented intent, not accidental current output.
 
-Behavior, API, module-boundary, diagnostic, CLI, example, or workflow changes
-must update the relevant docs and tests. Tests should verify documented intent,
-not accidental current output.
+## Tone
 
-## Accuracy Policy
-
-State what works today in plain language. If you make major availability,
-performance, or compatibility statements, back them with the exact source docs
-and checks run in the same change.
+Write for a developer who wants to use Sloppy. Direct sentences, real
+examples, code that runs. Mark experimental and planned surfaces
+explicitly. Don't paragraph-hedge — short, accurate sentences beat long
+defensive ones.

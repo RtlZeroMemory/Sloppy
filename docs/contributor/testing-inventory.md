@@ -1,85 +1,197 @@
-# Testing Inventory
+# Testing inventory
 
-## Purpose
+Where tests live. Pair this with [testing.md](testing.md) for the
+principles.
 
-This document maps the repository's active test surfaces. `docs/contributor/testing.md`
-defines testing principles and evidence lanes; this file is the operational inventory for
-where those lanes live.
+## Layout
 
-## Default Non-V8 Lane
+```text
+tests/
+  unit/            per-module unit tests (C, run through CTest)
+    core/
+    engine/
+    data/
+    platform/
+    plan/
+    ...
+  integration/     cross-module integration, still in-process
+    http_dispatch/
+    plan_run/
+    ...
+  conformance/     end-to-end via the real CLI
+    foundation/
+    http/
+    transport/
+    sqlite/
+    capability/
+    package/
+    v8/
+  fixtures/        inputs reused across tests
+    source-input/  source-shaped Sloppy apps with metadata
+    package/       package layout fixtures
+    run/           run-mode metadata
+  golden/          checked-in expected outputs (Plan, diagnostics, CLI)
+    plan/
+    diagnostics/
+    cli/
+  fuzz/            fuzz harnesses and seed corpora
+    seeds/
+    targets/
+  live/            live-provider scripts (PostgreSQL, SQL Server)
+  scripts/         test helpers
+  cmake/           CMake helpers used by CTest fixtures
+  bootstrap/       bootstrap stdlib smoke
 
-The default lane covers C runtime foundations, parser/Plan behavior, diagnostics, routing,
-HTTP parser/backend/transport behavior that does not require V8, provider metadata, package
-fixture structure, source-input metadata, and static governance checks.
-
-Typical entrypoints:
-
-```powershell
-.\tools\windows\dev.ps1 configure
-.\tools\windows\dev.ps1 build
-.\tools\windows\dev.ps1 test
-.\tools\windows\dev.ps1 lint
+compiler/
+  tests/
+    fixtures/      input.{js,ts} → expected plan/bundle/sourcemap/diagnostic
+    sloppyc_tests.rs
 ```
 
-The default lane covers the default preset. Optional V8 execution, live
-providers, production HTTP, package release readiness, sanitizer/stress/torture
-lanes, and benchmark comparisons are separate.
+## What runs in the default lane
 
-## Compiler And Plan Lane
+```powershell
+.\tools\windows\dev.ps1 test
+```
 
-Compiler fixtures live under `compiler/tests/fixtures/`. They pin deterministic Plan,
-bundle, source-map, and diagnostic output for the supported source subset. Plan and run
-fixtures live under `tests/golden/plan/`, `tests/fixtures/run/`, and related integration
-directories.
+Hits CTest for the default preset (`windows-dev`) plus the Cargo test
+suite when Cargo is available. That covers:
 
-Compiler tests must verify documented source behavior, unsupported syntax diagnostics,
-path normalization, deterministic output, and generated metadata. General
-TypeScript lowering, Node resolution, npm package behavior, and final Framework
-v2 support are tracked separately.
+- C unit tests under `tests/unit/`
+- Integration tests under `tests/integration/`
+- Conformance fixtures that don't require V8
+- Compiler/Plan tests
+- Default-safe fuzz seed replay
+- Lint and standards scanners
 
-## V8-Gated Lane
+## V8-gated lane
 
-V8-gated tests cover the optional engine bridge: smoke execution, registered handlers,
-request context/result conversion, bounded Promise settlement, SQLite bridge behavior,
-source-map exception remapping, and owner-thread invariants.
+Built and run separately:
 
-V8-gated coverage is separate from the default lane.
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1 -Fetch
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
 
-## Source-Input Lane
+Adds:
 
-Source-input fixtures live under `tests/fixtures/source-input/`. Each fixture has metadata
-that declares lane, mode, source path, config inputs, expected Plan semantics, doctor output,
-diagnostics, required features, platform/dependency requirements, V8 requirements, and
-expected exit behavior.
+- Engine bridge smoke (`tests/conformance/v8/`)
+- Bridge unit tests (`tests/unit/engine/`)
+- Source-map exception remapping
+- Provider V8 bridge tests (SQLite, optionally Postgres/SQL Server)
+- HTTP request-context end-to-end through V8
 
-Source-input tests should validate that `sloppy run <source.js>` and
-compiler-owned artifact generation share the same documented contract.
+## Live-provider lanes (opt-in)
 
-## Package Lane
+```powershell
+# PostgreSQL
+$env:SLOPPY_POSTGRES_TEST_URL = "postgres://user:pass@localhost/postgres"
 
-Package fixtures live under `tests/fixtures/package/`. They validate package
-layout and outside-checkout behavior for the current experimental package
-artifacts. Release readiness, installer behavior, hosted distribution, and
-release publishing status use separate release lanes.
+# SQL Server (ODBC connection string)
+$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING = "Driver={...};..."
+```
 
-## Public And Example Checks
+CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
+`full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
+async support is `UNAVAILABLE` — never folded into a default pass.
 
-Example checks keep checked-in examples structurally aligned with current source
-contracts. Public docs remain pre-alpha; their tests guard boundaries rather
-than expand tutorial scope.
+## Sanitizer lanes (mandatory in CI)
 
-## Golden Policy
+```powershell
+# Windows ASan
+.\tools\windows\dev.ps1 configure -Preset windows-asan
+.\tools\windows\dev.ps1 build -Preset windows-asan
+ctest --preset windows-asan --output-on-failure
 
-Goldens are semantic contracts. A golden update must explain the intended behavior change,
-not simply accept new output. Negative paths should verify diagnostic code, source span,
-hint/redaction, cleanup, and rollback behavior where applicable.
+# libFuzzer seed replay
+.\tools\windows\dev.ps1 configure -Preset windows-libfuzzer
+.\tools\windows\dev.ps1 build -Preset windows-libfuzzer
+ctest --preset windows-libfuzzer -L fuzz --output-on-failure
+```
 
-## Optional Lanes
+Linux mirror:
 
-Optional lanes include V8-gated, source-input, package outside-checkout, platform-specific,
-dependency-backed, live-network/live-provider, advanced static analysis, fuzz/property,
-stress/torture, sanitizer/memory-safety, and benchmark evidence. Skipped optional lanes
-must be reported as not run.
+```sh
+cmake --preset linux-sanitizers
+cmake --build --preset linux-sanitizers
+ctest --preset linux-sanitizers --output-on-failure
+```
 
-Benchmark smoke validates that the harness runs. Performance comparisons need
-measured benchmark reports.
+## SIMD lanes
+
+For SIMD backend changes:
+
+```powershell
+.\tools\windows\dev.ps1 configure -Preset windows-simd      # SSE2
+.\tools\windows\dev.ps1 build -Preset windows-simd
+
+.\tools\windows\dev.ps1 configure -Preset windows-avx2      # AVX2 (AVX2-capable CPU only)
+.\tools\windows\dev.ps1 build -Preset windows-avx2
+```
+
+These lanes verify scalar/SIMD parity for byte and string primitives.
+They don't measure performance — that's separate.
+
+## Benchmark lane
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy_bench.exe --smoke --format json
+```
+
+`--smoke` is harness coverage. For real measurements, drop `--smoke`
+and report the full command, build configuration, hardware, workload,
+and output. Benchmark output is never correctness evidence.
+
+## Compiler fixtures
+
+```text
+compiler/tests/fixtures/<name>/
+  input.js | input.mjs | input.ts
+  app.plan.json
+  app.js
+  app.js.map
+  diagnostics.txt   (if the input is rejected)
+```
+
+The harness in `compiler/src/sloppyc_tests.rs` runs each input
+through `sloppyc` and diffs against the expected outputs. Drift
+fails CI.
+
+Negative fixtures assert specific `SLOPPYC_E_*` codes for unsupported
+inputs.
+
+## Source-input fixtures
+
+```text
+tests/fixtures/source-input/<name>/
+  metadata.json    declares lane, mode, V8 requirement, etc.
+  app.{js,ts}      the source
+  expected/        expected Plan / output / diagnostics
+```
+
+Run via `tests/cmake/check_source_input_run.cmake`. Each fixture maps
+to one or more CTest cases.
+
+## Package fixtures
+
+```text
+tests/fixtures/package/
+  ...layout fixtures for outside-checkout smoke
+```
+
+`dev.ps1 package` produces the archive; `dev.ps1 test-package` smokes
+it from outside the repository checkout.
+
+## Goldens
+
+```text
+tests/golden/
+  plan/            full Plan outputs for representative apps
+  diagnostics/     rendered diagnostic strings (with redaction)
+  cli/             CLI command output (routes, openapi, …)
+```
+
+Golden updates require an explicit reason in the PR body. See
+[testing.md](testing.md#goldens).

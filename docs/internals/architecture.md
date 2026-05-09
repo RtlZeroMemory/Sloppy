@@ -1,241 +1,183 @@
 # Architecture
 
-## Purpose
+Sloppy is three programs that ship as one tool:
 
-Sloppy is a pre-alpha runtime project with explicit ownership boundaries:
-
-- Rust compiler (`sloppyc`) owns source parsing and artifact generation.
-- C app-host/runtime owns plan validation, lifecycle, and native contracts.
-- C++ V8 bridge owns JS execution behind Sloppy-owned ABI types.
-
-This document records current architecture reasoning and boundaries for
-maintainers.
-
-## Where It Lives
-
-- `compiler/` owns source parsing, source-shape validation, artifact generation,
-  and compiler fixture tests.
-- `src/core/` owns Plan parsing, app-host validation, diagnostics, routing, HTTP
-  dispatch, and native lifecycle code.
-- `src/engine/v8/` owns all V8-specific types, contexts, handles, and exception
-  mapping.
-- `src/data/` owns provider-neutral and provider-specific native database work.
-- `src/platform/` owns OS-specific implementation details and transport
-  backends.
-
-## Main Concepts
-
-Sloppy is artifact-first. The compiler extracts a static app shape and emits a
-Plan plus generated JavaScript. The native runtime validates the Plan before
-loading handlers, then dispatches through an engine bridge. Provider, platform,
-HTTP, memory, and diagnostics boundaries are runtime-owned contracts rather than
-ambient framework behavior.
-
-## Lifecycle
-
-The normal path is: source input, compiler extraction, artifact emission, Plan
-parse, app-host validation, feature activation, engine initialization, handler
-registration, request dispatch, request cleanup, and app shutdown. Each step can
-fail before the next step begins; a later step should not reinterpret earlier
-metadata.
-
-## Invariants
-
-- Core modules do not include OS headers or call OS APIs directly.
-- V8 types do not escape `src/engine/v8/*`.
-- JavaScript code never receives raw native pointers.
-- Plan validation is fail-closed and deterministic.
-- Optional lanes stay separate from default non-V8 validation.
-
-## Failure Behavior
-
-Architecture boundary failures should stop at the closest owning layer. Compiler
-source-shape failures become compiler diagnostics. Plan shape failures stop app
-startup. Engine failures map to Sloppy diagnostics before crossing the C ABI.
-Provider and platform failures must preserve ownership and redaction rules.
-
-## Public API Relationship
-
-Public docs describe `sloppy`, `sloppyc`, framework APIs, artifacts, providers,
-and runtime behavior. This internals page explains why those surfaces are split
-across compiler, runtime, engine, provider, and platform ownership.
-
-## Tests And Evidence
-
-Architecture coverage comes from compiler fixtures, Plan parser goldens,
-app-host startup tests, platform boundary scanners, C standards checks, V8 smoke
-tests, provider conformance tests, and docs freshness checks. Default non-V8
-checks cover the default lane.
-
-## Maintainer Review Checklist
-
-- Does the change keep source extraction in `compiler/` and runtime execution in
-  `src/core`/engine boundaries?
-- Does any new native dependency have a documented owner and evidence lane?
-- Does app-facing documentation describe behavior without exposing internal
-  engine/provider/platform details as public API?
-- Does the changed path have a deterministic failure mode and diagnostic?
-- Are optional lanes reported separately from default non-V8 checks?
-
-## Current Limits
-
-Sloppy is still pre-alpha. npm-style dependency resolution, OS sandboxing,
-package release hardening, and benchmark-backed performance comparisons are
-future scoped work.
-
-## System Layers
+- A **Rust compiler** (`compiler/`, binary `sloppyc`) that reads supported
+  source and emits a Plan + bundle.
+- A **C runtime kernel** (`src/core/`, `src/platform/`, `src/data/`,
+  binary `sloppy`) that loads the Plan, manages app/request lifecycle,
+  drives HTTP, and owns provider boundaries.
+- A **C++ V8 bridge** (`src/engine/v8/`) that runs handler bundles
+  inside an isolated V8 instance.
 
 ```text
-source app
-  -> sloppyc
-  -> Plan + bundle + source map
-  -> app host
-  -> runtime kernel
-  -> engine bridge / providers / platform backends
+source            sloppyc          .sloppy/             sloppy
+src/main.ts  ──►  compile     ──►  app.plan.json    ──► load + validate
+                                   app.js                 ▼
+                                   app.js.map         engine/v8/*
+                                                     register handlers
+                                                         ▼
+                                                       dispatch
 ```
 
-```mermaid
-flowchart TB
-    App[Source app] --> Compiler[sloppyc compiler]
-    Compiler --> Plan[app.plan.json]
-    Compiler --> Bundle[app.js]
-    Compiler --> SourceMap[app.js.map]
-    Plan --> Host[Native app host]
-    Bundle --> Host
-    SourceMap --> Host
-    Host --> Runtime[Runtime kernel]
-    Runtime --> Router[Routing and request lifecycle]
-    Runtime --> Diagnostics[Diagnostics and redaction]
-    Runtime --> Features[Feature registry]
-    Runtime --> Providers[Native providers]
-    Runtime --> Platform[Platform backends]
-    Runtime --> Engine[Engine-neutral bridge]
-    Engine --> V8[V8 bridge]
-    Providers --> SQLite[SQLite]
-    Providers --> Postgres[PostgreSQL]
-    Providers --> SqlServer[SQL Server]
+Everything else — providers, platform code, the public stdlib — fits
+between those three pieces along documented boundaries.
+
+## Layers
+
+| Layer        | Owner directory       | Owns                                                                     |
+| ------------ | --------------------- | ------------------------------------------------------------------------ |
+| Compiler     | `compiler/src/`       | Source parsing (Oxc), syntax validation, route/capability/schema extraction, deterministic artifact emission |
+| Plan         | `src/core/plan_parse.c`, `include/sloppy/plan.h` | JSON parsing, schema validation, route/handler/feature/provider/capability checks |
+| App host     | `src/core/app_host.c` | Startup, feature activation, request lifecycle, cleanup ordering         |
+| HTTP         | `src/core/http*.c`, `src/platform/libuv/http_transport_libuv.c` | Parser, dispatch, response writer, transport |
+| Engine bridge | `src/engine/v8/*`    | V8 isolate ownership, handler registration, Promise settlement, exception mapping |
+| Providers    | `src/data/*`          | SQLite/PostgreSQL/SQL Server native code, value/result conversion, redaction |
+| Platform     | `src/platform/*`      | OS calls, libuv transport backend                                        |
+| Stdlib       | `stdlib/sloppy/*`     | Public JS surface — `Sloppy`, `Results`, `data`, `schema`, etc.          |
+| CLI          | `src/main.c`, `src/cli/cli_*.inc` | Command parsing and dispatch into the layers above            |
+
+## Boundary rules
+
+Five rules that everything else follows:
+
+1. **No OS APIs outside `src/platform/`.** Core modules see opaque
+   platform types and Sloppy-owned callbacks. Including a Win32 or POSIX
+   header in `src/core/` is a build break.
+2. **No V8 types outside `src/engine/v8/`.** The C ABI between the
+   kernel and the bridge passes Sloppy-owned types only. Public headers
+   under `include/sloppy/` never see `v8::*`.
+3. **No raw native pointers in JavaScript.** Every native resource the
+   bridge exposes to JS is wrapped in a capability-checked handle.
+4. **One owner thread per V8 isolate.** Wrong-thread entry fails before
+   touching V8.
+5. **Plan validation is fail-closed.** A request never executes against
+   a malformed Plan, missing artifact hash, unsupported feature, or
+   unknown handler ID.
+
+These are enforced by code, not just documented. Boundary scanners under
+`tools/windows/check-platform-boundaries.ps1` and CI gates fail PRs that
+violate them.
+
+## Lifecycles
+
+**Source → artifacts** (compile time):
+
+```
+src/*.ts
+   │  oxc parse
+   ▼
+AST
+   │  sloppyc.rs::compile
+   │    extract routes, capabilities, schemas, providers
+   │    validate supported subset
+   │    emit deterministic JS bundle + source map
+   ▼
+.sloppy/app.plan.json + app.js + app.js.map
 ```
 
-Artifact execution is intentional: startup can validate app metadata before
-request dispatch.
+**Artifacts → handlers** (startup):
 
-## Request Execution Path
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI as sloppy
-    participant Compiler as sloppyc
-    participant Host as app host
-    participant Plan as Plan parser
-    participant Engine as V8 bridge
-    participant Handler as generated handler
-
-    User->>CLI: sloppy run src/main.ts --once GET /hello/Ada
-    CLI->>Compiler: compile source input
-    Compiler-->>CLI: app.plan.json, app.js, app.js.map
-    CLI->>Plan: parse and validate Plan
-    Plan-->>Host: validated metadata
-    Host->>Engine: initialize runtime feature set
-    Host->>Engine: evaluate generated bundle
-    Engine-->>Host: handlers registered
-    Host->>Engine: dispatch handler ID with request context
-    Engine->>Handler: invoke
-    Handler-->>Engine: Results.json(...)
-    Engine-->>Host: normalized response
-    Host-->>CLI: response body
-    CLI-->>User: {"hello":"Ada"}
+```
+sloppy run
+   │  src/cli/cli_run.inc::sl_cli_command_run
+   ▼
+read app.plan.json
+   │  src/core/plan_parse.c
+   │    schema version, hashes, routes, handlers, providers, features
+   ▼
+app host validate
+   │  src/core/app_host.c
+   ▼
+activate features (sl_feature_*)
+   │
+   ▼
+init engine bridge
+   │  src/engine/v8/engine_v8.cc (V8) or noop
+   ▼
+evaluate app.js
+   │  bridge registers handlers via Sloppy-owned intrinsics
+   ▼
+ready (one-shot or transport listener)
 ```
 
-## Ownership Map
+**Request → response** (per request):
 
-| Area | Owner | Owns | Must not own |
-| --- | --- | --- | --- |
-| Source extraction | `compiler/` | Source-shape recognition, diagnostics, artifact emission | Runtime execution, live provider calls, Node package resolution |
-| Plan validation | `src/core/plan_parse.c`, `src/core/app_host.c` | Schema, target, route, feature, provider, capability checks | Compiler AST state, V8 handles, OS handles |
-| Runtime lifecycle | `src/core/*` | App/request lifetime, cleanup scopes, routing, diagnostics | OS-specific calls outside platform backends |
-| Engine bridge | `src/engine/v8/*` | V8 isolates, contexts, JS values, exception mapping | Public C API types, platform transport policy |
-| Providers | `src/data/*` | Driver handles, provider values, connection pools, redaction | JavaScript raw pointers, unredacted secrets |
-| Platform | `src/platform/*` | OS calls, libuv transport backend, platform-specific helpers | App graph semantics, provider policy |
-| Stdlib | `stdlib/sloppy/*` | Framework API, bootstrap helpers, JavaScript descriptors | Native resource ownership, runtime behavior outside documented scope |
-
-## Cross-Cutting Boundaries
-
-```mermaid
-flowchart LR
-    subgraph Public[Public/app-facing]
-        Framework[Sloppy framework API]
-        CLI[CLI commands]
-        Docs[Product docs]
-    end
-
-    subgraph Internal[Internal contracts]
-        Compiler[Compiler extractor]
-        Plan[Plan schema]
-        Runtime[Runtime C ABI]
-        Engine[Engine bridge]
-        Providers[Provider drivers]
-        Platform[OS backends]
-    end
-
-    Framework --> Compiler
-    CLI --> Compiler
-    CLI --> Runtime
-    Compiler --> Plan
-    Plan --> Runtime
-    Runtime --> Engine
-    Runtime --> Providers
-    Runtime --> Platform
-    Engine -. no V8 types outside .-> Runtime
-    Providers -. no raw pointers to JS .-> Framework
-    Platform -. no OS headers in core .-> Runtime
+```
+transport accepts bytes
+   │  src/platform/libuv/http_transport_libuv.c
+   ▼
+parse + validate
+   │  src/core/http.c, http_dispatch.c, request_validation.c
+   ▼
+match route (Plan-derived table)
+   │  src/core/route.c
+   ▼
+build request context, open request scope
+   │  src/core/http_context.c, scope.c
+   ▼
+dispatch handler ID through bridge
+   │  src/engine/v8/intrinsics_*
+   ▼
+JS handler runs, returns Results.*
+   │
+   ▼
+convert response, write
+   │  src/core/http_response.c
+   ▼
+end scope, run cleanup hooks
 ```
 
-The dotted relationships are guardrails: they exist to prevent implementation
-details from becoming accidental public API.
+The same code path runs for `--once` and for the long-lived listener.
+There is no "test" or "dev" path that skips validation.
 
-## Runtime Kernel
+## Failure model
 
-Current core responsibilities visible in source:
+Every layer has a single failure mode: produce an `SlDiag` (see
+`include/sloppy/diagnostics.h`) and abort the operation. Higher layers
+attach context but don't reinterpret the inner failure.
 
-- plan parsing and shape validation (`src/core/plan_parse.c`);
-- app startup and request lifecycle invariants (`src/core/app_host.c`);
-- command routing and mode selection (`src/main.c`);
-- provider-neutral and provider-specific native contracts (`src/data/*.c`).
+| Failure point             | Surface                                              |
+| ------------------------- | ---------------------------------------------------- |
+| Compile error             | Stderr diagnostic with stable code; non-zero exit    |
+| Plan parse / validation   | Startup diagnostic; runtime exits before V8 init     |
+| Feature activation        | Startup diagnostic; runtime exits                    |
+| V8 init / bundle eval     | Startup diagnostic; runtime exits                    |
+| Handler exception         | 500 with redacted body; request scope cleaned up     |
+| Provider error            | Bubbles to handler as a typed exception              |
+| Transport error           | Connection closed; logged; server keeps serving      |
 
-## Engine Boundary
+Late completions (e.g. a provider call that returns after its request
+has timed out) only ever do cleanup. They cannot double-settle JS state.
 
-V8 is optional and isolated to `src/engine/v8/*`.
+## What this design buys
 
-Architecture invariants:
+- **Tooling without execution.** `sloppy routes`, `capabilities`,
+  `audit`, and `openapi` work off the Plan without entering V8.
+- **Fail-fast startup.** Apps refuse to serve if their declared shape
+  doesn't match the host's capabilities.
+- **Replaceable engine.** The V8 bridge is the only thing that
+  understands V8. A future engine swap is a bridge swap.
+- **Reviewable boundaries.** Everything risky (FFI, OS calls, secret
+  redaction) is concentrated in named directories.
 
-- one owner thread per isolate for mutable runtime entry;
-- V8 types and handles do not leak into public runtime headers;
-- generated handlers register through bridge-owned callbacks;
-- Promise/exception outcomes are translated into Sloppy diagnostics;
-- non-V8 lanes cover native/runtime behavior without JS handler execution.
+## What this design costs
 
-## Platform Boundary
+- **A bounded source subset.** The compiler can extract only what it
+  can statically analyze. See [supported syntax](../reference/supported-syntax.md).
+- **Edit-build-run** instead of edit-run. Source changes go through
+  `sloppyc` first.
+- **No npm.** No `node_modules` resolution; the public stdlib has to
+  cover what an app actually needs.
 
-Core runtime modules do not own OS headers or raw OS APIs directly. Platform and
-transport details remain implementation layers behind Sloppy-owned interfaces.
+## Where to read next
 
-## Provider Boundary
-
-Provider architecture is split by layer:
-
-- plan metadata relationships (`dataProviders` and `capabilities`);
-- native provider execution in `src/data/*.c`;
-- V8 bridge adaptation in provider intrinsics modules.
-
-This keeps pointer ownership and capability checks explicit and auditable.
-
-## Current Limits
-
-Current architecture still leaves these areas for future scoped work:
-
-- third-party JavaScript runtime or package-manager app compatibility;
-- production hardening;
-- OS sandbox guarantees;
-- release publishing workflow hardening;
-- benchmark-backed performance comparisons.
+- [Runtime](runtime.md) — startup and dispatch in more detail
+- [Plan](plan.md) — what's in `app.plan.json` and how it's validated
+- [V8 bridge](v8-bridge.md) — bridge invariants and ownership
+- [HTTP runtime](http-runtime.md) — parser, dispatch, transport
+- [Provider runtime](provider-runtime.md) — how providers plug in
+- [Memory model](memory-model.md) — arenas, lifetimes, ownership
+- [Platform boundaries](platform-boundaries.md) — what crosses `src/platform/`
+- [Async runtime](async-runtime.md) — owner threads, cancellation
+- [Security model](security-model.md) — capabilities and redaction
