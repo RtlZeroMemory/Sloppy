@@ -138,11 +138,17 @@ They don't measure performance — that's separate.
 
 ```powershell
 .\build\windows-relwithdebinfo\sloppy_bench.exe --smoke --format json
+.\tools\windows\bench.ps1 -Suite http -Runtime sloppy,node,bun,deno -Out artifacts\bench\local-comparison.json
+.\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
 ```
 
-`--smoke` is harness coverage. For real measurements, drop `--smoke`
-and report the full command, build configuration, hardware, workload,
-and output. Benchmark output is never correctness evidence.
+`sloppy_bench --smoke` is harness coverage. The `-Suite` runner is the
+manual local runtime comparison engine; it records host/runtime metadata
+and validates responses before timing them. Missing comparator runtimes
+are reported as `UNAVAILABLE` or `SKIPPED`. For real measurements,
+report the full command, build configuration, hardware, workload,
+runtime versions, and output. Benchmark output is never correctness
+evidence.
 
 ## Compiler fixtures
 

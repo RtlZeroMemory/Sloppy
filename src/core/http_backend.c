@@ -682,6 +682,7 @@ SlStatus sl_http_request_body_reader_begin(SlHttpRequestLifecycle* request, SlSt
     SlHttpBackend* backend = NULL;
     SlHttpRequestBodyKind body_kind = SL_HTTP_REQUEST_BODY_NONE;
     size_t max_body_bytes = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
+    size_t initial_body_capacity = 0U;
     SlStatus status;
 
     if (out_diag != NULL) {
@@ -728,7 +729,9 @@ SlStatus sl_http_request_body_reader_begin(SlHttpRequestLifecycle* request, SlSt
         return sl_http_body_reader_fail(out_reader, SL_HTTP_BODY_READER_STATE_FAILED, status);
     }
 
-    status = sl_byte_builder_init_arena(&out_reader->builder, request->arena, 0U, max_body_bytes);
+    initial_body_capacity = content_length;
+    status = sl_byte_builder_init_arena(&out_reader->builder, request->arena, initial_body_capacity,
+                                        max_body_bytes);
     if (!sl_status_is_ok(status)) {
         return sl_http_body_reader_fail(out_reader, SL_HTTP_BODY_READER_STATE_FAILED, status);
     }

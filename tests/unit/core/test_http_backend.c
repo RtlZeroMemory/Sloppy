@@ -556,6 +556,7 @@ static int test_body_reader_success_owns_bounded_json_body(void)
     SlHttpConnection connection = {0};
     SlHttpRequestLifecycle request = {0};
     SlHttpBodyReader reader = {0};
+    SlByteBuilderStats stats = {0};
     void* scratch = NULL;
     size_t used_after_scratch = 0U;
 
@@ -577,8 +578,15 @@ static int test_body_reader_success_owns_bounded_json_body(void)
             sl_http_request_body_reader_begin(
                 &request, sl_str_from_cstr("application/json; charset=utf-8"), 11U, &reader, NULL),
             SL_STATUS_OK) != 0 ||
-        reader.body_kind != SL_HTTP_REQUEST_BODY_JSON ||
-        expect_status(sl_http_request_body_reader_append(&reader, bytes_from_cstr("{\"ok\""), NULL),
+        reader.body_kind != SL_HTTP_REQUEST_BODY_JSON)
+    {
+        return 72;
+    }
+    stats = sl_byte_builder_stats(&reader.builder);
+    if (stats.capacity != 11U || stats.grow_count != 0U || stats.copied_bytes != 0U) {
+        return 88;
+    }
+    if (expect_status(sl_http_request_body_reader_append(&reader, bytes_from_cstr("{\"ok\""), NULL),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_append(&reader, bytes_from_cstr(":true}"), NULL),
                       SL_STATUS_OK) != 0 ||
@@ -586,6 +594,10 @@ static int test_body_reader_success_owns_bounded_json_body(void)
         expect_bytes_equal(request.head.body, "{\"ok\":true}") != 0)
     {
         return 72;
+    }
+    stats = sl_byte_builder_stats(&reader.builder);
+    if (stats.grow_count != 0U || stats.copied_bytes != 0U || stats.appended_bytes != 11U) {
+        return 89;
     }
     if (expect_status(sl_http_request_body_reader_close(&reader, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_arena_alloc(&arena, 8U, 1U, &scratch), SL_STATUS_OK) != 0)

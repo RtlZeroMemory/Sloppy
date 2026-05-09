@@ -6,7 +6,15 @@ param(
     [string]$Benchmark,
     [ValidateSet("Debug", "Release", "RelWithDebInfo")]
     [string]$Configuration = "Debug",
-    [string[]]$CMakeArgs = @()
+    [string[]]$CMakeArgs = @(),
+    [string[]]$Suite,
+    [string[]]$Runtime,
+    [string]$Out,
+    [string[]]$Compare = @(),
+    [int]$WarmupRequests = 10,
+    [int]$Requests = 100,
+    [int]$TimeoutSeconds = 20,
+    [string]$SloppyExe
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +22,58 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "msvc-env.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+
+$usesLocalRuntimeEngine =
+    $PSBoundParameters.ContainsKey("Suite") -or
+    $PSBoundParameters.ContainsKey("Runtime") -or
+    $PSBoundParameters.ContainsKey("Out") -or
+    $PSBoundParameters.ContainsKey("Compare") -or
+    $PSBoundParameters.ContainsKey("WarmupRequests") -or
+    $PSBoundParameters.ContainsKey("Requests") -or
+    $PSBoundParameters.ContainsKey("TimeoutSeconds") -or
+    $PSBoundParameters.ContainsKey("SloppyExe")
+
+if ($usesLocalRuntimeEngine) {
+    if ($List -or $Smoke -or $Json -or $IncludeV8 -or
+        -not [string]::IsNullOrWhiteSpace($Benchmark) -or
+        $PSBoundParameters.ContainsKey("Configuration") -or
+        $CMakeArgs.Count -gt 0) {
+        throw "local runtime benchmark options (-Suite/-Runtime/-Out/-Compare) cannot be mixed with native sloppy_bench options (-List/-Smoke/-Json/-IncludeV8/-Benchmark/-Configuration/-CMakeArgs)"
+    }
+
+    $localBench = Join-Path $PSScriptRoot "local-bench.ps1"
+    $localParams = @{}
+    if ($PSBoundParameters.ContainsKey("Suite")) {
+        $localParams["Suite"] = $Suite
+    }
+    if ($PSBoundParameters.ContainsKey("Runtime")) {
+        $localParams["Runtime"] = $Runtime
+    }
+    if ($PSBoundParameters.ContainsKey("Out")) {
+        $localParams["Out"] = $Out
+    }
+    if ($PSBoundParameters.ContainsKey("Compare")) {
+        $localParams["Compare"] = $Compare
+    }
+    if ($PSBoundParameters.ContainsKey("WarmupRequests")) {
+        $localParams["WarmupRequests"] = $WarmupRequests
+    }
+    if ($PSBoundParameters.ContainsKey("Requests")) {
+        $localParams["Requests"] = $Requests
+    }
+    if ($PSBoundParameters.ContainsKey("TimeoutSeconds")) {
+        $localParams["TimeoutSeconds"] = $TimeoutSeconds
+    }
+    if ($PSBoundParameters.ContainsKey("SloppyExe")) {
+        $localParams["SloppyExe"] = $SloppyExe
+    }
+
+    & $localBench @localParams
+    if ($LASTEXITCODE -ne 0) {
+        throw "local runtime benchmark engine failed with exit code $LASTEXITCODE"
+    }
+    exit 0
+}
 
 function Invoke-Native {
     param(

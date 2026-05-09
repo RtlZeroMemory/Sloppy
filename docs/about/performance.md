@@ -28,14 +28,26 @@ The repo has microbenchmark harnesses (`benchmarks/`) that can run as
 opt-in lanes. The smoke variant verifies the harness executes; it
 proves nothing about throughput or latency.
 
+The repo also has a local runtime comparison runner for internal
+engineering feedback:
+
+```
+tools/windows/bench.ps1 -Suite http -Runtime sloppy,node,bun,deno
+```
+
+It records host metadata, runtime versions, warmup/sample counts, and
+structured JSON results. Missing comparator runtimes are reported as
+unavailable. Use those reports to compare branches on the same machine,
+not to rank Sloppy publicly.
+
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy
 benchmark" without that context is informal, not a project claim.
 
 ## What hasn't been done yet
 
-- No competitive comparisons against Node/Bun/Deno or framework-specific
-  baselines.
+- No published competitive comparison against Node/Bun/Deno or
+  framework-specific baselines.
 - No published latency or throughput targets.
 - No performance regression gates beyond "the harness still runs".
 - No production deployment evidence.

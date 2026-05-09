@@ -3,6 +3,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/engine.h"
 #include "sloppy/http.h"
+#include "sloppy/http_backend.h"
 #include "sloppy/http_dispatch.h"
 #include "sloppy/plan.h"
 #include "sloppy/route.h"
@@ -191,6 +192,103 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     return sl_status_ok();
 }
 
+static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* context,
+                                                         uint64_t iterations,
+                                                         uint64_t* out_checksum)
+{
+    unsigned char arena_storage[8192];
+    const char head_text[] = "POST /echo HTTP/1.1\r\nHost: example.test\r\n\r\n";
+    const char first_text[] = "{\"bench\"";
+    const char second_text[] = ":true}";
+    SlArena arena;
+    SlHttpBackend backend = {0};
+    SlStr content_type = sl_str_from_cstr("application/json; charset=utf-8");
+    SlBytes head = {0};
+    SlBytes first = {0};
+    SlBytes second = {0};
+    uint64_t checksum = 0U;
+    uint64_t index;
+    SlStatus status;
+
+    (void)context;
+
+    head = sl_bytes_from_parts((const unsigned char*)head_text, sizeof(head_text) - 1U);
+    first = sl_bytes_from_parts((const unsigned char*)first_text, sizeof(first_text) - 1U);
+    second = sl_bytes_from_parts((const unsigned char*)second_text, sizeof(second_text) - 1U);
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_backend_init(&backend, NULL, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_backend_start(&backend, NULL, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlHttpConnection connection = {0};
+        SlHttpRequestLifecycle request = {0};
+        SlHttpBodyReader reader = {0};
+        SlByteBuilderStats stats = {0};
+
+        sl_arena_reset(&arena);
+        status = sl_http_backend_accept_connection(&backend, &connection, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_begin(&connection, &arena, &request, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_parse_head(&request, head, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_body_reader_begin(&request, content_type, 14U, &reader, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_body_reader_append(&reader, first, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_body_reader_append(&reader, second, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_body_reader_finish(&reader, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        stats = sl_byte_builder_stats(&reader.builder);
+        checksum += (uint64_t)request.head.body.length;
+        checksum += (uint64_t)stats.grow_count;
+        checksum += (uint64_t)stats.copied_bytes;
+        checksum += (uint64_t)stats.appended_bytes;
+
+        status = sl_http_request_body_reader_close(&reader, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_request_close(&request, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_connection_close(&connection, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
 static const SlBenchDefinition handler_definitions[] = {
     {"handler.plan.lookup", "handler", "lookup handler IDs in a borrowed Sloppy Plan table", 10000U,
      1000000U, bench_plan_handler_lookup, "non-V8 lookup only; no JavaScript enters this benchmark",
@@ -203,6 +301,10 @@ static const SlBenchDefinition handler_definitions[] = {
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
      "not a server throughput benchmark; no sockets or response writer are involved", false},
+    {"http.body_reader.json_known_length", "handler",
+     "bounded HTTP body reader with a declared JSON content length and chunked appends", 1000U,
+     100000U, bench_http_body_reader_json_known_length,
+     "tracks builder checksum counters for the known-length body reader optimization", false},
 };
 
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count)

@@ -1,9 +1,17 @@
 # Sloppy Benchmarks
 
 Sloppy benchmarks are manual performance-validation tools. They are not correctness tests,
-release gates, marketing statements, or comparisons with other runtimes.
+release gates, marketing statements, or public runtime rankings.
 
-Run the smoke/list checks locally:
+There are two benchmark layers:
+
+- `sloppy_bench` is the native microbenchmark binary for route matching, memory primitives,
+  handler dispatch, and V8 bridge internals.
+- `tools/windows/bench.ps1 -Suite ...` is the BENCH-01 local runtime comparison engine for
+  controlled Sloppy/Node/Bun/Deno workloads. It validates responses before timing them and
+  writes structured JSON.
+
+Run native smoke/list checks locally:
 
 ```powershell
 .\tools\windows\bench.ps1 -List
@@ -16,6 +24,19 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench.ps1 -Configuration Release
 .\tools\windows\bench.ps1 -Configuration Release -Json > .\benchmarks-local.json
 ```
+
+Run the local runtime engine:
+
+```powershell
+.\tools\windows\bench.ps1 -Suite http
+.\tools\windows\bench.ps1 -Suite http,route -Runtime sloppy,node,bun,deno
+.\tools\windows\bench.ps1 -Suite bridge -Runtime sloppy -Out artifacts\bench\sloppy-bridge.json
+.\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
+```
+
+The Unix wrapper preserves the command shape and native `sloppy_bench` path. The BENCH-01
+local runtime comparison engine is currently Windows-first; Unix reports that lane as
+`UNAVAILABLE` until a matching process/HTTP runner is implemented.
 
 Debug numbers are not meaningful. Smoke mode only validates the harness starts and each default
 benchmark path can execute a tiny iteration count.
@@ -43,6 +64,9 @@ Handler dispatch benchmarks are split by current runtime capability:
 
 `http.request_head.parse` is a microbenchmark for the complete-buffer request-head parser.
 It is not an HTTP server throughput benchmark.
+`http.body_reader.json_known_length` measures the bounded body reader for a declared
+JSON content length and records builder grow/copy counters in the checksum. It exists to
+evaluate request-body copy and allocation changes without involving sockets.
 
 V8 bridge benchmarks currently measure internal evidence for:
 
@@ -75,6 +99,30 @@ optimization decisions. Advanced SIMD presets such as `windows-avx2` must be nam
 measured reports. These are not allocation-rate, parser-throughput, SIMD-performance, or
 public performance statements.
 
+The local runtime engine uses semantically equivalent HTTP workloads where practical:
+
+- `http`: `/health`, small JSON, route parameter JSON, query decode, and small JSON
+  POST acknowledgement.
+- `route`: route table sizes 10, 100, and 1000, with first/middle/last/missing targets.
+- `bridge`: Sloppy-only V8/result/request-context workloads. Source-input header
+  facade coverage is reported as `SKIPPED` until the live runtime path can execute it;
+  native V8 bridge microbenchmarks still cover header lookup.
+- `middleware`: Sloppy-only middleware, ProblemDetails, CORS, and health workloads.
+- `sqlite`: reserved for the stable SQLite/provider bridge path; unavailable cases are
+  reported instead of simulated.
+- `startup`: Sloppy minimal build/artifact size where available, plus process startup to
+  first `/health` response.
+
+Sloppy steady-state workloads build artifacts first, then run `sloppy run --artifacts` on a
+local listener. Startup/build workloads name their timing boundary separately. The harness
+records runtime versions and reports missing Node, Bun, Deno, or Sloppy executables as
+`UNAVAILABLE`. A missing comparator runtime is normal on developer machines and is not a
+default test failure.
+
+Response correctness is part of every measured HTTP workload: status, body, and relevant
+content type are checked before a request contributes latency data. Broken responses are
+reported as failed benchmark entries, not as measurements.
+
 ## Output
 
 Text output is human-readable. JSON output uses `sloppyBenchmarkVersion: 1` and is intended
@@ -91,8 +139,21 @@ V8 bridge measured reports must also record the resolved V8 SDK/version, whether
 baseline was a benchmark-harness-only worktree or another commit, and which bridge paths
 were intentionally only inspected because no safe current public-ABI benchmark exists.
 
+Local runtime JSON uses `schemaVersion: 1`. Each report includes:
+
+- Git commit, branch, and dirty state.
+- Host OS, architecture, CPU, and logical core count.
+- Runtime path, version, availability, and unavailable reason.
+- Suite/runtime selection, warmup count, request count, and timeout.
+- Per-workload status, correctness details, p50/p95/p99 latency, throughput, startup time,
+  error count, and reserved allocation/copying fields.
+
+Use compare mode to compare two reports from the same machine and similar load conditions.
+Do not compare a laptop run against a CI VM or a dirty Debug build against a clean Release
+build and treat the delta as meaningful.
+
 ## Deferred
 
-Full HTTP server throughput, JSON serialization benchmarks, database live benchmarks,
-cross-runtime comparisons, dashboards, uploads, and CI performance gates are deferred until
-the comparable runtime paths exist and can be measured honestly.
+Full public methodology, dashboards, uploads, CI performance gates, stable Unix runtime
+comparison, live database comparisons, and published performance reports are deferred until
+the comparable runtime paths exist and can be measured with a separate reviewed methodology.

@@ -29,3 +29,13 @@ Command summary:
 
 Unix wrappers use `tools/unix/dev.sh` with the same command names where
 implemented.
+
+Benchmarks are manual tools, not `dev.ps1` gates:
+
+```powershell
+.\tools\windows\bench.ps1 -Smoke -Json
+.\tools\windows\bench.ps1 -Suite http -Runtime sloppy,node,bun,deno
+```
+
+Use them for local engineering feedback and report unavailable comparator
+runtimes separately.
