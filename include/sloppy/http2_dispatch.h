@@ -42,6 +42,8 @@ typedef struct SlHttp2DispatchStream
     int32_t stream_id;
     bool active;
     bool headers_seen;
+    SlArenaMark mark;
+    bool mark_valid;
     SlHttp2HeaderList headers;
     SlByteBuilder body;
 } SlHttp2DispatchStream;

@@ -178,7 +178,9 @@ the contract: frame/HPACK/session unit tests for parser behavior,
 `conformance.transport.http2_h2c_upgrade` for HTTP/1.1 Upgrade, and
 `conformance.transport.http2_tls_alpn` for TLS ALPN selection. External tools
 such as h2spec, nghttp, curl, and h2load are optional lanes; report them as
-`SKIPPED` or `UNAVAILABLE` when the tool is missing.
+`SKIPPED` or `UNAVAILABLE` when the tool is missing. The current wrappers do
+not by themselves prove external conformance; h2spec/nghttp/h2load CI coverage
+is tracked in #1011 until a tool-backed job runs in CI.
 
 ## When tests get rejected at review
 

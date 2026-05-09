@@ -9,6 +9,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
+#include "sloppy/http2_dispatch.h"
 #include "sloppy/http_response.h"
 
 #include <limits.h>
@@ -656,6 +657,7 @@ static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* 
                                                      SlDiag* out_diag);
 static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* connection,
                                                 SlBytes bytes, SlDiag* out_diag);
+static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connection, SlDiag* diag);
 
 static bool sl_http_transport_request_terminal(SlHttpRequestState state)
 {
@@ -1286,7 +1288,7 @@ static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* 
         return sl_status_ok();
     }
 
-    status = sl_http2_server_dispatcher_drain_output(&connection->http2_dispatcher, &bytes);
+    status = sl_http2_server_dispatcher_drain_output(connection->http2_dispatcher, &bytes);
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
@@ -1310,6 +1312,7 @@ static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connecti
     SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
     SlHttp2DispatchConfig config = {0};
     SlStatus status;
+    void* dispatcher_storage = NULL;
 
     if (connection == NULL || server == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1335,6 +1338,19 @@ static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connecti
         sl_arena_reset(&connection->request_arena);
     }
 
+    status = sl_arena_alloc(&connection->request_arena, sizeof(SlHttp2ServerDispatcher),
+                            _Alignof(SlHttp2ServerDispatcher), &dispatcher_storage);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TRANSPORT_CONFIG, sl_status_code(status),
+            sl_http_transport_literal("HTTP/2 dispatcher storage allocation failed",
+                                      sizeof("HTTP/2 dispatcher storage allocation failed") - 1U),
+            sl_http_transport_literal("increase the per-connection request arena for h2",
+                                      sizeof("increase the per-connection request arena for h2") -
+                                          1U));
+    }
+    connection->http2_dispatcher = (SlHttp2ServerDispatcher*)dispatcher_storage;
+
     config.dispatch = sl_http_transport_http2_dispatch_adapter;
     config.dispatch_user = connection;
     config.max_streams = server->config.max_active_requests == 0U
@@ -1348,7 +1364,7 @@ static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connecti
     config.session.max_outbound_bytes = server->config.max_response_bytes;
 
     status = sl_http2_server_dispatcher_init(
-        &connection->http2_dispatcher, &connection->request_arena, &connection->core, &config);
+        connection->http2_dispatcher, &connection->request_arena, &connection->core, &config);
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_TRANSPORT_CONFIG, sl_status_code(status),
@@ -1398,7 +1414,7 @@ static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* conne
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_http2_server_dispatcher_receive(&connection->http2_dispatcher, bytes, &consumed);
+    status = sl_http2_server_dispatcher_receive(connection->http2_dispatcher, bytes, &consumed);
     if (!sl_status_is_ok(status) || consumed != bytes.length) {
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
@@ -1454,6 +1470,22 @@ static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* c
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD;
         *out_handled = true;
         return sl_status_ok();
+    }
+
+    if (connection->core.request_count != 0U ||
+        (connection->platform != NULL && connection->platform->tls_enabled &&
+         !connection->platform->tls_alpn_h2))
+    {
+        *out_handled = true;
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP/2 prior-knowledge preface is not allowed here",
+                                      sizeof("HTTP/2 prior-knowledge preface is not allowed here") -
+                                          1U),
+            sl_http_transport_literal(
+                "h2 prior knowledge requires a fresh cleartext connection or TLS ALPN h2",
+                sizeof("h2 prior knowledge requires a fresh cleartext connection or TLS ALPN h2") -
+                    1U));
     }
 
     initial_frames = accumulated;
@@ -1799,8 +1831,17 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
             (void)sl_http_transport_connection_close(connection, NULL);
             return;
         }
+        if (connection->close_after_write) {
+            (void)sl_http_transport_connection_close(connection, NULL);
+            return;
+        }
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY;
-        (void)sl_http_transport_http2_flush_output(connection, NULL);
+        {
+            SlStatus flush_status = sl_http_transport_http2_flush_output(connection, &diag);
+            if (!sl_status_is_ok(flush_status)) {
+                sl_http_transport_fail_and_close(connection, &diag);
+            }
+        }
         return;
     }
 
@@ -2655,7 +2696,7 @@ static SlStatus sl_http_transport_try_h2c_upgrade(SlHttpTransportConnection* con
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_http2_server_dispatcher_upgrade_h2c(&connection->http2_dispatcher, settings_payload,
+    status = sl_http2_server_dispatcher_upgrade_h2c(connection->http2_dispatcher, settings_payload,
                                                     &connection->request);
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_connection_diag(
@@ -2667,7 +2708,7 @@ static SlStatus sl_http_transport_try_h2c_upgrade(SlHttpTransportConnection* con
                                              "payload") -
                                           1U));
     }
-    status = sl_http2_server_dispatcher_drain_output(&connection->http2_dispatcher, &http2_bytes);
+    status = sl_http2_server_dispatcher_drain_output(connection->http2_dispatcher, &http2_bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -3401,6 +3442,24 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
         connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT)
     {
         (void)sl_http_request_fail(&connection->request, NULL);
+    }
+    if (connection->http2_mode) {
+        if (connection->http2_dispatcher_started && connection->http2_dispatcher != NULL &&
+            connection->platform != NULL && connection->platform->initialized &&
+            !connection->platform->closing && !connection->platform->writing)
+        {
+            connection->close_after_write = true;
+            if (sl_status_is_ok(sl_http2_session_submit_goaway(
+                    &connection->http2_dispatcher->session, 0, SL_HTTP2_ERROR_PROTOCOL_ERROR)) &&
+                sl_status_is_ok(sl_http_transport_http2_flush_output(connection, &write_diag)) &&
+                connection->platform->writing)
+            {
+                return;
+            }
+        }
+        (void)sl_http_connection_fail(&connection->core, NULL);
+        (void)sl_http_transport_connection_close(connection, NULL);
+        return;
     }
     if (connection->platform != NULL && connection->platform->initialized &&
         !connection->platform->closing && !connection->platform->writing &&
@@ -4352,7 +4411,8 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         }
     }
     if (connection->http2_dispatcher_started) {
-        sl_http2_server_dispatcher_dispose(&connection->http2_dispatcher);
+        sl_http2_server_dispatcher_dispose(connection->http2_dispatcher);
+        connection->http2_dispatcher = NULL;
         connection->http2_dispatcher_started = false;
         connection->http2_mode = false;
     }

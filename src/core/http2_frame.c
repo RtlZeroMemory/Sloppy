@@ -77,6 +77,8 @@ static SlStatus sl_http2_validate_headers(const SlHttp2Frame* frame)
                                 SL_HTTP2_FLAG_PADDED | SL_HTTP2_FLAG_PRIORITY);
     size_t minimum = 0U;
     size_t bytes_after_pad_length = 0U;
+    size_t priority_offset = 0U;
+    uint32_t dependency = 0U;
 
     if (frame->header.stream_id == 0U || (frame->header.flags & (uint8_t)~allowed) != 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -84,6 +86,7 @@ static SlStatus sl_http2_validate_headers(const SlHttp2Frame* frame)
 
     if ((frame->header.flags & SL_HTTP2_FLAG_PADDED) != 0U) {
         minimum += 1U;
+        priority_offset = 1U;
     }
     if ((frame->header.flags & SL_HTTP2_FLAG_PRIORITY) != 0U) {
         minimum += 5U;
@@ -92,9 +95,16 @@ static SlStatus sl_http2_validate_headers(const SlHttp2Frame* frame)
     if (frame->payload.length < minimum) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    return sl_http2_payload_has_padding(frame, bytes_after_pad_length)
-               ? sl_status_ok()
-               : sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    if (!sl_http2_payload_has_padding(frame, bytes_after_pad_length)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if ((frame->header.flags & SL_HTTP2_FLAG_PRIORITY) != 0U) {
+        dependency = sl_http2_read_u32(frame->payload.ptr + priority_offset) & 0x7fffffffU;
+        if (dependency == frame->header.stream_id) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+    return sl_status_ok();
 }
 
 static SlStatus sl_http2_validate_priority(const SlHttp2Frame* frame)

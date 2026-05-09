@@ -1,9 +1,49 @@
 #include "sloppy/http2_hpack.h"
 
+#include "sloppy/checked_math.h"
+
 #define NGHTTP2_NO_SSIZE_T 1
 #include <nghttp2/nghttp2.h>
 
 #include <stdint.h>
+
+#define SL_HTTP2_HPACK_DECODER_INFLATER_SLOT 0U
+#define SL_HTTP2_HPACK_DECODER_MAX_HEADERS_SLOT 1U
+#define SL_HTTP2_HPACK_DECODER_MAX_HEADER_LIST_BYTES_SLOT 2U
+#define SL_HTTP2_HPACK_ENCODER_DEFLATER_SLOT 0U
+#define SL_HTTP2_HPACK_ENCODER_MAX_OUTPUT_BYTES_SLOT 1U
+
+static nghttp2_hd_inflater* sl_http2_hpack_decoder_inflater(const SlHttp2HpackDecoder* decoder)
+{
+    return decoder == NULL
+               ? NULL
+               : (nghttp2_hd_inflater*)decoder->opaque[SL_HTTP2_HPACK_DECODER_INFLATER_SLOT];
+}
+
+static size_t sl_http2_hpack_decoder_max_headers(const SlHttp2HpackDecoder* decoder)
+{
+    return decoder == NULL ? 0U : (size_t)decoder->opaque[SL_HTTP2_HPACK_DECODER_MAX_HEADERS_SLOT];
+}
+
+static size_t sl_http2_hpack_decoder_max_header_list_bytes(const SlHttp2HpackDecoder* decoder)
+{
+    return decoder == NULL
+               ? 0U
+               : (size_t)decoder->opaque[SL_HTTP2_HPACK_DECODER_MAX_HEADER_LIST_BYTES_SLOT];
+}
+
+static nghttp2_hd_deflater* sl_http2_hpack_encoder_deflater(const SlHttp2HpackEncoder* encoder)
+{
+    return encoder == NULL
+               ? NULL
+               : (nghttp2_hd_deflater*)encoder->opaque[SL_HTTP2_HPACK_ENCODER_DEFLATER_SLOT];
+}
+
+static size_t sl_http2_hpack_encoder_max_output_bytes(const SlHttp2HpackEncoder* encoder)
+{
+    return encoder == NULL ? 0U
+                           : (size_t)encoder->opaque[SL_HTTP2_HPACK_ENCODER_MAX_OUTPUT_BYTES_SLOT];
+}
 
 static bool sl_http2_hpack_valid_str(SlStr str)
 {
@@ -87,6 +127,7 @@ static SlStatus sl_http2_hpack_prepare_nghttp2_headers(SlArena* arena,
     void* storage = NULL;
     nghttp2_nv* nva = NULL;
     size_t index = 0U;
+    size_t allocation_size = 0U;
 
     if (arena == NULL || headers == NULL || out_nva == NULL ||
         (headers->count != 0U && headers->fields == NULL))
@@ -98,8 +139,11 @@ static SlStatus sl_http2_hpack_prepare_nghttp2_headers(SlArena* arena,
         return sl_status_ok();
     }
 
-    status =
-        sl_arena_alloc(arena, sizeof(nghttp2_nv) * headers->count, _Alignof(nghttp2_nv), &storage);
+    status = sl_checked_array_size(headers->count, sizeof(nghttp2_nv), &allocation_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, allocation_size, _Alignof(nghttp2_nv), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -136,12 +180,13 @@ SlStatus sl_http2_hpack_decoder_init(SlHttp2HpackDecoder* decoder, size_t max_he
         return sl_http2_hpack_status_from_nghttp2(rv);
     }
 
-    *decoder = (SlHttp2HpackDecoder){
-        .inflater = inflater,
-        .max_headers = max_headers == 0U ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADERS : max_headers,
-        .max_header_list_bytes = max_header_list_bytes == 0U
-                                     ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADER_LIST_BYTES
-                                     : max_header_list_bytes};
+    *decoder = (SlHttp2HpackDecoder){0};
+    decoder->opaque[SL_HTTP2_HPACK_DECODER_INFLATER_SLOT] = (uintptr_t)inflater;
+    decoder->opaque[SL_HTTP2_HPACK_DECODER_MAX_HEADERS_SLOT] =
+        max_headers == 0U ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADERS : max_headers;
+    decoder->opaque[SL_HTTP2_HPACK_DECODER_MAX_HEADER_LIST_BYTES_SLOT] =
+        max_header_list_bytes == 0U ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADER_LIST_BYTES
+                                    : max_header_list_bytes;
     return sl_status_ok();
 }
 
@@ -150,8 +195,8 @@ void sl_http2_hpack_decoder_dispose(SlHttp2HpackDecoder* decoder)
     if (decoder == NULL) {
         return;
     }
-    if (decoder->inflater != NULL) {
-        nghttp2_hd_inflate_del((nghttp2_hd_inflater*)decoder->inflater);
+    if (sl_http2_hpack_decoder_inflater(decoder) != NULL) {
+        nghttp2_hd_inflate_del(sl_http2_hpack_decoder_inflater(decoder));
     }
     *decoder = (SlHttp2HpackDecoder){0};
 }
@@ -160,27 +205,27 @@ SlStatus sl_http2_hpack_decoder_set_table_size(SlHttp2HpackDecoder* decoder, siz
 {
     int rv = 0;
 
-    if (decoder == NULL || decoder->inflater == NULL) {
+    if (decoder == NULL || sl_http2_hpack_decoder_inflater(decoder) == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    rv = nghttp2_hd_inflate_change_table_size((nghttp2_hd_inflater*)decoder->inflater, table_size);
+    rv = nghttp2_hd_inflate_change_table_size(sl_http2_hpack_decoder_inflater(decoder), table_size);
     return sl_http2_hpack_status_from_nghttp2(rv);
 }
 
 size_t sl_http2_hpack_decoder_dynamic_table_size(const SlHttp2HpackDecoder* decoder)
 {
-    if (decoder == NULL || decoder->inflater == NULL) {
+    if (decoder == NULL || sl_http2_hpack_decoder_inflater(decoder) == NULL) {
         return 0U;
     }
-    return nghttp2_hd_inflate_get_dynamic_table_size((nghttp2_hd_inflater*)decoder->inflater);
+    return nghttp2_hd_inflate_get_dynamic_table_size(sl_http2_hpack_decoder_inflater(decoder));
 }
 
 size_t sl_http2_hpack_decoder_max_dynamic_table_size(const SlHttp2HpackDecoder* decoder)
 {
-    if (decoder == NULL || decoder->inflater == NULL) {
+    if (decoder == NULL || sl_http2_hpack_decoder_inflater(decoder) == NULL) {
         return 0U;
     }
-    return nghttp2_hd_inflate_get_max_dynamic_table_size((nghttp2_hd_inflater*)decoder->inflater);
+    return nghttp2_hd_inflate_get_max_dynamic_table_size(sl_http2_hpack_decoder_inflater(decoder));
 }
 
 SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlBytes header_block,
@@ -195,23 +240,28 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
     size_t remaining = 0U;
     size_t count = 0U;
     size_t total_bytes = 0U;
+    size_t allocation_size = 0U;
     bool final_seen = false;
 
-    if (decoder == NULL || decoder->inflater == NULL || arena == NULL || out_headers == NULL ||
-        !sl_http2_hpack_valid_bytes(header_block))
+    if (decoder == NULL || sl_http2_hpack_decoder_inflater(decoder) == NULL || arena == NULL ||
+        out_headers == NULL || !sl_http2_hpack_valid_bytes(header_block))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     mark = sl_arena_mark(arena);
-    status = sl_arena_alloc(arena, sizeof(SlHttp2HeaderField) * decoder->max_headers,
-                            _Alignof(SlHttp2HeaderField), &fields_storage);
+    status = sl_checked_array_size(sl_http2_hpack_decoder_max_headers(decoder),
+                                   sizeof(SlHttp2HeaderField), &allocation_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, allocation_size, _Alignof(SlHttp2HeaderField), &fields_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
     fields = (SlHttp2HeaderField*)fields_storage;
-    inflater = (nghttp2_hd_inflater*)decoder->inflater;
+    inflater = sl_http2_hpack_decoder_inflater(decoder);
     cursor = header_block.ptr;
     remaining = header_block.length;
 
@@ -229,7 +279,7 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
         remaining -= (size_t)rv;
 
         if ((inflate_flags & NGHTTP2_HD_INFLATE_EMIT) != 0) {
-            if (count >= decoder->max_headers) {
+            if (count >= sl_http2_hpack_decoder_max_headers(decoder)) {
                 (void)sl_arena_reset_to(arena, mark);
                 return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
             }
@@ -238,7 +288,7 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
                 (void)sl_arena_reset_to(arena, mark);
                 return status;
             }
-            if (total_bytes > decoder->max_header_list_bytes) {
+            if (total_bytes > sl_http2_hpack_decoder_max_header_list_bytes(decoder)) {
                 (void)sl_arena_reset_to(arena, mark);
                 return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
             }
@@ -281,10 +331,10 @@ SlStatus sl_http2_hpack_encoder_init(SlHttp2HpackEncoder* encoder, size_t max_dy
         return sl_http2_hpack_status_from_nghttp2(rv);
     }
 
-    *encoder = (SlHttp2HpackEncoder){
-        .deflater = deflater,
-        .max_output_bytes = max_output_bytes == 0U ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADER_LIST_BYTES
-                                                   : max_output_bytes};
+    *encoder = (SlHttp2HpackEncoder){0};
+    encoder->opaque[SL_HTTP2_HPACK_ENCODER_DEFLATER_SLOT] = (uintptr_t)deflater;
+    encoder->opaque[SL_HTTP2_HPACK_ENCODER_MAX_OUTPUT_BYTES_SLOT] =
+        max_output_bytes == 0U ? SL_HTTP2_HPACK_DEFAULT_MAX_HEADER_LIST_BYTES : max_output_bytes;
     return sl_status_ok();
 }
 
@@ -293,8 +343,8 @@ void sl_http2_hpack_encoder_dispose(SlHttp2HpackEncoder* encoder)
     if (encoder == NULL) {
         return;
     }
-    if (encoder->deflater != NULL) {
-        nghttp2_hd_deflate_del((nghttp2_hd_deflater*)encoder->deflater);
+    if (sl_http2_hpack_encoder_deflater(encoder) != NULL) {
+        nghttp2_hd_deflate_del(sl_http2_hpack_encoder_deflater(encoder));
     }
     *encoder = (SlHttp2HpackEncoder){0};
 }
@@ -303,11 +353,11 @@ SlStatus sl_http2_hpack_encoder_set_peer_table_size(SlHttp2HpackEncoder* encoder
 {
     int rv = 0;
 
-    if (encoder == NULL || encoder->deflater == NULL) {
+    if (encoder == NULL || sl_http2_hpack_encoder_deflater(encoder) == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    rv = nghttp2_hd_deflate_change_table_size((nghttp2_hd_deflater*)encoder->deflater, table_size);
+    rv = nghttp2_hd_deflate_change_table_size(sl_http2_hpack_encoder_deflater(encoder), table_size);
     return sl_http2_hpack_status_from_nghttp2(rv);
 }
 
@@ -321,8 +371,8 @@ SlStatus sl_http2_hpack_encode(SlHttp2HpackEncoder* encoder, SlArena* arena,
     void* storage = NULL;
     nghttp2_ssize written = 0;
 
-    if (encoder == NULL || encoder->deflater == NULL || arena == NULL || headers == NULL ||
-        out_header_block == NULL)
+    if (encoder == NULL || sl_http2_hpack_encoder_deflater(encoder) == NULL || arena == NULL ||
+        headers == NULL || out_header_block == NULL)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -334,8 +384,8 @@ SlStatus sl_http2_hpack_encode(SlHttp2HpackEncoder* encoder, SlArena* arena,
         return status;
     }
 
-    bound = nghttp2_hd_deflate_bound((nghttp2_hd_deflater*)encoder->deflater, nva, headers->count);
-    if (bound > encoder->max_output_bytes) {
+    bound = nghttp2_hd_deflate_bound(sl_http2_hpack_encoder_deflater(encoder), nva, headers->count);
+    if (bound > sl_http2_hpack_encoder_max_output_bytes(encoder)) {
         (void)sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
@@ -350,7 +400,7 @@ SlStatus sl_http2_hpack_encode(SlHttp2HpackEncoder* encoder, SlArena* arena,
         return status;
     }
 
-    written = nghttp2_hd_deflate_hd2((nghttp2_hd_deflater*)encoder->deflater, storage, bound, nva,
+    written = nghttp2_hd_deflate_hd2(sl_http2_hpack_encoder_deflater(encoder), storage, bound, nva,
                                      headers->count);
     if (written < 0) {
         (void)sl_arena_reset_to(arena, mark);

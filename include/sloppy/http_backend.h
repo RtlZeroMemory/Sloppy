@@ -128,12 +128,10 @@ typedef struct SlHttpConnection
     SlStr scheme;
     size_t request_count;
     /*
-     * Multiplexed transports, such as HTTP/2, may admit multiple request lifecycles over
-     * one connection without waiting for the connection state to return to OPEN between
-     * streams. HTTP/1 transports leave this false and retain the sequential keep-alive
-     * contract.
+     * Reserved for backend-private connection flags. Public callers must use accessors instead
+     * of depending on individual transport flags as struct fields.
      */
-    bool multiplexing;
+    uintptr_t private_flags;
     /* True only while this connection owns one backend active-connection slot. */
     bool slot_admitted;
 } SlHttpConnection;
@@ -244,6 +242,8 @@ SlStatus sl_http_request_close(SlHttpRequestLifecycle* request, SlDiag* out_diag
 SlHttpBackendState sl_http_backend_state(const SlHttpBackend* backend);
 SlHttpConnectionState sl_http_connection_state(const SlHttpConnection* connection);
 SlHttpRequestState sl_http_request_state(const SlHttpRequestLifecycle* request);
+bool sl_http_connection_is_multiplexing(const SlHttpConnection* connection);
+void sl_http_connection_set_multiplexing(SlHttpConnection* connection, bool enabled);
 
 #ifdef __cplusplus
 }

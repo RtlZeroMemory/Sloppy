@@ -9,6 +9,8 @@
 
 #include "sloppy/checked_math.h"
 
+#define SL_HTTP_CONNECTION_FLAG_MULTIPLEXING ((uintptr_t)1U)
+
 static SlStr sl_http_backend_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -234,7 +236,7 @@ static bool sl_http_connection_can_begin_request(const SlHttpConnection* connect
     {
         return true;
     }
-    return connection->multiplexing &&
+    return sl_http_connection_is_multiplexing(connection) &&
            (connection->state == SL_HTTP_CONNECTION_STATE_READING_REQUEST ||
             connection->state == SL_HTTP_CONNECTION_STATE_DISPATCHING ||
             connection->state == SL_HTTP_CONNECTION_STATE_WRITING_RESPONSE);
@@ -295,7 +297,7 @@ static void sl_http_request_set_connection_after_stream_terminal(SlHttpRequestLi
     if (connection == NULL) {
         return;
     }
-    if (connection->multiplexing && backend != NULL &&
+    if (sl_http_connection_is_multiplexing(connection) && backend != NULL &&
         backend->state == SL_HTTP_BACKEND_STATE_STARTED)
     {
         connection->state = SL_HTTP_CONNECTION_STATE_OPEN;
@@ -634,7 +636,8 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
     if (arena == NULL || connection == NULL || connection->backend == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (connection->state == SL_HTTP_CONNECTION_STATE_CLOSING && !connection->multiplexing &&
+    if (connection->state == SL_HTTP_CONNECTION_STATE_CLOSING &&
+        !sl_http_connection_is_multiplexing(connection) &&
         !connection->backend->options.keep_alive_enabled)
     {
         return sl_http_backend_keep_alive_unsupported(out_diag);
@@ -1051,4 +1054,23 @@ SlHttpConnectionState sl_http_connection_state(const SlHttpConnection* connectio
 SlHttpRequestState sl_http_request_state(const SlHttpRequestLifecycle* request)
 {
     return request == NULL ? SL_HTTP_REQUEST_STATE_NONE : request->state;
+}
+
+bool sl_http_connection_is_multiplexing(const SlHttpConnection* connection)
+{
+    return connection != NULL &&
+           (connection->private_flags & SL_HTTP_CONNECTION_FLAG_MULTIPLEXING) != 0U;
+}
+
+void sl_http_connection_set_multiplexing(SlHttpConnection* connection, bool enabled)
+{
+    if (connection == NULL) {
+        return;
+    }
+    if (enabled) {
+        connection->private_flags |= SL_HTTP_CONNECTION_FLAG_MULTIPLEXING;
+    }
+    else {
+        connection->private_flags &= ~SL_HTTP_CONNECTION_FLAG_MULTIPLEXING;
+    }
 }

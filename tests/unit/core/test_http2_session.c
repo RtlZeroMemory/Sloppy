@@ -1,6 +1,7 @@
 #include "sloppy/http2_session.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 static int expect_true(bool condition)
 {
@@ -205,6 +206,21 @@ static int test_rst_stream_and_goaway_surface_as_events(void)
     return 0;
 }
 
+static int test_session_init_rejects_event_array_size_overflow(void)
+{
+    unsigned char storage[128];
+    SlArena arena = {0};
+    SlHttp2Session session = {0};
+    SlHttp2SessionConfig config = {.role = SL_HTTP2_SESSION_ROLE_SERVER,
+                                   .max_events = (SIZE_MAX / sizeof(SlHttp2Event)) + 1U};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+
+    return expect_status(sl_http2_session_init(&session, &arena, &config), SL_STATUS_OVERFLOW);
+}
+
 int main(void)
 {
     int result = 0;
@@ -214,6 +230,10 @@ int main(void)
         return result;
     }
     result = test_rst_stream_and_goaway_surface_as_events();
+    if (result != 0) {
+        return result;
+    }
+    result = test_session_init_rejects_event_array_size_overflow();
     if (result != 0) {
         return result;
     }

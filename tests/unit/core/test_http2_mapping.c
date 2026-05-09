@@ -124,6 +124,55 @@ static int test_request_mapping_rejects_connection_headers_and_length_mismatch(v
     return 0;
 }
 
+static int test_request_mapping_enforces_pseudo_header_contract(void)
+{
+    unsigned char arena_storage[4096];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttp2HeaderField missing_scheme[] = {
+        h2_header(":method", "GET"), h2_header(":authority", "localhost"), h2_header(":path", "/")};
+    SlHttp2HeaderField scheme_mismatch[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "https"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/")};
+    SlHttp2HeaderField pseudo_after_regular[] = {
+        h2_header("x-test", "ok"), h2_header(":method", "GET"), h2_header(":scheme", "http"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/")};
+    SlHttp2HeaderField host_conflict[] = {h2_header(":method", "GET"), h2_header(":scheme", "http"),
+                                          h2_header(":authority", "localhost"),
+                                          h2_header(":path", "/"), h2_header("host", "other")};
+    SlHttp2HeaderField connect[] = {h2_header(":method", "CONNECT"), h2_header(":scheme", "http"),
+                                    h2_header(":authority", "localhost"), h2_header(":path", "/")};
+    SlHttp2HeaderList cases[] = {
+        {.fields = missing_scheme, .count = sizeof(missing_scheme) / sizeof(missing_scheme[0])},
+        {.fields = scheme_mismatch, .count = sizeof(scheme_mismatch) / sizeof(scheme_mismatch[0])},
+        {.fields = pseudo_after_regular,
+         .count = sizeof(pseudo_after_regular) / sizeof(pseudo_after_regular[0])},
+        {.fields = host_conflict, .count = sizeof(host_conflict) / sizeof(host_conflict[0])},
+        {.fields = connect, .count = sizeof(connect) / sizeof(connect[0])}};
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_http_backend_init(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        if (expect_status(sl_http2_request_from_headers(&arena, &connection, &cases[index],
+                                                        sl_bytes_empty(), &request, NULL),
+                          SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return (int)(10U + index);
+        }
+    }
+    return 0;
+}
+
 static int test_response_mapping_generates_pseudo_and_managed_headers(void)
 {
     unsigned char arena_storage[8192];
@@ -190,6 +239,10 @@ int main(void)
         return result;
     }
     result = test_request_mapping_rejects_connection_headers_and_length_mismatch();
+    if (result != 0) {
+        return result;
+    }
+    result = test_request_mapping_enforces_pseudo_header_contract();
     if (result != 0) {
         return result;
     }

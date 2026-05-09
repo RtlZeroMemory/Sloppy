@@ -1,6 +1,7 @@
 #include "sloppy/http2_session.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
 
 #define NGHTTP2_NO_SSIZE_T 1
 #include <nghttp2/nghttp2.h>
@@ -11,6 +12,7 @@ typedef struct SlHttp2OutboundBody
 {
     SlBytes bytes;
     size_t offset;
+    bool active;
 } SlHttp2OutboundBody;
 
 static bool sl_http2_session_valid_bytes(SlBytes bytes)
@@ -21,6 +23,16 @@ static bool sl_http2_session_valid_bytes(SlBytes bytes)
 static bool sl_http2_session_valid_str(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
+}
+
+static void sl_http2_session_clear_current_headers(SlHttp2Session* session)
+{
+    if (session == NULL) {
+        return;
+    }
+    session->current_headers = NULL;
+    session->current_header_count = 0U;
+    session->current_header_bytes = 0U;
 }
 
 static SlStatus sl_http2_session_status_from_nghttp2(int rv)
@@ -57,6 +69,25 @@ static SlStatus sl_http2_session_callback_fail(SlHttp2Session* session, SlStatus
         session->callback_status = status;
     }
     return status;
+}
+
+static void sl_http2_session_release_outbound_body(SlHttp2OutboundBody* body)
+{
+    if (body == NULL) {
+        return;
+    }
+    *body = (SlHttp2OutboundBody){0};
+}
+
+static void sl_http2_session_release_all_outbound_bodies(SlHttp2Session* session)
+{
+    if (session == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < session->outbound_body_capacity; index += 1U) {
+        sl_http2_session_release_outbound_body(
+            &((SlHttp2OutboundBody*)session->outbound_bodies)[index]);
+    }
 }
 
 static int sl_http2_session_callback_result(SlHttp2Session* session, SlStatus status)
@@ -192,14 +223,19 @@ static SlStatus sl_http2_session_begin_headers(SlHttp2Session* session, const ng
 {
     SlStatus status = sl_status_ok();
     void* storage = NULL;
+    size_t allocation_size = 0U;
 
     if (session == NULL || session->arena == NULL || frame == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_arena_alloc(session->arena,
-                            sizeof(SlHttp2HeaderField) * session->config.max_headers_per_event,
-                            _Alignof(SlHttp2HeaderField), &storage);
+    status = sl_checked_array_size(session->config.max_headers_per_event,
+                                   sizeof(SlHttp2HeaderField), &allocation_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_arena_alloc(session->arena, allocation_size, _Alignof(SlHttp2HeaderField), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -242,6 +278,9 @@ static SlStatus sl_http2_session_finish_headers(SlHttp2Session* session, const n
     event.end_stream = (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U;
     event.headers.fields = session->current_headers;
     event.headers.count = session->current_header_count;
+    session->current_headers = NULL;
+    session->current_header_count = 0U;
+    session->current_header_bytes = 0U;
     return sl_http2_session_push_event(session, event);
 }
 
@@ -370,6 +409,8 @@ static nghttp2_ssize sl_http2_body_read_callback(nghttp2_session* ng_session, in
     body = (SlHttp2OutboundBody*)source->ptr;
     if (body->offset >= body->bytes.length) {
         *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        sl_http2_session_release_outbound_body(body);
+        source->ptr = NULL;
         return 0;
     }
 
@@ -381,6 +422,8 @@ static nghttp2_ssize sl_http2_body_read_callback(nghttp2_session* ng_session, in
     body->offset += to_copy;
     if (body->offset == body->bytes.length) {
         *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        sl_http2_session_release_outbound_body(body);
+        source->ptr = NULL;
     }
     return (nghttp2_ssize)to_copy;
 }
@@ -392,6 +435,7 @@ static SlStatus sl_http2_session_prepare_nghttp2_headers(SlArena* arena,
     SlStatus status = sl_status_ok();
     void* storage = NULL;
     nghttp2_nv* nva = NULL;
+    size_t allocation_size = 0U;
 
     if (arena == NULL || headers == NULL || out_nva == NULL ||
         (headers->count != 0U && headers->fields == NULL))
@@ -403,8 +447,11 @@ static SlStatus sl_http2_session_prepare_nghttp2_headers(SlArena* arena,
         return sl_status_ok();
     }
 
-    status =
-        sl_arena_alloc(arena, sizeof(nghttp2_nv) * headers->count, _Alignof(nghttp2_nv), &storage);
+    status = sl_checked_array_size(headers->count, sizeof(nghttp2_nv), &allocation_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, allocation_size, _Alignof(nghttp2_nv), &storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -430,9 +477,6 @@ static SlStatus sl_http2_session_prepare_body(SlHttp2Session* session, SlBytes b
                                               nghttp2_data_provider2* out_provider,
                                               const nghttp2_data_provider2** out_provider_ptr)
 {
-    SlStatus status = sl_status_ok();
-    SlOwnedBytes owned = {0};
-    void* storage = NULL;
     SlHttp2OutboundBody* outbound = NULL;
 
     if (session == NULL || session->arena == NULL || out_provider == NULL ||
@@ -445,18 +489,18 @@ static SlStatus sl_http2_session_prepare_body(SlHttp2Session* session, SlBytes b
         return sl_status_ok();
     }
 
-    status = sl_bytes_copy_to_arena(session->arena, body, &owned);
-    if (!sl_status_is_ok(status)) {
-        return status;
+    for (size_t index = 0U; index < session->outbound_body_capacity; index += 1U) {
+        SlHttp2OutboundBody* candidate = &((SlHttp2OutboundBody*)session->outbound_bodies)[index];
+        if (!candidate->active) {
+            outbound = candidate;
+            break;
+        }
     }
-    status = sl_arena_alloc(session->arena, sizeof(SlHttp2OutboundBody),
-                            _Alignof(SlHttp2OutboundBody), &storage);
-    if (!sl_status_is_ok(status)) {
-        return status;
+    if (outbound == NULL) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
-    outbound = (SlHttp2OutboundBody*)storage;
-    *outbound = (SlHttp2OutboundBody){.bytes = sl_owned_bytes_as_view(owned), .offset = 0U};
+    *outbound = (SlHttp2OutboundBody){.bytes = body, .offset = 0U, .active = true};
     *out_provider = (nghttp2_data_provider2){0};
     out_provider->source.ptr = outbound;
     out_provider->read_callback = sl_http2_body_read_callback;
@@ -475,6 +519,9 @@ SlStatus sl_http2_session_init(SlHttp2Session* session, SlArena* arena,
         {.settings_id = NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, .value = 0U},
         {.settings_id = NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, .value = 0U}};
     void* event_storage = NULL;
+    size_t event_storage_size = 0U;
+    void* outbound_body_storage = NULL;
+    size_t outbound_body_storage_size = 0U;
     int rv = 0;
 
     if (session == NULL || arena == NULL) {
@@ -514,13 +561,36 @@ SlStatus sl_http2_session_init(SlHttp2Session* session, SlArena* arena,
     }
     session->session = ng_session;
 
-    status = sl_arena_alloc(arena, sizeof(SlHttp2Event) * normalized.max_events,
-                            _Alignof(SlHttp2Event), &event_storage);
+    status =
+        sl_checked_array_size(normalized.max_events, sizeof(SlHttp2Event), &event_storage_size);
+    if (!sl_status_is_ok(status)) {
+        sl_http2_session_dispose(session);
+        return status;
+    }
+    status = sl_arena_alloc(arena, event_storage_size, _Alignof(SlHttp2Event), &event_storage);
     if (!sl_status_is_ok(status)) {
         sl_http2_session_dispose(session);
         return status;
     }
     session->events = (SlHttp2Event*)event_storage;
+
+    status = sl_checked_array_size(normalized.max_events, sizeof(SlHttp2OutboundBody),
+                                   &outbound_body_storage_size);
+    if (!sl_status_is_ok(status)) {
+        sl_http2_session_dispose(session);
+        return status;
+    }
+    status = sl_arena_alloc(arena, outbound_body_storage_size, _Alignof(SlHttp2OutboundBody),
+                            &outbound_body_storage);
+    if (!sl_status_is_ok(status)) {
+        sl_http2_session_dispose(session);
+        return status;
+    }
+    session->outbound_bodies = outbound_body_storage;
+    session->outbound_body_capacity = normalized.max_events;
+    for (size_t index = 0U; index < session->outbound_body_capacity; index += 1U) {
+        ((SlHttp2OutboundBody*)session->outbound_bodies)[index] = (SlHttp2OutboundBody){0};
+    }
 
     status =
         sl_byte_builder_init_arena(&session->outbound, arena, 1024U, normalized.max_outbound_bytes);
@@ -528,6 +598,8 @@ SlStatus sl_http2_session_init(SlHttp2Session* session, SlArena* arena,
         sl_http2_session_dispose(session);
         return status;
     }
+    session->event_mark = sl_arena_mark(arena);
+    session->event_mark_valid = true;
 
     settings[0].value = normalized.max_concurrent_streams;
     settings[1].value = normalized.initial_window_size;
@@ -549,6 +621,9 @@ void sl_http2_session_dispose(SlHttp2Session* session)
     if (session->session != NULL) {
         nghttp2_session_del((nghttp2_session*)session->session);
     }
+    sl_http2_session_clear_events(session);
+    sl_http2_session_clear_current_headers(session);
+    sl_http2_session_release_all_outbound_bodies(session);
     *session = (SlHttp2Session){0};
 }
 
@@ -617,6 +692,10 @@ void sl_http2_session_clear_events(SlHttp2Session* session)
         return;
     }
     session->event_count = 0U;
+    sl_http2_session_clear_current_headers(session);
+    if (session->event_mark_valid) {
+        (void)sl_arena_reset_to(session->arena, session->event_mark);
+    }
 }
 
 SlStatus sl_http2_session_upgrade_h2c(SlHttp2Session* session, SlBytes settings_payload,
@@ -650,6 +729,7 @@ SlStatus sl_http2_session_submit_request(SlHttp2Session* session, const SlHttp2H
     nghttp2_data_provider2 provider = {0};
     const nghttp2_data_provider2* provider_ptr = NULL;
     int32_t stream_id = 0;
+    SlArenaMark mark = {0};
 
     if (session == NULL || session->session == NULL || headers == NULL || out_stream_id == NULL ||
         session->config.role != SL_HTTP2_SESSION_ROLE_CLIENT)
@@ -657,21 +737,29 @@ SlStatus sl_http2_session_submit_request(SlHttp2Session* session, const SlHttp2H
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    mark = sl_arena_mark(session->arena);
     status = sl_http2_session_prepare_nghttp2_headers(session->arena, headers, &nva);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(session->arena, mark);
         return status;
     }
     status = sl_http2_session_prepare_body(session, body, &provider, &provider_ptr);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(session->arena, mark);
         return status;
     }
 
     stream_id = nghttp2_submit_request2((nghttp2_session*)session->session, NULL, nva,
                                         headers->count, provider_ptr, NULL);
     if (stream_id < 0) {
+        if (provider.source.ptr != NULL) {
+            sl_http2_session_release_outbound_body((SlHttp2OutboundBody*)provider.source.ptr);
+        }
+        (void)sl_arena_reset_to(session->arena, mark);
         return sl_http2_session_status_from_nghttp2(stream_id);
     }
 
+    (void)sl_arena_reset_to(session->arena, mark);
     *out_stream_id = stream_id;
     return sl_status_ok();
 }
@@ -684,6 +772,7 @@ SlStatus sl_http2_session_submit_response(SlHttp2Session* session, int32_t strea
     nghttp2_data_provider2 provider = {0};
     const nghttp2_data_provider2* provider_ptr = NULL;
     int rv = 0;
+    SlArenaMark mark = {0};
 
     if (session == NULL || session->session == NULL || headers == NULL ||
         session->config.role != SL_HTTP2_SESSION_ROLE_SERVER)
@@ -691,17 +780,24 @@ SlStatus sl_http2_session_submit_response(SlHttp2Session* session, int32_t strea
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    mark = sl_arena_mark(session->arena);
     status = sl_http2_session_prepare_nghttp2_headers(session->arena, headers, &nva);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(session->arena, mark);
         return status;
     }
     status = sl_http2_session_prepare_body(session, body, &provider, &provider_ptr);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(session->arena, mark);
         return status;
     }
 
     rv = nghttp2_submit_response2((nghttp2_session*)session->session, stream_id, nva,
                                   headers->count, provider_ptr);
+    if (rv != 0 && provider.source.ptr != NULL) {
+        sl_http2_session_release_outbound_body((SlHttp2OutboundBody*)provider.source.ptr);
+    }
+    (void)sl_arena_reset_to(session->arena, mark);
     return sl_http2_session_status_from_nghttp2(rv);
 }
 

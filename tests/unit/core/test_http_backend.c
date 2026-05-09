@@ -396,7 +396,7 @@ static int test_multiplexing_allows_overlapping_requests_without_keep_alive(void
     {
         return 57;
     }
-    connection.multiplexing = true;
+    sl_http_connection_set_multiplexing(&connection, true);
 
     if (expect_status(sl_http_request_begin(&connection, &first_arena, &first_request, NULL),
                       SL_STATUS_OK) != 0 ||

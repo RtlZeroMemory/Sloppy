@@ -77,6 +77,7 @@ static int test_data_frame_rejects_stream_zero_and_bad_padding(void)
 static int test_headers_frame_validates_flags_priority_and_padding(void)
 {
     static const unsigned char payload[] = {0U, 0x80, 0x00, 0x00, 0x05, 0x10, 'x'};
+    static const unsigned char self_dependency[] = {0x00, 0x00, 0x00, 0x01, 0x10, 'x'};
     SlHttp2Frame frame = {.header = {.length = sizeof(payload),
                                      .type = SL_HTTP2_FRAME_HEADERS,
                                      .flags = SL_HTTP2_FLAG_PADDED | SL_HTTP2_FLAG_PRIORITY |
@@ -88,6 +89,15 @@ static int test_headers_frame_validates_flags_priority_and_padding(void)
                       SL_STATUS_OK) != 0)
     {
         return 1;
+    }
+
+    frame.header.length = sizeof(self_dependency);
+    frame.header.flags = SL_HTTP2_FLAG_PRIORITY | SL_HTTP2_FLAG_END_HEADERS;
+    frame.payload = sl_bytes_from_parts(self_dependency, sizeof(self_dependency));
+    if (expect_status(sl_http2_frame_validate(&frame, SL_HTTP2_DEFAULT_MAX_FRAME_SIZE),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 2;
     }
 
     frame.header.flags = 0x80U;

@@ -1,6 +1,7 @@
 #include "sloppy/http2_hpack.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 static int expect_true(bool condition)
 {
@@ -212,6 +213,32 @@ static int test_encode_round_trips_header_list_and_sensitive_flag(void)
     return 0;
 }
 
+static int test_decode_rejects_header_array_size_overflow(void)
+{
+    unsigned char storage[128];
+    SlArena arena = {0};
+    SlHttp2HpackDecoder decoder = {0};
+    SlHttp2HeaderList decoded = {0};
+    size_t impossible_count = (SIZE_MAX / sizeof(SlHttp2HeaderField)) + 1U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_hpack_decoder_init(&decoder, impossible_count, 0U), SL_STATUS_OK) !=
+            0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_http2_hpack_decode(&decoder, &arena, sl_bytes_empty(), true, &decoded),
+                      SL_STATUS_OVERFLOW) != 0)
+    {
+        sl_http2_hpack_decoder_dispose(&decoder);
+        return 2;
+    }
+
+    sl_http2_hpack_decoder_dispose(&decoder);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -233,6 +260,10 @@ int main(void)
         return result;
     }
     result = test_encode_round_trips_header_list_and_sensitive_flag();
+    if (result != 0) {
+        return result;
+    }
+    result = test_decode_rejects_header_array_size_overflow();
     if (result != 0) {
         return result;
     }

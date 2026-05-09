@@ -25,7 +25,8 @@ function Write-Evidence {
 function Test-Tool {
     param([string]$Name)
 
-    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+    $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $command
 }
 
 function Invoke-OptionalTool {
@@ -69,11 +70,14 @@ if (-not $ranExternal -or $H2Spec) {
         $target = [Uri]$Url
         $port = if ($target.Port -gt 0) { $target.Port } elseif ($target.Scheme -eq "http") { 80 } else { 443 }
         $h2specArgs = @("-h", $target.Host, "-p", [string]$port)
+        if ($target.Scheme -eq "https") {
+            $h2specArgs += "-t"
+        }
     }
     Invoke-OptionalTool "http2.h2spec" "h2spec" $h2specArgs
 }
 if (-not $ranExternal -or $Curl) {
-    Invoke-OptionalTool "http2.curl" "curl" @("--http2", "--fail", "--silent", "--show-error", $Url)
+    Invoke-OptionalTool "http2.curl" "curl.exe" @("--http2", "--fail", "--silent", "--show-error", $Url)
 }
 if (-not $ranExternal -or $Nghttp) {
     Invoke-OptionalTool "http2.nghttp" "nghttp" @("-nv", $Url)

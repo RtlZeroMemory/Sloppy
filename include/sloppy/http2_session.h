@@ -50,12 +50,23 @@ typedef struct SlHttp2Event
     int32_t last_stream_id;
     uint32_t error_code;
     bool end_stream;
+    /*
+     * Borrowed session-owned views. `headers.fields`, every header name/value view, and
+     * `data` bytes remain valid until sl_http2_session_clear_events(),
+     * sl_http2_session_dispose(), or the owning arena is reset/disposed. Copy any value that
+     * must outlive the current event batch.
+     */
     SlHttp2HeaderList headers;
     SlBytes data;
 } SlHttp2Event;
 
 typedef struct SlHttp2EventList
 {
+    /*
+     * Borrowed event array. Valid until sl_http2_session_clear_events(),
+     * sl_http2_session_dispose(), or the owning arena is reset/disposed. Event payload views
+     * have the same lifetime and are reclaimed by clear_events().
+     */
     const SlHttp2Event* events;
     size_t count;
 } SlHttp2EventList;
@@ -76,6 +87,10 @@ typedef struct SlHttp2Session
 {
     void* session;
     SlArena* arena;
+    void* outbound_bodies;
+    size_t outbound_body_capacity;
+    SlArenaMark event_mark;
+    bool event_mark_valid;
     SlHttp2SessionConfig config;
     SlByteBuilder outbound;
     SlHttp2Event* events;
@@ -93,7 +108,12 @@ SlStatus sl_http2_session_init(SlHttp2Session* session, SlArena* arena,
 void sl_http2_session_dispose(SlHttp2Session* session);
 SlStatus sl_http2_session_receive(SlHttp2Session* session, SlBytes bytes, size_t* out_consumed);
 SlStatus sl_http2_session_drain_output(SlHttp2Session* session, SlBytes* out_bytes);
+/*
+ * Returns a borrowed view of pending received events. The list and each event's header/data
+ * views remain valid until clear_events(), dispose(), or arena reset/dispose.
+ */
 SlHttp2EventList sl_http2_session_events(const SlHttp2Session* session);
+/* Reclaims pending event header/data storage and invalidates prior event views. */
 void sl_http2_session_clear_events(SlHttp2Session* session);
 SlStatus sl_http2_session_upgrade_h2c(SlHttp2Session* session, SlBytes settings_payload,
                                       bool head_request);

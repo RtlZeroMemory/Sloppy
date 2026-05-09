@@ -77,9 +77,9 @@ compiler fails closed rather than emitting a partial Plan.
 | Logging | supported | supported config metadata | supported | supported | Native runtime owns console/file sinks; memory sink is deterministic app-host test surface. |
 | Request IDs | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestId.defaults(...)`; generator callbacks remain app-host test-only. Native `ctx.requestId` exists. |
 | Request logging | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestLogging.defaults(...)`; dynamic option values fail closed. Native `ctx.log` is direct logging. |
-| HTTP server | n/a | Plan/server config metadata | supported | experimental dev server | HTTP/1.1 only, bounded, not a production edge. |
+| HTTP server | n/a | Plan/server config metadata | supported | experimental dev server | HTTP/1.1 plus server HTTP/2 over TLS ALPN, h2c prior knowledge, and h2c Upgrade. Not a production edge. |
 | Inbound TLS | n/a | config metadata | supported paths | experimental | Certificate/key paths are Plan-visible today; diagnostics redact TLS material. |
-| HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | `https://` needs the private outbound TLS bridge. |
+| HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | HTTP/1.1 by default; explicit h2/h2c supported. Pooled h2 multiplexing and automatic ALPN selection are not included yet. |
 | Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for proof classification. |
 | Package/install path | n/a | n/a | package layout | experimental | Local archives exist; public release/npm launcher are not published. |
 
@@ -89,3 +89,4 @@ compiler fails closed rather than emitting a partial Plan.
 - Default local checks do not provide full cross-platform parity coverage.
 - Compiler benchmark reports are local measurement artifacts. They are not
   compatibility guarantees or public performance comparisons.
+- HTTP/3, gRPC, WebTransport, and server push are not included.

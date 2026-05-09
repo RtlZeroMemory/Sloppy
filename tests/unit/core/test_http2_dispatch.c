@@ -27,10 +27,10 @@ static SlHttp2HeaderField h2_header(const char* name, const char* value)
 typedef struct DispatchHook
 {
     size_t count;
-    SlHttpMethod methods[8];
-    SlStr paths[8];
-    SlBytes bodies[8];
-    const char* response_bodies[8];
+    SlHttpMethod methods[64];
+    SlStr paths[64];
+    SlBytes bodies[64];
+    const char* response_bodies[64];
     SlStatusCode status_code;
     SlDiagCode diag_code;
 } DispatchHook;
@@ -150,6 +150,7 @@ static int init_h2_pair(SlArena* client_arena, SlArena* server_arena, SlHttpBack
     {
         return 1;
     }
+    connection->scheme = sl_str_from_cstr("https");
 
     if (pump_client_to_server(client, server) != 0 || pump_server_to_client(server, client) != 0 ||
         pump_client_to_server(client, server) != 0)
@@ -412,6 +413,55 @@ static int test_invalid_request_headers_reset_only_that_stream(void)
     return 0;
 }
 
+static int test_many_sequential_streams_reuse_bounded_dispatch_state(void)
+{
+    unsigned char client_storage[131072];
+    unsigned char server_storage[32768];
+    SlArena client_arena = {0};
+    SlArena server_arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttp2Session client = {0};
+    SlHttp2ServerDispatcher server = {0};
+    DispatchHook hook = {0};
+    SlHttp2HeaderField fields[] = {h2_header(":method", "GET"), h2_header(":scheme", "https"),
+                                   h2_header(":authority", "localhost"),
+                                   h2_header(":path", "/many")};
+    SlHttp2HeaderList headers = {.fields = fields, .count = sizeof(fields) / sizeof(fields[0])};
+
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_h2_pair(&client_arena, &server_arena, &backend, &connection, &client, &server,
+                     &hook) != 0)
+    {
+        return 30;
+    }
+
+    for (size_t index = 0U; index < 32U; index += 1U) {
+        int32_t stream_id = 0;
+        if (expect_status(
+                sl_http2_session_submit_request(&client, &headers, sl_bytes_empty(), &stream_id),
+                SL_STATUS_OK) != 0 ||
+            pump_client_to_server(&client, &server) != 0 ||
+            pump_server_to_client(&server, &client) != 0)
+        {
+            return 31;
+        }
+        sl_http2_session_clear_events(&client);
+        if (hook.count != index + 1U || sl_http2_server_dispatcher_active_streams(&server) != 0U ||
+            backend.active_requests != 0U)
+        {
+            return 32;
+        }
+    }
+
+    sl_http2_server_dispatcher_dispose(&server);
+    sl_http2_session_dispose(&client);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -425,6 +475,10 @@ int main(void)
         return result;
     }
     result = test_invalid_request_headers_reset_only_that_stream();
+    if (result != 0) {
+        return result;
+    }
+    result = test_many_sequential_streams_reuse_bounded_dispatch_state();
     if (result != 0) {
         return result;
     }

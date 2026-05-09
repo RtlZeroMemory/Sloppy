@@ -1615,7 +1615,17 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
                 !net_v8_set_string(isolate, context, handle, "selectedProtocol",
                                    request->tls_selected_alpn))
             {
-                return sl_status_from_code(SL_STATUS_INTERNAL);
+                (void)sl_resource_table_close_kind(&backend->resources, id,
+                                                   SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+                ok = resolver
+                         ->Reject(
+                             context,
+                             v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                 isolate,
+                                 "SLOPPY_E_NET_BACKEND_UNAVAILABLE: selected protocol set failed")))
+                         .FromMaybe(false);
+                isolate->PerformMicrotaskCheckpoint();
+                return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
             }
             ok = resolver->Resolve(context, handle).FromMaybe(false);
         }

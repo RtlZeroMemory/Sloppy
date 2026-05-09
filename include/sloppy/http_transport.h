@@ -3,7 +3,6 @@
 
 #include "sloppy/arena.h"
 #include "sloppy/diagnostics.h"
-#include "sloppy/http2_dispatch.h"
 #include "sloppy/http_backend.h"
 #include "sloppy/http_response.h"
 #include "sloppy/status.h"
@@ -32,6 +31,7 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_PENDING_WRITE_BYTES 65536U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
+typedef struct SlHttp2ServerDispatcher SlHttp2ServerDispatcher;
 typedef struct SlHttpTransportConnection SlHttpTransportConnection;
 
 typedef void (*SlHttpTransportRequestReadyFn)(SlHttpTransportConnection* connection,
@@ -156,7 +156,7 @@ struct SlHttpTransportConnection
     bool http2_mode;
     bool http2_dispatcher_started;
     SlHttpResponse active_response;
-    SlHttp2ServerDispatcher http2_dispatcher;
+    SlHttp2ServerDispatcher* http2_dispatcher;
     size_t stream_chunk_index;
     bool stream_final_written;
     SlDiag last_diag;

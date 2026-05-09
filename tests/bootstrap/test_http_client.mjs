@@ -571,7 +571,10 @@ function startHttp2Server(handler, options = {}) {
                 if (buffer.length < HTTP2_PREFACE.length) {
                     return;
                 }
-                assert.deepEqual(buffer.subarray(0, HTTP2_PREFACE.length), HTTP2_PREFACE);
+                if (!buffer.subarray(0, HTTP2_PREFACE.length).equals(HTTP2_PREFACE)) {
+                    socket.destroy();
+                    return;
+                }
                 buffer = buffer.subarray(HTTP2_PREFACE.length);
                 sawPreface = true;
                 socket.write(h2Frame(HTTP2_FRAME_SETTINGS, 0, 0));
@@ -604,7 +607,11 @@ function startHttp2Server(handler, options = {}) {
 
         socket.on("data", (chunk) => {
             buffer = Buffer.concat([buffer, chunk]);
-            parse();
+            try {
+                parse();
+            } catch {
+                socket.destroy();
+            }
         });
     };
 

@@ -232,6 +232,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     SlStr scheme = {0};
     SlStr target = {0};
     SlStr authority = {0};
+    SlStr host = {0};
     SlStr content_type = {0};
     SlStr content_length = {0};
     SlHttpHeader* copied_headers = NULL;
@@ -240,6 +241,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     size_t total_header_bytes = 0U;
     bool has_content_type = false;
     bool has_content_length = false;
+    bool regular_seen = false;
     size_t declared_content_length = 0U;
     SlHttpBodyReader reader = {0};
 
@@ -271,30 +273,43 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         }
 
         if (sl_str_equal(header->name, sl_str_from_cstr(":method"))) {
+            if (regular_seen) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
             if (!sl_str_is_empty(method)) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             method = header->value;
         }
         else if (sl_str_equal(header->name, sl_str_from_cstr(":scheme"))) {
+            if (regular_seen) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
             if (!sl_str_is_empty(scheme)) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             scheme = header->value;
         }
         else if (sl_str_equal(header->name, sl_str_from_cstr(":path"))) {
+            if (regular_seen) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
             if (!sl_str_is_empty(target)) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             target = header->value;
         }
         else if (sl_str_equal(header->name, sl_str_from_cstr(":authority"))) {
+            if (regular_seen) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
             if (!sl_str_is_empty(authority)) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             authority = header->value;
         }
         else {
+            regular_seen = true;
             if (header->name.length != 0U && header->name.ptr[0] == ':') {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
@@ -317,14 +332,26 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
                 content_length = header->value;
                 has_content_length = true;
             }
+            if (sl_str_equal_ci_ascii(header->name, sl_str_from_cstr("host"))) {
+                if (!sl_str_is_empty(host)) {
+                    return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+                }
+                host = header->value;
+            }
             regular_header_count += 1U;
         }
     }
 
-    if (method.ptr == NULL || method.length == 0U || target.ptr == NULL || target.length == 0U ||
-        target.ptr[0] != '/' || target.length > limits.max_target_length ||
-        (!sl_str_is_empty(scheme) && !sl_str_equal(scheme, sl_str_from_cstr("http")) &&
+    if (method.ptr == NULL || method.length == 0U || scheme.ptr == NULL || scheme.length == 0U ||
+        target.ptr == NULL || target.length == 0U || authority.ptr == NULL ||
+        authority.length == 0U || target.ptr[0] != '/' ||
+        target.length > limits.max_target_length ||
+        (!sl_str_equal(scheme, sl_str_from_cstr("http")) &&
          !sl_str_equal(scheme, sl_str_from_cstr("https"))) ||
+        (connection->scheme.ptr != NULL && connection->scheme.length != 0U &&
+         !sl_str_equal(scheme, connection->scheme)) ||
+        sl_str_equal_ci_ascii(method, sl_str_from_cstr("CONNECT")) ||
+        (!sl_str_is_empty(host) && !sl_str_equal(host, authority)) ||
         (has_content_length && declared_content_length != body.length))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -372,6 +399,11 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     for (size_t index = 0U; index < headers->count; index += 1U) {
         const SlHttp2HeaderField* header = &headers->fields[index];
         if (header->name.length != 0U && header->name.ptr[0] == ':') {
+            continue;
+        }
+        if (!sl_str_is_empty(authority) &&
+            sl_str_equal_ci_ascii(header->name, sl_str_from_cstr("host")))
+        {
             continue;
         }
         status = sl_http2_copy_header(arena, header->name, header->value,

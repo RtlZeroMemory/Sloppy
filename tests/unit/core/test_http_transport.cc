@@ -1,4 +1,5 @@
 #include "sloppy/http_transport.h"
+#include "sloppy/http2_session.h"
 
 #include <atomic>
 #include <chrono>

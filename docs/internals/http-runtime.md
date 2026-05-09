@@ -152,11 +152,18 @@ HTTP/1.1 keep-alive is sequential: a single connection processes one request at
 a time, then either closes or waits for the next request up to the idle
 timeout. HTTP/1.1 pipelining is not implemented.
 
-HTTP/2 connections are multiplexed. The HTTP/2 dispatcher keeps stream state
-separate from the HTTP backend connection state so multiple streams can have
-independent request lifecycles on one TCP/TLS connection. SETTINGS, HPACK,
-RST_STREAM, GOAWAY, and flow-control windows are owned by the HTTP/2 session
-adapter.
+HTTP/2 server connections are multiplexed. TLS listeners enter HTTP/2 only
+through ALPN `h2`; cleartext listeners accept h2c prior knowledge only on a
+fresh connection and accept HTTP/1.1 Upgrade to h2c. Upgrade requests with a
+body are handled by nghttp2's upgrade contract: the upgraded stream is request
+stream 1 and body bytes are not treated as an HTTP/1.1 request body after the
+protocol switch. A keep-alive HTTP/1.1 connection cannot switch to h2 by later
+sending the prior-knowledge preface.
+
+The HTTP/2 dispatcher keeps stream state separate from the HTTP backend
+connection state so multiple streams can have independent request lifecycles on
+one TCP/TLS connection. SETTINGS, HPACK, RST_STREAM, GOAWAY, and flow-control
+windows are owned by the HTTP/2 session adapter. Server push is disabled.
 
 ## Response writing
 
@@ -168,6 +175,9 @@ HTTP/1.1 chunked frames.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.
+Malformed HTTP/2 input sends a protocol shutdown frame when possible and then
+closes; the transport never serializes an HTTP/1.1 error response on an
+established h2 connection.
 
 `204 No Content` and `304 Not Modified` never write `Content-Type`,
 `Content-Length`, or body bytes even if the handler descriptor includes a
@@ -194,9 +204,9 @@ sloppy:server:tls:privateKeyPath  = path/to/key.pem
 ```
 
 TLS listeners advertise `h2` and `http/1.1` when the HTTP/2 dispatcher is
-configured. ALPN `h2` selects the HTTP/2 path; ALPN `http/1.1`, no ALPN, or a
-cleartext connection stays on the HTTP/1.1 path unless the peer sends the h2c
-prior-knowledge preface or a valid h2c Upgrade request.
+configured. ALPN `h2` selects the HTTP/2 path; ALPN `http/1.1` or no ALPN stays
+on the HTTP/1.1 path and rejects an h2 preface. Cleartext connections can use
+h2c prior knowledge on the first bytes or a valid h2c Upgrade request.
 
 mTLS, custom verification callbacks, OCSP stapling, and HSTS are not
 implemented. For production, terminate TLS at a reverse proxy unless this
@@ -232,17 +242,20 @@ connection draining) is the responsibility of an in-front reverse proxy.
 - **V8-gated run lanes** execute compiled handlers through `sloppy run --once`.
   Listener-to-V8 socket coverage is tracked separately from synthetic
   `--once` dispatch.
-- **HTTP/2 transport lanes** cover h2c prior knowledge, h2c Upgrade, and TLS
-  ALPN `h2` selection through the libuv transport.
+- **HTTP/2 transport lanes** cover h2c prior knowledge, h2c Upgrade, TLS ALPN
+  `h2` selection, strict pseudo-header mapping, protocol-error close behavior,
+  checked allocation sizes, and bounded stream/event lifetime.
 - **HTTP/2 protocol unit tests** cover frame validation, HPACK/session adapter
   behavior, request mapping, stream reset/GOAWAY handling, and dispatch.
 
 ## Not implemented
 
-- HTTP/3, WebSockets, SSE.
+- HTTP/3, gRPC, WebTransport, WebSockets, SSE.
 - Streaming request or response APIs in JS.
 - Multipart/form-data and file uploads.
 - Per-route limits, trusted proxy / forwarded-header policy beyond
   basic header passthrough.
 - HTTP/1.1 pipelining.
-- Server push public API.
+- Server push public API or server push frames.
+- External h2spec/nghttp/h2load CI conformance is not part of the default lane
+  yet; wrappers exist and the CI lane is tracked in #1011.

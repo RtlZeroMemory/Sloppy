@@ -5661,6 +5661,8 @@ Reason:
     const HTTP2_DEFAULT_MAX_FRAME_SIZE = 16384;
     const HTTP2_DEFAULT_DYNAMIC_TABLE_BYTES = 4096;
     const HTTP2_SETTING_ENABLE_PUSH = 0x2;
+    const HTTP2_SETTING_MAX_FRAME_SIZE = 0x5;
+    const HTTP2_SETTING_MAX_HEADER_LIST_SIZE = 0x6;
 
     const HTTP2_HPACK_STATIC = [
         undefined,
@@ -6080,6 +6082,26 @@ Reason:
         return frames;
     }
 
+    function http2HeaderFrames(streamId, headerBlock, endStream, maxFrameSize = HTTP2_DEFAULT_MAX_FRAME_SIZE) {
+        const frames = [];
+        let offset = 0;
+        while (offset < headerBlock.byteLength || frames.length === 0) {
+            const end = Math.min(headerBlock.byteLength, offset + maxFrameSize);
+            const final = end === headerBlock.byteLength;
+            const type = frames.length === 0 ? HTTP2_FRAME_HEADERS : HTTP2_FRAME_CONTINUATION;
+            let flags = final ? HTTP2_FLAG_END_HEADERS : 0;
+            if (frames.length === 0 && endStream) {
+                flags |= HTTP2_FLAG_END_STREAM;
+            }
+            frames.push(http2Frame(type, flags, streamId, headerBlock.slice(offset, end)));
+            offset = end;
+            if (headerBlock.byteLength === 0) {
+                break;
+            }
+        }
+        return frames;
+    }
+
     function http2UnpadPayload(payload) {
         if (payload.byteLength === 0) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
@@ -6207,7 +6229,7 @@ Reason:
         const encoded = bytes.slice(offset, offset + length.value);
         const decoded = huffman ? hpackDecodeHuffman(encoded) : encoded;
         return {
-            value: sloppyBytesToUtf8(decoded),
+            value: new TextDecoder().decode(decoded),
             offset: offset + length.value,
         };
     }
@@ -6247,6 +6269,17 @@ Reason:
             parts.push(hpackHeader("accept", "*/*"));
         }
         for (const { name, value } of request.headers.values()) {
+            const normalized = name.toLowerCase();
+            if (
+                normalized === "connection" ||
+                normalized === "upgrade" ||
+                normalized === "keep-alive" ||
+                normalized === "proxy-connection" ||
+                normalized === "transfer-encoding" ||
+                (normalized === "te" && value.toLowerCase() !== "trailers")
+            ) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `HTTP/2 request header "${name}" is not allowed.`);
+            }
             parts.push(hpackHeader(name, value, isHttpSensitiveHeader(name, value, new Set())));
         }
         if (request.body.byteLength > 0) {
@@ -6358,6 +6391,7 @@ Reason:
     function parseHttp2Headers(headers, maxHeaderBytes) {
         let status = undefined;
         const regular = [];
+        let contentLength = undefined;
         let regularSeen = false;
         if (http2HeaderListBytes(headers) > maxHeaderBytes) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
@@ -6387,6 +6421,19 @@ Reason:
                         "HTTP/2 response contains an invalid header field.",
                     );
                 }
+                if (name.toLowerCase() === "content-length") {
+                    if (!/^[0-9]+$/.test(value)) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP/2 response content-length is invalid.");
+                    }
+                    const parsedLength = Number(value);
+                    if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP/2 response content-length is out of range.");
+                    }
+                    if (contentLength !== undefined && contentLength !== parsedLength) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP/2 response has conflicting content-length headers.");
+                    }
+                    contentLength = parsedLength;
+                }
                 regular.push([name, value]);
             }
         }
@@ -6395,7 +6442,7 @@ Reason:
                 "HTTP/2 response is missing a valid :status header.",
             );
         }
-        return { status, headers: regular };
+        return { status, headers: regular, contentLength };
     }
 
     async function readHttp2Response(connection, request) {
@@ -6408,6 +6455,8 @@ Reason:
         let response = undefined;
         let pendingHeaderStream = 0;
         let headerBlockEndsStream = false;
+        let peerMaxFrameSize = HTTP2_DEFAULT_MAX_FRAME_SIZE;
+        let peerMaxHeaderListSize = request.maxHeaderBytes;
 
         while (true) {
             while (pending.byteLength < 9) {
@@ -6415,6 +6464,11 @@ Reason:
                 pending = http2Concat([pending, chunk]);
             }
             const frame = parseHttp2FrameHeader(pending, 0);
+            if (frame.length > peerMaxFrameSize) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP/2 peer frame exceeded the current max frame size.",
+                );
+            }
             if (pending.byteLength < 9 + frame.length) {
                 const chunk = await connection.read({ maxBytes: 8192 });
                 pending = http2Concat([pending, chunk]);
@@ -6430,6 +6484,29 @@ Reason:
                     );
                 }
                 if ((frame.flags & HTTP2_FLAG_ACK) === 0) {
+                    if (payload.byteLength % 6 !== 0) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                            "HTTP/2 SETTINGS payload is malformed.",
+                        );
+                    }
+                    for (let offset = 0; offset < payload.byteLength; offset += 6) {
+                        const id = (payload[offset] << 8) | payload[offset + 1];
+                        const value =
+                            payload[offset + 2] * 0x1000000 +
+                            (payload[offset + 3] << 16) +
+                            (payload[offset + 4] << 8) +
+                            payload[offset + 5];
+                        if (id === HTTP2_SETTING_MAX_FRAME_SIZE) {
+                            if (value < HTTP2_DEFAULT_MAX_FRAME_SIZE || value > 16777215) {
+                                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                                    "HTTP/2 SETTINGS_MAX_FRAME_SIZE is invalid.",
+                                );
+                            }
+                            peerMaxFrameSize = value;
+                        } else if (id === HTTP2_SETTING_MAX_HEADER_LIST_SIZE) {
+                            peerMaxHeaderListSize = Math.min(peerMaxHeaderListSize, value);
+                        }
+                    }
                     await connection.write(http2Frame(HTTP2_FRAME_SETTINGS, HTTP2_FLAG_ACK, 0));
                 }
                 continue;
@@ -6493,13 +6570,25 @@ Reason:
                 headerBlocks.push(payload);
                 headerBlockEndsStream = headerBlockEndsStream || (frame.flags & HTTP2_FLAG_END_STREAM) !== 0;
                 if ((frame.flags & HTTP2_FLAG_END_HEADERS) !== 0) {
+                    const blockEndedStream = headerBlockEndsStream;
                     const decoded = hpackDecodeHeaders(http2Concat(headerBlocks), dynamicTable);
-                    if (response === undefined) {
-                        response = parseHttp2Headers(decoded, request.maxHeaderBytes);
+                    const parsed = parseHttp2Headers(decoded, peerMaxHeaderListSize);
+                    if (parsed.status >= 100 && parsed.status < 200) {
+                        if (blockEndedStream) {
+                            throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                                "HTTP/2 informational response ended the stream.",
+                            );
+                        }
+                    } else if (response === undefined) {
+                        response = parsed;
                     }
                     headerBlocks.length = 0;
                     headerBlockBytes = 0;
                     pendingHeaderStream = 0;
+                    headerBlockEndsStream = false;
+                    if (blockEndedStream && response !== undefined) {
+                        break;
+                    }
                 } else {
                     pendingHeaderStream = frame.streamId;
                 }
@@ -6509,10 +6598,28 @@ Reason:
                 continue;
             }
             if (frame.type === HTTP2_FRAME_DATA) {
+                if (response === undefined) {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP/2 response DATA arrived before final response headers.",
+                    );
+                }
                 if ((frame.flags & 0x8) !== 0) {
                     payload = http2UnpadPayload(payload);
                 }
                 totalBodyBytes += payload.byteLength;
+                if (response !== undefined) {
+                    const bodyForbidden = request.method === "HEAD" || isHttpBodyForbiddenStatus(response.status);
+                    if (bodyForbidden && payload.byteLength !== 0) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                            "HTTP/2 response included DATA for a body-forbidden response.",
+                        );
+                    }
+                    if (response.contentLength !== undefined && totalBodyBytes > response.contentLength) {
+                        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                            "HTTP/2 response body exceeded declared content-length.",
+                        );
+                    }
+                }
                 if (totalBodyBytes > request.maxResponseBytes) {
                     throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
                         "HTTP response body exceeded the configured limit.",
@@ -6540,6 +6647,11 @@ Reason:
         }
 
         const bodyForbidden = request.method === "HEAD" || isHttpBodyForbiddenStatus(response.status);
+        if (!bodyForbidden && response.contentLength !== undefined && totalBodyBytes !== response.contentLength) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP/2 response body length did not match declared content-length.",
+            );
+        }
         return new HttpClientResponse(
             response.status,
             "",
@@ -6604,12 +6716,7 @@ Reason:
             const frames = [
                 HTTP2_CLIENT_PREFACE,
                 http2Frame(HTTP2_FRAME_SETTINGS, 0, 0, http2Setting(HTTP2_SETTING_ENABLE_PUSH, 0)),
-                http2Frame(
-                    HTTP2_FRAME_HEADERS,
-                    HTTP2_FLAG_END_HEADERS | (request.body.byteLength === 0 ? HTTP2_FLAG_END_STREAM : 0),
-                    1,
-                    headers,
-                ),
+                ...http2HeaderFrames(1, headers, request.body.byteLength === 0),
             ];
             frames.push(...http2DataFrames(1, request.body));
             await connection.write(http2Concat(frames));

@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,15 +40,12 @@ typedef struct SlHttp2HeaderList
  */
 typedef struct SlHttp2HpackDecoder
 {
-    void* inflater;
-    size_t max_headers;
-    size_t max_header_list_bytes;
+    uintptr_t opaque[3];
 } SlHttp2HpackDecoder;
 
 typedef struct SlHttp2HpackEncoder
 {
-    void* deflater;
-    size_t max_output_bytes;
+    uintptr_t opaque[2];
 } SlHttp2HpackEncoder;
 
 SlStatus sl_http2_hpack_decoder_init(SlHttp2HpackDecoder* decoder, size_t max_headers,
