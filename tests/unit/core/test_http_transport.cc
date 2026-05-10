@@ -385,7 +385,7 @@ static void client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     }
     if (nread < 0) {
         client->closed = true;
-        (void)uv_read_stop(stream);
+        uv_read_stop(stream);
     }
 }
 
@@ -412,7 +412,7 @@ static int connect_client(uint32_t port, ClientConnect* client)
         }
         client->loop_initialized = true;
         if (uv_tcp_init(&client->loop, &client->handle) != 0) {
-            (void)uv_loop_close(&client->loop);
+            uv_loop_close(&client->loop);
             client->loop_initialized = false;
             return 2;
         }
@@ -430,7 +430,7 @@ static int connect_client(uint32_t port, ClientConnect* client)
             close_client(client);
             return 4;
         }
-        (void)uv_run(&client->loop, UV_RUN_DEFAULT);
+        uv_run(&client->loop, UV_RUN_DEFAULT);
         if (client->connected) {
             return 0;
         }
@@ -486,7 +486,7 @@ static int write_client_data(ClientConnect* client, SlBytes bytes)
         return 2;
     }
     for (size_t index = 0U; index < 128U && !write.done; index += 1U) {
-        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        uv_run(&client->loop, UV_RUN_NOWAIT);
         uv_sleep(1U);
     }
     if (!write.done) {
@@ -504,8 +504,8 @@ static void close_client(ClientConnect* client)
     if (client->handle_initialized && !uv_is_closing((uv_handle_t*)&client->handle)) {
         uv_close((uv_handle_t*)&client->handle, client_close_cb);
     }
-    (void)uv_run(&client->loop, UV_RUN_DEFAULT);
-    (void)uv_loop_close(&client->loop);
+    uv_run(&client->loop, UV_RUN_DEFAULT);
+    uv_loop_close(&client->loop);
     client->handle_initialized = false;
     client->loop_initialized = false;
 }
@@ -576,7 +576,7 @@ static int poll_server_and_client_until_closed(SlHttpTransportServer* server, Cl
         if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
             return 1;
         }
-        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        uv_run(&client->loop, UV_RUN_NOWAIT);
         if (server->connections[0].write_completed && client->closed) {
             return 0;
         }
@@ -594,7 +594,7 @@ static int poll_server_and_client_until_response(SlHttpTransportServer* server,
         if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
             return 1;
         }
-        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        uv_run(&client->loop, UV_RUN_NOWAIT);
         if (server->connections[0].write_completed || client->closed) {
             return 0;
         }
@@ -701,11 +701,11 @@ static void stop_one_connection(SlHttpTransportServer* server, ClientConnect* cl
         sl_http_transport_server_state(server) != SL_HTTP_TRANSPORT_SERVER_STATE_NONE)
     {
         if (server->connections != nullptr && server->connection_capacity > 0U) {
-            (void)sl_http_transport_connection_close(&server->connections[0], &diag);
-            (void)sl_http_transport_server_poll(server, &diag);
+            sl_http_transport_connection_close(&server->connections[0], &diag);
+            sl_http_transport_server_poll(server, &diag);
         }
-        (void)sl_http_transport_server_stop(server, &diag);
-        (void)sl_http_transport_server_dispose(server, &diag);
+        sl_http_transport_server_stop(server, &diag);
+        sl_http_transport_server_dispose(server, &diag);
     }
     close_client(client);
 }
@@ -1188,7 +1188,7 @@ static int run_tls_keep_alive_client_close_notify(uint32_t port, std::string* ou
     if (SSL_shutdown(ssl) < 0) {
         goto cleanup;
     }
-    (void)BIO_flush(bio);
+    BIO_flush(bio);
     result = 0;
 
 cleanup:
@@ -1419,7 +1419,7 @@ static int test_https_loopback_reaches_handler_and_marks_scheme(void)
         client.join();
     }
     for (size_t index = 0U; index < 64U; index += 1U) {
-        (void)sl_http_transport_server_poll(&server, &diag);
+        sl_http_transport_server_poll(&server, &diag);
     }
     if (client_result.load() != 0 || dispatch.count != 1U ||
         !sl_str_equal(dispatch.path, sl_str_from_cstr("/secure")) ||
@@ -1435,11 +1435,11 @@ static int test_https_loopback_reaches_handler_and_marks_scheme(void)
 
 cleanup:
     if (client.joinable()) {
-        (void)sl_http_transport_server_stop(&server, &diag);
+        sl_http_transport_server_stop(&server, &diag);
         client.join();
     }
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
     std::filesystem::remove_all(cert_path.parent_path());
     return result;
 }
@@ -1507,7 +1507,7 @@ static int test_h2c_prior_knowledge_reaches_dispatch(void)
             result = 9011;
             goto cleanup;
         }
-        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_run(&client.loop, UV_RUN_NOWAIT);
         if (client.read_length != 0U && server.connections[0].write_completed) {
             break;
         }
@@ -1545,7 +1545,7 @@ static int test_h2c_prior_knowledge_reaches_dispatch(void)
             result = 9017;
             goto cleanup;
         }
-        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_run(&client.loop, UV_RUN_NOWAIT);
         if (dispatch.count == 1U && client.read_length != 0U &&
             server.connections[0].write_completed)
         {
@@ -1649,7 +1649,7 @@ static int test_h2c_upgrade_reaches_dispatch_stream1(void)
             result = 9031;
             goto cleanup;
         }
-        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_run(&client.loop, UV_RUN_NOWAIT);
         response = sl_bytes_from_parts(client.read_buffer, client.read_length);
         header_end = find_http1_header_end(response);
         if (dispatch.count == 1U && header_end != 0U && response.length > header_end &&
@@ -1775,11 +1775,11 @@ static int test_https_h2_alpn_reaches_dispatch(void)
 
 cleanup:
     if (client.joinable()) {
-        (void)sl_http_transport_server_stop(&server, &diag);
+        sl_http_transport_server_stop(&server, &diag);
         client.join();
     }
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
     std::filesystem::remove_all(cert_path.parent_path());
     return result;
 }
@@ -1887,11 +1887,11 @@ static int test_https_close_notify_is_disconnect_cleanup_only(void)
 
 cleanup:
     if (client.joinable()) {
-        (void)sl_http_transport_server_stop(&server, &diag);
+        sl_http_transport_server_stop(&server, &diag);
         client.join();
     }
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
     std::filesystem::remove_all(cert_path.parent_path());
     return result;
 }
@@ -1942,7 +1942,7 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 912;
     }
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     sl_arena_reset(&arena);
     server = {};
@@ -1963,7 +1963,7 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 913;
     }
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     sl_arena_reset(&arena);
     server = {};
@@ -1983,7 +1983,7 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 914;
     }
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     sl_arena_reset(&arena);
     server = {};
@@ -2004,7 +2004,7 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 915;
     }
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     sl_arena_reset(&arena);
     server = {};
@@ -2034,7 +2034,7 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 917;
     }
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     std::filesystem::remove_all(cert_path.parent_path());
     std::filesystem::remove_all(encrypted_cert_path.parent_path());
@@ -2092,7 +2092,7 @@ static int test_https_handshake_failure_and_active_shutdown_cleanup(void)
             result = 923;
             goto cleanup;
         }
-        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_run(&client.loop, UV_RUN_NOWAIT);
         if (sl_http_transport_server_active_connections(&server) == 0U) {
             break;
         }
@@ -2135,8 +2135,8 @@ static int test_https_handshake_failure_and_active_shutdown_cleanup(void)
 
 cleanup:
     close_client(&client);
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
     std::filesystem::remove_all(cert_path.parent_path());
     return result;
 }
@@ -2754,8 +2754,8 @@ static int test_disconnect_cleanup_paths(void)
         stop_one_connection(&server, &client);
         return 71;
     }
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
 
     sl_arena_reset(&arena);
     server = {};
@@ -3202,7 +3202,7 @@ static int test_streaming_response_backpressure_rejection(void)
         return 811;
     }
     for (size_t index = 0U; index < 64U && server.backend.active_requests != 0U; index += 1U) {
-        (void)sl_http_transport_server_poll(&server, &diag);
+        sl_http_transport_server_poll(&server, &diag);
     }
     if (server.connections[0].last_diag.code != SL_DIAG_HTTP_RESPONSE_BACKPRESSURE ||
         server.backend.active_requests != 0U)
@@ -3224,7 +3224,7 @@ static int poll_until_connection_state(SlHttpTransportServer* server, ClientConn
         if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
             return 1;
         }
-        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        uv_run(&client->loop, UV_RUN_NOWAIT);
         if (server->connections[0].state == state && client->read_length >= min_read) {
             return 0;
         }
@@ -3556,7 +3556,7 @@ static int test_keep_alive_idle_timeout_closes_once(void)
             stop_one_connection(&server, &client);
             return 93;
         }
-        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_run(&client.loop, UV_RUN_NOWAIT);
         uv_sleep(1U);
     }
     if (server.idle_timeouts != 1U || server.backend.active_connections != 0U ||
@@ -4319,8 +4319,8 @@ static int serve_http2_h2c(const char* port_file)
     result = sl_status_is_ok(sl_http_transport_server_run(&server, &diag)) ? 0 : 5;
 
 cleanup:
-    (void)sl_http_transport_server_stop(&server, &diag);
-    (void)sl_http_transport_server_dispose(&server, &diag);
+    sl_http_transport_server_stop(&server, &diag);
+    sl_http_transport_server_dispose(&server, &diag);
     return result;
 }
 

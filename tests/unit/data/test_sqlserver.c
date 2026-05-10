@@ -113,7 +113,7 @@ static SlSqlServerParam bool_param(bool value)
 static int close_and_return(SlSqlServerConnection* connection, int code)
 {
     if (connection != NULL && connection->open) {
-        (void)sl_sqlserver_close(connection);
+        sl_sqlserver_close(connection);
     }
     return code;
 }
@@ -511,10 +511,9 @@ static int test_live_query_exec_and_transactions(void)
     if (open_result != 0) {
         return 41;
     }
-    (void)sl_sqlserver_exec(
-        &arena, &connection,
-        sl_str_from_cstr("drop table if exists dbo.sloppy_sqlserver_provider_test"), NULL, 0U,
-        &exec_result, NULL);
+    sl_sqlserver_exec(&arena, &connection,
+                      sl_str_from_cstr("drop table if exists dbo.sloppy_sqlserver_provider_test"),
+                      NULL, 0U, &exec_result, NULL);
     status =
         sl_sqlserver_exec(&arena, &connection,
                           sl_str_from_cstr("create table dbo.sloppy_sqlserver_provider_test (id "
@@ -591,7 +590,7 @@ static int test_live_query_exec_and_transactions(void)
     {
         return close_and_return(&connection, 53);
     }
-    (void)memcpy(long_alias_sql, "select 1 as [", sizeof("select 1 as [") - 1U);
+    memcpy(long_alias_sql, "select 1 as [", sizeof("select 1 as [") - 1U);
     for (size_t index = sizeof("select 1 as [") - 1U; index < 141U; index += 1U) {
         long_alias_sql[index] = 'a';
     }
@@ -641,10 +640,9 @@ static int test_live_query_exec_and_transactions(void)
     {
         return close_and_return(&connection, 51);
     }
-    (void)sl_sqlserver_exec(
-        &arena, &connection,
-        sl_str_from_cstr("drop table if exists dbo.sloppy_sqlserver_provider_test"), NULL, 0U,
-        &exec_result, NULL);
+    sl_sqlserver_exec(&arena, &connection,
+                      sl_str_from_cstr("drop table if exists dbo.sloppy_sqlserver_provider_test"),
+                      NULL, 0U, &exec_result, NULL);
     return expect_status(sl_sqlserver_close(&connection), SL_STATUS_OK) == 0 ? 0 : 52;
 }
 
@@ -681,21 +679,21 @@ static int test_live_pool(void)
     if (expect_status(sl_sqlserver_pool_acquire(&arena, &pool, &first, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_sqlserver_pool_acquire(&arena, &pool, &second, NULL), SL_STATUS_OK) != 0)
     {
-        (void)sl_sqlserver_pool_close(&pool);
+        sl_sqlserver_pool_close(&pool);
         return 62;
     }
     status = sl_sqlserver_pool_acquire(&arena, &pool, &third, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_SQLSERVER_POOL_EXHAUSTED)
     {
-        (void)sl_sqlserver_pool_close(&pool);
+        sl_sqlserver_pool_close(&pool);
         return 63;
     }
     if (expect_status(sl_sqlserver_pool_release(&pool, first), SL_STATUS_OK) != 0 ||
         expect_status(sl_sqlserver_pool_acquire(&arena, &pool, &third, NULL), SL_STATUS_OK) != 0 ||
         third != first)
     {
-        (void)sl_sqlserver_pool_close(&pool);
+        sl_sqlserver_pool_close(&pool);
         return 64;
     }
     return expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) == 0 &&

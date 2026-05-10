@@ -563,13 +563,16 @@ Static-analysis suppressions:
 - Prefer fixing the analyzer finding over suppressing it. Suppressions are narrow,
   reviewed debt, not a baseline dumping ground.
 
-Ignored stdio/format return values:
+Void casts and ignored return values:
 
-- Do not write `(void)snprintf(...)`, `(void)fprintf(...)`, `(void)fputs(...)`,
-  `(void)printf(...)`, or `(void)fputc(...)`.
+- Do not use `(void)` casts to silence ignored function return values.
+- Plain `(void)parameter` suppression is allowed for fixed-signature callback parameters or
+  platform branches that intentionally do not use an argument.
 - If the return value matters for truncation, formatting, or write failure, check it and
-  propagate or report the error. If failure is intentionally non-actionable in a test or
-  best-effort diagnostic path, call the function directly without a void cast.
+  propagate or report the error. Output-file `fclose` can report final buffered write
+  failures and must be checked when command success depends on durable output. If failure is
+  intentionally non-actionable in a test, cleanup, or best-effort diagnostic path, call the
+  function directly without a void cast.
 - New implementation code should not use `snprintf` at all; use Sloppy string builders or
   canonical formatting helpers instead.
 
@@ -625,8 +628,7 @@ when it is enabled, assertions must remain active even if a toolchain or build m
 
 - Raw `malloc`/`free` outside allocator modules.
 - `strcpy`, `strcat`, `sprintf`, `vsprintf`, `gets`.
-- `(void)` casts on ignored `snprintf`, `fprintf`, `fputs`, `printf`, or `fputc`
-  return values.
+- `(void)` casts around ignored function calls.
 - Unchecked `memcpy`, `memmove`, `snprintf`.
 - `strlen` on untrusted/non-boundary strings.
 - Variable length arrays.

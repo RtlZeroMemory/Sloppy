@@ -23,7 +23,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
             sl_http2_frame_parse(sl_bytes_from_parts(data, size), max_frame_size, &frame)) &&
         frame.header.type == SL_HTTP2_FRAME_SETTINGS)
     {
-        (void)sl_http2_settings_parse(&frame, &settings);
+        sl_http2_settings_parse(&frame, &settings);
     }
 
     return 0;

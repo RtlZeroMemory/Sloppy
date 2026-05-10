@@ -1208,16 +1208,16 @@ SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlAre
     status = sl_provider_operation_copy_descriptor(arena, operation, descriptor);
     if (!sl_status_is_ok(status)) {
         operation->state = SL_PROVIDER_OPERATION_TERMINAL;
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
 
     sl_provider_executor_lock(executor);
     if (executor->shutting_down) {
+        executor->shutdown_rejected_count += 1U;
         sl_provider_executor_unlock(executor);
         operation->state = SL_PROVIDER_OPERATION_TERMINAL;
-        (void)sl_arena_reset_to(arena, mark);
-        executor->shutdown_rejected_count += 1U;
+        sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_CANCELLED);
     }
     slot->operation = operation;
@@ -1417,9 +1417,9 @@ SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,
             if (operation->cancellation != NULL &&
                 !sl_cancellation_token_is_cancelled(operation->cancellation))
             {
-                (void)sl_cancellation_token_cancel(operation->cancellation,
-                                                   SL_CANCELLATION_REASON_SHUTDOWN,
-                                                   sl_str_from_cstr("provider executor shutdown"));
+                sl_cancellation_token_cancel(operation->cancellation,
+                                             SL_CANCELLATION_REASON_SHUTDOWN,
+                                             sl_str_from_cstr("provider executor shutdown"));
             }
         }
         sl_provider_executor_unlock(executor);

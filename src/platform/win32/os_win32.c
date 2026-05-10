@@ -655,8 +655,15 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
             sl_os_win32_close_handle(&stdout_write);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        (void)SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0U);
-        (void)SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0U);
+        if (!SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0U) ||
+            !SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0U))
+        {
+            sl_os_win32_close_handle(&stdout_read);
+            sl_os_win32_close_handle(&stdout_write);
+            sl_os_win32_close_handle(&stderr_read);
+            sl_os_win32_close_handle(&stderr_write);
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         startup.StartupInfo.hStdOutput = stdout_write;
         startup.StartupInfo.hStdError = stderr_write;
         inherited_handles[inherited_handle_count++] = stdout_write;
@@ -707,10 +714,19 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         sl_os_win32_close_handle(&devnull);
         return status;
     }
-    if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1U, 0U, &attribute_size) ||
-        !UpdateProcThreadAttribute(startup.lpAttributeList, 0U, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1U, 0U, &attribute_size)) {
+        sl_os_win32_close_handle(&stdout_read);
+        sl_os_win32_close_handle(&stdout_write);
+        sl_os_win32_close_handle(&stderr_read);
+        sl_os_win32_close_handle(&stderr_write);
+        sl_os_win32_close_handle(&stdin_read);
+        sl_os_win32_close_handle(&devnull);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (!UpdateProcThreadAttribute(startup.lpAttributeList, 0U, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                                    (void*)inherited_handles, handle_list_size, NULL, NULL))
     {
+        DeleteProcThreadAttributeList(startup.lpAttributeList);
         sl_os_win32_close_handle(&stdout_read);
         sl_os_win32_close_handle(&stdout_write);
         sl_os_win32_close_handle(&stderr_read);
@@ -768,7 +784,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         }
         if (wait_result == WAIT_OBJECT_0) {
             DWORD exit_code = 0U;
-            (void)GetExitCodeProcess(process.hProcess, &exit_code);
+            GetExitCodeProcess(process.hProcess, &exit_code);
             out->exit_code = (int32_t)exit_code;
             break;
         }
@@ -787,8 +803,8 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
             static const DWORD quantum_ms = 10U;
             elapsed_ms += quantum_ms;
             if (elapsed_ms >= options->timeout_ms) {
-                (void)TerminateProcess(process.hProcess, 1U);
-                (void)WaitForSingleObject(process.hProcess, INFINITE);
+                TerminateProcess(process.hProcess, 1U);
+                WaitForSingleObject(process.hProcess, INFINITE);
                 out->timed_out = true;
                 out->exit_code = 1;
                 break;
@@ -898,7 +914,10 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         if (!CreatePipe(&stdin_read, &stdin_write, &security, 0U)) {
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        (void)SetHandleInformation(stdin_write, HANDLE_FLAG_INHERIT, 0U);
+        if (!SetHandleInformation(stdin_write, HANDLE_FLAG_INHERIT, 0U)) {
+            status = sl_status_from_code(SL_STATUS_INTERNAL);
+            goto cleanup_fail;
+        }
         startup.StartupInfo.hStdInput = stdin_read;
         inherited_handles[inherited_handle_count++] = stdin_read;
     }
@@ -918,7 +937,10 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
             sl_os_win32_close_handle(&nul_read);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        (void)SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0U);
+        if (!SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0U)) {
+            status = sl_status_from_code(SL_STATUS_INTERNAL);
+            goto cleanup_fail;
+        }
         startup.StartupInfo.hStdOutput = stdout_write;
         inherited_handles[inherited_handle_count++] = stdout_write;
     }
@@ -944,7 +966,10 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
             sl_os_win32_close_handle(&nul_write);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
-        (void)SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0U);
+        if (!SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0U)) {
+            status = sl_status_from_code(SL_STATUS_INTERNAL);
+            goto cleanup_fail;
+        }
         startup.StartupInfo.hStdError = stderr_write;
         inherited_handles[inherited_handle_count++] = stderr_write;
     }
@@ -1022,7 +1047,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     sl_os_win32_close_handle(&nul_write);
     status = sl_arena_alloc(arena, sizeof(*handle), _Alignof(SlOsProcessHandle), &memory);
     if (!sl_status_is_ok(status)) {
-        (void)TerminateProcess(process.hProcess, 1U);
+        TerminateProcess(process.hProcess, 1U);
         sl_os_win32_close_handle(&process.hThread);
         sl_os_win32_close_handle(&process.hProcess);
         sl_os_win32_close_handle(&stdin_write);
@@ -1086,7 +1111,7 @@ SlStatus sl_os_platform_process_wait(SlOsProcessHandle* handle,
                                         sl_str_from_cstr("process wait failed"),
                                         sl_str_from_cstr("native process wait failed."));
     }
-    (void)GetExitCodeProcess(handle->process, &exit_code);
+    GetExitCodeProcess(handle->process, &exit_code);
     handle->exit_code = (int32_t)exit_code;
     handle->waited = true;
     *out = (SlOsProcessExit){
@@ -1210,8 +1235,8 @@ void sl_os_platform_process_dispose(SlOsProcessHandle* handle)
     if (!handle->waited && handle->process != NULL &&
         WaitForSingleObject(handle->process, 0U) == WAIT_TIMEOUT)
     {
-        (void)TerminateProcess(handle->process, 1U);
-        (void)WaitForSingleObject(handle->process, INFINITE);
+        TerminateProcess(handle->process, 1U);
+        WaitForSingleObject(handle->process, INFINITE);
     }
     sl_os_win32_close_handle(&handle->stdin_write);
     sl_os_win32_close_handle(&handle->stdout_read);

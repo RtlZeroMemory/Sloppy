@@ -36,6 +36,7 @@ void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
 void bad_void_cast(FILE* file) { (void)fputs("bad", file); }
+void bad_close_cast(FILE* file) { (void)fclose(file); }
 EOF
     cat > "$invalid/src/cli/bad_fragment.inc" <<'EOF'
 void bad_fragment_write(FILE* file) { (void)fputs("bad", file); }
@@ -44,16 +45,37 @@ EOF
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
 EOF
+    cat > "$invalid/tests/unit/core/test_bad.cc" <<'EOF'
+namespace ns { void close(); }
+struct BadVoidCallCasts {
+    void close();
+    void run(void (*cleanup_fn)(void*), void* ctx) {
+        (void)this->close();
+        (void)ns::close();
+        (void)(*cleanup_fn)(ctx);
+    }
+};
+EOF
     cat > "$invalid_inc/src/cli/bad.inc" <<'EOF'
 #include <stdlib.h>
 void* bad_cli_alloc(void) { return malloc(16); }
 EOF
 
     SLOPPY_C_STANDARDS_ROOT="$valid" "$0" >/dev/null
-    if SLOPPY_C_STANDARDS_ROOT="$invalid" "$0" >/dev/null 2>&1; then
+    invalid_out="$tmp/invalid.out"
+    if SLOPPY_C_STANDARDS_ROOT="$invalid" "$0" >"$invalid_out" 2>&1; then
         echo "C standards scanner self-test invalid fixture unexpectedly passed." >&2
         exit 1
     fi
+    if ! grep -q "(void)" "$invalid_out"; then
+        echo "C standards scanner self-test did not assert void casts." >&2
+        cat "$invalid_out" >&2
+        exit 1
+    fi
+    cat > "$valid/tests/unit/core/test_unused_cast.c" <<'EOF'
+void ok_unused_cast(void* user) { (void)user; }
+EOF
+    SLOPPY_C_STANDARDS_ROOT="$valid" "$0" >/dev/null
     invalid_inc_out="$tmp/invalid-inc.out"
     if SLOPPY_C_STANDARDS_ROOT="$invalid_inc" "$0" >"$invalid_inc_out" 2>&1; then
         echo "C standards scanner self-test .inc-only invalid fixture unexpectedly passed." >&2
@@ -196,9 +218,8 @@ while IFS= read -r file; do
             add_finding violations "$file" "$line_number" "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." "${BASH_REMATCH[2]}"
         fi
 
-        if is_implementation_path "$file" &&
-            [[ "$line" =~ \(void\)[[:space:]]*(snprintf|fprintf|fputs|printf|fputc)[[:space:]]*\( ]]; then
-            add_finding violations "$file" "$line_number" "Do not cast ignored stdio/format return values to void." "(void)${BASH_REMATCH[1]}"
+        if [[ "$line" =~ \(void\)[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*[[:space:]]*((-\>|\.|::)[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)*)[[:space:]]*\(|\([[:space:]]*\*?[[:space:]]*[A-Za-z_][A-Za-z0-9_]*((-\>|\.|::)[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]*\)[[:space:]]*\() ]]; then
+            add_finding violations "$file" "$line_number" "Do not use void casts to silence ignored function return values. Call intentionally ignored cleanup functions directly, or check return values when failure matters." "(void)"
         fi
 
         if is_implementation_path "$file" &&

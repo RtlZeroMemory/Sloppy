@@ -362,6 +362,22 @@ bool crypto_v8_reject_password_promise(v8::Isolate* isolate, v8::Local<v8::Conte
     return ok;
 }
 
+void crypto_v8_reject_or_throw_password_promise(v8::Isolate* isolate,
+                                                v8::Local<v8::Context> context,
+                                                v8::Local<v8::Promise::Resolver> resolver,
+                                                const char* message, bool type_error)
+{
+    if (crypto_v8_reject_password_promise(isolate, context, resolver, message, type_error)) {
+        return;
+    }
+
+    v8::Local<v8::String> fallback =
+        v8::String::NewFromUtf8Literal(isolate, "Crypto password operation failed");
+    v8::Local<v8::Value> exception =
+        type_error ? v8::Exception::TypeError(fallback) : v8::Exception::Error(fallback);
+    isolate->ThrowException(exception);
+}
+
 void crypto_v8_password_worker(std::shared_ptr<SlV8CryptoPasswordRequest> request)
 {
     char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
@@ -392,7 +408,15 @@ void crypto_v8_password_worker(std::shared_ptr<SlV8CryptoPasswordRequest> reques
     }
 
     crypto_v8_zero_vector(request->password);
-    (void)crypto_v8_post_password_completion(request);
+    if (!crypto_v8_post_password_completion(request)) {
+        crypto_v8_zero_vector(request->password);
+        request->encoded_hash.clear();
+        request->text_result.clear();
+        if (request->worker.joinable() && request->worker.get_id() == std::this_thread::get_id()) {
+            request->worker.detach();
+        }
+        crypto_v8_remove_password_request(request);
+    }
 }
 
 bool crypto_v8_password_options_args(const v8::FunctionCallbackInfo<v8::Value>& args, int ops_index,
@@ -432,7 +456,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
     args.GetReturnValue().Set(resolver->GetPromise());
 
     if (backend == nullptr || backend->async_loop == nullptr) {
-        (void)crypto_v8_reject_password_promise(
+        crypto_v8_reject_or_throw_password_promise(
             isolate, context, resolver,
             "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password async lane is unavailable", false);
         return;
@@ -444,7 +468,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
             !crypto_v8_password_options_args(args, 1, 2, &options))
         {
             crypto_v8_zero_vector(password);
-            (void)crypto_v8_reject_password_promise(
+            crypto_v8_reject_or_throw_password_promise(
                 isolate, context, resolver,
                 "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.hash arguments invalid", true);
             return;
@@ -456,7 +480,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
             !crypto_v8_password_hash_arg(isolate, args[1], &encoded_hash))
         {
             crypto_v8_zero_vector(password);
-            (void)crypto_v8_reject_password_promise(
+            crypto_v8_reject_or_throw_password_promise(
                 isolate, context, resolver,
                 "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.verify arguments invalid", true);
             return;
@@ -465,7 +489,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
     else if (args.Length() != 3 || !crypto_v8_password_hash_arg(isolate, args[0], &encoded_hash) ||
              !crypto_v8_password_options_args(args, 1, 2, &options))
     {
-        (void)crypto_v8_reject_password_promise(
+        crypto_v8_reject_or_throw_password_promise(
             isolate, context, resolver,
             "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.needsRehash arguments invalid", true);
         return;
@@ -475,7 +499,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
                                                            SlV8CryptoPasswordRequest());
     if (request == nullptr) {
         crypto_v8_zero_vector(password);
-        (void)crypto_v8_reject_password_promise(
+        crypto_v8_reject_or_throw_password_promise(
             isolate, context, resolver,
             "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not allocate request", false);
         return;
@@ -493,7 +517,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
         if (backend->crypto_shutting_down) {
             request->resolver.Reset();
             crypto_v8_zero_vector(request->password);
-            (void)crypto_v8_reject_password_promise(
+            crypto_v8_reject_or_throw_password_promise(
                 isolate, context, resolver,
                 "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: crypto is shutting down", false);
             return;
@@ -507,7 +531,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
         request->resolver.Reset();
         crypto_v8_remove_password_request(request);
         crypto_v8_zero_vector(request->password);
-        (void)crypto_v8_reject_password_promise(
+        crypto_v8_reject_or_throw_password_promise(
             isolate, context, resolver,
             "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password worker unavailable", false);
         return;

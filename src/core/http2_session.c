@@ -206,7 +206,7 @@ static int sl_http2_session_callback_result(SlHttp2Session* session, SlStatus st
     if (sl_status_is_ok(status)) {
         return 0;
     }
-    (void)sl_http2_session_callback_fail(session, status);
+    sl_http2_session_callback_fail(session, status);
     return NGHTTP2_ERR_CALLBACK_FAILURE;
 }
 
@@ -721,7 +721,7 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
                 if (stream_id > session->highest_peer_stream_id) {
                     session->highest_peer_stream_id = stream_id;
                 }
-                (void)sl_http2_session_track_stream(session, stream_id);
+                sl_http2_session_track_stream(session, stream_id);
             }
             if ((type == NGHTTP2_HEADERS || type == NGHTTP2_DATA) &&
                 (flags & NGHTTP2_FLAG_END_STREAM) != 0U)
@@ -1333,7 +1333,7 @@ void sl_http2_session_clear_events(SlHttp2Session* session)
     session->event_count = 0U;
     sl_http2_session_clear_current_headers(session);
     if (session->event_mark_valid) {
-        (void)sl_arena_reset_to(session->arena, session->event_mark);
+        sl_arena_reset_to(session->arena, session->event_mark);
     }
 }
 
@@ -1382,12 +1382,12 @@ SlStatus sl_http2_session_submit_request(SlHttp2Session* session, const SlHttp2H
     mark = sl_arena_mark(session->arena);
     status = sl_http2_session_prepare_nghttp2_headers(session->arena, headers, &nva);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(session->arena, mark);
+        sl_arena_reset_to(session->arena, mark);
         return status;
     }
     status = sl_http2_session_prepare_body(session, body, &provider, &provider_ptr);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(session->arena, mark);
+        sl_arena_reset_to(session->arena, mark);
         return status;
     }
 
@@ -1397,11 +1397,11 @@ SlStatus sl_http2_session_submit_request(SlHttp2Session* session, const SlHttp2H
         if (provider.source.ptr != NULL) {
             sl_http2_session_release_outbound_body((SlHttp2OutboundBody*)provider.source.ptr);
         }
-        (void)sl_arena_reset_to(session->arena, mark);
+        sl_arena_reset_to(session->arena, mark);
         return sl_http2_session_status_from_nghttp2(stream_id);
     }
 
-    (void)sl_arena_reset_to(session->arena, mark);
+    sl_arena_reset_to(session->arena, mark);
     *out_stream_id = stream_id;
     return sl_status_ok();
 }
@@ -1425,12 +1425,12 @@ SlStatus sl_http2_session_submit_response(SlHttp2Session* session, int32_t strea
     mark = sl_arena_mark(session->arena);
     status = sl_http2_session_prepare_nghttp2_headers(session->arena, headers, &nva);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(session->arena, mark);
+        sl_arena_reset_to(session->arena, mark);
         return status;
     }
     status = sl_http2_session_prepare_body(session, body, &provider, &provider_ptr);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(session->arena, mark);
+        sl_arena_reset_to(session->arena, mark);
         return status;
     }
 
@@ -1439,7 +1439,7 @@ SlStatus sl_http2_session_submit_response(SlHttp2Session* session, int32_t strea
     if (rv != 0 && provider.source.ptr != NULL) {
         sl_http2_session_release_outbound_body((SlHttp2OutboundBody*)provider.source.ptr);
     }
-    (void)sl_arena_reset_to(session->arena, mark);
+    sl_arena_reset_to(session->arena, mark);
     return sl_http2_session_status_from_nghttp2(rv);
 }
 

@@ -131,7 +131,8 @@ SlStatus sl_platform_dynlib_symbol(const SlPlatformDynlib* library, SlStr symbol
 void sl_platform_dynlib_close(SlPlatformDynlib* library)
 {
     if (library != NULL && library->handle != NULL) {
-        (void)FreeLibrary((HMODULE)library->handle);
-        library->handle = NULL;
+        if (FreeLibrary((HMODULE)library->handle) != 0) {
+            library->handle = NULL;
+        }
     }
 }

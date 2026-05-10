@@ -1240,14 +1240,14 @@ static void sl_http_transport_reset_request_state(SlHttpTransportConnection* con
         return;
     }
     if (connection->body_reader_started && !connection->body_reader_finished) {
-        (void)sl_http_request_body_reader_close(&connection->body_reader, NULL);
+        sl_http_request_body_reader_close(&connection->body_reader, NULL);
     }
     if (connection->request_started) {
-        (void)sl_http_request_close(&connection->request, NULL);
+        sl_http_request_close(&connection->request, NULL);
     }
     sl_arena_reset(&connection->request_arena);
-    (void)sl_byte_builder_init_fixed(&connection->accumulation_builder, connection->accumulation,
-                                     connection->accumulation_capacity);
+    sl_byte_builder_init_fixed(&connection->accumulation_builder, connection->accumulation,
+                               connection->accumulation_capacity);
     connection->request = (SlHttpRequestLifecycle){0};
     connection->body_reader = (SlHttpBodyReader){0};
     connection->accumulation_length = 0U;
@@ -1774,7 +1774,7 @@ static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* c
             (server != NULL && server->config.http2_prior_knowledge_only))
         {
             *out_handled = true;
-            (void)sl_http_transport_connection_diag(
+            sl_http_transport_connection_diag(
                 connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
                 sl_http_transport_literal("HTTP/2 prior-knowledge preface is invalid",
                                           sizeof("HTTP/2 prior-knowledge preface is invalid") - 1U),
@@ -2148,8 +2148,8 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
     if (connection->http2_mode) {
         connection->write_completed = true;
         if (status != 0) {
-            (void)sl_http_connection_fail(&connection->core, NULL);
-            (void)sl_http_transport_connection_close(connection, NULL);
+            sl_http_connection_fail(&connection->core, NULL);
+            sl_http_transport_connection_close(connection, NULL);
             return;
         }
         if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING ||
@@ -2158,7 +2158,7 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
             if (connection->platform != NULL && !connection->platform->tls_enabled) {
                 connection->platform->graceful_shutdown = true;
             }
-            (void)sl_http_transport_connection_close(connection, NULL);
+            sl_http_transport_connection_close(connection, NULL);
             return;
         }
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY;
@@ -2174,9 +2174,9 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
     if (connection->streaming_response && status == 0 && !connection->stream_final_written) {
         if (!sl_status_is_ok(sl_http_transport_write_stream_next(connection, NULL))) {
             if (connection->request_started) {
-                (void)sl_http_request_fail(&connection->request, NULL);
+                sl_http_request_fail(&connection->request, NULL);
             }
-            (void)sl_http_transport_connection_close(connection, NULL);
+            sl_http_transport_connection_close(connection, NULL);
         }
         return;
     }
@@ -2186,26 +2186,26 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
         !sl_http_transport_request_terminal(connection->request.state))
     {
         if (status != 0) {
-            (void)sl_http_transport_connection_diag(
+            sl_http_transport_connection_diag(
                 connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
                 sl_http_transport_literal("HTTP transport response write failed",
                                           sizeof("HTTP transport response write failed") - 1U),
                 sl_http_transport_literal(
                     "socket details stay inside the platform boundary",
                     sizeof("socket details stay inside the platform boundary") - 1U));
-            (void)sl_http_request_fail(&connection->request, NULL);
+            sl_http_request_fail(&connection->request, NULL);
         }
         else {
-            (void)sl_http_request_complete(&connection->request, NULL);
+            sl_http_request_complete(&connection->request, NULL);
         }
     }
 
     if (status == 0 && connection->keep_alive_after_write && !connection->close_after_write) {
-        (void)sl_http_transport_restart_keep_alive_read(connection, NULL);
+        sl_http_transport_restart_keep_alive_read(connection, NULL);
         return;
     }
 
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static void sl_http_transport_tls_write_cb(uv_write_t* request, int status)
@@ -2222,7 +2222,7 @@ static void sl_http_transport_tls_write_cb(uv_write_t* request, int status)
         return;
     }
     if (status != 0) {
-        (void)sl_http_transport_connection_diag(
+        sl_http_transport_connection_diag(
             connection, &diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
             sl_http_transport_literal("HTTP TLS handshake write failed",
                                       sizeof("HTTP TLS handshake write failed") - 1U),
@@ -2231,11 +2231,11 @@ static void sl_http_transport_tls_write_cb(uv_write_t* request, int status)
                                       sizeof("socket and OpenSSL handles stay inside the platform "
                                              "boundary") -
                                           1U));
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_connection_close(connection, NULL);
         return;
     }
     if (!sl_status_is_ok(sl_http_transport_tls_drain_handshake(connection, &diag))) {
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_connection_close(connection, NULL);
     }
 }
 
@@ -2399,7 +2399,7 @@ static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized)
     if (timer == NULL || initialized == NULL || !*initialized) {
         return;
     }
-    (void)uv_timer_stop(timer);
+    uv_timer_stop(timer);
 }
 
 static void sl_http_transport_close_timer(uv_timer_t* timer, bool* initialized)
@@ -2407,7 +2407,7 @@ static void sl_http_transport_close_timer(uv_timer_t* timer, bool* initialized)
     if (timer == NULL || initialized == NULL || !*initialized) {
         return;
     }
-    (void)uv_timer_stop(timer);
+    uv_timer_stop(timer);
     if (!uv_is_closing((uv_handle_t*)timer)) {
         uv_close((uv_handle_t*)timer, sl_http_transport_timer_close_cb);
     }
@@ -2453,7 +2453,7 @@ static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform
         timer->data = platform;
         *initialized = true;
     }
-    (void)uv_timer_stop(timer);
+    uv_timer_stop(timer);
     if (timeout_ms == 0U) {
         return sl_status_ok();
     }
@@ -2489,13 +2489,13 @@ static void sl_http_transport_timeout_connection(SlHttpTransportConnection* conn
     if (sl_http_transport_connection_terminal(connection)) {
         return;
     }
-    (void)sl_http_transport_connection_diag(
+    sl_http_transport_connection_diag(
         connection, &diag, SL_DIAG_HTTP_REQUEST_TIMEOUT, SL_STATUS_DEADLINE_EXCEEDED,
         sl_http_transport_literal("HTTP transport request timed out",
                                   sizeof("HTTP transport request timed out") - 1U),
         phase);
     if (connection->platform != NULL && connection->platform->reading) {
-        (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
+        uv_read_stop((uv_stream_t*)&connection->platform->handle);
         connection->platform->reading = false;
     }
     if (connection->request_started && connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
@@ -2504,7 +2504,7 @@ static void sl_http_transport_timeout_connection(SlHttpTransportConnection* conn
         connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
         connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
     {
-        (void)sl_http_request_timeout(&connection->request, phase, NULL);
+        sl_http_request_timeout(&connection->request, phase, NULL);
     }
     sl_http_transport_stop_connection_timers(connection->platform);
     if (connection->platform != NULL && connection->platform->initialized &&
@@ -2516,7 +2516,7 @@ static void sl_http_transport_timeout_connection(SlHttpTransportConnection* conn
             return;
         }
     }
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static void sl_http_transport_header_timeout_cb(uv_timer_t* timer)
@@ -2559,20 +2559,20 @@ static void sl_http_transport_write_timeout_cb(uv_timer_t* timer)
     if (sl_http_transport_connection_terminal(connection)) {
         return;
     }
-    (void)sl_http_transport_connection_diag(
+    sl_http_transport_connection_diag(
         connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_DEADLINE_EXCEEDED,
         sl_http_transport_literal("HTTP transport response write timed out",
                                   sizeof("HTTP transport response write timed out") - 1U),
         sl_http_transport_literal("late write completion is cleanup-only",
                                   sizeof("late write completion is cleanup-only") - 1U));
     if (connection->request_started) {
-        (void)sl_http_request_timeout(
+        sl_http_request_timeout(
             &connection->request,
             sl_http_transport_literal("HTTP transport write timeout",
                                       sizeof("HTTP transport write timeout") - 1U),
             NULL);
     }
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer)
@@ -2589,13 +2589,13 @@ static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer)
     if (server != NULL) {
         server->idle_timeouts += 1U;
     }
-    (void)sl_http_transport_connection_diag(
+    sl_http_transport_connection_diag(
         connection, &diag, SL_DIAG_HTTP_KEEP_ALIVE_IDLE_TIMEOUT, SL_STATUS_DEADLINE_EXCEEDED,
         sl_http_transport_literal("HTTP keep-alive idle timeout elapsed",
                                   sizeof("HTTP keep-alive idle timeout elapsed") - 1U),
         sl_http_transport_literal("idle keep-alive connections are closed cleanly",
                                   sizeof("idle keep-alive connections are closed cleanly") - 1U));
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static SlStatus sl_http_transport_start_keep_alive_idle(SlHttpTransportConnection* connection,
@@ -2635,14 +2635,14 @@ static SlStatus sl_http_transport_restart_keep_alive_read(SlHttpTransportConnect
     sl_http_transport_reset_request_state(connection);
     status = sl_http_transport_start_keep_alive_idle(connection, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_connection_close(connection, NULL);
         return status;
     }
     if (!connection->platform->reading) {
         rc = uv_read_start((uv_stream_t*)&connection->platform->handle,
                            sl_http_transport_alloc_read, sl_http_transport_on_read);
         if (rc != 0) {
-            (void)sl_http_transport_connection_close(connection, NULL);
+            sl_http_transport_connection_close(connection, NULL);
             return sl_http_transport_uv_status(
                 rc, out_diag, SL_DIAG_HTTP_CONNECTION_CLOSED,
                 sl_http_transport_literal("HTTP keep-alive read restart failed",
@@ -2887,8 +2887,8 @@ static bool sl_http_transport_request_is_h2c_upgrade(SlHttpTransportConnection* 
         head, sl_str_from_cstr("Connection"), sl_str_from_cstr("Upgrade"), &connection_count);
     connection_settings = sl_http_transport_request_header_has_token(
         head, sl_str_from_cstr("Connection"), sl_str_from_cstr("HTTP2-Settings"), NULL);
-    (void)sl_http_transport_request_header_value_count(head, sl_str_from_cstr("HTTP2-Settings"),
-                                                       &settings, &settings_count);
+    sl_http_transport_request_header_value_count(head, sl_str_from_cstr("HTTP2-Settings"),
+                                                 &settings, &settings_count);
 
     if ((connection->platform != NULL && connection->platform->tls_enabled) ||
         head->version_major != 1U || head->version_minor != 1U || upgrade_count != 1U ||
@@ -3309,7 +3309,7 @@ static SlStatus sl_http_transport_dispatch_ready(SlHttpTransportConnection* conn
 
     status = sl_http_transport_write_response(connection, &response, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(&connection->request, NULL);
+        sl_http_request_fail(&connection->request, NULL);
         return status;
     }
     return sl_status_ok();
@@ -3427,7 +3427,7 @@ static void sl_http_transport_dispatch_check_cb(uv_check_t* check)
     if (server == NULL) {
         return;
     }
-    (void)sl_http_transport_dispatch_ready_connections(server, &diag, false);
+    sl_http_transport_dispatch_ready_connections(server, &diag, false);
 }
 
 static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* connection,
@@ -3480,7 +3480,7 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
                                        sl_str_from_cstr("Content-Length"), &content_length) &&
         !sl_http_transport_parse_size_decimal(content_length, &connection->expected_body_length))
     {
-        (void)sl_http_request_fail(&connection->request, NULL);
+        sl_http_request_fail(&connection->request, NULL);
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
             sl_http_transport_literal("HTTP Content-Length is invalid",
@@ -3529,7 +3529,7 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY;
     if (connection->platform != NULL) {
         connection->platform->reading = false;
-        (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
+        uv_read_stop((uv_stream_t*)&connection->platform->handle);
     }
     if (connection->core.backend != NULL && connection->core.backend->listener.platform != NULL) {
         SlHttpTransportServer* server =
@@ -3543,7 +3543,7 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
                 return sl_http_transport_start_dispatch_pump(server, connection, out_diag);
             }
             if (server->config.on_request_ready == NULL) {
-                (void)sl_http_transport_connection_close(connection, NULL);
+                sl_http_transport_connection_close(connection, NULL);
             }
         }
     }
@@ -3601,7 +3601,7 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
     if (sl_http_transport_expect_header_present(
             sl_bytes_from_parts(connection->accumulation, connection->head_length)))
     {
-        (void)sl_http_transport_connection_diag(
+        sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_UNSUPPORTED,
             sl_http_transport_literal("HTTP Expect header is not supported",
                                       sizeof("HTTP Expect header is not supported") - 1U),
@@ -3678,7 +3678,7 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
             }
             if (connection->accumulation_length > chunked_total_needed) {
                 server->pipelining_attempts += 1U;
-                (void)sl_http_request_fail(&connection->request, NULL);
+                sl_http_request_fail(&connection->request, NULL);
                 return sl_http_transport_connection_diag(
                     connection, out_diag, SL_DIAG_HTTP_PIPELINING_UNSUPPORTED,
                     SL_STATUS_UNSUPPORTED,
@@ -3743,7 +3743,7 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
     }
     if (connection->accumulation_length > total_needed) {
         server->pipelining_attempts += 1U;
-        (void)sl_http_request_fail(&connection->request, NULL);
+        sl_http_request_fail(&connection->request, NULL);
         return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_PIPELINING_UNSUPPORTED, SL_STATUS_UNSUPPORTED,
             sl_http_transport_literal("HTTP pipelining is not supported",
@@ -3819,11 +3819,10 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             connection->platform->tls_handshake_write_buffer_size = tls_handshake_write_buffer_size;
             connection->platform->tls_write_buffer = tls_write_buffer;
             connection->platform->tls_write_buffer_size = tls_write_buffer_size;
-            (void)sl_arena_init(&connection->request_arena, connection->request_storage,
-                                connection->request_storage_size);
-            (void)sl_byte_builder_init_fixed(&connection->accumulation_builder,
-                                             connection->accumulation,
-                                             connection->accumulation_capacity);
+            sl_arena_init(&connection->request_arena, connection->request_storage,
+                          connection->request_storage_size);
+            sl_byte_builder_init_fixed(&connection->accumulation_builder, connection->accumulation,
+                                       connection->accumulation_capacity);
             connection->slot_claimed = true;
             return connection;
         }
@@ -3881,7 +3880,7 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
         connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
         connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT)
     {
-        (void)sl_http_request_fail(&connection->request, NULL);
+        sl_http_request_fail(&connection->request, NULL);
     }
     if (connection->http2_mode) {
         if (connection->http2_dispatcher_started && connection->http2_dispatcher != NULL &&
@@ -3900,8 +3899,8 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
                 return;
             }
         }
-        (void)sl_http_connection_fail(&connection->core, NULL);
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_connection_fail(&connection->core, NULL);
+        sl_http_transport_connection_close(connection, NULL);
         return;
     }
     if (connection->platform != NULL && connection->platform->initialized &&
@@ -3917,7 +3916,7 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
             return;
         }
     }
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static void sl_http_transport_disconnect_and_close(SlHttpTransportConnection* connection,
@@ -3933,10 +3932,10 @@ static void sl_http_transport_disconnect_and_close(SlHttpTransportConnection* co
         connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
         connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
     {
-        (void)sl_http_request_cancel(&connection->request, SL_CANCELLATION_REASON_CANCELLED,
-                                     cancel_message, NULL);
+        sl_http_request_cancel(&connection->request, SL_CANCELLATION_REASON_CANCELLED,
+                               cancel_message, NULL);
     }
-    (void)sl_http_transport_connection_close(connection, NULL);
+    sl_http_transport_connection_close(connection, NULL);
 }
 
 static SlStatus sl_http_transport_tls_feed(SlHttpTransportConnection* connection, SlBytes bytes,
@@ -4335,7 +4334,7 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
     }
 
     if (uv_tcp_init(&platform->loop, &connection->platform->handle) != 0) {
-        (void)sl_http_connection_fail(&connection->core, NULL);
+        sl_http_connection_fail(&connection->core, NULL);
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
         server->accept_failures += 1U;
         return;
@@ -4345,7 +4344,7 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
     connection->platform->closing = false;
     connection->platform->handle.data = connection->platform;
     if (uv_accept(listener, (uv_stream_t*)&connection->platform->handle) != 0) {
-        (void)sl_http_connection_fail(&connection->core, NULL);
+        sl_http_connection_fail(&connection->core, NULL);
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
         connection->platform->closing = true;
         uv_close((uv_handle_t*)&connection->platform->handle,
@@ -4356,9 +4355,9 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
 
     accept_status = sl_http_transport_tls_attach(connection, NULL);
     if (!sl_status_is_ok(accept_status)) {
-        (void)sl_http_connection_fail(&connection->core, NULL);
+        sl_http_connection_fail(&connection->core, NULL);
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_connection_close(connection, NULL);
         server->accept_failures += 1U;
         return;
     }
@@ -4366,9 +4365,9 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ACCEPTED;
     server->accepted_connections += 1U;
     if (!sl_status_is_ok(sl_http_transport_start_read(connection, NULL))) {
-        (void)sl_http_connection_fail(&connection->core, NULL);
+        sl_http_connection_fail(&connection->core, NULL);
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_connection_close(connection, NULL);
         server->accept_failures += 1U;
     }
 }
@@ -4647,7 +4646,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     rc = uv_tcp_init(&server->platform->loop, &server->platform->listener);
     if (rc != 0) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
-        (void)uv_loop_close(&server->platform->loop);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return sl_http_transport_uv_status(
             rc, out_diag, SL_DIAG_HTTP_BIND_FAILED,
@@ -4662,7 +4661,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     if (rc != 0) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
-        (void)uv_loop_close(&server->platform->loop);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return sl_http_transport_uv_status(
             rc, out_diag, SL_DIAG_HTTP_LISTEN_FAILED,
@@ -4677,7 +4676,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     if (rc != 0) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
-        (void)uv_loop_close(&server->platform->loop);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return sl_http_transport_uv_status(
             rc, out_diag, SL_DIAG_HTTP_BIND_FAILED,
@@ -4689,7 +4688,8 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     if (!sl_status_is_ok(status)) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
-        (void)uv_loop_close(&server->platform->loop);
+        sl_http_transport_release_tls_context(server->platform);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return status;
     }
@@ -4700,7 +4700,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
         sl_http_transport_release_tls_context(server->platform);
-        (void)uv_loop_close(&server->platform->loop);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return sl_http_transport_uv_status(
             rc, out_diag, SL_DIAG_HTTP_LISTEN_FAILED,
@@ -4712,7 +4712,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     if (!sl_status_is_ok(status)) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
-        (void)uv_loop_close(&server->platform->loop);
+        uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return status;
     }
@@ -4748,7 +4748,7 @@ SlStatus sl_http_transport_server_poll(SlHttpTransportServer* server, SlDiag* ou
         return sl_http_transport_invalid_state(out_diag);
     }
     previous_accept_failures = server->accept_failures;
-    (void)uv_run(&server->platform->loop, UV_RUN_NOWAIT);
+    uv_run(&server->platform->loop, UV_RUN_NOWAIT);
     if (server->accept_failures != previous_accept_failures) {
         return sl_http_transport_diag(
             out_diag, SL_DIAG_HTTP_ACCEPT_FAILED, SL_STATUS_INTERNAL,
@@ -4816,7 +4816,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     if (connection->platform != NULL && connection->platform->initialized &&
         connection->platform->reading)
     {
-        (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
+        uv_read_stop((uv_stream_t*)&connection->platform->handle);
         connection->platform->reading = false;
     }
     if (connection->platform != NULL && connection->platform->writing) {
@@ -4833,7 +4833,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         if (connection->request_started &&
             !sl_http_transport_request_terminal(connection->request.state))
         {
-            (void)sl_http_request_shutdown(&connection->request, NULL);
+            sl_http_request_shutdown(&connection->request, NULL);
         }
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
         return sl_status_ok();
@@ -4846,7 +4846,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
             sl_str_from_cstr("Transfer-Encoding"), &transfer_encoding, NULL) &&
         sl_http_transport_transfer_encoding_is_chunked(transfer_encoding))
     {
-        (void)sl_http_transport_connection_diag(
+        sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_CHUNK_FINAL_MISSING, SL_STATUS_INVALID_ARGUMENT,
             sl_http_transport_literal("HTTP chunked request ended before the final chunk",
                                       sizeof("HTTP chunked request ended before the final chunk") -
@@ -4856,7 +4856,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
                                           1U));
     }
     if (connection->body_reader_started && !connection->body_reader_finished) {
-        (void)sl_http_request_body_reader_close(&connection->body_reader, NULL);
+        sl_http_request_body_reader_close(&connection->body_reader, NULL);
     }
     if (connection->request_started) {
         if (connection->core.backend != NULL &&
@@ -4867,10 +4867,10 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
             connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
             connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
         {
-            (void)sl_http_request_shutdown(&connection->request, NULL);
+            sl_http_request_shutdown(&connection->request, NULL);
         }
         else {
-            (void)sl_http_request_close(&connection->request, NULL);
+            sl_http_request_close(&connection->request, NULL);
         }
     }
     if (connection->http2_dispatcher_started) {
@@ -4879,7 +4879,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         connection->http2_dispatcher_started = false;
         connection->http2_mode = false;
     }
-    (void)sl_http_connection_close(&connection->core, out_diag);
+    sl_http_connection_close(&connection->core, out_diag);
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
     if (connection->platform != NULL && connection->platform->initialized &&
         !connection->platform->closing)
@@ -5024,13 +5024,13 @@ SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* ou
         {
             server->shutdown_idle_closes += 1U;
         }
-        (void)sl_http_transport_connection_close(&server->connections[index], NULL);
+        sl_http_transport_connection_close(&server->connections[index], NULL);
     }
 
     if (server->platform != NULL) {
         sl_http_transport_close_listener(server->platform);
         if (server->platform->loop_initialized) {
-            (void)uv_loop_close(&server->platform->loop);
+            uv_loop_close(&server->platform->loop);
             server->platform->loop_initialized = false;
         }
     }

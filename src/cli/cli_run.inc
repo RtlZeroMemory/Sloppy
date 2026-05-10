@@ -753,9 +753,7 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_dispatch_on_event_loop = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxDispatchesPerTick")) {
-        if (!sl_run_plan_config_parse_positive_size(value,
-                                                    &app->config_max_dispatches_per_tick))
-        {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_dispatches_per_tick)) {
             sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
                                       "Sloppy:Server:MaxDispatchesPerTick must be a positive "
                                       "integer\n");
@@ -1136,17 +1134,17 @@ static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* 
     if (diag != NULL && arena != NULL &&
         sl_status_is_ok(sl_diag_render_text(arena, diag, &rendered)))
     {
-        (void)sl_cli_write_str(stderr, rendered);
+        sl_cli_write_str(stderr, rendered);
         if (should_reset) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
         }
         return;
     }
     if (should_reset) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
     }
     if (diag != NULL && !sl_str_is_empty(diag->message)) {
-        (void)sl_cli_write_str(stderr, diag->message);
+        sl_cli_write_str(stderr, diag->message);
         sl_cli_write_cstr(stderr, "\n");
         return;
     }
@@ -1227,7 +1225,7 @@ static void sl_run_logging_cleanup(void* payload, void* user)
 
     (void)user;
     if (runtime != NULL && *runtime != NULL) {
-        (void)sl_log_runtime_shutdown(*runtime);
+        sl_log_runtime_shutdown(*runtime);
         *runtime = NULL;
     }
 }
@@ -1289,7 +1287,7 @@ static int sl_run_setup_logging(SlRunApp* app)
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag(
             "sloppy run: failed to register logging shutdown cleanup: ", &app->engine_arena, &diag);
-        (void)sl_log_runtime_shutdown(app->logging);
+        sl_log_runtime_shutdown(app->logging);
         app->logging = NULL;
         return 1;
     }
@@ -2230,7 +2228,12 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
             sl_run_print_diag("sloppy run: dynamic dispatch failed: ", &app->engine_arena, &diag);
             return 1;
         }
-        (void)fwrite(result.text.ptr, 1U, result.text.length, stdout);
+        if (result.text.length != 0U &&
+            fwrite(result.text.ptr, 1U, result.text.length, stdout) != result.text.length)
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+            return 1;
+        }
         return 0;
     }
 
@@ -2240,7 +2243,12 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
         return 1;
     }
 
-    (void)fwrite(response, 1U, (size_t)response_length, stdout);
+    if (response_length != 0 &&
+        fwrite(response, 1U, (size_t)response_length, stdout) != (size_t)response_length)
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+        return 1;
+    }
     return 0;
 }
 
@@ -2440,7 +2448,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         else {
             sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
         }
-        (void)sl_http_transport_server_dispose(&server, NULL);
+        sl_http_transport_server_dispose(&server, NULL);
         sl_heap_buffer_dispose(&transport_storage);
         return 1;
     }
@@ -2453,7 +2461,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     if (!sl_status_is_ok(status)) {
         result = 1;
     }
-    (void)sl_http_transport_server_dispose(&server, NULL);
+    sl_http_transport_server_dispose(&server, NULL);
     sl_heap_buffer_dispose(&transport_storage);
     return result;
 }
@@ -3406,7 +3414,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
     }
 
     if (sl_run_load_app(artifacts_path, stdlib_path, package_path, app) != 0) {
-        (void)sl_run_shutdown_app(app);
+        sl_run_shutdown_app(app);
         return 1;
     }
 

@@ -35,13 +35,13 @@ static int sloppy_fuzz_run_seed_file(const char* path)
 
     bytes_read = fread(buffer, 1U, sizeof(buffer), file);
     if (ferror(file) != 0) {
-        (void)fclose(file);
+        fclose(file);
         fprintf(stderr, "failed to read fuzz seed: %s\n", path);
         return 3;
     }
 
     if (fgetc(file) != EOF) {
-        (void)fclose(file);
+        fclose(file);
         fprintf(stderr, "fuzz seed is larger than %u bytes: %s\n",
                 (unsigned)SLOPPY_FUZZ_MAX_SEED_BYTES, path);
         return 4;

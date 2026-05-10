@@ -436,9 +436,9 @@ static SlStatus sl_http_body_reader_check_terminal(SlHttpBodyReader* reader, SlD
     if (reader->request->connection != NULL && reader->request->connection->backend != NULL &&
         reader->request->connection->backend->state == SL_HTTP_BACKEND_STATE_STOPPING)
     {
-        (void)sl_cancellation_token_cancel(&reader->request->cancellation,
-                                           SL_CANCELLATION_REASON_SHUTDOWN,
-                                           sl_str_from_cstr("HTTP backend shutdown"));
+        sl_cancellation_token_cancel(&reader->request->cancellation,
+                                     SL_CANCELLATION_REASON_SHUTDOWN,
+                                     sl_str_from_cstr("HTTP backend shutdown"));
         return sl_http_body_reader_fail(
             reader, SL_HTTP_BODY_READER_STATE_CANCELLED,
             sl_http_backend_shutdown_diag(out_diag, SL_STATUS_CANCELLED));

@@ -259,8 +259,8 @@ static SlStatus sl_local_wait_overlapped(HANDLE handle, OVERLAPPED* overlapped, 
     DWORD transferred = 0U;
 
     if (wait_result == WAIT_TIMEOUT) {
-        (void)CancelIoEx(handle, overlapped);
-        (void)GetOverlappedResult(handle, overlapped, &transferred, TRUE);
+        CancelIoEx(handle, overlapped);
+        GetOverlappedResult(handle, overlapped, &transferred, TRUE);
         return sl_local_fail(out_diag, timeout_code, SL_STATUS_DEADLINE_EXCEEDED, timeout_message);
     }
     if (wait_result != WAIT_OBJECT_0) {
@@ -435,16 +435,16 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     }
     status = sl_local_alloc_connection(arena, options->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
-        (void)CloseHandle(handle);
+        CloseHandle(handle);
         return status;
     }
     if (connection == NULL) {
-        (void)CloseHandle(handle);
+        CloseHandle(handle);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (!SetNamedPipeHandleState(handle, &mode, NULL, NULL)) {
         DWORD error = GetLastError();
-        (void)CloseHandle(handle);
+        CloseHandle(handle);
         connection->state = SL_LOCAL_CONNECTION_FAILED;
         return sl_local_windows_error_status(
             error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE, SL_STATUS_INTERNAL,
@@ -571,26 +571,26 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
                 sl_local_literal("local IPC accept was cancelled or timed out"));
         }
     }
-    (void)CloseHandle(overlapped.hEvent);
+    CloseHandle(overlapped.hEvent);
     if (!sl_status_is_ok(status)) {
         if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
-            (void)CloseHandle(server->pending);
+            CloseHandle(server->pending);
             server->pending = INVALID_HANDLE_VALUE;
-            (void)sl_local_server_create_pending(server, NULL);
+            sl_local_server_create_pending(server, NULL);
         }
         return status;
     }
     status = sl_local_alloc_connection(arena, server->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
-        (void)CloseHandle(server->pending);
+        CloseHandle(server->pending);
         server->pending = INVALID_HANDLE_VALUE;
-        (void)sl_local_server_create_pending(server, NULL);
+        sl_local_server_create_pending(server, NULL);
         return status;
     }
     if (connection == NULL) {
-        (void)CloseHandle(server->pending);
+        CloseHandle(server->pending);
         server->pending = INVALID_HANDLE_VALUE;
-        (void)sl_local_server_create_pending(server, NULL);
+        sl_local_server_create_pending(server, NULL);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     accepted = server->pending;
@@ -600,7 +600,7 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
     status = sl_local_server_create_pending(server, out_diag);
     if (!sl_status_is_ok(status)) {
         connection->state = SL_LOCAL_CONNECTION_FAILED;
-        (void)CloseHandle(accepted);
+        CloseHandle(accepted);
         connection->handle = INVALID_HANDLE_VALUE;
         return status;
     }
@@ -618,8 +618,8 @@ static SlStatus sl_local_server_finish_close(SlLocalServer* server, SlLocalServe
     }
     server->state = SL_LOCAL_SERVER_CLOSING;
     if (server->pending != INVALID_HANDLE_VALUE) {
-        (void)CancelIoEx(server->pending, NULL);
-        (void)CloseHandle(server->pending);
+        CancelIoEx(server->pending, NULL);
+        CloseHandle(server->pending);
         server->pending = INVALID_HANDLE_VALUE;
     }
     server->state = state;
@@ -685,7 +685,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
             has_timeout = true;
             timeout_ms = sl_local_connect_remaining_ms(start_ms, options->timeout_ms, &expired);
             if (expired) {
-                (void)CloseHandle(overlapped.hEvent);
+                CloseHandle(overlapped.hEvent);
                 return sl_local_fail(
                     out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                     SL_STATUS_DEADLINE_EXCEEDED,
@@ -696,7 +696,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
         if (ok) {
             if (!GetOverlappedResult(connection->handle, &overlapped, &transferred, FALSE)) {
                 DWORD error = GetLastError();
-                (void)CloseHandle(overlapped.hEvent);
+                CloseHandle(overlapped.hEvent);
                 return sl_local_windows_error_status(
                     error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                     SL_STATUS_INVALID_STATE,
@@ -706,7 +706,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
         else {
             DWORD error = GetLastError();
             if (error != ERROR_IO_PENDING) {
-                (void)CloseHandle(overlapped.hEvent);
+                CloseHandle(overlapped.hEvent);
                 return sl_local_windows_error_status(
                     error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                     SL_STATUS_INVALID_STATE,
@@ -717,7 +717,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
                 SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                 sl_local_literal("local IPC read or write was cancelled or timed out"));
         }
-        (void)CloseHandle(overlapped.hEvent);
+        CloseHandle(overlapped.hEvent);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -796,7 +796,7 @@ SlStatus sl_local_connection_read_ex(SlLocalConnection* connection, SlArena* are
     if (ok) {
         if (!GetOverlappedResult(connection->handle, &overlapped, &transferred, FALSE)) {
             DWORD error = GetLastError();
-            (void)CloseHandle(overlapped.hEvent);
+            CloseHandle(overlapped.hEvent);
             return sl_local_windows_error_status(
                 error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                 SL_STATUS_INVALID_STATE,
@@ -806,13 +806,13 @@ SlStatus sl_local_connection_read_ex(SlLocalConnection* connection, SlArena* are
     else {
         DWORD error = GetLastError();
         if (error == ERROR_BROKEN_PIPE) {
-            (void)CloseHandle(overlapped.hEvent);
+            CloseHandle(overlapped.hEvent);
             connection->state = SL_LOCAL_CONNECTION_CLOSED;
             return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_DISPOSED, SL_STATUS_INVALID_STATE,
                                  sl_local_literal("local IPC connection or server is disposed"));
         }
         if (error != ERROR_IO_PENDING) {
-            (void)CloseHandle(overlapped.hEvent);
+            CloseHandle(overlapped.hEvent);
             return sl_local_windows_error_status(
                 error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                 SL_STATUS_INVALID_STATE,
@@ -824,7 +824,7 @@ SlStatus sl_local_connection_read_ex(SlLocalConnection* connection, SlArena* are
             SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
             sl_local_literal("local IPC read or write was cancelled or timed out"));
     }
-    (void)CloseHandle(overlapped.hEvent);
+    CloseHandle(overlapped.hEvent);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -946,8 +946,8 @@ static SlStatus sl_local_connection_finish_close(SlLocalConnection* connection,
     }
     connection->state = SL_LOCAL_CONNECTION_CLOSING;
     if (connection->handle != INVALID_HANDLE_VALUE) {
-        (void)CancelIoEx(connection->handle, NULL);
-        (void)CloseHandle(connection->handle);
+        CancelIoEx(connection->handle, NULL);
+        CloseHandle(connection->handle);
         connection->handle = INVALID_HANDLE_VALUE;
     }
     connection->state = state;

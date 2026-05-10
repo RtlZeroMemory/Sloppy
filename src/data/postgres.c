@@ -940,7 +940,7 @@ SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlS
     status = sl_pg_materialize_rows(arena, result, max_rows, &temp);
     PQclear(result);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlPostgresResult){0};
         return status;
     }
@@ -1012,7 +1012,7 @@ SlStatus sl_postgres_query_one(SlArena* arena, SlPostgresConnection* connection,
     status = sl_pg_materialize_first_row(arena, result, &temp);
     PQclear(result);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlPostgresQueryOneResult){0};
         return status;
     }
@@ -1235,7 +1235,7 @@ SlStatus sl_postgres_pool_close(SlPostgresPool* pool)
     }
     for (size_t index = 0U; index < pool->open_count; index += 1U) {
         if (pool->connections[index].open) {
-            (void)sl_postgres_close(&pool->connections[index]);
+            sl_postgres_close(&pool->connections[index]);
         }
         pool->idle[index] = false;
     }

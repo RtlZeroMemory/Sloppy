@@ -65,7 +65,7 @@ static int expect_snapshot(SlStr actual, const char* path)
 
     length = fread(expected, 1U, sizeof(expected), file);
     if (ferror(file) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 2;
     }
 

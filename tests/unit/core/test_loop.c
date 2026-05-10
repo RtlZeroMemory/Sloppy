@@ -128,9 +128,13 @@ static SlStatus stop_completion(SlLoop* loop, SlCompletionKind kind, void* paylo
     (void)kind;
     (void)user;
     if (stop_payload != NULL) {
+        SlStatus status;
         loop_payload.record = stop_payload->record;
         loop_payload.value = stop_payload->value;
-        (void)record_completion(loop, SL_COMPLETION_KIND_TEST, &loop_payload, NULL);
+        status = record_completion(loop, SL_COMPLETION_KIND_TEST, &loop_payload, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
     sl_loop_stop(loop);

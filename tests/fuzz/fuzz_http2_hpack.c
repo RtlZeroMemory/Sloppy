@@ -23,7 +23,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         return 0;
     }
 
-    (void)sl_http2_hpack_decode(&decoder, &arena, sl_bytes_from_parts(data, size), true, &headers);
+    sl_http2_hpack_decode(&decoder, &arena, sl_bytes_from_parts(data, size), true, &headers);
     sl_http2_hpack_decoder_dispose(&decoder);
     return 0;
 }

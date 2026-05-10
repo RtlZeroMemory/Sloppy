@@ -92,7 +92,7 @@ SlStatus sl_platform_dynlib_symbol(const SlPlatformDynlib* library, SlStr symbol
     if (!sl_dynlib_copy_cstr(symbol, csymbol, sizeof(csymbol))) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    (void)dlerror();
+    dlerror();
     pointer = dlsym(library->handle, csymbol);
     const char* message = dlerror();
     if (message != NULL) {
@@ -108,7 +108,7 @@ SlStatus sl_platform_dynlib_symbol(const SlPlatformDynlib* library, SlStr symbol
 void sl_platform_dynlib_close(SlPlatformDynlib* library)
 {
     if (library != NULL && library->handle != NULL) {
-        (void)dlclose(library->handle);
+        dlclose(library->handle);
         library->handle = NULL;
     }
 }

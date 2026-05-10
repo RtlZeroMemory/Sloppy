@@ -47,10 +47,9 @@ static int exercise_arena_and_checked_math(const uint8_t* data, size_t size)
     }
 
     mark = sl_arena_mark(&arena);
-    (void)sl_checked_add3_size(alloc_size, size > 2U ? data[2] : 0U, size > 3U ? data[3] : 0U,
-                               &checked);
-    (void)sl_checked_array_size(alloc_size, alignment, &checked);
-    (void)sl_arena_alloc(&arena, alloc_size, alignment, &ptr);
+    sl_checked_add3_size(alloc_size, size > 2U ? data[2] : 0U, size > 3U ? data[3] : 0U, &checked);
+    sl_checked_array_size(alloc_size, alignment, &checked);
+    sl_arena_alloc(&arena, alloc_size, alignment, &ptr);
     after = sl_arena_stats(&arena);
     if (after.used > after.capacity || after.high_water < after.used) {
         return 1;
@@ -123,9 +122,9 @@ static int exercise_builders(const uint8_t* data, size_t size)
         return 1;
     }
 
-    (void)sl_byte_builder_append_bytes(&byte_builder, bytes);
+    sl_byte_builder_append_bytes(&byte_builder, bytes);
     if (prefix != 0U) {
-        (void)sl_byte_builder_append_bytes(
+        sl_byte_builder_append_bytes(
             &byte_builder, sl_bytes_from_parts(storage, sl_byte_builder_length(&byte_builder)));
     }
     stats = sl_byte_builder_stats(&byte_builder);
@@ -155,9 +154,8 @@ static int exercise_builders(const uint8_t* data, size_t size)
         return 1;
     }
 
-    (void)sl_string_builder_append_str(&string_builder,
-                                       sl_str_from_parts((const char*)data, prefix));
-    (void)sl_string_builder_append_size(&string_builder, size);
+    sl_string_builder_append_str(&string_builder, sl_str_from_parts((const char*)data, prefix));
+    sl_string_builder_append_size(&string_builder, size);
     stats = sl_string_builder_stats(&string_builder);
     if (stats.length > stats.capacity || stats.capacity > stats.max_capacity) {
         return 1;

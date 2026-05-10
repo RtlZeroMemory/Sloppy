@@ -792,7 +792,7 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
         &env, out_diag, arena,
         sl_sqlsrv_literal("operation: doctor", sizeof("operation: doctor") - 1U));
     if (!sl_status_is_ok(status)) {
-        (void)sl_sqlsrv_set_doctor(
+        sl_sqlsrv_set_doctor(
             arena, out_result, false, sl_sqlsrv_literal("unavailable", sizeof("unavailable") - 1U),
             sl_sqlsrv_literal("unchecked", sizeof("unchecked") - 1U),
             sl_sqlsrv_literal("ODBC driver manager is unavailable",
@@ -941,7 +941,7 @@ SlStatus sl_sqlserver_open(SlArena* diag_arena, const SlSqlServerOpenOptions* op
     out_connection->open = true;
     out_connection->transaction_active = false;
     out_connection->access = options->access;
-    (void)sl_arena_reset_to(diag_arena, mark);
+    sl_arena_reset_to(diag_arena, mark);
     return sl_status_ok();
 }
 
@@ -956,11 +956,11 @@ SlStatus sl_sqlserver_close(SlSqlServerConnection* connection)
     dbc = (SQLHDBC)connection->dbc_handle;
     env = (SQLHENV)connection->env_handle;
     if (connection->transaction_active) {
-        (void)SQLEndTran(SQL_HANDLE_DBC, dbc, SQL_ROLLBACK);
+        SQLEndTran(SQL_HANDLE_DBC, dbc, SQL_ROLLBACK);
     }
-    (void)SQLDisconnect(dbc);
-    (void)SQLFreeHandle(SQL_HANDLE_DBC, dbc);
-    (void)SQLFreeHandle(SQL_HANDLE_ENV, env);
+    SQLDisconnect(dbc);
+    SQLFreeHandle(SQL_HANDLE_DBC, dbc);
+    SQLFreeHandle(SQL_HANDLE_ENV, env);
     *connection = (SlSqlServerConnection){0};
     return sl_status_ok();
 }
@@ -1742,7 +1742,7 @@ SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, S
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
     if (!sl_status_is_ok(status)) {
         if (out_diag == NULL || out_diag->code == SL_DIAG_NONE) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
         }
         *out_result = (SlSqlServerResult){0};
         return status;
@@ -1781,7 +1781,7 @@ SlStatus sl_sqlserver_query_one(SlArena* arena, SlSqlServerConnection* connectio
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
     if (!sl_status_is_ok(status)) {
         if (out_diag == NULL || out_diag->code == SL_DIAG_NONE) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
         }
         *out_result = (SlSqlServerQueryOneResult){0};
         return status;
@@ -1873,7 +1873,7 @@ static SlStatus sl_sqlsrv_end_transaction(SlArena* arena, SlSqlServerTransaction
         connection->transaction_active = false;
         tx->connection = NULL;
         tx->active = false;
-        (void)sl_sqlserver_close(connection);
+        sl_sqlserver_close(connection);
         return status;
     }
     tx->connection->transaction_active = false;
@@ -2038,7 +2038,7 @@ SlStatus sl_sqlserver_pool_close(SlSqlServerPool* pool)
     }
     for (size_t index = 0U; index < pool->open_count; index += 1U) {
         if (pool->connections[index].open) {
-            (void)sl_sqlserver_close(&pool->connections[index]);
+            sl_sqlserver_close(&pool->connections[index]);
         }
         pool->idle[index] = false;
     }

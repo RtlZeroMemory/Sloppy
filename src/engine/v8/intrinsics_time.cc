@@ -238,7 +238,7 @@ void time_v8_scheduler(SlV8Engine* backend)
 
         lock.unlock();
         for (const std::shared_ptr<SlV8TimeRequest>& request : due_requests) {
-            (void)time_v8_post_completion(request);
+            time_v8_post_completion(request);
         }
         lock.lock();
     }

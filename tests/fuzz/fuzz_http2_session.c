@@ -28,8 +28,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         return 0;
     }
 
-    (void)sl_http2_session_receive(&session, sl_bytes_from_parts(data, size), &consumed);
-    (void)sl_http2_session_drain_output(&session, &out);
+    sl_http2_session_receive(&session, sl_bytes_from_parts(data, size), &consumed);
+    sl_http2_session_drain_output(&session, &out);
     sl_http2_session_dispose(&session);
     return 0;
 }
