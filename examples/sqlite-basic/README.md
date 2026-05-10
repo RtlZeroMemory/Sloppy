@@ -16,8 +16,8 @@ What works today:
   IDs;
 - `Sloppy.module("data.sqlite").capabilities(...)` declares SQLite database metadata;
 - `data.sqlite.open({ database: ":memory:", capability: "data.main" })` opens a native
-  SQLite connection only when the V8 runtime installs the SQLite bridge intrinsics and has
-  Plan-backed capability metadata;
+  SQLite connection when the V8 runtime exposes the SQLite bridge and the Plan has
+  matching capability metadata;
 - `data.sqlite.open({ database: ":memory:", capability: "data.main", access: "readwrite" })`
   is the canonical explicit shape. `path` remains only a transitional alias for
   `database`, and unsupported option fields fail before provider work;

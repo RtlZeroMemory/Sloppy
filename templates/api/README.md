@@ -4,7 +4,8 @@ The recommended public alpha starter for building a backend with Sloppy.
 SQLite-backed, with routes, route modules, a small service/repository split,
 configuration, health endpoints, and the app package flow.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## Layout
 
@@ -62,8 +63,8 @@ query after running the template migration.
 
 ## Current limitations
 
-- Pre-alpha. Both Sloppy itself and this template can change before a stable
-  release.
+- Public alpha, pre-production. Both Sloppy itself and this template can
+  change before a stable release.
 - SQLite is the strongest provider path. PostgreSQL and SQL Server need their
   own configuration, drivers, and live services; this template does not
   include those.

@@ -4,7 +4,8 @@ A public alpha Program Mode starter that exercises supported Node
 compatibility shims. Sloppy is not a full Node runtime; the shim set grows
 over time through explicit slices backed by Sloppy Core APIs.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## What this template uses
 
@@ -39,7 +40,8 @@ sloppy run .sloppy/package
 
 ## Current limitations
 
-- Pre-alpha. APIs and artifact formats may change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - Node compatibility is partial. Unsupported builtins fail clearly at build
   time (`SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN`). Unsupported members inside a
   partial shim fail at runtime.

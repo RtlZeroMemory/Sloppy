@@ -4,7 +4,8 @@ The smallest public alpha API starter. Two routes, no services, no SQLite.
 Use it for a quick first run or a smoke test; use [`api`](../api/README.md)
 when you want a fuller backend layout.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## Build, run, package
 
@@ -30,6 +31,7 @@ Expected responses:
 
 ## Current limitations
 
-- Pre-alpha. APIs and artifact formats may change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - No services, configuration overlay, or data provider. Add them as needed
   or switch to the `api` template.

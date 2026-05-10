@@ -4,7 +4,8 @@ A practical public alpha CLI starter shaped like a real local tool. Command
 dispatcher, subcommands, filesystem inspection, safe platform indicators,
 clear exit codes, and the packaged CLI flow.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## Build, run, package
 
@@ -35,7 +36,8 @@ Expected output:
 
 ## Current limitations
 
-- Pre-alpha. APIs and artifact formats may change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - Program Mode does not provide full Node globals, native addons, or raw
   terminal APIs.
 - Console output is collected during the run and flushed after the

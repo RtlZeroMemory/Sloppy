@@ -12,22 +12,25 @@ install.
 
 ## Verify the install
 
+In a clean shell, immediately after installing:
+
 ```sh
 sloppy --version
-sloppy doctor
+sloppy --help
 ```
 
-`sloppy --version` prints the runtime CLI version. `sloppy doctor` reports
-what the local install can do, including whether the runtime can execute
-JavaScript handlers (V8) and which native libraries (`libpq`, ODBC, OpenSSL)
-are present.
+`sloppy --version` prints the runtime CLI version. `sloppy --help` lists the
+available subcommands. Both succeed without any project artifacts.
 
-A first end-to-end smoke test:
+`sloppy doctor` is the broader environment report — V8 status, optional
+provider drivers, package metadata, FFI library availability — and it
+expects a built project. Run it after the first build:
 
 ```sh
 sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
+sloppy doctor .sloppy
 sloppy run .sloppy --once GET /health
 ```
 
@@ -43,7 +46,8 @@ ok
 | --- | --- | --- |
 | Windows | x64 | published npm platform package with V8-backed handler execution |
 | Linux (glibc) | x64 | published npm platform package with V8-backed handler execution |
-| macOS | x64, arm64 | published npm platform package with V8-backed handler execution |
+| macOS | arm64 (Apple Silicon) | published npm platform package with V8-backed handler execution |
+| macOS | x64 | source/archive builds |
 | Linux | arm64 | source/archive builds |
 | Windows | arm64 | source/archive builds |
 

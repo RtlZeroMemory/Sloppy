@@ -6,6 +6,24 @@ Current provider kinds are:
 - `postgres`
 - `sqlserver`
 
+## Capability Declaration
+
+Database capabilities are auto-inferred by the compiler in two cases:
+
+- a static provider use such as `app.use(sqlite("main"))` or
+  `app.use(data.sqlite.descriptor("main", ...))`;
+- a typed handler parameter such as `Sqlite<"main">`, `Postgres<"name">`, or
+  `SqlServer<"name">`.
+
+Either form emits the matching `data.<name>` capability in the Plan without
+an explicit `builder.capabilities.addDatabase(...)` call. Explicit
+`addDatabase(...)` is a power-feature variant — use it when you want to set
+the capability access mode, the capability token, or other capability
+metadata explicitly.
+
+If a handler uses a provider but no capability is declared and none can be
+inferred, the compiler refuses the build with `SLOPPYC_E_MISSING_PROVIDER`.
+
 ## Provider Surfaces
 
 Provider support is split across several surfaces. A provider may be visible to

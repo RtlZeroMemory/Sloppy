@@ -18,8 +18,8 @@ sloppy create my-app --template <name>
 | [`package-api`](#package-api) | Web | Backend that consumes a local pure-JS package |
 | [`node-compat`](#node-compat) | Program | Program Mode demo of supported Node shims |
 
-All templates are pre-alpha. Their structure and supported runtime surface
-can change before a stable release.
+All templates are public alpha and pre-production. Their structure and
+supported runtime surface can change before a stable release.
 
 ## api
 
@@ -176,5 +176,5 @@ Where to edit next: import another supported shim listed in
 [Node compatibility](../reference/node-compatibility.md). Unsupported builtins
 fail clearly at build time.
 
-Limits: Node compatibility is not full Node compatibility. The shim set grows
-over time through explicit slices backed by Sloppy Core APIs.
+Limits: Node compatibility is partial. The shim set grows over time through
+explicit slices backed by Sloppy Core APIs.

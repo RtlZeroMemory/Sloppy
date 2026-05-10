@@ -1,14 +1,15 @@
 # Examples
 
-`/examples/` in the repository has many small apps. Most are smoke fixtures
-that let the test suite exercise compiler/runtime behavior. A smaller set is
-worth running by hand to learn real Sloppy idioms.
+`/examples/` has many small apps. This page starts with the ones worth
+running by hand to learn real Sloppy idioms — grouped by what you'd want to
+build — and ends with a full inventory of every example directory.
 
-This page starts with the curated set, then lists every example directory with
-its current role. If a row says "fixture", treat it as test evidence rather
-than a tutorial.
+If you are starting out, prefer a [template](templates.md) over an example:
+templates are starter apps; examples are short demonstrations of a
+particular API surface.
 
-For a complete test-oriented inventory, see `examples/README.md` in the
+For the full test-oriented inventory (including conformance/source-input
+catalogs used by the test suite), see `examples/README.md` in the
 repository.
 
 ## Start here
@@ -62,8 +63,9 @@ repository.
 
 ## Stdlib (filesystem, network, OS, time, crypto, codec)
 
-These are API-shape fixtures rather than full tutorials, but they are the
-shortest path to seeing each stdlib module in real source. Reference docs:
+The shortest path to seeing each stdlib module in real source. Each
+directory is a small, focused demonstration — not a full tutorial.
+Reference docs:
 [Filesystem](../api/filesystem.md), [Network](../api/network.md),
 [HTTP Client](../api/http-client.md), [OS](../api/os.md),
 [Time](../api/time.md), [Crypto](../api/crypto.md),
@@ -204,68 +206,68 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 
 ## Complete example inventory
 
-| Directory | Current role |
+| Directory | What it demonstrates |
 | --- | --- |
-| `codec-base64-hex` | Codec API-shape fixture |
-| `codec-checksums` | Codec API-shape fixture |
-| `codec-compression` | Codec API-shape fixture |
-| `codec-streaming-compression` | Codec API-shape fixture |
-| `codec-text-binary` | Codec API-shape fixture |
-| `compiler-hello` | Compiler/runtime conformance source |
-| `config-basic` | Curated config example |
-| `config-secrets-redaction` | Config redaction fixture |
-| `config-strict-mode` | Config strict-mode fixture |
-| `configured-api` | Compiler/config conformance fixture |
-| `core-config-secrets` | Core integration fixture |
-| `core-fs-time-codec` | Core integration fixture |
-| `core-network-time-codec` | Core integration fixture |
-| `core-policy-audit` | Core integration fixture |
-| `core-process-time-codec` | Core integration fixture |
-| `core-worker-time` | Core integration fixture |
-| `crypto-hash-hmac` | Crypto API-shape fixture |
-| `crypto-password` | Crypto API-shape fixture |
-| `crypto-random-token` | Crypto API-shape fixture |
-| `crypto-secret-constant-time` | Crypto API-shape fixture |
-| `data-foundation` | Data/capability API-shape fixture |
-| `dogfood` | Internal machine-readable example catalog used by the test suite |
-| `ergonomics` | API ergonomics fixture |
-| `framework-controller` | Curated routing/controller example |
-| `framework-di-services` | Curated services example |
-| `framework-explicit-binding` | Curated typed binding example |
-| `framework-hello` | Curated quickstart example |
-| `framework-postgres-crud` | Live PostgreSQL example |
-| `framework-sqlite-crud` | Curated SQLite CRUD example |
-| `framework-sqlserver-crud` | Live SQL Server example |
-| `framework-validation-errors` | Curated validation example |
-| `fs-basic` | Filesystem API-shape fixture |
-| `fs-roots-policy` | Filesystem policy fixture |
-| `fs-streams` | Filesystem streaming API-shape fixture |
-| `fs-watch` | Filesystem watch API-shape fixture |
-| `hello` | Smallest hello-app fixture used by app-host shape checks |
-| `hello-minimal` | Minimal runnable example |
-| `http-client-basic` | HTTP client API-shape fixture |
-| `modules-api` | Compiler module conformance fixture |
-| `modules-basic` | Module API-shape fixture |
-| `net-deadline-cancel` | Network cancellation fixture |
-| `net-local-ipc` | Local IPC API-shape fixture |
-| `net-policy-strict` | Network policy fixture |
-| `net-tcp-client` | TCP client API-shape fixture |
-| `net-tcp-echo` | TCP echo API-shape fixture |
-| `net-tcp-server` | TCP server API-shape fixture |
-| `os-runtime-api` | OS API-shape fixture |
-| `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
+| `codec-base64-hex` | Base64 and hex codec usage |
+| `codec-checksums` | Codec checksum helpers |
+| `codec-compression` | Codec gzip compression |
+| `codec-streaming-compression` | Streaming gzip compression |
+| `codec-text-binary` | Text-to-binary conversion helpers |
+| `compiler-hello` | Compiler/runtime conformance source (contributor) |
+| `config-basic` | `addObject` and typed getters |
+| `config-secrets-redaction` | Secret redaction in config |
+| `config-strict-mode` | Strict config-mode behavior |
+| `configured-api` | Compiler/config conformance (contributor) |
+| `core-config-secrets` | Core integration: config + secrets |
+| `core-fs-time-codec` | Core integration: fs + time + codec |
+| `core-network-time-codec` | Core integration: net + time + codec |
+| `core-policy-audit` | Core integration: policy + audit |
+| `core-process-time-codec` | Core integration: process + time + codec |
+| `core-worker-time` | Core integration: workers + time |
+| `crypto-hash-hmac` | Hash and HMAC helpers |
+| `crypto-password` | Password hashing (Argon2id) |
+| `crypto-random-token` | Random token generation |
+| `crypto-secret-constant-time` | `Secret` and constant-time comparison |
+| `data-foundation` | Data and capability API surface |
+| `dogfood` | Internal example catalog used by the test suite (contributor) |
+| `ergonomics` | API ergonomics demonstrations |
+| `framework-controller` | Controller class + DI through `static inject` |
+| `framework-di-services` | Singleton/scoped/transient services |
+| `framework-explicit-binding` | Typed parameter bindings (Route/Query/Body/Header) |
+| `framework-hello` | First-API quickstart sample |
+| `framework-postgres-crud` | PostgreSQL CRUD (needs a live database) |
+| `framework-sqlite-crud` | SQLite CRUD with typed handler injection |
+| `framework-sqlserver-crud` | SQL Server CRUD (needs a live database) |
+| `framework-validation-errors` | Schema-backed body validation responses |
+| `fs-basic` | `sloppy/fs` read/write basics |
+| `fs-roots-policy` | Named-root filesystem policy |
+| `fs-streams` | Filesystem streaming handles |
+| `fs-watch` | Filesystem watcher |
+| `hello` | Smallest hello-app source used by app-host shape checks |
+| `hello-minimal` | Minimal runnable app |
+| `http-client-basic` | `HttpClient` outbound usage |
+| `modules-api` | Compiler module conformance (contributor) |
+| `modules-basic` | Module API surface |
+| `net-deadline-cancel` | Network deadlines and cancellation |
+| `net-local-ipc` | Local IPC endpoints |
+| `net-policy-strict` | HTTP client origin policy |
+| `net-tcp-client` | TCP client |
+| `net-tcp-echo` | TCP echo loop |
+| `net-tcp-server` | TCP server |
+| `os-runtime-api` | `sloppy/os` System/Environment/Process |
+| `postgres-basic` | PostgreSQL provider (needs a live database) |
 | `prealpha-control-plane` | Multi-file project-mode app host with SQLite and app-test-host coverage |
-| `request-context` | Curated request context example |
-| `sqlite-basic` | SQLite provider fixture |
-| `sqlserver-basic` | SQL Server provider fixture, live-provider gated |
-| `time-basic` | Time API-shape fixture |
-| `time-deadline-cancellation` | Time cancellation fixture |
-| `time-fake-clock` | Time fake-clock fixture |
-| `time-interval-schedule` | Time interval/schedule fixture |
-| `users-api-sqlite` | SQLite source-input conformance example |
-| `validation-errors` | Compiler validation fixture |
-| `workers-background-service` | Curated worker service example |
-| `workers-js-isolate` | Worker isolate API-shape fixture |
-| `workers-shutdown` | Worker shutdown fixture |
-| `workers-workerpool` | Curated worker pool example |
-| `workers-workqueue` | Worker queue fixture |
+| `request-context` | Request context fields and parsing |
+| `sqlite-basic` | SQLite provider basics |
+| `sqlserver-basic` | SQL Server provider (needs a live database) |
+| `time-basic` | `sloppy/time` delays |
+| `time-deadline-cancellation` | Time cancellation |
+| `time-fake-clock` | `Time.fakeClock` |
+| `time-interval-schedule` | Intervals and schedules |
+| `users-api-sqlite` | SQLite source-input conformance (contributor) |
+| `validation-errors` | Compiler validation diagnostics (contributor) |
+| `workers-background-service` | Long-running service alongside HTTP |
+| `workers-js-isolate` | Worker isolate API surface |
+| `workers-shutdown` | Worker shutdown behavior |
+| `workers-workerpool` | Bounded worker isolate pool |
+| `workers-workqueue` | Worker queue |

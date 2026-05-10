@@ -1,7 +1,7 @@
 # Roadmap
 
-Sloppy is pre-alpha. This page separates what exists now from the directions
-that are still being designed.
+Sloppy is in public alpha, pre-production. This page separates what exists
+now from the directions that are still being designed.
 
 ## Current foundation
 
@@ -22,8 +22,10 @@ Current Sloppy includes:
   dependencies, with bundled module artifacts and `sloppy deps` inspection;
 - experimental, unsafe `sloppy/ffi` foundation for typed C ABI calls with
   Plan-visible metadata and packaged local native libraries;
-- published Windows x64, Linux x64, and macOS npm platform packages;
-- source/archive build paths for arm64 and other platforms.
+- published Windows x64, Linux x64 (glibc), and macOS arm64 npm platform
+  packages;
+- source/archive build paths for macOS x64, Linux arm64, Windows arm64, and
+  other platforms.
 
 ## Near-term alpha work
 
@@ -90,9 +92,12 @@ compatibility remain separate roadmap work. See
 
 ## Platform and package distribution
 
-- Windows x64, Linux x64, and macOS are the published npm platform packages.
-- arm64 packaging is being validated through the alpha release flow.
-- Source/archive builds remain the path for unsupported platforms.
+- Published alpha npm platform packages: Windows x64, Linux x64 (glibc),
+  and macOS arm64 (Apple Silicon).
+- Source/archive builds: macOS x64, Linux arm64, Windows arm64, and other
+  platforms.
+- arm64 Linux and arm64 Windows packaging is being validated through the
+  alpha release flow.
 
 ## Production hardening
 

@@ -16,7 +16,7 @@ design areas.
 | --- | --- | --- | --- |
 | Windows x64 | `sloppy-windows-x64.zip` | `sloppy-windows-x64` | Experimental dry-run package lane. |
 | Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and `test-package --require-v8-runtime`. |
-| macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Experimental hosted dry-run lane. |
+| macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Published alpha hosted package lane. |
 | macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Source-build only unless the optional hosted x64 package lane is requested and smoked. |
 
 The package root contains:
@@ -63,9 +63,10 @@ selects an installed platform package:
 
 - `@rtlzeromemory/sloppy-win32-x64`
 - `@rtlzeromemory/sloppy-linux-x64`
+- `@rtlzeromemory/sloppy-darwin-arm64`
 
-macOS npm platform packages are not referenced by the root package or publish workflow until
-hosted macOS package verification exists. npm package dry-runs must use `--tag alpha`, never
+`@rtlzeromemory/sloppy-darwin-x64` is staged as a private template and is not referenced by
+the root package or publish workflow yet. npm package dry-runs must use `--tag alpha`, never
 `latest`. Platform package contents are generated from already-built archive contents; npm
 install must not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.

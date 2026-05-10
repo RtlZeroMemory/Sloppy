@@ -4,8 +4,9 @@ A small CRUD API backed by SQLite. The whole thing fits in one file. By the
 end you'll have a server that creates, reads, updates, and deletes users
 through HTTP.
 
-Prerequisites: you've done the [Quickstart](../quickstart.md), `sloppy` is
-on your `PATH`, and your build executes handlers (V8 enabled).
+Prerequisites: you've done the [Quickstart](../quickstart.md) and `sloppy`
+is on your `PATH`. The published alpha runtime packages are V8-enabled, so
+no extra setup is needed for SQLite — it's bundled with the runtime.
 
 ## 1. Project layout
 
@@ -25,6 +26,29 @@ mkdir src
 ```
 
 ## 2. Wire up SQLite
+
+The compiler auto-infers the database capability when it sees a typed
+provider parameter or a static `app.use(...)` call, so the shortest working
+shape just uses typed injection:
+
+```ts
+import { Sloppy, Results, sql, data } from "sloppy";
+import { Sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.use(data.sqlite.descriptor("main", { database: "users.db" }));
+
+app.get("/users", (db: Sqlite<"main">) =>
+    db.query(sql`SELECT id, name, email FROM users`)
+);
+
+export default app;
+```
+
+That is enough for many apps. The rest of this walkthrough uses the explicit
+builder shape because it shows where startup migrations live, how services
+are registered, and how capability declarations work for power users. Both
+shapes produce a Plan with the same `data.main` capability.
 
 `src/main.ts`:
 

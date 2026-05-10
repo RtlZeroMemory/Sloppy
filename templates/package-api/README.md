@@ -4,7 +4,8 @@ A public alpha backend starter that consumes a compatible local pure-JS
 package through an npm `file:` dependency. It does not require internet
 access.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 Package support is experimental — see "Current limitations" below.
 
 ## How package support works
@@ -43,7 +44,8 @@ The packaged app contains the bundled dependency graph and runs without
 
 ## Current limitations
 
-- Pre-alpha. APIs and artifact formats may change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - Package support is experimental.
 - No registry install, version solving, or lockfile awareness.
 - No Node native addons or N-API.

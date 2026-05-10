@@ -6,13 +6,16 @@ the source checkout.
 
 Prerequisites:
 
-- `sloppy` is on your `PATH` ([Install](install.md)).
-- `sloppy --version` succeeds. `sloppy doctor` reports what the install can do.
-  Steps that execute handlers need a V8-enabled runtime; `sloppy build`,
-  `routes`, `capabilities`, `doctor`, `audit`, `openapi`, and `package` only
-  read metadata.
+- `sloppy` is installed and on your `PATH` ([Install](install.md)).
+- `sloppy --version` succeeds.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+The published alpha runtime packages are V8-enabled, so handler execution
+(`sloppy run`) works out of the box. Inspection commands like `sloppy build`,
+`routes`, `capabilities`, `doctor`, `audit`, `openapi`, and `package` only
+read metadata.
+
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## API
 

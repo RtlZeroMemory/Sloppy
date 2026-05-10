@@ -4,7 +4,8 @@ The smallest public alpha route-free Program Mode starter. Use it for console
 tools, local jobs, or scripts; use [`cli`](../cli/README.md) when you want a
 practical CLI layout.
 
-Pre-alpha note: APIs and artifact formats may change between alpha revisions.
+Public alpha, pre-production. APIs and artifact formats may change between
+alpha revisions.
 
 ## Build, run, package
 
@@ -35,7 +36,8 @@ environment=Development
 
 ## Current limitations
 
-- Pre-alpha. APIs and artifact formats may change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - No full Node globals, native addons, or raw terminal APIs. Use the Sloppy
   stdlib or supported `node:*` shims.
 - Console output is collected during the run and flushed after the entrypoint

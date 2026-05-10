@@ -54,17 +54,21 @@ If you are comparing Sloppy with other JavaScript runtimes, read
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
-sloppy create my-api --template minimal-api
+sloppy create my-api
 cd my-api
 sloppy build
+sloppy routes .sloppy
 sloppy run .sloppy --once GET /health
 sloppy openapi .sloppy
-sloppy package --format json
+sloppy package
+sloppy run .sloppy/package --once GET /health
 ```
 
-That loop creates a project, compiles the supported source into `.sloppy/`
-artifacts, runs one request through the runtime, generates OpenAPI from Plan
-metadata, and writes an app package.
+That loop creates a project from the default `api` template, compiles the
+source into `.sloppy/` artifacts, runs one request through the runtime,
+generates OpenAPI from Plan metadata, packages the app, and runs the
+packaged app. For the smallest possible smoke test, use
+`sloppy create my-api --template minimal-api`.
 
 ## What works today
 
@@ -73,7 +77,7 @@ metadata, and writes an app package.
 - CLI: `create`, `build`, `run`, `package`, `routes`, `deps`,
   `capabilities`, `doctor`, `audit`, and `openapi`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
-  execution on Windows x64, Linux x64, and macOS alpha packages.
+  execution on Windows x64, Linux x64, and macOS arm64 alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
@@ -90,16 +94,16 @@ metadata, and writes an app package.
 - [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
   Plan exists.
 
-## Pre-alpha limits
+## Public alpha limits
 
-Sloppy is for experiments, demos, and feedback right now. APIs and artifacts can
-change between alpha revisions. Package support is limited to compatible
-installed JavaScript that Sloppy can bundle, and Sloppy is not a full Node
-runtime.
+Sloppy is in public alpha and pre-production. Usable for experiments, demos,
+and feedback; APIs and artifact formats may change between alpha revisions;
+it is not production-ready. Package support is limited to compatible installed
+JavaScript that Sloppy can bundle, and Sloppy is not a full Node runtime.
 
-Published platform packages are Windows x64, Linux x64, and macOS for this
-alpha. arm64 packages are part of the alpha release validation path; use
-source builds in the meantime.
+Published alpha npm platform packages are Windows x64, Linux x64 (glibc),
+and macOS arm64 (Apple Silicon). macOS x64, Linux arm64, and Windows arm64
+use source/archive builds.
 
 ## Examples
 

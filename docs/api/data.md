@@ -70,6 +70,31 @@ The wrappers validate up front; bad input throws before the query runs.
 The simplest provider. No external server. Best for the local dev loop and
 single-node services.
 
+The compiler auto-infers the database capability when it sees a typed
+provider parameter (`Sqlite<"name">`, `Postgres<"name">`, `SqlServer<"name">`)
+or a static `app.use(sqlite("name"))` call, so most apps don't need to call
+`addDatabase` themselves. The shortest working shape:
+
+```ts
+import { Sloppy, Results, sql, data } from "sloppy";
+import { Sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.use(data.sqlite.descriptor("main", { database: "app.db" }));
+
+app.get("/users", (db: Sqlite<"main">) =>
+    db.query(sql`SELECT id, name FROM users`)
+);
+
+export default app;
+```
+
+The compiler emits `data.main` as a required capability without an explicit
+`addDatabase` call. If you want explicit control — non-default access mode,
+custom capability token, runtime-derived database path — use the builder
+shape and declare the capability directly. This is the **power-feature
+variant** for fine-grained control:
+
 ```ts
 const builder = Sloppy.createBuilder();
 
@@ -88,6 +113,11 @@ builder.services.addSingleton("data.main", () =>
 
 const app = builder.build();
 ```
+
+If you use a provider in a handler without it being declared anywhere
+(neither typed injection, nor `app.use(...)`, nor `addDatabase(...)`), the
+compiler refuses the build with `SLOPPYC_E_MISSING_PROVIDER` — so the
+capability is never silently inferred from nothing.
 
 Opening with `:memory:` gets you an in-memory database — convenient for
 tests:

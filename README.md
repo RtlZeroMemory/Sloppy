@@ -1,7 +1,5 @@
-<img width="1267" height="370" alt="SLOPPY" src="https://github.com/user-attachments/assets/5741c460-6617-4a70-92e0-0e00c4579a4d" />
-
 <p align="center">
-  <img src="docs/public/logo.svg" alt="Sloppy mascot" width="128" height="128" />
+  <img src="docs/public/banner.svg" alt="Sloppy — public alpha TypeScript runtime" width="100%" />
 </p>
 
 # Sloppy
@@ -12,11 +10,12 @@
 ![pre-alpha](https://img.shields.io/badge/status-pre--alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Pre-alpha TypeScript runtime and application framework for backend APIs,
-> CLIs, and local programs.
+> Public alpha (pre-production) TypeScript runtime and application framework
+> for backend APIs, CLIs, and local programs.
 
-Sloppy is a public alpha TypeScript runtime built around a compiler-first
-application model. You write supported TypeScript, `sloppyc` lowers the source
+Sloppy is a public alpha, pre-production TypeScript runtime built around a
+compiler-first application model. You write supported TypeScript, `sloppyc`
+lowers the source
 into a deterministic Plan, and the native runtime executes that known app
 shape through an isolated V8 bridge. The model is inspired by ASP.NET-style
 backend ergonomics: declare what the app is and let the framework wire it up.
@@ -36,8 +35,9 @@ Sloppy has two current execution shapes:
 - **Program Mode** — route-free console tools and local programs with
   `main(args, ctx)`, stdlib imports, packaging, and artifact execution.
 
-Pre-alpha means APIs and artifact formats can still change between alpha
-revisions.
+"Public alpha, pre-production" means Sloppy is usable for experiments, demos,
+and feedback; APIs and artifact formats may change between alpha revisions;
+and it is not production-ready.
 
 ## Start here
 
@@ -62,10 +62,10 @@ npm install -g @rtlzeromemory/sloppy@alpha
 sloppy --version
 ```
 
-Windows x64, Linux x64, and macOS are the published alpha npm platform
-packages. arm64 platform packages are part of the alpha release validation
-path; use source builds in the meantime. `sloppy doctor` reports what the
-local install can do.
+Published alpha npm platform packages: Windows x64, Linux x64 (glibc), and
+macOS arm64 (Apple Silicon). macOS x64, Linux arm64, and Windows arm64 are
+source/archive builds. Once installed, `sloppy --version` confirms the CLI
+is on `PATH`.
 
 More detail: [Install](docs/install.md).
 
@@ -170,7 +170,8 @@ Surface-by-surface status: [Stability Reference](docs/reference/stability.md).
 Sloppy is usable for experiments, demos, and feedback. It is not a production
 edge runtime, and it is not a drop-in replacement for Node, Bun, or Deno.
 
-- Pre-alpha. APIs and artifact formats can change between alpha revisions.
+- Public alpha, pre-production. APIs and artifact formats may change between
+  alpha revisions.
 - Not full Node compatibility. Node API support is partial and grows through
   explicit shims backed by Sloppy Core APIs.
 - Not full npm compatibility. Package support is experimental: Sloppy bundles
@@ -180,8 +181,9 @@ edge runtime, and it is not a drop-in replacement for Node, Bun, or Deno.
 - FFI is experimental and unsafe. Wrong signatures or invalid pointers can
   crash the process.
 - Benchmarks are local engineering measurements, not a superiority claim.
-- arm64 npm platform packages are part of the alpha release validation path;
-  use source builds in the meantime.
+- Only Windows x64, Linux x64 (glibc), and macOS arm64 ship as published
+  alpha npm platform packages. macOS x64, Linux arm64, and Windows arm64
+  use source/archive builds.
 - Live PostgreSQL and SQL Server checks need explicit local services and
   drivers.
 
@@ -228,7 +230,7 @@ dependency story and production-hardening direction.
 
 ## Contributing and feedback
 
-Sloppy is pre-alpha. Reports from real attempts are useful: install problems,
+Sloppy is in public alpha. Reports from real attempts are useful: install problems,
 confusing diagnostics, examples that do not match behavior, missing docs, and
 small API paper cuts.
 

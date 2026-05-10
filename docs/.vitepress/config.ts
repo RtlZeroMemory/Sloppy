@@ -52,6 +52,8 @@ export default defineConfig({
           { text: "Using installed packages", link: "/guide/using-packages" },
           { text: "Native FFI", link: "/guide/native-ffi" },
           { text: "SQLite walkthrough", link: "/guide/sqlite" },
+          { text: "PostgreSQL walkthrough", link: "/guide/postgres" },
+          { text: "SQL Server walkthrough", link: "/guide/sqlserver" },
           { text: "Request logging", link: "/guide/request-logging" },
           { text: "TypeScript source input", link: "/guide/typescript" },
           { text: "Plan model", link: "/guide/plan-model" },

@@ -18,7 +18,8 @@ Compiler-emitted plans currently set:
 | --- | --- | --- |
 | Windows | x64 | published alpha npm platform package |
 | Linux (glibc) | x64 | published alpha npm platform package |
-| macOS | x64, arm64 | published alpha npm platform package |
+| macOS | arm64 (Apple Silicon) | published alpha npm platform package |
+| macOS | x64 | source/archive builds |
 | Linux | arm64 | source/archive builds |
 | Windows | arm64 | source/archive builds |
 
@@ -28,7 +29,8 @@ Compiler-emitted plans currently set:
 | --- | --- | --- |
 | Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
 | Linux x64 local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
-| macOS local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
+| macOS arm64 local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
+| macOS x64 local development | Source/archive build path; alpha npm package not published. | Local source build checks where available. |
 | Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled test run. |
 | Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Integration checks with configured services. |
 

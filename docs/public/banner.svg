@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sloppy — public alpha TypeScript runtime">
+  <rect width="1280" height="320" rx="32" fill="#2A1430"/>
+
+  <g transform="translate(100 60)" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" fill="#FFD3DE">
+    <text x="0" y="140" font-size="160" font-weight="800" letter-spacing="-4">Sloppy</text>
+    <text x="6" y="200" font-size="34" font-weight="500" fill="#FFB7C9" letter-spacing="0.4">compiler-first TypeScript runtime</text>
+    <g transform="translate(0 232)" font-size="20" font-weight="600" fill="#2A1430">
+      <rect x="0" y="0" width="148" height="34" rx="17" fill="#FFB7C9"/>
+      <text x="74" y="23" text-anchor="middle">public alpha</text>
+      <rect x="160" y="0" width="118" height="34" rx="17" fill="#FFD3DE"/>
+      <text x="219" y="23" text-anchor="middle">TypeScript</text>
+      <rect x="290" y="0" width="108" height="34" rx="17" fill="none" stroke="#E89A4D" stroke-width="2"/>
+      <text x="344" y="23" text-anchor="middle" fill="#E89A4D">pre-production</text>
+    </g>
+  </g>
+
+  <g transform="translate(960 60)" stroke="#2A1430" stroke-width="4" stroke-linejoin="round">
+    <circle cx="100" cy="100" r="100" fill="#F58AA8"/>
+    <path d="M26 56L52 30L60 82Z" fill="#F58AA8"/>
+    <path d="M174 56L148 30L140 82Z" fill="#F58AA8"/>
+    <path d="M39 32L52 44L47 62Z" fill="#FFD3DE" stroke="none"/>
+    <path d="M161 32L148 44L153 62Z" fill="#FFD3DE" stroke="none"/>
+    <ellipse cx="100" cy="124" rx="54" ry="42" fill="#FFB7C9"/>
+    <ellipse cx="82" cy="124" rx="6" ry="9" fill="#2A1430" stroke="none"/>
+    <ellipse cx="118" cy="124" rx="6" ry="9" fill="#2A1430" stroke="none"/>
+    <circle cx="64" cy="80" r="8" fill="#2A1430" stroke="none"/>
+    <circle cx="136" cy="80" r="8" fill="#2A1430" stroke="none"/>
+    <circle cx="64" cy="77" r="2" fill="#FFD3DE" stroke="none"/>
+    <circle cx="136" cy="77" r="2" fill="#FFD3DE" stroke="none"/>
+    <path d="M74 158Q100 172 126 160" stroke-width="8" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>
