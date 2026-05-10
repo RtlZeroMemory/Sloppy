@@ -225,8 +225,8 @@ The costs are real:
 - Node built-ins and globals exist only when Sloppy implements an explicit
   API for that behavior.
 - The compiler accepts a focused TypeScript/JavaScript source subset.
-- Dynamic web app shapes fail closed instead of producing partial route
-  metadata.
+- Dynamic web app shapes can run, but metadata may be partial. Sloppy shows
+  the incomplete parts instead of pretending they are complete.
 - Sloppy is pre-alpha. APIs, artifact formats, and internal boundaries can
   still change.
 

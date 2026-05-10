@@ -68,6 +68,13 @@ impl Completeness {
         }
     }
 
+    pub fn dynamic(reasons: Vec<CompletenessReason>) -> Self {
+        Self {
+            status: CompletenessStatus::Dynamic,
+            reasons,
+        }
+    }
+
     pub fn opaque(reasons: Vec<CompletenessReason>) -> Self {
         Self {
             status: CompletenessStatus::Opaque,
@@ -145,6 +152,16 @@ pub fn plan_completeness(routes: &[Completeness]) -> Completeness {
                 "one or more routes explicitly require runtime-only metadata",
             )],
         };
+    }
+
+    if routes
+        .iter()
+        .any(|route| route.status == CompletenessStatus::Dynamic)
+    {
+        return Completeness::dynamic(vec![CompletenessReason::new(
+            "dynamic-route",
+            "one or more routes have dynamic metadata",
+        )]);
     }
 
     if routes

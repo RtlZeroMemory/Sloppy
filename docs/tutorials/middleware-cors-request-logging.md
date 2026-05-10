@@ -2,8 +2,10 @@
 
 This path is useful when you are working in the app-host supported surface.
 Compiler source-input support exists for the static subset documented in
-[Framework metadata](../reference/framework.md); unsupported dynamic shapes fail
-closed.
+[Framework metadata](../reference/framework.md). Sloppy does not require every
+route to be statically understood. If the compiler can emit runnable JavaScript,
+the app can run. Static source gives stronger Plan metadata; dynamic source
+produces partial metadata and findings.
 
 ## Create
 

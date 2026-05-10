@@ -1,5 +1,11 @@
 {
-  "contract": "The compiler rejects dynamic route inputs before runtime execution.",
-  "routes": [],
-  "sourceMap": "not emitted"
+  "contract": "Dynamic route inputs can build with partial Plan metadata while static routes remain runnable.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "handler": "Health.Get"
+    }
+  ],
+  "sourceMap": "present"
 }

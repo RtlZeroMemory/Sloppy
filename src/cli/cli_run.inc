@@ -66,6 +66,7 @@ typedef struct SlRunApp
     bool config_has_logging_console_enabled;
     bool config_has_logging_console_format;
     bool config_has_logging_file_path;
+    bool has_dynamic_routes;
 } SlRunApp;
 
 static SlRunApp sl_run_command_app_storage;
@@ -77,6 +78,28 @@ static SlRunApp* sl_run_command_app(void)
 }
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
+
+static bool sl_run_bytes_contains_str(SlBytes bytes, SlStr needle)
+{
+    if (bytes.ptr == NULL || needle.ptr == NULL || needle.length == 0U ||
+        bytes.length < needle.length)
+    {
+        return false;
+    }
+    for (size_t index = 0U; index + needle.length <= bytes.length; index += 1U) {
+        bool matched = true;
+        for (size_t offset = 0U; offset < needle.length; offset += 1U) {
+            if (bytes.ptr[index + offset] != (unsigned char)needle.ptr[offset]) {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static bool sl_run_copy_cstr(char* buffer, size_t capacity, const char* value)
 {
@@ -1060,6 +1083,8 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     {
         return 1;
     }
+    app->has_dynamic_routes =
+        sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\""));
 
     parse_options.source_name = sl_str_from_cstr(plan_path);
     status = sl_plan_parse_json(&app->plan_arena, json, &parse_options, &app->plan, &diag);
@@ -1198,7 +1223,9 @@ static int sl_run_validate_startup(SlRunApp* app)
     }
 
     validation.diag_arena = &app->plan_arena;
-    validation.require_runnable_route = app->plan.kind == SL_PLAN_KIND_WEB;
+    validation.allow_dynamic_route_metadata = app->has_dynamic_routes;
+    validation.require_runnable_route =
+        app->plan.kind == SL_PLAN_KIND_WEB && !app->has_dynamic_routes;
     validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
 
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
@@ -1225,15 +1252,17 @@ static int sl_run_validate_runtime_features(SlRunApp* app)
         status = sl_runtime_feature_activate_plan(&app->plan, NULL, &app->plan_arena,
                                                   &app->runtime_features, &diag);
         if (!sl_status_is_ok(status)) {
-            sl_run_print_diag("sloppy run: runtime feature activation failed: ",
-                              &app->engine_arena, &diag);
+            sl_run_print_diag("sloppy run: runtime feature activation failed: ", &app->engine_arena,
+                              &diag);
             return 1;
         }
         return 0;
     }
 
     validation.diag_arena = &app->plan_arena;
-    validation.require_runnable_route = app->plan.kind == SL_PLAN_KIND_WEB;
+    validation.allow_dynamic_route_metadata = app->has_dynamic_routes;
+    validation.require_runnable_route =
+        app->plan.kind == SL_PLAN_KIND_WEB && !app->has_dynamic_routes;
     validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
     validation.validate_runtime_features = true;
     validation.out_runtime_features = &app->runtime_features;
@@ -1275,6 +1304,10 @@ static int sl_run_prepare_routes(SlRunApp* app)
                           "sloppy run: app.plan.json contains more routes than the dev runtime can "
                           "materialize\n");
         return 1;
+    }
+
+    if (app->has_dynamic_routes) {
+        return 0;
     }
 
     status = sl_http_route_table_build(&app->route_arena, &app->plan, &app->route_table, &diag);
@@ -1393,11 +1426,11 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
-    if (app->plan.kind == SL_PLAN_KIND_WEB) {
+    if (app->plan.kind == SL_PLAN_KIND_WEB && !app->has_dynamic_routes) {
         status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
         if (!sl_status_is_ok(status)) {
-            sl_run_print_diag("sloppy run: registered handler validation failed: ",
-                              &app->engine_arena, &diag);
+            sl_run_print_diag(
+                "sloppy run: registered handler validation failed: ", &app->engine_arena, &diag);
             return 1;
         }
     }
@@ -1884,6 +1917,62 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
         return 1;
     }
 
+    if (app->has_dynamic_routes) {
+        char eval_source[SL_RUN_RESPONSE_MAX_BYTES];
+        SlStringBuilder builder;
+        SlStr eval_view = {0};
+        SlEngineResult result = {0};
+        SlDiag diag = {0};
+        SlStatus status;
+        if (strchr(method, '"') != NULL || strchr(method, '\\') != NULL ||
+            strchr(target, '"') != NULL || strchr(target, '\\') != NULL)
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: dynamic --once method and target must not "
+                                      "contain quote or backslash\n");
+            return 1;
+        }
+        status = sl_string_builder_init_fixed(&builder, eval_source, sizeof(eval_source));
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(
+                &builder, "globalThis.__sloppy_dynamic_once = function() { return "
+                          "globalThis.__sloppy_dispatch_dynamic(\"");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, method);
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "\", \"");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, target);
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "\"); };");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_view_with_nul(&builder, &eval_view);
+        }
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_cstr(stderr, "sloppy run: dynamic --once dispatch source is too long\n");
+            return 1;
+        }
+        status = sl_engine_eval_source(app->engine, sl_str_from_cstr("sloppy:dynamic-once"),
+                                       eval_view, &diag);
+        if (!sl_status_is_ok(status)) {
+            sl_run_print_diag(
+                "sloppy run: failed to prepare dynamic dispatch: ", &app->engine_arena, &diag);
+            return 1;
+        }
+        status = sl_engine_call_function0(
+            app->engine, &request_arena, sl_str_from_cstr("__sloppy_dynamic_once"), &result, &diag);
+        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT) {
+            sl_run_print_diag("sloppy run: dynamic dispatch failed: ", &app->engine_arena, &diag);
+            return 1;
+        }
+        (void)fwrite(result.text.ptr, 1U, result.text.length, stdout);
+        return 0;
+    }
+
     response_length = sl_run_dispatch_head(app, &request, response, sizeof(response));
     if (response_length < 0) {
         sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
@@ -2130,8 +2219,7 @@ static bool sl_run_copy_current_directory(char* buffer, size_t capacity)
     return true;
 }
 
-static bool sl_run_append_program_args_json(SlStringBuilder* builder,
-                                            const SlCliOptions* options)
+static bool sl_run_append_program_args_json(SlStringBuilder* builder, const SlCliOptions* options)
 {
     size_t index = 0U;
 
@@ -2141,9 +2229,7 @@ static bool sl_run_append_program_args_json(SlStringBuilder* builder,
     if (options != NULL) {
         for (index = 0U; index < options->program_arg_count; index += 1U) {
             const char* arg = options->program_args != NULL ? options->program_args[index] : "";
-            if (index != 0U &&
-                !sl_status_is_ok(sl_string_builder_append_char(builder, ',')))
-            {
+            if (index != 0U && !sl_status_is_ok(sl_string_builder_append_char(builder, ','))) {
                 return false;
             }
             if (!sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(arg))) {
@@ -2177,8 +2263,8 @@ static int sl_run_set_program_invocation_context(SlRunApp* app, const SlCliOptio
 
     status = sl_string_builder_init_fixed(&builder, source_storage, sizeof(source_storage));
     if (!sl_status_is_ok(status) ||
-        !sl_status_is_ok(sl_string_builder_append_cstr(
-            &builder, "(function(){const __sloppyArgs=")) ||
+        !sl_status_is_ok(
+            sl_string_builder_append_cstr(&builder, "(function(){const __sloppyArgs=")) ||
         !sl_run_append_program_args_json(&builder, options) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(
             &builder, ";const __sloppyFrozenArgs=Object.freeze(__sloppyArgs.slice());"
@@ -2197,8 +2283,8 @@ static int sl_run_set_program_invocation_context(SlRunApp* app, const SlCliOptio
         return 1;
     }
 
-    status = sl_engine_eval_source(app->engine, sl_str_from_cstr("sloppy:program-context"),
-                                   source, &diag);
+    status = sl_engine_eval_source(app->engine, sl_str_from_cstr("sloppy:program-context"), source,
+                                   &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: failed to stage program context: ", &app->engine_arena,
                           &diag);
@@ -2226,9 +2312,8 @@ static int sl_run_resolve_package_artifacts_path(const char* artifacts_path,
         return 0;
     }
     if (!sl_cli_directory_has_package_manifest(artifacts_path)) {
-        sl_cli_write_cstr(
-            stderr,
-            "sloppy run: artifact or package directory must contain app.plan.json or manifest.json\n");
+        sl_cli_write_cstr(stderr, "sloppy run: artifact or package directory must contain "
+                                  "app.plan.json or manifest.json\n");
         return 1;
     }
     if (!sl_run_artifact_file_path(resolved_artifacts_path, resolved_artifacts_path_capacity,
@@ -2400,8 +2485,7 @@ static const char* sl_run_resolve_compiler_path(const char* command_name)
 static int sl_run_compile_source(const char* source_path, const char* out_dir,
                                  const SlCliOptions* options, const char* environment,
                                  const char* command_name, const char* config_dir,
-                                 const char* project_kind,
-                                 const SlSloppyRunConfig* project_config)
+                                 const char* project_kind, const SlSloppyRunConfig* project_config)
 {
     const char* compiler_path = NULL;
     char* compiler_argv[40];
@@ -2549,8 +2633,8 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
         return 1;
     }
 
-    if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy run",
-                              config_dir, project_kind, project_config) != 0)
+    if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy run", config_dir,
+                              project_kind, project_config) != 0)
     {
         return 1;
     }
@@ -2710,7 +2794,8 @@ static int sl_run_program_emit_json_result(SlBytes body, bool* handled, int* out
     if (events != NULL) {
         yyjson_arr_iter_init(events, &iter);
         while ((event = yyjson_arr_iter_next(&iter)) != NULL) {
-            yyjson_val* stream_value = yyjson_is_obj(event) ? yyjson_obj_get(event, "stream") : NULL;
+            yyjson_val* stream_value =
+                yyjson_is_obj(event) ? yyjson_obj_get(event, "stream") : NULL;
             yyjson_val* text_value = yyjson_is_obj(event) ? yyjson_obj_get(event, "text") : NULL;
             FILE* stream = NULL;
             const char* text = NULL;
@@ -2752,8 +2837,7 @@ static int sl_run_program_emit_json_result(SlBytes body, bool* handled, int* out
     return 0;
 }
 
-static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options,
-                               const char* environment)
+static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options, const char* environment)
 {
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2920,8 +3004,9 @@ static int sl_cli_command_run(const SlCliOptions* options)
     }
     else if (options->once_method != NULL) {
         if (options->program_args_explicit) {
-            sl_cli_write_cstr(stderr,
-                              "sloppy run: program arguments after -- are only valid for Program Plans\n");
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy run: program arguments after -- are only valid for Program Plans\n");
             result = 1;
         }
         else {
@@ -2929,8 +3014,8 @@ static int sl_cli_command_run(const SlCliOptions* options)
         }
     }
     else if (options->program_args_explicit) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy run: program arguments after -- are only valid for Program Plans\n");
+        sl_cli_write_cstr(
+            stderr, "sloppy run: program arguments after -- are only valid for Program Plans\n");
         result = 1;
     }
     else {

@@ -367,8 +367,8 @@
                 "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
                 "-DSLOPPY_CASE=compiler-failure"
-                "-DSLOPPY_SOURCE=compiler/tests/fixtures/computed-method/input.js"
-                "-DSLOPPY_EXPECTED_ERROR=compiler handoff failed" -P
+                "-DSLOPPY_SOURCE=compiler/tests/fixtures/unsupported-dynamic-import/input.js"
+                "-DSLOPPY_EXPECTED_ERROR=UNSUPPORTED_DYNAMIC_IMPORT" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(sloppy.run.source_input_compiler_failure
                              PROPERTIES LABELS "source-input")
@@ -380,8 +380,8 @@
                 "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" "-DSLOPPY_COMMAND=build"
                 "-DSLOPPY_CASE=build-compiler-failure"
-                "-DSLOPPY_SOURCE=compiler/tests/fixtures/computed-method/input.js"
-                "-DSLOPPY_EXPECTED_ERROR=compiler handoff failed" -P
+                "-DSLOPPY_SOURCE=compiler/tests/fixtures/unsupported-dynamic-import/input.js"
+                "-DSLOPPY_EXPECTED_ERROR=UNSUPPORTED_DYNAMIC_IMPORT" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(sloppy.build.source_input_compiler_failure
                              PROPERTIES LABELS "source-input")

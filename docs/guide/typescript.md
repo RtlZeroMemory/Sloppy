@@ -1,9 +1,10 @@
 # TypeScript support
 
-`sloppyc` accepts a focused subset of TypeScript and JavaScript. The
-goal is to extract a deterministic Plan from your source — anything the
-compiler can't statically analyze is rejected with a stable
-`SLOPPYC_E_*` diagnostic.
+`sloppyc` accepts a focused subset of TypeScript and JavaScript. Sloppy does
+not require every route to be statically understood. If the compiler can emit
+runnable JavaScript inside Sloppy's supported runtime boundary, the app can
+run. Static source gives stronger Plan metadata; dynamic source produces
+partial metadata and findings.
 
 This page is the high-level shape. The full matrix of error codes and
 extraction rules lives in
@@ -64,12 +65,11 @@ handler is too dynamic for the extractor, you'll get
 Confirmed unsupported (each has a fixture or diagnostic code):
 
 - npm imports, dynamic `import()`, `node:` specifier prefix.
-- Dynamic route patterns and computed method names
-  (`SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`,
-  `SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD`).
-- Conditional or loop-based route registration
-  (`fixtures/conditional-route-registration/`,
-  `fixtures/loop-route-registration/`).
+- Dynamic route patterns, computed method names, helper-based registration,
+  conditionals, and loops build when the transformed JavaScript remains
+  executable. The Plan records complete metadata for static routes and
+  `dynamicRoutes` plus `SLOPPYC_W_DYNAMIC_ROUTE` findings for route metadata
+  the compiler cannot fully infer.
 - Closures over module-level bindings inside handlers
   (`fixtures/unsupported-handler-capture/`).
 - TypeScript handler shapes the extractor doesn't model
@@ -92,8 +92,9 @@ functions, modules) is broader, but:
   editor for full type checking; `sloppyc` parses TS syntax to extract
   Plan metadata.
 - It does *not* evaluate arbitrary expressions. Static literals (route
-  patterns, capability tokens, service tokens) are extracted; computed
-  values are rejected.
+  patterns, capability tokens, service tokens) are extracted as strong
+  metadata; computed route values become partial/dynamic metadata when the
+  generated app can still run.
 
 If a syntactic feature isn't covered by a fixture, treat it as
 unverified — file an issue or check the diagnostic if the compiler
@@ -178,8 +179,9 @@ unsupported static non-SQLite provider handles such as
 
 - **Import paths must be statically analyzable.** `import("./" + name)`
   is rejected.
-- **Route registrations are top-level only.** No `if`/`for` wrapping
-  the call; no computed method names.
+- **Static routes produce stronger metadata.** Dynamic route registrations,
+  loops, helpers, and conditionals can run, but CLI route metadata and OpenAPI
+  are partial unless the compiler can reduce them safely.
 - **No `process.env`.** Sloppy source has no `process` global. Use
   `Environment.get(...)` from `"sloppy/os"` if you need env access in
   module code, or read configuration via `ctx.config` inside a

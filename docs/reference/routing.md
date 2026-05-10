@@ -58,11 +58,11 @@ Bootstrap registration requires handler functions.
 
 Compiler extraction currently enforces:
 
-- route registration must be top-level
-- route method calls must target extracted app/group variables
-- pattern must be a string literal
-- handler must be an inline function/arrow in supported shapes
-- dynamic route strings, computed methods, loop/conditional registration are rejected
+- statically extracted route method calls must target extracted app/group variables
+- literal patterns and supported handler shapes produce complete route metadata
+- computed route strings, loops, conditionals, and helper registration can run
+  when the generated JavaScript stays inside Sloppy's runtime boundary
+- dynamic route shapes produce partial/dynamic Plan metadata and findings
 
 ## Runtime Dispatch Notes
 
@@ -71,7 +71,9 @@ Compiler extraction currently enforces:
   body bytes at the transport boundary.
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
   the route table can match the request path. `GET` routes also advertise `HEAD`.
-- Route availability still depends on emitted Plan metadata.
+- Static route-table availability depends on emitted complete Plan metadata.
+  Dynamic source-input routes execute through the generated JavaScript runtime
+  path when V8 is enabled.
 - CORS-enabled routes synthesize `OPTIONS` preflight route entries in the
   app-host route table and in compiler-emitted Plan metadata for static CORS
   policies.

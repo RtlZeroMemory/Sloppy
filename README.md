@@ -176,8 +176,9 @@ Current limits:
 - Sloppy apps do not resolve arbitrary `node_modules` packages.
 - Sloppy is not a full Node runtime. Node globals and built-ins exist only when
   Sloppy implements an explicit API for that behavior.
-- The compiler supports a focused source subset. Dynamic app shapes fail closed
-  instead of producing partial Plans.
+- The compiler supports a focused source subset. Dynamic web shapes can run
+  with partial metadata; unsupported imports/runtime features still fail
+  clearly.
 - macOS and arm64 package-manager distribution are not part of this alpha.
 - Live PostgreSQL and SQL Server checks need explicit local services and
   drivers.

@@ -1,4 +1,4 @@
-error SLOPPY_E_INVALID_ROUTE_PATTERN: unsupported dynamic route pattern
+error SLOPPY_E_INVALID_ROUTE_PATTERN: route pattern is not a static Plan pattern
 
   --> app.js:5:12 (len 9)
    |

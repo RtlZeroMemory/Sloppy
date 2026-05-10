@@ -1,8 +1,6 @@
 {
-  "contract": "Unsupported dynamic routes fail with a stable diagnostic instead of a runtime snapshot.",
-  "diagnosticCodes": [
-    "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
-  ],
+  "contract": "Dynamic route metadata emits a Plan warning instead of a fatal diagnostic.",
+  "diagnosticCodes": [],
   "redaction": {
     "mustNotContain": [
       "SECRET_SHOULD_NOT_APPEAR"

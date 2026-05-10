@@ -21,6 +21,7 @@ extern "C" {
 typedef struct SlAppHostStartupValidation
 {
     SlArena* diag_arena;
+    bool allow_dynamic_route_metadata;
     bool require_runnable_route;
     size_t max_runnable_routes;
     bool validate_runtime_features;

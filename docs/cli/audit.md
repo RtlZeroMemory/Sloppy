@@ -21,6 +21,7 @@ remain explicit forms for scripts.
 - provider metadata shape;
 - provider/capability consistency;
 - filesystem and network capability visibility.
+- partial/dynamic route metadata findings emitted by the compiler.
 
 ## Text output
 

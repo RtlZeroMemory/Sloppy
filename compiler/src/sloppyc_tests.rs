@@ -764,6 +764,8 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_sql_runtime: false,
         source_files: Vec::new(),
         routes: Vec::new(),
+        dynamic_routes: Vec::new(),
+        dynamic_entry_source: None,
         service_registrations: Vec::new(),
         modules: Vec::new(),
         helper_sources: Vec::new(),
@@ -2357,19 +2359,36 @@ export default app;
 }
 
 #[test]
-fn rejects_dynamic_route_pattern() {
+fn constant_route_pattern_alias_stays_complete_route_metadata() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 const pattern = "/";
 app.mapGet(pattern, () => Results.text("Hello"));
 export default app;
 "#;
-    let diagnostic =
-        extract(std::path::Path::new("app.js"), source).expect_err("dynamic route should fail");
-    assert_eq!(
-        diagnostic.code,
-        "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
-    );
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("constant route pattern alias should compile");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/");
+    assert!(app.dynamic_routes.is_empty());
+}
+
+#[test]
+fn dynamic_route_pattern_emits_dynamic_metadata_instead_of_failing() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function pathFor(name) {
+  return `/${name}`;
+}
+app.mapGet(pathFor("health"), () => Results.text("Hello"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("dynamic route metadata should not fail extraction");
+    assert!(app.routes.is_empty());
+    assert_eq!(app.dynamic_routes.len(), 1);
+    assert_eq!(app.dynamic_routes[0].method, Some("GET"));
+    assert!(app.dynamic_routes[0].handler_known);
 }
 
 #[test]
@@ -4981,16 +5000,19 @@ export default app;
 }
 
 #[test]
-fn rejects_member_expression_captures_outside_context_roots() {
+fn captured_member_expression_emits_dynamic_response_metadata() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 const config = { message: "captured" };
 app.mapGet("/", (ctx) => Results.json({ message: config.message, id: ctx.route.id }));
 export default app;
 "#;
-    let diagnostic = extract(std::path::Path::new("app.js"), source)
-        .expect_err("captured member expression should fail");
-    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("captured response value should fall back to dynamic metadata");
+    assert!(app.routes.is_empty());
+    assert_eq!(app.dynamic_routes.len(), 1);
+    assert_eq!(app.dynamic_routes[0].method, Some("GET"));
+    assert_eq!(app.dynamic_routes[0].pattern.as_deref(), Some("/"));
 }
 
 #[test]
@@ -5163,14 +5185,8 @@ fn success_fixture_expected_outputs_stay_current() {
 fn rejected_fixture_diagnostics_stay_current() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     for (fixture_name, input_name) in [
-        ("unsupported-dynamic-route", "input.js"),
-        ("computed-method", "input.js"),
-        ("loop-route-registration", "input.js"),
-        ("conditional-route-registration", "input.js"),
         ("unsupported-handler-parameter", "input.js"),
-        ("unsupported-handler-capture", "input.js"),
         ("unsupported-handler-shape", "input.js"),
-        ("unsupported-typescript-handler", "input.ts"),
         ("unsupported-import-alias", "input.js"),
         ("unsupported-data-import-alias", "input.js"),
         ("unsupported-sloppy-default-import", "input.js"),
@@ -5181,6 +5197,7 @@ fn rejected_fixture_diagnostics_stay_current() {
         ("unsupported-http-method", "input.js"),
         ("unsupported-async-handler-body", "input.js"),
         ("unsupported-secret-capability", "input.js"),
+        ("unsupported-typescript-handler", "input.ts"),
         ("unsupported-dynamic-import", "input.js"),
         ("missing-relative-import", "input.js"),
         ("missing-provider-effect", "input.js"),
@@ -5216,7 +5233,7 @@ fn rejected_fixture_diagnostics_stay_current() {
 #[test]
 fn rejected_build_does_not_emit_success_artifacts() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input = root.join("tests/fixtures/computed-method/input.js");
+    let input = root.join("tests/fixtures/unsupported-dynamic-import/input.js");
     let out_dir = std::env::temp_dir().join(format!(
         "sloppyc-rejected-build-test-{}",
         std::process::id()
@@ -5230,7 +5247,7 @@ fn rejected_build_does_not_emit_success_artifacts() {
         .expect_err("fixture should fail to build");
     assert_eq!(
         failure.diagnostic.code,
-        "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD"
+        "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT"
     );
     assert!(
         !out_dir.join("app.plan.json").exists()

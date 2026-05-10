@@ -1,6 +1,0 @@
-<compiler>/tests/fixtures/conditional-route-registration/input.js:5:1: SLOPPYC_E_UNSUPPORTED_CONDITIONAL_ROUTE_REGISTRATION: conditional route registration is not supported
-  --> <compiler>/tests/fixtures/conditional-route-registration/input.js:5:1
-   |
-5 | if (true) {
-   | ^^^^^^^^^^^^
-hint: Register compiler-extracted routes unconditionally at the top level.

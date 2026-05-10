@@ -168,7 +168,9 @@ static SlStatus sl_app_host_validate_plan_header(const SlPlan* plan,
                                     1U),
             SL_STATUS_UNSUPPORTED);
     }
-    if (plan->handler_count == 0U || plan->handlers == NULL) {
+    if ((plan->handler_count == 0U || plan->handlers == NULL) &&
+        (options == NULL || !options->allow_dynamic_route_metadata))
+    {
         return sl_app_host_diag(
             options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
             sl_app_host_literal("app plan has no handler table",

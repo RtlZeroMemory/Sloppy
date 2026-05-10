@@ -39,6 +39,13 @@ static SlStr sl_plan_parse_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
+static bool sl_plan_parse_has_dynamic_routes(yyjson_val* root)
+{
+    yyjson_val* dynamic_routes = yyjson_obj_get(root, "dynamicRoutes");
+    return dynamic_routes != NULL && yyjson_is_arr(dynamic_routes) &&
+           yyjson_arr_size(dynamic_routes) > 0U;
+}
+
 static bool sl_plan_parse_str_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -628,7 +635,9 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
 
     handler_count = yyjson_arr_size(handlers);
     if (handler_count == 0U) {
-        if (out->kind == SL_PLAN_KIND_PROGRAM) {
+        if (out->kind == SL_PLAN_KIND_PROGRAM ||
+            (out->kind == SL_PLAN_KIND_WEB && sl_plan_parse_has_dynamic_routes(root)))
+        {
             out->handlers = NULL;
             out->handler_count = 0U;
             return sl_status_ok();

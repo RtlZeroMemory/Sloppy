@@ -4,7 +4,6 @@ Default compiler conformance cases:
 
 | Case | Source fixture | Expected behavior |
 | --- | --- | --- |
-| Dynamic route registration | `compiler/tests/fixtures/unsupported-dynamic-route/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN` and leaves no success artifacts. |
 | Arbitrary bare import | `compiler/tests/fixtures/unsupported-import-specifier/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` and leaves no success artifacts. |
 | Unsupported async handler body | `compiler/tests/fixtures/unsupported-async-handler-body/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and leaves no success artifacts. |
 | Secret-bearing capability metadata | `compiler/tests/fixtures/unsupported-secret-capability/input.js` | Build fails with `SLOPPYC_E_SECRET_PLAN_METADATA` and leaves no success artifacts. |
@@ -29,3 +28,7 @@ Unsupported request body behavior is covered by HTTP request parser and dispatch
 Malformed JSON, oversized bodies, unsupported content types, and unsupported transfer
 framing fail before handler entry. Socket-mode conformance still needs a real body-bearing
 request fixture.
+
+Dynamic route registration is no longer an unsupported-behavior case. Runnable
+dynamic web code builds, emits partial/dynamic Plan metadata, and uses Plan
+findings to explain unknown route metadata.

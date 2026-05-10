@@ -55,9 +55,18 @@ metadata, the native dispatcher also consumes Plan-backed route/query/header sca
   and health metadata are optional compiler/CLI metadata; native dispatch does
   not need them to match a request. Static middleware, CORS, request ID,
   request logging, and controller metadata are represented where the compiler
-  can lower them. Dynamic route registration, arbitrary imports, custom
-  validators, and full TypeScript semantics remain outside the current source
-  subset.
+  can lower them. Dynamic route registration is allowed when the transformed
+  JavaScript stays inside Sloppy's runtime boundary; the Plan records
+  `dynamicRoutes` and warning findings for route pieces the compiler cannot
+  fully describe. Arbitrary imports, custom validators, and full TypeScript
+  semantics remain outside the current source subset.
+
+Dynamic route metadata is intentionally not complete OpenAPI metadata. Known
+static routes stay in `routes[]` with `completeness.status: "complete"` when
+all route metadata is inferred. Unknown dynamic registrations appear in
+`dynamicRoutes[]`, and app-level metadata records route completeness counts.
+OpenAPI emitters include representable known routes and mark the document as a
+partial Plan-supported subset.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

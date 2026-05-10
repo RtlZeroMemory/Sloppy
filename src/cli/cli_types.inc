@@ -45,6 +45,8 @@ typedef struct SlCliRoute
     SlCliSpan effect_reasons[SL_CLI_MAX_ROUTE_EFFECTS];
     size_t effect_count;
     size_t source_order;
+    bool dynamic_metadata;
+    SlCliSpan dynamic_reason;
 } SlCliRoute;
 
 typedef struct SlCliHandler
