@@ -207,12 +207,14 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("outDir")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("environment")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("kind")) &&
-            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("capabilities")))
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("capabilities")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("moduleInclude")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("assetInclude")))
         {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
-                "environment, kind, and capabilities\n");
+                "environment, kind, capabilities, moduleInclude, and assetInclude\n");
             return 1;
         }
     }
@@ -329,6 +331,47 @@ static int sl_sloppyrc_read_capabilities(yyjson_val* root, SlSloppyRunConfig* ou
     return 0;
 }
 
+static int sl_sloppyrc_read_include_array(yyjson_val* root, const char* field,
+                                          char includes[][SL_SLOPPYRC_PATH_MAX_BYTES],
+                                          size_t* include_count, size_t include_capacity,
+                                          const char* command_name)
+{
+    yyjson_val* include_array = yyjson_obj_get(root, field);
+    yyjson_arr_iter iter;
+    yyjson_val* item = NULL;
+
+    if (include_array == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(include_array)) {
+        sl_sloppyrc_write_command_error_with_value(
+            command_name, "invalid sloppy.json: include field must be an array: ", field);
+        return 1;
+    }
+
+    yyjson_arr_iter_init(include_array, &iter);
+    while ((item = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (*include_count >= include_capacity) {
+            sl_sloppyrc_write_command_error_with_value(
+                command_name, "invalid sloppy.json: too many include patterns in ", field);
+            return 1;
+        }
+        if (!sl_sloppyrc_copy_json_string(includes[*include_count], SL_SLOPPYRC_PATH_MAX_BYTES,
+                                          item) ||
+            !sl_sloppyrc_entry_path_is_safe(includes[*include_count]))
+        {
+            sl_sloppyrc_write_command_error_with_value(
+                command_name,
+                "invalid sloppy.json: include patterns must be project-relative strings in ",
+                field);
+            return 1;
+        }
+        *include_count += 1U;
+    }
+
+    return 0;
+}
+
 int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
@@ -378,7 +421,13 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
         sl_sloppyrc_read_optional_string(
             root, "kind", out->kind, sizeof(out->kind), "web", command_name,
             "invalid sloppy.json: kind must be web or program\n") == 0 &&
-        sl_sloppyrc_read_capabilities(root, out, command_name) == 0)
+        sl_sloppyrc_read_capabilities(root, out, command_name) == 0 &&
+        sl_sloppyrc_read_include_array(root, "moduleInclude", out->module_includes,
+                                       &out->module_include_count, SL_SLOPPYRC_MAX_MODULE_INCLUDES,
+                                       command_name) == 0 &&
+        sl_sloppyrc_read_include_array(root, "assetInclude", out->asset_includes,
+                                       &out->asset_include_count, SL_SLOPPYRC_MAX_ASSET_INCLUDES,
+                                       command_name) == 0)
     {
         if (strcmp(out->kind, "web") != 0 && strcmp(out->kind, "program") != 0) {
             sl_sloppyrc_write_command_message(command_name,

@@ -12,8 +12,8 @@ Current Sloppy includes:
 - V8-backed handler execution on V8-enabled builds and alpha packages;
 - Program Mode for route-free console tools, local automation, packaged
   programs, and stdlib-backed worker entrypoints;
-- `sloppy create`, `build`, `run`, `routes`, `capabilities`, `doctor`,
-  `audit`, `openapi`, and `package`;
+- `sloppy create`, `build`, `run`, `routes`, `deps`, `capabilities`,
+  `doctor`, `audit`, `openapi`, and `package`;
 - HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c;
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
@@ -50,7 +50,8 @@ Current support:
 - Sloppy stdlib imports for filesystem, network, OS/process, time, crypto,
   codec, and workers where the runtime bridge is available;
 - package manifests that record `kind: "program"` and copied artifact paths;
-- Plan inspection through `routes`, `capabilities`, `doctor`, and `audit`.
+- Plan inspection through `routes`, `deps`, `capabilities`, `doctor`, and
+  `audit`.
 
 Future Program Mode work is not hidden Node emulation. It includes more
 job/lifecycle policy, richer worker packaging, raw terminal ergonomics if they
@@ -69,10 +70,12 @@ No current docs should imply arbitrary native modules work today.
 
 ## Dependency story
 
-Sloppy apps do not resolve npm app dependencies today. The current path is the
-first-party stdlib plus compiler-supported source. Pure ESM dependency bundling
-may be explored later. Node built-ins are supported only when Sloppy implements
-that API explicitly.
+Sloppy now has an experimental installed-package graph for compatible
+pure-JavaScript dependencies. The current path is first-party stdlib plus
+compiler-supported source, bundled package modules, and explicit partial
+`node:*` shims. Registry install, semver solving, native addons, and full Node
+compatibility remain separate roadmap work. See
+[Node compatibility roadmap](roadmap/node-compatibility.md).
 
 ## Production hardening
 

@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "graph-helper": "file:./fixtures/graph-helper"
+  }
+}
+

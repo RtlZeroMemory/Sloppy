@@ -11,6 +11,7 @@ lower-level tool around emitted artifacts.
 sloppyc --help
 sloppyc --version
 sloppyc build <input.js|input.ts> --out <directory> [--kind web|program]
+              [--module-include <glob>] [--asset-include <glob>]
 ```
 
 ## Build
@@ -26,6 +27,7 @@ Output:
   app.plan.json
   app.js
   app.js.map
+  deps.graph.json   optional
 ```
 
 ## Flags
@@ -41,6 +43,8 @@ Output:
 | `--config <key=value>` | Apply a config override |
 | `--timings-json <file>` | Write compiler phase timing and counter JSON |
 | `--diagnostics-timing-json <file>` | Alias for `--timings-json` |
+| `--module-include <glob>` | Include matching modules in the sealed artifact graph for computed dynamic imports |
+| `--asset-include <glob>` | Record and package matching non-executable assets |
 
 `--timings-json` is contributor measurement output. It is useful for comparing
 compiler changes; it is not a public performance guarantee.
@@ -50,9 +54,12 @@ project mode. Supported values are the documented `sloppy.json` capability
 names.
 
 Program Mode uses Oxc parsing and TypeScript transform support before the
-compiler rewrites supported static ESM imports/exports into the generated
-artifact bundle. It supports static relative imports and documented Sloppy
-stdlib imports. It rejects dynamic imports, Node built-ins, arbitrary npm
+compiler rewrites supported ESM imports/exports into the generated artifact
+bundle. It supports static relative imports, installed pure-JavaScript package
+imports, CommonJS/JSON modules, string-literal dynamic imports, computed
+dynamic imports over `--module-include` graphs, documented Sloppy stdlib
+imports, and the explicit Node compatibility registry. It rejects unsupported
+package export shapes, native addons, unsupported Node builtins, remote
 imports, and provider imports with source diagnostics.
 
 ## Exit codes

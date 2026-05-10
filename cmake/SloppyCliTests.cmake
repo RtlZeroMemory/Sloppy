@@ -42,6 +42,12 @@
         sloppy.cli.capabilities_users_json tests/golden/cli/capabilities-users-json.json
         capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
         --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.deps_text tests/golden/cli/deps-text.txt deps --plan
+        tests/fixtures/cli/dependency-graph.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.deps_json tests/golden/cli/deps-json.json deps --plan
+        tests/fixtures/cli/dependency-graph.plan.json --format json)
     set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text.txt)
     set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json.json)
     set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text.txt)

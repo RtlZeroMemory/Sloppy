@@ -149,9 +149,23 @@
       "tier": "extended"
     },
     {
+      "entry": "src/main.ts",
+      "kind": "program",
+      "name": "dependency-graph",
+      "reason": "requires local fixture npm install before PR smoke; covered by compiler resolver tests and manual example validation",
+      "tier": "pr"
+    },
+    {
       "kind": "metadata",
       "name": "dogfood",
       "reason": "dogfood metadata fixture is covered through template and prealpha-control-plane flows",
+      "tier": "pr"
+    },
+    {
+      "entry": "src/main.ts",
+      "kind": "program",
+      "name": "dynamic-module-include",
+      "reason": "project-config moduleInclude behavior is covered by compiler tests and manual example validation",
       "tier": "pr"
     },
     {
@@ -325,11 +339,25 @@
       "tier": "extended"
     },
     {
+      "entry": "src/main.ts",
+      "kind": "program",
+      "name": "node-compat-path-events",
+      "reason": "project-config Node shim example is covered by compiler shim tests and manual example validation",
+      "tier": "pr"
+    },
+    {
       "entry": "app.js",
       "kind": "program-js",
       "name": "os-runtime-api",
       "reason": "process runtime smoke is platform-sensitive",
       "tier": "extended"
+    },
+    {
+      "entry": "src/main.ts",
+      "kind": "program",
+      "name": "package-zod-like",
+      "reason": "requires local fixture npm install before PR smoke; covered by compiler resolver tests and manual example validation",
+      "tier": "pr"
     },
     {
       "entry": "app.js",
@@ -426,6 +454,13 @@
       "kind": "web",
       "name": "validation-errors",
       "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "web-dynamic-routes",
+      "reason": "covered by dynamic route compiler tests and manual example validation",
       "tier": "pr"
     },
     {

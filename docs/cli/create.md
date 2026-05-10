@@ -16,9 +16,10 @@ sloppy create <name> [--template minimal-api|full-api|dogfood|program]
 | `dogfood` | Larger multi-file control-plane shaped demo project. |
 | `program` | Route-free Program Mode project with `main(args, ctx)`. |
 
-The generated app has no `package.json` and no npm dependencies. The compiler
-resolves `"sloppy"` plus relative imports; user app dependency resolution
-through `node_modules` is not part of the alpha track.
+The generated app has no `package.json` and no npm dependencies. Add one only
+when you need compatible installed JavaScript packages. Sloppy can bundle
+supported package modules from `node_modules`, but it does not install
+packages, solve versions, or provide full Node compatibility.
 
 ## Examples
 

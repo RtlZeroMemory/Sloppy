@@ -11,6 +11,7 @@ The Plan lets Sloppy validate application shape before runtime execution:
 - generated artifact names and hashes;
 - required runtime features;
 - provider and capability metadata;
+- dependency graph and Node compatibility metadata where dependencies are bundled;
 - compiler/source metadata for diagnostics;
 - configuration metadata where the compiler emits it.
 
@@ -20,8 +21,9 @@ extension system.
 ## Current Runtime Contract
 
 Plan v1 alpha remains the current runtime contract. Supported artifacts contain
-`app.plan.json`, generated `app.js`, and source-map metadata where available. The runtime
-validates schema version, route/handler/provider/capability structure, artifact hashes,
+`app.plan.json`, generated `app.js`, and source-map metadata where available. Builds with
+dependency graph content also emit `deps.graph.json`. The runtime validates
+schema version, route/handler/provider/capability structure, artifact hashes,
 runtime target support, and required features before entering V8.
 
 Handler IDs are compiler-owned numeric IDs. Current executable V8 dispatch uses generated
@@ -113,7 +115,8 @@ closed before serving work. Route-level limits and trusted proxy policy are not 
 `requiredFeatures[]` records runtime features that must be active before execution. The
 runtime feature registry rejects missing features before engine initialization. Current
 feature families include the bootstrap stdlib, filesystem, time, crypto, codec, network,
-OS/process, workers, HTTP transport, and provider-related features where implemented.
+OS/process, workers, HTTP transport, provider-related features where implemented, and
+`node.compat.<builtin>` entries for Node compatibility shims used by the graph.
 
 Feature descriptors are validation boundaries. A Plan feature entry declares
 the feature required by the compiled artifact and validated by the runtime.
@@ -188,6 +191,38 @@ the logical config key and the runtime environment variable name needed to resol
 or SQL Server connection strings; they must not embed the connection string value in generated
 JavaScript or Plan/package metadata.
 
+## Dependency Graph
+
+Plans can include `dependencyGraph` and `dependencyGraphArtifact` when the
+compiler bundles installed packages, included modules/assets, or Node
+compatibility shims:
+
+```json
+{
+  "dependencyGraph": {
+    "schemaVersion": 1,
+    "packages": [],
+    "modules": [],
+    "assets": [],
+    "nodeBuiltins": [],
+    "compatibilityFindings": []
+  },
+  "dependencyGraphArtifact": {
+    "path": "deps.graph.json",
+    "hash": "sha256:..."
+  }
+}
+```
+
+The embedded graph is the authoritative Plan-visible summary. The companion
+artifact is useful for package manifests and external tooling. Metadata and
+source-map entries must use normalized repo-relative IDs, not absolute local
+paths.
+
+Dependency graph findings are surfaced by `sloppy audit`, `sloppy doctor`, and
+`sloppy deps`. See [Dependency graph](dependency-graph.md) for the field-level
+reference.
+
 ## Source Input
 
 `sloppy run <source.js>` invokes `sloppyc build`, writes generated artifacts to
@@ -198,9 +233,9 @@ policy, package manager, or full TypeScript build system.
 
 ## Current Limits
 
-- Third-party JavaScript runtime/package-manager behavior.
-- Package-manager metadata.
-- Arbitrary import graph resolution.
+- Package-manager install, registry, lockfile, and semver-solving behavior.
+- Full Node runtime/package identity.
+- Unrestricted import graph resolution outside the sealed artifact graph.
 - Public plugin extension points.
 - Public release hardening.
 - Benchmark-backed performance comparisons.

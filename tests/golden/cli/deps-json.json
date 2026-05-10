@@ -1,0 +1,19 @@
+{
+  "packages": [
+    { "name": "fixture-lib", "version": "1.0.0", "root": "node_modules/fixture-lib", "entry": "node_modules/fixture-lib/index.js", "format": "esm", "source": "installed" }
+  ],
+  "modules": [
+    { "id": "src/main.ts", "format": "esm", "source": "app" },
+    { "id": "node_modules/fixture-lib/index.js", "package": "fixture-lib", "format": "esm", "source": "installed" }
+  ],
+  "assets": [
+    { "path": "public/message.txt", "source": "assetInclude" }
+  ],
+  "nodeBuiltins": [
+    { "specifier": "node:path", "status": "supported", "backing": "sloppy/node/path" },
+    { "specifier": "node:fs", "status": "partial", "backing": "sloppy/node/fs" }
+  ],
+  "compatibilityFindings": [
+    { "code": "SLOPPYC_W_NODE_BUILTIN_PARTIAL", "severity": "warn", "message": "node:fs compatibility shim is partial", "source": "node_modules/fixture-lib/index.js" }
+  ]
+}

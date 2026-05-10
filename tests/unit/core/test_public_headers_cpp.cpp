@@ -1,4 +1,5 @@
 #include "sloppy/app_host.h"
+#include "sloppy/alloc.h"
 #include "sloppy/arena.h"
 #include "sloppy/async.h"
 #include "sloppy/async_backend.h"

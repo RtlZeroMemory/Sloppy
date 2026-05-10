@@ -78,7 +78,7 @@
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_PATH_MAX_BYTES 1024U
 #define SL_CREATE_ARENA_BYTES 65536U
-#define SL_PACKAGE_MANIFEST_BYTES 2048U
+#define SL_PACKAGE_MANIFEST_BYTES 4096U
 #define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
@@ -101,6 +101,7 @@
 #include "cli/cli_package.inc"
 #include "cli/cli_lookup.inc"
 #include "cli/cli_routes.inc"
+#include "cli/cli_deps.inc"
 #include "cli/cli_doctor.inc"
 #include "cli/cli_audit.inc"
 #include "cli/cli_openapi.inc"
@@ -133,6 +134,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "capabilities") == 0) {
         return sl_cli_command_capabilities(&options);
+    }
+    if (strcmp(options.command, "deps") == 0) {
+        return sl_cli_command_deps(&options);
     }
     if (strcmp(options.command, "run") == 0) {
         return sl_cli_command_run(&options);

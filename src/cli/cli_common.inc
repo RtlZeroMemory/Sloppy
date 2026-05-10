@@ -29,15 +29,16 @@ static bool sl_cli_command_accepts_artifacts_plan(const char* command)
 {
     return command != NULL &&
            (strcmp(command, "routes") == 0 || strcmp(command, "capabilities") == 0 ||
-            strcmp(command, "doctor") == 0 || strcmp(command, "audit") == 0 ||
-            strcmp(command, "openapi") == 0);
+            strcmp(command, "deps") == 0 || strcmp(command, "doctor") == 0 ||
+            strcmp(command, "audit") == 0 || strcmp(command, "openapi") == 0);
 }
 
 static bool sl_cli_command_requires_metadata_plan(const char* command)
 {
     return command != NULL &&
            (strcmp(command, "routes") == 0 || strcmp(command, "capabilities") == 0 ||
-            strcmp(command, "audit") == 0 || strcmp(command, "openapi") == 0);
+            strcmp(command, "deps") == 0 || strcmp(command, "audit") == 0 ||
+            strcmp(command, "openapi") == 0);
 }
 
 static bool sl_cli_span_equal(SlCliSpan left, SlCliSpan right)
@@ -267,8 +268,7 @@ static bool sl_cli_json_builder_append_string(SlStringBuilder* builder, SlCliSpa
         }
         else if (ch < 0x20U) {
             if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\u00")) ||
-                !sl_status_is_ok(
-                    sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU])) ||
+                !sl_status_is_ok(sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU])) ||
                 !sl_status_is_ok(sl_string_builder_append_char(builder, hex[ch & 0x0FU])))
             {
                 return false;
@@ -362,31 +362,50 @@ static void sl_cli_print_help(void)
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
-    printf("  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
+    printf(
+        "  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("                 [--format text|json]\n");
-    printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib <dir>]\n");
-    printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts "
+           "<dir>] [--stdlib <dir>]\n");
+    printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
+           "[--port 5173]\n");
     printf("             [--once METHOD TARGET] [-- <program-args...>]\n");
-    printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
-    printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
-    printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
-    printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
-    printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output <path>]\n");
+    printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
+    printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+           "[--format text|json]\n");
+    printf("  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
+    printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
+    printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
+    printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
+           "<path>]\n");
 }
 
 static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
-        printf("Usage: sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
+        printf("Usage: sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
         return;
     }
     if (strcmp(command, "capabilities") == 0) {
-        printf("Usage: sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
+        printf("Usage: sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts "
+               "<dir>] [--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "deps") == 0) {
+        printf("Usage: sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
         return;
     }
     if (strcmp(command, "run") == 0) {
-        printf("Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib "
+        printf("Usage: sloppy run "
+               "[source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] "
+               "[--stdlib "
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
         printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
@@ -398,7 +417,8 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "build") == 0) {
-        printf("Usage: sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
+        printf("Usage: sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind "
+               "web|program]\n");
         printf("                    [--environment Development] [--host 127.0.0.1]\n");
         printf("                    [--port 5173]\n");
         printf("\n");
@@ -407,7 +427,8 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "package") == 0) {
-        printf("Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
+        printf("Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind "
+               "web|program]\n");
         printf("                      [--environment Development] [--host 127.0.0.1]\n");
         printf("                      [--port 5173] [--format text|json]\n");
         printf("\n");
@@ -428,15 +449,18 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "doctor") == 0) {
-        printf("Usage: sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
+        printf("Usage: sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
         return;
     }
     if (strcmp(command, "audit") == 0) {
-        printf("Usage: sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
+        printf("Usage: sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
         return;
     }
     if (strcmp(command, "openapi") == 0) {
-        printf("Usage: sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output <path>]\n");
+        printf("Usage: sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--output <path>]\n");
         return;
     }
     sl_cli_print_help();
@@ -489,9 +513,8 @@ static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCli
             return -1;
         }
         if (out->artifacts_path != NULL || out->input_path != NULL) {
-            sl_cli_write_cstr(
-                stderr,
-                "sloppy run: expected either --artifacts <dir> or one positional source or artifact path\n");
+            sl_cli_write_cstr(stderr, "sloppy run: expected either --artifacts <dir> or one "
+                                      "positional source or artifact path\n");
             return -1;
         }
         out->artifacts_path = argv[*index + 1];
@@ -501,9 +524,8 @@ static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCli
 
     if (argv[*index][0] != '-') {
         if (out->input_path != NULL || out->artifacts_path != NULL) {
-            sl_cli_write_cstr(
-                stderr,
-                "sloppy run: expected either --artifacts <dir> or one positional source or artifact path\n");
+            sl_cli_write_cstr(stderr, "sloppy run: expected either --artifacts <dir> or one "
+                                      "positional source or artifact path\n");
             return -1;
         }
         if (sl_cli_path_has_source_extension(argv[*index])) {
@@ -513,22 +535,18 @@ static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCli
             if (!sl_cli_directory_has_plan(argv[*index]) &&
                 !sl_cli_directory_has_package_manifest(argv[*index]))
             {
-                sl_cli_write_cstr(
-                    stderr,
-                    "sloppy run: artifact or package directory must contain app.plan.json or manifest.json\n");
+                sl_cli_write_cstr(stderr, "sloppy run: artifact or package directory must contain "
+                                          "app.plan.json or manifest.json\n");
                 return -1;
             }
             out->artifacts_path = argv[*index];
         }
-        else if (sl_cli_path_is_file(argv[*index]) ||
-                 sl_cli_path_has_any_extension(argv[*index]))
-        {
+        else if (sl_cli_path_is_file(argv[*index]) || sl_cli_path_has_any_extension(argv[*index])) {
             out->input_path = argv[*index];
         }
         else {
-            sl_cli_write_cstr(
-                stderr,
-                "sloppy run: expected a source file or artifact directory containing app.plan.json\n");
+            sl_cli_write_cstr(stderr, "sloppy run: expected a source file or artifact directory "
+                                      "containing app.plan.json\n");
             return -1;
         }
         *index += 1;

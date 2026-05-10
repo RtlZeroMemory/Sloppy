@@ -20,6 +20,10 @@ sloppy create my-tool --template program
 | `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
 | `program-hello` | runnable Program Mode source | `sloppy run examples/program-hello/main.ts -- Ada` | Route-free program Plan, relative module import, args/context, and console stdout | V8 lane prints `hello from sloppy program mode Ada`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
 | `program-fs-process` | runnable Program Mode source | `sloppy run` from `examples/program-fs-process` | Program stdlib imports for filesystem and OS/process APIs, package run shape | V8 lane writes under `./tmp`, runs `git --version`, and exits with the child exit code. |
+| `package-zod-like` | package graph fixture | `npm install && sloppy build && sloppy deps .sloppy` from the example directory | Local fixture package resolution from `node_modules`, package `exports`, Program Mode dependency graph | Uses a local `file:` dependency; no registry access required. Runtime execution requires V8. |
+| `dependency-graph` | package graph fixture | `npm install && sloppy build && sloppy deps .sloppy --format json` from the example directory | Installed fixture package, `node:path` compatibility shim, `assetInclude`, dependency graph inspection | Uses a local `file:` dependency; no registry access required. |
+| `node-compat-path-events` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Supported `node:path` and `node:events` compatibility shims | Shows explicit shim imports; does not claim full Node runtime behavior. |
+| `dynamic-module-include` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Computed dynamic imports over `moduleInclude` plus asset metadata | Runtime dynamic import succeeds only for modules sealed into the graph. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
 | `web-dynamic-routes` | runnable with source input | `sloppyc build examples/web-dynamic-routes/app.ts --out .sloppy` | Static and dynamic web route registration with partial Plan metadata | Static route metadata remains complete; dynamic routes emit findings and require V8 for handler execution. |
 | `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
@@ -90,6 +94,8 @@ sloppy create my-tool --template program
   generated artifacts and V8 in a configured V8 build.
 - `compile-only / tooling fixture`: the example is expected to compile and feed
   Plan-backed CLI tools, but no positive handler execution is claimed.
+- `package graph fixture`: the example demonstrates package/dependency graph
+  behavior. Local `file:` dependencies avoid internet access.
 - `live-provider example`: the example needs an external database/driver and
   may be skipped or unavailable on a default machine.
 - `API-shape fixture`: static checks keep the example honest about imports,

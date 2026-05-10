@@ -635,13 +635,14 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_keep_alive_idle_timeout_ms = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestsPerConnection")) {
-        if (!sl_run_plan_config_parse_u64_allow_zero(
-                value, &app->config_max_requests_per_connection) ||
+        if (!sl_run_plan_config_parse_u64_allow_zero(value,
+                                                     &app->config_max_requests_per_connection) ||
             !sl_run_plan_config_u64_fits_size_t(app->config_max_requests_per_connection))
         {
-            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
-                                      "Sloppy:Server:MaxRequestsPerConnection must be a non-negative "
-                                      "integer\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: app.plan.json "
+                              "Sloppy:Server:MaxRequestsPerConnection must be a non-negative "
+                              "integer\n");
             return 1;
         }
         app->config_has_max_requests_per_connection = true;
@@ -2477,10 +2478,11 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
                                  const char* project_kind, const SlSloppyRunConfig* project_config)
 {
     const char* compiler_path = NULL;
-    char* compiler_argv[40];
+    char* compiler_argv[160];
     char port_text[6];
     size_t arg_count = 0U;
     size_t capability_index = 0U;
+    size_t include_index = 0U;
     SlPlatformProcessArgs process_args = {0};
     SlStatus status;
     int exit_code = 1;
@@ -2534,6 +2536,18 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
         {
             compiler_argv[arg_count++] = "--capability";
             compiler_argv[arg_count++] = (char*)project_config->capabilities[capability_index];
+        }
+        for (include_index = 0U; include_index < project_config->module_include_count;
+             include_index += 1U)
+        {
+            compiler_argv[arg_count++] = "--module-include";
+            compiler_argv[arg_count++] = (char*)project_config->module_includes[include_index];
+        }
+        for (include_index = 0U; include_index < project_config->asset_include_count;
+             include_index += 1U)
+        {
+            compiler_argv[arg_count++] = "--asset-include";
+            compiler_argv[arg_count++] = (char*)project_config->asset_includes[include_index];
         }
     }
     if (options != NULL && options->host_explicit) {

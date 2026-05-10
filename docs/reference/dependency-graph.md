@@ -1,0 +1,181 @@
+# Dependency Graph Reference
+
+The dependency graph records the modules, installed packages, assets, and Node
+compatibility shims that the compiler bundled into an artifact.
+
+It is build-time metadata. The runtime executes the generated `app.js` bundle
+and validates Plan/runtime features; it does not read `node_modules` at run
+time.
+
+## Where It Appears
+
+When the compiler finds dependency graph content, it writes the graph in two
+places:
+
+- `app.plan.json` as `dependencyGraph`
+- `.sloppy/deps.graph.json` as an inspectable companion artifact
+
+Packages created by `sloppy package` copy `deps.graph.json` when present and
+record it in `manifest.json`:
+
+```json
+{
+  "schema": "sloppy.app-package.v1",
+  "dependencyMode": "bundled",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js",
+    "sourceMap": "artifacts/app.js.map",
+    "dependencyGraph": "artifacts/deps.graph.json"
+  }
+}
+```
+
+The graph is also copied into `app.js.map` under `x_sloppy.dependencyGraph` so
+diagnostic tooling can relate bundled dependency modules to source IDs without
+absolute machine paths.
+
+## Top-Level Shape
+
+```json
+{
+  "schemaVersion": 1,
+  "resolver": {
+    "profiles": [
+      "sloppy-stdlib",
+      "relative-source",
+      "installed-packages",
+      "node-compat-shims"
+    ],
+    "conditions": ["sloppy", "import", "default"]
+  },
+  "packages": [],
+  "modules": [],
+  "assets": [],
+  "nodeBuiltins": [],
+  "compatibilityFindings": []
+}
+```
+
+IDs and paths are repo-relative, use forward slashes, and must not include
+absolute local machine paths in committed goldens.
+
+## Packages
+
+`packages[]` contains installed package records discovered from
+`node_modules`:
+
+```json
+{
+  "name": "tiny-pkg",
+  "version": "1.0.0",
+  "root": "node_modules/tiny-pkg",
+  "packageJson": "node_modules/tiny-pkg/package.json",
+  "entry": "node_modules/tiny-pkg/index.js",
+  "format": "esm",
+  "source": "installed"
+}
+```
+
+Supported package resolution starts from what is already installed. Sloppy does
+not call a registry, install dependencies, solve semver ranges, or read a
+lockfile to choose versions.
+
+## Modules
+
+`modules[]` contains bundled JavaScript, TypeScript, JSON, and compatibility
+shim modules:
+
+```json
+{
+  "id": "src/main.ts",
+  "source": "src/main.ts",
+  "format": "esm",
+  "package": null,
+  "imports": ["tiny-pkg", "./plugins/alpha.js"],
+  "resolvedImports": [
+    {
+      "specifier": "tiny-pkg",
+      "resolvedId": "node_modules/tiny-pkg/index.js",
+      "kind": "package"
+    }
+  ],
+  "dynamicImports": []
+}
+```
+
+`format` is one of:
+
+- `esm`
+- `commonjs`
+- `json`
+
+CommonJS modules run in a generated wrapper with `exports`, `module`,
+`require`, `__filename`, and `__dirname`. JSON modules export the parsed JSON
+value as the module value and default export.
+
+## Dynamic Imports
+
+String-literal dynamic imports are resolved at build time and recorded in
+`dynamicImports[]`.
+
+Computed dynamic imports are runtime-resolved only against the sealed module
+graph. Include possible targets with `moduleInclude`:
+
+```json
+{
+  "moduleInclude": ["src/plugins/**/*.js"]
+}
+```
+
+If a computed import resolves outside the sealed graph, the generated bundle
+throws `SLOPPY_E_MODULE_NOT_FOUND` with a `moduleInclude` hint.
+
+Dynamic import controls when an already bundled module is evaluated. It is not
+runtime package discovery.
+
+## Assets
+
+`assets[]` records files included by `assetInclude`:
+
+```json
+{
+  "path": "public/logo.svg",
+  "source": "assetInclude:public/**/*"
+}
+```
+
+Assets are packaged and inspectable metadata. They are not executable modules.
+
+## Node Builtins
+
+`nodeBuiltins[]` records each Node builtin resolved through the compatibility
+registry:
+
+```json
+{
+  "specifier": "node:path",
+  "status": "supported",
+  "backing": "sloppy/node/path"
+}
+```
+
+`status` can be `supported`, `partial`, `stubbed`, or `unsupported`. See
+[Node compatibility](node-compatibility.md) for the current registry.
+
+## Compatibility Findings
+
+`compatibilityFindings[]` records warnings and errors from package and Node
+compatibility analysis:
+
+```json
+{
+  "severity": "error",
+  "code": "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+  "message": "Package \"sharp\" requires a native Node addon.",
+  "source": "node_modules/sharp/package.json"
+}
+```
+
+`sloppy audit` reports dependency graph findings. `sloppy doctor` reports the
+dependency graph summary. `sloppy deps` prints the graph directly.

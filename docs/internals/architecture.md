@@ -15,6 +15,7 @@ source            sloppyc          .sloppy/             sloppy
 src/main.ts  ──►  compile     ──►  app.plan.json    ──► load + validate
                                    app.js                 ▼
                                    app.js.map         engine/v8/*
+                                   deps.graph.json
                                                      register handlers
                                                          ▼
                                                        dispatch
@@ -71,7 +72,8 @@ AST
    │  sloppyc.rs::compile
    │    extract routes, capabilities, schemas, providers
    │    validate supported subset
-   │    emit deterministic JS bundle + source map
+   │    resolve relative/package/shim modules
+   │    emit deterministic JS bundle + source map + dependency graph
    ▼
 .sloppy/app.plan.json + app.js + app.js.map
 ```
@@ -167,8 +169,9 @@ has timed out) only ever do cleanup. They cannot double-settle JS state.
   can statically analyze. See [supported syntax](../reference/supported-syntax.md).
 - **Edit-build-run** instead of edit-run. Source changes go through
   `sloppyc` first.
-- **No npm.** No `node_modules` resolution; the public stdlib has to
-  cover what an app actually needs.
+- **A sealed package graph.** Installed packages are build input, not a
+  runtime package directory. Unsupported Node/package behavior fails before
+  execution or through explicit shim errors.
 
 ## Where to read next
 

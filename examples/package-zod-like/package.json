@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "zod-like": "file:./fixtures/zod-like"
+  }
+}
+

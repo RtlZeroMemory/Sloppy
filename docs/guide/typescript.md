@@ -15,18 +15,22 @@ the canonical acceptance source is the fixture suite under
 ## Inputs
 
 - File extensions: `.js`, `.mjs`, `.ts`.
-- Required entry import: `Sloppy` from `"sloppy"`, named and unaliased.
+- Web entries import `Sloppy` from `"sloppy"`, named and unaliased. Program
+  Mode entries can be route-free and do not need `Sloppy`.
 - `Results` is file-local: any file with handlers that call `Results.*` must
   import `Results` from `"sloppy"` in that same file.
 - Compiler-recognized import sources: `"sloppy"`, `"sloppy/data"`,
   `"sloppy/providers/sqlite"`, `"sloppy/providers/postgres"`,
   `"sloppy/providers/sqlserver"`, `"sloppy/fs"`, `"sloppy/time"`,
   `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`,
-  `"sloppy/workers"`, and relative imports rooted in the project.
+  `"sloppy/workers"`, relative imports rooted in the project, installed
+  pure-JavaScript package imports, and the Node compatibility registry in
+  Program Mode.
 
-Anything outside this list fails with
+Unsupported package shapes, native addons, remote imports, and unsupported Node
+builtins fail with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` or
-`SLOPPYC_E_UNSUPPORTED_IMPORT`.
+`SLOPPYC_E_UNSUPPORTED_IMPORT`, or a more specific package/Node diagnostic.
 
 ## What the compiler extracts
 
@@ -62,9 +66,13 @@ handler is too dynamic for the extractor, you'll get
 
 ## What gets rejected
 
-Confirmed unsupported (each has a fixture or diagnostic code):
+Confirmed unsupported or constrained (each has a fixture or diagnostic code):
 
-- npm imports, dynamic `import()`, `node:` specifier prefix.
+- Native Node addons, remote imports, unsupported Node builtins, and package
+  export shapes outside Sloppy's supported resolver subset.
+- Web app source extraction still rejects dynamic `import()` in route/app
+  extraction paths. Program Mode supports string-literal dynamic imports and
+  computed dynamic imports over explicit `moduleInclude` graphs.
 - Dynamic route patterns, computed method names, helper-based registration,
   conditionals, and loops build when the transformed JavaScript remains
   executable. The Plan records complete metadata for static routes and
@@ -111,6 +119,12 @@ import { Sqlite } from "sloppy/providers/sqlite";
 
 // Relative
 import { usersModule } from "./users";
+
+// Program Mode package import
+import { thing } from "installed-compatible-package";
+
+// Program Mode Node compatibility shim
+import path from "node:path";
 ```
 
 Subpath imports under `"sloppy/..."` are reserved for the runtime
@@ -177,12 +191,14 @@ unsupported static non-SQLite provider handles such as
 
 ## Common gotchas
 
-- **Import paths must be statically analyzable.** `import("./" + name)`
-  is rejected.
+- **Computed imports need an explicit graph.** In Program Mode,
+  `import("./plugins/" + name + ".js")` works only when matching modules are
+  included with `moduleInclude`.
 - **Static routes produce stronger metadata.** Dynamic route registrations,
   loops, helpers, and conditionals can run, but CLI route metadata and OpenAPI
   are partial unless the compiler can reduce them safely.
-- **No `process.env`.** Sloppy source has no `process` global. Use
+- **No global `process.env`.** Sloppy source has no Node global `process`.
+  Import `node:process` only for the partial compatibility module. Use
   `Environment.get(...)` from `"sloppy/os"` if you need env access in
   module code, or read configuration via `ctx.config` inside a
   handler.

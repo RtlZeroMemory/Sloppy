@@ -248,6 +248,54 @@ static int test_directory_temp_atomic_lock_and_handle(void)
     return 0;
 }
 
+static int test_recursive_delete_releases_walk_scratch(void)
+{
+    SlStr root = sl_str_from_cstr("./sloppy-fs-large-delete");
+    bool exists = true;
+
+    (void)sl_fs_delete_directory(root, true, NULL);
+    if (expect_status(sl_fs_create_directory(root, false, NULL), SL_STATUS_OK) != 0) {
+        return 50;
+    }
+
+    for (size_t index = 0U; index < 180U; index += 1U) {
+        char child_path[192];
+        char file_path[256];
+        int child_length =
+            snprintf(child_path, sizeof(child_path),
+                     "./sloppy-fs-large-delete/child-%03zu-long-directory-name", index);
+        int file_length =
+            snprintf(file_path, sizeof(file_path),
+                     "./sloppy-fs-large-delete/child-%03zu-long-directory-name/file-%03zu.txt",
+                     index, index);
+
+        if (child_length <= 0 || (size_t)child_length >= sizeof(child_path) || file_length <= 0 ||
+            (size_t)file_length >= sizeof(file_path))
+        {
+            (void)sl_fs_delete_directory(root, true, NULL);
+            return 51;
+        }
+        if (expect_status(sl_fs_create_directory(sl_str_from_cstr(child_path), true, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_fs_write_file(sl_str_from_cstr(file_path),
+                                           sl_bytes_from_parts((const unsigned char*)"x", 1U),
+                                           false, NULL),
+                          SL_STATUS_OK) != 0)
+        {
+            (void)sl_fs_delete_directory(root, true, NULL);
+            return 52;
+        }
+    }
+
+    if (expect_status(sl_fs_delete_directory(root, true, NULL), SL_STATUS_OK) != 0) {
+        return 53;
+    }
+    if (expect_status(sl_fs_exists(root, &exists, NULL), SL_STATUS_OK) != 0 || exists) {
+        return 54;
+    }
+    return 0;
+}
+
 static int test_symlink_readlink_and_atomic_cleanup(void)
 {
     unsigned char storage[131072];
@@ -510,11 +558,14 @@ int main(void)
     if (test_directory_temp_atomic_lock_and_handle() != 0) {
         return 3;
     }
-    if (test_symlink_readlink_and_atomic_cleanup() != 0) {
+    if (test_recursive_delete_releases_walk_scratch() != 0) {
         return 4;
     }
-    if (test_watch_directory_and_file_events() != 0) {
+    if (test_symlink_readlink_and_atomic_cleanup() != 0) {
         return 5;
+    }
+    if (test_watch_directory_and_file_events() != 0) {
+        return 6;
     }
     return 0;
 }

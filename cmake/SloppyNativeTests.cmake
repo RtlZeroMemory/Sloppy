@@ -21,6 +21,7 @@
         core_cancellation_token core.cancellation.token tests/unit/core/test_cancellation.c)
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
+    sloppy_add_c_unit_test(core_alloc_boundary core.alloc.boundary tests/unit/core/test_alloc.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
     sloppy_add_c_unit_test(core_container_primitives core.container.primitives
                            tests/unit/core/test_container.c)

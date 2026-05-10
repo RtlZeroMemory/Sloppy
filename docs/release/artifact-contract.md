@@ -5,8 +5,10 @@ dry-run.
 
 GitHub Release archives are the canonical artifacts. npm packages are
 convenience installers for the Sloppy runtime. Sloppy apps still run through Sloppy-managed artifacts;
-package imports, `node_modules`, Node built-ins, and CommonJS compatibility are
-separate design areas.
+compatible package imports are bundled into those artifacts instead of loaded
+from `node_modules` at run time. Full Node
+compatibility, native addons, and package-manager behavior remain separate
+design areas.
 
 ## Archives
 
@@ -78,4 +80,5 @@ not add committed `.npmrc` auth or long-lived publish tokens.
 User-facing wording:
 
 > npm is a convenient way to install the Sloppy runtime. Sloppy apps still use
-> Sloppy's artifact model rather than arbitrary npm package imports.
+> Sloppy's artifact model; compatible installed packages are bundled into that
+> model rather than discovered from `node_modules` at run time.

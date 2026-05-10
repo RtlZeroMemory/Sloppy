@@ -208,6 +208,10 @@ foreach ($file in $files) {
     foreach ($line in Get-Content -LiteralPath $file) {
         $lineNumber += 1
 
+        if ($relativePath -eq "stdlib/sloppy/bootstrap.manifest.json") {
+            continue
+        }
+
         if ($relativePath.StartsWith("stdlib/sloppy/", [System.StringComparison]::OrdinalIgnoreCase)) {
             foreach ($rule in $stdlibRules) {
                 if ($line -match $rule.Pattern) {

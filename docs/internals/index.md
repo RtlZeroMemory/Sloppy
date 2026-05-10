@@ -7,6 +7,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Architecture](architecture.md) — top-level layering: compiler, app host, runtime, bridge
 - [Runtime](runtime.md) — startup, dispatch, shutdown
 - [Compiler](compiler.md) — `sloppyc` internals
+- [Artifact module loader](module-loader.md) — generated ESM/CommonJS/dependency loader
 - [Plan](plan.md) — Plan parsing, validation, schema evolution
 - [Logging runtime](logging.md) — structured events, redaction, queues, sinks
 - [V8 bridge](v8-bridge.md) — boundaries, ownership rules, isolation

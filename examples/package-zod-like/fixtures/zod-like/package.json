@@ -1,0 +1,13 @@
+{
+  "name": "zod-like",
+  "version": "0.0.0-fixture",
+  "type": "module",
+  "exports": {
+    ".": {
+      "sloppy": "./index.js",
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  }
+}
+

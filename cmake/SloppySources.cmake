@@ -7,6 +7,7 @@ set(
     src/core/bytes.c
     src/core/cancellation.c
     src/core/checked_math.c
+    src/core/alloc.c
     src/core/arena.c
     src/core/container.c
     src/core/builder.c
@@ -129,6 +130,7 @@ set(
     tests/unit/core/test_bytes.c
     tests/unit/core/test_cancellation.c
     tests/unit/core/test_checked_math.c
+    tests/unit/core/test_alloc.c
     tests/unit/core/test_arena.c
     tests/unit/core/test_builder.c
     tests/unit/core/test_intern.c

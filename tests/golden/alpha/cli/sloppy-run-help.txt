@@ -4,4 +4,4 @@ Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--ar
                   [-- <program-args...>]
 
 Source input compiles through sloppyc, validates artifacts, then runs the artifact path.
-Bounded development runtime. Execution requires a V8-enabled build.
+Development runtime. Execution requires a V8-enabled build.

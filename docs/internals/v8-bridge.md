@@ -144,8 +144,8 @@ HTTP layer responds 500 with a redacted body.
 
 The bridge does not:
 
-- Resolve modules. The compiler emits one bundle; V8 evaluates it as a
-  unit.
+- Resolve files or `node_modules`. The compiler emits one bundle with a
+  sealed module loader; V8 evaluates that bundle as a unit.
 - Talk to the network or filesystem. Capability-checked native
   intrinsics expose those.
 - Run outside the owner thread.

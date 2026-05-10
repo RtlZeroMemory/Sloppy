@@ -105,14 +105,19 @@ Import validation is file-local. The entry file must import `Sloppy` from
 `Results.*`; registering a child function module does not require the entry file
 to import `Results`.
 
-Program Mode still parses the entry and supported relative modules with Oxc and
-rejects dynamic imports, bare npm/Node imports, remote imports, and unsupported
-Sloppy provider imports. It preserves opaque metadata instead of claiming route
-or OpenAPI structure. It uses Oxc transform support to strip supported
-TypeScript syntax, then rewrites supported static ESM imports/exports into the
-generated artifact bundle. The emitted entry wrapper supplies Program
-arguments/context, installs the Program console while top-level code and the
-entrypoint run, and converts numeric returns into CLI exit codes.
+Program Mode parses the entry and supported module graph with Oxc. It resolves
+relative modules, npm specifiers for installed pure-JavaScript packages from
+`node_modules`, a package.json subset, CommonJS/JSON modules, string-literal
+dynamic import() calls, computed dynamic import() calls over `moduleInclude`
+graphs, and the explicit Node compatibility registry. It rejects remote
+imports, native addons, unsupported package export shapes, unsupported Node
+builtins, and unsupported Sloppy provider imports with diagnostics. It
+preserves opaque metadata instead of claiming route or OpenAPI structure. It
+uses Oxc transform support to strip supported TypeScript syntax, then rewrites
+supported module syntax into the generated artifact bundle. The emitted entry
+wrapper supplies Program arguments/context, installs the Program console while
+top-level code and the entrypoint run, and converts numeric returns into CLI
+exit codes.
 
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
@@ -139,10 +144,11 @@ results; they do not link to the compiler library.
 ## Failure Behavior
 
 Compiler failures return a source-located diagnostic when source context is
-available. Common failures include unsupported imports, npm specifiers,
-dynamic import(), invalid known route methods, unsupported runtime-only handler
-shapes, invalid route metadata options, missing relative imports, and provider
-bridge gaps.
+available. Common failures include unsupported imports, missing packages,
+unsupported package export shapes, native addons, unsupported Node builtins,
+dynamic import in web extraction paths, invalid known route methods,
+unsupported runtime-only handler shapes, invalid route metadata options,
+missing relative imports, and provider bridge gaps.
 
 Rejected builds do not emit success artifacts.
 
@@ -183,13 +189,15 @@ For compiler performance work, also run the benchmark workflow documented in
 
 ## Current Limits
 
-- npm and `node_modules` resolution are outside the current source graph.
+- Package-manager install, registry access, semver solving, and lockfile policy
+  are outside `sloppyc`. The compiler resolves what is already installed.
 - Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
   remains responsible for that.
-- Program Mode is not Node compatibility. It supports the current static import
-  subset, Sloppy stdlib imports that the runtime exposes, generated
-  `main(args, ctx)`/default/top-level entrypoint execution, Program console
-  stdout/stderr, and numeric exit codes when V8 is enabled.
+- Program Mode is not full Node compatibility. It supports bundled compatible
+  JavaScript modules, Sloppy stdlib imports that the runtime exposes, explicit
+  partial Node compatibility shims, generated `main(args, ctx)`/default/top-level
+  entrypoint execution, Program console stdout/stderr, and numeric exit codes
+  when V8 is enabled.
 - Middleware, CORS, RequestId, RequestLogging, and controller mapping execute in
   the bootstrap app-host path today. The compiler recognizes those source
   surfaces and rejects them with specific diagnostics instead of silently

@@ -240,9 +240,11 @@ In-repo references:
 
 - No `process` global. Sloppy does not provide Node's `process`,
   `process.env`, or `process.argv`.
-- No `node:os`, `node:process`, or `node:child_process` compatibility — those
-  imports are rejected by the compiler.
-- No npm packages. Use Sloppy modules (`sloppy/*`) only.
+- `node:os` and `node:process` are partial compatibility modules in dependency
+  graphs; they are not a global Node process model. `node:child_process`
+  remains unsupported.
+- Installed package support is limited to compatible bundled JavaScript. Use
+  Sloppy modules (`sloppy/*`) for OS/process APIs when possible.
 - No general POSIX signal-handler API. `Signals.onShutdown` is the one hook.
 
 ## Compiler source-input support

@@ -36,7 +36,8 @@ These standards govern:
   - `__filename`.
 - Do not use browser DOM APIs in the bootstrap stdlib.
 - Do not depend on npm packages in the bootstrap stdlib.
-- Do not use dynamic imports unless a future scoped task documents the boundary and tests.
+- Do not use dynamic imports in the bootstrap stdlib except behind a documented
+  and tested Sloppy-owned loading boundary.
 - The worker bridge allows the single bridge-gated dynamic `import(modulePath)` in
   `stdlib/sloppy/workers.js` for `Worker.start()` bootstrap module execution. It must stay
   behind that API and must not become general package, Node, or npm resolution.

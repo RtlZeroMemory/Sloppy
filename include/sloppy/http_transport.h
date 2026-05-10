@@ -199,8 +199,8 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
  * Returns the arena backing size required by the normalized transport configuration.
  * This keeps callers from duplicating the platform transport's storage model.
  */
-SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config,
-                                             size_t* out_bytes, SlDiag* out_diag);
+SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config, size_t* out_bytes,
+                                             SlDiag* out_diag);
 /* Binds and listens on the configured host/port. Libuv state remains internal. */
 SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Runs one nonblocking platform event-loop tick for deterministic tests/runtime integration. */

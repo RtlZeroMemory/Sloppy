@@ -22,6 +22,7 @@ remain explicit forms for scripts.
 - provider/capability consistency;
 - filesystem and network capability visibility.
 - partial/dynamic route metadata findings emitted by the compiler.
+- dependency graph presence and dependency compatibility findings.
 
 ## Text output
 
@@ -44,6 +45,8 @@ Sloppy Audit
 [error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN filesystem/network capabilities must not declare providers (capabilities)
 [note] SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented (capabilities)
 [note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net, including LocalEndpoint metadata; no OS sandbox or external live-network evidence is implemented (capabilities)
+[note] SLOPPY_AUDIT_DEPENDENCY_GRAPH dependency graph metadata is Plan-visible (dependencyGraph)
+[warn] SLOPPYC_W_NODE_COMPAT_PARTIAL dependency compatibility finding is a warning (dependencyGraph)
 ```
 
 Clean Plans produce fewer rows. JSON output carries the same findings in a

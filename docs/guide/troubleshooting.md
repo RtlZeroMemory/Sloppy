@@ -28,13 +28,23 @@ fixes:
 ### Import not allowed
 
 ```
-error: import path 'lodash' is not resolvable
-hint: imports must be 'sloppy', 'sloppy/<subpath>', or relative
+SLOPPYC_E_PACKAGE_NOT_FOUND
+Package "lodash" was not found from src/main.ts.
+hint: Install it with your package manager, for example: npm install lodash
 ```
 
-Sloppy doesn't resolve npm packages. Either drop the dependency, vendor
-the relevant code into your repo, or split the work out into a separate
-service.
+Sloppy resolves installed packages from `node_modules`; it does not install
+them. Install the dependency with your package manager, or remove/vendor the
+code.
+
+If the package is installed but still fails, check for a more specific
+diagnostic:
+
+- `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`: the package's `exports` shape is not
+  in Sloppy's supported subset yet.
+- `SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED`: the package needs a native Node addon.
+- `SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN`: the package imports a Node builtin that
+  Sloppy's compatibility registry does not support.
 
 ## Runtime startup errors
 

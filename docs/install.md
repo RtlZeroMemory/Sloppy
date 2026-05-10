@@ -107,7 +107,8 @@ but that runtime cannot execute handlers.
 
 - `sloppy: command not found`: add the npm global prefix to `PATH`.
 - Windows `.cmd` launcher issues: run `node <install>/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js --version` to separate npm shim problems from Sloppy problems.
-- `node_modules` imports fail: Sloppy apps do not resolve arbitrary npm
-  dependencies. See [Why no node_modules?](about/why-no-node-modules.md).
+- `node_modules` imports fail: install the package with your package manager
+  first, then check whether the package is compatible with Sloppy's bundled
+  dependency graph. See [Using installed packages](guide/using-packages.md).
 
 Next: [Quickstart](quickstart.md).

@@ -24,9 +24,10 @@ emits artifacts that the runtime validates before serving work:
 - `app.js` — generated bundle;
 - `app.js.map` — source map for diagnostics.
 
-Sloppy favors first-party backend/runtime APIs over arbitrary npm app
-dependencies today. The trade is direct: less dynamic freedom, more app
-metadata available before the first request.
+Sloppy favors first-party backend/runtime APIs and sealed artifact graphs.
+Compatible installed pure-JavaScript packages can be bundled when they fit
+Sloppy's resolver, loader, and runtime API boundary. The trade is direct: less
+dynamic freedom, more app metadata available before the first request.
 
 ## A tiny route in each runtime
 
@@ -221,9 +222,10 @@ app shape up front:
 
 The costs are real:
 
-- Sloppy apps do not resolve arbitrary npm app dependencies today.
-- Node built-ins and globals exist only when Sloppy implements an explicit
-  API for that behavior.
+- Sloppy can bundle compatible installed pure-JavaScript packages, but it does
+  not install packages, solve versions, or load native Node addons.
+- Node built-ins and globals exist only through explicit Sloppy APIs or
+  compatibility shims.
 - The compiler accepts a focused TypeScript/JavaScript source subset.
 - Dynamic web app shapes can run, but metadata may be partial. Sloppy shows
   the incomplete parts instead of pretending they are complete.
@@ -280,10 +282,11 @@ Run it with arguments after `--`:
 sloppy run src/main.ts -- Ada
 ```
 
-Program Mode is for Sloppy stdlib imports, Plan-backed packaging, and runtime
-metadata. It is not Node compatibility. There is no `process` global, Node
-built-in module loading, npm resolution, FFI, or raw terminal API in the
-current Program Mode surface.
+Program Mode is for Sloppy stdlib imports, compatible bundled package imports,
+Plan-backed packaging, and runtime metadata. It is not full Node
+compatibility. There is no global Node `process`, native addon loading, FFI, or
+raw terminal API in the current Program Mode surface. Node builtins are limited
+to the explicit compatibility registry.
 
 Node, Bun, and Deno are more general-purpose program runners. Sloppy Program
 Mode is useful when the tool should use the same compiler/runtime/package
@@ -294,11 +297,11 @@ boundary as a Sloppy app.
 | Area | Sloppy | Node.js | Bun | Deno |
 | --- | --- | --- | --- | --- |
 | Runtime model | Compiler-first app Plan + native runtime | General JavaScript runtime | General JavaScript runtime and toolkit | Secure-by-default JavaScript/TypeScript runtime |
-| Package ecosystem | First-party stdlib for the current app model | Mature npm ecosystem | Strong npm support | npm support plus URL/import-map workflows |
+| Package ecosystem | First-party stdlib plus compatible bundled installed JavaScript packages | Mature npm ecosystem | Strong npm support | npm support plus URL/import-map workflows |
 | Web metadata | First-party Plan, routes, OpenAPI | App/framework-specific | App/framework-specific | App/framework-specific |
 | Dynamic JavaScript freedom | Intentionally limited in Web Mode | High | High | High |
 | Program/CLI apps | Program Mode via Sloppy stdlib | Mature | Mature | Mature |
-| Node built-ins | Only explicit Sloppy APIs | Native surface | Broad support | Available through compatibility surfaces where supported |
+| Node built-ins | Explicit Sloppy APIs and partial `node:*` shims | Native surface | Broad support | Available through compatibility surfaces where supported |
 | Production maturity | Pre-alpha | Mature | Mature | Mature |
 
 ## When to use Sloppy
@@ -314,8 +317,8 @@ Use Sloppy if:
 Use Node, Bun, or Deno if:
 
 - you need a mature production runtime today;
-- you need npm packages inside the app today;
-- you need Node built-ins or framework compatibility;
+- you need broad npm compatibility or native addons inside the app today;
+- you need full Node built-ins or framework compatibility;
 - you need arbitrary dynamic JavaScript behavior;
 - you are porting an existing JavaScript backend without rewriting its runtime
   assumptions.
@@ -323,7 +326,8 @@ Use Node, Bun, or Deno if:
 ## Related reading
 
 - [Compiler-first runtime](compiler-first-runtime.md)
-- [Why no `node_modules`?](why-no-node-modules.md)
+- [Why `node_modules` is build input](why-no-node-modules.md)
+- [Node compatibility roadmap](../roadmap/node-compatibility.md)
 - [The Plan model](../guide/plan-model.md)
 - [Plan format](../reference/plan-format.md)
 - [Stability reference](../reference/stability.md)

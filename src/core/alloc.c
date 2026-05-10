@@ -1,3 +1,9 @@
+/*
+ * src/core/alloc.c
+ *
+ * Centralizes Sloppy's narrow heap allocation boundary for independently owned
+ * byte buffers that cannot be caller-backed arena storage.
+ */
 #include "sloppy/alloc.h"
 
 #include <stdlib.h>

@@ -20,6 +20,7 @@ sloppy --version
 | [`sloppy package`](package.md) | Build a directory app package from source artifacts    |
 | [`sloppy run`](run.md)       | Run a compiled app or compile-and-run from source        |
 | [`sloppy routes`](routes.md) | List route metadata from a Plan                          |
+| [`sloppy deps`](deps.md)     | Inspect bundled package, module, asset, and Node shim metadata |
 | [`sloppy capabilities`](capabilities.md) | List declared capabilities                   |
 | [`sloppy doctor`](doctor.md) | Validate the local environment and a Plan                |
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |

@@ -42,6 +42,7 @@ when you need a separate artifact root.
     app.plan.json
     app.js
     app.js.map
+    deps.graph.json   optional, when dependency graph metadata exists
 ```
 
 `manifest.json` currently uses `schema: "sloppy.app-package.v1"`. The package
@@ -51,11 +52,13 @@ records the app kind (`"web"` or `"program"`) and copied artifact paths:
 {
   "schema": "sloppy.app-package.v1",
   "kind": "program",
+  "dependencyMode": "bundled",
   "entry": "artifacts/app.plan.json",
   "artifacts": {
     "plan": "artifacts/app.plan.json",
     "bundle": "artifacts/app.js",
-    "sourceMap": "artifacts/app.js.map"
+    "sourceMap": "artifacts/app.js.map",
+    "dependencyGraph": "artifacts/deps.graph.json"
   },
   "createdBy": "sloppy package"
 }
@@ -64,6 +67,10 @@ records the app kind (`"web"` or `"program"`) and copied artifact paths:
 The package is a directory shape for local tooling and smoke tests; archive,
 signing, and runtime release packaging are handled by the release scripts under
 `tools/`.
+
+`dependencyMode: "bundled"` means compatible dependency modules have been
+emitted into the generated artifacts. Packaged apps do not read the original
+source checkout or `node_modules` at run time for bundled modules.
 
 ## Flags
 

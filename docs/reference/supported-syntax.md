@@ -10,7 +10,7 @@ This page is compiler-specific (`sloppyc`) and lists enforced source-shape rules
 
 ## Sloppy Imports
 
-Compiler entry input must import:
+Web compiler entry input must import:
 
 - `Sloppy` from `"sloppy"`
 
@@ -32,13 +32,22 @@ Compiler-recognized modules:
 - `"sloppy/providers/sqlserver"` (`SqlServer`)
 - `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`
 - relative imports constrained to source root
+- installed pure-JavaScript package imports in Program Mode
+- supported Node shim specifiers such as `node:path` in Program Mode
 
 Unsupported specifiers/import names fail with:
 
 - `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`
 - `SLOPPYC_E_UNSUPPORTED_IMPORT`
+- `SLOPPYC_E_PACKAGE_NOT_FOUND`
+- `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`
+- `SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED`
+- `SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN`
 
-Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
+Web app extraction still rejects dynamic import with
+`SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`. Program Mode supports string-literal
+dynamic imports and computed dynamic imports over explicit `moduleInclude`
+graphs.
 
 `RequestId` and `RequestLogging` are supported for static middleware defaults.
 `Testing` is a framework test helper; compiler input rejects it with
@@ -90,14 +99,32 @@ stderr. Returning an integer from `0` through `255` sets the process exit code.
 Throwing, rejecting, or returning an out-of-range exit code exits non-zero with
 a diagnostic.
 
-Program Mode accepts static relative imports and the documented Sloppy stdlib
-subpaths. Type-only imports do not emit runtime stdlib features. Dynamic
-imports, Node built-ins such as `node:fs`, arbitrary npm imports, remote
-imports, and Sloppy provider imports are rejected with diagnostics.
+Program Mode accepts static relative imports, installed pure-JavaScript package
+imports, CommonJS/JSON modules, the documented Sloppy stdlib subpaths, and the
+explicit Node compatibility registry. Type-only imports do not emit runtime
+stdlib features. String-literal dynamic imports are resolved at build time.
+Computed dynamic imports are limited to modules sealed into the graph with
+`moduleInclude`.
+
+Remote imports, native Node addons, unsupported Node builtins, unsupported
+package export shapes, and Sloppy provider imports are rejected with
+diagnostics.
 
 Program Mode does not support re-export declarations yet. Use an import plus a
 local export instead of `export { value } from "./dep"` or `export * from
 "./dep"`.
+
+### Package and compatibility diagnostics
+
+Representative dependency diagnostics:
+
+- `SLOPPYC_E_PACKAGE_NOT_FOUND`
+- `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`
+- `SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED`
+- `SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN`
+
+Node compatibility shims are modules, not full Node globals. Import
+`node:process` or `node:buffer` explicitly when the partial shim is supported.
 
 ### Stdlib subpath imports
 
