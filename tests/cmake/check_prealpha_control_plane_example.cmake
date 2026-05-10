@@ -121,7 +121,7 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "# Pre-alpha control plane"
         "`sloppy build` and `sloppy run` project-mode dogfood"
-        "Current proof coverage"
+        "Current coverage"
         "Current limits"
         "No npm package scope is required")
     require_token("${readme_source}" "${required_pattern}"

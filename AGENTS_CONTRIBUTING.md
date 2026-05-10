@@ -9,6 +9,7 @@ Write documentation for human readers. Match the directory layout under
 `docs/`:
 
 - `docs/install.md`, `docs/quickstart.md` — onboarding.
+- `docs/tutorials/` — guided lessons through first-time workflows.
 - `docs/api/` — first-party TypeScript API reference.
 - `docs/cli/` — `sloppy` and `sloppyc` commands.
 - `docs/guide/` — task-shaped walkthroughs.

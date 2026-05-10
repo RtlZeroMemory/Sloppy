@@ -6,6 +6,8 @@ preset=""
 output_dir="artifacts/packages"
 skip_package=0
 skip_smoke=0
+enable_v8=0
+require_v8_runtime=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,9 +27,18 @@ while [[ $# -gt 0 ]]; do
       skip_smoke=1
       shift
       ;;
+    --enable-v8)
+      enable_v8=1
+      shift
+      ;;
+    --require-v8-runtime)
+      require_v8_runtime=1
+      enable_v8=1
+      shift
+      ;;
     -h|--help)
       cat <<'USAGE'
-Usage: tools/unix/release-dry-run.sh [--preset PRESET] [--output-dir DIR] [--skip-package] [--skip-smoke]
+Usage: tools/unix/release-dry-run.sh [--preset PRESET] [--output-dir DIR] [--skip-package] [--skip-smoke] [--enable-v8] [--require-v8-runtime]
 
 Builds an experimental package artifact, verifies SHA256SUMS.txt through package smoke,
 and writes an ignored dry-run summary. Publishing, signing, and secrets are
@@ -50,7 +61,11 @@ package_configuration() {
 }
 
 if [[ "$skip_package" -eq 0 ]]; then
-  bash "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)" --output-dir "$output_dir"
+  package_args=(--configuration "$(package_configuration)" --output-dir "$output_dir")
+  if [[ "$enable_v8" -eq 1 ]]; then
+    package_args+=(--enable-v8)
+  fi
+  bash "$repo_root/tools/unix/package.sh" "${package_args[@]}"
 fi
 
 case "$output_dir" in
@@ -63,7 +78,11 @@ if [[ "$skip_smoke" -eq 0 ]]; then
     echo "release dry-run could not find a package archive under $package_dir." >&2
     exit 1
   fi
-  "$repo_root/tools/unix/dev.sh" test-package --package-path "$package_path"
+  smoke_args=(test-package --package-path "$package_path")
+  if [[ "$require_v8_runtime" -eq 1 ]]; then
+    smoke_args+=(--require-v8-runtime)
+  fi
+  "$repo_root/tools/unix/dev.sh" "${smoke_args[@]}"
 fi
 
 summary_dir="$repo_root/artifacts/release-dry-run"
@@ -80,6 +99,8 @@ cat > "$summary_dir/${platform}-${arch}-summary.json" <<JSON
   "checksumPath": "$package_dir/SHA256SUMS.txt",
   "packageBuilt": $([[ "$skip_package" -eq 0 ]] && printf 'true' || printf 'false'),
   "packageSmokeRun": $([[ "$skip_smoke" -eq 0 ]] && printf 'true' || printf 'false'),
+  "includeV8Runtime": $([[ "$enable_v8" -eq 1 ]] && printf 'true' || printf 'false'),
+  "requireV8Runtime": $([[ "$require_v8_runtime" -eq 1 ]] && printf 'true' || printf 'false'),
   "publicReleaseCreated": false,
   "secretsRequired": false
 }

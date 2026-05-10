@@ -15,6 +15,7 @@ own the live roadmap and task state.
 `docs/` is organized for the reader, not for the author:
 
 - `docs/install.md`, `docs/quickstart.md` — start here
+- `docs/tutorials/` — guided lessons for first-time workflows
 - `docs/api/` — first-party TypeScript API
 - `docs/cli/` — `sloppy` and `sloppyc` commands
 - `docs/guide/` — task-shaped walkthroughs and project conventions
@@ -28,16 +29,18 @@ own the live roadmap and task state.
 A page is the type of its directory. The title and structure should make
 that obvious; you don't need a metadata header announcing it.
 
+`docs/how-to/` and `docs/explanation/` are not active directories. Use
+`docs/guide/` for task recipes, `docs/tutorials/` for guided lessons, and
+`docs/about/` for background material.
+
 ## What to delete
 
 Delete stale execution transcripts, issue snapshots, task copies, dry
 status pages, fake examples, and docs that don't match the current
 implementation. Archive only material with durable historical value.
 
-Automation operating instructions (agent rules, evidence-lane policy,
-review playbooks for AI reviewers) live under `AGENTS.md`, `CLAUDE.md`,
-and `AGENTS_CONTRIBUTING.md` — not in reader-facing product or
-contributor docs.
+Automation operating instructions live at the repository root, outside the
+reader-facing product and contributor docs.
 
 ## Code, tests, docs move together
 

@@ -132,16 +132,18 @@ jobs:
 
       - name: Release artifact dry-run
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if ("${{ inputs.run_package_smoke }}" -ne "true") {
-            .\tools\windows\release-dry-run.ps1 -Preset windows-release -SkipSmoke
+            .\tools\windows\release-dry-run.ps1 -Preset windows-relwithdebinfo -RequireV8Runtime -SkipSmoke
           } else {
-            .\tools\windows\release-dry-run.ps1 -Preset windows-release
+            .\tools\windows\release-dry-run.ps1 -Preset windows-relwithdebinfo -RequireV8Runtime
           }
 
       - name: npm launcher dry-run from Windows archive
         shell: pwsh
-        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip
+        run: .\tools\windows\npm-dry-run.ps1 -PackagePath artifacts\packages\sloppy-windows-x64.zip -RequireV8Runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -189,7 +191,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang)
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang libglib2.0-dev)
           missing=()
 
           for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++; do
@@ -199,6 +201,9 @@ jobs:
             fi
           done
           if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
+          if ! pkg-config --exists glib-2.0 gobject-2.0 gio-2.0; then
             missing=("${packages[@]}")
           fi
 
@@ -215,6 +220,31 @@ jobs:
           restore-keys: |
             Linux-linux-clang-release-ccache-
             Linux-linux-clang-ccache-
+
+      - name: Restore Linux V8 SDK cache
+        id: linux-v8-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/v8/linux-x64
+            artifacts/v8-sdk
+          key: linux-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+          restore-keys: |
+            linux-v8-sdk-
+
+      - name: Validate Linux V8 SDK cache
+        id: linux-v8-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tools/unix/resolve-v8-sdk.sh --mode AUTO --quiet > /tmp/sloppy-v8-root && [ -s /tmp/sloppy-v8-root ]; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+            echo "Using cached Linux V8 SDK: $(cat /tmp/sloppy-v8-root)"
+          else
+            rm -rf .sdeps/v8/linux-x64 artifacts/v8-sdk
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+            echo "No compatible cached Linux V8 SDK found."
+          fi
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -248,6 +278,21 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Build Linux V8 SDK
+        if: steps.linux-v8-sdk.outputs.cached != 'true'
+        shell: bash
+        run: tools/unix/dev.sh build-v8
+
+      - name: Save Linux V8 SDK cache
+        if: steps.linux-v8-sdk.outputs.cached != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/v8/linux-x64
+            artifacts/v8-sdk
+          key: ${{ steps.linux-v8-sdk-cache.outputs.cache-primary-key }}
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -255,7 +300,7 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          args=(--preset linux-clang)
+          args=(--preset linux-clang --require-v8-runtime)
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
@@ -263,7 +308,7 @@ jobs:
 
       - name: npm launcher dry-run from Linux archive
         shell: bash
-        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-linux-x64.tar.gz
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-linux-x64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'

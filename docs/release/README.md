@@ -1,7 +1,7 @@
 # Release Artifact Policy
 
-This directory holds release artifact policy and dry-run validation inputs.
-Hosted release notes and publish instructions are prepared separately.
+This directory describes the shape of Sloppy release artifacts and the checks
+that keep those artifacts honest.
 
 Release dry-runs may build packages, verify checksums, upload workflow
 artifacts, and record validation output. Publishing, signing/notarization, and
@@ -12,13 +12,10 @@ packages are launcher packages around tested archive contents only. They must
 not build native code, fetch or build V8 during install, use `node-gyp`, or
 imply that Sloppy apps can import arbitrary npm packages.
 
-The npm publish workflow is manual. It downloads tarballs produced by the
-release-artifacts dry-run, smokes the Linux package locally, publishes the
-Windows and Linux platform packages first, then publishes
-`@rtlzeromemory/sloppy`. macOS npm publication remains future work until hosted
-package proof exists. Real publish requires npm Trusted Publishing/OIDC setup;
-missing Trusted Publishing is a release configuration failure, not a reason to
-commit tokens.
+The npm publish workflow consumes tarballs produced by the release artifact
+lane. Platform packages are published before the root
+`@rtlzeromemory/sloppy` launcher package. macOS npm publication waits until
+macOS archives have the same install and runtime verification as Windows and Linux.
 
 ## Required Evidence
 

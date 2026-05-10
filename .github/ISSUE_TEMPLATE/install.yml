@@ -1,0 +1,54 @@
+name: Install problem
+description: Report trouble installing or launching Sloppy.
+title: "Install: "
+labels: ["type:bug", "area:install", "status:needs-triage"]
+body:
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Windows 11, Ubuntu 24.04, ..."
+    validations:
+      required: true
+  - type: input
+    id: arch
+    attributes:
+      label: Architecture
+      placeholder: "x64, arm64"
+    validations:
+      required: true
+  - type: input
+    id: install-method
+    attributes:
+      label: Install method
+      placeholder: "npm, local archive, source build"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: sloppy --version
+  - type: textarea
+    id: doctor
+    attributes:
+      label: sloppy doctor
+      description: Run `sloppy doctor` and remove tokens, credentials, connection strings, and machine/private paths before pasting output.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting commands.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
+      render: text
+    validations:
+      required: true

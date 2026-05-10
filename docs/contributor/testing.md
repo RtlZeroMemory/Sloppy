@@ -1,6 +1,6 @@
 # Testing
 
-Tests are how Sloppy proves a behavior change matches the docs. The
+Tests are how Sloppy verifies that a behavior change matches the docs. The
 contract is short:
 
 1. Test documented intent, not implementation accidents.
@@ -14,10 +14,10 @@ where tests live. This page is the why and how.
 
 ## Lanes
 
-Different test lanes prove different things. Default CI runs the
+Different test lanes verify different parts of the system. Default CI runs the
 default lane plus a few mandatory ones; the rest are opt-in.
 
-| Lane                 | Proves                                                |
+| Lane                 | Verifies                                              |
 | -------------------- | ----------------------------------------------------- |
 | Default (non-V8)     | Native runtime, parser, plan, dispatch, route, scope   |
 | Compiler / Plan      | `sloppyc` extraction, emitted Plan/bundle, diagnostics |
@@ -62,7 +62,7 @@ conversion, ProblemDetails, CORS, health checks, or request service cleanup.
 Use `sloppy run --once` for compiled artifacts, native dispatch, V8 execution,
 generated typed bindings, package layout, and provider bridge behavior.
 
-The dogfood control-plane proof deliberately uses both. The app-host test
+The dogfood control-plane coverage deliberately uses both. The app-host test
 imports `examples/prealpha-control-plane/src/routes/*.js` and checks bodies,
 headers, query/path params, CORS, ProblemDetails, service-scope disposal, and
 negative paths. The CTest source-input lanes compile the same project, inspect

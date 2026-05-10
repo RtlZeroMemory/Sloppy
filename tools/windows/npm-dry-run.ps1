@@ -4,10 +4,15 @@ param(
     [ValidateSet("alpha")]
     [string]$PublishTag = "alpha",
     [switch]$SkipInstallSmoke,
+    [switch]$RequireV8Runtime,
     [switch]$KeepTemp
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($SkipInstallSmoke -and $RequireV8Runtime) {
+    throw "-RequireV8Runtime cannot be combined with -SkipInstallSmoke because V8 runtime execution would not be proven."
+}
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $OutputRoot = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
@@ -88,8 +93,8 @@ function Get-PlatformPackageName {
     switch ($triplet) {
         "windows-x64" { return "sloppy-win32-x64" }
         "linux-x64" { return "sloppy-linux-x64" }
-        "macos-arm64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
-        "macos-x64" { throw "macOS npm packages are not staged by this alpha workflow yet; hosted package proof is future work." }
+        "macos-arm64" { throw "macOS npm packages are not staged in this alpha." }
+        "macos-x64" { throw "macOS npm packages are not staged in this alpha." }
         default { throw "Unsupported npm platform package triplet in manifest: $triplet" }
     }
 }
@@ -242,6 +247,8 @@ try {
             if ($runOutput -notmatch "ok") {
                 throw "npm dry-run create/build/run smoke did not return /health ok.`n$runOutput"
             }
+        } elseif ($RequireV8Runtime) {
+            throw "npm dry-run required V8 runtime execution, but run failed.`n$runOutput"
         } elseif ($runOutput -notmatch "requires V8-enabled build") {
             throw "npm dry-run create/build/run smoke failed unexpectedly.`n$runOutput"
         }
@@ -272,6 +279,7 @@ try {
         npmPublished = $false
         tarballDirectory = $tarballRoot
         installSmokeRun = (-not $SkipInstallSmoke)
+        requireV8Runtime = [bool]$RequireV8Runtime
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot "summary.json") -Encoding ASCII
 
     Write-Host "npm dry-run completed without publishing packages."

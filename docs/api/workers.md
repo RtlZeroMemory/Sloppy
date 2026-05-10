@@ -196,9 +196,12 @@ with `SLOPPY_E_WORKER_SHUTDOWN_CANCELLED`. `stop({ drain: true })` lets
 active jobs finish but rejects new enqueues with
 `SLOPPY_E_WORK_QUEUE_STOPPED`.
 
-Compiler-inferred `WorkQueue<"name">` typed handler parameters are upcoming
-framework work. Until that's exercised by fixtures, register the queue
-explicitly as above.
+Compiler-inferred `WorkQueue<"name">` typed handler parameters are implemented
+for the current typed-handler fixture subset. The compiler emits an inferred
+`queue.<name>` capability and generated code materializes
+`WorkQueue.create("<name>")` through request-scope injection when the app has
+not registered that token explicitly. Register queues explicitly when you need
+custom queue options.
 
 ## Worker pools
 

@@ -1,18 +1,34 @@
-name: Docs
-description: Documentation, ADR, or source-of-truth update.
-title: "DOCS: "
-labels: ["type:docs", "area:docs", "status:ready"]
+name: Docs or example problem
+description: Report stale, confusing, or broken docs/examples.
+title: "Docs: "
+labels: ["type:docs", "area:docs", "status:needs-triage"]
 body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or example
+      placeholder: "docs/quickstart.md, examples/..., templates/..."
+    validations:
+      required: true
   - type: textarea
-    id: summary
-    attributes: { label: Summary }
-    validations: { required: true }
+    id: problem
+    attributes:
+      label: Problem
+    validations:
+      required: true
   - type: textarea
-    id: source-docs
-    attributes: { label: Source docs affected }
+    id: expected
+    attributes:
+      label: Expected wording or behavior
   - type: textarea
-    id: change
-    attributes: { label: Proposed change }
+    id: command
+    attributes:
+      label: Command you tried
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting commands.
+      render: text
   - type: textarea
-    id: acceptance
-    attributes: { label: Acceptance criteria }
+    id: output
+    attributes:
+      label: Output
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
+      render: text

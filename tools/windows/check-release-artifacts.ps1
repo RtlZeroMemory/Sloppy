@@ -86,9 +86,11 @@ function Test-ReleaseTemplates {
     Assert-True ($contract.npmPackages.publishWorkflow -eq ".github/workflows/npm-publish.yml") "Artifact contract must name the npm publish workflow."
 
     $npmPublishWorkflow = Read-RequiredText -Relative ".github/workflows/npm-publish.yml"
-    foreach ($needle in @("id-token: write", "publish-alpha", "npm publish", "--provenance", "Trusted Publishing")) {
+    foreach ($needle in @("id-token: write", "publish-alpha", "--registry https://registry.npmjs.org/", "npm publish", "Trusted Publishing", "--provenance")) {
         Assert-TextContains -Text $npmPublishWorkflow -Needle $needle -Message "npm publish workflow missing required publishing guard: $needle"
     }
+    Assert-True (-not $npmPublishWorkflow.Contains("registry-url:")) "npm publish workflow must not configure setup-node token auth."
+    Assert-True (-not $npmPublishWorkflow.Contains("NODE_AUTH_TOKEN")) "npm publish workflow must not use token auth."
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
     Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."
@@ -282,6 +284,15 @@ function Test-NpmPackagePolicy {
     foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64")) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
         Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
+    }
+    Assert-True (-not [string]::IsNullOrWhiteSpace($rootPackage.version)) "Root npm package version must not be empty."
+    foreach ($package in @("sloppy-win32-x64", "sloppy-linux-x64")) {
+        $platformPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "$package/package.json") -Raw | ConvertFrom-Json
+        Assert-True ($platformPackage.version -eq $rootPackage.version) "npm package $package version '$($platformPackage.version)' must match root version '$($rootPackage.version)'."
+        $dependencyName = [string]$platformPackage.name
+        $dependency = $rootPackage.optionalDependencies.PSObject.Properties[$dependencyName]
+        Assert-True ($null -ne $dependency) "Root npm package missing optional dependency '$dependencyName'."
+        Assert-True ($dependency.Value -eq $rootPackage.version) "Root optional dependency '$dependencyName' must pin version '$($rootPackage.version)', found '$($dependency.Value)'."
     }
     foreach ($dependency in @("@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]

@@ -38,6 +38,7 @@ struct SlHttpPlatformConnection
     uv_tcp_t handle;
     uv_write_t write;
     uv_write_t tls_write;
+    uv_shutdown_t shutdown;
     uv_timer_t header_timer;
     uv_timer_t body_timer;
     uv_timer_t request_timer;
@@ -67,6 +68,8 @@ struct SlHttpPlatformConnection
     bool tls_alpn_h2;
     bool tls_writing;
     bool tls_shutdown_writing;
+    bool graceful_shutdown;
+    bool shutdown_pending;
 };
 
 struct SlHttpPlatformListener
@@ -382,10 +385,27 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
     platform->tls_alpn_h2 = false;
     platform->tls_writing = false;
     platform->tls_shutdown_writing = false;
+    platform->graceful_shutdown = false;
+    platform->shutdown_pending = false;
     platform->closing = false;
     platform->initialized = false;
     if (platform->owner != NULL) {
         platform->owner->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED;
+    }
+}
+
+static void sl_http_transport_shutdown_cb(uv_shutdown_t* request, int status)
+{
+    SlHttpPlatformConnection* platform =
+        request == NULL ? NULL : (SlHttpPlatformConnection*)request->data;
+
+    (void)status;
+    if (platform == NULL) {
+        return;
+    }
+    platform->shutdown_pending = false;
+    if (platform->initialized && !uv_is_closing((uv_handle_t*)&platform->handle)) {
+        uv_close((uv_handle_t*)&platform->handle, sl_http_transport_connection_close_cb);
     }
 }
 
@@ -1331,6 +1351,9 @@ static SlStatus sl_http_transport_http2_close_if_requested(SlHttpTransportConnec
         return sl_status_ok();
     }
     connection->close_after_write = true;
+    if (connection->platform != NULL && !connection->platform->tls_enabled) {
+        connection->platform->graceful_shutdown = true;
+    }
     return sl_http_transport_connection_close(connection, out_diag);
 }
 
@@ -4439,6 +4462,11 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     {
         return sl_status_ok();
     }
+    if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING &&
+        connection->platform != NULL && connection->platform->shutdown_pending)
+    {
+        return sl_status_ok();
+    }
     if (connection->platform != NULL && connection->platform->initialized &&
         connection->platform->reading)
     {
@@ -4510,6 +4538,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     if (connection->platform != NULL && connection->platform->initialized &&
         !connection->platform->closing)
     {
+        SlHttpPlatformConnection* platform = connection->platform;
         SlStatus tls_shutdown_status =
             sl_http_transport_tls_start_shutdown(connection, out_diag, &tls_shutdown_queued);
         if (!sl_status_is_ok(tls_shutdown_status)) {
@@ -4519,9 +4548,22 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
             connection->slot_claimed = false;
             return sl_status_ok();
         }
-        connection->platform->closing = true;
-        uv_close((uv_handle_t*)&connection->platform->handle,
-                 sl_http_transport_connection_close_cb);
+        if (platform->graceful_shutdown && !platform->tls_enabled &&
+            uv_is_writable((uv_stream_t*)&platform->handle))
+        {
+            platform->shutdown.data = platform;
+            platform->closing = true;
+            platform->shutdown_pending = true;
+            if (uv_shutdown(&platform->shutdown, (uv_stream_t*)&platform->handle,
+                            sl_http_transport_shutdown_cb) == 0)
+            {
+                connection->slot_claimed = false;
+                return sl_status_ok();
+            }
+            platform->shutdown_pending = false;
+        }
+        platform->closing = true;
+        uv_close((uv_handle_t*)&platform->handle, sl_http_transport_connection_close_cb);
     }
     else {
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED;

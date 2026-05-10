@@ -12,3 +12,4 @@ sloppy run --once GET /health
 ```
 
 `sloppy package` writes a local app package under `.sloppy/package`.
+`sloppy run` requires a V8-enabled build or package.

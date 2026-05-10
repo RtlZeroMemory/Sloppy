@@ -1,27 +1,50 @@
-name: Bug
-description: Report a defect, regression, or broken quality gate.
-title: "BUG: "
-labels: ["type:bug", "status:ready"]
+name: Bug report
+description: Report a defect or regression.
+title: "Bug: "
+labels: ["type:bug", "status:needs-triage"]
 body:
   - type: textarea
     id: summary
-    attributes: { label: Summary }
-    validations: { required: true }
+    attributes:
+      label: Summary
+      description: What broke?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Steps, command, or small app that reproduces the issue.
+    validations:
+      required: true
   - type: textarea
     id: expected
-    attributes: { label: Expected behavior }
+    attributes:
+      label: Expected behavior
   - type: textarea
     id: actual
-    attributes: { label: Actual behavior }
+    attributes:
+      label: Actual behavior
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
+  - type: input
+    id: version
+    attributes:
+      label: Sloppy version
+      placeholder: "sloppy --version"
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: "Windows x64, Linux x64 glibc, ..."
   - type: textarea
-    id: reproduction
-    attributes: { label: Reproduction steps }
+    id: output
+    attributes:
+      label: Output
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
+      render: text
   - type: textarea
-    id: source-docs
-    attributes: { label: Relevant source docs }
-  - type: textarea
-    id: impact
-    attributes: { label: Impact / risk }
-  - type: textarea
-    id: checks
-    attributes: { label: Commands run }
+    id: commands
+    attributes:
+      label: Commands run
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting commands.
+      render: text

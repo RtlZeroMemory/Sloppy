@@ -28,7 +28,3 @@ test matrix, contributing PRs.
 ## Release
 
 - [Release artifacts](release-artifacts.md) — what we publish, how
-
-The agent-only operating rules live in [`AGENTS.md`](../../AGENTS.md) and
-[`CLAUDE.md`](../../CLAUDE.md) at the repo root. They aren't required
-reading for human contributors.

@@ -63,18 +63,17 @@ selects an installed platform package:
 - `@rtlzeromemory/sloppy-linux-x64`
 
 macOS npm platform packages are not referenced by the root package or publish workflow until
-hosted macOS package proof exists. npm package dry-runs must use `--tag alpha`, never
+hosted macOS package verification exists. npm package dry-runs must use `--tag alpha`, never
 `latest`. Platform package contents are generated from already-built archive contents; npm
 install must not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.
 
 Publishing is manual and alpha-gated through the npm publish workflow. It uses
 Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and
-`npm publish --provenance` so npm Trusted Publishing can issue the publish
-credential. If Trusted Publishing is not configured on npmjs.com for these
-packages, the publish step must fail; do not add committed `.npmrc` auth or
-long-lived tokens. The documented fallback is a granular `NPM_TOKEN` GitHub
-Actions secret, restricted to the package/scope and expiration-bound.
+`npm publish --provenance` so npm Trusted Publishing can issue a short-lived
+OIDC publish credential and attach package provenance. If Trusted Publishing is
+not configured on npmjs.com for these packages, the publish step must fail; do
+not add committed `.npmrc` auth or long-lived publish tokens.
 
 User-facing wording:
 

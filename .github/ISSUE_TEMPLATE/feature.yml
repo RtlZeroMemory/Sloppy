@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a capability or API direction.
+title: "Feature: "
+labels: ["type:feature", "status:needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: current-workaround
+    attributes:
+      label: Current workaround
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Boundaries
+      description: What should this not imply or not support?

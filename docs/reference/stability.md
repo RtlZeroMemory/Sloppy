@@ -89,12 +89,12 @@ compiler fails closed rather than emitting a partial Plan.
 | Crypto stdlib | supported | supported from `sloppy/crypto` | `stdlib.crypto` feature emitted | V8 bridge required (platform-delegated) | SHA-256/384/512, HMAC-SHA-256, Argon2id, OS CSPRNG, xxHash64. |
 | Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | No Node `Buffer`. |
 | Workers stdlib | supported app-host | supported from `sloppy/workers` | `stdlib.workers` feature emitted | pure JS for `BackgroundService`/`WorkQueue`; V8 bridge for `WorkerPool.run` and `Worker.start` | App shutdown does not yet auto-stop background services. |
-| Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for proof classification. |
-| Package/install path | n/a | n/a | package layout | experimental | Local archives and local npm tarball proof exist; public release/npm packages are not published. |
+| Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
+| Package/install path | n/a | n/a | package layout | experimental | Windows x64 and Linux x64 npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
 
 ## Current Limits
 
-- Production hardening, public release polish, and application dependency workflows are separate product work.
+- Production hardening and application dependency workflows are separate product work.
 - Default local checks do not provide full cross-platform parity coverage.
 - Compiler benchmark reports are local measurement artifacts. They are not
   compatibility guarantees or public performance comparisons.

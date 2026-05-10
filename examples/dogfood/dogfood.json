@@ -70,7 +70,7 @@
       "requiresCompiler": true,
       "requiresV8": true,
       "defaultNonV8Result": "UNAVAILABLE",
-      "evidence": "The app host proof suite imports the same route modules through Testing.createHost; CMake source-input lanes verify project-mode artifacts, CLI inspection, non-V8 diagnostics, and V8-gated once execution."
+      "evidence": "The app host coverage suite imports the same route modules through Testing.createHost; CMake source-input lanes verify project-mode artifacts, CLI inspection, non-V8 diagnostics, and V8-gated once execution."
     },
     {
       "id": "package-hello-artifact",

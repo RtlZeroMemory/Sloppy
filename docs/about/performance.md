@@ -57,7 +57,7 @@ benchmark" without that context is informal, not a project claim.
 - No performance regression gates beyond "the harness still runs".
 - No production deployment evidence.
 
-## Why we're cagey
+## Why numbers are not published yet
 
 Pre-alpha numbers are misleading. Optimizations land sporadically, the
 HTTP server isn't production-hardened (so any test under load measures
@@ -65,7 +65,7 @@ non-final code), and the framework feature set is still landing. Locking
 in a number now would tell future Sloppy something untrue about its own
 floor.
 
-When Sloppy hits public alpha, expect a benchmarks page with:
+Before benchmark numbers are published, Sloppy needs:
 
 - a fixed methodology (workload, build flags, hardware class, version)
 - explicit comparison runtimes

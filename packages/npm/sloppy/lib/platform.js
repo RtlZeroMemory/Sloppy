@@ -44,8 +44,8 @@ function resolvePlatformPackage(env, processPlatform, processArch) {
       supported: false,
       message:
         `Unsupported Sloppy runtime npm platform: platform=${platform} arch=${arch} libc=${libc}. ` +
-        "macOS npm platform packages are not published in this alpha workflow yet; " +
-        "use a GitHub Release archive or build Sloppy from source after hosted macOS proof exists."
+        "macOS npm platform packages are not published in this alpha. " +
+        "Build Sloppy from source for macOS."
     };
   }
 

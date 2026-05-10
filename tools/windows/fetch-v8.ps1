@@ -110,6 +110,75 @@ function Expand-ZipArchive {
     [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
 }
 
+function Get-DownloadHeaders {
+    param([string]$Url)
+
+    $headers = @{}
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        return $headers
+    }
+
+    try {
+        $uri = [uri]$Url
+    } catch {
+        return $headers
+    }
+
+    if ($uri.Host -eq "github.com" -or $uri.Host -eq "api.github.com") {
+        $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+        $headers["Accept"] = "application/octet-stream"
+        $headers["X-GitHub-Api-Version"] = "2022-11-28"
+    }
+
+    return $headers
+}
+
+function Resolve-GitHubReleaseAssetDownload {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        return $Url
+    }
+
+    try {
+        $uri = [uri]$Url
+    } catch {
+        return $Url
+    }
+
+    if ($uri.Host -ne "github.com") {
+        return $Url
+    }
+
+    $match = [regex]::Match($uri.AbsolutePath, '^/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)$')
+    if (-not $match.Success) {
+        return $Url
+    }
+
+    $owner = [uri]::UnescapeDataString($match.Groups[1].Value)
+    $repo = [uri]::UnescapeDataString($match.Groups[2].Value)
+    $tag = [uri]::UnescapeDataString($match.Groups[3].Value)
+    $assetName = [uri]::UnescapeDataString($match.Groups[4].Value)
+    $releaseApiUrl = "https://api.github.com/repos/$owner/$repo/releases/tags/$tag"
+    $apiHeaders = @{
+        "Authorization" = "Bearer $env:GITHUB_TOKEN"
+        "Accept" = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+
+    try {
+        $release = Invoke-RestMethod -Uri $releaseApiUrl -Headers $apiHeaders -TimeoutSec 120
+        $asset = @($release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1)
+        if ($asset.Count -eq 0) {
+            throw "GitHub release asset '$assetName' was not found on $owner/$repo release '$tag'."
+        }
+        return [string]$asset[0].url
+    } catch {
+        Write-Warning "GitHub release API lookup failed for $owner/$repo '$tag' asset '$assetName'. Falling back to the release download URL. $($_.Exception.Message)"
+        return $Url
+    }
+}
+
 if ($ValidateOnly) {
     $rootToValidate = $V8Root
     if ([string]::IsNullOrWhiteSpace($rootToValidate)) {
@@ -179,7 +248,9 @@ if (-not [string]::IsNullOrWhiteSpace($SourceArchive)) {
         $oldProgressPreference = $ProgressPreference
         $ProgressPreference = "SilentlyContinue"
         try {
-            Invoke-WebRequest -Uri $url -OutFile $tempArchive -UseBasicParsing -TimeoutSec 1200
+            $downloadUrl = Resolve-GitHubReleaseAssetDownload -Url $url
+            $downloadHeaders = Get-DownloadHeaders -Url $downloadUrl
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $tempArchive -UseBasicParsing -TimeoutSec 1200 -Headers $downloadHeaders
         } finally {
             $ProgressPreference = $oldProgressPreference
         }

@@ -8,7 +8,7 @@ The example is intentionally plain JavaScript source with no `package.json`.
 No npm package scope is required. The compiler resolves `"sloppy"` and relative
 imports from the project root.
 
-## What it proves
+## What it covers
 
 - `sloppy build` and `sloppy run` project-mode dogfood through `sloppy.json`.
 - Function modules registered through `app.useModule(...)`.
@@ -18,7 +18,7 @@ imports from the project root.
 - App test host dispatch against the same route modules in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs`.
 
-## Current proof coverage
+## Current coverage
 
 Default non-V8 lanes compile the project and verify that `sloppy run` emits
 artifacts before reporting the required V8 diagnostic. The V8-gated lane runs:

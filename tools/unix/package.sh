@@ -72,7 +72,7 @@ if [[ "$enable_v8" -eq 1 ]]; then
   build_suffix="$build_suffix-v8"
 fi
 build_dir="$repo_root/build/unix-$build_suffix"
-package_version="0.1.0-alpha.0"
+package_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$repo_root/packages/npm/sloppy/package.json")"
 kernel_name="$(uname -s)"
 machine_name="$(uname -m)"
 

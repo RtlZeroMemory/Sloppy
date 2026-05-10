@@ -1,6 +1,6 @@
 # Sloppy Examples
 
-Examples are split by proof level. Runnable examples are useful to try by
+Examples are split by confidence level. Runnable examples are useful to try by
 hand. Fixture examples are small source shapes kept stable by tests.
 
 Run commands from the repository root unless a row says otherwise. `sloppy run`
@@ -14,7 +14,7 @@ sloppy create my-api --template minimal-api
 
 ## Example Inventory
 
-| Example | Status | Command | What it proves | Requirements / expected result |
+| Example | Status | Command | What it covers | Requirements / expected result |
 | --- | --- | --- | --- | --- |
 | `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
@@ -38,9 +38,9 @@ sloppy create my-api --template minimal-api
 | `codec-compression` | API-shape fixture | `ctest -R examples.codec.api_shape` | gzip/gunzip helper shape | Static example check only. |
 | `codec-streaming-compression` | API-shape fixture | `ctest -R examples.codec.api_shape` | streaming compression shape | Static example check only. |
 | `codec-text-binary` | API-shape fixture | `ctest -R examples.codec.api_shape` | Text and binary reader/writer helpers | Static example check only. |
-| `config-basic` | API-shape fixture | `ctest -R examples.config.api_shape` | Config binding and defaults | Static example check only. |
-| `config-secrets-redaction` | API-shape fixture | `ctest -R examples.config.api_shape` | Secret wrapper/redaction boundary | Static example check only. |
-| `config-strict-mode` | API-shape fixture | `ctest -R examples.config.api_shape` | Strict config reads | Static example check only. |
+| `config-basic` | compile-only / tooling fixture | `ctest -R examples.config.api_shape` | Config binding and defaults | Source build and static example checks; no positive handler execution claim. |
+| `config-secrets-redaction` | compile-only / tooling fixture | `ctest -R examples.config.api_shape` | Secret wrapper/redaction boundary | Source build and static example checks; `doctor` reports missing required secret config until configured. |
+| `config-strict-mode` | compile-only / tooling fixture | `ctest -R examples.config.api_shape` | Strict config reads | Source build and static example checks; no positive handler execution claim. |
 | `core-config-secrets` | core integration fixture | `ctest -R examples.core_integration.api_shape` | Core config/secret policy shape | Static example check only. |
 | `core-fs-time-codec` | core integration fixture | `ctest -R examples.core_integration.api_shape` | Combined filesystem/time/codec API shape | Static example check only. |
 | `core-network-time-codec` | core integration fixture | `ctest -R examples.core_integration.api_shape` | Combined network/time/codec API shape | Static example check only. |

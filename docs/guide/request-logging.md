@@ -41,10 +41,10 @@ Trusted values are accepted only when they are safe HTTP header values. Unsafe o
 empty values are ignored and the middleware generates a new ID.
 
 `RequestLogging.defaults()` writes through `ctx.log.info(...)` with the message
-`request completed`. It is bootstrap app-host middleware; compiler source input
-rejects `RequestLogging.defaults(...)` until middleware can be emitted into
-AppGraph and generated artifacts. In native `sloppy run` handlers, direct
-`ctx.log` calls write into the native logging queue and configured native sinks.
+`request completed`. Source-input builds support the static
+`RequestLogging.defaults(...)` subset; dynamic option values fail closed. In
+native `sloppy run` handlers, direct `ctx.log` calls write into the native
+logging queue and configured native sinks.
 
 The default fields are:
 
