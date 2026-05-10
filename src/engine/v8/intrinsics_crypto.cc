@@ -769,6 +769,25 @@ void crypto_v8_password_needs_rehash_callback(const v8::FunctionCallbackInfo<v8:
 
 } // namespace
 
+void sl_v8_append_crypto_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_random_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_random_uuid_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_random_hex_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_random_token_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_random_numeric_code_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_hash_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_hmac_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_constant_time_equals_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_noncrypto_xxhash64_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_password_hash_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_password_verify_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(crypto_v8_password_needs_rehash_callback));
+}
+
 bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> sloppy)
 {

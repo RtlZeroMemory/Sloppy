@@ -328,6 +328,15 @@ void time_v8_monotonic_ms_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
 
 } // namespace
 
+void sl_v8_append_time_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(time_v8_delay_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(time_v8_monotonic_ms_callback));
+}
+
 bool sl_v8_install_time_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                    v8::Local<v8::Object> sloppy)
 {

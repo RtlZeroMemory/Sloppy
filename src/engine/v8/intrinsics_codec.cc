@@ -305,6 +305,15 @@ void codec_v8_gunzip_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 } // namespace
 
+void sl_v8_append_codec_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(codec_v8_gzip_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(codec_v8_gunzip_callback));
+}
+
 bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> sloppy)
 {

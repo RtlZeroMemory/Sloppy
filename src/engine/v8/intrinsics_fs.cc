@@ -1702,6 +1702,45 @@ bool fs_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
 } // namespace
 
+void sl_v8_append_fs_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_read_text_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_read_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_write_text_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_write_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_append_text_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_append_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_exists_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_stat_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_copy_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_move_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_delete_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_atomic_write_text_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_atomic_write_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_directory_create_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_directory_list_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_directory_delete_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_symlink_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_read_link_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_temp_file_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_temp_directory_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_open_handle_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_read_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_write_text_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_write_bytes_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_seek_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_truncate_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_flush_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_sync_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_handle_close_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_watch_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_watch_next_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(fs_v8_watch_close_callback));
+}
+
 bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy)
 {

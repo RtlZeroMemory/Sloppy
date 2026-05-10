@@ -19,12 +19,14 @@
 #include "sloppy/resource.h"
 
 #include <v8.h>
+#include <yyjson.h>
 
 #include <array>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -35,6 +37,26 @@ struct SlV8NetRequest;
 struct SlV8OsRequest;
 struct SlV8WorkerRequest;
 struct SlV8JsWorker;
+
+struct SlV8SourceMapLineState
+{
+    size_t offset = 0U;
+    int64_t previous_source = 0;
+    int64_t previous_original_line = 0;
+    int64_t previous_original_column = 0;
+};
+
+struct SlV8SourceMapCache
+{
+    yyjson_doc* doc = nullptr;
+    yyjson_val* root = nullptr;
+    bool parsed = false;
+    bool malformed = false;
+    std::vector<std::string> sources;
+    const char* mappings = nullptr;
+    size_t mappings_length = 0U;
+    std::vector<SlV8SourceMapLineState> lines;
+};
 
 typedef enum SlV8HttpStringKey
 {
@@ -183,6 +205,8 @@ struct SlV8Engine
     SlLogRuntime* logging = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};
+    SlV8SourceMapCache source_map_cache = {};
+    bool startup_snapshot_active = false;
     bool has_runtime_features = false;
     SlRuntimeFeatureSet runtime_features = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};
@@ -221,39 +245,50 @@ bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId 
 
 bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);
+void sl_v8_append_provider_external_references(std::vector<intptr_t>* refs);
 
 bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy);
+void sl_v8_append_fs_external_references(std::vector<intptr_t>* refs);
 
 bool sl_v8_install_time_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                    v8::Local<v8::Object> sloppy);
+void sl_v8_append_time_external_references(std::vector<intptr_t>* refs);
 void sl_v8_time_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> sloppy);
+void sl_v8_append_crypto_external_references(std::vector<intptr_t>* refs);
 void sl_v8_crypto_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                   v8::Local<v8::Object> sloppy);
+void sl_v8_append_net_external_references(std::vector<intptr_t>* refs);
 void sl_v8_net_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy);
+void sl_v8_append_os_external_references(std::vector<intptr_t>* refs);
 void sl_v8_os_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> sloppy);
+void sl_v8_append_codec_external_references(std::vector<intptr_t>* refs);
 
 bool sl_v8_install_workers_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                       v8::Local<v8::Object> sloppy);
+void sl_v8_append_workers_external_references(std::vector<intptr_t>* refs);
 void sl_v8_workers_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);
+void sl_v8_append_sqlite_external_references(std::vector<intptr_t>* refs);
 bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);
+void sl_v8_append_postgres_external_references(std::vector<intptr_t>* refs);
 bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                         v8::Local<v8::Object> data);
+void sl_v8_append_sqlserver_external_references(std::vector<intptr_t>* refs);
 
 bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     const SlHttpRequestContext* request_context,

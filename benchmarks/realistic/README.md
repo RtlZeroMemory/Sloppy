@@ -35,6 +35,11 @@ tools/unix/bench-realistic.sh --quick --runtime sloppy,node
 Quick mode is a local sanity pass. It uses short timings and a small workload
 subset so the harness can be checked without running a full benchmark matrix.
 
+For startup experiments that intentionally exercise V8 app-script code caching,
+set `SLOPPY_V8_CODE_CACHE_DIR` to a writable directory and record whether the
+directory was empty or already warmed. Leave it unset for default cold-start
+behavior.
+
 ## Normal run
 
 Windows:

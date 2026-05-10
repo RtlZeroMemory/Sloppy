@@ -34,6 +34,14 @@ static int expect_status(SlStatus status, SlStatusCode code)
     return expect_true(sl_status_code(status) == code);
 }
 
+static int expect_format_complete(int written, size_t capacity)
+{
+    if (written < 0) {
+        return 1;
+    }
+    return expect_true((size_t)written < capacity);
+}
+
 static int expect_str_equal(SlStr actual, const char* expected)
 {
     return expect_true(sl_str_equal(actual, sl_str_from_cstr(expected)));
@@ -228,9 +236,13 @@ static int test_route_table_build_orders_literal_before_params(void)
 
     if (table.route_count != 2U || table.dispatch.route_count != 2U ||
         table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 2U ||
-        table.dispatch.routes[1].handler_id != 1U || table.dispatch.exact_route_buckets == NULL ||
+        table.dispatch.routes[0].handler != &handlers[1] ||
+        table.dispatch.routes[1].handler_id != 1U ||
+        table.dispatch.routes[1].handler != &handlers[0] ||
+        !table.dispatch.handler_cache_trusted || table.dispatch.exact_route_buckets == NULL ||
         table.dispatch.exact_route_bucket_count == 0U || table.dispatch.param_routes == NULL ||
         table.dispatch.param_route_count != 1U || table.dispatch.param_routes[0].handler_id != 1U ||
+        table.dispatch.param_routes[0].handler != &handlers[0] ||
         table.dispatch.param_route_buckets == NULL || table.dispatch.param_route_bucket_count == 0U)
     {
         return 6;
@@ -305,6 +317,30 @@ static int test_route_table_rejects_duplicate_method_pattern(void)
     }
 
     return expect_true(table.route_count == 0U && diag.code == SL_DIAG_DUPLICATE_ROUTE);
+}
+
+static int test_route_table_rejects_duplicate_handler_ids(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handlers[2];
+    SlPlanRoute routes[2];
+    SlPlan plan = route_table_plan(handlers, routes);
+    SlHttpRouteTable table = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0) {
+        return 73;
+    }
+
+    handlers[1].id = handlers[0].id;
+    if (expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 74;
+    }
+
+    return expect_true(table.route_count == 0U && diag.code == SL_DIAG_DUPLICATE_HANDLER_ID);
 }
 
 static int test_route_table_build_keeps_method_metadata(void)
@@ -553,6 +589,70 @@ static int test_parameter_first_route_reaches_bucket(void)
         diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
     {
         return 166;
+    }
+    return 0;
+}
+
+static int test_large_param_bucket_miss_uses_indexed_lookup(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE * 4U];
+    unsigned char request_storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena request_arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute routes[96] = {0};
+    char patterns[96][32];
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+    size_t index = 0U;
+
+    for (index = 0U; index < 96U; index += 1U) {
+        int written =
+            snprintf(patterns[index], sizeof(patterns[index]), "/bucket%02zu/{id}", index);
+        if (expect_format_complete(written, sizeof(patterns[index])) != 0) {
+            return 176;
+        }
+        routes[index].method = sl_str_from_cstr("GET");
+        routes[index].pattern = sl_str_from_cstr(patterns[index]);
+        routes[index].handler_id = 1U;
+    }
+    plan.routes = routes;
+    plan.route_count = 96U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&request_arena, request_storage, sizeof(request_storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&request_arena, "GET /missing/123 HTTP/1.1\r\nHost: example\r\n\r\n",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 177;
+    }
+
+    if (table.dispatch.param_route_bucket_count != 96U ||
+        table.dispatch.param_route_bucket_slots == NULL ||
+        table.dispatch.param_route_bucket_slot_count == 0U)
+    {
+        sl_engine_destroy(engine);
+        return 178;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_OUT_OF_RANGE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
+        return 179;
     }
     return 0;
 }
@@ -2166,11 +2266,13 @@ int main(void)
         HTTP_DISPATCH_TEST(test_route_table_build_orders_literal_before_params),
         HTTP_DISPATCH_TEST(test_literal_route_wins_over_param_route_end_to_end),
         HTTP_DISPATCH_TEST(test_route_table_rejects_duplicate_method_pattern),
+        HTTP_DISPATCH_TEST(test_route_table_rejects_duplicate_handler_ids),
         HTTP_DISPATCH_TEST(test_route_table_build_keeps_method_metadata),
         HTTP_DISPATCH_TEST(test_route_table_exact_index_reports_method_mismatch),
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_preserve_source_order),
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_report_method_mismatch),
         HTTP_DISPATCH_TEST(test_parameter_first_route_reaches_bucket),
+        HTTP_DISPATCH_TEST(test_large_param_bucket_miss_uses_indexed_lookup),
         HTTP_DISPATCH_TEST(test_generated_options_route_reaches_engine),
         HTTP_DISPATCH_TEST(test_route_table_build_accepts_non_get_only_metadata),
         HTTP_DISPATCH_TEST(test_allow_header_lists_matching_methods_and_head_for_get),

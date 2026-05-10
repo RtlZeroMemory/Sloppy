@@ -4,7 +4,7 @@ param(
     [int]$Connections = 1,
     [int]$DurationSeconds = 5,
     [int]$WarmupSeconds = 0,
-    [int]$Seed = 1,
+    [long]$Seed = 1,
     [switch]$Single,
     [switch]$CaptureBody
 )
@@ -77,9 +77,9 @@ if ($Single) {
     exit 0
 }
 
-function Invoke-Phase([int]$Seconds, [bool]$Collect, [int]$PhaseSeed) {
+function Invoke-Phase([int]$Seconds, [bool]$Collect, [long]$PhaseSeed) {
     $jobs = for ($i = 0; $i -lt $Connections; $i++) {
-        Start-ThreadJob -ArgumentList $BaseUrl, $RequestsJson, $Seconds, $Collect, ([int]($PhaseSeed + $i * 7919)) -ScriptBlock {
+        Start-ThreadJob -ArgumentList $BaseUrl, $RequestsJson, $Seconds, $Collect, ([long]($PhaseSeed + $i * 7919)) -ScriptBlock {
             param($BaseUrl, $RequestsJson, $Seconds, $Collect, $WorkerSeed)
             function New-RequestMessage($BaseUrl, $Spec) {
                 $uri = [Uri]::new([Uri]::new($BaseUrl), [string]$Spec.path)
@@ -203,6 +203,14 @@ $result = [pscustomobject]@{
         timeouts = $samples.timeouts
         non2xx = $samples.non2xx
     }
-    raw = $samples
+    raw = [pscustomobject]@{
+        totalRequests = $samples.totalRequests
+        latencySampleCount = $lat.Count
+        bytes = $samples.bytes
+        errors = $samples.errors
+        timeouts = $samples.timeouts
+        non2xx = $samples.non2xx
+        errorTypes = $samples.errorTypes
+    }
 }
 $result | ConvertTo-Json -Depth 12 -Compress

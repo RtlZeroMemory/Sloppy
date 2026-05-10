@@ -180,6 +180,14 @@ async function hostInfo(repoRoot) {
 }
 
 async function freePort() {
+  if (isWindows()) {
+    const script = "$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Parse('127.0.0.1'), 0); $listener.Start(); $port = $listener.LocalEndpoint.Port; $listener.Stop(); $port";
+    const result = await Process.run("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], { capture: "text", timeoutMs: 5000, maxStdoutBytes: 1024, maxStderrBytes: 1024 }).catch(() => null);
+    const port = Number(String(result?.stdout ?? "").trim());
+    if (Number.isInteger(port) && port > 0 && port < 65536) {
+      return port;
+    }
+  }
   return 41000 + Math.floor(Time.systemClock().monotonicNowMs() % 20000);
 }
 
@@ -272,7 +280,21 @@ async function startServer(runtimeName, runtime, prepared, port, options) {
 async function stopServer(proc) {
   if (!proc || !Number.isFinite(proc.pid)) return;
   if (isWindows()) {
-    await Process.run("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `Stop-Process -Id ${proc.pid} -Force -ErrorAction SilentlyContinue`], { capture: "none", timeoutMs: 5000 }).catch(() => {});
+    const script = `
+$ids = New-Object System.Collections.Generic.List[int]
+function Add-ProcessTree([int]$Id) {
+  if ($ids.Contains($Id)) { return }
+  $ids.Add($Id) | Out-Null
+  Get-CimInstance Win32_Process -Filter "ParentProcessId=$Id" | ForEach-Object {
+    Add-ProcessTree ([int]$_.ProcessId)
+  }
+}
+Add-ProcessTree ${proc.pid}
+foreach ($id in [System.Linq.Enumerable]::Reverse($ids)) {
+  Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+}
+`;
+    await Process.run("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], { capture: "none", timeoutMs: 5000 }).catch(() => {});
     return;
   }
   await Process.run("sh", ["-c", `kill ${proc.pid} 2>/dev/null || true`], { capture: "none", timeoutMs: 5000 }).catch(() => {});
@@ -526,6 +548,36 @@ async function runMeasurement(runtimeName, runtime, category, workload, options,
   }
 }
 
+async function runStartupMeasurement(runtimeName, runtime, category, workload, options, cache, iteration) {
+  const debugPath = joinPath(options.out, "runner-debug.log");
+  await File.appendText(debugPath, `startup ${runtimeName} ${workload.name}\n`).catch(() => {});
+  const base = emptyRun(runtimeName, category, { ...workload, name: "startup-health" }, options, iteration, 1);
+  base.durationSeconds = 0;
+  base.warmupSeconds = 0;
+  const prepared = await prepareApp(runtimeName, runtime, category, workload, options, cache);
+  if (runtimeName === "sloppy") base.sloppy = { buildDurationMs: prepared.buildDurationMs };
+  if (!prepared.ok) {
+    base.reason = "server build failed";
+    base.artifacts = await writeRaw(options.out, safeName(`${runtimeName}-${category}-startup-health-${iteration}-startup-build`), prepared.stdout, prepared.stderr, {});
+    return base;
+  }
+  const port = await freePort();
+  const baseUrl = `http://${host}:${port}`;
+  const started = Time.systemClock().monotonicNowMs();
+  const proc = await startServer(runtimeName, runtime, prepared, port, options);
+  try {
+    const ready = await waitForHealth(baseUrl);
+    base.startupMs = Time.systemClock().monotonicNowMs() - started;
+    base.status = ready.ok ? "PASS" : "FAIL";
+    base.reason = ready.ok ? undefined : "server did not become ready";
+    const logs = await readLogs(proc);
+    base.artifacts = await writeRaw(options.out, safeName(`${runtimeName}-${category}-startup-health-${iteration}-startup`), logs.stdout, logs.stderr, ready);
+    return base;
+  } finally {
+    await stopServer(proc).catch(() => {});
+  }
+}
+
 function median(values) {
   const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
   return sorted.length === 0 ? null : sorted[Math.floor(sorted.length / 2)];
@@ -574,6 +626,7 @@ function summaries(runs) {
       p50Ms: median(items.map((item) => item.latency.p50Ms)),
       p95Ms: median(items.map((item) => item.latency.p95Ms)),
       p99Ms: median(items.map((item) => item.latency.p99Ms)),
+      startupMs: median(items.map((item) => item.startupMs)),
       errors: items.reduce((sum, item) => sum + item.transfer.errors, 0),
       non2xx: items.reduce((sum, item) => sum + item.transfer.non2xx, 0),
       rssBytes: median(items.map((item) => item.process.peakWorkingSetBytes)),
@@ -613,7 +666,7 @@ function renderMarkdown(result) {
   lines.push(`Load generator: ${result.tools.loadGenerator.name} ${result.tools.loadGenerator.version}`, "");
   lines.push("## Workloads", "", table(["Workload", "Definition"], result.workloadDefinitions.map((item) => [item.name, item.description])), "");
   lines.push("## Results", "");
-  lines.push(summary.length === 0 ? "No passing measurement rows were produced." : table(["Workload", "Variant", "Runtime", "Conn", "RPS", "p50 ms", "p95 ms", "p99 ms", "Errors", "Non-2xx", "Peak RSS"], summary.map((item) => [item.workload, item.variant, item.runtime, String(item.connections), fmtNumber(item.requestsPerSecond), fmtNumber(item.p50Ms), fmtNumber(item.p95Ms), fmtNumber(item.p99Ms), fmtInt(item.errors), fmtInt(item.non2xx), fmtBytes(item.rssBytes)])));
+  lines.push(summary.length === 0 ? "No passing measurement rows were produced." : table(["Workload", "Variant", "Runtime", "Conn", "RPS", "Startup ms", "p50 ms", "p95 ms", "p99 ms", "Errors", "Non-2xx", "Peak RSS"], summary.map((item) => [item.workload, item.variant, item.runtime, String(item.connections), fmtNumber(item.requestsPerSecond), fmtNumber(item.startupMs), fmtNumber(item.p50Ms), fmtNumber(item.p95Ms), fmtNumber(item.p99Ms), fmtInt(item.errors), fmtInt(item.non2xx), fmtBytes(item.rssBytes)])));
   lines.push("", "## Relative Deltas", "");
   for (const competitor of ["node", "bun", "deno"]) {
     const rows = deltaRows(summary, competitor);
@@ -641,7 +694,7 @@ export async function main() {
   const options = applyDefaults(await File.readJson(configPath));
   await Directory.create(options.out, { recursive: true });
   const tools = await detectTools(options);
-  const workloads = expandWorkloads(options);
+  const workloads = options.suite === "startup" ? [baseWorkloads[0]] : expandWorkloads(options);
   const result = {
     schemaVersion: 1,
     suite: options.suite,
@@ -657,7 +710,7 @@ export async function main() {
     return JSON.stringify({ status: "PASS", out: options.out, dryRun: true });
   }
   const cache = new Map();
-  const suites = options.suite === "all" ? ["http"] : [options.suite];
+  const suites = options.suite === "all" ? ["http", "startup"] : [options.suite];
   for (const runtimeName of options.runtimes) {
     const runtime = tools[runtimeName];
     if (!runtime || runtime.status !== "AVAILABLE") {
@@ -666,6 +719,12 @@ export async function main() {
     }
     for (const category of options.categories) {
       for (const suite of suites) {
+        if (suite === "startup") {
+          for (let iteration = 1; iteration <= options.iterations; iteration += 1) {
+            result.runs.push(await runStartupMeasurement(runtimeName, runtime, category, baseWorkloads[0], options, cache, iteration));
+          }
+          continue;
+        }
         if (suite !== "http" && suite !== "stress") throw new Error(`Unsupported suite in Sloppy quick runner: ${suite}`);
         for (const workload of workloads) {
           for (const connections of options.connections) {

@@ -1418,6 +1418,30 @@ bool os_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
 } // namespace
 
+void sl_v8_append_os_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_system_info_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_get_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_has_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_list_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_run_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_start_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_wait_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_read_stdout_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_read_stderr_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_write_stdin_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_close_stdin_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_terminate_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_kill_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_cancel_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_dispose_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_signals_on_shutdown_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_noop_dispose_callback));
+}
+
 bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy)
 {

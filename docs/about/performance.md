@@ -19,6 +19,23 @@ the request side.
 The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
+Generated static HTTP routes are indexed by method and path. Parameterized
+routes are bucketed by method and first static segment, with an indexed bucket
+lookup so misses do not scale with the total number of parameter buckets before
+candidate patterns are checked. Valid HTTP/1.1 error responses, including 404
+route misses, remain eligible for keep-alive instead of forcing a reconnect per
+miss.
+
+The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
+and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup
+measurement, not default runtime guarantees. Code-cache entries are invalidated
+by generated source bytes, source label, cache format version, and linked V8
+version; V8 cache rejection falls back to normal compilation. Startup snapshots
+are keyed by V8 version and runtime feature mask, with Sloppy native intrinsic
+callbacks listed in the snapshot external-reference table. When a startup
+snapshot is active, app-script code caching is skipped for that engine so the two
+V8 serialization paths are measured separately.
+
 These are design intents, not measured outcomes. They suggest where to
 look when measurements eventually run, not what numbers to expect.
 

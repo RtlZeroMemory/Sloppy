@@ -3031,6 +3031,147 @@ static int test_create_destroy_create_reuses_process_platform(void)
     return 0;
 }
 
+static int test_startup_snapshot_rebuilds_runtime_handler_map(void)
+{
+    unsigned char engine_storage[32768];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* first = NULL;
+    SlEngine* second = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    features.active_mask = UINT32_C(1) << SL_RUNTIME_FEATURE_STDLIB_APP;
+    options.runtime_features = &features;
+
+    if (set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "artifacts/test-v8-startup-snapshot") != 0) {
+        return 63;
+    }
+    if (set_test_env("SLOPPY_V8_CODE_CACHE_DIR", "artifacts/test-v8-startup-snapshot-code-cache") !=
+        0)
+    {
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        return 63;
+    }
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        (void)set_test_env("SLOPPY_V8_CODE_CACHE_DIR", "");
+        return 64;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(first, sl_str_from_cstr("v8-snapshot-register-a.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(7, function (ctx) { "
+                                                   "return ctx.request.rawTarget; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_call_registered_handler_with_context(first, &result_arena, 7U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("/users/123?q=abc")))
+    {
+        sl_engine_destroy(first);
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        (void)set_test_env("SLOPPY_V8_CODE_CACHE_DIR", "");
+        return 65;
+    }
+
+    sl_engine_destroy(first);
+    result = (SlEngineResult){0};
+    sl_arena_reset(&result_arena);
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(second, sl_str_from_cstr("v8-snapshot-register-b.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(8, function () { "
+                                                   "return 'snapshot-ok'; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_call_registered_handler_with_context(second, &result_arena, 8U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("snapshot-ok")))
+    {
+        sl_engine_destroy(second);
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        (void)set_test_env("SLOPPY_V8_CODE_CACHE_DIR", "");
+        return 66;
+    }
+
+    sl_engine_destroy(second);
+    (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+    (void)set_test_env("SLOPPY_V8_CODE_CACHE_DIR", "");
+    return 0;
+}
+
+static int test_startup_snapshot_supports_native_intrinsics(void)
+{
+    unsigned char engine_storage[65536];
+    SlArena engine_arena = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* first = NULL;
+    SlEngine* second = NULL;
+    SlDiag diag = {0};
+    const char* probe_source =
+        "if (typeof __sloppy.time.monotonicMs !== 'function') throw new Error('missing time');"
+        "if (typeof __sloppy.crypto.randomUuid !== 'function') throw new Error('missing crypto');"
+        "if (typeof __sloppy.codec.gzip !== 'function') throw new Error('missing codec');"
+        "if (typeof __sloppy.net.connect !== 'function') throw new Error('missing net');"
+        "if (typeof __sloppy.os.systemInfo !== 'function') throw new Error('missing os');"
+        "if (typeof __sloppy.workers.runPool !== 'function') throw new Error('missing workers');"
+        "if (typeof __sloppy.fs.exists !== 'function') throw new Error('missing fs');"
+        "if (typeof __sloppy.data.sqlite.open !== 'function') throw new Error('missing sqlite');"
+        "if (typeof __sloppy.data.postgres.open !== 'function') throw new Error('missing pg');"
+        "if (typeof __sloppy.data.sqlserver.open !== 'function') throw new Error('missing mssql');";
+
+    features.active_mask = (UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1);
+    options.runtime_features = &features;
+
+    if (set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "artifacts/test-v8-startup-snapshot-native") != 0) {
+        return 67;
+    }
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        return 68;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(first, sl_str_from_cstr("v8-snapshot-native-a.js"),
+                                           sl_str_from_cstr(probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(first);
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        return 69;
+    }
+    sl_engine_destroy(first);
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(second, sl_str_from_cstr("v8-snapshot-native-b.js"),
+                                           sl_str_from_cstr(probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(second);
+        (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+        return 70;
+    }
+
+    sl_engine_destroy(second);
+    (void)set_test_env("SLOPPY_V8_SNAPSHOT_DIR", "");
+    return 0;
+}
+
 static int test_call_after_destroy_returns_lifecycle_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -5710,19 +5851,20 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body,
-                           "{\"rowName\":\"Ada\",\"rawIsBytes\":true,\"raw\":[0,65,255],"
-                           "\"rows\":[{\"name\":\"Ada\"},{\"name\":\"Grace\"}],"
-                           "\"rowsMode\":\"object\",\"rowsColumnNames\":[\"name\"],"
-                           "\"rowsColumns\":[\"name:0\"],\"rowKeys\":[\"name\"],"
-                           "\"rowsJson\":\"[{\\\"name\\\":\\\"Ada\\\"},{\\\"name\\\":\\\"Grace\\\"}]\","
-                           "\"duplicateValue\":2,\"duplicateColumnNames\":[\"same\",\"same\"],"
-                           "\"rawMode\":\"raw\",\"rawDuplicateRows\":[[1,2]],"
-                           "\"rawDuplicateColumnNames\":[\"same\",\"same\"],\"txRawCount\":2,"
-                           "\"typed\":{\"kind\":\"integer\"},\"bigType\":\"bigint\","
-                           "\"bigValue\":\"9007199254740993\",\"bigParamType\":\"bigint\","
-                           "\"bigParamValue\":\"9007199254740993\","
-                           "\"bigParamKind\":\"integer\"}") != 0)
+        expect_bytes_equal(
+            result.response.body,
+            "{\"rowName\":\"Ada\",\"rawIsBytes\":true,\"raw\":[0,65,255],"
+            "\"rows\":[{\"name\":\"Ada\"},{\"name\":\"Grace\"}],"
+            "\"rowsMode\":\"object\",\"rowsColumnNames\":[\"name\"],"
+            "\"rowsColumns\":[\"name:0\"],\"rowKeys\":[\"name\"],"
+            "\"rowsJson\":\"[{\\\"name\\\":\\\"Ada\\\"},{\\\"name\\\":\\\"Grace\\\"}]\","
+            "\"duplicateValue\":2,\"duplicateColumnNames\":[\"same\",\"same\"],"
+            "\"rawMode\":\"raw\",\"rawDuplicateRows\":[[1,2]],"
+            "\"rawDuplicateColumnNames\":[\"same\",\"same\"],\"txRawCount\":2,"
+            "\"typed\":{\"kind\":\"integer\"},\"bigType\":\"bigint\","
+            "\"bigValue\":\"9007199254740993\",\"bigParamType\":\"bigint\","
+            "\"bigParamValue\":\"9007199254740993\","
+            "\"bigParamKind\":\"integer\"}") != 0)
     {
         sl_engine_destroy(engine);
         return 135;
@@ -7081,6 +7223,16 @@ int main(int argc, char** argv)
     }
 
     result = test_create_destroy_create_reuses_process_platform();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_startup_snapshot_rebuilds_runtime_handler_map();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_startup_snapshot_supports_native_intrinsics();
     if (result != 0) {
         return result;
     }
