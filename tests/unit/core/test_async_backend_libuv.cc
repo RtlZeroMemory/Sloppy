@@ -118,11 +118,11 @@ static void close_socket_pair(LibuvSocketPair* pair)
         return;
     }
     if (pair->watched != LIBUV_INVALID_SOCKET) {
-        (void)libuv_close_socket(pair->watched);
+        libuv_close_socket(pair->watched);
         pair->watched = LIBUV_INVALID_SOCKET;
     }
     if (pair->peer != LIBUV_INVALID_SOCKET) {
-        (void)libuv_close_socket(pair->peer);
+        libuv_close_socket(pair->peer);
         pair->peer = LIBUV_INVALID_SOCKET;
     }
 }
@@ -148,30 +148,30 @@ static bool create_socket_pair(LibuvSocketPair* out_pair)
     if (listener == INVALID_SOCKET) {
         return false;
     }
-    (void)setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = 0;
     if (bind(listener, (const sockaddr*)&address, sizeof(address)) != 0 ||
         listen(listener, 1) != 0 || getsockname(listener, (sockaddr*)&bound, &bound_length) != 0)
     {
-        (void)closesocket(listener);
+        closesocket(listener);
         return false;
     }
 
     client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (client == INVALID_SOCKET || connect(client, (const sockaddr*)&bound, sizeof(bound)) != 0) {
         if (client != INVALID_SOCKET) {
-            (void)closesocket(client);
+            closesocket(client);
         }
-        (void)closesocket(listener);
+        closesocket(listener);
         return false;
     }
 
     server = accept(listener, nullptr, nullptr);
-    (void)closesocket(listener);
+    closesocket(listener);
     if (server == INVALID_SOCKET) {
-        (void)closesocket(client);
+        closesocket(client);
         return false;
     }
 
@@ -824,7 +824,7 @@ static int test_libuv_io_watch_start_update_stop_and_dispose_lifecycle(void)
         sl_async_loop_dispose(loop);
         return 65;
     }
-    (void)read_single_byte(pair.watched, &byte);
+    read_single_byte(pair.watched, &byte);
 
     if (expect_status(sl_async_io_watch_start(loop, &arena, static_cast<int>(pair.watched),
                                               SL_ASYNC_IO_EVENT_READABLE, record_io_watch, &record,

@@ -277,7 +277,7 @@ static SlStatus sl_http2_dispatch_submit_response_for_request(SlHttp2ServerDispa
 
     status = sl_http_request_begin_dispatch(request, &dispatcher->last_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_REFUSED_STREAM);
+        sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_REFUSED_STREAM);
         return sl_status_ok();
     }
 
@@ -292,8 +292,8 @@ static SlStatus sl_http2_dispatch_submit_response_for_request(SlHttp2ServerDispa
 
     status = sl_http_request_begin_write(request, &dispatcher->last_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(request, NULL);
-        (void)sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_INTERNAL_ERROR);
+        sl_http_request_fail(request, NULL);
+        sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_INTERNAL_ERROR);
         return sl_status_ok();
     }
 
@@ -302,15 +302,15 @@ static SlStatus sl_http2_dispatch_submit_response_for_request(SlHttp2ServerDispa
                                           dispatcher->config.max_response_body_bytes,
                                           &response_headers, &response_body);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(request, NULL);
-        (void)sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_INTERNAL_ERROR);
+        sl_http_request_fail(request, NULL);
+        sl_http2_dispatch_reset_stream(dispatcher, stream_id, SL_HTTP2_ERROR_INTERNAL_ERROR);
         return sl_status_ok();
     }
 
     status = sl_http2_session_submit_response(&dispatcher->session, stream_id, &response_headers,
                                               response_body);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(request, NULL);
+        sl_http_request_fail(request, NULL);
         return status;
     }
 
@@ -334,8 +334,8 @@ static SlStatus sl_http2_dispatch_complete_stream(SlHttp2ServerDispatcher* dispa
         sl_http2_request_from_headers(dispatcher->arena, dispatcher->connection, &stream->headers,
                                       request_body, &request, &dispatcher->last_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http2_dispatch_reset_stream(dispatcher, stream->stream_id,
-                                             SL_HTTP2_ERROR_PROTOCOL_ERROR);
+        sl_http2_dispatch_reset_stream(dispatcher, stream->stream_id,
+                                       SL_HTTP2_ERROR_PROTOCOL_ERROR);
         return sl_status_ok();
     }
 

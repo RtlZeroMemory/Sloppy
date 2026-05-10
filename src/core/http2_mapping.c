@@ -367,7 +367,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
 
     status = sl_http_method_from_str(method, &out_request->head.method);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
 
@@ -375,7 +375,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         regular_header_count += 1U;
     }
     if (regular_header_count > limits.max_headers) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
@@ -383,12 +383,12 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         size_t header_bytes = 0U;
         status = sl_checked_array_size(regular_header_count, sizeof(SlHttpHeader), &header_bytes);
         if (!sl_status_is_ok(status)) {
-            (void)sl_http_request_fail(out_request, out_diag);
+            sl_http_request_fail(out_request, out_diag);
             return status;
         }
         status = sl_arena_alloc(arena, header_bytes, _Alignof(SlHttpHeader), &header_storage);
         if (!sl_status_is_ok(status)) {
-            (void)sl_http_request_fail(out_request, out_diag);
+            sl_http_request_fail(out_request, out_diag);
             return status;
         }
     }
@@ -399,7 +399,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         status = sl_http2_copy_header(arena, sl_str_from_cstr("host"), effective_authority,
                                       &copied_headers[regular_header_count]);
         if (!sl_status_is_ok(status)) {
-            (void)sl_http_request_fail(out_request, out_diag);
+            sl_http_request_fail(out_request, out_diag);
             return status;
         }
         regular_header_count += 1U;
@@ -417,7 +417,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         status = sl_http2_copy_header(arena, header->name, header->value,
                                       &copied_headers[regular_header_count]);
         if (!sl_status_is_ok(status)) {
-            (void)sl_http_request_fail(out_request, out_diag);
+            sl_http_request_fail(out_request, out_diag);
             return status;
         }
         regular_header_count += 1U;
@@ -425,13 +425,13 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
 
     status = sl_str_copy_view_to_arena(arena, target, &out_request->head.raw_target);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
     status = sl_str_copy_view_to_arena(arena, sl_http2_path_from_target(target),
                                        &out_request->head.path);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
 
@@ -446,7 +446,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         out_request, has_content_type ? content_type : sl_str_from_cstr("application/octet-stream"),
         body.length, &reader, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
     if (!sl_str_is_empty(content_length)) {
@@ -454,12 +454,12 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     }
     status = sl_http_request_body_reader_append(&reader, body, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
     status = sl_http_request_body_reader_finish(&reader, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_request_fail(out_request, out_diag);
+        sl_http_request_fail(out_request, out_diag);
         return status;
     }
 

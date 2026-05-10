@@ -150,7 +150,7 @@ SlStatus sl_async_loop_libuv_init(SlAsyncLoop* loop, SlArena* arena)
 
     uv_status = uv_mutex_init(&backend->mutex);
     if (uv_status != 0) {
-        (void)uv_loop_close(&backend->loop);
+        uv_loop_close(&backend->loop);
         return sl_libuv_status_from_error(uv_status);
     }
     backend->mutex_initialized = true;
@@ -158,7 +158,7 @@ SlStatus sl_async_loop_libuv_init(SlAsyncLoop* loop, SlArena* arena)
     uv_status = uv_async_init(&backend->loop, &backend->async, sl_libuv_async_wakeup);
     if (uv_status != 0) {
         uv_mutex_destroy(&backend->mutex);
-        (void)uv_loop_close(&backend->loop);
+        uv_loop_close(&backend->loop);
         return sl_libuv_status_from_error(uv_status);
     }
     backend->async_initialized = true;
@@ -260,7 +260,7 @@ SlStatus sl_async_loop_libuv_run_once(SlAsyncLoop* loop, size_t* out_ran)
     }
 
     callback_count_before = backend->callback_count;
-    (void)uv_run(&backend->loop, UV_RUN_NOWAIT);
+    uv_run(&backend->loop, UV_RUN_NOWAIT);
 
     status = sl_async_loop_libuv_pop_one(loop, &completion);
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
@@ -355,7 +355,7 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
     if (backend->loop_initialized) {
         while (uv_run(&backend->loop, UV_RUN_DEFAULT) != 0) {
         }
-        (void)uv_loop_close(&backend->loop);
+        uv_loop_close(&backend->loop);
     }
 
     if (backend->mutex_initialized) {
@@ -442,7 +442,7 @@ void sl_async_loop_libuv_io_watch_stop(SlAsyncIoWatch* base)
         return;
     }
     if (watch->poll_initialized) {
-        (void)uv_poll_stop(&watch->poll);
+        uv_poll_stop(&watch->poll);
         if (!uv_is_closing((uv_handle_t*)&watch->poll)) {
             uv_close((uv_handle_t*)&watch->poll, NULL);
         }

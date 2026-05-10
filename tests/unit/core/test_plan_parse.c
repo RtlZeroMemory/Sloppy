@@ -59,24 +59,24 @@ static int read_fixture(const char* path, unsigned char* buffer, size_t capacity
     }
 
     if (fseek(file, 0L, SEEK_END) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 4;
     }
 
     size = ftell(file);
     if (size < 0L || (size_t)size > capacity) {
-        (void)fclose(file);
+        fclose(file);
         return 5;
     }
 
     if (fseek(file, 0L, SEEK_SET) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 6;
     }
 
     bytes_read = fread(buffer, 1U, (size_t)size, file);
     if (bytes_read != (size_t)size) {
-        (void)fclose(file);
+        fclose(file);
         return 7;
     }
 

@@ -107,9 +107,9 @@ static int test_core_file_operations(void)
     SlStr copy_path = sl_str_from_cstr("./sloppy-fs-core-test-copy.txt");
     SlStr moved_path = sl_str_from_cstr("./sloppy-fs-core-test-moved.txt");
 
-    (void)sl_fs_delete_file(path, NULL);
-    (void)sl_fs_delete_file(copy_path, NULL);
-    (void)sl_fs_delete_file(moved_path, NULL);
+    sl_fs_delete_file(path, NULL);
+    sl_fs_delete_file(copy_path, NULL);
+    sl_fs_delete_file(moved_path, NULL);
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_write_file(path, sl_bytes_from_parts((const unsigned char*)"hello", 5U),
@@ -164,7 +164,7 @@ static int test_directory_temp_atomic_lock_and_handle(void)
     bool saw_file = false;
     size_t index = 0U;
 
-    (void)sl_fs_delete_directory(dir, true, NULL);
+    sl_fs_delete_directory(dir, true, NULL);
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_create_directory(nested, true, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"one", 3U),
@@ -253,7 +253,7 @@ static int test_recursive_delete_releases_walk_scratch(void)
     SlStr root = sl_str_from_cstr("./sloppy-fs-large-delete");
     bool exists = true;
 
-    (void)sl_fs_delete_directory(root, true, NULL);
+    sl_fs_delete_directory(root, true, NULL);
     if (expect_status(sl_fs_create_directory(root, false, NULL), SL_STATUS_OK) != 0) {
         return 50;
     }
@@ -272,7 +272,7 @@ static int test_recursive_delete_releases_walk_scratch(void)
         if (child_length <= 0 || (size_t)child_length >= sizeof(child_path) || file_length <= 0 ||
             (size_t)file_length >= sizeof(file_path))
         {
-            (void)sl_fs_delete_directory(root, true, NULL);
+            sl_fs_delete_directory(root, true, NULL);
             return 51;
         }
         if (expect_status(sl_fs_create_directory(sl_str_from_cstr(child_path), true, NULL),
@@ -282,7 +282,7 @@ static int test_recursive_delete_releases_walk_scratch(void)
                                            false, NULL),
                           SL_STATUS_OK) != 0)
         {
-            (void)sl_fs_delete_directory(root, true, NULL);
+            sl_fs_delete_directory(root, true, NULL);
             return 52;
         }
     }
@@ -321,7 +321,7 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
     SlStatus symlink_status;
     size_t index = 0U;
 
-    (void)sl_fs_delete_directory(dir, true, NULL);
+    sl_fs_delete_directory(dir, true, NULL);
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_create_directory(dir, false, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_write_file(target,
@@ -340,7 +340,7 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
 
 #ifdef _WIN32
     if (_fullpath(absolute_target, target.ptr, sizeof(absolute_target)) == NULL) {
-        (void)sl_fs_delete_directory(dir, true, NULL);
+        sl_fs_delete_directory(dir, true, NULL);
         fprintf(stderr, "fs symlink subtest failed at 40\n");
         return 40;
     }
@@ -349,7 +349,7 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
     symlink_status = sl_fs_create_symlink(link_target_path, link, false, NULL);
     if (sl_status_is_ok(symlink_status)) {
         if (expect_status(sl_fs_read_link(&arena, link, &link_target, NULL), SL_STATUS_OK) != 0) {
-            (void)sl_fs_delete_directory(dir, true, NULL);
+            sl_fs_delete_directory(dir, true, NULL);
             fprintf(stderr, "fs symlink subtest failed at 41\n");
             fprintf(stderr, "fs symlink subtest failed at 41 status=%d\n",
                     (int)sl_status_code(symlink_status));
@@ -358,13 +358,13 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
 
 #ifdef _WIN32
         if (link_target.length == 0U) {
-            (void)sl_fs_delete_directory(dir, true, NULL);
+            sl_fs_delete_directory(dir, true, NULL);
             fprintf(stderr, "fs symlink subtest failed at 42\n");
             return 42;
         }
 #else
         if (!sl_str_equal(sl_owned_str_as_view(link_target), link_target_path)) {
-            (void)sl_fs_delete_directory(dir, true, NULL);
+            sl_fs_delete_directory(dir, true, NULL);
             fprintf(stderr, "fs symlink subtest failed at 42\n");
             return 42;
         }
@@ -374,21 +374,21 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
         if (expect_status(sl_fs_read_file(&arena, link, &bytes, NULL), SL_STATUS_OK) != 0 ||
             bytes.length != 6U || memcmp(bytes.ptr, "target", 6U) != 0)
         {
-            (void)sl_fs_delete_directory(dir, true, NULL);
+            sl_fs_delete_directory(dir, true, NULL);
             fprintf(stderr, "fs symlink subtest failed at 43\n");
             return 43;
         }
 #endif
     }
     else if (expect_status(symlink_status, SL_STATUS_UNSUPPORTED) != 0) {
-        (void)sl_fs_delete_directory(dir, true, NULL);
+        sl_fs_delete_directory(dir, true, NULL);
         fprintf(stderr, "fs symlink subtest failed at 41 status=%d\n",
                 (int)sl_status_code(symlink_status));
         return 41;
     }
 
     if (sl_status_is_ok(sl_fs_read_link(&arena, plain, &link_target, NULL))) {
-        (void)sl_fs_delete_directory(dir, true, NULL);
+        sl_fs_delete_directory(dir, true, NULL);
         fprintf(stderr, "fs symlink subtest failed at 44\n");
         return 44;
     }
@@ -396,19 +396,19 @@ static int test_symlink_readlink_and_atomic_cleanup(void)
     if (sl_status_is_ok(sl_fs_atomic_write_file(
             &arena, failing_target, sl_bytes_from_parts((const unsigned char*)"atomic", 6U), NULL)))
     {
-        (void)sl_fs_delete_directory(dir, true, NULL);
+        sl_fs_delete_directory(dir, true, NULL);
         fprintf(stderr, "fs symlink subtest failed at 45\n");
         return 45;
     }
 
     if (expect_status(sl_fs_list_directory(&arena, dir, &list, NULL), SL_STATUS_OK) != 0) {
-        (void)sl_fs_delete_directory(dir, true, NULL);
+        sl_fs_delete_directory(dir, true, NULL);
         fprintf(stderr, "fs symlink subtest failed at 46\n");
         return 46;
     }
     for (index = 0U; index < list.count; index += 1U) {
         if (str_has_prefix(sl_owned_str_as_view(list.entries[index].name), ".sloppy-atomic-")) {
-            (void)sl_fs_delete_directory(dir, true, NULL);
+            sl_fs_delete_directory(dir, true, NULL);
             fprintf(stderr, "fs symlink subtest failed at 47\n");
             return 47;
         }
@@ -431,6 +431,7 @@ static int test_watch_directory_and_file_events(void)
     SlStr file = sl_str_from_cstr("./sloppy-fs-watch/item.txt");
     SlStr long_file = sl_str_from_cstr("./sloppy-fs-watch/this-is-a-long-event-name-for-retry.txt");
     SlStr sibling_file = sl_str_from_cstr("./sloppy-fs-watch/z.txt");
+    SlStr missing_dir = sl_str_from_cstr("./sloppy-fs-watch/missing-dir");
     SlStr missing_file = sl_str_from_cstr("./sloppy-fs-watch/missing.txt");
     SlFsWatchOptions directory_options = {.directory = true, .queue_capacity = 4U};
     SlFsWatchOptions file_options = {.directory = false, .queue_capacity = 4U};
@@ -441,8 +442,9 @@ static int test_watch_directory_and_file_events(void)
     SlFsWatchEvent event = {0};
     SlFsStat before_same_size = {0};
     SlFsStat after_same_size = {0};
+    size_t used_before_failed_watch = 0U;
 
-    (void)sl_fs_delete_directory(dir, true, NULL);
+    sl_fs_delete_directory(dir, true, NULL);
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_create_directory(dir, false, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_fs_watch_open(&arena, dir, &directory_options, &directory_watch, NULL),
@@ -451,6 +453,15 @@ static int test_watch_directory_and_file_events(void)
                       SL_STATUS_DEADLINE_EXCEEDED) != 0)
     {
         return 30;
+    }
+
+    used_before_failed_watch = sl_arena_used(&arena);
+    if (expect_status(
+            sl_fs_watch_open(&arena, missing_dir, &directory_options, &unused_watch, NULL),
+            SL_STATUS_OUT_OF_RANGE) != 0 ||
+        unused_watch != NULL || sl_arena_used(&arena) != used_before_failed_watch)
+    {
+        return 39;
     }
 
     if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),

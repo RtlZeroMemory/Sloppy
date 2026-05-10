@@ -248,19 +248,19 @@ static SlStatus sl_local_probe_socket_stale(const char* path, size_t path_length
     }
     status = sl_local_configure_fd(fd, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)close(fd);
+        close(fd);
         return status;
     }
     sl_local_make_addr(path, path_length, &addr, &addr_len);
     if (connect(fd, (const struct sockaddr*)&addr, addr_len) == 0) {
-        (void)close(fd);
+        close(fd);
         return sl_status_ok();
     }
     switch (errno) {
     case ECONNREFUSED:
     case ENOENT:
         *out_stale = true;
-        (void)close(fd);
+        close(fd);
         return sl_status_ok();
     default:
         break;
@@ -268,7 +268,7 @@ static SlStatus sl_local_probe_socket_stale(const char* path, size_t path_length
     status = sl_local_errno_status(errno, out_diag, SL_DIAG_NET_LOCAL_IPC_PATH_DENIED,
                                    SL_STATUS_INVALID_STATE,
                                    sl_local_literal("local IPC path was denied by policy"));
-    (void)close(fd);
+    close(fd);
     return status;
 }
 
@@ -431,7 +431,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     }
     status = sl_local_configure_fd(fd, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)close(fd);
+        close(fd);
         connection->state = SL_LOCAL_CONNECTION_FAILED;
         return status;
     }
@@ -439,7 +439,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
         original_flags = fcntl(fd, F_GETFL, 0);
         if (original_flags < 0 || fcntl(fd, F_SETFL, original_flags | O_NONBLOCK) != 0) {
             int error = errno;
-            (void)close(fd);
+            close(fd);
             connection->state = SL_LOCAL_CONNECTION_FAILED;
             return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
                                          SL_STATUS_INTERNAL,
@@ -463,20 +463,20 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
                                       SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
                                       sl_local_literal("local IPC connect timed out"));
             if (!sl_status_is_ok(status)) {
-                (void)close(fd);
+                close(fd);
                 connection->state = SL_LOCAL_CONNECTION_FAILED;
                 return status;
             }
             if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_length) != 0) {
                 error = errno;
-                (void)close(fd);
+                close(fd);
                 connection->state = SL_LOCAL_CONNECTION_FAILED;
                 return sl_local_errno_status(
                     error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE, SL_STATUS_INTERNAL,
                     sl_local_literal("local IPC backend is unavailable"));
             }
             if (socket_error != 0) {
-                (void)close(fd);
+                close(fd);
                 connection->state = SL_LOCAL_CONNECTION_FAILED;
                 return sl_local_errno_status(
                     socket_error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
@@ -484,7 +484,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
             }
         }
         else {
-            (void)close(fd);
+            close(fd);
             connection->state = SL_LOCAL_CONNECTION_FAILED;
             return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
                                          SL_STATUS_INVALID_STATE,
@@ -493,7 +493,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     }
     if (restore_flags && fcntl(fd, F_SETFL, original_flags) != 0) {
         int error = errno;
-        (void)close(fd);
+        close(fd);
         connection->state = SL_LOCAL_CONNECTION_FAILED;
         return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
                                      SL_STATUS_INTERNAL,
@@ -580,14 +580,14 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     }
     status = sl_local_configure_fd(fd, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)close(fd);
+        close(fd);
         server->state = SL_LOCAL_SERVER_FAILED;
         return status;
     }
     sl_local_make_addr(path, path_length, &addr, &addr_len);
     if (bind(fd, (const struct sockaddr*)&addr, addr_len) != 0) {
         int error = errno;
-        (void)close(fd);
+        close(fd);
         server->state = SL_LOCAL_SERVER_FAILED;
         return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED,
                                      SL_STATUS_INVALID_STATE,
@@ -595,8 +595,8 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     }
     if (options->has_permissions && chmod(path, (mode_t)options->permissions) != 0) {
         int error = errno;
-        (void)close(fd);
-        (void)unlink(path);
+        close(fd);
+        unlink(path);
         server->state = SL_LOCAL_SERVER_FAILED;
         return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED,
                                      SL_STATUS_UNSUPPORTED,
@@ -605,8 +605,8 @@ SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* op
     backlog = options->backlog == 0U ? 128 : (int)options->backlog;
     if (listen(fd, backlog) != 0) {
         int error = errno;
-        (void)close(fd);
-        (void)unlink(path);
+        close(fd);
+        unlink(path);
         server->state = SL_LOCAL_SERVER_FAILED;
         return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED,
                                      SL_STATUS_INVALID_STATE,
@@ -675,7 +675,7 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
     }
     status = sl_local_configure_fd(fd, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)close(fd);
+        close(fd);
         connection->state = SL_LOCAL_CONNECTION_FAILED;
         return status;
     }
@@ -698,7 +698,7 @@ static SlStatus sl_local_server_finish_close(SlLocalServer* server, SlLocalServe
     }
     server->state = SL_LOCAL_SERVER_CLOSING;
     if (server->fd >= 0) {
-        (void)close(server->fd);
+        close(server->fd);
         server->fd = -1;
     }
     if (server->path[0] != '\0' && unlink(server->path) != 0 && errno != ENOENT) {
@@ -984,7 +984,7 @@ static SlStatus sl_local_connection_finish_close(SlLocalConnection* connection,
     }
     connection->state = SL_LOCAL_CONNECTION_CLOSING;
     if (connection->fd >= 0) {
-        (void)close(connection->fd);
+        close(connection->fd);
         connection->fd = -1;
     }
     connection->state = state;

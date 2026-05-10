@@ -28,7 +28,7 @@ static size_t sl_avx2_first_mask_index(uint32_t mask)
 #if defined(_MSC_VER) && !defined(__clang__)
     {
         unsigned long index = 0UL;
-        (void)_BitScanForward(&index, mask);
+        _BitScanForward(&index, mask);
         return (size_t)index;
     }
 #else

@@ -566,14 +566,17 @@ bool sl_v8_write_file(const std::filesystem::path& path, const char* data, int l
 
 bool sl_v8_build_startup_snapshot(const SlEngineOptions* options, std::vector<uint8_t>* out)
 {
-    v8::ArrayBuffer::Allocator* allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-    if (allocator == nullptr || out == nullptr) {
-        delete allocator;
+    if (out == nullptr) {
+        return false;
+    }
+    std::unique_ptr<v8::ArrayBuffer::Allocator> allocator(
+        v8::ArrayBuffer::Allocator::NewDefaultAllocator());
+    if (allocator == nullptr) {
         return false;
     }
 
     v8::Isolate::CreateParams params;
-    params.array_buffer_allocator = allocator;
+    params.array_buffer_allocator = allocator.get();
     params.external_references = sl_v8_external_references();
     v8::StartupData blob = {};
     bool installed = false;
@@ -581,7 +584,7 @@ bool sl_v8_build_startup_snapshot(const SlEngineOptions* options, std::vector<ui
         v8::SnapshotCreator creator(params);
         v8::Isolate* isolate = creator.GetIsolate();
         SlV8Engine snapshot_backend;
-        snapshot_backend.allocator = allocator;
+        snapshot_backend.allocator = allocator.get();
         snapshot_backend.isolate = isolate;
         snapshot_backend.owner_thread = std::this_thread::get_id();
         snapshot_backend.has_runtime_features =
@@ -608,13 +611,12 @@ bool sl_v8_build_startup_snapshot(const SlEngineOptions* options, std::vector<ui
         }
     }
 
-    delete allocator;
+    std::unique_ptr<const char[]> blob_data(blob.data);
     if (blob.data == nullptr || blob.raw_size <= 0) {
         return false;
     }
     out->assign(reinterpret_cast<const uint8_t*>(blob.data),
                 reinterpret_cast<const uint8_t*>(blob.data) + blob.raw_size);
-    delete[] blob.data;
     return !out->empty();
 }
 
@@ -1289,7 +1291,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     }
 
     if (args.Length() != 2) {
-        (void)sl_v8_throw_type_error_from_native_view(
+        sl_v8_throw_type_error_from_native_view(
             backend,
             sl_v8_literal(
                 "__sloppy_register_handler requires handler ID and handler function",
@@ -1301,7 +1303,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     v8::Local<v8::Value> handler_value = args[1];
 
     if (!id_value->IsUint32()) {
-        (void)sl_v8_throw_type_error_from_native_view(
+        sl_v8_throw_type_error_from_native_view(
             backend,
             sl_v8_literal(
                 "__sloppy_register_handler handler ID must be a positive integer",
@@ -1311,7 +1313,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
 
     uint32_t handler_id = id_value.As<v8::Uint32>()->Value();
     if (handler_id == 0U) {
-        (void)sl_v8_throw_type_error_from_native_view(
+        sl_v8_throw_type_error_from_native_view(
             backend,
             sl_v8_literal(
                 "__sloppy_register_handler handler ID must be a positive integer",
@@ -1320,7 +1322,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     }
 
     if (!handler_value->IsFunction()) {
-        (void)sl_v8_throw_type_error_from_native_view(
+        sl_v8_throw_type_error_from_native_view(
             backend,
             sl_v8_literal("__sloppy_register_handler handler must be callable",
                           sizeof("__sloppy_register_handler handler must be callable") - 1U));
@@ -1328,7 +1330,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     }
 
     if (backend->pending_handlers == nullptr) {
-        (void)sl_v8_throw_error_from_native_view(
+        sl_v8_throw_error_from_native_view(
             backend,
             sl_v8_literal("__sloppy_register_handler is only valid during app evaluation",
                           sizeof("__sloppy_register_handler is only valid during app evaluation") -
@@ -1339,7 +1341,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     if (backend->handlers.find(handler_id) != backend->handlers.end() ||
         backend->pending_handlers->find(handler_id) != backend->pending_handlers->end())
     {
-        (void)sl_v8_throw_error_from_native_view(
+        sl_v8_throw_error_from_native_view(
             backend, sl_v8_literal("__sloppy_register_handler duplicate handler ID",
                                    sizeof("__sloppy_register_handler duplicate handler ID") - 1U));
         return;

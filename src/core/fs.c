@@ -159,7 +159,7 @@ static SlStatus sl_fs_watch_pop(SlFsWatchHandle* watch, SlArena* arena, SlFsWatc
             *out = (SlFsWatchEvent){0};
             return status;
         }
-        (void)sl_ring_queue_discard_front(&watch->queue);
+        sl_ring_queue_discard_front(&watch->queue);
         return sl_status_ok();
     }
     if (watch->overflow_pending) {
@@ -825,7 +825,7 @@ static SlStatus sl_fs_resolve_absolute(SlArena* arena, const SlFsPolicy* policy,
     SlStatus status;
 
     if (policy->mode == SL_FS_POLICY_STRICT && !policy->allow_absolute) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_fail(
             out_diag, SL_DIAG_PERMISSION_DENIED, SL_STATUS_INVALID_STATE,
             sl_str_from_cstr("absolute filesystem paths require explicit allow in strict mode"));
@@ -851,7 +851,7 @@ static SlStatus sl_fs_resolve_project_relative(SlArena* arena, const SlFsPolicy*
         return status;
     }
     if (escaped) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_fail(
             out_diag, SL_DIAG_PERMISSION_DENIED, SL_STATUS_INVALID_STATE,
             sl_str_from_cstr("project-relative filesystem path escapes the app root"));
@@ -876,7 +876,7 @@ static SlStatus sl_fs_resolve_named_root(SlArena* arena, const SlFsPolicy* polic
     name = sl_str_from_parts(input.ptr, colon);
     root = sl_fs_find_root(policy, name);
     if (root == NULL) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_fail(out_diag, SL_DIAG_INVALID_ARGUMENT, SL_STATUS_INVALID_ARGUMENT,
                           sl_str_from_cstr("unknown filesystem root"));
     }
@@ -886,7 +886,7 @@ static SlStatus sl_fs_resolve_named_root(SlArena* arena, const SlFsPolicy* polic
         return status;
     }
     if (escaped) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_fail(out_diag, SL_DIAG_PERMISSION_DENIED, SL_STATUS_INVALID_STATE,
                           sl_str_from_cstr("named-root filesystem path escapes its root"));
     }
@@ -916,7 +916,7 @@ SlStatus sl_fs_resolve_path(SlArena* arena, const SlFsPolicy* policy, SlStr inpu
     mark = sl_arena_mark(arena);
     status = sl_fs_classify_path(input, &kind);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_fail(out_diag, SL_DIAG_INVALID_ARGUMENT, SL_STATUS_INVALID_ARGUMENT,
                           sl_str_from_cstr("invalid filesystem path syntax"));
     }
@@ -932,7 +932,7 @@ SlStatus sl_fs_resolve_path(SlArena* arena, const SlFsPolicy* policy, SlStr inpu
         return sl_fs_resolve_named_root(arena, policy, input, out, out_diag, mark);
     }
 
-    (void)sl_arena_reset_to(arena, mark);
+    sl_arena_reset_to(arena, mark);
     return sl_fs_fail(out_diag, SL_DIAG_INVALID_ARGUMENT, SL_STATUS_INVALID_ARGUMENT,
                       sl_str_from_cstr("invalid filesystem path syntax"));
 }
@@ -1201,6 +1201,7 @@ SlStatus sl_fs_watch_open(SlArena* arena, SlStr path, const SlFsWatchOptions* op
 {
     SlFsWatchOptions effective = {0};
     SlFsWatchHandle* watch = NULL;
+    SlArenaMark mark = {0};
     SlStatus status;
 
     if (out_watch != NULL) {
@@ -1213,12 +1214,15 @@ SlStatus sl_fs_watch_open(SlArena* arena, SlStr path, const SlFsWatchOptions* op
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    mark = sl_arena_mark(arena);
     status = sl_fs_watch_alloc(arena, path, &effective, &watch);
     if (!sl_status_is_ok(status)) {
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     status = sl_fs_watch_seed(watch, arena, path, out_diag);
     if (!sl_status_is_ok(status)) {
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     *out_watch = watch;

@@ -267,14 +267,14 @@ SlStatus sl_async_loop_create(SlAsyncBackendKind kind, SlArena* arena, SlAsyncCo
     loop = (SlAsyncLoop*)memory;
     status = sl_async_loop_common_init(loop, kind, arena, storage, capacity);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
 
     if (kind == SL_ASYNC_BACKEND_LIBUV) {
         status = sl_async_loop_libuv_init(loop, arena);
         if (!sl_status_is_ok(status)) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
     }

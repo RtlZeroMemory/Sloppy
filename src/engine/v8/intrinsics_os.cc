@@ -104,6 +104,15 @@ SlStatus os_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::St
     return sl_v8_string_from_native_view(backend, str, out);
 }
 
+SlStatus os_v8_key(v8::Isolate* isolate, const char* name, v8::Local<v8::String>* out)
+{
+    SlStatus status = os_v8_to_local_string(isolate, sl_str_from_cstr(name), out);
+    if (!sl_status_is_ok(status) || out == nullptr || out->IsEmpty()) {
+        return sl_status_is_ok(status) ? sl_status_from_code(SL_STATUS_INTERNAL) : status;
+    }
+    return sl_status_ok();
+}
+
 bool os_v8_set_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
                       v8::Local<v8::Object> object, const char* name, SlOwnedStr value)
 {
@@ -579,23 +588,50 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
     else if (request->operation == OsV8Operation::Run) {
         v8::Local<v8::Object> result = v8::Object::New(isolate);
         v8::Local<v8::String> key;
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("exitCode"), &key);
-        (void)result->Set(context, key, v8::Integer::New(isolate, request->run_result.exit_code));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("timedOut"), &key);
-        (void)result->Set(context, key, v8::Boolean::New(isolate, request->run_result.timed_out));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("stdoutTruncated"), &key);
-        (void)result->Set(context, key,
-                          v8::Boolean::New(isolate, request->run_result.stdout_truncated));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("stderrTruncated"), &key);
-        (void)result->Set(context, key,
-                          v8::Boolean::New(isolate, request->run_result.stderr_truncated));
+        if (!sl_status_is_ok(os_v8_key(isolate, "exitCode", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Integer::New(isolate, request->run_result.exit_code))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "timedOut", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Boolean::New(isolate, request->run_result.timed_out))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "stdoutTruncated", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result
+                 ->Set(context, key,
+                       v8::Boolean::New(isolate, request->run_result.stdout_truncated))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "stderrTruncated", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result
+                 ->Set(context, key,
+                       v8::Boolean::New(isolate, request->run_result.stderr_truncated))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
 
         for (int stream_index = 0; stream_index < 2; stream_index += 1) {
             const bool stdout_stream = stream_index == 0;
             SlOwnedStr native =
                 stdout_stream ? request->run_result.stdout_text : request->run_result.stderr_text;
-            (void)os_v8_to_local_string(
-                isolate, sl_str_from_cstr(stdout_stream ? "stdout" : "stderr"), &key);
+            if (!sl_status_is_ok(os_v8_key(isolate, stdout_stream ? "stdout" : "stderr", &key))) {
+                return sl_status_from_code(SL_STATUS_INTERNAL);
+            }
             if (request->capture == SL_OS_PROCESS_CAPTURE_BYTES) {
                 std::unique_ptr<v8::BackingStore> backing =
                     v8::ArrayBuffer::NewBackingStore(isolate, native.length);
@@ -608,7 +644,11 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
                 }
                 v8::Local<v8::ArrayBuffer> buffer =
                     v8::ArrayBuffer::New(isolate, std::move(backing));
-                (void)result->Set(context, key, v8::Uint8Array::New(buffer, 0U, native.length));
+                if (!result->Set(context, key, v8::Uint8Array::New(buffer, 0U, native.length))
+                         .FromMaybe(false))
+                {
+                    return sl_status_from_code(SL_STATUS_INTERNAL);
+                }
             }
             else {
                 v8::Local<v8::String> text;
@@ -617,7 +657,9 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
                 {
                     return sl_status_from_code(SL_STATUS_INTERNAL);
                 }
-                (void)result->Set(context, key, text);
+                if (!result->Set(context, key, text).FromMaybe(false)) {
+                    return sl_status_from_code(SL_STATUS_INTERNAL);
+                }
             }
         }
         ok = resolver->Resolve(context, result).FromMaybe(false);
@@ -635,8 +677,8 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
             !os_v8_resource_to_handle(isolate, context, id, &handle))
         {
             if (sl_resource_id_is_valid(id)) {
-                (void)sl_resource_table_close_kind(&backend->resources, id,
-                                                   SL_RESOURCE_KIND_OS_PROCESS, nullptr);
+                sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_OS_PROCESS,
+                                             nullptr);
             }
             else if (holder != nullptr) {
                 os_v8_process_resource_cleanup(holder, nullptr);
@@ -668,14 +710,38 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
     else if (request->operation == OsV8Operation::Wait) {
         v8::Local<v8::Object> result = v8::Object::New(isolate);
         v8::Local<v8::String> key;
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("exitCode"), &key);
-        (void)result->Set(context, key, v8::Integer::New(isolate, request->exit.exit_code));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("timedOut"), &key);
-        (void)result->Set(context, key, v8::Boolean::New(isolate, request->exit.timed_out));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("cancelled"), &key);
-        (void)result->Set(context, key, v8::Boolean::New(isolate, request->exit.cancelled));
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr("killed"), &key);
-        (void)result->Set(context, key, v8::Boolean::New(isolate, request->exit.killed));
+        if (!sl_status_is_ok(os_v8_key(isolate, "exitCode", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Integer::New(isolate, request->exit.exit_code))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "timedOut", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Boolean::New(isolate, request->exit.timed_out))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "cancelled", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Boolean::New(isolate, request->exit.cancelled))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!sl_status_is_ok(os_v8_key(isolate, "killed", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Boolean::New(isolate, request->exit.killed))
+                 .FromMaybe(false))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         ok = resolver->Resolve(context, result).FromMaybe(false);
     }
     else if (request->operation == OsV8Operation::Kill ||
@@ -685,17 +751,20 @@ SlStatus os_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
         v8::Local<v8::Object> result = v8::Object::New(isolate);
         v8::Local<v8::String> key;
         const bool cancelled = request->operation == OsV8Operation::Cancel;
-        (void)os_v8_to_local_string(isolate, sl_str_from_cstr(cancelled ? "cancelled" : "killed"),
-                                    &key);
-        (void)result->Set(context, key, v8::Boolean::New(isolate, true));
+        if (!sl_status_is_ok(os_v8_key(isolate, cancelled ? "cancelled" : "killed", &key))) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (!result->Set(context, key, v8::Boolean::New(isolate, true)).FromMaybe(false)) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         ok = resolver->Resolve(context, result).FromMaybe(false);
     }
     else {
         if (request->operation == OsV8Operation::Dispose &&
             sl_resource_id_is_valid(request->resource_id))
         {
-            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                               SL_RESOURCE_KIND_OS_PROCESS, nullptr);
+            sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                         SL_RESOURCE_KIND_OS_PROCESS, nullptr);
         }
         ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
     }
@@ -919,7 +988,7 @@ void os_v8_worker(std::shared_ptr<SlV8OsRequest> request)
             request->status = sl_status_from_code(SL_STATUS_INTERNAL);
         }
     }
-    (void)os_v8_post_completion(request);
+    os_v8_post_completion(request);
 }
 
 bool os_v8_submit_request(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1062,15 +1131,14 @@ void os_v8_process_run_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         !os_v8_parse_run_options(isolate, context, args[2], request.get()) ||
         !os_v8_request_arena_init(request, os_v8_process_run_arena_bytes(*request)))
     {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_INVALID_ARGUMENT: Process.run arguments invalid",
-                                   true);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_INVALID_ARGUMENT: Process.run arguments invalid", true);
         return;
     }
     request->backend = backend;
     request->operation = OsV8Operation::Run;
     request->resolver.Reset(isolate, resolver);
-    (void)os_v8_submit_request(isolate, context, resolver, request);
+    os_v8_submit_request(isolate, context, resolver, request);
 }
 
 void os_v8_process_start_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -1093,23 +1161,22 @@ void os_v8_process_start_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         !os_v8_array_to_strings(isolate, context, args[1], &request->args) ||
         !os_v8_parse_start_options(isolate, context, args[2], request.get()))
     {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_INVALID_ARGUMENT: Process.start arguments invalid",
-                                   true);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_INVALID_ARGUMENT: Process.start arguments invalid", true);
         return;
     }
     request->process = os_v8_process_create();
     if (request->process == nullptr) {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_OS_PROCESS_START_FAILED: process handle allocation "
-                                   "failed",
-                                   false);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_OS_PROCESS_START_FAILED: process handle allocation "
+                             "failed",
+                             false);
         return;
     }
     request->backend = backend;
     request->operation = OsV8Operation::Start;
     request->resolver.Reset(isolate, resolver);
-    (void)os_v8_submit_request(isolate, context, resolver, request);
+    os_v8_submit_request(isolate, context, resolver, request);
 }
 
 void os_v8_process_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
@@ -1130,27 +1197,26 @@ void os_v8_process_operation_callback(const v8::FunctionCallbackInfo<v8::Value>&
     args.GetReturnValue().Set(resolver->GetPromise());
 
     if (args.Length() < 1 || !os_v8_handle_arg(isolate, context, args[0], &id)) {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_INVALID_ARGUMENT: process handle invalid", true);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_INVALID_ARGUMENT: process handle invalid", true);
         return;
     }
     if (!os_v8_lookup_process(backend, id, &process)) {
         if (operation == OsV8Operation::Dispose) {
-            (void)resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
             isolate->PerformMicrotaskCheckpoint();
         }
         else {
-            (void)os_v8_reject_promise(isolate, context, resolver,
-                                       "SLOPPY_E_OS_PIPE_CLOSED: process handle is closed", false);
+            os_v8_reject_promise(isolate, context, resolver,
+                                 "SLOPPY_E_OS_PIPE_CLOSED: process handle is closed", false);
         }
         return;
     }
 
     std::shared_ptr<SlV8OsRequest> request(new (std::nothrow) SlV8OsRequest());
     if (request == nullptr) {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_OS_FEATURE_UNAVAILABLE: request allocation failed",
-                                   false);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_OS_FEATURE_UNAVAILABLE: request allocation failed", false);
         return;
     }
     request->backend = backend;
@@ -1167,10 +1233,10 @@ void os_v8_process_operation_callback(const v8::FunctionCallbackInfo<v8::Value>&
                                 &timeout_value) ||
             !os_v8_number_to_u64(context, timeout_value, UINT32_MAX, &request->timeout_ms))
         {
-            (void)os_v8_reject_promise(isolate, context, resolver,
-                                       "SLOPPY_E_INVALID_ARGUMENT: ProcessHandle.wait arguments "
-                                       "invalid",
-                                       true);
+            os_v8_reject_promise(isolate, context, resolver,
+                                 "SLOPPY_E_INVALID_ARGUMENT: ProcessHandle.wait arguments "
+                                 "invalid",
+                                 true);
             return;
         }
     }
@@ -1180,30 +1246,29 @@ void os_v8_process_operation_callback(const v8::FunctionCallbackInfo<v8::Value>&
                                   &request->max_bytes) ||
             !os_v8_request_arena_init(request, request->max_bytes + 1024U))
         {
-            (void)os_v8_reject_promise(isolate, context, resolver,
-                                       "SLOPPY_E_INVALID_ARGUMENT: process pipe read arguments "
-                                       "invalid",
-                                       true);
+            os_v8_reject_promise(isolate, context, resolver,
+                                 "SLOPPY_E_INVALID_ARGUMENT: process pipe read arguments "
+                                 "invalid",
+                                 true);
             return;
         }
     }
     else if (operation == OsV8Operation::WriteStdin) {
         if (args.Length() != 2 || !os_v8_bytes_arg(isolate, args[1], &request->input)) {
-            (void)os_v8_reject_promise(isolate, context, resolver,
-                                       "SLOPPY_E_INVALID_ARGUMENT: process stdin write arguments "
-                                       "invalid",
-                                       true);
+            os_v8_reject_promise(isolate, context, resolver,
+                                 "SLOPPY_E_INVALID_ARGUMENT: process stdin write arguments "
+                                 "invalid",
+                                 true);
             return;
         }
     }
     else if (!os_v8_request_arena_init(request, 4096U)) {
-        (void)os_v8_reject_promise(isolate, context, resolver,
-                                   "SLOPPY_E_OS_FEATURE_UNAVAILABLE: request arena unavailable",
-                                   false);
+        os_v8_reject_promise(isolate, context, resolver,
+                             "SLOPPY_E_OS_FEATURE_UNAVAILABLE: request arena unavailable", false);
         return;
     }
 
-    (void)os_v8_submit_request(isolate, context, resolver, request);
+    os_v8_submit_request(isolate, context, resolver, request);
 }
 
 void os_v8_process_wait_callback(const v8::FunctionCallbackInfo<v8::Value>& args)

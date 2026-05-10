@@ -575,8 +575,8 @@ static int test_file_sink_append_flush_and_missing_parent(void)
     SlStr path = sl_str_from_cstr("./sloppy-log-test/app.jsonl");
     SlStr missing = sl_str_from_cstr("./sloppy-log-test-missing/app.jsonl");
 
-    (void)sl_fs_delete_directory(dir, true, NULL);
-    (void)sl_fs_delete_directory(sl_str_from_cstr("./sloppy-log-test-missing"), true, NULL);
+    sl_fs_delete_directory(dir, true, NULL);
+    sl_fs_delete_directory(sl_str_from_cstr("./sloppy-log-test-missing"), true, NULL);
 
     config.queue_capacity = 4U;
     config.sink_capacity = 1U;
@@ -610,7 +610,7 @@ static int test_file_sink_append_flush_and_missing_parent(void)
         return 42;
     }
 
-    (void)sl_fs_delete_directory(dir, true, NULL);
+    sl_fs_delete_directory(dir, true, NULL);
     return 0;
 }
 

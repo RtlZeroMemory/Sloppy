@@ -182,7 +182,7 @@ static int exec_sql(SlArena* arena, SlSqliteConnection* connection, const char* 
 static int close_and_return(SlSqliteConnection* connection, int result)
 {
     if (connection != NULL && connection->open) {
-        (void)sl_sqlite_close(connection);
+        sl_sqlite_close(connection);
     }
 
     return result;
@@ -291,7 +291,7 @@ static int test_temp_file_database_persists_and_reopens(void)
     SlSqliteQueryOneResult one = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
 
-    (void)remove("sloppy_sqlite_file_policy_test.db");
+    remove("sloppy_sqlite_file_policy_test.db");
 
     if (!sl_status_is_ok(status)) {
         return 8;
@@ -299,12 +299,12 @@ static int test_temp_file_database_persists_and_reopens(void)
 
     status = sl_sqlite_open(&arena, &options, &connection, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return 9;
     }
 
     if (exec_sql(&arena, &connection, "create table file_policy (value text)") != 0) {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return close_and_return(&connection, 10);
     }
 
@@ -312,18 +312,18 @@ static int test_temp_file_database_persists_and_reopens(void)
                             sl_str_from_cstr("insert into file_policy (value) values (?)"), params,
                             1U, &exec_result, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return close_and_return(&connection, 11);
     }
 
     if (expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) != 0) {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return 12;
     }
 
     status = sl_sqlite_open(&arena, &readonly_options, &readonly_connection, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return 13;
     }
 
@@ -335,12 +335,12 @@ static int test_temp_file_database_persists_and_reopens(void)
         one.values[0].kind != SL_SQLITE_VALUE_TEXT ||
         expect_str_equal(one.values[0].value.text, "persisted") != 0)
     {
-        (void)remove("sloppy_sqlite_file_policy_test.db");
+        remove("sloppy_sqlite_file_policy_test.db");
         return close_and_return(&readonly_connection, 14);
     }
 
     status = sl_sqlite_close(&readonly_connection);
-    (void)remove("sloppy_sqlite_file_policy_test.db");
+    remove("sloppy_sqlite_file_policy_test.db");
     return expect_status(status, SL_STATUS_OK) == 0 ? 0 : 15;
 }
 

@@ -59,18 +59,18 @@ static int expect_snapshot(SlStr actual, const char* path)
 
     length = fread(expected, 1U, sizeof(expected), file);
     if (ferror(file) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 2;
     }
     if (length == sizeof(expected)) {
         unsigned char extra = 0U;
         const size_t extra_read = fread(&extra, 1U, 1U, file);
         if (extra_read == 1U) {
-            (void)fclose(file);
+            fclose(file);
             return 4;
         }
         if (ferror(file) != 0) {
-            (void)fclose(file);
+            fclose(file);
             return 2;
         }
     }
@@ -386,7 +386,7 @@ static int test_workers_required_feature_activates_runtime_dependencies(void)
     availability.v8 = true;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -460,7 +460,7 @@ static int test_node_compat_required_features_activate_v8_dependency(void)
         plan.target.engine = sl_str_empty();
         plan.required_features = required;
         plan.required_feature_count = 1U;
-        (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+        sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
         if (expect_status(
                 sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -494,7 +494,7 @@ static int test_node_compat_required_feature_fails_without_v8(void)
     plan.target.engine = sl_str_empty();
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -525,7 +525,7 @@ static int test_ffi_required_feature_activates_runtime_dependencies(void)
     availability.stdlib_ffi = true;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -558,7 +558,7 @@ static int test_ffi_plan_metadata_activates_runtime_feature(void)
     libraries[0].name = sl_str_from_cstr("ffi-test");
     plan.ffi_libraries = libraries;
     plan.ffi_library_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -587,7 +587,7 @@ static int test_ffi_required_feature_fails_when_runtime_unavailable(void)
     availability.stdlib_ffi = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -615,7 +615,7 @@ static int test_explicit_time_required_feature_activates_stdlib_time(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -647,7 +647,7 @@ static int test_explicit_fs_required_feature_activates_stdlib_fs(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -681,7 +681,7 @@ static int test_explicit_crypto_required_feature_activates_when_available(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -716,7 +716,7 @@ static int test_crypto_required_feature_fails_when_backend_unavailable(void)
     availability.stdlib_crypto = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -744,7 +744,7 @@ static int test_explicit_codec_required_feature_activates_when_available(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -778,7 +778,7 @@ static int test_codec_required_feature_fails_when_runtime_unavailable(void)
     availability.stdlib_codec = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -822,7 +822,7 @@ static int test_codec_dependents_fail_closed_when_codec_unavailable(void)
         availability.stdlib_codec = false;
         plan.required_features = required;
         plan.required_feature_count = 1U;
-        (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+        sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
         if (expect_status(
                 sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -857,7 +857,7 @@ static int test_explicit_net_required_feature_activates_when_available(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -893,7 +893,7 @@ static int test_net_required_feature_activates_by_default_after_tcp_client_backe
     availability.v8 = true;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -924,7 +924,7 @@ static int test_explicit_os_required_feature_activates_when_available(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -960,7 +960,7 @@ static int test_os_required_feature_activates_with_default_runtime_surface(void)
     availability.v8 = true;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -988,7 +988,7 @@ static int test_minimal_route_activates_expected_features(void)
     SlRuntimeFeatureSet set = {0};
     SlDiag diag = {0};
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1038,7 +1038,7 @@ static int test_sqlite_provider_metadata_activates_sqlite(void)
     providers[0].provider = sl_str_from_cstr("sqlite");
     plan.data_providers = providers;
     plan.data_provider_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1081,7 +1081,7 @@ static int test_unavailable_postgres_required_feature_fails(void)
     availability.provider_postgres = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1111,7 +1111,7 @@ static int test_unknown_required_feature_fails_deterministically(void)
 
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1140,7 +1140,7 @@ static int test_missing_dependency_fails_deterministically(void)
     SlDiag diag = {0};
 
     availability.transport_libuv = false;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1169,7 +1169,7 @@ static int test_v8_disabled_fails_honestly(void)
     SlDiag diag = {0};
 
     availability.v8 = false;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
@@ -1383,7 +1383,7 @@ static int test_http_client_required_feature_activates_tcp_dependency(void)
     availability.v8 = true;
     plan.required_features = required;
     plan.required_feature_count = 1U;
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),

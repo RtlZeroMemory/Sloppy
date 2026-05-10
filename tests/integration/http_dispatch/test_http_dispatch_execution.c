@@ -57,24 +57,24 @@ static int read_file(const char* path, unsigned char* buffer, size_t capacity, S
     }
 
     if (fseek(file, 0L, SEEK_END) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 4;
     }
 
     size = ftell(file);
     if (size < 0L || (size_t)size > capacity) {
-        (void)fclose(file);
+        fclose(file);
         return 5;
     }
 
     if (fseek(file, 0L, SEEK_SET) != 0) {
-        (void)fclose(file);
+        fclose(file);
         return 6;
     }
 
     bytes_read = fread(buffer, 1U, (size_t)size, file);
     if (bytes_read != (size_t)size) {
-        (void)fclose(file);
+        fclose(file);
         return 7;
     }
 
@@ -458,10 +458,10 @@ static int test_lifecycle_context_metadata_reaches_v8_handler(void)
         return 61;
     }
 
-    (void)sl_http_request_close(&request, &diag);
-    (void)sl_http_connection_close(&connection, &diag);
-    (void)sl_http_backend_stop(&backend, &diag);
-    (void)sl_http_backend_dispose(&backend, &diag);
+    sl_http_request_close(&request, &diag);
+    sl_http_connection_close(&connection, &diag);
+    sl_http_backend_stop(&backend, &diag);
+    sl_http_backend_dispose(&backend, &diag);
     sl_engine_destroy(engine);
     return 0;
 }

@@ -232,7 +232,7 @@ static uint64_t sl_os_posix_now_ms(void)
 static void sl_os_posix_sleep_poll(void)
 {
     struct timespec delay = {.tv_sec = 0, .tv_nsec = 5000000L};
-    (void)nanosleep(&delay, NULL);
+    nanosleep(&delay, NULL);
 }
 
 static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
@@ -274,7 +274,7 @@ static void sl_os_posix_set_nonblock(int fd)
     int flags = fcntl(fd, F_GETFL, 0);
 
     if (flags >= 0) {
-        (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     }
 }
 
@@ -294,7 +294,7 @@ typedef struct SlOsPosixProcessError
 static void sl_os_posix_close_fd(int* fd)
 {
     if (*fd >= 0) {
-        (void)close(*fd);
+        close(*fd);
         *fd = -1;
     }
 }
@@ -742,7 +742,10 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         }
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    (void)fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC);
+    if (fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC) != 0) {
+        sl_os_posix_close_pipe(error_pipe);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     child = fork();
     if (child < 0) {
         if (capture) {
@@ -756,38 +759,44 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     }
     if (child == 0) {
         int devnull = -1;
+        close(error_pipe[0]);
         if (cwd_cstr != NULL && chdir(cwd_cstr) != 0) {
             SlOsPosixProcessError error = {.error = errno,
                                            .source = SL_OS_POSIX_PROCESS_ERROR_CHDIR};
-            (void)write(error_pipe[1], &error, sizeof(error));
+            write(error_pipe[1], &error, sizeof(error));
             _exit(126);
         }
         if (capture) {
-            (void)dup2(stdout_pipe[1], STDOUT_FILENO);
-            (void)dup2(stderr_pipe[1], STDERR_FILENO);
+            dup2(stdout_pipe[1], STDOUT_FILENO);
+            dup2(stderr_pipe[1], STDERR_FILENO);
+            close(stdout_pipe[0]);
+            close(stdout_pipe[1]);
+            close(stderr_pipe[0]);
+            close(stderr_pipe[1]);
         }
         else {
             devnull = open("/dev/null", O_WRONLY);
             if (devnull >= 0) {
-                (void)dup2(devnull, STDOUT_FILENO);
-                (void)dup2(devnull, STDERR_FILENO);
+                dup2(devnull, STDOUT_FILENO);
+                dup2(devnull, STDERR_FILENO);
+                close(devnull);
             }
         }
         execve(exec_path, argv, envp);
         {
             int err = errno;
             SlOsPosixProcessError error = {.error = err, .source = SL_OS_POSIX_PROCESS_ERROR_EXEC};
-            (void)write(error_pipe[1], &error, sizeof(error));
+            write(error_pipe[1], &error, sizeof(error));
             _exit(err == ENOENT ? 127 : 126);
         }
     }
     if (capture) {
-        (void)close(stdout_pipe[1]);
-        (void)close(stderr_pipe[1]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
         sl_os_posix_set_nonblock(stdout_pipe[0]);
         sl_os_posix_set_nonblock(stderr_pipe[0]);
     }
-    (void)close(error_pipe[1]);
+    close(error_pipe[1]);
     start_ms = sl_os_posix_now_ms();
     for (;;) {
         int child_status = 0;
@@ -811,8 +820,8 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         if (options->timeout_ms != 0U && start_ms != 0U &&
             sl_os_posix_now_ms() - start_ms >= options->timeout_ms)
         {
-            (void)kill(child, SIGKILL);
-            (void)waitpid(child, &child_status, 0);
+            kill(child, SIGKILL);
+            waitpid(child, &child_status, 0);
             out->timed_out = true;
             out->exit_code = 128 + SIGKILL;
             break;
@@ -828,13 +837,13 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         stderr_buffer[stderr_used] = '\0';
         out->stdout_text = (SlOwnedStr){.ptr = stdout_buffer, .length = stdout_used};
         out->stderr_text = (SlOwnedStr){.ptr = stderr_buffer, .length = stderr_used};
-        (void)close(stdout_pipe[0]);
-        (void)close(stderr_pipe[0]);
+        close(stdout_pipe[0]);
+        close(stderr_pipe[0]);
     }
     {
         SlOsPosixProcessError process_error = {0};
         ssize_t got = read(error_pipe[0], &process_error, sizeof(process_error));
-        (void)close(error_pipe[0]);
+        close(error_pipe[0]);
         if (got == (ssize_t)sizeof(process_error)) {
             if (process_error.source == SL_OS_POSIX_PROCESS_ERROR_EXEC &&
                 (process_error.error == ENOENT || process_error.error == ENOTDIR))
@@ -888,13 +897,13 @@ static void sl_os_posix_child_dup_or_devnull(int fd, int std_fd, int flags)
     int devnull = -1;
 
     if (fd >= 0) {
-        (void)dup2(fd, std_fd);
+        dup2(fd, std_fd);
         return;
     }
     devnull = open("/dev/null", flags);
     if (devnull >= 0) {
-        (void)dup2(devnull, std_fd);
-        (void)close(devnull);
+        dup2(devnull, std_fd);
+        close(devnull);
     }
 }
 
@@ -992,7 +1001,10 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         sl_os_posix_close_pipe(stderr_pipe);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    (void)fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC);
+    if (fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC) != 0) {
+        sl_os_posix_close_pipe(error_pipe);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     child = fork();
     if (child < 0) {
         sl_os_posix_close_pipe(stdin_pipe);
@@ -1007,7 +1019,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         if (cwd_cstr != NULL && chdir(cwd_cstr) != 0) {
             SlOsPosixProcessError error = {.error = errno,
                                            .source = SL_OS_POSIX_PROCESS_ERROR_CHDIR};
-            (void)write(error_pipe[1], &error, sizeof(error));
+            write(error_pipe[1], &error, sizeof(error));
             _exit(126);
         }
         sl_os_posix_child_dup_or_devnull(stdin_pipe[0], STDIN_FILENO, O_RDONLY);
@@ -1021,7 +1033,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         {
             int err = errno;
             SlOsPosixProcessError error = {.error = err, .source = SL_OS_POSIX_PROCESS_ERROR_EXEC};
-            (void)write(error_pipe[1], &error, sizeof(error));
+            write(error_pipe[1], &error, sizeof(error));
             _exit(err == ENOENT ? 127 : 126);
         }
     }
@@ -1037,7 +1049,7 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         sl_os_posix_close_fd(&error_pipe[0]);
         if (got == (ssize_t)sizeof(process_error)) {
             int child_status = 0;
-            (void)waitpid(child, &child_status, 0);
+            waitpid(child, &child_status, 0);
             sl_os_posix_close_pipe(stdin_pipe);
             sl_os_posix_close_pipe(stdout_pipe);
             sl_os_posix_close_pipe(stderr_pipe);
@@ -1062,8 +1074,8 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     }
     status = sl_arena_alloc(arena, sizeof(*handle), _Alignof(SlOsProcessHandle), &memory);
     if (!sl_status_is_ok(status)) {
-        (void)kill(child, SIGKILL);
-        (void)waitpid(child, NULL, 0);
+        kill(child, SIGKILL);
+        waitpid(child, NULL, 0);
         sl_os_posix_close_pipe(stdin_pipe);
         sl_os_posix_close_pipe(stdout_pipe);
         sl_os_posix_close_pipe(stderr_pipe);
@@ -1258,8 +1270,8 @@ void sl_os_platform_process_dispose(SlOsProcessHandle* handle)
     if (!handle->waited && handle->child > 0) {
         int child_status = 0;
         if (waitpid(handle->child, &child_status, WNOHANG) == 0) {
-            (void)kill(handle->child, SIGKILL);
-            (void)waitpid(handle->child, &child_status, 0);
+            kill(handle->child, SIGKILL);
+            waitpid(handle->child, &child_status, 0);
         }
     }
     sl_os_posix_close_fd(&handle->stdin_fd);

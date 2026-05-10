@@ -480,18 +480,22 @@ SlStatus sl_arena_hash_index_init(SlArenaHashIndex* index, SlArena* arena, size_
 {
     SlSlice buckets = {0};
     SlSlice next_indices = {0};
+    SlArenaMark mark = {0};
     SlStatus status;
 
     if (index == NULL || arena == NULL || capacity == 0U || bucket_count == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    mark = sl_arena_mark(arena);
     status = sl_arena_array_alloc(arena, bucket_count, sizeof(size_t), _Alignof(size_t), &buckets);
     if (!sl_status_is_ok(status)) {
         return status;
     }
     status = sl_arena_array_alloc(arena, capacity, sizeof(size_t), _Alignof(size_t), &next_indices);
     if (!sl_status_is_ok(status)) {
+        sl_arena_reset_to(arena, mark);
+        *index = (SlArenaHashIndex){0};
         return status;
     }
 

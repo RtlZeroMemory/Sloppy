@@ -31,22 +31,22 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     status = sl_plan_parse_json(&arena, sl_bytes_from_parts(data, size), &options, &plan, &diag);
     if (sl_status_is_ok(status)) {
         const SlPlanHandler* handler = NULL;
-        (void)sl_plan_has_duplicate_handler_ids(&plan);
-        (void)sl_plan_has_duplicate_routes(&plan);
-        (void)sl_plan_has_duplicate_route_names(&plan);
-        (void)sl_plan_has_duplicate_data_provider_tokens(&plan);
-        (void)sl_plan_has_duplicate_capability_tokens(&plan);
+        sl_plan_has_duplicate_handler_ids(&plan);
+        sl_plan_has_duplicate_routes(&plan);
+        sl_plan_has_duplicate_route_names(&plan);
+        sl_plan_has_duplicate_data_provider_tokens(&plan);
+        sl_plan_has_duplicate_capability_tokens(&plan);
         if (plan.handler_count > 0U) {
-            (void)sl_plan_find_handler_by_id(&plan, plan.handlers[0].id, &handler);
+            sl_plan_find_handler_by_id(&plan, plan.handlers[0].id, &handler);
         }
     }
     else if (diag.code != SL_DIAG_NONE &&
              sl_status_is_ok(sl_arena_init(&render_arena, render_storage, sizeof(render_storage))))
     {
         SlStr rendered = {0};
-        (void)sl_diag_render_json(&render_arena, &diag, &rendered);
+        sl_diag_render_json(&render_arena, &diag, &rendered);
         sl_arena_reset(&render_arena);
-        (void)sl_diag_render_text(&render_arena, &diag, &rendered);
+        sl_diag_render_text(&render_arena, &diag, &rendered);
     }
 
     return 0;

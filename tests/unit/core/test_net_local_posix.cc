@@ -35,7 +35,7 @@ int create_stale_socket_node(const std::string& path)
 
     if (fd < 0 || length >= sizeof(addr.sun_path)) {
         if (fd >= 0) {
-            (void)close(fd);
+            close(fd);
         }
         return 1;
     }
@@ -46,10 +46,10 @@ int create_stale_socket_node(const std::string& path)
     if (bind(fd, reinterpret_cast<const sockaddr*>(&addr),
              static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + length + 1U)) != 0)
     {
-        (void)close(fd);
+        close(fd);
         return 2;
     }
-    (void)close(fd);
+    close(fd);
     return 0;
 }
 
@@ -132,7 +132,7 @@ void run_client(ClientExchange* exchange)
         bytes.length != sizeof(binary) || std::memcmp(bytes.ptr, binary, sizeof(binary)) != 0)
     {
         exchange->result = 2;
-        (void)sl_local_connection_abort(connection, nullptr);
+        sl_local_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -170,7 +170,7 @@ void run_split_client(ClientExchange* exchange)
                       SL_STATUS_OK) != 0)
     {
         exchange->result = 2;
-        (void)sl_local_connection_abort(connection, nullptr);
+        sl_local_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -193,7 +193,7 @@ int test_unix_socket_loopback_preserves_binary()
     ClientExchange exchange = {};
     std::string path = unique_socket_path("loopback");
 
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
     listen_options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -204,7 +204,7 @@ int test_unix_socket_loopback_preserves_binary()
                       SL_STATUS_OK) != 0 ||
         server == nullptr || sl_local_server_state(server) != SL_LOCAL_SERVER_LISTENING)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 1;
     }
     exchange.path = path;
@@ -217,8 +217,8 @@ int test_unix_socket_loopback_preserves_binary()
         accepted == nullptr || sl_local_connection_state(accepted) != SL_LOCAL_CONNECTION_CONNECTED)
     {
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 2;
     }
     if (expect_status(sl_local_connection_read(accepted, &accepted_arena, 4U, &bytes, nullptr),
@@ -228,9 +228,9 @@ int test_unix_socket_loopback_preserves_binary()
                       SL_STATUS_OK) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 3;
     }
     client.join();
@@ -238,10 +238,10 @@ int test_unix_socket_loopback_preserves_binary()
         expect_status(sl_local_connection_close(accepted, nullptr), SL_STATUS_OK) != 0 ||
         expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 4;
     }
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     return 0;
 }
 
@@ -255,8 +255,8 @@ int test_stale_socket_cleanup_and_permissions()
     std::string live_path = unique_socket_path("live");
     struct stat st = {};
 
-    (void)unlink(path.c_str());
-    (void)unlink(live_path.c_str());
+    unlink(path.c_str());
+    unlink(live_path.c_str());
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
     options.backend = SL_LOCAL_ENDPOINT_BACKEND_UNIX;
@@ -265,17 +265,17 @@ int test_stale_socket_cleanup_and_permissions()
     if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
                       SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 1;
     }
     if (stat(path.c_str(), &st) != 0 || (st.st_mode & 0777U) != 0600U) {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 2;
     }
     if (expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0 ||
         access(path.c_str(), F_OK) == 0 || create_stale_socket_node(path) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 3;
     }
 
@@ -288,13 +288,13 @@ int test_stale_socket_cleanup_and_permissions()
         expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
                       SL_STATUS_INVALID_STATE) != 0)
     {
-        (void)sl_local_server_abort(live, nullptr);
-        (void)unlink(path.c_str());
-        (void)unlink(live_path.c_str());
+        sl_local_server_abort(live, nullptr);
+        unlink(path.c_str());
+        unlink(live_path.c_str());
         return 4;
     }
-    (void)sl_local_server_close(live, nullptr);
-    (void)unlink(live_path.c_str());
+    sl_local_server_close(live, nullptr);
+    unlink(live_path.c_str());
 
     SlLocalServer* second = nullptr;
     options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -305,18 +305,18 @@ int test_stale_socket_cleanup_and_permissions()
     if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &second, nullptr),
                       SL_STATUS_INVALID_STATE) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 5;
     }
     options.unlink_existing = true;
     if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &second, nullptr),
                       SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 6;
     }
-    (void)sl_local_server_close(second, nullptr);
-    (void)unlink(path.c_str());
+    sl_local_server_close(second, nullptr);
+    unlink(path.c_str());
     return 0;
 }
 
@@ -334,7 +334,7 @@ int test_accept_timeout_and_unsupported_backend()
     SlLocalAcceptOptions accept_options = {};
     std::string path = unique_socket_path("timeout");
 
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
     listen_options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -348,7 +348,7 @@ int test_accept_timeout_and_unsupported_backend()
     if (expect_status(sl_local_endpoint_listen(&server_arena, &listen_options, &server, nullptr),
                       SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 2;
     }
     connect_options = sl_local_connect_options_default(sl_str_from_cstr(path.c_str()));
@@ -360,8 +360,8 @@ int test_accept_timeout_and_unsupported_backend()
             SL_STATUS_OK) != 0 ||
         connection == nullptr)
     {
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 3;
     }
     accept_options.has_timeout_ms = true;
@@ -371,16 +371,16 @@ int test_accept_timeout_and_unsupported_backend()
             SL_STATUS_OK) != 0 ||
         accepted == nullptr)
     {
-        (void)sl_local_connection_abort(connection, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_connection_abort(connection, nullptr);
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 4;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0 ||
         expect_status(sl_local_connection_close(accepted, nullptr), SL_STATUS_OK) != 0)
     {
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 5;
     }
     connection = nullptr;
@@ -391,8 +391,8 @@ int test_accept_timeout_and_unsupported_backend()
             SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
         accepted != nullptr)
     {
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 6;
     }
     {
@@ -403,8 +403,8 @@ int test_accept_timeout_and_unsupported_backend()
                                                        sl_str_from_cstr("test cancellation")),
                           SL_STATUS_OK) != 0)
         {
-            (void)sl_local_server_abort(server, nullptr);
-            (void)unlink(path.c_str());
+            sl_local_server_abort(server, nullptr);
+            unlink(path.c_str());
             return 7;
         }
         accept_options = sl_local_accept_options_default();
@@ -414,8 +414,8 @@ int test_accept_timeout_and_unsupported_backend()
                           SL_STATUS_CANCELLED) != 0 ||
             accepted != nullptr)
         {
-            (void)sl_local_server_abort(server, nullptr);
-            (void)unlink(path.c_str());
+            sl_local_server_abort(server, nullptr);
+            unlink(path.c_str());
             return 8;
         }
     }
@@ -423,10 +423,10 @@ int test_accept_timeout_and_unsupported_backend()
         expect_status(sl_local_server_accept(server, &accepted_arena, nullptr, &accepted, nullptr),
                       SL_STATUS_INVALID_STATE) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 9;
     }
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     return 0;
 }
 
@@ -445,7 +445,7 @@ int test_io_timeout_and_precancel()
     ClientExchange exchange = {};
     std::string path = unique_socket_path("io-timeout");
 
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
     listen_options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -453,7 +453,7 @@ int test_io_timeout_and_precancel()
     if (expect_status(sl_local_endpoint_listen(&server_arena, &listen_options, &server, nullptr),
                       SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 1;
     }
     exchange.path = path;
@@ -467,8 +467,8 @@ int test_io_timeout_and_precancel()
     {
         request_idle_client_close(&exchange);
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 2;
     }
     {
@@ -482,9 +482,9 @@ int test_io_timeout_and_precancel()
         {
             request_idle_client_close(&exchange);
             client.join();
-            (void)sl_local_connection_abort(accepted, nullptr);
-            (void)sl_local_server_abort(server, nullptr);
-            (void)unlink(path.c_str());
+            sl_local_connection_abort(accepted, nullptr);
+            sl_local_server_abort(server, nullptr);
+            unlink(path.c_str());
             return 3;
         }
         io_options = sl_local_io_options_default();
@@ -496,9 +496,9 @@ int test_io_timeout_and_precancel()
         {
             request_idle_client_close(&exchange);
             client.join();
-            (void)sl_local_connection_abort(accepted, nullptr);
-            (void)sl_local_server_abort(server, nullptr);
-            (void)unlink(path.c_str());
+            sl_local_connection_abort(accepted, nullptr);
+            sl_local_server_abort(server, nullptr);
+            unlink(path.c_str());
             return 4;
         }
     }
@@ -512,9 +512,9 @@ int test_io_timeout_and_precancel()
     {
         request_idle_client_close(&exchange);
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 5;
     }
     request_idle_client_close(&exchange);
@@ -523,10 +523,10 @@ int test_io_timeout_and_precancel()
         expect_status(sl_local_connection_abort(accepted, nullptr), SL_STATUS_OK) != 0 ||
         expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 6;
     }
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     return 0;
 }
 
@@ -550,7 +550,7 @@ int test_read_until_binary_delimiter_and_limits()
     ClientExchange exchange = {};
     std::string path = unique_socket_path("read-until");
 
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
     listen_options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -558,7 +558,7 @@ int test_read_until_binary_delimiter_and_limits()
     if (expect_status(sl_local_endpoint_listen(&server_arena, &listen_options, &server, nullptr),
                       SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 1;
     }
     exchange.path = path;
@@ -571,8 +571,8 @@ int test_read_until_binary_delimiter_and_limits()
         accepted == nullptr)
     {
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 2;
     }
     if (expect_status(sl_local_connection_read_until(
@@ -582,9 +582,9 @@ int test_read_until_binary_delimiter_and_limits()
         bytes.length != sizeof(expected) || std::memcmp(bytes.ptr, expected, sizeof(expected)) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 3;
     }
     if (expect_status(sl_local_connection_read_until(accepted, &accepted_arena, sl_bytes_empty(),
@@ -597,9 +597,9 @@ int test_read_until_binary_delimiter_and_limits()
                       SL_STATUS_CAPACITY_EXCEEDED) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
-        (void)unlink(path.c_str());
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
+        unlink(path.c_str());
         return 4;
     }
     client.join();
@@ -607,10 +607,10 @@ int test_read_until_binary_delimiter_and_limits()
         expect_status(sl_local_connection_close(accepted, nullptr), SL_STATUS_OK) != 0 ||
         expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0)
     {
-        (void)unlink(path.c_str());
+        unlink(path.c_str());
         return 5;
     }
-    (void)unlink(path.c_str());
+    unlink(path.c_str());
     return 0;
 #endif
 }

@@ -18,7 +18,7 @@ static void parse_query_target(const uint8_t* data, size_t size)
         return;
     }
 
-    (void)sl_http_query_parse(&arena, sl_str_from_parts((const char*)data, size), &query);
+    sl_http_query_parse(&arena, sl_str_from_parts((const char*)data, size), &query);
 }
 
 static void parse_as_origin_form_query(const uint8_t* data, size_t size)

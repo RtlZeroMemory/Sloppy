@@ -29,8 +29,7 @@ static void parse_once(const uint8_t* data, size_t size, const SlHttpParseOption
         return;
     }
 
-    (void)sl_http_parse_request_head(&arena, sl_bytes_from_parts(data, size), options, &request,
-                                     &diag);
+    sl_http_parse_request_head(&arena, sl_bytes_from_parts(data, size), options, &request, &diag);
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)

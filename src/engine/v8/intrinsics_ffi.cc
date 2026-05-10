@@ -1083,7 +1083,14 @@ void ffi_library_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             return;
         }
     }
-    (void)output->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen);
+    v8::Maybe<bool> frozen = output->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen);
+    if (frozen.IsNothing()) {
+        return;
+    }
+    if (!frozen.FromJust()) {
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to freeze FFI namespace.");
+        return;
+    }
     args.GetReturnValue().Set(output);
 }
 

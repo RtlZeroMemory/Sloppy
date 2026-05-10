@@ -56,7 +56,7 @@ static void sleep_ms(unsigned int ms)
 #else
     struct timespec delay = {.tv_sec = (time_t)(ms / 1000U),
                              .tv_nsec = (long)((ms % 1000U) * 1000000U)};
-    (void)nanosleep(&delay, NULL);
+    nanosleep(&delay, NULL);
 #endif
 }
 
@@ -322,13 +322,13 @@ static int test_process_windows_path_lookup(const char* self_path)
 
 cleanup:
     if (had_old_path) {
-        (void)_putenv_s("PATH", old_path);
+        _putenv_s("PATH", old_path);
     }
     else {
-        (void)_putenv_s("PATH", "");
+        _putenv_s("PATH", "");
     }
-    (void)DeleteFileA(probe_path);
-    (void)RemoveDirectoryA(probe_dir);
+    DeleteFileA(probe_path);
+    RemoveDirectoryA(probe_dir);
     return outcome;
 #else
     (void)self_path;

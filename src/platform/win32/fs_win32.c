@@ -345,13 +345,13 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
     file = CreateFileW(wide, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                        FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem read failed"));
     }
     if (!GetFileSizeEx(file, &size) || size.QuadPart < 0) {
         CloseHandle(file);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (size.QuadPart == 0) {
@@ -370,7 +370,7 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
 
         if (!ReadFile(file, (unsigned char*)memory + offset, chunk, &read, NULL) || read != chunk) {
             CloseHandle(file);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_fs_win32_status(GetLastError(), out_diag,
                                       sl_str_from_cstr("filesystem read failed"));
         }
@@ -579,7 +579,7 @@ static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlD
     tree_mark = sl_arena_mark(arena);
     status = sl_fs_win32_join_wide(arena, wide, L"*", &pattern);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, tree_mark);
+        sl_arena_reset_to(arena, tree_mark);
         return status;
     }
     find = FindFirstFileW(pattern, &data);
@@ -594,20 +594,20 @@ static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlD
             status = sl_fs_win32_join_wide(arena, wide, data.cFileName, &child);
             if (!sl_status_is_ok(status)) {
                 FindClose(find);
-                (void)sl_arena_reset_to(arena, tree_mark);
+                sl_arena_reset_to(arena, tree_mark);
                 return status;
             }
             if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
                 status = sl_fs_win32_delete_tree(arena, child, out_diag);
                 if (!sl_status_is_ok(status)) {
                     FindClose(find);
-                    (void)sl_arena_reset_to(arena, tree_mark);
+                    sl_arena_reset_to(arena, tree_mark);
                     return status;
                 }
                 if (!RemoveDirectoryW(child)) {
                     DWORD error = GetLastError();
                     FindClose(find);
-                    (void)sl_arena_reset_to(arena, tree_mark);
+                    sl_arena_reset_to(arena, tree_mark);
                     return sl_fs_win32_status(
                         error, out_diag, sl_str_from_cstr("filesystem directory delete failed"));
                 }
@@ -615,22 +615,22 @@ static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlD
             else if (!DeleteFileW(child)) {
                 DWORD error = GetLastError();
                 FindClose(find);
-                (void)sl_arena_reset_to(arena, tree_mark);
+                sl_arena_reset_to(arena, tree_mark);
                 return sl_fs_win32_status(error, out_diag,
                                           sl_str_from_cstr("filesystem file delete failed"));
             }
-            (void)sl_arena_reset_to(arena, child_mark);
+            sl_arena_reset_to(arena, child_mark);
         } while (FindNextFileW(find, &data));
         if (GetLastError() != ERROR_NO_MORE_FILES) {
             DWORD error = GetLastError();
             FindClose(find);
-            (void)sl_arena_reset_to(arena, tree_mark);
+            sl_arena_reset_to(arena, tree_mark);
             return sl_fs_win32_status(error, out_diag,
                                       sl_str_from_cstr("filesystem directory enumerate failed"));
         }
         FindClose(find);
     }
-    (void)sl_arena_reset_to(arena, tree_mark);
+    sl_arena_reset_to(arena, tree_mark);
     return sl_status_ok();
 }
 
@@ -682,12 +682,12 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         status = sl_fs_win32_join_wide(arena, wide, L"*", &pattern);
     }
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     find = FindFirstFileW(pattern, &data);
     if (find == INVALID_HANDLE_VALUE) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem directory list failed"));
     }
@@ -701,18 +701,18 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         status = sl_arena_array_alloc(arena, count, sizeof(SlFsDirectoryEntry),
                                       _Alignof(SlFsDirectoryEntry), &entries);
         if (!sl_status_is_ok(status)) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
         if (entries.ptr == NULL) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         out->entries = (SlFsDirectoryEntry*)entries.ptr;
     }
     find = FindFirstFileW(pattern, &data);
     if (find == INVALID_HANDLE_VALUE) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem directory list failed"));
     }
@@ -723,7 +723,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         }
         if (out->entries == NULL) {
             FindClose(find);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         item = &out->entries[out->count];
@@ -731,7 +731,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         status = sl_fs_win32_wide_to_utf8(arena, data.cFileName, &item->name);
         if (!sl_status_is_ok(status)) {
             FindClose(find);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
         item->kind = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ? SL_FS_NODE_DIRECTORY
@@ -906,9 +906,9 @@ SlStatus sl_fs_platform_atomic_write_file(SlArena* arena, SlStr path, SlBytes by
         status = sl_fs_platform_move_file(sl_owned_str_as_view(temp.path), path, true, out_diag);
     }
     if (!sl_status_is_ok(status)) {
-        (void)sl_fs_platform_delete_file(sl_owned_str_as_view(temp.path), NULL);
+        sl_fs_platform_delete_file(sl_owned_str_as_view(temp.path), NULL);
     }
-    (void)sl_arena_reset_to(arena, mark);
+    sl_arena_reset_to(arena, mark);
     return status;
 }
 
@@ -955,15 +955,15 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
 
 SlStatus sl_fs_platform_release_lock(SlFsFileLock* lock, SlDiag* out_diag)
 {
-    (void)out_diag;
+    SlStatus delete_status;
     if (lock == NULL || lock->closed) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     CloseHandle(lock->handle);
-    (void)sl_fs_platform_delete_file(sl_owned_str_as_view(lock->path), NULL);
+    delete_status = sl_fs_platform_delete_file(sl_owned_str_as_view(lock->path), out_diag);
     lock->handle = INVALID_HANDLE_VALUE;
     lock->closed = true;
-    return sl_status_ok();
+    return delete_status;
 }
 
 SlStatus sl_fs_platform_open_file(SlArena* arena, SlStr path, SlFsFileAccess access, bool create,

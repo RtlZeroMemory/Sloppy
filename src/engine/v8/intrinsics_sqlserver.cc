@@ -400,11 +400,11 @@ void sqlsrv_v8_free_statement(SqlSrvV8Request* request)
 void sqlsrv_v8_close_connection(SqlSrvV8Connection& connection)
 {
     if (connection.request != nullptr && connection.request->stmt != SQL_NULL_HSTMT) {
-        (void)SQLCancelHandle(SQL_HANDLE_STMT, connection.request->stmt);
+        SQLCancelHandle(SQL_HANDLE_STMT, connection.request->stmt);
         sqlsrv_v8_free_statement(connection.request.get());
     }
     if (connection.dbc != SQL_NULL_HDBC) {
-        (void)SQLDisconnect(connection.dbc);
+        SQLDisconnect(connection.dbc);
         SQLFreeHandle(SQL_HANDLE_DBC, connection.dbc);
         connection.dbc = SQL_NULL_HDBC;
     }
@@ -707,8 +707,8 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
     if (!ok) {
-        (void)sl_v8_db_reject_promise(isolate, context, resolver, request->error,
-                                      "sqlserver operation failed");
+        sl_v8_db_reject_promise(isolate, context, resolver, request->error,
+                                "sqlserver operation failed");
         sqlsrv_v8_finish_request(request, false);
         return;
     }
@@ -754,11 +754,11 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
     if (!converted) {
         value = v8::Exception::Error(
             v8::String::NewFromUtf8Literal(isolate, "sqlserver result conversion failed"));
-        (void)resolver->Reject(context, value);
+        resolver->Reject(context, value).FromMaybe(false);
         sqlsrv_v8_finish_request(request, false);
         return;
     }
-    (void)sl_v8_db_resolve_promise(context, resolver, value);
+    sl_v8_db_resolve_promise(context, resolver, value);
     sqlsrv_v8_finish_request(request, true);
 }
 
@@ -950,7 +950,7 @@ bool sqlsrv_v8_allocate_connection(SqlSrvV8ConnectionResource* resource,
             "sqlserver ODBC driver manager does not support asynchronous connections");
         return false;
     }
-    (void)SQLSetConnectAttr(connection->dbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER)15, 0);
+    SQLSetConnectAttr(connection->dbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER)15, 0);
     return true;
 }
 
@@ -1835,7 +1835,8 @@ void sqlsrv_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-    auto* resource = new (std::nothrow) SqlSrvV8ConnectionResource();
+    std::unique_ptr<SqlSrvV8ConnectionResource> resource(new (std::nothrow)
+                                                             SqlSrvV8ConnectionResource());
     SlResourceId id = sl_resource_id_invalid();
     SlDiag diag = {};
     v8::Local<v8::Object> handle;
@@ -1846,30 +1847,37 @@ void sqlsrv_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         sqlsrv_v8_throw_error(isolate, "sqlserver bridge could not allocate a connection resource");
         return;
     }
-    if (args.Length() != 1 || !sqlsrv_v8_parse_open_options(isolate, context, args[0], resource)) {
-        delete resource;
+    if (args.Length() != 1 ||
+        !sqlsrv_v8_parse_open_options(isolate, context, args[0], resource.get()))
+    {
         sqlsrv_v8_throw_type_error(isolate, "__sloppy.data.sqlserver.open requires open options");
         return;
     }
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     if (!sl_status_is_ok(status) ||
-        !sqlsrv_v8_check_capability(isolate, backend, &arena, resource,
+        !sqlsrv_v8_check_capability(isolate, backend, &arena, resource.get(),
                                     sqlsrv_v8_open_capability_operation(resource->access)))
     {
-        delete resource;
         return;
     }
-    resource->connections.resize(resource->max_connections);
-    status = sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLSERVER_CONNECTION,
-                                      resource, sqlsrv_v8_connection_cleanup, nullptr, &id, &diag);
+    try {
+        resource->connections.resize(resource->max_connections);
+    } catch (...) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver bridge could not allocate a connection resource");
+        return;
+    }
+    status =
+        sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLSERVER_CONNECTION,
+                                 resource.get(), sqlsrv_v8_connection_cleanup, nullptr, &id, &diag);
     if (!sl_status_is_ok(status)) {
-        sqlsrv_v8_connection_cleanup(resource, nullptr);
+        sqlsrv_v8_connection_cleanup(resource.release(), nullptr);
         sqlsrv_v8_throw_error(isolate, "sqlserver resource registration failed");
         return;
     }
+    resource.release();
     if (!sqlsrv_v8_make_resource_handle(isolate, context, id, &handle)) {
-        (void)sl_resource_table_close_kind(&backend->resources, id,
-                                           SL_RESOURCE_KIND_SQLSERVER_CONNECTION, &diag);
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_SQLSERVER_CONNECTION,
+                                     &diag);
         sqlsrv_v8_throw_error(isolate, "sqlserver resource registration failed");
         return;
     }

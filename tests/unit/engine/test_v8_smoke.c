@@ -435,9 +435,9 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
     SlStr invalid_path = sl_str_from_cstr("./sloppy-v8-fs-invalid.bin");
     SlStr dir_path = sl_str_from_cstr("./sloppy-v8-fs-dir");
 
-    (void)sl_fs_delete_file(path, NULL);
-    (void)sl_fs_delete_file(invalid_path, NULL);
-    (void)sl_fs_delete_directory(dir_path, true, NULL);
+    sl_fs_delete_file(path, NULL);
+    sl_fs_delete_file(invalid_path, NULL);
+    sl_fs_delete_directory(dir_path, true, NULL);
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
         init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
@@ -526,9 +526,9 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
         !sl_str_equal(result.text, sl_str_from_cstr("fs-ok")))
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(path, NULL);
-        (void)sl_fs_delete_file(invalid_path, NULL);
-        (void)sl_fs_delete_directory(dir_path, true, NULL);
+        sl_fs_delete_file(path, NULL);
+        sl_fs_delete_file(invalid_path, NULL);
+        sl_fs_delete_directory(dir_path, true, NULL);
         return 4;
     }
 
@@ -541,9 +541,9 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
         !sl_str_equal(result.text, sl_str_from_cstr("Invalid UTF-8 in file")))
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(path, NULL);
-        (void)sl_fs_delete_file(invalid_path, NULL);
-        (void)sl_fs_delete_directory(dir_path, true, NULL);
+        sl_fs_delete_file(path, NULL);
+        sl_fs_delete_file(invalid_path, NULL);
+        sl_fs_delete_directory(dir_path, true, NULL);
         return 5;
     }
 
@@ -556,16 +556,16 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
         !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3:write-ok:created:watched.txt")))
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(path, NULL);
-        (void)sl_fs_delete_file(invalid_path, NULL);
-        (void)sl_fs_delete_directory(dir_path, true, NULL);
+        sl_fs_delete_file(path, NULL);
+        sl_fs_delete_file(invalid_path, NULL);
+        sl_fs_delete_directory(dir_path, true, NULL);
         return 6;
     }
 
     sl_engine_destroy(engine);
-    (void)sl_fs_delete_file(path, NULL);
-    (void)sl_fs_delete_file(invalid_path, NULL);
-    (void)sl_fs_delete_directory(dir_path, true, NULL);
+    sl_fs_delete_file(path, NULL);
+    sl_fs_delete_file(invalid_path, NULL);
+    sl_fs_delete_directory(dir_path, true, NULL);
     return 0;
 }
 
@@ -2483,7 +2483,7 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         return 515;
     }
     worker_path = sl_str_from_cstr(worker_path_buffer);
-    (void)sl_fs_delete_file(worker_path, NULL);
+    sl_fs_delete_file(worker_path, NULL);
     if (expect_status(sl_fs_write_file(worker_path, worker_source, false, &diag), SL_STATUS_OK) !=
             0 ||
         init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
@@ -2491,12 +2491,12 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
         attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
     {
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 515;
     }
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 516;
     }
 
@@ -2536,7 +2536,7 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
             sizeof(script_buffer)) != 0)
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 517;
     }
     if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-workers-js-worker.js"),
@@ -2545,7 +2545,7 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 517;
     }
 
@@ -2558,7 +2558,7 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                                                     "SLOPPY_E_WORKER_STALE_HANDLE")))
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 518;
     }
 
@@ -2571,12 +2571,12 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         !sl_str_equal(result.text, sl_str_from_cstr("SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED")))
     {
         sl_engine_destroy(engine);
-        (void)sl_fs_delete_file(worker_path, NULL);
+        sl_fs_delete_file(worker_path, NULL);
         return 519;
     }
 
     sl_engine_destroy(engine);
-    (void)sl_fs_delete_file(worker_path, NULL);
+    sl_fs_delete_file(worker_path, NULL);
     return 0;
 }
 
@@ -3541,7 +3541,7 @@ static int test_request_context_log_writes_native_event(void)
     options.logging = logging;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        (void)sl_log_runtime_shutdown(logging);
+        sl_log_runtime_shutdown(logging);
         return 81;
     }
 
@@ -3572,7 +3572,7 @@ static int test_request_context_log_writes_native_event(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        (void)sl_log_runtime_shutdown(logging);
+        sl_log_runtime_shutdown(logging);
         return 82;
     }
     {
@@ -3584,7 +3584,7 @@ static int test_request_context_log_writes_native_event(void)
                     (int)sl_status_code(call_status), (int)result.kind, (int)diag.code,
                     (int)diag.message.length, diag.message.ptr == NULL ? "" : diag.message.ptr);
             sl_engine_destroy(engine);
-            (void)sl_log_runtime_shutdown(logging);
+            sl_log_runtime_shutdown(logging);
             return 83;
         }
     }
@@ -3599,7 +3599,7 @@ static int test_request_context_log_writes_native_event(void)
         snapshot.count != 1U)
     {
         sl_engine_destroy(engine);
-        (void)sl_log_runtime_shutdown(logging);
+        sl_log_runtime_shutdown(logging);
         return 84;
     }
 
@@ -3616,7 +3616,7 @@ static int test_request_context_log_writes_native_event(void)
         !snapshot.events[0].fields[2].bool_value || snapshot.events[0].fields[3].i64_value != 3)
     {
         sl_engine_destroy(engine);
-        (void)sl_log_runtime_shutdown(logging);
+        sl_log_runtime_shutdown(logging);
         return 85;
     }
 

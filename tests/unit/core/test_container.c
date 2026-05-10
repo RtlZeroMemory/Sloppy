@@ -270,6 +270,34 @@ static int test_hash_index_corruption_and_capacity_guards(void)
     return 0;
 }
 
+static int test_hash_index_init_rolls_back_partial_allocation(void)
+{
+    size_t storage[4];
+    SlArena arena;
+    SlArenaHashIndex index = {
+        .buckets = storage, .next_indices = storage, .capacity = 99U, .bucket_count = 88U};
+    size_t used_before = 0U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 41;
+    }
+    used_before = sl_arena_used(&arena);
+    if (expect_status(sl_arena_hash_index_init(&index, &arena, 1U, 4U), SL_STATUS_OUT_OF_MEMORY) !=
+        0)
+    {
+        return 42;
+    }
+    if (sl_arena_used(&arena) != used_before) {
+        return 43;
+    }
+    if (index.buckets != NULL || index.next_indices != NULL || index.capacity != 0U ||
+        index.bucket_count != 0U || index.count != 0U)
+    {
+        return 44;
+    }
+    return 0;
+}
+
 int main(void)
 {
     int result = test_arena_array_alloc_and_copy();
@@ -292,5 +320,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_hash_index_corruption_and_capacity_guards();
+    result = test_hash_index_corruption_and_capacity_guards();
+    if (result != 0) {
+        return result;
+    }
+    return test_hash_index_init_rolls_back_partial_allocation();
 }

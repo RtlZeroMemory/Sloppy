@@ -93,7 +93,7 @@ struct NetV8Connection
             tls_context = nullptr;
         }
         if (native != nullptr && !closed) {
-            (void)sl_tcp_connection_close(native, nullptr);
+            sl_tcp_connection_close(native, nullptr);
             closed = true;
         }
     }
@@ -142,7 +142,7 @@ struct NetV8LocalConnection
     ~NetV8LocalConnection()
     {
         if (native != nullptr && !closed) {
-            (void)sl_local_connection_close(native, nullptr);
+            sl_local_connection_close(native, nullptr);
             closed = true;
         }
     }
@@ -524,7 +524,12 @@ bool net_v8_tls_attach(NetV8Connection& connection, SlV8NetRequest& request)
             }
         }
         if (!server_name_is_ip) {
-            (void)SSL_set_tlsext_host_name(ssl, request.tls_server_name.c_str());
+            if (SSL_set_tlsext_host_name(ssl, request.tls_server_name.c_str()) != 1) {
+                net_v8_set_diag(request, SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE,
+                                SL_STATUS_INVALID_ARGUMENT,
+                                "HTTP client TLS server name could not be configured");
+                return false;
+            }
         }
     }
     return true;
@@ -705,11 +710,11 @@ void net_v8_resource_cleanup(void* ptr, void* user)
             std::lock_guard<std::mutex> lock(connection->mutex);
             if (connection->native != nullptr && !connection->closed) {
                 if (connection->tls_active && connection->tls_ssl != nullptr) {
-                    (void)SSL_shutdown(connection->tls_ssl);
-                    (void)net_v8_tls_drain_write_bio(*connection, nullptr);
+                    SSL_shutdown(connection->tls_ssl);
+                    net_v8_tls_drain_write_bio(*connection, nullptr);
                 }
                 net_v8_tls_release(*connection);
-                (void)sl_tcp_connection_close(connection->native, nullptr);
+                sl_tcp_connection_close(connection->native, nullptr);
                 connection->closed = true;
             }
         }
@@ -754,7 +759,7 @@ void net_v8_local_resource_cleanup(void* ptr, void* user)
             }
             std::lock_guard<std::mutex> lock(connection->mutex);
             if (connection->native != nullptr && !connection->closed) {
-                (void)sl_local_connection_close(connection->native, nullptr);
+                sl_local_connection_close(connection->native, nullptr);
                 connection->closed = true;
             }
         }
@@ -784,6 +789,31 @@ void net_v8_local_server_resource_cleanup(void* ptr, void* user)
         }
         delete holder;
     }
+}
+
+template <typename Resource>
+bool net_v8_insert_shared_resource(SlV8Engine* backend, SlResourceKind kind,
+                                   const std::shared_ptr<Resource>& resource,
+                                   SlResourceCleanupFn cleanup, SlResourceId* out_id)
+{
+    if (backend == nullptr || resource == nullptr || cleanup == nullptr || out_id == nullptr) {
+        return false;
+    }
+
+    std::unique_ptr<std::shared_ptr<Resource>> holder(new (std::nothrow)
+                                                          std::shared_ptr<Resource>(resource));
+    if (holder == nullptr) {
+        return false;
+    }
+
+    SlStatus status = sl_resource_table_insert(&backend->resources, kind, holder.get(), cleanup,
+                                               nullptr, out_id, nullptr);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+
+    holder.release();
+    return true;
 }
 
 bool net_v8_handle_to_resource(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1043,7 +1073,7 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                 (!net_v8_tls_attach(*connection, *request) ||
                  !net_v8_tls_handshake(*connection, *request)))
             {
-                (void)sl_tcp_connection_abort(connection->native, nullptr);
+                sl_tcp_connection_abort(connection->native, nullptr);
                 connection->closed = true;
                 net_v8_tls_release(*connection);
                 return;
@@ -1192,13 +1222,13 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                     request->local_server->abort_requested)
                 {
                     if (connection->native != nullptr) {
-                        (void)sl_local_connection_abort(connection->native, nullptr);
+                        sl_local_connection_abort(connection->native, nullptr);
                     }
                     if (request->local_server->abort_requested) {
-                        (void)sl_local_server_abort(request->local_server->native, nullptr);
+                        sl_local_server_abort(request->local_server->native, nullptr);
                     }
                     else {
-                        (void)sl_local_server_close(request->local_server->native, nullptr);
+                        sl_local_server_close(request->local_server->native, nullptr);
                     }
                     request->local_server->closed = true;
                     request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
@@ -1399,13 +1429,13 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                 request->listener->accepting = false;
                 if (request->listener->close_requested || request->listener->abort_requested) {
                     if (connection->native != nullptr) {
-                        (void)sl_tcp_connection_abort(connection->native, nullptr);
+                        sl_tcp_connection_abort(connection->native, nullptr);
                     }
                     if (request->listener->abort_requested) {
-                        (void)sl_tcp_listener_abort(request->listener->native, nullptr);
+                        sl_tcp_listener_abort(request->listener->native, nullptr);
                     }
                     else {
-                        (void)sl_tcp_listener_close(request->listener->native, nullptr);
+                        sl_tcp_listener_close(request->listener->native, nullptr);
                     }
                     request->listener->closed = true;
                     request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
@@ -1527,8 +1557,8 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
     }
     else if (request->operation == NetV8Operation::Close) {
         if (request->connection->tls_active && request->connection->tls_ssl != nullptr) {
-            (void)SSL_shutdown(request->connection->tls_ssl);
-            (void)net_v8_tls_drain_write_bio(*request->connection, nullptr);
+            SSL_shutdown(request->connection->tls_ssl);
+            net_v8_tls_drain_write_bio(*request->connection, nullptr);
         }
         net_v8_tls_release(*request->connection);
         request->status = sl_tcp_connection_close(request->connection->native, &request->diag);
@@ -1581,17 +1611,17 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
              request->operation == NetV8Operation::LocalAccept)
     {
         if (net_v8_is_local_operation(request->operation)) {
-            auto* holder =
-                new (std::nothrow) std::shared_ptr<NetV8LocalConnection>(request->local_connection);
             SlResourceId id = {};
             v8::Local<v8::Object> handle;
-            if (holder == nullptr ||
-                !sl_status_is_ok(sl_resource_table_insert(
-                    &backend->resources, SL_RESOURCE_KIND_LOCAL_CONNECTION, holder,
-                    net_v8_local_resource_cleanup, nullptr, &id, nullptr)) ||
+            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_CONNECTION,
+                                               request->local_connection,
+                                               net_v8_local_resource_cleanup, &id) ||
                 !net_v8_resource_to_handle(isolate, context, id, &handle))
             {
-                delete holder;
+                if (sl_resource_id_is_valid(id)) {
+                    sl_resource_table_close_kind(&backend->resources, id,
+                                                 SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
+                }
                 ok = resolver
                          ->Reject(context,
                                   v8::Exception::Error(v8::String::NewFromUtf8Literal(
@@ -1605,16 +1635,16 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             isolate->PerformMicrotaskCheckpoint();
             return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        auto* holder = new (std::nothrow) std::shared_ptr<NetV8Connection>(request->connection);
         SlResourceId id = {};
         v8::Local<v8::Object> handle;
-        if (holder == nullptr ||
-            !sl_status_is_ok(
-                sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_TCP_CONNECTION,
-                                         holder, net_v8_resource_cleanup, nullptr, &id, nullptr)) ||
+        if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_CONNECTION,
+                                           request->connection, net_v8_resource_cleanup, &id) ||
             !net_v8_resource_to_handle(isolate, context, id, &handle))
         {
-            delete holder;
+            if (sl_resource_id_is_valid(id)) {
+                sl_resource_table_close_kind(&backend->resources, id,
+                                             SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+            }
             ok = resolver
                      ->Reject(
                          context,
@@ -1628,8 +1658,8 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
                 !net_v8_set_string(isolate, context, handle, "selectedProtocol",
                                    request->tls_selected_alpn))
             {
-                (void)sl_resource_table_close_kind(&backend->resources, id,
-                                                   SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+                sl_resource_table_close_kind(&backend->resources, id,
+                                             SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
                 ok = resolver
                          ->Reject(
                              context,
@@ -1647,17 +1677,17 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
              request->operation == NetV8Operation::LocalListen)
     {
         if (request->operation == NetV8Operation::LocalListen) {
-            auto* holder =
-                new (std::nothrow) std::shared_ptr<NetV8LocalServer>(request->local_server);
             SlResourceId id = {};
             v8::Local<v8::Object> handle;
-            if (holder == nullptr ||
-                !sl_status_is_ok(sl_resource_table_insert(
-                    &backend->resources, SL_RESOURCE_KIND_LOCAL_SERVER, holder,
-                    net_v8_local_server_resource_cleanup, nullptr, &id, nullptr)) ||
+            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_SERVER,
+                                               request->local_server,
+                                               net_v8_local_server_resource_cleanup, &id) ||
                 !net_v8_resource_to_handle(isolate, context, id, &handle))
             {
-                delete holder;
+                if (sl_resource_id_is_valid(id)) {
+                    sl_resource_table_close_kind(&backend->resources, id,
+                                                 SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
+                }
                 ok = resolver
                          ->Reject(context,
                                   v8::Exception::Error(v8::String::NewFromUtf8Literal(
@@ -1671,16 +1701,17 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             isolate->PerformMicrotaskCheckpoint();
             return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        auto* holder = new (std::nothrow) std::shared_ptr<NetV8Listener>(request->listener);
         SlResourceId id = {};
         v8::Local<v8::Object> handle;
-        if (holder == nullptr ||
-            !sl_status_is_ok(sl_resource_table_insert(
-                &backend->resources, SL_RESOURCE_KIND_TCP_LISTENER, holder,
-                net_v8_listener_resource_cleanup, nullptr, &id, nullptr)) ||
+        if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_LISTENER,
+                                           request->listener, net_v8_listener_resource_cleanup,
+                                           &id) ||
             !net_v8_resource_to_handle(isolate, context, id, &handle))
         {
-            delete holder;
+            if (sl_resource_id_is_valid(id)) {
+                sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_TCP_LISTENER,
+                                             nullptr);
+            }
             ok = resolver
                      ->Reject(
                          context,
@@ -1729,29 +1760,29 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
              request->operation == NetV8Operation::Abort) &&
             sl_resource_id_is_valid(request->resource_id))
         {
-            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                               SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+            sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                         SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
         }
         if ((request->operation == NetV8Operation::LocalClose ||
              request->operation == NetV8Operation::LocalAbort) &&
             sl_resource_id_is_valid(request->resource_id))
         {
-            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                               SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
+            sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                         SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
         }
         if ((request->operation == NetV8Operation::CloseListener ||
              request->operation == NetV8Operation::AbortListener) &&
             sl_resource_id_is_valid(request->resource_id))
         {
-            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                               SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
+            sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                         SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
         }
         if ((request->operation == NetV8Operation::LocalCloseServer ||
              request->operation == NetV8Operation::LocalAbortServer) &&
             sl_resource_id_is_valid(request->resource_id))
         {
-            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                               SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
+            sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                         SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
         }
         ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
     }
@@ -1832,7 +1863,7 @@ bool net_v8_start_request(const std::shared_ptr<SlV8NetRequest>& request)
     try {
         request->worker = std::thread([request]() {
             net_v8_worker(request);
-            (void)net_v8_post_completion(request);
+            net_v8_post_completion(request);
         });
     } catch (...) {
         net_v8_remove_request(request);

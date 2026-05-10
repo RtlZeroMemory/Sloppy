@@ -191,8 +191,9 @@ static SlStatus sl_fs_posix_remove_tree_fd(int dirfd)
     struct dirent* entry = NULL;
 
     if (dir == NULL) {
+        int error = errno;
         close(dirfd);
-        return sl_fs_posix_status(errno);
+        return sl_fs_posix_status(error);
     }
     errno = 0;
     while ((entry = readdir(dir)) != NULL) {
@@ -262,12 +263,12 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
     }
     fd = open(native.ptr, O_RDONLY);
     if (fd < 0) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_posix_status(errno);
     }
     if (fstat(fd, &st) != 0 || st.st_size < 0) {
         close(fd);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (st.st_size == 0) {
@@ -277,6 +278,7 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
     status = sl_arena_alloc(arena, (size_t)st.st_size, _Alignof(unsigned char), &memory);
     if (!sl_status_is_ok(status)) {
         close(fd);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     while (offset < (size_t)st.st_size) {
@@ -286,7 +288,7 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
         }
         if (n <= 0) {
             close(fd);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         offset += (size_t)n;
@@ -383,7 +385,7 @@ SlStatus sl_fs_platform_copy_file(SlStr from_path, SlStr to_path, bool overwrite
     close(from_fd);
     close(to_fd);
     if (!sl_status_is_ok(status)) {
-        (void)unlink(to_native.ptr);
+        unlink(to_native.ptr);
     }
     return status;
 }
@@ -557,7 +559,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     }
     dir = opendir(native.ptr);
     if (dir == NULL) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_posix_status(errno);
     }
     while ((entry = readdir(dir)) != NULL) {
@@ -571,13 +573,13 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
                                       _Alignof(SlFsDirectoryEntry), &entries);
         if (!sl_status_is_ok(status)) {
             closedir(dir);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
         out->entries = (SlFsDirectoryEntry*)entries.ptr;
         if (out->entries == NULL) {
             closedir(dir);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
     }
@@ -593,7 +595,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         }
         if (out->entries == NULL || out->count >= count) {
             closedir(dir);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         item = &out->entries[out->count];
@@ -615,7 +617,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         }
         if (!sl_status_is_ok(status)) {
             closedir(dir);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
         out->count += 1U;
@@ -623,7 +625,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     if (errno != 0) {
         int error = errno;
         closedir(dir);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_posix_status(error);
     }
     closedir(dir);
@@ -673,24 +675,24 @@ SlStatus sl_fs_platform_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, S
     for (;;) {
         status = sl_arena_alloc(arena, capacity + 1U, _Alignof(char), &memory);
         if (!sl_status_is_ok(status)) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return status;
         }
         length = readlink(native.ptr, (char*)memory, capacity);
         if (length < 0) {
             int error = errno;
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_fs_posix_status(error);
         }
         if ((size_t)length < capacity) {
             break;
         }
         if (capacity > (SIZE_MAX / 2U)) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_status_from_code(SL_STATUS_OVERFLOW);
         }
         capacity *= 2U;
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         status = sl_fs_posix_path(arena, path, &native);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -766,7 +768,7 @@ SlStatus sl_fs_platform_atomic_write_file(SlArena* arena, SlStr path, SlBytes by
     status = sl_fs_platform_create_temp_file(arena, directory, sl_str_from_cstr(".sloppy-atomic-"),
                                              &temp, out_diag);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     status = sl_fs_posix_path(arena, sl_owned_str_as_view(temp.path), &native);
@@ -775,15 +777,15 @@ SlStatus sl_fs_platform_atomic_write_file(SlArena* arena, SlStr path, SlBytes by
     }
     if (!sl_status_is_ok(status)) {
         if (native.ptr != NULL) {
-            (void)unlink(native.ptr);
+            unlink(native.ptr);
         }
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
     fd = open(native.ptr, O_WRONLY);
     if (fd < 0) {
-        (void)unlink(native.ptr);
-        (void)sl_arena_reset_to(arena, mark);
+        unlink(native.ptr);
+        sl_arena_reset_to(arena, mark);
         return sl_fs_posix_status(errno);
     }
     status = sl_fs_posix_write_all(fd, bytes.ptr, bytes.length);
@@ -795,9 +797,9 @@ SlStatus sl_fs_platform_atomic_write_file(SlArena* arena, SlStr path, SlBytes by
         status = sl_fs_posix_status(errno);
     }
     if (!sl_status_is_ok(status)) {
-        (void)unlink(native.ptr);
+        unlink(native.ptr);
     }
-    (void)sl_arena_reset_to(arena, mark);
+    sl_arena_reset_to(arena, mark);
     return status;
 }
 
@@ -839,14 +841,21 @@ SlStatus sl_fs_platform_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** 
 
 SlStatus sl_fs_platform_release_lock(SlFsFileLock* lock, SlDiag* out_diag)
 {
+    SlStatus status = sl_status_ok();
     (void)out_diag;
     if (lock == NULL || lock->closed) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
-    close(lock->fd);
+
+    if (close(lock->fd) != 0) {
+        status = sl_fs_posix_status(errno);
+    }
     SlStr path = sl_owned_str_as_view(lock->path);
-    if (path.ptr != NULL) {
-        (void)unlink(path.ptr);
+    if (path.ptr != NULL && unlink(path.ptr) != 0 && sl_status_is_ok(status)) {
+        status = sl_fs_posix_status(errno);
+    }
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
     lock->closed = true;
     lock->fd = -1;

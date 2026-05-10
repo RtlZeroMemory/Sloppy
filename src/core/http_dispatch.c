@@ -1304,7 +1304,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     return sl_status_ok();
 
 failure:
-    (void)sl_arena_reset_to(arena, mark);
+    sl_arena_reset_to(arena, mark);
     *out_table = (SlHttpRouteTable){0};
     return status;
 }

@@ -65,7 +65,7 @@ void echo_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
             uv_buf_init(new char[static_cast<size_t>(nread)], static_cast<unsigned int>(nread));
         std::memcpy(write->buffer.base, buf->base, static_cast<size_t>(nread));
         write->request.data = write;
-        (void)uv_write(&write->request, stream, &write->buffer, 1U, echo_after_write);
+        uv_write(&write->request, stream, &write->buffer, 1U, echo_after_write);
     }
     if (buf != nullptr) {
         delete[] buf->base;
@@ -89,7 +89,7 @@ void echo_connection(uv_stream_t* server_stream, int status)
         delete client;
         return;
     }
-    (void)uv_read_start(reinterpret_cast<uv_stream_t*>(&client->handle), echo_alloc, echo_read);
+    uv_read_start(reinterpret_cast<uv_stream_t*>(&client->handle), echo_alloc, echo_read);
 }
 
 void echo_stop(uv_async_t* async)
@@ -131,8 +131,8 @@ bool echo_server_start(EchoServer* server)
     server->stop.data = server;
     server->thread = std::thread([server]() {
         server->running.store(true);
-        (void)uv_run(&server->loop, UV_RUN_DEFAULT);
-        (void)uv_loop_close(&server->loop);
+        uv_run(&server->loop, UV_RUN_DEFAULT);
+        uv_loop_close(&server->loop);
         server->running.store(false);
     });
     while (!server->running.load()) {
@@ -146,7 +146,7 @@ void echo_server_stop(EchoServer* server)
     if (server == nullptr) {
         return;
     }
-    (void)uv_async_send(&server->stop);
+    uv_async_send(&server->stop);
     if (server->thread.joinable()) {
         server->thread.join();
     }
@@ -291,7 +291,7 @@ void client_exchange_run(ClientExchange* exchange)
         line.length != 14U || std::memcmp(line.ptr, "listener-reply", 14U) != 0)
     {
         exchange->result = 2;
-        (void)sl_tcp_connection_abort(connection, nullptr);
+        sl_tcp_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_tcp_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -340,7 +340,7 @@ int test_listener_hostname_resolution()
         accepted == nullptr)
     {
         client.join();
-        (void)sl_tcp_listener_abort(listener, nullptr);
+        sl_tcp_listener_abort(listener, nullptr);
         return 2;
     }
     if (expect_status(sl_tcp_connection_read_line(accepted, &accepted_arena, 128U, &line, nullptr),
@@ -351,8 +351,8 @@ int test_listener_hostname_resolution()
             SL_STATUS_OK) != 0)
     {
         client.join();
-        (void)sl_tcp_connection_abort(accepted, nullptr);
-        (void)sl_tcp_listener_abort(listener, nullptr);
+        sl_tcp_connection_abort(accepted, nullptr);
+        sl_tcp_listener_abort(listener, nullptr);
         return 3;
     }
     client.join();
@@ -402,7 +402,7 @@ int test_listener_accept_ephemeral_and_close()
         accepted == nullptr || sl_tcp_connection_state(accepted) != SL_TCP_CONNECTION_CONNECTED)
     {
         client.join();
-        (void)sl_tcp_listener_abort(listener, nullptr);
+        sl_tcp_listener_abort(listener, nullptr);
         return 2;
     }
     if (expect_status(sl_tcp_connection_read_line(accepted, &accepted_arena, 128U, &line, nullptr),
@@ -413,8 +413,8 @@ int test_listener_accept_ephemeral_and_close()
             SL_STATUS_OK) != 0)
     {
         client.join();
-        (void)sl_tcp_connection_abort(accepted, nullptr);
-        (void)sl_tcp_listener_abort(listener, nullptr);
+        sl_tcp_connection_abort(accepted, nullptr);
+        sl_tcp_listener_abort(listener, nullptr);
         return 3;
     }
     client.join();
@@ -456,7 +456,7 @@ int test_listener_accept_timeout_and_stale_handle()
             SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
         accepted != nullptr)
     {
-        (void)sl_tcp_listener_abort(listener, nullptr);
+        sl_tcp_listener_abort(listener, nullptr);
         return 2;
     }
     if (expect_status(sl_tcp_listener_close(listener, nullptr), SL_STATUS_OK) != 0 ||
@@ -509,7 +509,7 @@ int test_read_until_binary_delimiter_and_limits()
                       SL_STATUS_OK) != 0 ||
         bytes.length != sizeof(expected) || std::memcmp(bytes.ptr, expected, sizeof(expected)) != 0)
     {
-        (void)sl_tcp_connection_abort(connection, nullptr);
+        sl_tcp_connection_abort(connection, nullptr);
         echo_server_stop(&server);
         return 3;
     }
@@ -518,7 +518,7 @@ int test_read_until_binary_delimiter_and_limits()
             sl_tcp_connection_read_until(connection, &arena, sl_bytes_empty(), 8U, &bytes, nullptr),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        (void)sl_tcp_connection_abort(connection, nullptr);
+        sl_tcp_connection_abort(connection, nullptr);
         echo_server_stop(&server);
         return 4;
     }
@@ -529,7 +529,7 @@ int test_read_until_binary_delimiter_and_limits()
                           &bytes, nullptr),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0)
     {
-        (void)sl_tcp_connection_abort(connection, nullptr);
+        sl_tcp_connection_abort(connection, nullptr);
         echo_server_stop(&server);
         return 5;
     }
