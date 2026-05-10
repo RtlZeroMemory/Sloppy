@@ -73,10 +73,14 @@
                            tests/unit/core/test_os.c)
     sloppy_add_c_unit_test(core_logging_structured core.logging.structured
                            tests/unit/core/test_logging.c)
+    sloppy_add_c_unit_test(core_platform_thread core.platform.thread
+                           tests/unit/core/test_platform_thread.c)
     add_test(NAME stress.logging.structured COMMAND $<TARGET_FILE:core_logging_structured> --stress)
     set_tests_properties(stress.logging.structured PROPERTIES LABELS "stress;logging")
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
+    sloppy_add_c_unit_test(
+        core_request_validation core.request_validation tests/unit/core/test_request_validation.c)
     sloppy_add_c_unit_test(
         core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
     sloppy_add_c_unit_test(
@@ -324,7 +328,17 @@
         target_include_directories(
             core_source_loc_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
         target_compile_features(core_source_loc_cpp_syntax PRIVATE cxx_std_17)
+        sloppy_apply_warnings(core_source_loc_cpp_syntax)
+        sloppy_apply_sanitizers(core_source_loc_cpp_syntax)
         add_test(NAME core.source_loc.cpp_syntax COMMAND core_source_loc_cpp_syntax)
+        add_executable(core_public_headers_cpp_syntax tests/unit/core/test_public_headers_cpp.cpp)
+        target_include_directories(
+            core_public_headers_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_link_libraries(core_public_headers_cpp_syntax PRIVATE sloppy_core)
+        target_compile_features(core_public_headers_cpp_syntax PRIVATE cxx_std_17)
+        sloppy_apply_warnings(core_public_headers_cpp_syntax)
+        sloppy_apply_sanitizers(core_public_headers_cpp_syntax)
+        add_test(NAME core.public_headers.cpp_syntax COMMAND core_public_headers_cpp_syntax)
     endif()
 
     add_test(NAME sloppy.cli.version COMMAND sloppy --version)

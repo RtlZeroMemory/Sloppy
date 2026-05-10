@@ -143,6 +143,66 @@ static int test_checked_array_helpers(void)
     return 0;
 }
 
+static int test_boundary_matrix_for_add3_and_mul(void)
+{
+    size_t out = 0U;
+    size_t sentinel = 4242U;
+    size_t exact_half = SIZE_MAX / 2U;
+    size_t exact_third = SIZE_MAX / 3U;
+
+    if (expect_status(sl_checked_add3_size(0U, 0U, SIZE_MAX, &out), SL_STATUS_OK) != 0 ||
+        out != SIZE_MAX ||
+        expect_status(sl_checked_add3_size(SIZE_MAX - 2U, 1U, 1U, &out), SL_STATUS_OK) != 0 ||
+        out != SIZE_MAX ||
+        expect_status(sl_checked_add3_size(SIZE_MAX - 1U, 0U, 1U, &out), SL_STATUS_OK) != 0 ||
+        out != SIZE_MAX)
+    {
+        return 23;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_checked_add3_size(SIZE_MAX, 1U, 0U, &out), SL_STATUS_OVERFLOW) != 0 ||
+        out != sentinel)
+    {
+        return 24;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_checked_add3_size(SIZE_MAX - 1U, 1U, 1U, &out), SL_STATUS_OVERFLOW) != 0 ||
+        out != sentinel)
+    {
+        return 25;
+    }
+
+    if (expect_status(sl_checked_mul_size(exact_half, 2U, &out), SL_STATUS_OK) != 0 ||
+        out != exact_half * 2U ||
+        expect_status(sl_checked_mul_size(exact_third, 3U, &out), SL_STATUS_OK) != 0 ||
+        out != exact_third * 3U ||
+        expect_status(sl_checked_mul_size(1U, SIZE_MAX, &out), SL_STATUS_OK) != 0 ||
+        out != SIZE_MAX)
+    {
+        return 26;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_checked_mul_size((SIZE_MAX / 2U) + 1U, 2U, &out), SL_STATUS_OVERFLOW) !=
+            0 ||
+        out != sentinel)
+    {
+        return 27;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_checked_mul_size((SIZE_MAX / 3U) + 1U, 3U, &out), SL_STATUS_OVERFLOW) !=
+            0 ||
+        out != sentinel)
+    {
+        return 28;
+    }
+
+    return 0;
+}
+
 static int test_deterministic_checked_size_properties(void)
 {
     size_t a = 0U;
@@ -194,6 +254,11 @@ int main(void)
     }
 
     result = test_checked_array_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_boundary_matrix_for_add3_and_mul();
     if (result != 0) {
         return result;
     }

@@ -5,6 +5,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct SlPlatformProcessArgs
 {
     const char* file;
@@ -13,5 +17,9 @@ typedef struct SlPlatformProcessArgs
 
 SlStatus sl_platform_process_executable_path(char* buffer, size_t capacity);
 SlStatus sl_platform_process_run(const SlPlatformProcessArgs* args, int* out_exit_code);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

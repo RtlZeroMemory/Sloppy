@@ -167,6 +167,61 @@ static int test_find_helpers(void)
     return 0;
 }
 
+static int test_failure_atomicity(void)
+{
+    const unsigned char bytes[] = {1U, 2U, 3U, 4U};
+    unsigned char arena_storage[32];
+    unsigned char tiny_storage[2];
+    SlArena arena;
+    SlArena tiny_arena;
+    SlBytesFindResult result = {.found = true, .index = 91U, .value = 0xabU};
+    SlOwnedBytes sentinel = {(unsigned char*)bytes, 99U};
+    SlOwnedBytes out = sentinel;
+
+    if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(bytes, sizeof(bytes)),
+                                        sl_bytes_from_parts(NULL, 1U), &result),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !result.found || result.index != 91U || result.value != 0xabU)
+    {
+        return 19;
+    }
+
+    if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(NULL, 1U),
+                                        sl_bytes_from_parts(bytes, 1U), &result),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !result.found || result.index != 91U || result.value != 0xabU)
+    {
+        return 20;
+    }
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 21;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_bytes_copy_to_arena(&arena, sl_bytes_from_parts(NULL, 1U), &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length)
+    {
+        return 22;
+    }
+
+    out = sentinel;
+    if (expect_status(
+            sl_bytes_copy_to_arena(&tiny_arena, sl_bytes_from_parts(bytes, sizeof(bytes)), &out),
+            SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length)
+    {
+        return 23;
+    }
+
+    return 0;
+}
+
 static int test_deterministic_byte_scan_properties(void)
 {
     unsigned char bytes[64];
@@ -377,6 +432,11 @@ int main(void)
     }
 
     result = test_find_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_failure_atomicity();
     if (result != 0) {
         return result;
     }

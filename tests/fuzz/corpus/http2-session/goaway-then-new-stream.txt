@@ -1,0 +1,6 @@
+PRI * HTTP/2.0
+
+SM
+
+GOAWAY last-stream=1 error=0
+HEADERS stream=3 path=/after-goaway

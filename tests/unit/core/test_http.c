@@ -449,6 +449,30 @@ static int test_duplicate_non_singleton_headers_preserve_order(void)
     return 0;
 }
 
+static int test_conflicting_host_headers_fail_closed(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 50;
+    }
+
+    status = parse_request(&arena, "GET / HTTP/1.1\r\nHost: one\r\nHost: two\r\n\r\n", NULL,
+                           &request, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL ||
+        request.headers != NULL || request.header_count != 0U)
+    {
+        return 51;
+    }
+
+    return 0;
+}
+
 static int test_callback_allocation_failure_preserved(void)
 {
     unsigned char storage[8];
@@ -1010,6 +1034,7 @@ int main(void)
         {test_rejects_unsupported_versions},
         {test_rejects_non_path_targets},
         {test_duplicate_non_singleton_headers_preserve_order},
+        {test_conflicting_host_headers_fail_closed},
         {test_callback_allocation_failure_preserved},
         {test_max_target_length_enforced},
         {test_max_headers_enforced},

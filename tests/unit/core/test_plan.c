@@ -248,9 +248,14 @@ static int test_plan_metadata_interns_stable_strings(void)
     SlArena arena = {0};
     SlPlanHandler handlers[1] = {
         {1U, sl_str_from_cstr("__sloppy_handler_1"), sl_str_from_cstr("home")}};
-    SlPlanRequestBinding bindings[1] = {
-        {SL_PLAN_REQUEST_BINDING_BODY_JSON, sl_str_from_cstr("input"), sl_str_from_cstr("input"),
-         sl_str_from_cstr("UserCreate"), sl_str_from_cstr("Body<UserCreate>"), false}};
+    SlPlanRequestBinding bindings[1] = {{
+        .parameter = sl_str_from_cstr("input"),
+        .name = sl_str_from_cstr("input"),
+        .schema = sl_str_from_cstr("UserCreate"),
+        .type = sl_str_from_cstr("Body<UserCreate>"),
+        .kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+        .redacted = false,
+    }};
     SlPlanRoute routes[1] = {{
         .bindings = bindings,
         .binding_count = 1U,

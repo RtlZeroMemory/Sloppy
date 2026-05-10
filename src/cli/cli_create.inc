@@ -6,9 +6,8 @@
  */
 static bool sl_create_template_name_supported(const char* name)
 {
-    return name != NULL &&
-           (strcmp(name, "minimal-api") == 0 || strcmp(name, "full-api") == 0 ||
-            strcmp(name, "dogfood") == 0);
+    return name != NULL && (strcmp(name, "minimal-api") == 0 || strcmp(name, "full-api") == 0 ||
+                            strcmp(name, "dogfood") == 0);
 }
 
 static bool sl_create_project_name_is_valid(const char* name)
@@ -21,8 +20,8 @@ static bool sl_create_project_name_is_valid(const char* name)
 
     for (index = 0U; name[index] != '\0'; index += 1U) {
         unsigned char ch = (unsigned char)name[index];
-        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') || ch == '-' || ch == '_')
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+            ch == '-' || ch == '_')
         {
             continue;
         }
@@ -102,9 +101,24 @@ static void sl_create_cleanup_new_destination(const char* path)
     }
     status = sl_fs_delete_directory(sl_str_from_cstr(path), true, NULL);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy create: warning: failed to clean partial output: ",
-                                      path, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy create: warning: failed to clean partial output: ", path, "\n");
     }
+}
+
+static bool sl_create_remove_destination_directory(const char* path)
+{
+    SlStatus status;
+
+    if (!sl_create_directory_exists(path)) {
+        return true;
+    }
+    status = sl_fs_delete_directory(sl_str_from_cstr(path), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy create: failed to clean destination: ", path, "\n");
+        return false;
+    }
+    return true;
 }
 
 static bool sl_create_join_path(char* buffer, size_t capacity, const char* dir, const char* leaf)
@@ -126,8 +140,8 @@ static SlStr sl_create_template_target_name(SlStr source_name)
 }
 
 static bool sl_create_copy_package_template_path(char* buffer, size_t capacity,
-                                                const char* executable_path,
-                                                const char* template_name)
+                                                 const char* executable_path,
+                                                 const char* template_name)
 {
     SlCliSpan executable = {0};
     SlCliSpan executable_dir = {0};
@@ -234,8 +248,8 @@ static int sl_create_copy_directory(const char* source_dir, const char* target_d
     }
     status = sl_fs_list_directory(&arena, sl_str_from_cstr(source_dir), &list, NULL);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy create: failed to read template directory: ",
-                                      source_dir, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy create: failed to read template directory: ", source_dir, "\n");
         return 1;
     }
 
@@ -261,8 +275,8 @@ static int sl_create_copy_directory(const char* source_dir, const char* target_d
             status = sl_fs_copy_file(sl_str_from_cstr(source_path), sl_str_from_cstr(target_path),
                                      true, NULL);
             if (!sl_status_is_ok(status)) {
-                sl_cli_write_error_with_value("sloppy create: failed to copy template file: ",
-                                              source_path, "\n");
+                sl_cli_write_error_with_value(
+                    "sloppy create: failed to copy template file: ", source_path, "\n");
                 return 1;
             }
         }
@@ -306,8 +320,7 @@ static int sl_cli_command_create(const SlCliOptions* options)
         return 1;
     }
     if (!sl_create_template_name_supported(template_name)) {
-        sl_cli_write_error_with_value("sloppy create: unsupported template: ", template_name,
-                                      "\n");
+        sl_cli_write_error_with_value("sloppy create: unsupported template: ", template_name, "\n");
         return 1;
     }
     if (!sl_create_resolve_template_path(options, template_name, template_path,
@@ -319,10 +332,16 @@ static int sl_cli_command_create(const SlCliOptions* options)
     if (!sl_create_destination_is_empty(project_name) && !options->create_force) {
         sl_cli_write_error_with_value(
             "sloppy create: destination exists and is not empty: ", project_name,
-            "\nUse --force to copy template files over existing files; stale files are left alone.\n");
+            "\nUse --force to remove the destination directory before copying template files.\n");
         return 1;
     }
-    if (!sl_create_path_exists(project_name, &destination_existed)) {
+    if (options->create_force && sl_create_directory_exists(project_name)) {
+        if (!sl_create_remove_destination_directory(project_name)) {
+            return 1;
+        }
+        destination_existed = false;
+    }
+    else if (!sl_create_path_exists(project_name, &destination_existed)) {
         destination_existed = true;
     }
 

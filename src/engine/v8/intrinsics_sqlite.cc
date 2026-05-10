@@ -813,9 +813,15 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
     case SqliteV8Operation::QueryOne:
         return sl_sqlite_query_one(&request->arena, &request->resource->connection, sql, params,
                                    param_count, &request->one_result, out_diag);
-    case SqliteV8Operation::TransactionBegin:
-        return sl_sqlite_transaction_begin(&request->arena, &request->resource->connection,
-                                           &request->resource->transaction, out_diag);
+    case SqliteV8Operation::TransactionBegin: {
+        SlSqliteTransaction transaction = {};
+        status = sl_sqlite_transaction_begin(&request->arena, &request->resource->connection,
+                                             &transaction, out_diag);
+        if (sl_status_is_ok(status)) {
+            request->resource->transaction = transaction;
+        }
+        return status;
+    }
     case SqliteV8Operation::TransactionCommit:
         return sl_sqlite_transaction_commit(&request->arena, &request->resource->transaction,
                                             out_diag);

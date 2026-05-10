@@ -272,7 +272,6 @@ jobs:
         with:
           name: test-engine-ci-fast-meta
           path: artifacts/test-engine/ci-fast-meta.json
-          if-no-files-found: ignore
 
   rust:
     name: rust
@@ -402,7 +401,6 @@ jobs:
         with:
           name: test-engine-pr-windows
           path: artifacts/test-engine/pr-fuzz-windows.json
-          if-no-files-found: ignore
 
   windows-tooling:
     name: windows-tooling
@@ -479,6 +477,17 @@ jobs:
       - name: Doctor OFF mode
         shell: pwsh
         run: .\tools\windows\dev.ps1 doctor -V8Mode OFF
+
+      - name: Test engine PR report
+        shell: pwsh
+        run: .\tools\windows\test-engine.ps1 -Tier pr -Area fuzz -Out artifacts\test-engine\pr-fuzz-windows-tooling.json
+
+      - name: Upload test engine PR report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-pr-windows-tooling
+          path: artifacts/test-engine/pr-fuzz-windows-tooling.json
 
   windows-package-smoke:
     name: windows-package-smoke
@@ -1279,10 +1288,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y nghttp2-client
-          go install github.com/summerwind/h2spec/cmd/h2spec@v2.2.1+incompatible
+          missing_packages=()
+          if ! command -v nghttp >/dev/null 2>&1 || ! command -v h2load >/dev/null 2>&1; then
+            missing_packages+=(nghttp2-client)
+          fi
+          if [ "${#missing_packages[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing_packages[@]}"
+          fi
+          if ! command -v h2spec >/dev/null 2>&1; then
+            go install github.com/summerwind/h2spec/cmd/h2spec@latest
+          fi
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          command -v nghttp
+          command -v h2load
+          if ! command -v h2spec >/dev/null 2>&1 && [ ! -x "$(go env GOPATH)/bin/h2spec" ]; then
+            echo "h2spec was not installed" >&2
+            exit 1
+          fi
 
       - name: External HTTP/2 conformance
         if: matrix.name == 'linux-clang'

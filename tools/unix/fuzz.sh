@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -u
 
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "tools/unix/fuzz.sh requires Bash 4+; install Homebrew bash on macOS." >&2
+  exit 2
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tier="pr"
 target=""
@@ -73,6 +78,10 @@ Examples:
 USAGE
 }
 
+is_unsigned_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tier)
@@ -110,6 +119,15 @@ case "$tier" in
   pr|extended|torture) ;;
   *) echo "fuzz: invalid --tier '$tier'" >&2; exit 2 ;;
 esac
+
+if ! is_unsigned_integer "$iterations"; then
+  echo "fuzz: --iterations must be an unsigned integer" >&2
+  exit 2
+fi
+if ! is_unsigned_integer "$seed"; then
+  echo "fuzz: --seed must be an unsigned integer" >&2
+  exit 2
+fi
 
 if [[ "$all" == "true" && -n "$target" ]]; then
   echo "fuzz: use either --all or --target, not both." >&2

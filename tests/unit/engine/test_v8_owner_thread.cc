@@ -40,6 +40,15 @@ static int expect_str_contains(SlStr haystack, SlStr needle)
     return 1;
 }
 
+static int expect_non_owner_diag(const SlDiag& diag)
+{
+    if (diag.code != SL_DIAG_ENGINE_CALL_ERROR) {
+        return 1;
+    }
+
+    return expect_str_contains(diag.message, sl_str_from_cstr("non-owner thread"));
+}
+
 static SlEngineOptions v8_options(void)
 {
     SlEngineOptions options = {};
@@ -87,8 +96,52 @@ static int test_wrong_thread_eval_fails_before_entering_v8(void)
     worker.join();
 
     if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
-        diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
-        expect_str_contains(diag.message, sl_str_from_cstr("non-owner thread")) != 0)
+        expect_non_owner_diag(diag) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_wrong_thread_call_function0_fails_before_entering_v8(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {};
+    SlArena result_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlDiag diag = {};
+    SlEngineResult result = {};
+    SlStatus worker_status = sl_status_ok();
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&result_arena, result_storage, sizeof(result_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr ||
+        expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("wrong-thread-call0.js"),
+                                            sl_str_from_cstr("globalThis.call0 = function () { "
+                                                             "return 'ok'; };"),
+                                            &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    std::thread worker([&]() {
+        worker_status = sl_engine_call_function0(engine, &result_arena, sl_str_from_cstr("call0"),
+                                                 &result, &diag);
+    });
+    worker.join();
+
+    if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || expect_non_owner_diag(diag) != 0)
     {
         sl_engine_destroy(engine);
         return 2;
@@ -115,6 +168,80 @@ static int test_owner_thread_identity_is_initialized(void)
 
     SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
     if (backend == nullptr || backend->owner_thread != std::this_thread::get_id()) {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_wrong_thread_info_returns_invalid_state(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlEngineInfo info = {};
+    SlStatus worker_status = sl_status_ok();
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr)
+    {
+        return 1;
+    }
+
+    std::thread worker([&]() { worker_status = sl_engine_info(engine, &info); });
+    worker.join();
+
+    if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0) {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_wrong_thread_validate_registered_handlers_fails_before_entering_v8(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlDiag diag = {};
+    SlPlanHandler handler = {};
+    SlPlan plan = {};
+    SlStatus worker_status = sl_status_ok();
+
+    handler.id = 1U;
+    plan.handlers = &handler;
+    plan.handler_count = 1U;
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr ||
+        expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("wrong-thread-validate.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(1, function () { "
+                                                   "return 'ok'; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    std::thread worker(
+        [&]() { worker_status = sl_engine_validate_registered_handlers(engine, &plan, &diag); });
+    worker.join();
+
+    if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
+        expect_non_owner_diag(diag) != 0)
+    {
         sl_engine_destroy(engine);
         return 2;
     }
@@ -162,8 +289,7 @@ static int test_wrong_thread_async_handler_call_fails_before_microtasks(void)
     worker.join();
 
     if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
-        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
-        expect_str_contains(diag.message, sl_str_from_cstr("non-owner thread")) != 0)
+        result.kind != SL_ENGINE_RESULT_NONE || expect_non_owner_diag(diag) != 0)
     {
         sl_engine_destroy(engine);
         return 2;
@@ -173,7 +299,56 @@ static int test_wrong_thread_async_handler_call_fails_before_microtasks(void)
     return 0;
 }
 
-static int test_wrong_thread_destroy_defers_to_owner_thread(void)
+static int test_wrong_thread_call_function_with_context_fails_before_entering_v8(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {};
+    SlArena result_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlDiag diag = {};
+    SlEngineResult result = {};
+    SlHttpRequestHead request = test_request();
+    SlHttpRequestContext context = {};
+    SlStatus worker_status = sl_status_ok();
+
+    context.request = &request;
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&result_arena, result_storage, sizeof(result_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr ||
+        expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("wrong-thread-call-with-context.js"),
+                                  sl_str_from_cstr("globalThis.callWithContext = function (_ctx) { "
+                                                   "return 'ok'; };"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    std::thread worker([&]() {
+        worker_status = sl_engine_call_function_with_context(
+            engine, &result_arena, sl_str_from_cstr("callWithContext"), &context, &result, &diag);
+    });
+    worker.join();
+
+    if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || expect_non_owner_diag(diag) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_repeated_wrong_thread_destroy_requires_owner_thread_cleanup(void)
 {
     unsigned char engine_storage[8192];
     SlArena engine_arena = {};
@@ -189,14 +364,23 @@ static int test_wrong_thread_destroy_defers_to_owner_thread(void)
         return 1;
     }
 
-    std::thread worker([&]() { sl_engine_destroy(engine); });
+    std::thread worker([&]() {
+        sl_engine_destroy(engine);
+        sl_engine_destroy(engine);
+    });
     worker.join();
 
-    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_OK) != 0) {
+    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_OK) != 0 ||
+        info.kind != SL_ENGINE_KIND_V8)
+    {
         sl_engine_destroy(engine);
         return 2;
     }
 
+    sl_engine_destroy(engine);
+    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_INVALID_STATE) != 0) {
+        return 3;
+    }
     sl_engine_destroy(engine);
     return 0;
 }
@@ -214,14 +398,34 @@ int main(void)
         return 10 + result;
     }
 
-    result = test_wrong_thread_destroy_defers_to_owner_thread();
+    result = test_wrong_thread_call_function0_fails_before_entering_v8();
     if (result != 0) {
         return 20 + result;
     }
 
-    result = test_wrong_thread_async_handler_call_fails_before_microtasks();
+    result = test_wrong_thread_info_returns_invalid_state();
     if (result != 0) {
         return 30 + result;
+    }
+
+    result = test_wrong_thread_validate_registered_handlers_fails_before_entering_v8();
+    if (result != 0) {
+        return 40 + result;
+    }
+
+    result = test_wrong_thread_async_handler_call_fails_before_microtasks();
+    if (result != 0) {
+        return 50 + result;
+    }
+
+    result = test_wrong_thread_call_function_with_context_fails_before_entering_v8();
+    if (result != 0) {
+        return 60 + result;
+    }
+
+    result = test_repeated_wrong_thread_destroy_requires_owner_thread_cleanup();
+    if (result != 0) {
+        return 70 + result;
     }
 
     return 0;

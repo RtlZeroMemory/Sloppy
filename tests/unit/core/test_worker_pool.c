@@ -28,6 +28,7 @@ typedef struct DestroyUser
 {
     WorkerRecord* record;
     void* destroyed_result;
+    int destroyed_values[12];
 } DestroyUser;
 
 static int expect_true(bool condition)
@@ -116,8 +117,13 @@ static SlStatus expect_null_completion_user(SlLoop* loop, SlWorkKind kind, SlSta
 static void destroy_result(void* result, void* user)
 {
     DestroyUser* destroy_user = (DestroyUser*)user;
+    WorkerPayload* payload = (WorkerPayload*)result;
 
     if (destroy_user != NULL && destroy_user->record != NULL) {
+        size_t index = destroy_user->record->destroy_count;
+        if (index < 12U) {
+            destroy_user->destroyed_values[index] = payload == NULL ? -1 : payload->value;
+        }
         destroy_user->record->destroy_count += 1U;
         destroy_user->destroyed_result = result;
     }
@@ -274,7 +280,7 @@ static int test_reset_after_loop_reset_destroys_pending_result(void)
     SlLoop loop;
     WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
                            SL_STATUS_OK};
-    DestroyUser destroy_user = {&record, NULL};
+    DestroyUser destroy_user = {.record = &record};
     WorkerPayload result_payload = {&record, 88, NULL, SL_STATUS_OK};
     WorkerPayload work_payload = {&record, 1, &result_payload, SL_STATUS_OK};
     SlWorkItem item = {SL_WORK_KIND_TEST, run_recording_work, &work_payload, &destroy_user,
@@ -303,6 +309,66 @@ static int test_reset_after_loop_reset_destroys_pending_result(void)
         record.destroy_count != 1U)
     {
         return 30;
+    }
+
+    return 0;
+}
+
+static int test_reset_after_loop_reset_destroys_all_pending_results_once(void)
+{
+    SlWorkerPool pool = {0};
+    SlCompletion storage[3];
+    SlLoop loop;
+    WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
+                           SL_STATUS_OK};
+    DestroyUser destroy_user = {.record = &record};
+    WorkerPayload results[3] = {{&record, 10, NULL, SL_STATUS_OK},
+                                {&record, 20, NULL, SL_STATUS_OK},
+                                {&record, 30, NULL, SL_STATUS_OK}};
+    WorkerPayload payloads[3] = {{&record, 1, &results[0], SL_STATUS_OK},
+                                 {&record, 2, &results[1], SL_STATUS_OK},
+                                 {&record, 3, &results[2], SL_STATUS_OK}};
+    SlWorkItem items[3] = {
+        {SL_WORK_KIND_TEST, run_recording_work, &payloads[0], &destroy_user, destroy_result},
+        {SL_WORK_KIND_TEST, run_recording_work, &payloads[1], &destroy_user, destroy_result},
+        {SL_WORK_KIND_TEST, run_recording_work, &payloads[2], &destroy_user, destroy_result}};
+
+    if (expect_status(sl_worker_pool_init_inline(&pool), SL_STATUS_OK) != 0 ||
+        expect_status(sl_loop_init(&loop, storage, 3U), SL_STATUS_OK) != 0)
+    {
+        return 100;
+    }
+
+    for (size_t index = 0U; index < 3U; index += 1U) {
+        if (expect_status(
+                sl_worker_pool_submit(&pool, &loop, &items[index], record_completion, &record),
+                SL_STATUS_OK) != 0)
+        {
+            return 101;
+        }
+    }
+
+    if (record.run_count != 3U || record.count != 0U || sl_loop_pending_count(&loop) != 3U) {
+        return 102;
+    }
+
+    sl_loop_reset(&loop);
+    sl_worker_pool_reset_inline(&pool);
+    sl_worker_pool_reset_inline(&pool);
+
+    if (record.destroy_count != 3U || destroy_user.destroyed_values[0] != 10 ||
+        destroy_user.destroyed_values[1] != 20 || destroy_user.destroyed_values[2] != 30 ||
+        sl_loop_pending_count(&loop) != 0U)
+    {
+        return 103;
+    }
+
+    if (expect_status(sl_worker_pool_submit(&pool, &loop, &items[0], record_completion, &record),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_loop_drain(&loop, NULL), SL_STATUS_OK) != 0 || record.count != 1U ||
+        record.values[0] != 10 || record.destroy_count != 3U)
+    {
+        return 104;
     }
 
     return 0;
@@ -386,7 +452,7 @@ static int test_post_failure_destroys_result(void)
     SlLoop loop;
     WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
                            SL_STATUS_OK};
-    DestroyUser destroy_user = {&record, NULL};
+    DestroyUser destroy_user = {.record = &record};
     WorkerPayload result_payload = {&record, 99, NULL, SL_STATUS_OK};
     WorkerPayload work_payload = {&record, 1, &result_payload, SL_STATUS_OK};
     SlWorkItem item = {SL_WORK_KIND_TEST, run_recording_work, &work_payload, &destroy_user,
@@ -411,6 +477,43 @@ static int test_post_failure_destroys_result(void)
         record.count != 0U || sl_loop_pending_count(&loop) != 1U)
     {
         return 52;
+    }
+
+    return 0;
+}
+
+static int test_post_failure_destroys_result_even_when_work_failed(void)
+{
+    SlWorkerPool pool = {0};
+    SlCompletion storage[1];
+    SlLoop loop;
+    WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
+                           SL_STATUS_OK};
+    DestroyUser destroy_user = {.record = &record};
+    WorkerPayload result_payload = {&record, 123, NULL, SL_STATUS_OK};
+    WorkerPayload work_payload = {&record, 1, &result_payload, SL_STATUS_INTERNAL};
+    SlWorkItem item = {SL_WORK_KIND_TEST, run_recording_work, &work_payload, &destroy_user,
+                       destroy_result};
+
+    if (expect_status(sl_worker_pool_init_inline(&pool), SL_STATUS_OK) != 0 ||
+        expect_status(sl_loop_init(&loop, storage, 1U), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_loop_post(&loop, SL_COMPLETION_KIND_TEST, noop_loop_completion, NULL, NULL),
+            SL_STATUS_OK) != 0)
+    {
+        return 110;
+    }
+
+    if (expect_status(sl_worker_pool_submit(&pool, &loop, &item, record_completion, &record),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        record.run_count != 1U || record.destroy_count != 1U ||
+        destroy_user.destroyed_values[0] != 123 || destroy_user.destroyed_result != &result_payload)
+    {
+        return 111;
+    }
+
+    if (expect_status(sl_loop_drain(&loop, NULL), SL_STATUS_OK) != 0 || record.count != 0U) {
+        return 112;
     }
 
     return 0;
@@ -466,7 +569,7 @@ static int test_completion_failure_propagates_without_destroy(void)
     SlLoop loop;
     WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
                            SL_STATUS_INTERNAL};
-    DestroyUser destroy_user = {&record, NULL};
+    DestroyUser destroy_user = {.record = &record};
     WorkerPayload result_payload = {&record, 55, NULL, SL_STATUS_OK};
     WorkerPayload work_payload = {&record, 1, &result_payload, SL_STATUS_OK};
     SlWorkItem item = {SL_WORK_KIND_TEST, run_recording_work, &work_payload, &destroy_user,
@@ -485,6 +588,50 @@ static int test_completion_failure_propagates_without_destroy(void)
         record.count != 1U || record.destroy_count != 0U || record.results[0] != &result_payload)
     {
         return 61;
+    }
+
+    return 0;
+}
+
+static int test_completion_failure_clears_record_and_pool_is_reusable(void)
+{
+    SlWorkerPool pool = {0};
+    SlCompletion storage[1];
+    SlLoop loop;
+    WorkerRecord record = {{SL_WORK_KIND_NONE}, {SL_STATUS_OK}, {NULL}, {NULL}, {0}, 0U, 0U, 0U,
+                           SL_STATUS_INTERNAL};
+    DestroyUser destroy_user = {.record = &record};
+    WorkerPayload first_result = {&record, 66, NULL, SL_STATUS_OK};
+    WorkerPayload second_result = {&record, 77, NULL, SL_STATUS_OK};
+    WorkerPayload first_payload = {&record, 1, &first_result, SL_STATUS_OK};
+    WorkerPayload second_payload = {&record, 2, &second_result, SL_STATUS_OK};
+    SlWorkItem first = {SL_WORK_KIND_TEST, run_recording_work, &first_payload, &destroy_user,
+                        destroy_result};
+    SlWorkItem second = {SL_WORK_KIND_TEST, run_recording_work, &second_payload, &destroy_user,
+                         destroy_result};
+    size_t ran = 0U;
+
+    if (expect_status(sl_worker_pool_init_inline(&pool), SL_STATUS_OK) != 0 ||
+        expect_status(sl_loop_init(&loop, storage, 1U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_worker_pool_submit(&pool, &loop, &first, record_completion, &record),
+                      SL_STATUS_OK) != 0)
+    {
+        return 120;
+    }
+
+    if (expect_status(sl_loop_drain(&loop, &ran), SL_STATUS_INTERNAL) != 0 || ran != 1U ||
+        record.count != 1U || record.destroy_count != 0U)
+    {
+        return 121;
+    }
+
+    record.completion_return_code = SL_STATUS_OK;
+    if (expect_status(sl_worker_pool_submit(&pool, &loop, &second, record_completion, &record),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_loop_drain(&loop, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        record.count != 2U || record.values[1] != 77 || record.destroy_count != 0U)
+    {
+        return 122;
     }
 
     return 0;
@@ -549,6 +696,11 @@ int main(void)
         return result;
     }
 
+    result = test_reset_after_loop_reset_destroys_all_pending_results_once();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_multiple_work_items_are_fifo();
     if (result != 0) {
         return result;
@@ -564,12 +716,22 @@ int main(void)
         return result;
     }
 
+    result = test_post_failure_destroys_result_even_when_work_failed();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_inline_record_capacity_exhaustion();
     if (result != 0) {
         return result;
     }
 
     result = test_completion_failure_propagates_without_destroy();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_completion_failure_clears_record_and_pool_is_reusable();
     if (result != 0) {
         return result;
     }

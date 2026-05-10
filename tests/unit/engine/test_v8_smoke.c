@@ -1223,6 +1223,164 @@ static int test_unsupported_result_returns_call_diagnostic(void)
     return 0;
 }
 
+static int test_primitive_unsupported_results_return_diagnostics(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 520;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 521;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-primitive-results.js"),
+                          sl_str_from_cstr("globalThis.sloppy_undefined = function () {};"
+                                           "globalThis.sloppy_null = function () { return "
+                                           "null; };"
+                                           "globalThis.sloppy_number = function () { return "
+                                           "42; };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 522;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_undefined"), &result,
+                                               &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+    {
+        sl_engine_destroy(engine);
+        return 523;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_null"), &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+    {
+        sl_engine_destroy(engine);
+        return 524;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_number"), &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+    {
+        sl_engine_destroy(engine);
+        return 525;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_result_descriptor_negative_shapes_fail_safely(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 530;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 531;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-result-negative-shapes.js"),
+                          sl_str_from_cstr(
+                              "globalThis.sloppy_missing_status = function () {"
+                              "  return { __sloppyResult: true, kind: 'text', contentType: "
+                              "    'text/plain; charset=utf-8', body: 'bad' };"
+                              "};"
+                              "globalThis.sloppy_unsupported_status = function () {"
+                              "  return { __sloppyResult: true, kind: 'text', status: 418,"
+                              "    contentType: 'text/plain; charset=utf-8', body: 'bad' };"
+                              "};"
+                              "globalThis.sloppy_missing_content_type = function () {"
+                              "  return { __sloppyResult: true, kind: 'text', status: 200,"
+                              "    body: 'bad' };"
+                              "};"
+                              "globalThis.sloppy_text_non_string_body = function () {"
+                              "  return { __sloppyResult: true, kind: 'text', status: 200,"
+                              "    contentType: 'text/plain; charset=utf-8', body: { bad: true } };"
+                              "};"
+                              "globalThis.sloppy_bytes_non_binary_body = function () {"
+                              "  return { __sloppyResult: true, kind: 'bytes', status: 200,"
+                              "    contentType: 'application/octet-stream', body: 'bad' };"
+                              "};"
+                              "globalThis.sloppy_json_circular_body = function () {"
+                              "  const value = {}; value.self = value;"
+                              "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                              "    contentType: 'application/json; charset=utf-8', body: value };"
+                              "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 532;
+    }
+
+#define EXPECT_INVALID_RESULT(function_name, expected_status, failure_code)                        \
+    do {                                                                                           \
+        sl_arena_reset(&result_arena);                                                             \
+        result = (SlEngineResult){0};                                                              \
+        diag = (SlDiag){0};                                                                        \
+        if (expect_status(sl_engine_call_function0(engine, &result_arena,                          \
+                                                   sl_str_from_cstr(function_name), &result,       \
+                                                   &diag),                                         \
+                          expected_status) != 0 ||                                                 \
+            result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)      \
+        {                                                                                          \
+            sl_engine_destroy(engine);                                                             \
+            return failure_code;                                                                   \
+        }                                                                                          \
+    } while (0)
+
+    EXPECT_INVALID_RESULT("sloppy_missing_status", SL_STATUS_INVALID_STATE, 533);
+    EXPECT_INVALID_RESULT("sloppy_unsupported_status", SL_STATUS_INVALID_STATE, 534);
+    EXPECT_INVALID_RESULT("sloppy_missing_content_type", SL_STATUS_INVALID_STATE, 535);
+    EXPECT_INVALID_RESULT("sloppy_text_non_string_body", SL_STATUS_INVALID_STATE, 536);
+    EXPECT_INVALID_RESULT("sloppy_bytes_non_binary_body", SL_STATUS_INVALID_STATE, 537);
+    EXPECT_INVALID_RESULT("sloppy_json_circular_body", SL_STATUS_INVALID_STATE, 538);
+
+#undef EXPECT_INVALID_RESULT
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_promise_result_settles_text(void)
 {
     unsigned char engine_storage[8192];
@@ -1405,7 +1563,7 @@ static int test_time_intrinsic_inactive_feature_is_not_registered(void)
 
 static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
 {
-    unsigned char engine_storage[16384];
+    unsigned char engine_storage[32768];
     unsigned char result_storage[1024];
     unsigned char feature_storage[1024];
     SlArena engine_arena = {0};
@@ -2916,7 +3074,7 @@ static int test_call_after_destroy_returns_lifecycle_diagnostic(void)
 static int test_request_context_reports_actual_method(void)
 {
     unsigned char engine_storage[8192];
-    unsigned char result_storage[1024];
+    unsigned char result_storage[2048];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
     SlEngineOptions options = v8_options();
@@ -2968,7 +3126,6 @@ static int test_request_context_reports_actual_method(void)
     sl_engine_destroy(engine);
     return 0;
 }
-
 static int test_request_context_log_writes_native_event(void)
 {
     unsigned char engine_storage[16384];
@@ -3050,15 +3207,18 @@ static int test_request_context_log_writes_native_event(void)
         (void)sl_log_runtime_shutdown(logging);
         return 82;
     }
-
-    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
-                                                           sl_str_from_cstr("sloppy_context_log"),
-                                                           &context, &result, &diag),
-                      SL_STATUS_OK) != 0)
     {
-        sl_engine_destroy(engine);
-        (void)sl_log_runtime_shutdown(logging);
-        return 83;
+        SlStatus call_status = sl_engine_call_function_with_context(
+            engine, &result_arena, sl_str_from_cstr("sloppy_context_log"), &context, &result,
+            &diag);
+        if (expect_status(call_status, SL_STATUS_OK) != 0) {
+            fprintf(stderr, "context log status=%d result=%d diag=%d message=%.*s\n",
+                    (int)sl_status_code(call_status), (int)result.kind, (int)diag.code,
+                    (int)diag.message.length, diag.message.ptr == NULL ? "" : diag.message.ptr);
+            sl_engine_destroy(engine);
+            (void)sl_log_runtime_shutdown(logging);
+            return 83;
+        }
     }
 
     if (result.kind != SL_ENGINE_RESULT_JSON ||
@@ -3722,6 +3882,84 @@ static int test_request_context_helper_functions_are_frozen(void)
     return 0;
 }
 
+static int test_request_context_private_state_ignores_public_mutation(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    static const unsigned char body_bytes[] = {'h', 'e', 'l', 'l', 'o'};
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
+    SlHttpRequestContext context = {0};
+
+    request.body = sl_bytes_from_parts(body_bytes, sizeof(body_bytes));
+    context = test_request_context(&request);
+    context.body_kind = SL_HTTP_REQUEST_BODY_TEXT;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 416;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 417;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-context-private-state.js"),
+                sl_str_from_cstr("globalThis.sloppy_context_private_state = function (ctx) {"
+                                 "  ctx.signal.aborted = true;"
+                                 "  ctx.signal.reason = 'poison';"
+                                 "  ctx.request.body.consumed = true;"
+                                 "  ctx.request.body.kind = 'json';"
+                                 "  let signalOk = 'clear';"
+                                 "  try { ctx.signal.throwIfAborted(); }"
+                                 "  catch (_err) { signalOk = 'poisoned'; }"
+                                 "  const first = ctx.request.body.text();"
+                                 "  let second = 'missing';"
+                                 "  try { ctx.request.body.text(); }"
+                                 "  catch (err) {"
+                                 "    second = String(err && err.message ? err.message : err)"
+                                 "      .includes('already consumed') ? 'consumed' : 'wrong';"
+                                 "  }"
+                                 "  return JSON.stringify({ signalOk, first, second });"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 418;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_context_private_state"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 419;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(
+            result.text,
+            sl_str_from_cstr(
+                "{\"signalOk\":\"clear\",\"first\":\"hello\",\"second\":\"consumed\"}")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 420;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_result_descriptor_copies_headers_and_location(void)
 {
     unsigned char engine_storage[8192];
@@ -4077,6 +4315,200 @@ static int test_result_descriptor_fast_paths_fall_back_for_mutated_shapes(void)
     return 0;
 }
 
+static int test_result_descriptor_inherited_fields_do_not_poison_headers(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 458;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 459;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-result-inherited-fields.js"),
+                sl_str_from_cstr(
+                    "globalThis.sloppy_inherited_fields = function () {"
+                    "  const proto = { headers: { 'x-inherited': 'poison' }, location: '/proto' };"
+                    "  const descriptor = Object.create(proto);"
+                    "  descriptor.__sloppyResult = true;"
+                    "  descriptor.kind = 'json';"
+                    "  descriptor.status = 200;"
+                    "  descriptor.contentType = 'application/json; charset=utf-8';"
+                    "  descriptor.body = { ok: true };"
+                    "  return descriptor;"
+                    "};"
+                    "globalThis.sloppy_inherited_created_location = function () {"
+                    "  const proto = { location: '/proto' };"
+                    "  const descriptor = Object.create(proto);"
+                    "  descriptor.__sloppyResult = true;"
+                    "  Object.defineProperty(descriptor, '__sloppyFastResult', { value: 4 });"
+                    "  Object.defineProperty(descriptor, '__sloppyJsonText',"
+                    "    { value: '{\\\"spoofed\\\":true}' });"
+                    "  descriptor.kind = 'json';"
+                    "  descriptor.status = 201;"
+                    "  descriptor.contentType = 'application/json; charset=utf-8';"
+                    "  descriptor.headers = undefined;"
+                    "  descriptor.body = { ownedCreated: true };"
+                    "  return descriptor;"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 460;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_inherited_fields"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON || result.response.header_count != 0U ||
+        expect_bytes_equal(result.response.body, "{\"ok\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 461;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(
+                          engine, &result_arena,
+                          sl_str_from_cstr("sloppy_inherited_created_location"), &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON || result.response.status != 201U ||
+        result.response.header_count != 0U ||
+        expect_bytes_equal(result.response.body, "{\"ownedCreated\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 462;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_result_descriptor_inherited_core_fields_do_not_admit_descriptor(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 466;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 467;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-result-inherited-core-fields.js"),
+                sl_str_from_cstr("globalThis.sloppy_inherited_core_fields = function () {"
+                                 "  const proto = { __sloppyResult: true, kind: 'json',"
+                                 "    status: 200, contentType: 'application/json; charset=utf-8',"
+                                 "    body: { spoofed: true } };"
+                                 "  return Object.create(proto);"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 468;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_inherited_core_fields"),
+                                               &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+    {
+        sl_engine_destroy(engine);
+        return 469;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+static int test_result_descriptor_inherited_fast_markers_do_not_spoof_body(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 462;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 463;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-result-inherited-fast-markers.js"),
+                sl_str_from_cstr("globalThis.sloppy_inherited_fast_markers = function () {"
+                                 "  const proto = { __sloppyFastResult: 3, __sloppyJsonText: "
+                                 "'{\"spoofed\":true}' };"
+                                 "  const descriptor = Object.create(proto);"
+                                 "  descriptor.__sloppyResult = true;"
+                                 "  descriptor.kind = 'json';"
+                                 "  descriptor.status = 200;"
+                                 "  descriptor.contentType = 'application/json; charset=utf-8';"
+                                 "  descriptor.headers = undefined;"
+                                 "  descriptor.body = { owned: true };"
+                                 "  return descriptor;"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 464;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_inherited_fast_markers"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"owned\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 465;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_result_descriptor_preserves_binary_body(void)
 {
     unsigned char engine_storage[8192];
@@ -4261,6 +4693,165 @@ static int test_invalid_result_headers_fail_safely(void)
         sl_engine_destroy(engine);
         return 95;
     }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_result_descriptor_throwing_headers_accessor_fails_safely(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 101;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 102;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-throwing-result-headers.js"),
+                sl_str_from_cstr(
+                    "globalThis.sloppy_throwing_headers = function () {"
+                    "  const descriptor = { __sloppyResult: true, kind: 'text', status: 200,"
+                    "    contentType: 'text/plain; charset=utf-8', body: 'ok' };"
+                    "  Object.defineProperty(descriptor, 'headers', {"
+                    "    get() { throw new Error('poison'); }"
+                    "  });"
+                    "  return descriptor;"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 103;
+    }
+
+    {
+        SlStatus call_status = sl_engine_call_function0(
+            engine, &result_arena, sl_str_from_cstr("sloppy_throwing_headers"), &result, &diag);
+        if (expect_status(call_status, SL_STATUS_INVALID_STATE) != 0 ||
+            result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT ||
+            expect_str_contains(diag.message, sl_str_from_cstr("invalid headers")) != 0)
+        {
+            fprintf(stderr, "throwing headers status=%d result=%d diag=%d message=%.*s\n",
+                    (int)sl_status_code(call_status), (int)result.kind, (int)diag.code,
+                    (int)diag.message.length, diag.message.ptr == NULL ? "" : diag.message.ptr);
+            sl_engine_destroy(engine);
+            return 104;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_result_descriptor_throwing_core_accessors_fail_safely(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 111;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 112;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-throwing-result-core-accessors.js"),
+                sl_str_from_cstr(
+                    "function descriptorWithThrowing(name) {"
+                    "  const descriptor = { __sloppyResult: true, kind: 'json', status: 200,"
+                    "    contentType: 'application/json; charset=utf-8', body: { ok: true } };"
+                    "  Object.defineProperty(descriptor, name, {"
+                    "    get() { throw new Error('poison ' + name); }"
+                    "  });"
+                    "  return descriptor;"
+                    "}"
+                    "globalThis.sloppy_throwing_kind = function () {"
+                    "  return descriptorWithThrowing('kind');"
+                    "};"
+                    "globalThis.sloppy_throwing_status = function () {"
+                    "  return descriptorWithThrowing('status');"
+                    "};"
+                    "globalThis.sloppy_throwing_content_type = function () {"
+                    "  return descriptorWithThrowing('contentType');"
+                    "};"
+                    "globalThis.sloppy_throwing_body = function () {"
+                    "  return descriptorWithThrowing('body');"
+                    "};"
+                    "globalThis.sloppy_throwing_location = function () {"
+                    "  return descriptorWithThrowing('location');"
+                    "};"
+                    "globalThis.sloppy_throwing_location_own_descriptor = function () {"
+                    "  const descriptor = { __sloppyResult: true, kind: 'json', status: 201,"
+                    "    contentType: 'application/json; charset=utf-8', body: { ok: true } };"
+                    "  return new Proxy(descriptor, {"
+                    "    getOwnPropertyDescriptor(target, prop) {"
+                    "      if (prop === 'location') { throw new Error('location trap'); }"
+                    "      return Reflect.getOwnPropertyDescriptor(target, prop);"
+                    "    }"
+                    "  });"
+                    "};"
+                    "globalThis.sloppy_throwing_headers_own_keys = function () {"
+                    "  return { __sloppyResult: true, kind: 'text', status: 200,"
+                    "    contentType: 'text/plain; charset=utf-8', body: 'ok',"
+                    "    headers: new Proxy({}, { ownKeys() { throw new Error('keys'); } }) };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 113;
+    }
+
+#define EXPECT_THROWING_DESCRIPTOR(function_name, failure_code)                                    \
+    do {                                                                                           \
+        sl_arena_reset(&result_arena);                                                             \
+        result = (SlEngineResult){0};                                                              \
+        diag = (SlDiag){0};                                                                        \
+        if (expect_status(sl_engine_call_function0(engine, &result_arena,                          \
+                                                   sl_str_from_cstr(function_name), &result,       \
+                                                   &diag),                                         \
+                          SL_STATUS_INVALID_STATE) != 0 ||                                         \
+            result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)      \
+        {                                                                                          \
+            sl_engine_destroy(engine);                                                             \
+            return failure_code;                                                                   \
+        }                                                                                          \
+    } while (0)
+
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_kind", 114);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_status", 115);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_content_type", 116);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_body", 117);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_location", 118);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_location_own_descriptor", 119);
+    EXPECT_THROWING_DESCRIPTOR("sloppy_throwing_headers_own_keys", 120);
+
+#undef EXPECT_THROWING_DESCRIPTOR
 
     sl_engine_destroy(engine);
     return 0;
@@ -5895,6 +6486,304 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
     return 0;
 }
 
+static int test_sqlite_intrinsic_close_pending_then_stale_handle(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 216;
+    }
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
+        return 217;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 218;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-close-pending.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteClosePending = async function () {"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                    "  await __sloppy.data.sqlite.exec(db, 'create table t (id integer)', []);"
+                    "  const pending = __sloppy.data.sqlite.exec(db, 'insert into t values (1)', "
+                    "[]);"
+                    "  let closeRejected = false;"
+                    "  try { __sloppy.data.sqlite.close(db); }"
+                    "  catch (error) { closeRejected = String(error.message).includes('pending "
+                    "operations'); }"
+                    "  await pending;"
+                    "  __sloppy.data.sqlite.close(db);"
+                    "  let staleRejected = false;"
+                    "  try { await __sloppy.data.sqlite.queryOne(db, 'select 1', []); }"
+                    "  catch (error) { staleRejected = String(error.message).includes('stale'); }"
+                    "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                    "    contentType: 'application/json; charset=utf-8',"
+                    "    body: { closeRejected, staleRejected } };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 219;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteClosePending"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"closeRejected\":true,\"staleRejected\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 220;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_transaction_misuse_and_recovery(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 221;
+    }
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
+        return 222;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 223;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-transaction-misuse.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteTransactionMisuse = async function () {"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                    "  await __sloppy.data.sqlite.exec(db, 'create table t (id integer)', []);"
+                    "  await __sloppy.data.sqlite.transactionBegin(db);"
+                    "  let nestedRejected = false;"
+                    "  try { await __sloppy.data.sqlite.transactionBegin(db); }"
+                    "  catch (error) { nestedRejected = String(error.message).includes('nested "
+                    "transactions'); }"
+                    "  await __sloppy.data.sqlite.transactionRollback(db);"
+                    "  let commitRejected = false;"
+                    "  try { await __sloppy.data.sqlite.transactionCommit(db); }"
+                    "  catch (error) { commitRejected = true; }"
+                    "  let rollbackRejected = false;"
+                    "  try { await __sloppy.data.sqlite.transactionRollback(db); }"
+                    "  catch (error) { rollbackRejected = true; }"
+                    "  await __sloppy.data.sqlite.transactionBegin(db);"
+                    "  await __sloppy.data.sqlite.transactionExec(db, 'insert into t values (1)', "
+                    "[]);"
+                    "  await __sloppy.data.sqlite.transactionRollback(db);"
+                    "  const row = await __sloppy.data.sqlite.queryOne(db, 'select count(*) as "
+                    "count from t', []);"
+                    "  __sloppy.data.sqlite.close(db);"
+                    "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                    "    contentType: 'application/json; charset=utf-8',"
+                    "    body: { nestedRejected, commitRejected, rollbackRejected, count: "
+                    "row.count } };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 224;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteTransactionMisuse"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"nestedRejected\":true,\"commitRejected\":true,"
+                                                 "\"rollbackRejected\":true,\"count\":0}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 225;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_provider_bridge_non_live_invalid_shapes(void)
+{
+    unsigned char engine_storage[32768];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanDataProvider providers[2] = {{.token = sl_str_from_cstr("data.pg"),
+                                        .provider = sl_str_from_cstr("postgres"),
+                                        .capability = sl_str_empty(),
+                                        .service = sl_str_from_cstr("data.pg"),
+                                        .database = sl_str_empty()},
+                                       {.token = sl_str_from_cstr("data.sqlsrv"),
+                                        .provider = sl_str_from_cstr("sqlserver"),
+                                        .capability = sl_str_empty(),
+                                        .service = sl_str_from_cstr("data.sqlsrv"),
+                                        .database = sl_str_empty()}};
+    SlPlanCapability capabilities[2] = {{.token = sl_str_from_cstr("data.pg"),
+                                         .kind = sl_str_from_cstr("database"),
+                                         .access = sl_str_from_cstr("readwrite"),
+                                         .provider = sl_str_from_cstr("data.pg")},
+                                        {.token = sl_str_from_cstr("data.sqlsrv"),
+                                         .kind = sl_str_from_cstr("database"),
+                                         .access = sl_str_from_cstr("readwrite"),
+                                         .provider = sl_str_from_cstr("data.sqlsrv")}};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 2U,
+                   .capabilities = capabilities,
+                   .capability_count = 2U};
+    SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 226;
+    }
+
+    if (expect_status(sl_capability_registry_init_from_plan(&plan, &registry), SL_STATUS_OK) != 0) {
+        return 227;
+    }
+    if (attach_runtime_features(&options, &plan, &engine_arena, &features) != 0) {
+        return 227;
+    }
+    options.plan = &plan;
+    options.capabilities = &registry;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 228;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("provider-bridge-invalid-shapes.js"),
+                sl_str_from_cstr(
+                    "globalThis.providerBridgeInvalidShapes = function () {"
+                    "  const checks = [];"
+                    "  function expectThrow(fn, text) {"
+                    "    try { fn(); } catch (error) { "
+                    "checks.push(text === undefined || String(error.message).includes(text)); "
+                    "return; }"
+                    "    checks.push(false);"
+                    "  }"
+                    "  function expectOpenClose(open, close) {"
+                    "    try { close(open()); checks.push(true); }"
+                    "    catch (error) { checks.push(false); }"
+                    "  }"
+                    "  expectThrow(() => __sloppy.data.postgres.open(), 'open requires open "
+                    "options');"
+                    "  expectThrow(() => __sloppy.data.postgres.query({ slot: 0, generation: 1 }, "
+                    "'select 1', []), 'opaque Sloppy handle');"
+                    "  expectThrow(() => __sloppy.data.postgres.query(null, 'select 1', []), "
+                    "undefined);"
+                    "  expectThrow(() => __sloppy.data.postgres.open(Object.create({ "
+                    "provider: 'data.pg' })), 'open requires open options');"
+                    "  expectThrow(() => __sloppy.data.postgres.open(Object.create({ "
+                    "connectionString: 'postgres://localhost/sloppy' })), 'open requires open "
+                    "options');"
+                    "  const pgInheritedMax = { connectionString: 'postgres://localhost/sloppy', "
+                    "capability: 'data.pg' };"
+                    "  Object.setPrototypeOf(pgInheritedMax, { maxConnections: 'bad' });"
+                    "  expectOpenClose(() => __sloppy.data.postgres.open(pgInheritedMax), "
+                    "__sloppy.data.postgres.close);"
+                    "  expectThrow(() => __sloppy.data.postgres.open({ "
+                    "connectionString: 'postgres://localhost/sloppy', capability: 'data.pg', "
+                    "get maxConnections() { throw new Error('max'); } }), 'open requires open "
+                    "options');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.open(), 'open requires open "
+                    "options');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.query({ slot: 0, generation: 1 }, "
+                    "'select 1', []), 'opaque Sloppy handle');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.query(null, 'select 1', []), "
+                    "undefined);"
+                    "  expectThrow(() => __sloppy.data.sqlserver.open(Object.create({ "
+                    "provider: 'data.sqlsrv' })), 'open requires open options');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.open(Object.create({ "
+                    "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;' "
+                    "})), 'open requires open options');"
+                    "  const sqlSrvInheritedMax = { connectionString: 'Driver={ODBC Driver 18 for "
+                    "SQL Server};Server=localhost;', capability: 'data.sqlsrv' };"
+                    "  Object.setPrototypeOf(sqlSrvInheritedMax, { maxConnections: 'bad' });"
+                    "  expectOpenClose(() => __sloppy.data.sqlserver.open(sqlSrvInheritedMax), "
+                    "__sloppy.data.sqlserver.close);"
+                    "  expectThrow(() => __sloppy.data.sqlserver.open({ "
+                    "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;', "
+                    "capability: 'data.sqlsrv', get maxConnections() { throw new Error('max'); } "
+                    "}), 'open requires open options');"
+                    "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                    "    contentType: 'application/json; charset=utf-8', body: { checks } };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 229;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("providerBridgeInvalidShapes"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"checks\":[true,true,true,true,true,true,true,"
+                                                 "true,true,true,true,true,true,true]}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 230;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
 static int test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open(void)
 {
     unsigned char engine_storage[16384];
@@ -6046,6 +6935,16 @@ int main(int argc, char** argv)
     }
 
     result = test_unsupported_result_returns_call_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_primitive_unsupported_results_return_diagnostics();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_negative_shapes_fail_safely();
     if (result != 0) {
         return result;
     }
@@ -6220,6 +7119,11 @@ int main(int argc, char** argv)
         return result;
     }
 
+    result = test_request_context_private_state_ignores_public_mutation();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_result_descriptor_copies_headers_and_location();
     if (result != 0) {
         return result;
@@ -6235,12 +7139,37 @@ int main(int argc, char** argv)
         return result;
     }
 
+    result = test_result_descriptor_inherited_fields_do_not_poison_headers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_inherited_core_fields_do_not_admit_descriptor();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_inherited_fast_markers_do_not_spoof_body();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_result_descriptor_preserves_binary_body();
     if (result != 0) {
         return result;
     }
 
     result = test_invalid_result_headers_fail_safely();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_throwing_headers_accessor_fails_safely();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_descriptor_throwing_core_accessors_fail_safely();
     if (result != 0) {
         return result;
     }
@@ -6351,6 +7280,21 @@ int main(int argc, char** argv)
     }
 
     result = test_sqlite_intrinsic_explicit_write_capability_opens_write_only_handle();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_close_pending_then_stale_handle();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_transaction_misuse_and_recovery();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_provider_bridge_non_live_invalid_shapes();
     if (result != 0) {
         return result;
     }

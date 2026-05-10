@@ -129,6 +129,26 @@ static int test_no_content_writes_no_body_or_content_type(void)
                            "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n");
 }
 
+static int test_no_body_statuses_preserve_custom_headers_only(void)
+{
+    SlHttpHeader header = {.name = sl_str_from_cstr("ETag"), .value = sl_str_from_cstr("\"v1\"")};
+    SlHttpResponse response = sl_http_response_text(204U, sl_str_from_cstr("ignored"));
+
+    response.headers = &header;
+    response.header_count = 1U;
+    if (expect_response(
+            response, "HTTP/1.1 204 No Content\r\nConnection: close\r\nETag: \"v1\"\r\n\r\n") != 0)
+    {
+        return 1;
+    }
+
+    response = sl_http_response_text(304U, sl_str_from_cstr("ignored"));
+    response.headers = &header;
+    response.header_count = 1U;
+    return expect_response(
+        response, "HTTP/1.1 304 Not Modified\r\nConnection: close\r\nETag: \"v1\"\r\n\r\n");
+}
+
 static int test_statuses_and_content_length(void)
 {
     if (expect_response(sl_http_response_text(404U, sl_str_from_cstr("Not Found\n")),
@@ -350,6 +370,12 @@ int main(void)
 
     result = run_test("test_no_content_writes_no_body_or_content_type",
                       test_no_content_writes_no_body_or_content_type);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_no_body_statuses_preserve_custom_headers_only",
+                      test_no_body_statuses_preserve_custom_headers_only);
     if (result != 0) {
         return result;
     }

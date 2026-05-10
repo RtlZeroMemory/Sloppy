@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static int expect_true(bool condition)
 {
@@ -125,6 +126,92 @@ static int test_request_mapping_rejects_connection_headers_and_length_mismatch(v
     return 0;
 }
 
+static int test_request_mapping_accepts_te_trailers_with_host_fallback(void)
+{
+    unsigned char arena_storage[4096];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttp2HeaderField fields[] = {
+        h2_header(":method", "GET"),          h2_header(":scheme", "http"),
+        h2_header(":path", "/trailers?ok=1"), h2_header("host", "example.test"),
+        h2_header("te", "trailers"),          h2_header("x-test", "ok")};
+    SlHttp2HeaderList headers = {.fields = fields, .count = sizeof(fields) / sizeof(fields[0])};
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_http_backend_init(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 3;
+    }
+
+    if (expect_status(sl_http2_request_from_headers(&arena, &connection, &headers, sl_bytes_empty(),
+                                                    &request, NULL),
+                      SL_STATUS_OK) != 0 ||
+        request.head.header_count != 3U ||
+        !sl_str_equal(request.head.headers[0].name, sl_str_from_cstr("host")) ||
+        !sl_str_equal(request.head.headers[0].value, sl_str_from_cstr("example.test")) ||
+        !sl_str_equal(request.head.headers[1].name, sl_str_from_cstr("te")) ||
+        !sl_str_equal(request.head.headers[1].value, sl_str_from_cstr("trailers")) ||
+        !sl_str_equal(request.head.headers[2].name, sl_str_from_cstr("x-test")) ||
+        !sl_str_equal(request.head.path, sl_str_from_cstr("/trailers")))
+    {
+        return 4;
+    }
+
+    return 0;
+}
+
+static int test_request_mapping_rejects_duplicate_authority_content_length_and_bad_te(void)
+{
+    unsigned char arena_storage[4096];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttp2HeaderField duplicate_authority[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "http"),
+        h2_header(":authority", "one.test"), h2_header(":authority", "two.test"),
+        h2_header(":path", "/")};
+    SlHttp2HeaderField duplicate_content_length[] = {
+        h2_header(":method", "POST"),     h2_header(":scheme", "http"),
+        h2_header(":path", "/"),          h2_header("content-type", "text/plain"),
+        h2_header("content-length", "0"), h2_header("content-length", "0")};
+    SlHttp2HeaderField bad_te[] = {h2_header(":method", "GET"), h2_header(":scheme", "http"),
+                                   h2_header(":path", "/"), h2_header("te", "gzip")};
+    SlHttp2HeaderList cases[] = {
+        {.fields = duplicate_authority,
+         .count = sizeof(duplicate_authority) / sizeof(duplicate_authority[0])},
+        {.fields = duplicate_content_length,
+         .count = sizeof(duplicate_content_length) / sizeof(duplicate_content_length[0])},
+        {.fields = bad_te, .count = sizeof(bad_te) / sizeof(bad_te[0])}};
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_http_backend_init(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 5;
+    }
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        if (expect_status(sl_http2_request_from_headers(&arena, &connection, &cases[index],
+                                                        sl_bytes_empty(), &request, NULL),
+                          SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return (int)(6U + index);
+        }
+    }
+
+    return 0;
+}
+
 static int test_request_mapping_enforces_pseudo_header_contract(void)
 {
     unsigned char arena_storage[4096];
@@ -172,6 +259,32 @@ static int test_request_mapping_enforces_pseudo_header_contract(void)
         }
     }
     return 0;
+}
+
+static int test_request_mapping_requires_authority_or_host(void)
+{
+    unsigned char arena_storage[4096];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttp2HeaderField fields[] = {h2_header(":method", "GET"), h2_header(":scheme", "http"),
+                                   h2_header(":path", "/")};
+    SlHttp2HeaderList headers = {.fields = fields, .count = sizeof(fields) / sizeof(fields[0])};
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_http_backend_init(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 13;
+    }
+
+    return expect_status(sl_http2_request_from_headers(&arena, &connection, &headers,
+                                                       sl_bytes_empty(), &request, NULL),
+                         SL_STATUS_INVALID_ARGUMENT);
 }
 
 static int test_response_mapping_generates_pseudo_and_managed_headers(void)
@@ -259,24 +372,93 @@ static int test_response_mapping_rejects_header_count_overflow(void)
     return 0;
 }
 
+static int test_response_mapping_suppresses_body_and_managed_headers_for_204_and_304(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena = {0};
+    SlHttpHeader etag = {.name = sl_str_from_cstr("etag"), .value = sl_str_from_cstr("\"v1\"")};
+    SlHttpResponse no_content = sl_http_response_text(204U, sl_str_from_cstr("ignored"));
+    SlHttpResponse not_modified = sl_http_response_text(304U, sl_str_from_cstr("ignored"));
+    SlHttp2HeaderList headers = {0};
+    SlBytes body = {0};
+
+    no_content.headers = &etag;
+    no_content.header_count = 1U;
+    not_modified.headers = &etag;
+    not_modified.header_count = 1U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http2_response_to_headers(&arena, &no_content, false, 1024U, &headers, &body),
+            SL_STATUS_OK) != 0 ||
+        !sl_bytes_is_empty(body) || headers.count != 2U ||
+        expect_h2_header(&headers, 0U, ":status", "204") != 0 ||
+        expect_h2_header(&headers, 1U, "etag", "\"v1\"") != 0)
+    {
+        return 3;
+    }
+
+    sl_arena_reset(&arena);
+    if (expect_status(
+            sl_http2_response_to_headers(&arena, &not_modified, false, 1024U, &headers, &body),
+            SL_STATUS_OK) != 0 ||
+        !sl_bytes_is_empty(body) || headers.count != 2U ||
+        expect_h2_header(&headers, 0U, ":status", "304") != 0 ||
+        expect_h2_header(&headers, 1U, "etag", "\"v1\"") != 0)
+    {
+        return 4;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
 
     result = test_request_mapping_materializes_lifecycle();
     if (result != 0) {
+        fprintf(stderr, "test_request_mapping_materializes_lifecycle failed: %d\n", result);
         return result;
     }
     result = test_request_mapping_rejects_connection_headers_and_length_mismatch();
     if (result != 0) {
+        fprintf(stderr,
+                "test_request_mapping_rejects_connection_headers_and_length_mismatch failed: "
+                "%d\n",
+                result);
+        return result;
+    }
+    result = test_request_mapping_accepts_te_trailers_with_host_fallback();
+    if (result != 0) {
+        fprintf(stderr, "test_request_mapping_accepts_te_trailers_with_host_fallback failed: %d\n",
+                result);
+        return result;
+    }
+    result = test_request_mapping_rejects_duplicate_authority_content_length_and_bad_te();
+    if (result != 0) {
+        fprintf(stderr,
+                "test_request_mapping_rejects_duplicate_authority_content_length_and_bad_te "
+                "failed: %d\n",
+                result);
         return result;
     }
     result = test_request_mapping_enforces_pseudo_header_contract();
     if (result != 0) {
+        fprintf(stderr, "test_request_mapping_enforces_pseudo_header_contract failed: %d\n",
+                result);
+        return result;
+    }
+    result = test_request_mapping_requires_authority_or_host();
+    if (result != 0) {
+        fprintf(stderr, "test_request_mapping_requires_authority_or_host failed: %d\n", result);
         return result;
     }
     result = test_response_mapping_generates_pseudo_and_managed_headers();
     if (result != 0) {
+        fprintf(stderr, "test_response_mapping_generates_pseudo_and_managed_headers failed: %d\n",
+                result);
         return result;
     }
     result = test_response_mapping_suppresses_body_but_keeps_length_for_head();
@@ -284,6 +466,10 @@ int main(void)
         return result;
     }
     result = test_response_mapping_rejects_header_count_overflow();
+    if (result != 0) {
+        return result;
+    }
+    result = test_response_mapping_suppresses_body_and_managed_headers_for_204_and_304();
     if (result != 0) {
         return result;
     }

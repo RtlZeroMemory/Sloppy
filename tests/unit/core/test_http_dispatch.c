@@ -235,6 +235,50 @@ static int test_route_table_build_orders_literal_before_params(void)
     return expect_true(diag.code == SL_DIAG_NONE);
 }
 
+static int test_literal_route_wins_over_param_route_end_to_end(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handlers[2];
+    SlPlanRoute routes[2];
+    SlPlanRequestBinding stale_header = {0};
+    SlPlan plan = route_table_plan(handlers, routes);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    routes[0].bindings = &stale_header;
+    routes[0].binding_count = 1U;
+    stale_header.kind = SL_PLAN_REQUEST_BINDING_HEADER;
+    stale_header.name = sl_str_from_cstr("x-param-only");
+    stale_header.type = sl_str_from_cstr("string");
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users/me HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 60;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        return 61;
+    }
+    return 0;
+}
+
 static int test_route_table_rejects_duplicate_method_pattern(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -2116,6 +2160,7 @@ int main(void)
     static const HttpDispatchTestCase tests[] = {
         {test_get_missing_route_fails_cleanly},
         {test_route_table_build_orders_literal_before_params},
+        {test_literal_route_wins_over_param_route_end_to_end},
         {test_route_table_rejects_duplicate_method_pattern},
         {test_route_table_build_keeps_method_metadata},
         {test_route_table_exact_index_reports_method_mismatch},

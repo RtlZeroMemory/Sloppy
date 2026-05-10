@@ -239,7 +239,8 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        printf("Usage: sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
+        printf("Usage: sloppy run [source.js|source.mjs|source.ts|--artifacts <dir>] [--stdlib "
+               "<dir>]\n");
         printf("                  [--environment Development] [--host 127.0.0.1]\n");
         printf("                  [--port 5173] [--once METHOD TARGET]\n");
         printf("\n");
@@ -273,7 +274,8 @@ static void sl_cli_print_command_help(const char* command)
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
-        printf("--force copies template files over existing files; it does not delete stale files.\n");
+        printf(
+            "--force removes an existing destination directory before copying template files.\n");
         printf("--no-git is reserved for future git initialization; template files still copy.\n");
         return;
     }

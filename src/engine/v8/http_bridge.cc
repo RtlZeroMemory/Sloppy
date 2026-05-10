@@ -633,17 +633,34 @@ bool http_v8_set_value_property_key(v8::Isolate* isolate, v8::Local<v8::Context>
     return object->Set(context, key, value).FromMaybe(false);
 }
 
-bool http_v8_get_value_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                    v8::Local<v8::Object> object, SlV8HttpStringKey name,
-                                    v8::Local<v8::Value>* out)
+bool http_v8_get_own_value_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                        v8::Local<v8::Object> object, SlV8HttpStringKey name,
+                                        bool* out_present, v8::Local<v8::Value>* out)
 {
     v8::Local<v8::String> key;
+    v8::Maybe<bool> has_own = v8::Nothing<bool>();
 
-    if (out == nullptr || !sl_status_is_ok(http_v8_cached_string(isolate, name, &key))) {
+    if (out_present == nullptr || out == nullptr ||
+        !sl_status_is_ok(http_v8_cached_string(isolate, name, &key)))
+    {
         return false;
     }
 
-    return object->Get(context, key).ToLocal(out);
+    *out_present = false;
+    *out = v8::Undefined(isolate);
+    has_own = object->HasOwnProperty(context, key);
+    if (has_own.IsNothing()) {
+        return false;
+    }
+    if (!has_own.FromJust()) {
+        return true;
+    }
+    if (!object->Get(context, key).ToLocal(out)) {
+        return false;
+    }
+
+    *out_present = true;
+    return true;
 }
 
 bool http_v8_set_bool_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1876,12 +1893,13 @@ bool http_v8_get_object_status(v8::Isolate* isolate, v8::Local<v8::Context> cont
                                v8::Local<v8::Object> object, uint16_t* out)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
     int32_t status = 0;
 
     if (out == nullptr ||
-        !http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_STATUS,
-                                        &value) ||
-        !value->IsInt32())
+        !http_v8_get_own_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_STATUS,
+                                            &present, &value) ||
+        !present || !value->IsInt32())
     {
         return false;
     }
@@ -1899,9 +1917,11 @@ bool http_v8_has_result_marker(v8::Isolate* isolate, v8::Local<v8::Context> cont
                                v8::Local<v8::Object> object)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
-    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_SLOPPY_RESULT,
-                                        &value))
+    if (!http_v8_get_own_value_property_key(isolate, context, object,
+                                            SL_V8_HTTP_STRING_SLOPPY_RESULT, &present, &value) ||
+        !present)
     {
         return false;
     }
@@ -2024,11 +2044,14 @@ SlStatus http_v8_copy_response_header(SlArena* arena, const std::string& name,
     return http_v8_copy_string(arena, value, &out->value);
 }
 
-SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                              v8::Local<v8::Object> object, SlV8HttpStringKey name,
-                                              bool* out_present, std::string* out)
+SlStatus http_v8_get_optional_own_string_property(v8::Isolate* isolate,
+                                                  v8::Local<v8::Context> context,
+                                                  v8::Local<v8::Object> object,
+                                                  SlV8HttpStringKey name, bool* out_present,
+                                                  std::string* out)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
     if (out_present == nullptr || out == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -2036,11 +2059,11 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
 
     *out_present = false;
     *out = std::string();
-    if (!http_v8_get_value_property_key(isolate, context, object, name, &value)) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+    if (!http_v8_get_own_value_property_key(isolate, context, object, name, &present, &value)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (value->IsUndefined() || value->IsNull()) {
+    if (!present || value->IsUndefined() || value->IsNull()) {
         return sl_status_ok();
     }
     if (!value->IsString()) {
@@ -2052,18 +2075,18 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
     return sl_status_ok();
 }
 
-SlStatus http_v8_get_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                        SlArena* arena, v8::Local<v8::Object> object,
-                                        SlV8HttpStringKey name, SlStr* out)
+SlStatus http_v8_get_own_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                            SlArena* arena, v8::Local<v8::Object> object,
+                                            SlV8HttpStringKey name, SlStr* out)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
-    if (out == nullptr) {
+    if (out == nullptr ||
+        !http_v8_get_own_value_property_key(isolate, context, object, name, &present, &value) ||
+        !present)
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (!http_v8_get_value_property_key(isolate, context, object, name, &value)) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     if (!value->IsString()) {
@@ -2082,6 +2105,7 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     v8::Local<v8::Object> headers_object;
     v8::Local<v8::Array> names;
     bool has_headers_object = false;
+    bool has_headers_property = false;
     bool has_location = false;
     std::string location;
     SlSlice header_storage = {nullptr, 0U, sizeof(SlHttpHeader)};
@@ -2099,7 +2123,7 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     *out_headers = nullptr;
     *out_header_count = 0U;
 
-    status = http_v8_get_optional_string_property(
+    status = http_v8_get_optional_own_string_property(
         isolate, context, descriptor, SL_V8_HTTP_STRING_LOCATION, &has_location, &location);
     if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_invalid_headers_diag(engine, out_diag);
@@ -2111,10 +2135,10 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
         return http_v8_write_invalid_headers_diag(engine, out_diag);
     }
 
-    if (!http_v8_get_value_property_key(isolate, context, descriptor, SL_V8_HTTP_STRING_HEADERS,
-                                        &headers_value))
+    if (!http_v8_get_own_value_property_key(isolate, context, descriptor, SL_V8_HTTP_STRING_HEADERS,
+                                            &has_headers_property, &headers_value))
     {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+        return http_v8_write_invalid_headers_diag(engine, out_diag);
     }
 
     if (!headers_value->IsUndefined() && !headers_value->IsNull()) {
@@ -2123,7 +2147,7 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
         }
         headers_object = headers_value.As<v8::Object>();
         if (!headers_object->GetOwnPropertyNames(context).ToLocal(&names)) {
-            return sl_status_from_code(SL_STATUS_INTERNAL);
+            return http_v8_write_invalid_headers_diag(engine, out_diag);
         }
         has_headers_object = true;
         total_header_count = names->Length();
@@ -2205,16 +2229,20 @@ typedef enum HttpV8FastResultKind
     HTTP_V8_FAST_RESULT_CREATED = 4
 } HttpV8FastResultKind;
 
-bool http_v8_get_optional_int32_property_key(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                             v8::Local<v8::Object> object, SlV8HttpStringKey name,
-                                             int32_t* out)
+bool http_v8_get_optional_own_int32_property_key(v8::Isolate* isolate,
+                                                 v8::Local<v8::Context> context,
+                                                 v8::Local<v8::Object> object,
+                                                 SlV8HttpStringKey name, int32_t* out)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
-    if (out == nullptr || !http_v8_get_value_property_key(isolate, context, object, name, &value)) {
+    if (out == nullptr ||
+        !http_v8_get_own_value_property_key(isolate, context, object, name, &present, &value))
+    {
         return false;
     }
-    if (value->IsUndefined() || value->IsNull()) {
+    if (!present || value->IsUndefined() || value->IsNull()) {
         *out = 0;
         return true;
     }
@@ -2226,13 +2254,14 @@ bool http_v8_get_optional_int32_property_key(v8::Isolate* isolate, v8::Local<v8:
     return true;
 }
 
-bool http_v8_property_is_undefined_or_null(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                           v8::Local<v8::Object> object, SlV8HttpStringKey name)
+bool http_v8_own_property_is_undefined_or_null(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                               v8::Local<v8::Object> object, SlV8HttpStringKey name)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
-    return http_v8_get_value_property_key(isolate, context, object, name, &value) &&
-           (value->IsUndefined() || value->IsNull());
+    return http_v8_get_own_value_property_key(isolate, context, object, name, &present, &value) &&
+           (!present || value->IsUndefined() || value->IsNull());
 }
 
 bool http_v8_string_property_equals(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -2241,9 +2270,11 @@ bool http_v8_string_property_equals(v8::Isolate* isolate, v8::Local<v8::Context>
 {
     v8::Local<v8::Value> value;
 
+    bool present = false;
+
     if (expected == nullptr ||
-        !http_v8_get_value_property_key(isolate, context, object, name, &value) ||
-        !value->IsString())
+        !http_v8_get_own_value_property_key(isolate, context, object, name, &present, &value) ||
+        !present || !value->IsString())
     {
         return false;
     }
@@ -2255,15 +2286,17 @@ SlStatus http_v8_copy_fast_json_text(v8::Isolate* isolate, v8::Local<v8::Context
                                      SlArena* arena, v8::Local<v8::Object> object, SlBytes* out)
 {
     v8::Local<v8::Value> value;
+    bool present = false;
 
     if (out == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = {};
-    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_FAST_JSON_TEXT,
-                                        &value))
+    if (!http_v8_get_own_value_property_key(isolate, context, object,
+                                            SL_V8_HTTP_STRING_FAST_JSON_TEXT, &present, &value) ||
+        !present)
     {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (!value->IsString()) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -2282,8 +2315,8 @@ bool http_v8_fast_content_type_matches(v8::Isolate* isolate, v8::Local<v8::Conte
 bool http_v8_fast_result_has_no_custom_headers(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                                v8::Local<v8::Object> object)
 {
-    return http_v8_property_is_undefined_or_null(isolate, context, object,
-                                                 SL_V8_HTTP_STRING_HEADERS);
+    return http_v8_own_property_is_undefined_or_null(isolate, context, object,
+                                                     SL_V8_HTTP_STRING_HEADERS);
 }
 
 SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -2302,8 +2335,8 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_handled = false;
-    if (!http_v8_get_optional_int32_property_key(isolate, context, object,
-                                                 SL_V8_HTTP_STRING_FAST_RESULT, &fast_kind) ||
+    if (!http_v8_get_optional_own_int32_property_key(isolate, context, object,
+                                                     SL_V8_HTTP_STRING_FAST_RESULT, &fast_kind) ||
         fast_kind == HTTP_V8_FAST_RESULT_NONE)
     {
         return sl_status_ok();
@@ -2336,8 +2369,8 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         if (status_code != 204U ||
             !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
                                             "empty") ||
-            !http_v8_property_is_undefined_or_null(isolate, context, object,
-                                                   SL_V8_HTTP_STRING_CONTENT_TYPE))
+            !http_v8_own_property_is_undefined_or_null(isolate, context, object,
+                                                       SL_V8_HTTP_STRING_CONTENT_TYPE))
         {
             return sl_status_ok();
         }
@@ -2376,7 +2409,7 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
             SlSlice header_storage = {nullptr, 0U, sizeof(SlHttpHeader)};
             SlHttpHeader* header = nullptr;
 
-            status = http_v8_get_optional_string_property(
+            status = http_v8_get_optional_own_string_property(
                 isolate, context, object, SL_V8_HTTP_STRING_LOCATION, &has_location, &location);
             if (!sl_status_is_ok(status) || !has_location || !http_v8_header_value_safe(location)) {
                 return sl_status_ok();
@@ -2746,8 +2779,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     SlStr kind = sl_str_empty();
     SlStr content_type = sl_str_empty();
     uint16_t status_code = 0U;
-    SlStatus kind_status = http_v8_get_object_string_copy(isolate, context, arena, object,
-                                                          SL_V8_HTTP_STRING_KIND, &kind);
+    SlStatus kind_status = http_v8_get_own_object_string_copy(isolate, context, arena, object,
+                                                              SL_V8_HTTP_STRING_KIND, &kind);
     if (sl_status_code(kind_status) == SL_STATUS_INVALID_ARGUMENT ||
         !http_v8_get_object_status(isolate, context, object, &status_code))
     {
@@ -2793,7 +2826,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
-    SlStatus content_type_status = http_v8_get_object_string_copy(
+    SlStatus content_type_status = http_v8_get_own_object_string_copy(
         isolate, context, arena, object, SL_V8_HTTP_STRING_CONTENT_TYPE, &content_type);
     if (sl_status_code(content_type_status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_diag(
@@ -2815,10 +2848,18 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     }
 
     v8::Local<v8::Value> body;
-    if (!http_v8_get_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_BODY_RESULT,
-                                        &body))
+    bool has_body = false;
+    if (!http_v8_get_own_value_property_key(isolate, context, object, SL_V8_HTTP_STRING_BODY_RESULT,
+                                            &has_body, &body))
     {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+        return http_v8_write_diag(
+            engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+            http_v8_literal("JavaScript result descriptor body could not be read",
+                            sizeof("JavaScript result descriptor body could not be read") - 1U),
+            sl_str_empty());
+    }
+    if (!has_body) {
+        body = v8::Null(isolate);
     }
 
     if (sl_str_equal(kind, sl_str_from_cstr("text")) ||

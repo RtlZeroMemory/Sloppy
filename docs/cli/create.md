@@ -40,8 +40,9 @@ sloppy package
 ## Overwrite behavior
 
 `create` refuses to copy into a non-empty destination. Use `--force` only when
-you intentionally want template files copied over existing files. It does not
-delete stale files or replace the directory wholesale.
+you intentionally want to remove an existing destination directory before
+copying the template. This deletes stale files in that directory before the new
+template files are written.
 
 `--no-git` is reserved for future git initialization behavior. `create`
 currently does not run `git init`, and template files such as `.gitignore` are

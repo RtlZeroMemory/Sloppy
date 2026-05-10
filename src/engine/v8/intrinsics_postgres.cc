@@ -1424,11 +1424,23 @@ bool pg_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> conte
 
     v8::Local<v8::String> max_key;
     v8::Local<v8::Value> max_value;
+    v8::Maybe<bool> has_max = v8::Nothing<bool>();
     if (!sl_status_is_ok(
-            pg_v8_to_local_string(isolate, sl_str_from_cstr("maxConnections"), &max_key)) ||
-        !object->Get(context, max_key).ToLocal(&max_value))
+            pg_v8_to_local_string(isolate, sl_str_from_cstr("maxConnections"), &max_key)))
     {
         return false;
+    }
+    has_max = object->HasOwnProperty(context, max_key);
+    if (has_max.IsNothing()) {
+        return false;
+    }
+    if (has_max.FromJust()) {
+        if (!object->Get(context, max_key).ToLocal(&max_value)) {
+            return false;
+        }
+    }
+    else {
+        max_value = v8::Undefined(isolate);
     }
     if (!max_value->IsUndefined() && !max_value->IsNull()) {
         if (!max_value->IsUint32()) {

@@ -299,6 +299,45 @@ static int test_pool_lifecycle_without_live_connection(void)
     return 0;
 }
 
+static int test_invalid_outputs_are_preserved_without_live_connection(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPostgresConnection sentinel = {.handle = storage, .open = true, .transaction_active = true};
+    SlPostgresConnection* acquired = &sentinel;
+    SlPostgresOpenOptions options = sl_postgres_open_options_connection_string(sl_str_empty());
+    SlPostgresPool pool = {.closed = true};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 75;
+    }
+
+    status = sl_postgres_open(&arena, &options, &sentinel, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || sentinel.handle != storage ||
+        !sentinel.open || !sentinel.transaction_active)
+    {
+        return 76;
+    }
+
+    options.connection_string = sl_str_from_cstr("postgres://localhost/db");
+    options.access = (SlPostgresAccess)99;
+    status = sl_postgres_open(&arena, &options, &sentinel, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || sentinel.handle != storage ||
+        !sentinel.open || !sentinel.transaction_active)
+    {
+        return 77;
+    }
+
+    status = sl_postgres_pool_acquire(&arena, &pool, &acquired, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || acquired != &sentinel) {
+        return 78;
+    }
+
+    return 0;
+}
+
 static int test_transaction_failure_keeps_state(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -627,7 +666,11 @@ static int run_default_tests(void)
     if (result != 0) {
         return result;
     }
-    return test_pool_lifecycle_without_live_connection();
+    result = test_pool_lifecycle_without_live_connection();
+    if (result != 0) {
+        return result;
+    }
+    return test_invalid_outputs_are_preserved_without_live_connection();
 }
 
 static int run_live_tests(void)

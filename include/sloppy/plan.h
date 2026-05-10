@@ -93,11 +93,11 @@ typedef enum SlPlanRequestBindingKind
 
 typedef struct SlPlanRequestBinding
 {
-    SlPlanRequestBindingKind kind;
     SlStr parameter;
     SlStr name;
     SlStr schema;
     SlStr type;
+    SlPlanRequestBindingKind kind;
     bool redacted;
 } SlPlanRequestBinding;
 

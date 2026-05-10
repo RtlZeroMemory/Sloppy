@@ -118,6 +118,7 @@ typedef struct SlHttp2Session
     int32_t highest_peer_stream_id;
     uint8_t current_header_category;
     bool close_without_goaway;
+    bool received_goaway;
     SlStatus callback_status;
 } SlHttp2Session;
 

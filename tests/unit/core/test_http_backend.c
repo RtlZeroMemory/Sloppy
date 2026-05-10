@@ -682,6 +682,44 @@ static int test_body_reader_success_owns_bounded_json_body(void)
     return 0;
 }
 
+static int test_body_reader_missing_content_type_fails_closed_with_rollback(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpBodyReader reader = {0};
+    SlDiag diag = {0};
+    size_t used_before = 0U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, NULL) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0)
+    {
+        return 91;
+    }
+
+    used_before = sl_arena_used(&arena);
+    if (expect_status(
+            sl_http_request_body_reader_begin(&request, sl_str_empty(), 3U, &reader, &diag),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE || backend.active_requests != 0U ||
+        request.head.body.ptr != NULL || sl_arena_used(&arena) != used_before)
+    {
+        return 92;
+    }
+
+    return 0;
+}
+
 static int test_body_reader_rejects_limits_and_unsupported_media(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -1382,6 +1420,7 @@ int main(void)
         {test_request_lifecycle_rejects_skipped_and_repeated_phases},
         {test_body_reader_success_empty_and_dispatch_transition},
         {test_body_reader_success_owns_bounded_json_body},
+        {test_body_reader_missing_content_type_fails_closed_with_rollback},
         {test_body_reader_rejects_limits_and_unsupported_media},
         {test_body_reader_accepts_octet_stream_media_type},
         {test_body_reader_accepts_mixed_case_json_media_type},

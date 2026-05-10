@@ -23,6 +23,10 @@ Examples:
 USAGE
 }
 
+is_unsigned_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tier)
@@ -69,6 +73,19 @@ case "$area" in
   all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta) ;;
   *) echo "test-engine: invalid --area '$area'" >&2; exit 2 ;;
 esac
+
+if ! is_unsigned_integer "$seed"; then
+  echo "test-engine: --seed must be an unsigned integer" >&2
+  exit 2
+fi
+if ! is_unsigned_integer "$fuzz_iterations"; then
+  echo "test-engine: --fuzz-iterations must be an unsigned integer" >&2
+  exit 2
+fi
+if ! is_unsigned_integer "$stress_seconds"; then
+  echo "test-engine: --stress-seconds must be an unsigned integer" >&2
+  exit 2
+fi
 
 declare -a lane_ids=()
 declare -a lane_statuses=()
@@ -276,7 +293,7 @@ run_static() {
   local index
   for ((index=start_index; index<${#lane_statuses[@]}; index++)); do
     if [[ "${lane_statuses[$index]}" == "fail" ]]; then status="fail"; break; fi
-    if [[ "$status" == "pass" && "${lane_statuses[$index]}" == "unavailable" ]]; then status="unavailable"; fi
+    if [[ "${lane_statuses[$index]}" == "unavailable" ]]; then status="unavailable"; fi
     if [[ "$status" == "pass" && "${lane_statuses[$index]}" == "skipped" ]]; then status="skipped"; fi
   done
   add_lane "test-engine.static" "$status" "0" "static guardrail aggregate" "aggregate over $((${#lane_ids[@]} - start_index)) static checks"

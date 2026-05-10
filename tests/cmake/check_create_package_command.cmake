@@ -182,8 +182,8 @@ endif()
 if(NOT EXISTS "${non_empty_project_dir}/README.md")
     message(FATAL_ERROR "sloppy create --force did not copy known template files")
 endif()
-if(NOT EXISTS "${non_empty_project_dir}/stale.txt")
-    message(FATAL_ERROR "sloppy create --force deleted stale files despite the documented contract")
+if(EXISTS "${non_empty_project_dir}/stale.txt")
+    message(FATAL_ERROR "sloppy create --force did not remove stale files")
 endif()
 
 execute_process(

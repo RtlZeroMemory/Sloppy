@@ -117,7 +117,15 @@ Assert-True ($windowsEngineText -match '\$Area -eq "package".*\$Tier -ne "pr"') 
 Assert-True ($windowsEngineText -match '\$Area -eq "sanitizer".*\$Tier -ne "pr"') "sanitizer lane guard no longer excludes PR all-tier"
 Assert-True ($windowsEngineText -match '\$Area -eq "provider".*\$Tier -ne "pr"') "provider lane guard no longer excludes PR all-tier"
 
-$bash = Get-Command bash -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+$bashCommands = @(Get-Command bash -CommandType Application -ErrorAction SilentlyContinue)
+$bash = $null
+foreach ($candidate in $bashCommands) {
+    $probe = Invoke-Native $candidate.Source @("--version")
+    if ($probe.ExitCode -eq 0) {
+        $bash = $candidate
+        break
+    }
+}
 if ($null -ne $bash) {
     $unixReportPath = Join-Path $RepoRoot "artifacts/test-engine/meta-contract-unix.json"
     Push-Location -LiteralPath $RepoRoot

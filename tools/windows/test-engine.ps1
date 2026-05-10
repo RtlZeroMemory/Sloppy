@@ -197,13 +197,13 @@ function Invoke-PowerShellLane {
         return
     }
 
-    $args = @("-NoProfile")
+    $invokeArgs = @("-NoProfile")
     if ($powerShell.Source -match "powershell(\.exe)?$") {
-        $args += @("-ExecutionPolicy", "Bypass")
+        $invokeArgs += @("-ExecutionPolicy", "Bypass")
     }
-    $args += @("-File", $Script)
-    $args += $Arguments
-    Invoke-ExternalLane $Id $powerShell.Source $args
+    $invokeArgs += @("-File", $Script)
+    $invokeArgs += $Arguments
+    Invoke-ExternalLane $Id $powerShell.Source $invokeArgs
 }
 
 function Invoke-CtestLane {

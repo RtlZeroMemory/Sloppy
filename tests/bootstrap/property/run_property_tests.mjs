@@ -293,25 +293,34 @@ const properties = Object.freeze({
         assert.equal(controller.signal.reason, "caller");
 
         const fastClock = Time.fakeClock();
-        assert.equal(await Time.timeout(Promise.resolve("fast"), { afterMs: 10, clock: fastClock }), "fast");
-        fastClock.dispose();
+        try {
+            assert.equal(await Time.timeout(Promise.resolve("fast"), { afterMs: 10, clock: fastClock }), "fast");
+        } finally {
+            fastClock.dispose();
+        }
 
         const slowClock = Time.fakeClock();
-        const slow = Time.timeout(new Promise(() => {}), { afterMs: 5, clock: slowClock });
-        slowClock.advanceBy(5);
-        await assertRejects(() => slow, /exceeded its deadline|SLOPPY_E_TIME_TIMEOUT/);
-        slowClock.dispose();
+        try {
+            const slow = Time.timeout(new Promise(() => {}), { afterMs: 5, clock: slowClock });
+            slowClock.advanceBy(5);
+            await assertRejects(() => slow, /exceeded its deadline|SLOPPY_E_TIME_TIMEOUT/);
+        } finally {
+            slowClock.dispose();
+        }
 
         const orderedClock = Time.fakeClock({ now: 1000 });
-        const order = [];
-        const firstDelay = orderedClock.delay(10).then(() => order.push("first"));
-        const secondDelay = orderedClock.delay(5).then(() => order.push("second"));
-        orderedClock.advanceBy(5);
-        await secondDelay;
-        orderedClock.advanceBy(5);
-        await firstDelay;
-        assert.deepEqual(order, ["second", "first"]);
-        orderedClock.dispose();
+        try {
+            const order = [];
+            const firstDelay = orderedClock.delay(10).then(() => order.push("first"));
+            const secondDelay = orderedClock.delay(5).then(() => order.push("second"));
+            orderedClock.advanceBy(5);
+            await secondDelay;
+            orderedClock.advanceBy(5);
+            await firstDelay;
+            assert.deepEqual(order, ["second", "first"]);
+        } finally {
+            orderedClock.dispose();
+        }
     },
 
     async "http-client"(random) {
@@ -362,40 +371,47 @@ const properties = Object.freeze({
             overflow: "reject",
             retry: { maxAttempts: 2, backoffMs: 0 },
         });
-        let active = 0;
-        let maxActive = 0;
-        const seen = [];
-        queue.process(async (job) => {
-            active += 1;
-            maxActive = Math.max(maxActive, active);
-            seen.push(job.data.index);
-            await Promise.resolve();
-            active -= 1;
-            if (job.data.failOnce && job.attempt === 1) {
-                throw new Error("planned retry");
+        try {
+            let active = 0;
+            let maxActive = 0;
+            const seen = [];
+            queue.process(async (job) => {
+                active += 1;
+                maxActive = Math.max(maxActive, active);
+                seen.push(job.data.index);
+                await Promise.resolve();
+                active -= 1;
+                if (job.data.failOnce && job.attempt === 1) {
+                    throw new Error("planned retry");
+                }
+                return job.data.index * 2;
+            });
+            const jobs = [];
+            const count = 1 + random.int(3);
+            for (let index = 0; index < count; index += 1) {
+                jobs.push(queue.enqueue({ index, failOnce: index === 0 && random.bool() }));
             }
-            return job.data.index * 2;
-        });
-        const jobs = [];
-        const count = 1 + random.int(3);
-        for (let index = 0; index < count; index += 1) {
-            jobs.push(queue.enqueue({ index, failOnce: index === 0 && random.bool() }));
+            const values = await Promise.all(jobs);
+            assert.deepEqual(values, Array.from({ length: count }, (_value, index) => index * 2));
+            assert(maxActive <= queue.state.concurrency);
+            assert(seen.length >= count);
+            await queue.drain();
+            await queue.stop();
+            await queue.stop();
+            await assertRejects(() => queue.enqueue({ late: true }), /SLOPPY_E_WORK_QUEUE_STOPPED/);
+        } finally {
+            await queue.stop();
         }
-        const values = await Promise.all(jobs);
-        assert.deepEqual(values, Array.from({ length: count }, (_value, index) => index * 2));
-        assert(maxActive <= queue.state.concurrency);
-        assert(seen.length >= count);
-        await queue.drain();
-        await queue.stop();
-        await queue.stop();
-        await assertRejects(() => queue.enqueue({ late: true }), /SLOPPY_E_WORK_QUEUE_STOPPED/);
 
         const controller = new CancellationController();
         controller.cancel("before enqueue");
         const cancelled = WorkQueue.create(`cancelled-q-${random.nextU32()}`, { maxQueued: 1, concurrency: 1 });
-        cancelled.process(async () => "never");
-        await assertRejects(() => cancelled.enqueue({ ok: false }, { signal: controller.signal }), /SLOPPY_E_WORK_JOB_CANCELLED/);
-        await cancelled.stop();
+        try {
+            cancelled.process(async () => "never");
+            await assertRejects(() => cancelled.enqueue({ ok: false }, { signal: controller.signal }), /SLOPPY_E_WORK_JOB_CANCELLED/);
+        } finally {
+            await cancelled.stop();
+        }
     },
 
     logging(random) {

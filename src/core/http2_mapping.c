@@ -353,6 +353,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         (connection->scheme.ptr != NULL && connection->scheme.length != 0U &&
          !sl_str_equal(scheme, connection->scheme)) ||
         sl_str_equal_ci_ascii(method, sl_str_from_cstr("CONNECT")) ||
+        (sl_str_is_empty(authority) && sl_str_is_empty(host)) ||
         (!sl_str_is_empty(authority) && !sl_str_is_empty(host) && !sl_str_equal(host, authority)) ||
         (has_content_length && declared_content_length != body.length))
     {

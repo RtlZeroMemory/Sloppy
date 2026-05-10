@@ -93,6 +93,32 @@ static int test_no_nul_boundary_helpers(void)
     return 0;
 }
 
+static int test_exact_compare_contract(void)
+{
+    SlStr invalid_one = sl_str_from_parts(NULL, 1U);
+    SlStr invalid_two = sl_str_from_parts(NULL, 2U);
+
+    if (sl_str_compare(sl_str_from_cstr("alpha"), sl_str_from_cstr("alpha")) != 0 ||
+        sl_str_compare(sl_str_from_cstr("alpha"), sl_str_from_cstr("beta")) != -1 ||
+        sl_str_compare(sl_str_from_cstr("beta"), sl_str_from_cstr("alpha")) != 1 ||
+        sl_str_compare(sl_str_from_cstr("app"), sl_str_from_cstr("apple")) != -1 ||
+        sl_str_compare(sl_str_from_cstr("apple"), sl_str_from_cstr("app")) != 1)
+    {
+        return 8;
+    }
+
+    if (sl_str_compare(invalid_one, invalid_one) != 0 ||
+        sl_str_compare(invalid_one, invalid_two) != -1 ||
+        sl_str_compare(invalid_two, invalid_one) != 1 ||
+        sl_str_compare(invalid_one, sl_str_from_cstr("a")) != -1 ||
+        sl_str_compare(sl_str_from_cstr("a"), invalid_one) != 1)
+    {
+        return 9;
+    }
+
+    return 0;
+}
+
 static int test_hashing(void)
 {
     const char embedded[] = {'a', '\0', 'b'};
@@ -137,6 +163,91 @@ static int test_hashing(void)
 
     if (expect_status(sl_str_hash(embedded_str, NULL), SL_STATUS_INVALID_ARGUMENT) != 0) {
         return 12;
+    }
+
+    return 0;
+}
+
+static int test_view_copy_helpers_and_failure_atomicity(void)
+{
+    const char embedded[] = {'a', '\0', 'b'};
+    const char large[] = "0123456789abcdef0123456789abcdef";
+    unsigned char arena_storage[64];
+    unsigned char tiny_storage[2];
+    SlArena arena;
+    SlArena tiny_arena;
+    SlStr embedded_str = sl_str_from_parts(embedded, sizeof(embedded));
+    SlStr large_str = sl_str_from_parts(large, sizeof(large) - 1U);
+    SlStr sentinel = sl_str_from_cstr("sentinel");
+    SlStr out = sentinel;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 16;
+    }
+
+    if (expect_status(sl_str_copy_view_to_arena(&arena, embedded_str, &out), SL_STATUS_OK) != 0 ||
+        out.ptr == embedded || out.length != embedded_str.length ||
+        !sl_arena_contains_str(&arena, out) || !sl_str_equal(out, embedded_str))
+    {
+        return 17;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_copy_view_to_arena(&arena, sl_str_empty(), &out), SL_STATUS_OK) != 0 ||
+        !sl_str_is_empty(out))
+    {
+        return 18;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_copy_view_to_arena(&arena, sl_str_from_parts(NULL, 1U), &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(out, sentinel))
+    {
+        return 19;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_concat_view_to_arena(&arena, sl_str_from_cstr("ab"),
+                                                  sl_str_from_cstr("cd"), &out),
+                      SL_STATUS_OK) != 0 ||
+        !sl_arena_contains_str(&arena, out) || !sl_str_equal(out, sl_str_from_cstr("abcd")))
+    {
+        return 20;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_concat_view_to_arena(&arena, sl_str_from_parts(NULL, 1U),
+                                                  sl_str_from_cstr("x"), &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(out, sentinel))
+    {
+        return 21;
+    }
+
+    if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 22;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_copy_view_to_arena(&tiny_arena, large_str, &out),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        !sl_str_equal(out, sentinel))
+    {
+        return 23;
+    }
+
+    out = sentinel;
+    if (expect_status(sl_str_concat_view_to_arena(&tiny_arena, sl_str_from_cstr("abc"),
+                                                  sl_str_from_cstr("d"), &out),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        !sl_str_equal(out, sentinel))
+    {
+        return 24;
     }
 
     return 0;
@@ -502,6 +613,11 @@ int main(void)
         return result;
     }
 
+    result = test_exact_compare_contract();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_hashing();
     if (result != 0) {
         return result;
@@ -523,6 +639,11 @@ int main(void)
     }
 
     result = test_ascii_case_parity_matrix();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_view_copy_helpers_and_failure_atomicity();
     if (result != 0) {
         return result;
     }

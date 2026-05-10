@@ -158,8 +158,15 @@ function Invoke-JsTarget {
     if ($LASTEXITCODE -eq 0) {
         Write-Status "fuzz.$Name.random" "PASS" "random fuzz completed $runs iterations"
     } else {
-        $failurePath = Join-Path (Join-Path $FailureRoot $Name) "$Seed.bin"
-        Write-Status "fuzz.$Name.random" "FAIL" "failure input: $failurePath; repro: $repro"
+        $failureDirectory = Join-Path $FailureRoot $Name
+        $failureArtifact = Get-ChildItem -LiteralPath $failureDirectory -Filter "$Seed-*.json" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+        if ($null -ne $failureArtifact) {
+            Write-Status "fuzz.$Name.random" "FAIL" "failure artifact: $($failureArtifact.FullName); repro: $repro"
+        } else {
+            Write-Status "fuzz.$Name.random" "FAIL" "failure artifacts under: $failureDirectory; repro: $repro"
+        }
     }
 }
 

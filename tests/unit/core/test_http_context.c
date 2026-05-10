@@ -86,18 +86,49 @@ static int test_percent_decoding_and_plus(void)
     return 0;
 }
 
-static int test_invalid_percent_encoding_fails(void)
+static int test_decoded_name_collisions_use_last_wins(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlHttpQuery query = {0};
 
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        parse_query("/search?a+b=first&a%20b=second&a%2Bb=plus", &arena, &query) != 0)
+    {
+        return 25;
+    }
+
+    if (query.param_count != 2U || expect_str_equal(query.params[0].name, "a b") != 0 ||
+        expect_str_equal(query.params[0].value, "second") != 0 ||
+        expect_str_equal(query.params[1].name, "a+b") != 0 ||
+        expect_str_equal(query.params[1].value, "plus") != 0)
+    {
+        return 26;
+    }
+
+    return 0;
+}
+
+static int test_invalid_percent_encoding_fails(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpQuery query = {0};
+    size_t used_before = 0U;
+
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
         return 30;
     }
 
-    return expect_status(sl_http_query_parse(&arena, sl_str_from_cstr("/bad?q=%zz"), &query),
-                         SL_STATUS_INVALID_ARGUMENT);
+    used_before = sl_arena_used(&arena);
+    if (expect_status(sl_http_query_parse(&arena, sl_str_from_cstr("/bad?q=%zz"), &query),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 31;
+    }
+
+    return expect_true(sl_arena_used(&arena) == used_before && query.params == NULL &&
+                       query.param_count == 0U);
 }
 
 static int test_query_param_limit_is_enforced(void)
@@ -154,6 +185,11 @@ int main(void)
     }
 
     result = test_percent_decoding_and_plus();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_decoded_name_collisions_use_last_wins();
     if (result != 0) {
         return result;
     }

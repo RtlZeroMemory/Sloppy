@@ -95,11 +95,17 @@ static int test_statement_init_preserves_output_on_failure(void)
     SlDbSqlStatement sentinel = {0};
     SlDbParameter params[1];
     SlStr bad_text = {0};
+    SlStr bad_label = {0};
 
     params[0].value = sl_db_value_text(sl_str_from_cstr("ada"));
     sentinel.text = sl_str_from_cstr("unchanged");
+    sentinel.parameters = params;
+    sentinel.parameter_count = 7U;
+    sentinel.placeholder_style = SL_DB_PLACEHOLDER_NAMED;
+    sentinel.statement_label = sl_str_from_cstr("unchanged.label");
     statement = sentinel;
     bad_text.length = 4U;
+    bad_label.length = 4U;
 
     if (expect_status(sl_db_sql_statement_init(&statement, sl_str_from_cstr("select ?"), params, 1U,
                                                SL_DB_PLACEHOLDER_QUESTION,
@@ -116,7 +122,11 @@ static int test_statement_init_preserves_output_on_failure(void)
     if (expect_status(sl_db_sql_statement_init(&statement, bad_text, params, 1U,
                                                SL_DB_PLACEHOLDER_QUESTION, sl_str_empty()),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        !sl_str_equal(statement.text, sentinel.text))
+        !sl_str_equal(statement.text, sentinel.text) ||
+        statement.parameters != sentinel.parameters ||
+        statement.parameter_count != sentinel.parameter_count ||
+        statement.placeholder_style != sentinel.placeholder_style ||
+        !sl_str_equal(statement.statement_label, sentinel.statement_label))
     {
         return 2;
     }
@@ -125,9 +135,40 @@ static int test_statement_init_preserves_output_on_failure(void)
     if (expect_status(sl_db_sql_statement_init(&statement, sl_str_from_cstr("select ?"), NULL, 1U,
                                                SL_DB_PLACEHOLDER_QUESTION, sl_str_empty()),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        !sl_str_equal(statement.text, sentinel.text))
+        !sl_str_equal(statement.text, sentinel.text) ||
+        statement.parameters != sentinel.parameters ||
+        statement.parameter_count != sentinel.parameter_count ||
+        statement.placeholder_style != sentinel.placeholder_style ||
+        !sl_str_equal(statement.statement_label, sentinel.statement_label))
     {
         return 3;
+    }
+
+    statement = sentinel;
+    if (expect_status(sl_db_sql_statement_init(&statement, sl_str_from_cstr("select ?"), params, 1U,
+                                               (SlDbPlaceholderStyle)99,
+                                               sl_str_from_cstr("users.lookup")),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(statement.text, sentinel.text) ||
+        statement.parameters != sentinel.parameters ||
+        statement.parameter_count != sentinel.parameter_count ||
+        statement.placeholder_style != sentinel.placeholder_style ||
+        !sl_str_equal(statement.statement_label, sentinel.statement_label))
+    {
+        return 4;
+    }
+
+    statement = sentinel;
+    if (expect_status(sl_db_sql_statement_init(&statement, sl_str_from_cstr("select ?"), params, 1U,
+                                               SL_DB_PLACEHOLDER_QUESTION, bad_label),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        !sl_str_equal(statement.text, sentinel.text) ||
+        statement.parameters != sentinel.parameters ||
+        statement.parameter_count != sentinel.parameter_count ||
+        statement.placeholder_style != sentinel.placeholder_style ||
+        !sl_str_equal(statement.statement_label, sentinel.statement_label))
+    {
+        return 5;
     }
 
     return 0;
@@ -206,6 +247,40 @@ static int test_result_shapes_are_provider_neutral(void)
     return 0;
 }
 
+static int test_statement_redaction_preserves_output_on_tiny_arena_failure(void)
+{
+    unsigned char storage[8];
+    unsigned char tiny_storage[16];
+    SlArena arena;
+    SlArena tiny_arena;
+    SlDbSqlStatement statement = {0};
+    SlDbParameter params[2];
+    SlStr redacted = sl_str_from_cstr("unchanged");
+
+    params[0].value = sl_db_value_mark_secret(sl_db_value_text(sl_str_from_cstr("secret")));
+    params[1].value = sl_db_value_json(sl_str_from_cstr("{\"token\":true}"));
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_db_sql_statement_init(
+                          &statement, sl_str_from_cstr("select * from users where a=?"), params, 2U,
+                          SL_DB_PLACEHOLDER_QUESTION, sl_str_from_cstr("users.bySecret")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_db_sql_statement_redacted(&tiny_arena, &statement, &redacted),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        !sl_str_equal(redacted, sl_str_from_cstr("unchanged")))
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     if (test_value_constructors_cover_common_kinds() != 0) {
@@ -220,8 +295,11 @@ int main(void)
     if (test_statement_redaction_never_prints_parameter_values() != 0) {
         return 4;
     }
-    if (test_result_shapes_are_provider_neutral() != 0) {
+    if (test_statement_redaction_preserves_output_on_tiny_arena_failure() != 0) {
         return 5;
+    }
+    if (test_result_shapes_are_provider_neutral() != 0) {
+        return 6;
     }
 
     return 0;

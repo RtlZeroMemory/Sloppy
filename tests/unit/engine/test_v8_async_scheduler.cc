@@ -511,6 +511,231 @@ static int test_concurrent_double_post_settles_once(void)
     return result;
 }
 
+static int test_prepare_and_post_reject_invalid_or_wrong_thread_inputs(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char loop_arena_storage[4096];
+    SlArena engine_arena = {};
+    SlArena loop_arena = {};
+    SlAsyncCompletion completion_storage[1];
+    SlAsyncLoop* loop = nullptr;
+    SlEngine* engine = nullptr;
+    SlEngineOptions options = v8_options();
+    SlV8NativeContinuation continuation = {};
+    v8::Local<v8::Promise> promise;
+    SlStatus worker_prepare_status = sl_status_ok();
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&loop_arena, loop_arena_storage, sizeof(loop_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &loop_arena, completion_storage, 1U, &loop),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0)
+    {
+        return 50;
+    }
+
+    int result = [&]() {
+        SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+        v8::Isolate* isolate = backend->isolate;
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = backend->context.Get(isolate);
+        v8::Context::Scope context_scope(context);
+
+        if (expect_status(sl_v8_native_continuation_prepare(nullptr, &continuation, &promise),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            expect_status(sl_v8_native_continuation_prepare(engine, nullptr, &promise),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            expect_status(sl_v8_native_continuation_prepare(engine, &continuation, nullptr),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            expect_status(sl_v8_native_continuation_post(nullptr, &continuation, sl_status_ok(),
+                                                         "bad", false, scope_ref(nullptr)),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            expect_status(sl_v8_native_continuation_post(loop, nullptr, sl_status_ok(), "bad",
+                                                         false, scope_ref(nullptr)),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            expect_status(sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                         nullptr, false, scope_ref(nullptr)),
+                          SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return 51;
+        }
+
+        std::thread worker([&]() {
+            v8::Local<v8::Promise> worker_promise;
+            worker_prepare_status =
+                sl_v8_native_continuation_prepare(engine, &continuation, &worker_promise);
+        });
+        worker.join();
+        if (expect_status(worker_prepare_status, SL_STATUS_INVALID_STATE) != 0) {
+            return 52;
+        }
+
+        if (expect_status(sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                         "not prepared", false, scope_ref(nullptr)),
+                          SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return 53;
+        }
+
+        return 0;
+    }();
+
+    sl_async_loop_dispose(loop);
+    sl_engine_destroy(engine);
+    return result;
+}
+
+static int test_double_prepare_rejected_until_cleanup(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char loop_arena_storage[4096];
+    SlArena engine_arena = {};
+    SlArena loop_arena = {};
+    SlAsyncCompletion completion_storage[1];
+    SlAsyncLoop* loop = nullptr;
+    SlEngine* engine = nullptr;
+    SlEngineOptions options = v8_options();
+    SlV8NativeContinuation continuation = {};
+    ScopeCounter scope = {0U, 0U};
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&loop_arena, loop_arena_storage, sizeof(loop_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &loop_arena, completion_storage, 1U, &loop),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0)
+    {
+        return 70;
+    }
+
+    int result = [&]() {
+        SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+        v8::Isolate* isolate = backend->isolate;
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = backend->context.Get(isolate);
+        v8::Context::Scope context_scope(context);
+        v8::Local<v8::Promise> first_promise;
+        v8::Local<v8::Promise> second_promise;
+
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &continuation, &first_promise),
+                          SL_STATUS_OK) != 0 ||
+            first_promise->State() != v8::Promise::kPending)
+        {
+            return 71;
+        }
+
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &continuation, &second_promise),
+                          SL_STATUS_INVALID_STATE) != 0 ||
+            !second_promise.IsEmpty())
+        {
+            return 72;
+        }
+
+        if (expect_status(sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                         "first", false, scope_ref(&scope)),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U)
+        {
+            return 73;
+        }
+
+        ran = 0U;
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &continuation, &second_promise),
+                          SL_STATUS_OK) != 0 ||
+            second_promise->State() != v8::Promise::kPending ||
+            expect_status(sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                         "second", false, scope_ref(&scope)),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+            second_promise->State() != v8::Promise::kFulfilled ||
+            v8_value_to_string(isolate, second_promise->Result()) != "second")
+        {
+            return 74;
+        }
+
+        return 0;
+    }();
+
+    sl_async_loop_dispose(loop);
+    sl_engine_destroy(engine);
+    return result;
+}
+
+static int test_loop_dispose_cleans_up_posted_continuation_once(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char loop_arena_storage[4096];
+    SlArena engine_arena = {};
+    SlArena loop_arena = {};
+    SlAsyncCompletion completion_storage[1];
+    SlAsyncLoop* loop = nullptr;
+    SlEngine* engine = nullptr;
+    SlEngineOptions options = v8_options();
+    SlV8NativeContinuation continuation = {};
+    ScopeCounter scope = {0U, 0U};
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&loop_arena, loop_arena_storage, sizeof(loop_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &loop_arena, completion_storage, 1U, &loop),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0)
+    {
+        return 60;
+    }
+
+    int result = [&]() {
+        SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+        v8::Isolate* isolate = backend->isolate;
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = backend->context.Get(isolate);
+        v8::Context::Scope context_scope(context);
+        v8::Local<v8::Promise> promise;
+
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &continuation, &promise),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                         "dispose", false, scope_ref(&scope)),
+                          SL_STATUS_OK) != 0)
+        {
+            return 61;
+        }
+
+        v8::Global<v8::Promise> promise_ref(isolate, promise);
+        sl_async_loop_dispose(loop);
+        loop = nullptr;
+
+        v8::Local<v8::Promise> still_pending = promise_ref.Get(isolate);
+        if (!continuation.cleanup_ran || continuation.queued || continuation.settled ||
+            continuation.resolver_ready || scope.retain_count != 1U || scope.release_count != 1U ||
+            still_pending->State() != v8::Promise::kPending)
+        {
+            promise_ref.Reset();
+            return 62;
+        }
+
+        promise_ref.Reset();
+        return 0;
+    }();
+
+    if (loop != nullptr) {
+        sl_async_loop_dispose(loop);
+    }
+    sl_engine_destroy(engine);
+    return result;
+}
+
 int main(void)
 {
     int result = test_cross_thread_native_completion_fulfills_on_owner_thread();
@@ -534,5 +759,20 @@ int main(void)
         return result;
     }
 
-    return test_concurrent_double_post_settles_once();
+    result = test_concurrent_double_post_settles_once();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_prepare_and_post_reject_invalid_or_wrong_thread_inputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_double_prepare_rejected_until_cleanup();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_loop_dispose_cleans_up_posted_continuation_once();
 }

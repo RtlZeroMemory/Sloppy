@@ -85,9 +85,34 @@ bool sl_v8_db_get_object_property(v8::Isolate* isolate, v8::Local<v8::Context> c
                                   v8::Local<v8::Value>* out)
 {
     v8::Local<v8::String> local_key;
-    return out != nullptr &&
-           sl_status_is_ok(sl_v8_db_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) &&
-           object->Get(context, local_key).ToLocal(out);
+    v8::Maybe<bool> has_own = v8::Nothing<bool>();
+
+    if (out == nullptr ||
+        !sl_status_is_ok(sl_v8_db_to_local_string(isolate, sl_str_from_cstr(key), &local_key)))
+    {
+        return false;
+    }
+    *out = v8::Undefined(isolate);
+    has_own = object->HasOwnProperty(context, local_key);
+    if (has_own.IsNothing()) {
+        return false;
+    }
+    if (!has_own.FromJust()) {
+        return true;
+    }
+
+    return object->Get(context, local_key).ToLocal(out);
+}
+
+static bool sl_v8_db_get_required_object_property(v8::Isolate* isolate,
+                                                  v8::Local<v8::Context> context,
+                                                  v8::Local<v8::Object> object, const char* key,
+                                                  v8::Local<v8::Value>* out)
+{
+    v8::Local<v8::Value> value;
+
+    return out != nullptr && sl_v8_db_get_object_property(isolate, context, object, key, &value) &&
+           !value->IsUndefined() && ((*out = value), true);
 }
 
 bool sl_v8_db_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -95,7 +120,8 @@ bool sl_v8_db_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Con
                                          std::string* out)
 {
     v8::Local<v8::Value> value;
-    return out != nullptr && sl_v8_db_get_object_property(isolate, context, object, key, &value) &&
+    return out != nullptr &&
+           sl_v8_db_get_required_object_property(isolate, context, object, key, &value) &&
            value->IsString() && sl_v8_std_string_from_value(isolate, value, out);
 }
 
