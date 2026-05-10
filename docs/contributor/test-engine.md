@@ -5,6 +5,11 @@ than one tool. It does not replace CTest, Cargo, or the existing `dev.ps1` /
 `dev.sh` commands. It records which lanes ran, which optional lanes were not
 available, and the seed needed to replay randomized checks.
 
+Performance benchmark suites are separate manual evidence. Use
+`docs/contributor/benchmarks.md` and `tools/windows/bench-realistic.ps1` for
+local Sloppy/Node/Bun/Deno benchmark runs instead of adding long benchmark
+matrices to the default test engine lanes.
+
 Use it when a PR needs combined evidence across static checks, native tests,
 compiler fixtures, JavaScript property tests, fuzz seed replay, HTTP/2,
 stress, packaging, sanitizers, V8, or provider lanes.

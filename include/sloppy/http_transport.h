@@ -27,7 +27,7 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_TIMEOUT_MS 60000U
 #define SL_HTTP_TRANSPORT_DEFAULT_WRITE_TIMEOUT_MS 30000U
 #define SL_HTTP_TRANSPORT_DEFAULT_KEEP_ALIVE_IDLE_TIMEOUT_MS 5000U
-#define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUESTS_PER_CONNECTION 100U
+#define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUESTS_PER_CONNECTION 0U
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_PENDING_WRITE_BYTES 65536U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
@@ -114,6 +114,7 @@ typedef struct SlHttpTransportConfig
     uint64_t request_timeout_ms;
     uint64_t write_timeout_ms;
     uint64_t keep_alive_idle_timeout_ms;
+    /* 0 disables the per-connection request count cap. */
     size_t max_requests_per_connection;
     bool keep_alive_disabled;
     /* Test/conformance h2c mode: reject HTTP/1 fallback and require the prior-knowledge preface. */
@@ -194,6 +195,12 @@ typedef struct SlHttpTransportServer
  */
 SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* arena,
                                        const SlHttpTransportConfig* config, SlDiag* out_diag);
+/*
+ * Returns the arena backing size required by the normalized transport configuration.
+ * This keeps callers from duplicating the platform transport's storage model.
+ */
+SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config,
+                                             size_t* out_bytes, SlDiag* out_diag);
 /* Binds and listens on the configured host/port. Libuv state remains internal. */
 SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Runs one nonblocking platform event-loop tick for deterministic tests/runtime integration. */

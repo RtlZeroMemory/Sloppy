@@ -394,7 +394,7 @@ static void sl_cli_print_command_help(const char* command)
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
                "artifact path.\n");
-        printf("Bounded development runtime. Execution requires a V8-enabled build.\n");
+        printf("Development runtime. Execution requires a V8-enabled build.\n");
         return;
     }
     if (strcmp(command, "build") == 0) {

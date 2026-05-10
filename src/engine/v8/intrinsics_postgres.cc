@@ -189,12 +189,14 @@ enum class PgV8Operation
 {
     Exec,
     Query,
+    QueryRaw,
     QueryOne,
     Begin,
     Commit,
     Rollback,
     TransactionExec,
     TransactionQuery,
+    TransactionQueryRaw,
     TransactionQueryOne,
 };
 
@@ -325,20 +327,6 @@ bool pg_v8_parse_json_value(v8::Isolate* isolate, v8::Local<v8::Context> context
     return v8::JSON::Parse(context, text).ToLocal(out);
 }
 
-bool pg_v8_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                      v8::Local<v8::Object> object, const char* key,
-                                      std::string* out)
-{
-    return sl_v8_db_get_object_string_property(isolate, context, object, key, out);
-}
-
-bool pg_v8_get_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* key,
-                               v8::Local<v8::Value>* out)
-{
-    return sl_v8_db_get_object_property(isolate, context, object, key, out);
-}
-
 bool pg_v8_is_db_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
                        v8::Local<v8::Value> value)
 {
@@ -401,8 +389,10 @@ SlCapabilityOperation pg_v8_request_capability(PgV8Operation operation)
 {
     switch (operation) {
     case PgV8Operation::Query:
+    case PgV8Operation::QueryRaw:
     case PgV8Operation::QueryOne:
     case PgV8Operation::TransactionQuery:
+    case PgV8Operation::TransactionQueryRaw:
     case PgV8Operation::TransactionQueryOne:
         return SL_CAPABILITY_OPERATION_READ;
     default:
@@ -512,8 +502,10 @@ bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
     case PgV8Operation::TransactionExec:
         return status == PGRES_COMMAND_OK;
     case PgV8Operation::Query:
+    case PgV8Operation::QueryRaw:
     case PgV8Operation::QueryOne:
     case PgV8Operation::TransactionQuery:
+    case PgV8Operation::TransactionQueryRaw:
     case PgV8Operation::TransactionQueryOne:
         return status == PGRES_TUPLES_OK;
     default:
@@ -521,22 +513,39 @@ bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
     }
 }
 
-bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Local<v8::Object> row,
-                    PGresult* result, int row_index, int column_index)
+bool pg_v8_prepare_columns(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
+                           SlV8DbColumnSet* out)
 {
-    const char* name = PQfname(result, column_index);
+    const int columns = PQnfields(result);
+    std::vector<SlStr> names;
+
+    if (out == nullptr || columns < 0) {
+        return false;
+    }
+    names.reserve(static_cast<size_t>(columns));
+    for (int column = 0; column < columns; column += 1) {
+        const char* name = PQfname(result, column);
+        if (name == nullptr) {
+            return false;
+        }
+        names.emplace_back(sl_str_from_cstr(name));
+    }
+    return sl_v8_db_prepare_column_set(isolate, context, names.empty() ? nullptr : names.data(),
+                                       names.size(), out);
+}
+
+bool pg_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
+                         int row_index, int column_index, v8::Local<v8::Value>* out)
+{
     const Oid oid = PQftype(result, column_index);
-    v8::Local<v8::String> key;
     v8::Local<v8::Value> js_value;
 
-    if (name == nullptr ||
-        !sl_status_is_ok(pg_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)))
-    {
+    if (out == nullptr) {
         return false;
     }
     if (PQgetisnull(result, row_index, column_index) != 0) {
-        js_value = v8::Null(isolate);
-        return row->Set(context, key, js_value).FromMaybe(false);
+        *out = v8::Null(isolate);
+        return true;
     }
 
     const char* value = PQgetvalue(result, row_index, column_index);
@@ -577,19 +586,12 @@ bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Lo
         if (unescaped == nullptr) {
             return false;
         }
-        std::unique_ptr<v8::BackingStore> backing =
-            v8::ArrayBuffer::NewBackingStore(isolate, unescaped_length);
-        if (!backing) {
+        SlBytes bytes = sl_bytes_from_parts(unescaped, unescaped_length);
+        if (!sl_v8_db_uint8_array_from_bytes(isolate, bytes, &js_value)) {
             PQfreemem(unescaped);
             return false;
         }
-        unsigned char* destination = static_cast<unsigned char*>(backing->Data());
-        for (size_t index = 0U; index < unescaped_length; index += 1U) {
-            destination[index] = unescaped[index];
-        }
         PQfreemem(unescaped);
-        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
-        js_value = v8::Uint8Array::New(buffer, 0U, unescaped_length);
     }
     else if (oid == SL_PG_OID_UUID) {
         if (!pg_v8_make_typed_string_value(isolate, context, "uuid", value, length, &js_value)) {
@@ -647,7 +649,8 @@ bool pg_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Lo
         }
         js_value = text;
     }
-    return row->Set(context, key, js_value).FromMaybe(false);
+    *out = js_value;
+    return true;
 }
 
 bool pg_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
@@ -656,23 +659,75 @@ bool pg_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
     const int rows_count = PQntuples(result);
     const int columns = PQnfields(result);
     v8::Local<v8::Array> rows = v8::Array::New(isolate, rows_count);
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
 
     if (out == nullptr || rows_count < 0 || columns < 0) {
         return false;
     }
+    if (!pg_v8_prepare_columns(isolate, context, result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
     for (int row_index = 0; row_index < rows_count; row_index += 1) {
-        v8::Local<v8::Object> row = v8::Object::New(isolate);
+        v8::Local<v8::Object> row;
         for (int column_index = 0; column_index < columns; column_index += 1) {
-            if (!pg_v8_set_cell(isolate, context, row, result, row_index, column_index)) {
+            if (!pg_v8_cell_to_value(isolate, context, result, row_index, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
                 return false;
             }
+        }
+        if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(),
+                                      values.size(), &row))
+        {
+            return false;
         }
         if (!rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false)) {
             return false;
         }
     }
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &column_set,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
+    }
     *out = rows;
     return true;
+}
+
+bool pg_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
+                         v8::Local<v8::Object>* out)
+{
+    const int rows_count = PQntuples(result);
+    const int columns = PQnfields(result);
+    v8::Local<v8::Array> rows = v8::Array::New(isolate, rows_count);
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (out == nullptr || rows_count < 0 || columns < 0) {
+        return false;
+    }
+    if (!pg_v8_prepare_columns(isolate, context, result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (int row_index = 0; row_index < rows_count; row_index += 1) {
+        v8::Local<v8::Array> row;
+        for (int column_index = 0; column_index < columns; column_index += 1) {
+            if (!pg_v8_cell_to_value(isolate, context, result, row_index, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+    return sl_v8_db_make_raw_result(isolate, context, &column_set, rows, out);
 }
 
 bool pg_v8_result_to_one(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
@@ -685,11 +740,26 @@ bool pg_v8_result_to_one(v8::Isolate* isolate, v8::Local<v8::Context> context, P
         *out = v8::Null(isolate);
         return true;
     }
-    v8::Local<v8::Object> row = v8::Object::New(isolate);
-    for (int column_index = 0; column_index < PQnfields(result); column_index += 1) {
-        if (!pg_v8_set_cell(isolate, context, row, result, 0, column_index)) {
+    const int columns = PQnfields(result);
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values(static_cast<size_t>(columns));
+    v8::Local<v8::Object> row;
+    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, result, &column_set)) {
+        return false;
+    }
+    for (int column_index = 0; column_index < columns; column_index += 1) {
+        if (!pg_v8_cell_to_value(isolate, context, result, 0, column_index,
+                                 &values[static_cast<size_t>(column_index)]))
+        {
             return false;
         }
+    }
+    if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(), values.size(),
+                                  &row) ||
+        !sl_v8_db_attach_result_metadata(isolate, context, row, &column_set,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
     }
     *out = row;
     return true;
@@ -782,6 +852,13 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
         v8::Local<v8::Array> rows;
         converted = pg_v8_result_to_array(isolate, context, request->result, &rows);
         value = rows;
+        break;
+    }
+    case PgV8Operation::QueryRaw:
+    case PgV8Operation::TransactionQueryRaw: {
+        v8::Local<v8::Object> result;
+        converted = pg_v8_result_to_raw(isolate, context, request->result, &result);
+        value = result;
         break;
     }
     case PgV8Operation::QueryOne:
@@ -1187,6 +1264,7 @@ bool pg_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> c
 {
     std::string kind;
     std::string text;
+    v8::Local<v8::Value> kind_value;
     v8::Local<v8::Value> raw_value;
     v8::Local<v8::String> json_text;
 
@@ -1194,8 +1272,11 @@ bool pg_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> c
         return false;
     }
     v8::Local<v8::Object> object = item.As<v8::Object>();
-    if (!pg_v8_get_object_string_property(isolate, context, object, "kind", &kind) ||
-        !pg_v8_get_object_property(isolate, context, object, "value", &raw_value))
+    if (!sl_v8_db_get_object_property_key(isolate, context, object, SL_V8_DB_STRING_KIND,
+                                          &kind_value) ||
+        !kind_value->IsString() || !sl_v8_std_string_from_value(isolate, kind_value, &kind) ||
+        !sl_v8_db_get_object_property_key(isolate, context, object, SL_V8_DB_STRING_VALUE,
+                                          &raw_value))
     {
         return false;
     }
@@ -1616,6 +1697,13 @@ void pg_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         "__sloppy.data.postgres.query requires a handle, SQL string, and optional params");
 }
 
+void pg_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(
+        args, PgV8Operation::QueryRaw,
+        "__sloppy.data.postgres.queryRaw requires a handle, SQL string, and optional params");
+}
+
 void pg_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     pg_v8_operation_callback(
@@ -1652,6 +1740,13 @@ void pg_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Value>&
 {
     pg_v8_operation_callback(args, PgV8Operation::TransactionQuery,
                              "__sloppy.data.postgres.transactionQuery requires a handle, SQL "
+                             "string, and optional params");
+}
+
+void pg_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(args, PgV8Operation::TransactionQueryRaw,
+                             "__sloppy.data.postgres.transactionQueryRaw requires a handle, SQL "
                              "string, and optional params");
 }
 
@@ -1693,6 +1788,7 @@ bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Conte
         !pg_v8_set_function(isolate, context, postgres, "close", pg_v8_close_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "exec", pg_v8_exec_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "query", pg_v8_query_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "queryRaw", pg_v8_query_raw_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "queryOne", pg_v8_query_one_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionBegin", pg_v8_begin_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionCommit",
@@ -1703,6 +1799,8 @@ bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Conte
                             pg_v8_transaction_exec_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionQuery",
                             pg_v8_transaction_query_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "transactionQueryRaw",
+                            pg_v8_transaction_query_raw_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionQueryOne",
                             pg_v8_transaction_query_one_callback) ||
         !data->Set(context, postgres_key, postgres).FromMaybe(false))

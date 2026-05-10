@@ -10,6 +10,10 @@ There are two benchmark layers:
 - `tools/windows/bench.ps1 -Suite ...` is the BENCH-01 local runtime comparison engine for
   controlled Sloppy/Node/Bun/Deno workloads. It validates responses before timing them and
   writes structured JSON.
+- `tools/windows/bench-realistic.ps1` and `tools/unix/bench-realistic.sh` run the
+  realistic local HTTP comparison suite under `benchmarks/realistic/`. It keeps
+  baseline, framework-equivalent, and feature-rich app shapes separate and writes
+  JSON, Markdown, and raw artifacts under `artifacts/bench/realistic/`.
 - `tools/windows/bench-compiler.ps1` is the compiler scalability harness for
   deterministic source-input projects. It measures `sloppyc` compile time,
   phase timings, process working set, and emitted artifact sizes.
@@ -36,6 +40,14 @@ Run the local runtime engine:
 .\tools\windows\bench.ps1 -Suite route.generated-table -Runtime sloppy,node,bun,deno
 .\tools\windows\bench.ps1 -Suite bridge -Runtime sloppy -Out artifacts\bench\sloppy-bridge.json
 .\tools\windows\bench.ps1 -Compare @("artifacts\bench\before.json", "artifacts\bench\after.json")
+```
+
+Run the realistic local runtime suite:
+
+```powershell
+.\tools\windows\bench-realistic.ps1 -Quick -Runtime sloppy,node
+.\tools\windows\bench-realistic.ps1 -Suite http -Runtime sloppy,node,bun,deno
+.\tools\windows\bench-realistic.ps1 -Suite http -Workload health,json,route-param,large-routes
 ```
 
 Run compiler scalability smoke and scale reports:
