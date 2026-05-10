@@ -32,9 +32,19 @@
     } while (0)
 #define SL_UNREACHABLE() SL_ASSERT_MSG(0, "unreachable")
 #else
-#define SL_ASSERT(expr) ((void)sizeof(expr))
-#define SL_ASSERT_MSG(expr, msg) ((void)sizeof(expr), (void)sizeof(msg))
-#define SL_UNREACHABLE() ((void)0)
+#define SL_ASSERT(expr)                                                                            \
+    do {                                                                                           \
+        if (0 && (expr)) {                                                                         \
+        }                                                                                          \
+    } while (0)
+#define SL_ASSERT_MSG(expr, msg)                                                                   \
+    do {                                                                                           \
+        if (0 && (expr) && (msg)) {                                                                \
+        }                                                                                          \
+    } while (0)
+#define SL_UNREACHABLE()                                                                           \
+    do {                                                                                           \
+    } while (0)
 #endif
 
 #endif

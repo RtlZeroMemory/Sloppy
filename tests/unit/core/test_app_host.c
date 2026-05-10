@@ -177,7 +177,11 @@ static int test_non_get_metadata_is_valid_when_get_route_exists(void)
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 4;
+    }
     options = validation_options(&diag_arena);
     handlers[1].id = 2U;
     handlers[1].export_name = sl_str_from_cstr("__sloppy_handler_2");
@@ -209,7 +213,11 @@ static int test_non_get_only_metadata_is_runnable(void)
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 6;
+    }
     options = validation_options(&diag_arena);
     routes[0].method = sl_str_from_cstr("POST");
 
@@ -242,7 +250,11 @@ static int test_missing_route_handler_fails_startup(void)
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 10;
+    }
     options = validation_options(&diag_arena);
     routes[0].handler_id = 2U;
 
@@ -270,7 +282,11 @@ static int test_duplicate_route_policy_fails_startup(void)
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 20;
+    }
     options = validation_options(&diag_arena);
     routes[1] = routes[0];
     routes[1].name = sl_str_from_cstr("Home.Duplicate");
@@ -301,7 +317,11 @@ static int test_duplicate_service_token_fails_startup(void)
 
     providers[0] = (SlPlanDataProvider){0};
     providers[1] = (SlPlanDataProvider){0};
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 30;
+    }
     options = validation_options(&diag_arena);
 
     providers[0].token = sl_str_from_cstr("data.main");
@@ -338,7 +358,11 @@ static int test_startup_reports_plan_driven_runtime_features(void)
     SlAppHostStartupValidation options;
 
     providers[0] = (SlPlanDataProvider){0};
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 35;
+    }
     options = validation_options(&diag_arena);
     options.out_runtime_features = &features;
     options.override_runtime_feature_availability = true;
@@ -377,7 +401,11 @@ static int test_startup_fails_when_plan_requires_unavailable_feature(void)
     SlRuntimeFeatureSet features = {0};
     SlAppHostStartupValidation options;
 
-    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 37;
+    }
     options = validation_options(&diag_arena);
     options.out_runtime_features = &features;
     options.override_runtime_feature_availability = true;

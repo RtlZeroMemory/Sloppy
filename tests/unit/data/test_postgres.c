@@ -117,7 +117,7 @@ static SlPostgresParam bool_param(bool value)
 static int close_and_return(SlPostgresConnection* connection, int code)
 {
     if (connection != NULL && connection->open) {
-        (void)sl_postgres_close(connection);
+        sl_postgres_close(connection);
     }
     return code;
 }
@@ -651,34 +651,34 @@ static int test_live_pool(void)
     if (expect_status(sl_postgres_pool_acquire(&arena, &pool, &first, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_postgres_pool_acquire(&arena, &pool, &second, NULL), SL_STATUS_OK) != 0)
     {
-        (void)sl_postgres_pool_close(&pool);
+        sl_postgres_pool_close(&pool);
         return 52;
     }
     status = sl_postgres_pool_acquire(&arena, &pool, &third, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_POSTGRES_POOL_EXHAUSTED)
     {
-        (void)sl_postgres_pool_close(&pool);
+        sl_postgres_pool_close(&pool);
         return 53;
     }
     if (expect_status(sl_postgres_transaction_begin(&arena, first, &tx, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_postgres_pool_release(&pool, first), SL_STATUS_INVALID_STATE) != 0 ||
         expect_status(sl_postgres_transaction_rollback(&arena, &tx, NULL), SL_STATUS_OK) != 0)
     {
-        (void)sl_postgres_pool_close(&pool);
+        sl_postgres_pool_close(&pool);
         return 57;
     }
     if (expect_status(sl_postgres_pool_release(&pool, first), SL_STATUS_OK) != 0 ||
         expect_status(sl_postgres_pool_acquire(&arena, &pool, &third, NULL), SL_STATUS_OK) != 0 ||
         third != first)
     {
-        (void)sl_postgres_pool_close(&pool);
+        sl_postgres_pool_close(&pool);
         return 54;
     }
     if (expect_status(sl_postgres_close(third), SL_STATUS_OK) != 0 ||
         expect_status(sl_postgres_pool_release(&pool, third), SL_STATUS_INVALID_STATE) != 0)
     {
-        (void)sl_postgres_pool_close(&pool);
+        sl_postgres_pool_close(&pool);
         return 58;
     }
     return expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) == 0 &&

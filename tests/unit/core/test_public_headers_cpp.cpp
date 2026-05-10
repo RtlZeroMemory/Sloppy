@@ -71,7 +71,7 @@ int main()
     (void)executable_path;
     (void)run_process;
     sl_platform_thread_join(thread);
-    (void)sl_platform_monotonic_time_ns(&now_ns);
+    sl_platform_monotonic_time_ns(&now_ns);
 
     return engine_options.kind == SL_ENGINE_KIND_NONE && process_args.file == nullptr ? 0 : 1;
 }

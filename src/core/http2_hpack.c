@@ -272,7 +272,7 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
                                                   final_fragment ? 1 : 0);
 
         if (rv < 0) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             return sl_http2_hpack_status_from_nghttp2_ssize(rv);
         }
         cursor += (size_t)rv;
@@ -280,23 +280,23 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
 
         if ((inflate_flags & NGHTTP2_HD_INFLATE_EMIT) != 0) {
             if (count >= sl_http2_hpack_decoder_max_headers(decoder)) {
-                (void)sl_arena_reset_to(arena, mark);
+                sl_arena_reset_to(arena, mark);
                 return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
             }
             status = sl_http2_hpack_copy_nv(arena, &nv, &fields[count], &total_bytes);
             if (!sl_status_is_ok(status)) {
-                (void)sl_arena_reset_to(arena, mark);
+                sl_arena_reset_to(arena, mark);
                 return status;
             }
             if (total_bytes > sl_http2_hpack_decoder_max_header_list_bytes(decoder)) {
-                (void)sl_arena_reset_to(arena, mark);
+                sl_arena_reset_to(arena, mark);
                 return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
             }
             count += 1U;
         }
 
         if ((inflate_flags & NGHTTP2_HD_INFLATE_FINAL) != 0) {
-            (void)nghttp2_hd_inflate_end_headers(inflater);
+            nghttp2_hd_inflate_end_headers(inflater);
             final_seen = true;
             break;
         }
@@ -306,7 +306,7 @@ SlStatus sl_http2_hpack_decode(SlHttp2HpackDecoder* decoder, SlArena* arena, SlB
     }
 
     if (final_fragment && !final_seen) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
@@ -380,13 +380,13 @@ SlStatus sl_http2_hpack_encode(SlHttp2HpackEncoder* encoder, SlArena* arena,
     mark = sl_arena_mark(arena);
     status = sl_http2_hpack_prepare_nghttp2_headers(arena, headers, &nva);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
 
     bound = nghttp2_hd_deflate_bound(sl_http2_hpack_encoder_deflater(encoder), nva, headers->count);
     if (bound > sl_http2_hpack_encoder_max_output_bytes(encoder)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
     if (bound == 0U) {
@@ -396,14 +396,14 @@ SlStatus sl_http2_hpack_encode(SlHttp2HpackEncoder* encoder, SlArena* arena,
 
     status = sl_arena_alloc(arena, bound, 1U, &storage);
     if (!sl_status_is_ok(status)) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return status;
     }
 
     written = nghttp2_hd_deflate_hd2(sl_http2_hpack_encoder_deflater(encoder), storage, bound, nva,
                                      headers->count);
     if (written < 0) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         return sl_http2_hpack_status_from_nghttp2_ssize(written);
     }
 

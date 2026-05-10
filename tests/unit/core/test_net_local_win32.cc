@@ -58,7 +58,7 @@ void run_idle_client(ClientExchange* exchange)
         WaitForSingleObject(exchange->release_event, 5000U) != WAIT_OBJECT_0)
     {
         exchange->result = 2;
-        (void)sl_local_connection_abort(connection, nullptr);
+        sl_local_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -97,7 +97,7 @@ void run_client(ClientExchange* exchange)
         bytes.length != sizeof(binary) || std::memcmp(bytes.ptr, binary, sizeof(binary)) != 0)
     {
         exchange->result = 2;
-        (void)sl_local_connection_abort(connection, nullptr);
+        sl_local_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -136,7 +136,7 @@ void run_split_client(ClientExchange* exchange)
                       SL_STATUS_OK) != 0)
     {
         exchange->result = 2;
-        (void)sl_local_connection_abort(connection, nullptr);
+        sl_local_connection_abort(connection, nullptr);
         return;
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
@@ -178,7 +178,7 @@ int test_named_pipe_loopback_preserves_binary()
         accepted == nullptr || sl_local_connection_state(accepted) != SL_LOCAL_CONNECTION_CONNECTED)
     {
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 2;
     }
     if (expect_status(sl_local_connection_read(accepted, &accepted_arena, 4U, &bytes, nullptr),
@@ -188,8 +188,8 @@ int test_named_pipe_loopback_preserves_binary()
                       SL_STATUS_OK) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 3;
     }
     client.join();
@@ -238,7 +238,7 @@ int test_connect_waits_for_late_server()
         accepted == nullptr)
     {
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 2;
     }
     if (expect_status(sl_local_connection_read(accepted, &accepted_arena, 4U, &bytes, nullptr),
@@ -247,8 +247,8 @@ int test_connect_waits_for_late_server()
                       SL_STATUS_OK) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 3;
     }
     client.join();
@@ -327,7 +327,7 @@ int test_named_pipe_policy_and_unsupported_backend()
         expect_status(sl_local_endpoint_listen(&server_arena, &options, &duplicate, nullptr),
                       SL_STATUS_INVALID_STATE) != 0)
     {
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 8;
     }
     if (expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0) {
@@ -364,7 +364,7 @@ int test_accept_timeout_and_disposal()
             SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
         accepted != nullptr)
     {
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 2;
     }
     {
@@ -375,7 +375,7 @@ int test_accept_timeout_and_disposal()
                                                        sl_str_from_cstr("test cancellation")),
                           SL_STATUS_OK) != 0)
         {
-            (void)sl_local_server_abort(server, nullptr);
+            sl_local_server_abort(server, nullptr);
             return 3;
         }
         accept_options = sl_local_accept_options_default();
@@ -385,7 +385,7 @@ int test_accept_timeout_and_disposal()
                           SL_STATUS_CANCELLED) != 0 ||
             accepted != nullptr)
         {
-            (void)sl_local_server_abort(server, nullptr);
+            sl_local_server_abort(server, nullptr);
             return 4;
         }
     }
@@ -440,7 +440,7 @@ int test_io_timeout_and_precancel()
     {
         client.join();
         CloseHandle(release_event);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 2;
     }
     {
@@ -454,8 +454,8 @@ int test_io_timeout_and_precancel()
         {
             client.join();
             CloseHandle(release_event);
-            (void)sl_local_connection_abort(accepted, nullptr);
-            (void)sl_local_server_abort(server, nullptr);
+            sl_local_connection_abort(accepted, nullptr);
+            sl_local_server_abort(server, nullptr);
             return 3;
         }
         io_options = sl_local_io_options_default();
@@ -467,8 +467,8 @@ int test_io_timeout_and_precancel()
         {
             client.join();
             CloseHandle(release_event);
-            (void)sl_local_connection_abort(accepted, nullptr);
-            (void)sl_local_server_abort(server, nullptr);
+            sl_local_connection_abort(accepted, nullptr);
+            sl_local_server_abort(server, nullptr);
             return 4;
         }
     }
@@ -483,8 +483,8 @@ int test_io_timeout_and_precancel()
         SetEvent(release_event);
         client.join();
         CloseHandle(release_event);
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 5;
     }
     SetEvent(release_event);
@@ -535,7 +535,7 @@ int test_read_until_binary_delimiter_and_limits()
         accepted == nullptr)
     {
         client.join();
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 2;
     }
     if (expect_status(sl_local_connection_read_until(
@@ -545,8 +545,8 @@ int test_read_until_binary_delimiter_and_limits()
         bytes.length != sizeof(expected) || std::memcmp(bytes.ptr, expected, sizeof(expected)) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 3;
     }
     if (expect_status(sl_local_connection_read_until(accepted, &accepted_arena, sl_bytes_empty(),
@@ -559,8 +559,8 @@ int test_read_until_binary_delimiter_and_limits()
                       SL_STATUS_CAPACITY_EXCEEDED) != 0)
     {
         client.join();
-        (void)sl_local_connection_abort(accepted, nullptr);
-        (void)sl_local_server_abort(server, nullptr);
+        sl_local_connection_abort(accepted, nullptr);
+        sl_local_server_abort(server, nullptr);
         return 4;
     }
     client.join();

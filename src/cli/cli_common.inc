@@ -956,7 +956,7 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
                                                              sizeof(out->executable_path))) &&
         argc > 0 && argv != NULL && argv[0] != NULL)
     {
-        (void)sl_cli_copy_cstr(out->executable_path, sizeof(out->executable_path), argv[0]);
+        sl_cli_copy_cstr(out->executable_path, sizeof(out->executable_path), argv[0]);
     }
     out->format = SL_CLI_FORMAT_TEXT;
     out->host = SL_RUN_DEFAULT_HOST;
@@ -1215,9 +1215,9 @@ static void sl_cli_write_redacted(FILE* file, SlArena* arena, SlCliSpan text)
         should_reset = true;
         redacted = sl_cli_redacted_span(arena, text);
     }
-    (void)sl_cli_write_str(file, redacted);
+    sl_cli_write_str(file, redacted);
     if (should_reset) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
     }
 }
 
@@ -1234,7 +1234,7 @@ static void sl_cli_json_redacted(FILE* file, SlArena* arena, SlCliSpan text)
     }
     sl_cli_json_escape(file, sl_cli_span_from_str(redacted));
     if (should_reset) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
     }
 }
 

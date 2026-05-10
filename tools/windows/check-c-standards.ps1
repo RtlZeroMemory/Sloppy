@@ -176,7 +176,7 @@ $includePattern = '^\s*#\s*include\s*[<"]([^>"]+)[>"]'
 $unsafeFunctionPattern = '\b(gets|strcpy|strncpy|strcat|sprintf|vsprintf|strdup)\s*\('
 $cstringTerminatorPattern = '\bsl_str_copy_to_arena_nul\s*\('
 $memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove|memcmp|memset)\s*\('
-$ignoredStdioVoidCastPattern = '\(void\)\s*(snprintf|fprintf|fputs|printf|fputc)\s*\('
+$ignoredCallVoidCastPattern = '\(void\)\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*(?:(?:->|\.|::)\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\(|\(\s*\*?\s*[A-Za-z_][A-Za-z0-9_]*(?:(?:->|\.|::)\s*[A-Za-z_][A-Za-z0-9_]*)*\s*\)\s*\()'
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
 $analysisSuppressionPattern = '\bNOLINT(?:NEXTLINE|BEGIN|END)?\b'
 $validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*remove when .+$'
@@ -307,15 +307,14 @@ foreach ($file in $files) {
             }
         }
 
-        if ((Test-ImplementationPath $relativePath) -and
-            ($line -match $ignoredStdioVoidCastPattern))
+        if ($line -match $ignoredCallVoidCastPattern)
         {
             $violations += New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
-                -Pattern ("(void)" + $Matches[1]) `
-                -Rule "Do not cast ignored stdio/format return values to void." `
-                -Fix "Call the function directly when failure is intentionally non-actionable, or check the return value when truncation or write failure matters." `
+                -Pattern "(void)" `
+                -Rule "Do not use void casts to silence ignored function return values." `
+                -Fix "Call intentionally ignored cleanup functions directly, or check return values when failure matters." `
                 -Severity "error"
         }
 
@@ -373,6 +372,7 @@ void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
 void bad_void_cast(FILE* file) { (void)fputs("bad", file); }
+void bad_close_cast(FILE* file) { (void)fclose(file); }
 '@
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/cli/bad_fragment.inc") -Value @'
 #include <string.h>
@@ -381,6 +381,17 @@ void bad_fragment_copy(char* dst, const char* src) { strcpy(dst, src); }
         Set-Content -LiteralPath (Join-Path $invalidRoot "tests/unit/core/test_bad.c") -Value @'
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
+'@
+        Set-Content -LiteralPath (Join-Path $invalidRoot "tests/unit/core/test_bad.cc") -Value @'
+namespace ns { void close(); }
+struct BadVoidCallCasts {
+    void close();
+    void run(void (*cleanup_fn)(void*), void* ctx) {
+        (void)this->close();
+        (void)ns::close();
+        (void)(*cleanup_fn)(ctx);
+    }
+};
 '@
 
         & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $validRoot | Out-Host
@@ -395,8 +406,15 @@ void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
         if (-not (($invalidOutput -join "`n") -match "src/cli/bad_fragment\.inc")) {
             throw "C standards scanner self-test did not scan CLI .inc fragments."
         }
-        if (-not (($invalidOutput -join "`n") -match "\(void\)fputs")) {
-            throw "C standards scanner self-test did not assert ignored stdio void casts."
+        if (-not (($invalidOutput -join "`n") -match "\(void\)")) {
+            throw "C standards scanner self-test did not assert void casts."
+        }
+        Set-Content -LiteralPath (Join-Path $validRoot "tests/unit/core/test_unused_cast.c") -Value @'
+void ok_unused_cast(void* user) { (void)user; }
+'@
+        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $validRoot | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "C standards scanner self-test rejected plain unused-parameter suppression."
         }
 
         Write-Host "C standards scanner self-test passed."

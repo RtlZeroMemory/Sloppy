@@ -834,8 +834,8 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
     if (!ok) {
-        (void)sl_v8_db_reject_promise(isolate, context, resolver, request->error,
-                                      "postgres operation failed");
+        sl_v8_db_reject_promise(isolate, context, resolver, request->error,
+                                "postgres operation failed");
         pg_v8_finish_request(request, false);
         return;
     }
@@ -874,12 +874,12 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     if (!converted) {
         value = v8::Exception::Error(
             v8::String::NewFromUtf8Literal(isolate, "postgres result conversion failed"));
-        (void)resolver->Reject(context, value);
+        resolver->Reject(context, value).FromMaybe(false);
         pg_v8_clear_result(request.get());
         pg_v8_finish_request(request, false);
         return;
     }
-    (void)sl_v8_db_resolve_promise(context, resolver, value);
+    sl_v8_db_resolve_promise(context, resolver, value);
     pg_v8_finish_request(request, true);
 }
 
@@ -1542,7 +1542,7 @@ void pg_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-    auto* resource = new (std::nothrow) PgV8ConnectionResource();
+    std::unique_ptr<PgV8ConnectionResource> resource(new (std::nothrow) PgV8ConnectionResource());
     SlResourceId id = sl_resource_id_invalid();
     SlDiag diag = {};
     v8::Local<v8::Object> handle;
@@ -1553,30 +1553,36 @@ void pg_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         pg_v8_throw_error(isolate, "postgres bridge could not allocate a connection resource");
         return;
     }
-    if (args.Length() != 1 || !pg_v8_parse_open_options(isolate, context, args[0], resource)) {
-        delete resource;
+    if (args.Length() != 1 || !pg_v8_parse_open_options(isolate, context, args[0], resource.get()))
+    {
         pg_v8_throw_type_error(isolate, "__sloppy.data.postgres.open requires open options");
         return;
     }
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     if (!sl_status_is_ok(status) ||
-        !pg_v8_check_capability(isolate, backend, &arena, resource,
+        !pg_v8_check_capability(isolate, backend, &arena, resource.get(),
                                 pg_v8_open_capability_operation(resource->access)))
     {
-        delete resource;
         return;
     }
-    resource->connections.resize(resource->max_connections);
-    status = sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_POSTGRES_CONNECTION,
-                                      resource, pg_v8_connection_cleanup, nullptr, &id, &diag);
+    try {
+        resource->connections.resize(resource->max_connections);
+    } catch (...) {
+        pg_v8_throw_error(isolate, "postgres bridge could not allocate a connection resource");
+        return;
+    }
+    status =
+        sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_POSTGRES_CONNECTION,
+                                 resource.get(), pg_v8_connection_cleanup, nullptr, &id, &diag);
     if (!sl_status_is_ok(status)) {
-        pg_v8_connection_cleanup(resource, nullptr);
+        pg_v8_connection_cleanup(resource.release(), nullptr);
         pg_v8_throw_error(isolate, "postgres resource registration failed");
         return;
     }
+    resource.release();
     if (!pg_v8_make_resource_handle(isolate, context, id, &handle)) {
-        (void)sl_resource_table_close_kind(&backend->resources, id,
-                                           SL_RESOURCE_KIND_POSTGRES_CONNECTION, &diag);
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_POSTGRES_CONNECTION,
+                                     &diag);
         pg_v8_throw_error(isolate, "postgres resource registration failed");
         return;
     }

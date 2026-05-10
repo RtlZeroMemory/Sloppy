@@ -1114,7 +1114,7 @@ SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    (void)sl_platform_monotonic_time_ns(&queued.timestamp_ns);
+    sl_platform_monotonic_time_ns(&queued.timestamp_ns);
 
     sl_platform_mutex_lock(runtime->mutex);
     if (!runtime->accepting || runtime->stop_requested || runtime->shutdown) {
@@ -1125,7 +1125,7 @@ SlStatus sl_log_runtime_submit(SlLogRuntime* runtime, const SlLogEvent* event)
     queued.sequence = runtime->next_sequence;
     if (sl_ring_queue_is_full(&runtime->queue)) {
         if (runtime->config.backpressure_policy == SL_LOG_BACKPRESSURE_DROP_OLDEST) {
-            (void)sl_ring_queue_discard_front(&runtime->queue);
+            sl_ring_queue_discard_front(&runtime->queue);
             runtime->dropped_oldest_events += 1U;
         }
         else {
@@ -1297,7 +1297,7 @@ static SlStatus sl_log_memory_sink_write(SlLogSink* sink, const SlLogEvent* even
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (sl_ring_queue_is_full(&state->events)) {
-        (void)sl_ring_queue_discard_front(&state->events);
+        sl_ring_queue_discard_front(&state->events);
         state->overwritten_events += 1U;
     }
     return sl_ring_queue_push(&state->events, event);
@@ -1602,8 +1602,8 @@ static void sl_log_file_sink_close(SlLogSink* sink)
     if (state == NULL || state->file == NULL) {
         return;
     }
-    (void)sl_log_file_sink_flush(sink);
-    (void)sl_fs_file_close(state->file, NULL);
+    sl_log_file_sink_flush(sink);
+    sl_fs_file_close(state->file, NULL);
     state->file = NULL;
 }
 

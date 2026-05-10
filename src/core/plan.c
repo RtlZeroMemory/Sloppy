@@ -1277,6 +1277,6 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
     return sl_status_ok();
 
 failure:
-    (void)sl_arena_reset_to(arena, mark);
+    sl_arena_reset_to(arena, mark);
     return status;
 }

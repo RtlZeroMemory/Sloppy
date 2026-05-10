@@ -611,7 +611,7 @@ SlStatus sl_sqlite_close(SlSqliteConnection* connection)
 
     db = (sqlite3*)connection->handle;
     if (connection->transaction_active) {
-        (void)sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+        sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
         connection->transaction_active = false;
     }
 
@@ -728,7 +728,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     status = sl_sqlite_copy_columns(arena, stmt, column_count, &out_result->column_names);
     if (!sl_status_is_ok(status)) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return status;
     }
@@ -736,13 +736,13 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     status = sl_sqlite_allocate_rows(arena, max_rows, column_count, &rows, &cells);
     if (!sl_status_is_ok(status)) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return status;
     }
     if (rows == NULL || (column_count > 0U && cells == NULL)) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
@@ -752,7 +752,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
 
         if (row_count >= max_rows) {
             sqlite3_finalize(stmt);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             *out_result = (SlSqliteResult){0};
             return sl_sqlite_diag(
                 arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
@@ -766,7 +766,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
             status = sl_sqlite_copy_value(arena, stmt, column, &rows[row_count].values[column]);
             if (!sl_status_is_ok(status)) {
                 sqlite3_finalize(stmt);
-                (void)sl_arena_reset_to(arena, mark);
+                sl_arena_reset_to(arena, mark);
                 *out_result = (SlSqliteResult){0};
                 return status;
             }
@@ -777,7 +777,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
 
     if (rc != SQLITE_DONE) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider query failed",
@@ -788,7 +788,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
 
     rc = sqlite3_finalize(stmt);
     if (rc != SQLITE_OK) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider finalize failed",
@@ -846,7 +846,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
     status = sl_sqlite_copy_columns(arena, stmt, column_count, &out_result->column_names);
     if (!sl_status_is_ok(status)) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteQueryOneResult){0};
         return status;
     }
@@ -855,7 +855,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
     if (rc == SQLITE_DONE) {
         rc = sqlite3_finalize(stmt);
         if (rc != SQLITE_OK) {
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             *out_result = (SlSqliteQueryOneResult){0};
             return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                                   sl_sqlite_literal("sqlite provider finalize failed",
@@ -873,7 +873,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
 
     if (rc != SQLITE_ROW) {
         sqlite3_finalize(stmt);
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteQueryOneResult){0};
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider queryOne failed",
@@ -887,7 +887,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
                                       _Alignof(SlSqliteValue), &value_slice);
         if (!sl_status_is_ok(status)) {
             sqlite3_finalize(stmt);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             *out_result = (SlSqliteQueryOneResult){0};
             return status;
         }
@@ -898,7 +898,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
         status = sl_sqlite_copy_value(arena, stmt, column, &out_result->values[column]);
         if (!sl_status_is_ok(status)) {
             sqlite3_finalize(stmt);
-            (void)sl_arena_reset_to(arena, mark);
+            sl_arena_reset_to(arena, mark);
             *out_result = (SlSqliteQueryOneResult){0};
             return status;
         }
@@ -906,7 +906,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
 
     rc = sqlite3_finalize(stmt);
     if (rc != SQLITE_OK) {
-        (void)sl_arena_reset_to(arena, mark);
+        sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteQueryOneResult){0};
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider finalize failed",

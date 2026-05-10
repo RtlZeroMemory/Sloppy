@@ -99,10 +99,10 @@ static SlStatus sl_win32_crypto_hash_internal(SlCryptoHashAlgorithm algorithm, S
     }
 
     if (hash_handle != NULL) {
-        (void)BCryptDestroyHash(hash_handle);
+        BCryptDestroyHash(hash_handle);
     }
     if (algorithm_handle != NULL) {
-        (void)BCryptCloseAlgorithmProvider(algorithm_handle, 0U);
+        BCryptCloseAlgorithmProvider(algorithm_handle, 0U);
     }
     SecureZeroMemory(object_storage, sizeof(object_storage));
     return status;

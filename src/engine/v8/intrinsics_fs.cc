@@ -120,7 +120,7 @@ void fs_v8_logical_file_cleanup(void* ptr, void* user)
     (void)user;
     FsV8LogicalFile* file = static_cast<FsV8LogicalFile*>(ptr);
     if (file != nullptr && file->native_handle != nullptr && !file->closed) {
-        (void)sl_fs_file_close(file->native_handle, nullptr);
+        sl_fs_file_close(file->native_handle, nullptr);
         file->native_handle = nullptr;
         file->closed = true;
     }
@@ -132,7 +132,7 @@ void fs_v8_logical_watch_cleanup(void* ptr, void* user)
     (void)user;
     FsV8LogicalWatch* watch = static_cast<FsV8LogicalWatch*>(ptr);
     if (watch != nullptr && watch->native_watch != nullptr && !watch->closed) {
-        (void)sl_fs_watch_close(watch->native_watch, nullptr);
+        sl_fs_watch_close(watch->native_watch, nullptr);
         watch->native_watch = nullptr;
         watch->closed = true;
     }
@@ -854,14 +854,26 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
                            : request->stat.kind == SL_FS_NODE_DIRECTORY ? "directory"
                            : request->stat.kind == SL_FS_NODE_OTHER     ? "other"
                                                                         : "missing";
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("exists"), &exists_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("size"), &size_key);
-        (void)object->Set(context, exists_key, v8::Boolean::New(isolate, request->stat.exists));
-        (void)object->Set(context, kind_key,
-                          v8::String::NewFromUtf8(isolate, kind).ToLocalChecked());
-        (void)object->Set(context, size_key,
-                          v8::Number::New(isolate, static_cast<double>(request->stat.size)));
+        if (!sl_status_is_ok(
+                fs_v8_to_local_string(isolate, sl_str_from_cstr("exists"), &exists_key)) ||
+            !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
+            !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr("size"), &size_key)))
+        {
+            *out_error = "Failed to create filesystem stat result keys";
+            return false;
+        }
+        if (!object->Set(context, exists_key, v8::Boolean::New(isolate, request->stat.exists))
+                 .FromMaybe(false) ||
+            !object->Set(context, kind_key, v8::String::NewFromUtf8(isolate, kind).ToLocalChecked())
+                 .FromMaybe(false) ||
+            !object
+                 ->Set(context, size_key,
+                       v8::Number::New(isolate, static_cast<double>(request->stat.size)))
+                 .FromMaybe(false))
+        {
+            *out_error = "Failed to create filesystem stat result";
+            return false;
+        }
         *out = object;
         return true;
     }
@@ -880,9 +892,16 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
                                : native.kind == SL_FS_NODE_OTHER     ? "other"
                                                                      : "missing";
 
-            (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("name"), &name_key);
-            (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key);
-            (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("size"), &size_key);
+            if (!sl_status_is_ok(
+                    fs_v8_to_local_string(isolate, sl_str_from_cstr("name"), &name_key)) ||
+                !sl_status_is_ok(
+                    fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
+                !sl_status_is_ok(
+                    fs_v8_to_local_string(isolate, sl_str_from_cstr("size"), &size_key)))
+            {
+                *out_error = "Failed to create filesystem directory result keys";
+                return false;
+            }
             if (!v8::String::NewFromUtf8(
                      isolate, request->directory_entry_names[index].c_str(),
                      v8::NewStringType::kNormal,
@@ -892,12 +911,20 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
                 *out_error = "Invalid UTF-8 in directory entry";
                 return false;
             }
-            (void)entry->Set(context, name_key, name_value);
-            (void)entry->Set(context, kind_key,
-                             v8::String::NewFromUtf8(isolate, kind).ToLocalChecked());
-            (void)entry->Set(context, size_key,
-                             v8::Number::New(isolate, static_cast<double>(native.size)));
-            (void)array->Set(context, static_cast<uint32_t>(index), entry);
+            if (!entry->Set(context, name_key, name_value).FromMaybe(false) ||
+                !entry
+                     ->Set(context, kind_key,
+                           v8::String::NewFromUtf8(isolate, kind).ToLocalChecked())
+                     .FromMaybe(false) ||
+                !entry
+                     ->Set(context, size_key,
+                           v8::Number::New(isolate, static_cast<double>(native.size)))
+                     .FromMaybe(false) ||
+                !array->Set(context, static_cast<uint32_t>(index), entry).FromMaybe(false))
+            {
+                *out_error = "Failed to create filesystem directory result";
+                return false;
+            }
         }
         *out = array;
         return true;
@@ -938,8 +965,8 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
         }
         request->logical_file = nullptr;
         if (!fs_v8_set_resource_id(isolate, context, object, id)) {
-            (void)sl_resource_table_close_kind(&request->backend->resources, id,
-                                               SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
+            sl_resource_table_close_kind(&request->backend->resources, id,
+                                         SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
             *out_error = "filesystem handle could not be materialized";
             return false;
         }
@@ -966,8 +993,8 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
         }
         request->logical_watch = nullptr;
         if (!fs_v8_set_resource_id(isolate, context, object, id)) {
-            (void)sl_resource_table_close_kind(&request->backend->resources, id,
-                                               SL_RESOURCE_KIND_FS_WATCH, nullptr);
+            sl_resource_table_close_kind(&request->backend->resources, id,
+                                         SL_RESOURCE_KIND_FS_WATCH, nullptr);
             *out_error = "filesystem watch could not be materialized";
             return false;
         }
@@ -1008,17 +1035,31 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
             *out_error = "Invalid UTF-8 in filesystem watch event";
             return false;
         }
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("path"), &path_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("isDirectory"), &directory_key);
-        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("overflow"), &overflow_key);
-        (void)object->Set(context, kind_key,
-                          v8::String::NewFromUtf8(isolate, kind).ToLocalChecked());
-        (void)object->Set(context, path_key, path_value);
-        (void)object->Set(context, directory_key,
-                          v8::Boolean::New(isolate, request->watch_event.is_directory));
-        (void)object->Set(context, overflow_key,
-                          v8::Boolean::New(isolate, request->watch_event.overflow));
+        if (!sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
+            !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr("path"), &path_key)) ||
+            !sl_status_is_ok(
+                fs_v8_to_local_string(isolate, sl_str_from_cstr("isDirectory"), &directory_key)) ||
+            !sl_status_is_ok(
+                fs_v8_to_local_string(isolate, sl_str_from_cstr("overflow"), &overflow_key)))
+        {
+            *out_error = "Failed to create filesystem watch result keys";
+            return false;
+        }
+        if (!object->Set(context, kind_key, v8::String::NewFromUtf8(isolate, kind).ToLocalChecked())
+                 .FromMaybe(false) ||
+            !object->Set(context, path_key, path_value).FromMaybe(false) ||
+            !object
+                 ->Set(context, directory_key,
+                       v8::Boolean::New(isolate, request->watch_event.is_directory))
+                 .FromMaybe(false) ||
+            !object
+                 ->Set(context, overflow_key,
+                       v8::Boolean::New(isolate, request->watch_event.overflow))
+                 .FromMaybe(false))
+        {
+            *out_error = "Failed to create filesystem watch result";
+            return false;
+        }
         *out = object;
         return true;
     }
@@ -1497,10 +1538,9 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
         sl_str_from_cstr("stdlib.fs"), sl_str_from_cstr("filesystem"),
         SL_PROVIDER_OPERATION_KIND_INTERNAL, sl_str_from_cstr("fs"),
         SL_PROVIDER_EXECUTION_BLOCKING_POOL, fs_v8_completion_dispatch, nullptr);
-    (void)sl_provider_operation_descriptor_attach_capability(
-        &descriptor, sl_str_from_cstr("stdlib.fs"), fs_v8_capability_operation(request.get()));
-    (void)sl_provider_operation_descriptor_attach_run(&descriptor, fs_v8_provider_run,
-                                                      request.get());
+    sl_provider_operation_descriptor_attach_capability(&descriptor, sl_str_from_cstr("stdlib.fs"),
+                                                       fs_v8_capability_operation(request.get()));
+    sl_provider_operation_descriptor_attach_run(&descriptor, fs_v8_provider_run, request.get());
 
     SlProviderOperation* provider_operation = nullptr;
     SlStatus status = sl_provider_executor_submit(&backend->fs_executor, backend->arena,
@@ -1508,7 +1548,8 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
     if (!sl_status_is_ok(status)) {
         v8::Local<v8::String> message =
             v8::String::NewFromUtf8Literal(isolate, "filesystem operation could not be submitted");
-        (void)resolver->Reject(context, v8::Exception::Error(message));
+        bool rejected = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
+        (void)rejected;
         if (request->logical_file_busy_acquired && request->logical_file != nullptr) {
             request->logical_file->busy = false;
         }

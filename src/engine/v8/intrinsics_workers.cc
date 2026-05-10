@@ -318,8 +318,12 @@ void workers_v8_set_error_code(v8::Isolate* isolate, v8::Local<v8::Context> cont
     if (error.IsEmpty() || !error->IsObject()) {
         return;
     }
-    (void)error.As<v8::Object>()->Set(context, workers_v8_literal(isolate, "code"),
-                                      workers_v8_literal(isolate, code));
+    if (!error.As<v8::Object>()
+             ->Set(context, workers_v8_literal(isolate, "code"), workers_v8_literal(isolate, code))
+             .FromMaybe(false))
+    {
+        return;
+    }
 }
 
 void workers_v8_throw_code_error(SlV8Engine* backend, const char* code, const char* message)

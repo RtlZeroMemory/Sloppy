@@ -54,11 +54,11 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     if (split < size) {
         const uint8_t* path = data + split + 1U;
         size_t path_length = size - split - 1U;
-        (void)sl_route_pattern_match(&match_arena, &pattern,
-                                     sl_str_from_parts((const char*)path, path_length), &match);
+        sl_route_pattern_match(&match_arena, &pattern,
+                               sl_str_from_parts((const char*)path, path_length), &match);
     }
     else {
-        (void)sl_route_pattern_match(&match_arena, &pattern, pattern.source, &match);
+        sl_route_pattern_match(&match_arena, &pattern, pattern.source, &match);
     }
 
     return 0;

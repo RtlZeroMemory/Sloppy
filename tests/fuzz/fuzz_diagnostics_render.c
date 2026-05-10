@@ -113,26 +113,30 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         return 0;
     }
 
-    (void)sl_diag_builder_set_primary_span(&builder, sl_source_span_make(path, 1U, 1U, 1U));
+    sl_diag_builder_set_primary_span(&builder, sl_source_span_make(path, 1U, 1U, 1U));
     if (hint.length > 0U) {
-        (void)sl_diag_builder_add_hint(&builder, hint);
+        sl_diag_builder_add_hint(&builder, hint);
     }
 
     if (!sl_status_is_ok(sl_diag_builder_finish(&builder, &diag))) {
         return 0;
     }
 
-    (void)sl_diag_render_text(&arena, &diag, &rendered);
-    assert_no_secret_marker(rendered);
-    (void)sl_diag_render_json(&arena, &diag, &rendered);
-    assert_no_secret_marker(rendered);
+    if (sl_status_is_ok(sl_diag_render_text(&arena, &diag, &rendered))) {
+        assert_no_secret_marker(rendered);
+    }
+    if (sl_status_is_ok(sl_diag_render_json(&arena, &diag, &rendered))) {
+        assert_no_secret_marker(rendered);
+    }
 
     source.path = path;
     source.text = source_text;
-    (void)sl_diag_render_text_with_source(&arena, &diag, &source, &rendered);
-    assert_no_secret_marker(rendered);
-    (void)sl_diag_render_json_with_source(&arena, &diag, &source, &rendered);
-    assert_no_secret_marker(rendered);
+    if (sl_status_is_ok(sl_diag_render_text_with_source(&arena, &diag, &source, &rendered))) {
+        assert_no_secret_marker(rendered);
+    }
+    if (sl_status_is_ok(sl_diag_render_json_with_source(&arena, &diag, &source, &rendered))) {
+        assert_no_secret_marker(rendered);
+    }
 
     return 0;
 }

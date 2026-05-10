@@ -79,8 +79,12 @@ static int sl_cli_deps_emit_json(yyjson_val* graph)
         sl_cli_write_cstr(stderr, "sloppy deps: failed to serialize dependency graph JSON\n");
         return 1;
     }
-    fwrite(json, 1U, length, stdout);
-    fputc('\n', stdout);
+    if ((length != 0U && fwrite(json, 1U, length, stdout) != length) || fputc('\n', stdout) == EOF)
+    {
+        sl_cli_write_cstr(stderr, "sloppy deps: failed to write dependency graph JSON\n");
+        sl_alloc_release(json);
+        return 1;
+    }
     sl_alloc_release(json);
     return 0;
 }

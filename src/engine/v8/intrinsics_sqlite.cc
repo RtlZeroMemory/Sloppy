@@ -453,7 +453,7 @@ void sqlite_v8_connection_cleanup(void* ptr, void* user)
     SqliteV8ConnectionResource* resource = static_cast<SqliteV8ConnectionResource*>(ptr);
     if (resource != nullptr) {
         resource->closing.store(true);
-        (void)sl_sqlite_close(&resource->connection);
+        sl_sqlite_close(&resource->connection);
         delete resource;
     }
 }
@@ -1115,15 +1115,13 @@ bool sqlite_v8_submit_request(v8::Isolate* isolate, v8::Local<v8::Context> conte
         sl_str_from_cstr("stdlib.sqlite"), sl_str_from_cstr("sqlite"),
         SL_PROVIDER_OPERATION_KIND_INTERNAL, sl_str_from_cstr("sqlite"),
         SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING, sqlite_v8_completion_dispatch, nullptr);
-    (void)sl_provider_operation_descriptor_attach_capability(
+    sl_provider_operation_descriptor_attach_capability(
         &descriptor, sl_str_from_parts(resource->capability.data(), resource->capability.size()),
         sqlite_v8_operation_capability(request->operation));
-    (void)sl_provider_operation_descriptor_attach_admission_diag(&descriptor,
-                                                                 &request->admission_diag);
-    (void)sl_provider_operation_descriptor_attach_run(&descriptor, sqlite_v8_provider_run,
-                                                      request.get());
-    (void)sl_provider_operation_descriptor_attach_cleanup(&descriptor, sqlite_v8_request_cleanup,
-                                                          nullptr);
+    sl_provider_operation_descriptor_attach_admission_diag(&descriptor, &request->admission_diag);
+    sl_provider_operation_descriptor_attach_run(&descriptor, sqlite_v8_provider_run, request.get());
+    sl_provider_operation_descriptor_attach_cleanup(&descriptor, sqlite_v8_request_cleanup,
+                                                    nullptr);
 
     SlProviderOperation* provider_operation = nullptr;
     SlStatus status = sl_provider_executor_submit(&backend->sqlite_executor, backend->arena,
@@ -1223,7 +1221,7 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 
     if (!sqlite_v8_make_resource_handle(isolate, context, id, &handle)) {
-        (void)sl_resource_table_close(&backend->resources, id, nullptr);
+        sl_resource_table_close(&backend->resources, id, nullptr);
         sqlite_v8_throw_error(isolate, "sqlite bridge could not create a resource handle");
         return;
     }

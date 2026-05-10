@@ -1012,7 +1012,7 @@ void http_v8_log_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
         http_v8_log_throw_type_error(isolate, "Sloppy log event could not be completed.");
         return;
     }
-    (void)sl_log_runtime_submit(backend->logging, &event);
+    sl_log_runtime_submit(backend->logging, &event);
 }
 
 void http_v8_log_trace_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -1480,8 +1480,7 @@ bool http_v8_body_mark_consumed(v8::Isolate* isolate, v8::Local<v8::Context> con
     }
     if (consumed->BooleanValue(isolate)) {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-        (void)http_v8_set_bool_property_key(isolate, context, body, SL_V8_HTTP_STRING_CONSUMED,
-                                            true);
+        http_v8_set_bool_property_key(isolate, context, body, SL_V8_HTTP_STRING_CONSUMED, true);
         if (!sl_v8_throw_type_error_from_native_view(
                 backend, http_v8_literal("Request body is already consumed.",
                                          sizeof("Request body is already consumed.") - 1U)))
@@ -1760,9 +1759,14 @@ void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8:
             http_v8_to_local_string(isolate, http_v8_str_from_string(message), &error_message)))
     {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-        (void)sl_v8_throw_error_from_native_view(
-            backend, http_v8_literal("Sloppy request was cancelled",
-                                     sizeof("Sloppy request was cancelled") - 1U));
+        if (backend == nullptr ||
+            !sl_v8_throw_error_from_native_view(
+                backend, http_v8_literal("Sloppy request was cancelled",
+                                         sizeof("Sloppy request was cancelled") - 1U)))
+        {
+            isolate->ThrowException(v8::Exception::Error(
+                v8::String::NewFromUtf8Literal(isolate, "Sloppy request was cancelled")));
+        }
         return;
     }
     isolate->ThrowException(v8::Exception::Error(error_message));

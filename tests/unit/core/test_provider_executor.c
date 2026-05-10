@@ -411,7 +411,7 @@ static SlStatus run_provider_like_operation(SlProviderOperation* operation, void
     while (payload->release != NULL && !atomic_load(payload->release)) {
     }
     if (payload->cancel_before_success) {
-        (void)sl_provider_operation_cancel(operation, sl_str_from_cstr("worker cancelled"));
+        sl_provider_operation_cancel(operation, sl_str_from_cstr("worker cancelled"));
     }
     if (out_diag_code != NULL) {
         *out_diag_code = payload->diag_code;

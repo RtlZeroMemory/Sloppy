@@ -323,11 +323,10 @@ static SlCliSpan sl_cli_openapi_content_type_for_response_kind(SlCliSpan kind)
 
 static void sl_cli_openapi_emit_problem_schema(FILE* out)
 {
-    sl_cli_write_cstr(out,
-                      "{ \"type\": \"object\", \"properties\": { "
-                      "\"status\": { \"type\": \"integer\" }, "
-                      "\"title\": { \"type\": \"string\" }, "
-                      "\"detail\": { \"type\": \"string\" } } }");
+    sl_cli_write_cstr(out, "{ \"type\": \"object\", \"properties\": { "
+                           "\"status\": { \"type\": \"integer\" }, "
+                           "\"title\": { \"type\": \"string\" }, "
+                           "\"detail\": { \"type\": \"string\" } } }");
 }
 
 static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
@@ -638,12 +637,10 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
                            "    \"status\": \"plan-supported-subset\",\n"
                            "    \"unknownMetadata\": \"explicit-partial-markers\"");
     if (has_dynamic_routes) {
-        sl_cli_write_cstr(out,
-                          ",\n"
-                          "    \"dynamicRoutes\": \"omitted-when-path-is-unknown\"");
+        sl_cli_write_cstr(out, ",\n"
+                               "    \"dynamicRoutes\": \"omitted-when-path-is-unknown\"");
     }
-    sl_cli_write_cstr(out,
-                           ",\n"
+    sl_cli_write_cstr(out, ",\n"
                            "    \"optimizations\": \"reported-only\"\n"
                            "  },\n"
                            "  \"paths\": {");
@@ -675,14 +672,13 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
     static char path_buffers[SL_CLI_MAX_ROUTES][512];
     static SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES];
     FILE* out = stdout;
+    int result = 1;
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy openapi: --plan <path> is required\n");
         return 1;
     }
-    if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
-    {
+    if (!sl_status_is_ok(sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES))) {
         sl_cli_write_cstr(stderr, "sloppy openapi: failed to initialize plan validation arena\n");
         return 1;
     }
@@ -700,39 +696,34 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
             return 1;
         }
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             metadata) != 0)
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc, metadata) !=
+        0)
     {
-        if (doc != NULL) {
-            yyjson_doc_free(doc);
-        }
-        if (out != stdout) {
-            (void)fclose(out);
-        }
-        return 1;
+        goto cleanup;
     }
     if (sl_cli_span_equal_cstr(metadata->kind, "program")) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy openapi: OpenAPI is only available for web Plans with route metadata.\n");
-        yyjson_doc_free(doc);
-        if (out != stdout) {
-            (void)fclose(out);
-        }
-        return 1;
+        sl_cli_write_cstr(
+            stderr,
+            "sloppy openapi: OpenAPI is only available for web Plans with route metadata.\n");
+        goto cleanup;
     }
     sl_cli_sort_routes(metadata);
     if (sl_cli_openapi_prepare_paths(metadata, path_buffers, openapi_paths) != 0) {
-        yyjson_doc_free(doc);
-        if (out != stdout) {
-            (void)fclose(out);
-        }
-        return 1;
+        goto cleanup;
     }
     sl_cli_openapi_emit_document(out, metadata, openapi_paths);
+    result = 0;
 
-    yyjson_doc_free(doc);
-    if (out != stdout) {
-        (void)fclose(out);
+cleanup:
+    if (doc != NULL) {
+        yyjson_doc_free(doc);
     }
-    return 0;
+    if (out != stdout) {
+        if (fclose(out) != 0 && result == 0) {
+            sl_cli_write_error_with_value(
+                "sloppy openapi: failed to write output path: ", options->output_path, "\n");
+            result = 1;
+        }
+    }
+    return result;
 }
