@@ -45,10 +45,10 @@ compiler/
 
 `src/sloppyc.rs` still owns most extraction. The files under `src/sloppyc/`
 hold focused extraction helpers for configuration, schema, effects, and
-recognized framework features that must fail closed until AppGraph can represent
-them. `src/graph.rs` owns the internal AppGraph data types copied out of parser
-lifetimes. `src/plan_emit.rs` consumes that graph for Plan JSON so the Plan
-shape is separated from extraction.
+recognized framework features that need explicit AppGraph representation before
+they can produce strong metadata. `src/graph.rs` owns the internal AppGraph
+data types copied out of parser lifetimes. `src/plan_emit.rs` consumes that
+graph for Plan JSON so the Plan shape is separated from extraction.
 
 ## Main Concepts
 
@@ -73,6 +73,10 @@ requirements, and source spans.
 Route metadata includes literal route names, literal route option tags, tags
 inherited from `app.group(...).withTags(...)`, and compiler-extracted health
 endpoint kind/check names from `app.mapHealthChecks(...)`.
+
+Sloppy does not require every route to be statically understood. If the
+compiler can emit runnable JavaScript, the app can run. Static source gives
+stronger Plan metadata; dynamic source produces partial metadata and findings.
 
 Generated typed-handler wrappers read `Config<"KEY">` from the environment
 first. If AppGraph recorded a literal default for the same key, the wrapper uses
@@ -122,8 +126,11 @@ results; they do not link to the compiler library.
 - Plan emission reads from AppGraph, not from parser lifetimes.
 - Source locations are preserved for route, handler, schema, provider, binding,
   and effect metadata where the compiler can identify them.
-- Unsupported source shapes fail with stable `SLOPPYC_E_*` diagnostics instead
-  of being silently ignored.
+- Unsupported runtime dependencies, invalid artifact shapes, and source that
+  cannot be transformed into runnable JavaScript fail with stable
+  `SLOPPYC_E_*` diagnostics instead of being silently ignored.
+- Dynamic web route shapes that remain runnable emit `SLOPPYC_W_DYNAMIC_ROUTE`
+  findings and partial/dynamic Plan metadata instead of fatal diagnostics.
 - Generated provider bridges remain honest about runtime support. Static
   non-SQLite provider handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - Compiler performance evidence comes from local benchmark reports and timing
@@ -133,9 +140,9 @@ results; they do not link to the compiler library.
 
 Compiler failures return a source-located diagnostic when source context is
 available. Common failures include unsupported imports, npm specifiers,
-dynamic import(), dynamic route patterns, unsupported route methods,
-unsupported handler shapes, invalid route metadata options, missing relative
-imports, and provider bridge gaps.
+dynamic import(), invalid known route methods, unsupported runtime-only handler
+shapes, invalid route metadata options, missing relative imports, and provider
+bridge gaps.
 
 Rejected builds do not emit success artifacts.
 

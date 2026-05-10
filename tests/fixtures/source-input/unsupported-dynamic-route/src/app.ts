@@ -1,8 +1,13 @@
 import { Sloppy, Results } from "sloppy";
 
 const app = Sloppy.create();
-const route = "/users/:id";
+const staticRoute = "/health";
 
-app.mapGet(route, () => Results.text("unsupported"));
+function routeFor(name: string) {
+  return `/${name}`;
+}
+
+app.mapGet(staticRoute, () => Results.text("ok")).withName("Health.Get");
+app.mapGet(routeFor("users"), () => Results.text("dynamic"));
 
 export default app;

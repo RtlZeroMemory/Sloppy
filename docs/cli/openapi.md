@@ -18,9 +18,11 @@ content is always JSON.
 `<path>` is an `app.plan.json` file or a directory containing one.
 `--artifacts <dir>` is the explicit artifact-directory form.
 
-OpenAPI is only available for web Plans with route metadata. Program Plans fail
-with a clear diagnostic because they intentionally do not claim a static route
-graph.
+OpenAPI is only available for web Plans. Program Plans fail with a clear
+diagnostic because they intentionally do not claim a static route graph. For web
+Plans with dynamic route metadata, OpenAPI includes only statically known,
+representable routes and marks the document policy as partial when dynamic
+routes are omitted.
 
 ## What it produces
 
@@ -91,7 +93,7 @@ directly model:
   partial information (e.g. body schema unknown, response shape not
   declared).
 - `x-slop-openapi-policy` — top-level metadata about how the document
-  was produced.
+  was produced, including whether dynamic route metadata was omitted.
 
 These fields are stable across builds for a given source/compiler pair,
 suitable for diffing.
@@ -108,6 +110,8 @@ suitable for diffing.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are
   reflected only to the extent they are visible in current Plan route metadata;
   OpenAPI does not model the full runtime pipeline semantics.
+- Dynamic routes with unknown paths are omitted rather than invented. Static
+  routes in the same Plan still appear.
 
 This is enough for documentation and for sanity-checking that an API
 change matches the public contract. Pipe it into a fuller OpenAPI tool

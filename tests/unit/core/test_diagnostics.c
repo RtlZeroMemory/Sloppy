@@ -1835,10 +1835,11 @@ static int test_renderer_exact_preflight_capacity(void)
         return 74;
     }
 
-    if (expect_status(sl_diag_builder_init(&builder, &build_arena, SL_DIAG_SEVERITY_ERROR,
-                                           SL_DIAG_INVALID_ROUTE_PATTERN,
-                                           sl_str_from_cstr("unsupported dynamic route pattern")),
-                      SL_STATUS_OK) != 0 ||
+    if (expect_status(
+            sl_diag_builder_init(&builder, &build_arena, SL_DIAG_SEVERITY_ERROR,
+                                 SL_DIAG_INVALID_ROUTE_PATTERN,
+                                 sl_str_from_cstr("route pattern is not a static Plan pattern")),
+            SL_STATUS_OK) != 0 ||
         expect_status(sl_diag_builder_set_primary_span(
                           &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 5U, 12U, 9U)),
                       SL_STATUS_OK) != 0 ||
@@ -1955,9 +1956,9 @@ static int test_source_frame_snapshot_and_fallback(void)
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 90;
     }
-    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
-                                           SL_DIAG_INVALID_ROUTE_PATTERN,
-                                           sl_str_from_cstr("unsupported dynamic route pattern")),
+    if (expect_status(sl_diag_builder_init(
+                          &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_INVALID_ROUTE_PATTERN,
+                          sl_str_from_cstr("route pattern is not a static Plan pattern")),
                       SL_STATUS_OK) != 0)
     {
         return 91;
@@ -1992,8 +1993,8 @@ static int test_source_frame_snapshot_and_fallback(void)
     if (expect_status(sl_diag_render_text_with_source(&arena, &diag, &source, &fallback),
                       SL_STATUS_OK) != 0 ||
         expect_str_equal(fallback,
-                         sl_str_from_cstr("error SLOPPY_E_INVALID_ROUTE_PATTERN: unsupported "
-                                          "dynamic route pattern\n\n"
+                         sl_str_from_cstr("error SLOPPY_E_INVALID_ROUTE_PATTERN: route pattern "
+                                          "is not a static Plan pattern\n\n"
                                           "  at app.js:5:12 (len 9)\n\n"
                                           "  help:\n"
                                           "    expected a string literal route pattern\n")) != 0)
@@ -2016,9 +2017,9 @@ static int test_json_source_frame_snapshot(void)
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 96;
     }
-    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
-                                           SL_DIAG_INVALID_ROUTE_PATTERN,
-                                           sl_str_from_cstr("unsupported dynamic route pattern")),
+    if (expect_status(sl_diag_builder_init(
+                          &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_INVALID_ROUTE_PATTERN,
+                          sl_str_from_cstr("route pattern is not a static Plan pattern")),
                       SL_STATUS_OK) != 0)
     {
         return 97;

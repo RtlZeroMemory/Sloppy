@@ -77,7 +77,7 @@ fn library_api_builds_app_graph_dogfood_fixture() {
 #[test]
 fn library_api_returns_source_located_invalid_input_diagnostic() {
     let root = manifest_dir();
-    let input = root.join("tests/fixtures/computed-method/input.js");
+    let input = root.join("tests/fixtures/unsupported-dynamic-import/input.js");
     let out_dir = temp_output("library-api-invalid");
     remove_dir_if_present(&out_dir);
 
@@ -86,12 +86,41 @@ fn library_api_returns_source_located_invalid_input_diagnostic() {
 
     assert_eq!(
         error.diagnostic.code,
-        "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD"
+        "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT"
     );
     assert!(error.diagnostic.span.is_some());
     assert!(!out_dir.join("app.plan.json").exists());
     assert!(!out_dir.join("app.js").exists());
     assert!(!out_dir.join("app.js.map").exists());
+}
+
+#[test]
+fn library_api_emits_dynamic_route_findings_for_unresolved_route_metadata() {
+    let root = manifest_dir();
+    let input = root.join("tests/fixtures/unsupported-dynamic-route/input.js");
+    let out_dir = temp_output("library-api-dynamic-route");
+    remove_dir_if_present(&out_dir);
+
+    let output = compile_file(&input, &out_dir, &CompileOptions::default())
+        .expect("dynamic route metadata should compile");
+    let plan: serde_json::Value =
+        serde_json::from_str(&output.plan.contents).expect("plan should parse");
+
+    assert_eq!(plan["completeness"]["status"], "dynamic");
+    assert_eq!(
+        plan["dynamicRoutes"][0]["metadata"]["completeness"],
+        "dynamic"
+    );
+    assert_eq!(plan["findings"][0]["code"], "SLOPPYC_W_DYNAMIC_ROUTE");
+    assert_eq!(
+        plan["routes"]
+            .as_array()
+            .expect("routes should be an array")
+            .len(),
+        0
+    );
+
+    remove_dir_if_present(&out_dir);
 }
 
 #[test]

@@ -65,13 +65,17 @@ pub(crate) fn emit_plan(
             })
         })
         .collect::<Vec<_>>();
+    let mut all_route_completeness_values = route_completeness_values.clone();
+    all_route_completeness_values.extend(app.dynamic_routes.iter().map(|route| {
+        Completeness::dynamic(vec![CompletenessReason::new("dynamic-route", route.reason)])
+    }));
     let app_completeness = if app.kind == ProjectKind::Program {
         Completeness::opaque(vec![CompletenessReason::new(
             "program-mode",
             "program mode does not require static web route metadata",
         )])
     } else {
-        plan_completeness(&route_completeness_values)
+        plan_completeness(&all_route_completeness_values)
     };
     let emits_binding_metadata = |index: usize, route: &crate::graph::Route| {
         !route.handler.bindings.is_empty()
@@ -331,6 +335,62 @@ pub(crate) fn emit_plan(
         })
         .collect::<Vec<_>>();
 
+    let dynamic_routes = app
+        .dynamic_routes
+        .iter()
+        .map(|route| {
+            let (line, column) = line_column(&route.source, route.span.start);
+            json!({
+                "kind": "dynamicRoute",
+                "method": {
+                    "known": route.method.is_some(),
+                    "value": route.method
+                },
+                "pattern": {
+                    "known": route.pattern.is_some(),
+                    "value": route.pattern,
+                    "reason": route.pattern_reason
+                },
+                "handler": {
+                    "known": route.handler_known
+                },
+                "source": {
+                    "path": route.source_name,
+                    "line": line,
+                    "column": column
+                },
+                "metadata": {
+                    "completeness": "dynamic",
+                    "unknown": if route.pattern.is_some() {
+                        json!(["response"])
+                    } else {
+                        json!(["pattern", "response"])
+                    },
+                    "reason": route.reason
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let dynamic_findings = app
+        .dynamic_routes
+        .iter()
+        .map(|route| {
+            let (line, column) = line_column(&route.source, route.span.start);
+            json!({
+                "code": "SLOPPYC_W_DYNAMIC_ROUTE",
+                "severity": "warning",
+                "message": route.reason,
+                "source": {
+                    "path": route.source_name,
+                    "line": line,
+                    "column": column
+                },
+                "hint": "The app can build, but native dispatch and OpenAPI only use statically known route metadata."
+            })
+        })
+        .collect::<Vec<_>>();
+
     let modules = app
         .modules
         .iter()
@@ -578,6 +638,30 @@ pub(crate) fn emit_plan(
             "sourceMaps": true
         }
     });
+    if !dynamic_routes.is_empty() {
+        value["dynamicRoutes"] = json!(dynamic_routes);
+    }
+    if !dynamic_findings.is_empty() {
+        value["findings"] = json!(dynamic_findings);
+    }
+    if app.kind == ProjectKind::Web && !app.dynamic_routes.is_empty() {
+        let complete_count = route_completeness_values
+            .iter()
+            .filter(|route| route.status.as_str() == "complete")
+            .count();
+        let partial_count = route_completeness_values
+            .iter()
+            .filter(|route| route.status.as_str() == "partial")
+            .count();
+        value["metadata"] = json!({
+            "completeness": completeness_json(&app_completeness),
+            "routes": {
+                "complete": complete_count,
+                "partial": partial_count,
+                "dynamic": app.dynamic_routes.len()
+            }
+        });
+    }
     if app.kind == ProjectKind::Program {
         value["metadata"] = json!({
             "completeness": completeness_json(&app_completeness),

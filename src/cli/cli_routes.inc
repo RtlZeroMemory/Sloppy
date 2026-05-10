@@ -38,6 +38,11 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
            (unsigned long long)route->source_column);
     printf(", \"completeness\": ");
     sl_cli_json_escape(stdout, route->completeness);
+    if (route->dynamic_metadata) {
+        printf(", \"metadata\": { \"dynamic\": true, \"reason\": ");
+        sl_cli_json_escape(stdout, route->dynamic_reason);
+        printf(" }");
+    }
     sl_cli_routes_emit_json_bindings(route);
     printf(", \"response\": { \"kind\": ");
     sl_cli_json_escape(stdout, route->response_kind);
@@ -89,6 +94,9 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route)
     if (!sl_cli_span_empty(route->source_path)) {
         printf("%.*s:%llu:%llu", (int)route->source_path.length, route->source_path.ptr,
                (unsigned long long)route->source_line, (unsigned long long)route->source_column);
+    }
+    if (route->dynamic_metadata && !sl_cli_span_empty(route->dynamic_reason)) {
+        printf(" (%.*s)", (int)route->dynamic_reason.length, route->dynamic_reason.ptr);
     }
     printf("  ");
     sl_cli_routes_emit_text_bindings(route);

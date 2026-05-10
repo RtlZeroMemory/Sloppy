@@ -1,6 +1,0 @@
-<compiler>/tests/fixtures/computed-method/input.js:6:1: SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD: computed route registration methods are not supported
-  --> <compiler>/tests/fixtures/computed-method/input.js:6:1
-   |
-6 | app[method]("/", () => Results.text("Hello"));
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Use an explicit call such as app.mapGet("/literal", handler).

@@ -29,6 +29,7 @@ use crate::parser::{source_type_for_path, ParseContext};
 use crate::plan_emit::emit_plan;
 use crate::resolver;
 use crate::source::{line_column, source_map_source_name};
+use crate::static_eval::{eval_string_argument, eval_string_expression, StaticStringEnv};
 use crate::version::COMPILER_VERSION;
 
 // CODEC_EXPORTS is the public codec contract shared by import validation and runtime
@@ -322,7 +323,7 @@ struct HealthRouteSpec<'a> {
 type RouteCallParts<'a> = (
     &'a str,
     &'static str,
-    &'a str,
+    String,
     RouteMetadata,
     &'a Argument<'a>,
 );
@@ -372,6 +373,8 @@ struct AppState {
     used_modules: Vec<(String, Span)>,
     modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
+    dynamic_routes: Vec<DynamicRoute>,
+    static_strings: StaticStringEnv,
     service_registrations: Vec<ServiceRegistration>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
@@ -424,6 +427,8 @@ impl AppState {
             used_modules: Vec::new(),
             modules: BTreeMap::new(),
             routes: Vec::new(),
+            dynamic_routes: Vec::new(),
+            static_strings: StaticStringEnv::default(),
             service_registrations: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
@@ -1153,6 +1158,8 @@ fn extract_program_with_metrics(
         uses_sql_runtime: false,
         source_files,
         routes: Vec::new(),
+        dynamic_routes: Vec::new(),
+        dynamic_entry_source: None,
         service_registrations: Vec::new(),
         modules: Vec::new(),
         helper_sources: Vec::new(),
@@ -1497,6 +1504,56 @@ fn apply_program_replacements(source: &str, replacements: &[ProgramReplacement])
     output
 }
 
+fn transform_dynamic_web_entry(path: &Path, source: &str) -> Result<String, Diagnostic> {
+    let source_type = source_type_for_path(path, ParseContext::Entry)?;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_PARSE",
+            format!("failed to parse dynamic web input: {error}"),
+        )
+        .with_path(path));
+    }
+    let mut program = parsed.program;
+    let transformed = transpile_program_typescript(path, &allocator, &mut program)?;
+    rewrite_dynamic_web_entry(path, &transformed)
+}
+
+fn rewrite_dynamic_web_entry(path: &Path, source: &str) -> Result<String, Diagnostic> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::mjs()).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_TRANSFORM",
+            format!("failed to parse transformed dynamic web JavaScript: {error}"),
+        )
+        .with_path(path));
+    }
+
+    let mut replacements = Vec::<ProgramReplacement>::new();
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::ImportDeclaration(import) => {
+                replacements.push(ProgramReplacement {
+                    span: import.span,
+                    text: String::new(),
+                });
+            }
+            Statement::ExportDefaultDeclaration(export) => {
+                let value = source_slice(source, export.declaration.span()).unwrap_or_default();
+                replacements.push(ProgramReplacement {
+                    span: export.span,
+                    text: format!("globalThis.__sloppy_dynamic_default_app = {value};"),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    Ok(apply_program_replacements(source, &replacements))
+}
+
 fn program_import_replacement(
     path: &Path,
     import: &ImportDeclaration<'_>,
@@ -1838,7 +1895,17 @@ fn extract_entry(
             Statement::ExportDefaultDeclaration(export) => {
                 state.default_export = export_default_identifier(&export.declaration);
             }
-            _ => return Err(top_level_statement_diagnostic(path, source, statement)),
+            _ => {
+                if record_dynamic_top_level_route_statement(
+                    source,
+                    &source_name,
+                    statement,
+                    &mut state,
+                ) {
+                    continue;
+                }
+                return Err(top_level_statement_diagnostic(path, source, statement));
+            }
         }
     }
 
@@ -1964,7 +2031,7 @@ fn extract_entry(
         .with_path(path));
     }
 
-    if state.routes.is_empty() {
+    if state.routes.is_empty() && state.dynamic_routes.is_empty() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_ROUTE",
             "app must register at least one route",
@@ -2045,6 +2112,12 @@ fn extract_entry(
         metrics.add_phase("appGraphMs", app_graph_start.elapsed());
     }
 
+    let dynamic_entry_source = if state.dynamic_routes.is_empty() {
+        None
+    } else {
+        Some(transform_dynamic_web_entry(path, source)?)
+    };
+
     Ok(ExtractedApp {
         kind: ProjectKind::Web,
         program_entry: None,
@@ -2064,6 +2137,8 @@ fn extract_entry(
         uses_sql_runtime: state.sql_imported,
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        dynamic_routes: state.dynamic_routes,
+        dynamic_entry_source,
         service_registrations: state.service_registrations,
         modules: state.modules.into_values().collect(),
         helper_sources,
@@ -2879,6 +2954,9 @@ fn extract_variable_declaration(
         let Some(init) = &declarator.init else {
             continue;
         };
+        if let Some(value) = eval_string_expression(init, &state.static_strings) {
+            state.static_strings.bind(name, value);
+        }
 
         if is_sloppy_factory_call(init, "create") {
             state.app_vars.insert(name.to_string());
@@ -3209,8 +3287,12 @@ fn extract_expression_statement(
         .map_err(|diagnostic| diagnostic.with_path(path))?;
 
     let Some((receiver, method, pattern, route_metadata, handler_arg)) =
-        route_call_parts(route_expr).map_err(|diagnostic| diagnostic.with_path(path))?
+        route_call_parts(route_expr, &state.static_strings)
+            .map_err(|diagnostic| diagnostic.with_path(path))?
     else {
+        if record_dynamic_route_if_supported(path, source, source_name, route_expr, state)? {
+            return Ok(());
+        }
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -3233,7 +3315,7 @@ fn extract_expression_statement(
         let mut middleware = state.middleware.clone();
         middleware.extend(group.middleware.clone());
         (
-            join_route_patterns(&group.prefix, pattern),
+            join_route_patterns(&group.prefix, &pattern),
             group.tags.clone(),
             middleware,
         )
@@ -3268,13 +3350,32 @@ fn extract_expression_statement(
         helper_effects: &state.helper_effects,
     };
     let Some(handler) = handler_from_argument(handler_arg, &handler_context) else {
-        return Err(handler_diagnostic(
+        let diagnostic = handler_diagnostic(
             path,
             handler_arg,
             &full_pattern,
             &schema_names,
             statement.span,
-        ));
+        );
+        if !handler_metadata_failure_can_fallback_to_dynamic(
+            handler_arg,
+            source,
+            state,
+            &diagnostic,
+        ) {
+            return Err(diagnostic);
+        }
+        state.dynamic_routes.push(DynamicRoute {
+            method: Some(method),
+            pattern: Some(full_pattern.clone()),
+            pattern_reason: "route pattern is statically known",
+            handler_known: false,
+            reason: "route handler response metadata is computed at runtime",
+            span: statement.span,
+            source_name: source_name.to_string(),
+            source: source.to_string(),
+        });
+        return Ok(());
     };
 
     let mut handler = handler;
@@ -3356,7 +3457,7 @@ fn unsupported_route_call_diagnostic(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD",
-                "computed route registration methods are not supported",
+                "computed route registration method cannot be emitted as a runnable static route",
             )
             .with_path(path)
             .with_span(call.span)
@@ -3397,7 +3498,7 @@ fn unsupported_route_call_diagnostic(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN",
-                "route pattern must be a string literal",
+                "route pattern could not be emitted as a runnable route",
             )
             .with_path(path)
             .with_span(call.span)
@@ -3443,6 +3544,75 @@ fn unsupported_route_call_diagnostic(
     None
 }
 
+fn record_dynamic_route_if_supported(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &mut AppState,
+) -> Result<bool, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(false);
+    };
+
+    let (receiver, method) = if let Some(receiver) = computed_member_receiver(&call.callee) {
+        if !(state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver)) {
+            return Ok(false);
+        }
+        (receiver, None)
+    } else if let Some((receiver, property)) = static_member_name(&call.callee) {
+        let Some(method) = route_method_from_property(property) else {
+            return Ok(false);
+        };
+        (receiver, Some(method))
+    } else {
+        return Ok(false);
+    };
+
+    if !(state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver)) {
+        return Ok(false);
+    }
+    if !matches!(call.arguments.len(), 2 | 3) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
+            "route declarations require a literal or dynamic pattern, optional metadata, and one handler",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+
+    let handler_index = if call.arguments.len() == 3 { 2 } else { 1 };
+    let handler_known = call
+        .arguments
+        .get(handler_index)
+        .and_then(|argument| {
+            let schema_names = schema_names(state);
+            let context = HandlerExtractionContext {
+                route_pattern: "",
+                source,
+                source_name,
+                allow_data_handler_body: state.data_imported,
+                schema_names: &schema_names,
+                provider_bindings: &state.provider_bindings,
+                helper_effects: &state.helper_effects,
+            };
+            handler_from_argument(argument, &context)
+        })
+        .is_some();
+
+    state.dynamic_routes.push(DynamicRoute {
+        method,
+        pattern: None,
+        pattern_reason: "route pattern is computed at runtime",
+        handler_known,
+        reason: "route registration is runnable JavaScript but cannot be fully represented in static route metadata",
+        span: call.span,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+    });
+    Ok(true)
+}
+
 fn unsupported_route_method_property(property: &str) -> bool {
     property.starts_with("map") || matches!(property, "head" | "options")
 }
@@ -3462,6 +3632,7 @@ fn validate_supported_initializer(
         &schema_names(state),
         &state.provider_bindings,
         &state.helper_effects,
+        &state.static_strings,
     )
     .map_err(|diagnostic| diagnostic.with_path(path))?
     {
@@ -3796,7 +3967,7 @@ fn top_level_statement_diagnostic(
     if top_level_statement_is_conditional(statement) && text.contains(".map") {
         return Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_CONDITIONAL_ROUTE_REGISTRATION",
-            "conditional route registration is not supported",
+            "conditional route registration cannot be represented as complete static metadata",
         )
         .with_path(path)
         .with_span(span)
@@ -3805,7 +3976,7 @@ fn top_level_statement_diagnostic(
     if top_level_statement_is_loop(statement) && text.contains(".map") {
         return Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_LOOP_ROUTE_REGISTRATION",
-            "loop-based route registration is not supported",
+            "loop-based route registration cannot be represented as complete static metadata",
         )
         .with_path(path)
         .with_span(span)
@@ -3821,6 +3992,42 @@ fn top_level_statement_diagnostic(
     .with_hint(
         "Use imports, const app/builder/group declarations, literal route calls, and export default app.",
     )
+}
+
+fn record_dynamic_top_level_route_statement(
+    source: &str,
+    source_name: &str,
+    statement: &Statement<'_>,
+    state: &mut AppState,
+) -> bool {
+    if !(top_level_statement_is_conditional(statement) || top_level_statement_is_loop(statement)) {
+        return false;
+    }
+    let text = source_slice(source, statement.span()).unwrap_or_default();
+    if !text.contains(".get(")
+        && !text.contains(".post(")
+        && !text.contains(".put(")
+        && !text.contains(".patch(")
+        && !text.contains(".delete(")
+        && !text.contains(".map")
+    {
+        return false;
+    }
+    state.dynamic_routes.push(DynamicRoute {
+        method: None,
+        pattern: None,
+        pattern_reason: "route registration is inside dynamic control flow",
+        handler_known: false,
+        reason: if top_level_statement_is_conditional(statement) {
+            "conditional route registration cannot be represented as complete static metadata"
+        } else {
+            "loop-based route registration cannot be represented as complete static metadata"
+        },
+        span: statement.span(),
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+    });
+    true
 }
 
 fn top_level_statement_is_conditional(statement: &Statement<'_>) -> bool {
@@ -7238,8 +7445,9 @@ fn extract_module_function_routes(
             Statement::ExpressionStatement(statement) => {
                 let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
+                let static_strings = StaticStringEnv::default();
                 let Some((receiver, method, pattern, route_metadata, handler_arg)) =
-                    route_call_parts(route_expr)
+                    route_call_parts(route_expr, &static_strings)
                         .map_err(|diagnostic| diagnostic.with_path(path))?
                 else {
                     return Err(Diagnostic::new(
@@ -7250,10 +7458,10 @@ fn extract_module_function_routes(
                     .with_span(statement.span));
                 };
                 let (full_pattern, mut tags) = if receiver == app_name {
-                    (pattern.to_string(), Vec::new())
+                    (pattern.clone(), Vec::new())
                 } else if let Some(group) = groups.get(receiver) {
                     (
-                        join_route_patterns(&group.prefix, pattern),
+                        join_route_patterns(&group.prefix, &pattern),
                         group.tags.clone(),
                     )
                 } else {
@@ -7438,6 +7646,7 @@ fn providers_used_by_effects(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn route_call<'a>(
     expression: &'a Expression<'a>,
     source: &str,
@@ -7446,13 +7655,15 @@ fn route_call<'a>(
     schema_names: &BTreeSet<String>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
-) -> Result<Option<(&'a str, &'static str, &'a str, Handler)>, Diagnostic> {
-    let Some((receiver, method, pattern, _metadata, handler_arg)) = route_call_parts(expression)?
+    static_strings: &StaticStringEnv,
+) -> Result<Option<(&'a str, &'static str, String, Handler)>, Diagnostic> {
+    let Some((receiver, method, pattern, _metadata, handler_arg)) =
+        route_call_parts(expression, static_strings)?
     else {
         return Ok(None);
     };
     let context = HandlerExtractionContext {
-        route_pattern: pattern,
+        route_pattern: &pattern,
         source,
         source_name,
         allow_data_handler_body,
@@ -7468,6 +7679,7 @@ fn route_call<'a>(
 
 fn route_call_parts<'a>(
     expression: &'a Expression<'a>,
+    static_strings: &StaticStringEnv,
 ) -> Result<Option<RouteCallParts<'a>>, Diagnostic> {
     let Expression::CallExpression(call) = expression else {
         return Ok(None);
@@ -7482,7 +7694,11 @@ fn route_call_parts<'a>(
         return Ok(None);
     }
 
-    let Some(pattern) = call.arguments.first().and_then(string_argument) else {
+    let Some(pattern) = call
+        .arguments
+        .first()
+        .and_then(|argument| eval_string_argument(argument, static_strings))
+    else {
         return Ok(None);
     };
     let (metadata, handler_arg) = if call.arguments.len() == 3 {
@@ -9242,6 +9458,35 @@ fn handler_diagnostic(
         diagnostic = diagnostic.with_hint(hint);
     }
     diagnostic
+}
+
+fn handler_metadata_failure_can_fallback_to_dynamic(
+    argument: &Argument<'_>,
+    source: &str,
+    state: &AppState,
+    diagnostic: &Diagnostic,
+) -> bool {
+    if diagnostic.code != "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE" {
+        return false;
+    }
+    if state.data_imported || state.sql_imported || !state.provider_bindings.is_empty() {
+        return false;
+    }
+
+    let Some(span) = argument_span(argument) else {
+        return false;
+    };
+    let handler_source = source_slice(source, span).unwrap_or_default();
+    if handler_source.contains(".body.")
+        || handler_source.contains(".body[")
+        || handler_source.contains(".provider(")
+        || handler_source.contains("app.provider(")
+        || handler_source.contains("db.")
+    {
+        return false;
+    }
+
+    true
 }
 
 fn handler_parameters_are_unsupported(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
@@ -11461,6 +11706,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.kind == ProjectKind::Program {
         return emit_program_app_js(app);
     }
+    if let Some(source) = &app.dynamic_entry_source {
+        return emit_dynamic_web_app_js(source);
+    }
     let mut output = String::with_capacity(estimate_app_js_capacity(app));
     let mut mappings = Vec::with_capacity(app.routes.len());
     let mut handler_generated_starts = Vec::with_capacity(app.routes.len());
@@ -12086,6 +12334,102 @@ fn estimate_app_js_capacity(app: &ExtractedApp) -> usize {
         .sum::<usize>();
     let helper_bytes = app.helper_sources.iter().map(String::len).sum::<usize>();
     handler_bytes + helper_bytes + 8192
+}
+
+fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
+    let mut output = String::with_capacity(source.len() + 8192);
+    output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
+    output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
+    output.push_str("const { Results, Environment, data, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
+    output.push_str(
+        r#"function __sloppy_create_dynamic_app() {
+  const routes = [];
+  let frozen = false;
+  function assertOpen() { if (frozen) { throw new Error("Sloppy app is frozen"); } }
+  function register(method, pattern, handler) {
+    assertOpen();
+    if (typeof pattern !== "string" || pattern.length === 0 || pattern[0] !== "/") { throw new TypeError("Sloppy app route pattern must be an absolute path string."); }
+    if (typeof handler !== "function") { throw new TypeError("Sloppy app route handler must be callable."); }
+    const route = { method, pattern, handler, name: undefined, metadata: Object.freeze({}) };
+    routes.push(route);
+    return Object.freeze({
+      withName(name) { route.name = String(name); return this; },
+      withTags() { return this; }
+    });
+  }
+  const app = {
+    get(pattern, handler) { return register("GET", pattern, handler); },
+    post(pattern, handler) { return register("POST", pattern, handler); },
+    put(pattern, handler) { return register("PUT", pattern, handler); },
+    patch(pattern, handler) { return register("PATCH", pattern, handler); },
+    delete(pattern, handler) { return register("DELETE", pattern, handler); },
+    mapGet(pattern, handler) { return register("GET", pattern, handler); },
+    mapPost(pattern, handler) { return register("POST", pattern, handler); },
+    mapPut(pattern, handler) { return register("PUT", pattern, handler); },
+    mapPatch(pattern, handler) { return register("PATCH", pattern, handler); },
+    mapDelete(pattern, handler) { return register("DELETE", pattern, handler); },
+    freeze() { frozen = true; return app; },
+    __getRoutes() { return routes.slice(); }
+  };
+  return app;
+}
+const Sloppy = Object.freeze({ create: __sloppy_create_dynamic_app, createBuilder() { return { build: __sloppy_create_dynamic_app }; } });
+"#,
+    );
+    output.push_str(source);
+    output.push_str(
+        r#"
+function __sloppy_dynamic_match(pattern, path) {
+  const patternParts = pattern.split("/").filter(Boolean);
+  const pathParts = path.split("?")[0].split("/").filter(Boolean);
+  if (patternParts.length !== pathParts.length) { return null; }
+  const route = Object.create(null);
+  for (let index = 0; index < patternParts.length; index += 1) {
+    const segment = patternParts[index];
+    const value = decodeURIComponent(pathParts[index] ?? "");
+    if (segment.startsWith("{") && segment.endsWith("}")) {
+      route[segment.slice(1, -1).split(":")[0]] = value;
+    } else if (segment.startsWith(":")) {
+      route[segment.slice(1).split(":")[0]] = value;
+    } else if (segment !== value) {
+      return null;
+    }
+  }
+  return route;
+}
+function __sloppy_dynamic_response(result) {
+  if (typeof result === "string") { return { status: 200, contentType: "text/plain; charset=utf-8", body: result }; }
+  const status = Number.isInteger(result?.status) ? result.status : 200;
+  const kind = result?.kind ?? "text";
+  if (kind === "empty") { return { status, contentType: "text/plain; charset=utf-8", body: "" }; }
+  if (kind === "json" || kind === "problem") { return { status, contentType: result.contentType ?? "application/json; charset=utf-8", body: result.__sloppyJsonText ?? JSON.stringify(result.body ?? null) }; }
+  return { status, contentType: result?.contentType ?? "text/plain; charset=utf-8", body: String(result?.body ?? "") };
+}
+function __sloppy_dynamic_http_text(response) {
+  const body = response.body ?? "";
+  return `HTTP/1.1 ${response.status} OK\r\ncontent-type: ${response.contentType}\r\ncontent-length: ${body.length}\r\n\r\n${body}`;
+}
+globalThis.__sloppy_dispatch_dynamic = async function(method, target) {
+  const app = globalThis.__sloppy_dynamic_default_app;
+  if (app === undefined || typeof app.__getRoutes !== "function") { return __sloppy_dynamic_http_text({ status: 500, contentType: "text/plain; charset=utf-8", body: "Dynamic Sloppy app was not initialized\n" }); }
+  app.freeze();
+  const path = String(target).split("?")[0];
+  for (const route of app.__getRoutes()) {
+    if (route.method !== String(method).toUpperCase()) { continue; }
+    const routeValues = __sloppy_dynamic_match(route.pattern, path);
+    if (routeValues === null) { continue; }
+    const result = await route.handler({ route: routeValues, query: Object.freeze({}), request: Object.freeze({ method, path }) });
+    return __sloppy_dynamic_http_text(__sloppy_dynamic_response(result));
+  }
+  return __sloppy_dynamic_http_text({ status: 404, contentType: "text/plain; charset=utf-8", body: "Not Found\n" });
+};
+"#,
+    );
+    EmittedAppJs {
+        source: output,
+        mappings: Vec::new(),
+        handler_generated_starts: Vec::new(),
+    }
 }
 
 fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {

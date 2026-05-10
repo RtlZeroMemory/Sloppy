@@ -47,6 +47,18 @@ pub(crate) struct Route {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct DynamicRoute {
+    pub(crate) method: Option<&'static str>,
+    pub(crate) pattern: Option<String>,
+    pub(crate) pattern_reason: &'static str,
+    pub(crate) handler_known: bool,
+    pub(crate) reason: &'static str,
+    pub(crate) span: Span,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct Handler {
     pub(crate) source: String,
     pub(crate) emitted_source: String,
@@ -118,6 +130,8 @@ pub(crate) struct AppGraph {
     pub(crate) uses_sql_runtime: bool,
     pub(crate) source_files: Vec<SourceFile>,
     pub(crate) routes: Vec<Route>,
+    pub(crate) dynamic_routes: Vec<DynamicRoute>,
+    pub(crate) dynamic_entry_source: Option<String>,
     pub(crate) service_registrations: Vec<ServiceRegistration>,
     pub(crate) modules: Vec<FunctionModule>,
     pub(crate) helper_sources: Vec<String>,

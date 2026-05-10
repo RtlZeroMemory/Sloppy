@@ -63,10 +63,9 @@
         sloppy_add_conformance_compile_test(
             conformance.app_graph_dogfood.compile_artifacts app-graph-dogfood
             compiler/tests/fixtures/app-graph-dogfood/input.ts)
-        sloppy_add_conformance_rejected_test(
-            conformance.unsupported.dynamic_route dynamic-route
-            compiler/tests/fixtures/unsupported-dynamic-route/input.js
-            SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN)
+        sloppy_add_conformance_compile_test(
+            conformance.dynamic_route.compile_artifacts dynamic-route
+            compiler/tests/fixtures/unsupported-dynamic-route/input.js)
         sloppy_add_conformance_rejected_test(
             conformance.unsupported.bare_import bare-import
             compiler/tests/fixtures/unsupported-import-specifier/input.js

@@ -130,7 +130,11 @@ import { BackgroundService, WorkQueue } from "sloppy/workers";
 
 ## Route Extraction Rules
 
-Route declarations must be top-level statements on app/group receivers.
+Static route declarations are strongest when they are top-level statements on
+app/group receivers. Sloppy does not require every route to be statically
+understood. If the compiler can emit runnable JavaScript, the app can run.
+Static source gives stronger Plan metadata; dynamic source produces partial
+metadata and findings.
 
 Route methods:
 
@@ -160,13 +164,18 @@ inline check functions.
 Common route failures:
 
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE`
-- `SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD`
 - `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`
-- `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_NAME`
 - `SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS`
 - `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`
+
+Dynamic route uncertainty is reported as Plan findings instead of fatal
+metadata extraction diagnostics:
+
+- `SLOPPYC_W_DYNAMIC_ROUTE`
+- `SLOPPYC_W_PARTIAL_ROUTE_METADATA`
+- `SLOPPYC_W_DYNAMIC_RESPONSE_METADATA`
 
 Health checks must be inline functions that do not capture module-level locals.
 Captured values fail with `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`.
@@ -183,7 +192,7 @@ These app-host features are emitted when they stay inside the static subset:
 - controller mappings must target a top-level plain class and literal mapper
   route calls.
 
-Unsupported dynamic shapes fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`,
+Unsupported dynamic framework features fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`,
 `SLOPPYC_E_UNSUPPORTED_CORS`, `SLOPPYC_E_UNSUPPORTED_REQUEST_ID`,
 `SLOPPYC_E_UNSUPPORTED_REQUEST_LOGGING`, or
 `SLOPPYC_E_UNSUPPORTED_CONTROLLER` instead of accepting a partial Plan.

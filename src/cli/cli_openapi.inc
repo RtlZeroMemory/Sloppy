@@ -222,6 +222,10 @@ static int sl_cli_openapi_prepare_paths(const SlCliMetadata* metadata,
     size_t index = 0U;
 
     for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (metadata->routes[index].dynamic_metadata) {
+            openapi_paths[index] = (SlCliSpan){0};
+            continue;
+        }
         if (!sl_cli_openapi_path(path_buffers[index], sizeof(path_buffers[index]),
                                  metadata->routes[index].pattern, &openapi_paths[index]))
         {
@@ -241,6 +245,9 @@ static bool sl_cli_openapi_path_seen(const SlCliSpan openapi_paths[SL_CLI_MAX_RO
     size_t index = 0U;
 
     for (index = 0U; index < current; index += 1U) {
+        if (sl_cli_span_empty(openapi_paths[index])) {
+            continue;
+        }
         if (sl_cli_span_equal(openapi_paths[index], openapi_paths[current])) {
             return true;
         }
@@ -479,6 +486,9 @@ static void sl_cli_openapi_emit_path(FILE* out, const SlCliMetadata* metadata,
         if (!sl_cli_span_equal(openapi_paths[operation], openapi_paths[path_index])) {
             continue;
         }
+        if (metadata->routes[operation].dynamic_metadata) {
+            continue;
+        }
         if (!first_method) {
             sl_cli_write_cstr(out, ",");
         }
@@ -609,6 +619,14 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
 {
     size_t index = 0U;
     bool first_path = true;
+    bool has_dynamic_routes = false;
+
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (metadata->routes[index].dynamic_metadata) {
+            has_dynamic_routes = true;
+            break;
+        }
+    }
 
     sl_cli_write_cstr(out, "{\n"
                            "  \"openapi\": \"3.0.3\",\n"
@@ -618,11 +636,21 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
                            "  },\n"
                            "  \"x-slop-openapi-policy\": {\n"
                            "    \"status\": \"plan-supported-subset\",\n"
-                           "    \"unknownMetadata\": \"explicit-partial-markers\",\n"
+                           "    \"unknownMetadata\": \"explicit-partial-markers\"");
+    if (has_dynamic_routes) {
+        sl_cli_write_cstr(out,
+                          ",\n"
+                          "    \"dynamicRoutes\": \"omitted-when-path-is-unknown\"");
+    }
+    sl_cli_write_cstr(out,
+                           ",\n"
                            "    \"optimizations\": \"reported-only\"\n"
                            "  },\n"
                            "  \"paths\": {");
     for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (metadata->routes[index].dynamic_metadata) {
+            continue;
+        }
         if (sl_cli_openapi_path_seen(openapi_paths, index)) {
             continue;
         }

@@ -192,6 +192,66 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static int sl_cli_parse_dynamic_routes(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* routes = yyjson_obj_get(root, "dynamicRoutes");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (routes == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(routes)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: dynamicRoutes must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(routes, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* method = NULL;
+        yyjson_val* pattern = NULL;
+        yyjson_val* metadata_value = NULL;
+        SlCliRoute route = {0};
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: dynamic route entries must be objects\n");
+            return 1;
+        }
+        if (metadata->route_count >= SL_CLI_MAX_ROUTES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many routes in metadata\n");
+            return 1;
+        }
+
+        method = yyjson_obj_get(value, "method");
+        if (method != NULL && yyjson_is_obj(method)) {
+            route.method = sl_cli_json_span(method, "value");
+        }
+        if (sl_cli_span_empty(route.method)) {
+            route.method = sl_cli_span_cstr("<dynamic>");
+        }
+        pattern = yyjson_obj_get(value, "pattern");
+        if (pattern != NULL && yyjson_is_obj(pattern)) {
+            route.pattern = sl_cli_json_span(pattern, "value");
+        }
+        if (sl_cli_span_empty(route.pattern)) {
+            route.pattern = sl_cli_span_cstr("<dynamic>");
+        }
+        route.completeness = sl_cli_span_cstr("dynamic");
+        route.dynamic_metadata = true;
+        metadata_value = yyjson_obj_get(value, "metadata");
+        if (metadata_value != NULL && yyjson_is_obj(metadata_value)) {
+            route.dynamic_reason = sl_cli_json_span(metadata_value, "reason");
+        }
+        sl_cli_parse_source(value, &route.source_path, &route.source_line, &route.source_column);
+        route.source_order = metadata->route_count;
+        metadata->routes[metadata->route_count] = route;
+        metadata->route_count += 1U;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_modules(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* modules = yyjson_obj_get(root, "modules");
@@ -670,6 +730,7 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
     }
     if (sl_cli_parse_handlers(root, out_metadata) != 0 ||
         sl_cli_parse_routes(root, out_metadata) != 0 ||
+        sl_cli_parse_dynamic_routes(root, out_metadata) != 0 ||
         sl_cli_parse_modules(root, out_metadata) != 0 ||
         sl_cli_parse_providers(root, out_metadata) != 0 ||
         sl_cli_parse_capabilities(root, out_metadata) != 0 ||
