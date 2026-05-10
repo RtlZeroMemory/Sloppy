@@ -54,4 +54,3 @@ Findings (0)
 
 The JSON is a stable summary projection for CLI consumers. Use
 `deps.graph.json` when a tool needs the full graph.
-

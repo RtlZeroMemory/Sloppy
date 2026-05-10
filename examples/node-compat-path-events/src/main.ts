@@ -13,4 +13,3 @@ export function main() {
     console.log(seen);
     return 0;
 }
-

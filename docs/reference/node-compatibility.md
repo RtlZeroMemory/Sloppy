@@ -78,4 +78,3 @@ Package "sharp" requires a native Node addon. Sloppy does not support Node nativ
 Use [`sloppy deps`](../cli/deps.md), [`sloppy audit`](../cli/audit.md), and
 [`sloppy doctor`](../cli/doctor.md) to inspect registry use and compatibility
 findings.
-

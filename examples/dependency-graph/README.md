@@ -17,4 +17,3 @@ sloppy deps .sloppy --format json
 ```
 
 The package is local to this example and does not require a registry call.
-

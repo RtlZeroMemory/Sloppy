@@ -4,4 +4,3 @@ export async function main(args) {
     console.log(plugin.describe());
     return 0;
 }
-

@@ -6,4 +6,3 @@ export function main() {
     console.log(describe(assetPath));
     return 0;
 }
-

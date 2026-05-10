@@ -91,4 +91,3 @@ repo-relative source IDs without absolute machine paths.
   module format or resolution path changes.
 - Keep unsupported Node or package behavior failing through explicit
   diagnostics or shim errors, not silent `undefined` behavior.
-

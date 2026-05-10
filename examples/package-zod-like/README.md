@@ -26,4 +26,3 @@ compatible with Sloppy's loader and Node compatibility shims.
 - package.json `exports`;
 - ESM package import from Program Mode;
 - dependency graph inspection with `sloppy deps`.
-

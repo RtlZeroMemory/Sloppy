@@ -46,4 +46,3 @@ export const z = Object.freeze({
     number,
     object
 });
-
