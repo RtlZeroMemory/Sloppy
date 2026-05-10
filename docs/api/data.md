@@ -238,7 +238,7 @@ check `data.sqlserver.open(...)` diagnostics if startup fails.
 
 ## Compiler-inferred providers
 
-Framework v2 typed handlers can declare provider parameters directly:
+Typed handlers can declare provider parameters directly:
 
 ```ts
 import { Sloppy, Results, sql } from "sloppy";

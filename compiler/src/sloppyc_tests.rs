@@ -3653,13 +3653,13 @@ fn extracts_multiple_function_modules_from_same_file() {
 #[test]
 fn typed_framework_metadata_fixture_expected_outputs_stay_current() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let fixture_name = "framework-v2-metadata";
+    let fixture_name = "framework-metadata";
     let fixture = root
         .join("tests/fixtures")
         .join(fixture_name)
         .join("input.ts");
     let source = fs::read_to_string(&fixture).expect("fixture input should exist");
-    let mut app = extract(&fixture, &source).expect("framework v2 fixture should extract");
+    let mut app = extract(&fixture, &source).expect("framework fixture should extract");
     super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
         .expect("fixture configuration should load")
         .apply_to_app(&mut app)
@@ -3881,7 +3881,7 @@ export default app;
         ),
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
-            .expect_err("unsupported framework v2 source should fail");
+            .expect_err("unsupported framework source should fail");
         assert_eq!(diagnostic.code, code);
         assert!(
             diagnostic.span.is_some(),

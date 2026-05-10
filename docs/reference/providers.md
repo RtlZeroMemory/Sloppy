@@ -15,7 +15,7 @@ the compiler before every runtime path is available.
 | --- | --- | --- |
 | Framework descriptor registration | `app.use(sqlite("main", ...))` from `sloppy/providers/sqlite` | SQLite descriptor admission only |
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
-| Framework v2 typed injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
+| Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
 | Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
@@ -51,7 +51,7 @@ produce the unsupported provider bridge diagnostic.
 The compiler emits this diagnostic before generated artifacts can imply a live
 PostgreSQL or SQL Server static handle path.
 
-## Framework V2 Typed Injection
+## Typed Handler Injection
 
 Typed provider parameters are compiler-recognized metadata shapes:
 

@@ -1,4 +1,4 @@
-# Framework v2 Controller Example
+# Framework Controller Example
 
 Bootstrap controller API-shape example.
 This example shows the implemented bootstrap `app.mapController(...)` surface, explicit

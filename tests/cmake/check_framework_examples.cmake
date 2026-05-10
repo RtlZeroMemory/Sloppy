@@ -4,18 +4,18 @@ endif()
 
 set(example_root "${PROJECT_SOURCE_DIR}/examples")
 set(framework_examples
-    framework-v2-hello
-    framework-v2-validation-errors
-    framework-v2-explicit-binding
-    framework-v2-di-services
-    framework-v2-controller
-    framework-v2-sqlite-crud
-    framework-v2-postgres-crud
-    framework-v2-sqlserver-crud)
+    framework-hello
+    framework-validation-errors
+    framework-explicit-binding
+    framework-di-services
+    framework-controller
+    framework-sqlite-crud
+    framework-postgres-crud
+    framework-sqlserver-crud)
 
 function(require_file path)
     if(NOT EXISTS "${path}")
-        message(FATAL_ERROR "Missing Framework v2 example file: ${path}")
+        message(FATAL_ERROR "Missing framework example file: ${path}")
     endif()
 endfunction()
 
@@ -34,35 +34,35 @@ foreach(example_name IN LISTS framework_examples)
 endforeach()
 
 foreach(example_name IN ITEMS
-        framework-v2-hello
-        framework-v2-validation-errors
-        framework-v2-explicit-binding
-        framework-v2-di-services)
+        framework-hello
+        framework-validation-errors
+        framework-explicit-binding
+        framework-di-services)
     require_file("${example_root}/${example_name}/app.ts")
 endforeach()
 
-foreach(example_name IN ITEMS framework-v2-controller)
+foreach(example_name IN ITEMS framework-controller)
     require_file("${example_root}/${example_name}/app.js")
 endforeach()
 
 foreach(example_name IN ITEMS
-        framework-v2-sqlite-crud
-        framework-v2-postgres-crud
-        framework-v2-sqlserver-crud)
+        framework-sqlite-crud
+        framework-postgres-crud
+        framework-sqlserver-crud)
     require_file("${example_root}/${example_name}/app.ts")
 endforeach()
 
-file(READ "${example_root}/framework-v2-hello/app.ts" hello_app)
-require_substring("${hello_app}" "Route<string>" "Framework v2 hello typed route binding")
-require_substring("${hello_app}" "RequestContext" "Framework v2 hello request context")
-require_substring("${hello_app}" "Results.ok" "Framework v2 hello result mapping")
+file(READ "${example_root}/framework-hello/app.ts" hello_app)
+require_substring("${hello_app}" "Route<string>" "framework hello typed route binding")
+require_substring("${hello_app}" "RequestContext" "framework hello request context")
+require_substring("${hello_app}" "Results.ok" "framework hello result mapping")
 
-file(READ "${example_root}/framework-v2-validation-errors/app.ts" validation_app)
-require_substring("${validation_app}" "type UserCreate" "Framework v2 validation schema type")
-require_substring("${validation_app}" "Body<UserCreate>" "Framework v2 validation body binding")
-require_substring("${validation_app}" "Results.created" "Framework v2 validation result mapping")
+file(READ "${example_root}/framework-validation-errors/app.ts" validation_app)
+require_substring("${validation_app}" "type UserCreate" "framework validation schema type")
+require_substring("${validation_app}" "Body<UserCreate>" "framework validation body binding")
+require_substring("${validation_app}" "Results.created" "framework validation result mapping")
 
-file(READ "${example_root}/framework-v2-explicit-binding/app.ts" binding_app)
+file(READ "${example_root}/framework-explicit-binding/app.ts" binding_app)
 foreach(required_pattern IN ITEMS
         "Route<string>"
         "Route<number>"
@@ -72,10 +72,10 @@ foreach(required_pattern IN ITEMS
         "RequestContext")
     require_substring(
         "${binding_app}" "${required_pattern}"
-        "Framework v2 explicit binding example is missing expected binding")
+        "framework explicit binding example is missing expected binding")
 endforeach()
 
-file(READ "${example_root}/framework-v2-di-services/app.ts" di_app)
+file(READ "${example_root}/framework-di-services/app.ts" di_app)
 foreach(required_pattern IN ITEMS
         "app.services.addSingleton"
         "app.services.addScoped"
@@ -85,10 +85,10 @@ foreach(required_pattern IN ITEMS
         "Service<TransientStamp>")
     require_substring(
         "${di_app}" "${required_pattern}"
-        "Framework v2 DI example is missing expected service shape")
+        "framework DI example is missing expected service shape")
 endforeach()
 
-file(READ "${example_root}/framework-v2-controller/app.js" controller_app)
+file(READ "${example_root}/framework-controller/app.js" controller_app)
 foreach(required_pattern IN ITEMS
         "from \"sloppy\""
         "static inject = [\"GreetingService\"]"
@@ -97,7 +97,7 @@ foreach(required_pattern IN ITEMS
         "users.get(\"/{id:int}\", \"get\")")
     require_substring(
         "${controller_app}" "${required_pattern}"
-        "Framework v2 controller example is missing expected controller shape")
+        "framework controller example is missing expected controller shape")
 endforeach()
 
 function(reject_substring haystack needle description)
@@ -107,15 +107,15 @@ function(reject_substring haystack needle description)
     endif()
 endfunction()
 
-file(READ "${example_root}/framework-v2-sqlite-crud/app.ts" sqlite_app)
-require_file("${example_root}/framework-v2-sqlite-crud/appsettings.json")
-file(READ "${example_root}/framework-v2-sqlite-crud/appsettings.json" sqlite_config)
+file(READ "${example_root}/framework-sqlite-crud/app.ts" sqlite_app)
+require_file("${example_root}/framework-sqlite-crud/appsettings.json")
+file(READ "${example_root}/framework-sqlite-crud/appsettings.json" sqlite_config)
 require_substring(
     "${sqlite_config}" "\"Providers\""
-    "Framework v2 SQLite example is missing normal provider config")
+    "framework SQLite example is missing normal provider config")
 require_substring(
     "${sqlite_config}" "\":memory:\""
-    "Framework v2 SQLite example is missing local SQLite database config")
+    "framework SQLite example is missing local SQLite database config")
 foreach(required_pattern IN ITEMS
         "Sqlite<\"main\">"
         "Body<UserCreate>"
@@ -131,7 +131,7 @@ foreach(required_pattern IN ITEMS
         "Results.created")
     require_substring(
         "${sqlite_app}" "${required_pattern}"
-        "Framework v2 SQLite example is missing expected CRUD shape")
+        "framework SQLite example is missing expected CRUD shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
         "capabilities.addDatabase"
@@ -141,10 +141,10 @@ foreach(rejected_pattern IN ITEMS
         "ctx.route.")
     reject_substring(
         "${sqlite_app}" "${rejected_pattern}"
-        "Framework v2 SQLite example must not use manual ctx/provider style")
+        "framework SQLite example must not use manual ctx/provider style")
 endforeach()
 
-file(READ "${example_root}/framework-v2-postgres-crud/app.ts" postgres_app)
+file(READ "${example_root}/framework-postgres-crud/app.ts" postgres_app)
 foreach(required_pattern IN ITEMS
         "Postgres<\"main\">"
         "Body<UserCreate>"
@@ -157,7 +157,7 @@ foreach(required_pattern IN ITEMS
         "Results.notFound")
     require_substring(
         "${postgres_app}" "${required_pattern}"
-        "Framework v2 PostgreSQL example is missing expected live provider shape")
+        "framework PostgreSQL example is missing expected live provider shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
         "capabilities.addDatabase"
@@ -167,10 +167,10 @@ foreach(rejected_pattern IN ITEMS
         "ctx.route.")
     reject_substring(
         "${postgres_app}" "${rejected_pattern}"
-        "Framework v2 PostgreSQL example must not use manual ctx/provider style")
+        "framework PostgreSQL example must not use manual ctx/provider style")
 endforeach()
 
-file(READ "${example_root}/framework-v2-sqlserver-crud/app.ts" sqlserver_app)
+file(READ "${example_root}/framework-sqlserver-crud/app.ts" sqlserver_app)
 foreach(required_pattern IN ITEMS
         "SqlServer<\"main\">"
         "Body<UserCreate>"
@@ -183,7 +183,7 @@ foreach(required_pattern IN ITEMS
         "Results.notFound")
     require_substring(
         "${sqlserver_app}" "${required_pattern}"
-        "Framework v2 SQL Server example is missing expected live provider shape")
+        "framework SQL Server example is missing expected live provider shape")
 endforeach()
 foreach(rejected_pattern IN ITEMS
         "capabilities.addDatabase"
@@ -193,32 +193,32 @@ foreach(rejected_pattern IN ITEMS
         "ctx.route.")
     reject_substring(
         "${sqlserver_app}" "${rejected_pattern}"
-        "Framework v2 SQL Server example must not use manual ctx/provider style")
+        "framework SQL Server example must not use manual ctx/provider style")
 endforeach()
 
 foreach(example_name IN LISTS framework_examples)
     file(READ "${example_root}/${example_name}/README.md" readme_text)
     require_substring(
-        "${readme_text}" "This example"
-        "${example_name} README is missing useful example text")
+        "${readme_text}" "## "
+        "${example_name} README is missing section content")
 endforeach()
 
-file(READ "${example_root}/framework-v2-postgres-crud/README.md" postgres_readme)
+file(READ "${example_root}/framework-postgres-crud/README.md" postgres_readme)
 foreach(required_pattern IN ITEMS
         "PostgreSQL service"
         "PostgreSQL integration checks"
         "connection string")
     require_substring(
         "${postgres_readme}" "${required_pattern}"
-        "Framework v2 PostgreSQL README is missing live provider setup text")
+        "framework PostgreSQL README is missing live provider setup text")
 endforeach()
 
-file(READ "${example_root}/framework-v2-sqlserver-crud/README.md" sqlserver_readme)
+file(READ "${example_root}/framework-sqlserver-crud/README.md" sqlserver_readme)
 foreach(required_pattern IN ITEMS
         "SQL Server integration checks"
         "driver cases"
         "Microsoft ODBC Driver 18")
     require_substring(
         "${sqlserver_readme}" "${required_pattern}"
-        "Framework v2 SQL Server README is missing live provider setup text")
+        "framework SQL Server README is missing live provider setup text")
 endforeach()

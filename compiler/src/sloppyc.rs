@@ -7956,7 +7956,7 @@ fn framework_binding_diagnostic(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                "Framework v2 route handlers do not support rest parameters",
+                "framework route handlers do not support rest parameters",
             )
             .with_path(path)
             .with_span(parameters.span),
@@ -7969,7 +7969,7 @@ fn framework_binding_diagnostic(
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "Framework v2 route handler parameters must be simple identifiers",
+                    "framework route handler parameters must be simple identifiers",
                 )
                 .with_path(path)
                 .with_span(parameter.span),
@@ -7980,7 +7980,7 @@ fn framework_binding_diagnostic(
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "Framework v2 route handler parameters must have TypeScript type annotations",
+                    "framework route handler parameters must have TypeScript type annotations",
                 )
                 .with_path(path)
                 .with_span(parameter.span),

@@ -1,46 +1,35 @@
-# Dependency Policy
+# Native Dependencies
 
-Sloppy uses dependencies as implementation tools, not as product-definition
-shortcuts.
+Sloppy uses a small, named set of native libraries. This page tells you which
+ones you need installed for which features, and where they show up.
 
-## Boundary Rule
+## Quick map
 
-Dependencies can provide parser/runtime primitives, but Sloppy still owns:
+| Feature | Library | When you need it |
+| --- | --- | --- |
+| Handler execution (`sloppy run`) | V8 | Any time the runtime evaluates JavaScript handlers. CLI commands that only read artifacts (`build`, `routes`, `capabilities`, `audit`, `openapi`, `doctor`, `package`) do not need V8. |
+| SQLite provider | `sqlite3` | Always available; statically embedded in the runtime. |
+| PostgreSQL provider | `libpq` | Compiling and running apps that use `Postgres<"name">` injection or `data.postgres.*` against a real database. |
+| SQL Server provider | Microsoft ODBC Driver 17 or 18 | Compiling and running apps that use `SqlServer<"name">` injection or `data.sqlserver.*` against a real database. |
+| TLS (inbound and `HttpClient` outbound) | OpenSSL | Any time TLS is configured for the development server, or when `HttpClient` opens an `https://` URL. |
+| Plan parsing | `yyjson` | Always — bundled into the native runtime, no user setup. |
 
-- artifact contract and plan validation rules;
-- lifecycle and diagnostics behavior;
-- provider capability policy;
-- packaging status and limits.
+`sloppy doctor` prints which of these are present in the active install.
 
-## Dependencies Visible In Current Source
+## Where each library is used
 
-- `yyjson` is used by `src/core/plan_parse.c` for strict plan parsing.
-- `sqlite3`, `libpq`, and ODBC back native provider modules in `src/data/*.c`.
-- V8 is isolated under `src/engine/v8/*` and enabled only by explicit build
-  mode.
-- vcpkg and toolchain resolution are enforced through
-  `tools/windows/dev.ps1`/doctor/configure workflow.
+- `yyjson` parses `app.plan.json` strictly; it is part of the runtime build.
+- `sqlite3` backs `data.sqlite` and `Sqlite<"name">` injection.
+- `libpq` and ODBC back `data.postgres` / `data.sqlserver` and the matching
+  typed providers.
+- V8 lives behind a narrow C++ bridge under `src/engine/v8/` and is only
+  pulled in when the build is configured with V8 enabled.
+- OpenSSL is invoked through the inbound transport and the private outbound
+  TLS bridge that `HttpClient` uses for HTTPS.
 
-## What Dependencies Must Not Do
+## What Sloppy does not bring in
 
-Do not outsource these to framework or runtime dependencies:
-
-- app lifecycle;
-- route graph semantics;
-- middleware model;
-- dependency-injection rules;
-- permissions model;
-- diagnostics style;
-- resource lifetime and ownership;
-- public API design;
-- package-manager behavior;
-- Node runtime behavior.
-
-## Validation Rule
-
-Dependency availability and feature behavior are separate validation questions.
-
-- A dependency can be installed while a feature is still untested in the current setup.
-- Missing optional dependencies should be reported as unavailable for that feature.
-- Package-time dependency bundling is not equivalent to runtime compatibility
-  status.
+Sloppy does not load `node_modules`, and the runtime does not bundle a
+JavaScript package manager, an ORM, or a migration tool. See
+[Why no `node_modules`?](../about/why-no-node-modules.md) for the reasoning
+and the alternatives Sloppy ships in the stdlib.

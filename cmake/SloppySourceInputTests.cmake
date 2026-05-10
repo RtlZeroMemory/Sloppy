@@ -516,12 +516,12 @@
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
             sloppy_add_conformance_run_once_test(
-                conformance.framework_v2_typed_handler.run_once framework-v2-typed-handler
-                tests/integration/framework-v2-typed-handler/app.ts GET /framework/42?active=true
+                conformance.framework_typed_handler.run_once framework-typed-handler
+                tests/integration/framework-typed-handler/app.ts GET /framework/42?active=true
                 "\"id\":42.*\"active\":true.*\"method\":\"GET\".*\"path\":\"/framework/42\"")
             sloppy_add_conformance_run_once_test(
-                conformance.framework_v2_di_services.run_once framework-v2-di-services
-                tests/integration/framework-v2-di-services/app.ts GET /di/42
+                conformance.framework_di_services.run_once framework-di-services
+                tests/integration/framework-di-services/app.ts GET /di/42
                 "\"message\":\"user-42\".*\"counter\":7.*\"stamp\":\"transient\"")
             if(SLOPPY_BUILD_COMPILER)
                 add_test(
@@ -587,7 +587,7 @@
                     conformance.prealpha_control_plane.source_input_run_once
                     PROPERTIES LABELS "conformance;v8;source-input;dogfood;sqlite")
             endif()
-            sloppy_add_framework_v2_v8_example_tests()
+            sloppy_add_framework_v8_example_tests()
             add_test(
                 NAME conformance.users_api_sqlite.localhost_transport
                 COMMAND

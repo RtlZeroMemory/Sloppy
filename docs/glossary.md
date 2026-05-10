@@ -1,10 +1,13 @@
 # Glossary
 
-## Purpose
+A reference for the words Sloppy uses for itself. The first set is the
+vocabulary you'll see in the user docs (`Sloppy`, `sloppyc`, the Plan, the
+runtime kernel, capabilities, request scope). The later entries are
+implementation-side terminology you mostly only need if you're reading the
+internals or contributing to Sloppy.
 
-Define Sloppy terms used across specs, ADRs, implementation tasks, and review notes. When a
-term becomes ambiguous during implementation, update this glossary before relying on an
-implicit meaning.
+If a term feels ambiguous while reading the docs, update this page before
+relying on an implicit meaning.
 
 ## Sloppy
 

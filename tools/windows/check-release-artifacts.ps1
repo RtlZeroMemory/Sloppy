@@ -131,7 +131,7 @@ function Test-ReleaseTemplates {
 
 function Test-ReleaseTextHygiene {
     foreach ($relative in @(
-        "LICENSE.md",
+        "LICENSE",
         "packages/npm/sloppy/LICENSE",
         "docs/release/index.md",
         "docs/release/KNOWN_LIMITATIONS.md",

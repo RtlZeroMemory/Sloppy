@@ -41,10 +41,10 @@ The compiler reads supported source and emits Plan metadata for:
   inline non-capturing factories);
 - top-level capability declarations
   (`capabilities.addDatabase("token", { ... })`);
-- typed handler parameter bindings (Framework v2): `Route<T>`,
-  `Query<T>`, `Body<T>`, `Header<"name">`, `Service<T>`,
-  `Config<"KEY">`, plus `Sqlite<"name">`, `Postgres<"name">`,
-  `SqlServer<"name">`, `WorkQueue<"name">`;
+- typed handler parameter bindings: `Route<T>`, `Query<T>`,
+  `Body<T>`, `Header<"name">`, `Service<T>`, `Config<"KEY">`,
+  plus `Sqlite<"name">`, `Postgres<"name">`, `SqlServer<"name">`,
+  `WorkQueue<"name">`;
 - handler bodies that return `Results.*` literals or simple computed
   expressions over the request context;
 - async handlers whose returned Promise settles in the bounded
@@ -135,7 +135,7 @@ return `Results.accepted({ jobId })`.
 
 ## Type-driven handler bindings
 
-Framework v2 typed handlers let you declare what a handler needs in
+Typed handlers let you declare what a handler needs directly in
 the parameter list:
 
 ```ts

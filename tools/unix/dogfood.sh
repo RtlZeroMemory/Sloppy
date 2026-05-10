@@ -55,7 +55,7 @@ else
   exit 1
 fi
 
-"$python_bin" - "$manifest_path" hello-artifact hello-source-input prealpha-control-plane package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-v2-app <<'PY'
+"$python_bin" - "$manifest_path" hello-artifact hello-source-input prealpha-control-plane package-hello-artifact http-app https-app sqlite-app postgresql-app sqlserver-app framework-app <<'PY'
 import json
 import sys
 

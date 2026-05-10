@@ -38,7 +38,7 @@ pub(super) fn typescript_type_alias_schema(
     if alias.type_parameters.is_some() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
-            "generic type aliases are not supported by Framework v2 schema inference",
+            "generic type aliases are not supported by framework schema inference",
         )
         .with_path(path)
         .with_span(alias.span)
@@ -73,7 +73,7 @@ pub(super) fn typescript_interface_schema(
     if interface.type_parameters.is_some() || !interface.extends.is_empty() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
-            "generic or inherited interfaces are not supported by Framework v2 schema inference",
+            "generic or inherited interfaces are not supported by framework schema inference",
         )
         .with_path(path)
         .with_span(interface.span)
@@ -132,7 +132,7 @@ pub(super) fn typescript_schema_definition(
                 return Err(unsupported_typescript_schema_diagnostic(
                     path,
                     reference.span,
-                    "qualified or computed type references are not supported by Framework v2 schema inference",
+                    "qualified or computed type references are not supported by framework schema inference",
                 ));
             };
             semantic_or_reference_schema(
@@ -175,12 +175,12 @@ pub(super) fn typescript_schema_definition(
         | TSType::TSTypeQuery(_) => Err(unsupported_typescript_schema_diagnostic(
             path,
             ts_type_span(ty),
-            "unsupported TypeScript type shape in Framework v2 schema inference",
+            "unsupported TypeScript type shape in framework schema inference",
         )),
         _ => Err(unsupported_typescript_schema_diagnostic(
             path,
             ts_type_span(ty),
-            "unsupported TypeScript type keyword in Framework v2 schema inference",
+            "unsupported TypeScript type keyword in framework schema inference",
         )),
     }
 }
@@ -198,14 +198,14 @@ pub(super) fn typescript_object_schema_from_signatures(
             return Err(unsupported_typescript_schema_diagnostic(
                 path,
                 ts_signature_span(signature),
-                "only object properties are supported in Framework v2 schema metadata",
+                "only object properties are supported in framework schema metadata",
             ));
         };
         if property.computed {
             return Err(unsupported_typescript_schema_diagnostic(
                 path,
                 property.span,
-                "computed TypeScript property names are not supported in Framework v2 schema metadata",
+                "computed TypeScript property names are not supported in framework schema metadata",
             ));
         }
         let Some(annotation) = &property.type_annotation else {
@@ -306,7 +306,7 @@ pub(super) fn semantic_or_reference_schema(
             unsupported_typescript_schema_diagnostic(
                 path,
                 span,
-                "recursive TypeScript schema references are not supported by Framework v2 schema inference",
+                "recursive TypeScript schema references are not supported by framework schema inference",
             ),
         ),
         _ if type_arguments.is_none() && known_schema_names.contains(name) => {
@@ -314,7 +314,7 @@ pub(super) fn semantic_or_reference_schema(
         }
         _ if type_arguments.is_none() => Err(Diagnostic::new(
             "SLOPPYC_E_UNRESOLVED_TYPE",
-            "unresolved TypeScript type reference in Framework v2 schema inference",
+            "unresolved TypeScript type reference in framework schema inference",
         )
         .with_path(path)
         .with_span(span)
@@ -322,7 +322,7 @@ pub(super) fn semantic_or_reference_schema(
         _ => Err(unsupported_typescript_schema_diagnostic(
             path,
             span,
-            "generic type references are not supported by Framework v2 schema inference",
+            "generic type references are not supported by framework schema inference",
         )),
     }
 }
@@ -386,7 +386,7 @@ pub(super) fn union_type_schema(
     Err(unsupported_typescript_schema_diagnostic(
         path,
         span,
-        "only nullable unions and literal unions are supported by Framework v2 schema inference",
+        "only nullable unions and literal unions are supported by framework schema inference",
     ))
 }
 

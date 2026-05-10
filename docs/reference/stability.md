@@ -33,17 +33,17 @@ Parser behavior:
 
 - Provider metadata supports `sqlite`, `postgres`, `sqlserver`.
 - Compiler-generated static provider handles are sqlite-only.
-- Framework v2 typed provider injection is generated for SQLite,
-  PostgreSQL, and SQL Server; execution depends on the active bridge,
-  provider config, and live service setup.
+- Typed-handler provider injection is generated for SQLite, PostgreSQL,
+  and SQL Server; execution depends on the active bridge, provider
+  config, and live service setup.
 - Live provider checks are opt-in and environment-dependent.
 
 ## Feature Matrix
 
 This matrix is the compact current-state map. `supported` means the surface is
-covered by current source and tests for that lane. `experimental` means the
+covered by current source and tests in that column. `experimental` means the
 surface exists but is still pre-alpha and may change. `rejected` means the
-compiler fails closed rather than emitting a partial Plan.
+compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ compiler fails closed rather than emitting a partial Plan.
 | App test host | supported | rejected import | n/a | n/a | `Testing` remains a JS test helper and is not valid compiler input. |
 | Logging | supported | supported config metadata | supported | supported | Native runtime owns console/file sinks; memory sink is deterministic app-host test surface. |
 | Request IDs | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestId.defaults(...)`; generator callbacks remain app-host test-only. Native `ctx.requestId` exists. |
-| Request logging | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestLogging.defaults(...)`; dynamic option values fail closed. Native `ctx.log` is direct logging. |
+| Request logging | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestLogging.defaults(...)`; dynamic option values are rejected at build time. Native `ctx.log` is direct logging. |
 | HTTP server | n/a | Plan/server config metadata | supported | experimental dev server | HTTP/1.1 plus server HTTP/2 over TLS ALPN, h2c prior knowledge, and h2c Upgrade. Not a production edge. |
 | Inbound TLS | n/a | config metadata | supported paths | experimental | Certificate/key paths are Plan-visible today; diagnostics redact TLS material. |
 | HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | HTTP/1.1 by default; explicit h2/h2c, pooled h2 multiplexing, and HTTPS `auto` ALPN h2 selection are supported. `https://` needs the private outbound TLS bridge. |

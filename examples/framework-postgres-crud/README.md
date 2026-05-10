@@ -1,8 +1,8 @@
-# Framework v2 PostgreSQL CRUD Example
+# Framework PostgreSQL CRUD Example
 
-## What This Demonstrates
+## What this shows
 
-This example shows the Framework v2 shape for a users API backed by PostgreSQL:
+A users API backed by PostgreSQL:
 
 - typed `Body<T>` and `Route<T>` handler parameters;
 - `Postgres<"main">` typed provider injection;
@@ -35,7 +35,7 @@ $env:Sloppy__Providers__postgres__main__connectionString = "postgres://<user>:<p
 .\tools\windows\test-live-postgres.ps1
 ```
 
-## Expected Result
+## Expected result
 
 The script runs the PostgreSQL native and bridge tests selected by:
 
@@ -46,18 +46,18 @@ ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.post
 With the table and connection string configured, `GET /users` returns JSON rows
 from the PostgreSQL database.
 
-## What To Inspect
+## Files to look at
 
-- `app.ts`: `Postgres<"main">` injection and PostgreSQL SQL statements.
-- Generated `.sloppy/app.plan.json`: inferred `postgres/main` provider metadata.
-- `docs/api/data.md`: PostgreSQL setup and connection string convention.
+- `app.ts` — `Postgres<"main">` injection and PostgreSQL SQL statements.
+- Generated `.sloppy/app.plan.json` — inferred `postgres/main` provider metadata.
+- `docs/api/data.md` — PostgreSQL setup and connection string convention.
 
-## Current Limits
+## Scope
 
 Schema setup is manual for this example. Migrations, ORM-style modeling,
 deployment guidance, and package dependency support are future work.
 
-## Related Docs
+## Related docs
 
 - `docs/api/data.md`
 - `docs/reference/providers.md`

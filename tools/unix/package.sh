@@ -217,7 +217,7 @@ cp "$sloppyc_bin" "$stage_root/bin/sloppyc"
 cp -R "$repo_root/stdlib/sloppy" "$stage_root/stdlib/sloppy"
 cp -R "$repo_root/templates/." "$stage_root/templates/"
 cp -R "$repo_root/examples/." "$stage_root/examples/"
-cp "$repo_root/LICENSE.md" "$stage_root/LICENSE"
+cp "$repo_root/LICENSE" "$stage_root/LICENSE"
 cat > "$stage_root/docs/KNOWN_LIMITATIONS.md" <<'LIMITATIONS'
 # Known Limitations
 

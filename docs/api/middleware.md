@@ -75,9 +75,9 @@ console.log(routes[0].metadata.middleware.count);
 
 ## Status
 
-Middleware runs in the bootstrap app-host handler path. Compiler source input
-supports top-level `app.use(fn)` and `group.use(fn)` registrations when the
-middleware is an inline or top-level function with a static shape. Emitted
-artifacts include generated middleware wrappers and Plan metadata. Dynamic
-middleware lookup and unsupported captures fail closed with
+Middleware runs through the app-host handler path. The compiler accepts
+top-level `app.use(fn)` and `group.use(fn)` registrations when the middleware
+is an inline or top-level function with a static shape. Emitted artifacts
+include generated middleware wrappers and Plan metadata. Dynamic middleware
+lookup and unsupported captures are rejected at build time with
 `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`.

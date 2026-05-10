@@ -98,6 +98,7 @@ reads the environment value first and uses a literal default recorded from
 - Full TypeScript typechecking is outside the current validation surface.
 - Arbitrary external schema libraries require explicit adapter work.
 - Decorator-based validation belongs to a later framework design if the runtime adopts it.
-- Middleware, CORS, RequestId, RequestLogging, and controller static subsets
-  have compiler coverage where the Plan can represent them. Dynamic shapes and
-  unsupported captures fail closed with specific diagnostics.
+- Middleware, CORS, RequestId, RequestLogging, and the controller static
+  subsets have compiler coverage where the Plan can represent them. Dynamic
+  shapes and unsupported captures are rejected at build time with specific
+  diagnostics.

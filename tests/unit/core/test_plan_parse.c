@@ -465,13 +465,13 @@ static int test_valid_os_capability_accesses_fixture(void)
     return expect_valid_os_capability_accesses(&plan);
 }
 
-static int test_framework_v2_metadata_bindings_and_schemas_fixture(void)
+static int test_framework_metadata_bindings_and_schemas_fixture(void)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
     SlPlan plan = {0};
     SlDiag diag = {0};
     SlStatus status =
-        parse_fixture("compiler/tests/fixtures/framework-v2-metadata/expected/app.plan.json", &plan,
+        parse_fixture("compiler/tests/fixtures/framework-metadata/expected/app.plan.json", &plan,
                       &diag, arena_storage, sizeof(arena_storage));
     const SlPlanRoute* post_route = NULL;
     const SlPlanRoute* get_route = NULL;
@@ -985,7 +985,7 @@ int main(void)
         return result;
     }
 
-    result = test_framework_v2_metadata_bindings_and_schemas_fixture();
+    result = test_framework_metadata_bindings_and_schemas_fixture();
     if (result != 0) {
         return result;
     }

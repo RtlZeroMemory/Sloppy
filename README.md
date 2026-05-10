@@ -193,4 +193,4 @@ small API paper cuts.
 
 ## License
 
-See [LICENSE.md](LICENSE.md).
+Sloppy is licensed under the [Apache License, Version 2.0](LICENSE).

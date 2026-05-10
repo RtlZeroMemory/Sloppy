@@ -40,13 +40,13 @@ The compiler can emit route metadata for the supported source subset:
 - source metadata;
 - direct handler IDs;
 - simple request context usage in supported handlers.
-- Framework v2 compiler-inferred metadata for typed handlers, including route/body/query/header
+- Compiler-inferred metadata for typed handlers, including route/body/query/header
   bindings, context bindings, provider/queue injection requirements, schema definitions,
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
 
 The native runtime validates route metadata, builds a deterministic route table, and
-dispatches supported requests through V8 when the runtime is V8-enabled. For Framework v2 metadata, the
-native dispatcher also consumes Plan-backed route/query/header scalar bindings and
+dispatches supported requests through V8 when the runtime is V8-enabled. For typed-handler
+metadata, the native dispatcher also consumes Plan-backed route/query/header scalar bindings and
   schema-backed JSON body metadata to fail invalid requests with a safe `400`
   `application/problem+json` response before calling the handler. Route tags
   and health metadata are optional compiler/CLI metadata; native dispatch does
@@ -56,7 +56,7 @@ native dispatcher also consumes Plan-backed route/query/header scalar bindings a
   validators, and full TypeScript semantics remain outside the current source
   subset.
 
-Typed Framework v2 handler metadata is compiler/Plan-first. For the current supported
+Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after
 native Plan-backed validation and materializes typed route, query, header, body, and context
 arguments from the request context. The wrapper creates one request service scope per
@@ -114,7 +114,7 @@ provider bridges when their runtime features are active. Filesystem and network 
 metadata currently represents Sloppy policy/metadata. OS sandbox enforcement is
 future scoped work.
 
-Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
+Typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
 `SqlServer<"main">` are represented as route injections and inferred Plan
 provider/capability requirements. The normal case does not require
 `builder.capabilities.addDatabase(...)` or `app.use(sqlite(...))` boilerplate:

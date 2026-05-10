@@ -23,9 +23,9 @@ accepts all names in the import example above; importing any of them emits the
 
 ## Current status
 
-API shape is committed for pre-alpha. The whole module fails closed when the
-`__sloppy.os` bridge is missing — the very first import-time check throws
-`SLOPPY_E_OS_FEATURE_UNAVAILABLE`.
+API shape is committed for pre-alpha. If the `__sloppy.os` bridge is missing,
+the very first import-time check throws `SLOPPY_E_OS_FEATURE_UNAVAILABLE`
+rather than letting the module half-load.
 
 `Process` is the subprocess execution surface. Process *identity* helpers
 (`pid`, `argv`, `cwd`) are not part of the current stdlib. Native handles and

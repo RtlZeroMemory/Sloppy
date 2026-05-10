@@ -35,5 +35,6 @@ Managed headers such as `content-type`, `content-length`, `connection`,
 `transfer-encoding`, and `keep-alive` cannot be used as the request ID header.
 Incoming or generated values with control characters are rejected or ignored.
 
-Compiler source-input support exists for the current static middleware subset;
-dynamic shapes outside that subset fail closed.
+The compiler accepts the static middleware subset shown above; anything more
+dynamic is rejected at build time with a diagnostic instead of being silently
+dropped.

@@ -3,7 +3,7 @@
   "version": "0.1.0-alpha.1",
   "description": "Unpublished macOS arm64 Sloppy runtime package template for a future alpha package.",
   "private": true,
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RtlZeroMemory/Slop.git"
