@@ -3289,11 +3289,13 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
     SlEngineOptions options = v8_options();
     SlEngine* first = NULL;
     SlEngine* second = NULL;
+    SlEngine* third = NULL;
     SlDiag diag = {0};
     TestEnvValue saved_snapshot_dir = {0};
     char snapshot_dir[256] = {0};
     bool snapshot_env_captured = false;
     int return_code = 0;
+    const uint32_t all_features_mask = (UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1);
     const char* probe_source =
         "if (typeof __sloppy.time.monotonicMs !== 'function') throw new Error('missing time');"
         "if (typeof __sloppy.crypto.randomUuid !== 'function') throw new Error('missing crypto');"
@@ -3305,8 +3307,13 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
         "if (typeof __sloppy.data.sqlite.open !== 'function') throw new Error('missing sqlite');"
         "if (typeof __sloppy.data.postgres.open !== 'function') throw new Error('missing pg');"
         "if (typeof __sloppy.data.sqlserver.open !== 'function') throw new Error('missing mssql');";
+    const char* reduced_mask_probe_source =
+        "if (globalThis.__sloppy && globalThis.__sloppy.data && "
+        "globalThis.__sloppy.data.sqlite) {"
+        "  throw new Error('sqlite intrinsic unexpectedly snapshotted');"
+        "}";
 
-    features.active_mask = (UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1);
+    features.active_mask = all_features_mask;
     options.runtime_features = &features;
 
     if (capture_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0) {
@@ -3352,6 +3359,21 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
         return_code = 70;
         goto cleanup;
     }
+    sl_engine_destroy(second);
+    second = NULL;
+
+    features.active_mask = all_features_mask &
+                           ~(UINT32_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
+    if (expect_status(sl_engine_create(&options, &engine_arena, &third), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(third,
+                                           sl_str_from_cstr("v8-snapshot-native-reduced-mask.js"),
+                                           sl_str_from_cstr(reduced_mask_probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return_code = 76;
+        goto cleanup;
+    }
+    features.active_mask = all_features_mask;
 
 cleanup:
     if (first != NULL) {
@@ -3359,6 +3381,9 @@ cleanup:
     }
     if (second != NULL) {
         sl_engine_destroy(second);
+    }
+    if (third != NULL) {
+        sl_engine_destroy(third);
     }
     if (snapshot_dir[0] != '\0') {
         sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
