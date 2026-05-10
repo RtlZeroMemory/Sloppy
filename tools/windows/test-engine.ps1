@@ -2,7 +2,7 @@ param(
     [ValidateSet("pr", "extended", "torture")]
     [string]$Tier = "pr",
 
-    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta")]
+    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
     [string]$Area = "all",
 
     [int]$Seed = 12345,
@@ -21,7 +21,7 @@ $StartedAt = (Get-Date).ToUniversalTime()
 $FailedLaneCount = 0
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -220,6 +220,15 @@ function Invoke-CtestLane {
     }
 
     Invoke-ExternalLane $Id "ctest" (@("--preset", $Preset, "--output-on-failure") + $Arguments)
+}
+
+function Invoke-AlphaProofCtestLane {
+    param(
+        [string]$Id,
+        [string[]]$Arguments = @()
+    )
+
+    Invoke-CtestLane $Id "windows-relwithdebinfo" $Arguments
 }
 
 function Get-TierIterations {
@@ -483,6 +492,33 @@ function Invoke-MetaArea {
     Invoke-PowerShellLane "test-engine.meta.fuzz_help" (Join-Path $Root "tools/windows/fuzz.ps1") @("-Help")
 }
 
+function Invoke-GoldenArea {
+    Invoke-AlphaProofCtestLane "golden.alpha_core" @("-R", "alpha\.golden\.(cli|compiler|diagnostics)")
+}
+
+function Invoke-IntegrationArea {
+    Invoke-AlphaProofCtestLane "integration.alpha_flows" @("-R", "alpha_flow")
+    Invoke-CtestLane "integration.conformance" "windows-relwithdebinfo" @("-R", "conformance\.(hello|hello_minimal|framework|source_input|package|program)")
+}
+
+function Invoke-ExamplesArea {
+    Invoke-AlphaProofCtestLane "examples.alpha_manifest" @("-R", "alpha\.examples")
+    Invoke-CtestLane "examples.existing" "windows-relwithdebinfo" @("-R", "^examples\.")
+}
+
+function Invoke-TemplatesArea {
+    Invoke-AlphaProofCtestLane "templates.alpha" @("-R", "alpha\.golden\.templates")
+    Invoke-CtestLane "templates.create_package_command" "windows-relwithdebinfo" @("-R", "sloppy\.cli\.create_package_command")
+}
+
+function Invoke-AlphaFlowArea {
+    Invoke-AlphaProofCtestLane "alpha_flow.core" @("-R", "alpha_flow")
+}
+
+function Invoke-DiagnosticsArea {
+    Invoke-AlphaProofCtestLane "diagnostics.golden" @("-R", "alpha\.golden\.diagnostics|diagnostics|sloppy\.(cli|run)\.(missing|malformed|invalid|unsupported)")
+}
+
 function Should-Run {
     param([string]$Name)
     return $Area -eq "all" -or $Area -eq $Name
@@ -490,6 +526,24 @@ function Should-Run {
 
 if (Should-Run "meta") {
     Invoke-MetaArea
+}
+if (Should-Run "golden") {
+    Invoke-GoldenArea
+}
+if (Should-Run "integration") {
+    Invoke-IntegrationArea
+}
+if (Should-Run "examples") {
+    Invoke-ExamplesArea
+}
+if (Should-Run "templates") {
+    Invoke-TemplatesArea
+}
+if (Should-Run "alpha-flow") {
+    Invoke-AlphaFlowArea
+}
+if (Should-Run "diagnostics") {
+    Invoke-DiagnosticsArea
 }
 if (Should-Run "static") {
     Invoke-StaticArea

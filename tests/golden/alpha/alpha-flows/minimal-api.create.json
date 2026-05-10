@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-minimal-api",
+      "sloppy build",
+      "sloppy run --once GET /health"
+    ],
+    "path": "flow-minimal-api",
+    "template": "minimal-api"
+  }
+}

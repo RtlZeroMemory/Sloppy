@@ -1,0 +1,1053 @@
+{
+  "sources": [
+    "input.ts",
+    "health.ts"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "read",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 60,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 1,
+        "operation": "query",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.query",
+        "source": {
+          "column": 10,
+          "line": 81,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 100
+        },
+        "id": 1,
+        "source": {
+          "column": 62,
+          "line": 84,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 123
+        },
+        "id": 2,
+        "source": {
+          "column": 66,
+          "line": 89,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 139
+        },
+        "id": 3,
+        "source": {
+          "column": 71,
+          "line": 105,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 149
+        },
+        "id": 4,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 151
+        },
+        "id": 5,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 153
+        },
+        "id": 6,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 155
+        },
+        "id": 7,
+        "source": {
+          "column": 10,
+          "line": 46,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 157
+        },
+        "id": 8,
+        "source": {
+          "column": 23,
+          "line": 5,
+          "path": "health.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 159
+        },
+        "id": 9,
+        "source": {
+          "column": 10,
+          "line": 46,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 34,
+          "line": 161
+        },
+        "id": 10,
+        "source": {
+          "column": 66,
+          "line": 89,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 34,
+          "line": 163
+        },
+        "id": 11,
+        "source": {
+          "column": 71,
+          "line": 105,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 34,
+          "line": 165
+        },
+        "id": 12,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 34,
+          "line": 167
+        },
+        "id": 13,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 34,
+          "line": 169
+        },
+        "id": 14,
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "modules": [
+      {
+        "name": "healthModule",
+        "source": {
+          "path": "health.ts"
+        }
+      }
+    ],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 60,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 1,
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/projects",
+        "source": {
+          "column": 1,
+          "line": 84,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "list"
+        ]
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 2,
+        "method": "POST",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/projects",
+        "source": {
+          "column": 1,
+          "line": 89,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "write"
+        ]
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 3,
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/projects/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 105,
+          "path": "input.ts"
+        },
+        "tags": [
+          "api",
+          "projects",
+          "detail"
+        ]
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 4,
+        "health": {
+          "checks": [
+            "database",
+            "scheduler"
+          ],
+          "kind": "aggregate"
+        },
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 5,
+        "health": {
+          "checks": [
+            "scheduler"
+          ],
+          "kind": "liveness"
+        },
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status/live",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 6,
+        "health": {
+          "checks": [
+            "database"
+          ],
+          "kind": "readiness"
+        },
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status/ready",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": false
+        },
+        "handlerId": 7,
+        "method": "GET",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/project-summary",
+        "source": {
+          "column": 3,
+          "line": 126,
+          "path": "input.ts"
+        },
+        "tags": [
+          "controller"
+        ]
+      },
+      {
+        "handlerId": 8,
+        "method": "GET",
+        "module": "healthModule",
+        "pattern": "/status/ping",
+        "source": {
+          "column": 3,
+          "line": 5,
+          "path": "health.ts"
+        },
+        "tags": [
+          "status"
+        ]
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 9,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/project-summary",
+        "source": {
+          "column": 3,
+          "line": 126,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 10,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/projects",
+        "source": {
+          "column": 1,
+          "line": 89,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 11,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/api/projects/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 105,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 12,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 13,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status/live",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      },
+      {
+        "cors": {
+          "credentials": true,
+          "exposedHeaders": [
+            "x-request-id"
+          ],
+          "headers": [
+            "authorization",
+            "content-type"
+          ],
+          "maxAgeSeconds": 600,
+          "methods": [],
+          "origins": [
+            "https://app.example.com"
+          ],
+          "preflight": true
+        },
+        "handlerId": 14,
+        "method": "OPTIONS",
+        "middleware": [
+          {
+            "kind": "requestId",
+            "sequence": 0,
+            "source": {
+              "column": 1,
+              "line": 63,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "requestLogging",
+            "sequence": 1,
+            "source": {
+              "column": 1,
+              "line": 64,
+              "path": "input.ts"
+            }
+          },
+          {
+            "kind": "user",
+            "sequence": 2,
+            "source": {
+              "column": 9,
+              "line": 65,
+              "path": "input.ts"
+            }
+          }
+        ],
+        "module": null,
+        "pattern": "/status/ready",
+        "source": {
+          "column": 1,
+          "line": 115,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "schemas": [
+      {
+        "name": "ProjectCreate",
+        "source": {
+          "column": 23,
+          "line": 20,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ProjectCreateInput",
+        "source": {
+          "column": 1,
+          "line": 25,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ProjectDto",
+        "source": {
+          "column": 1,
+          "line": 30,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "ClockService",
+        "source": {
+          "column": 1,
+          "line": 35,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "sourceFiles": [
+      {
+        "hash": "sha256:468fe5d9acf60d49a8330a0352e0970b9dbe29443d27b07ef50a33a6ca1abd30",
+        "path": "input.ts"
+      },
+      {
+        "hash": "sha256:aefd1fd2b51f7f6824a90adb04ce38b2da4a081f463a8c7d488048050a9730f1",
+        "path": "health.ts"
+      }
+    ],
+    "version": 1
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "kind": "web",
+    "routes": [
+      {
+        "bindings": [],
+        "completeness": "",
+        "handlerId": 1,
+        "method": "GET",
+        "module": "hello",
+        "name": "Hello.Index",
+        "pattern": "/",
+        "response": {
+          "helper": "",
+          "kind": "",
+          "status": 0
+        },
+        "source": {
+          "column": 0,
+          "line": 0,
+          "path": ""
+        },
+        "sourceOrder": 2
+      },
+      {
+        "bindings": [],
+        "completeness": "",
+        "handlerId": 3,
+        "method": "GET",
+        "module": "users",
+        "name": "Users.Create",
+        "pattern": "/users/create",
+        "response": {
+          "helper": "",
+          "kind": "",
+          "status": 0
+        },
+        "source": {
+          "column": 0,
+          "line": 0,
+          "path": ""
+        },
+        "sourceOrder": 1
+      },
+      {
+        "bindings": [],
+        "completeness": "",
+        "handlerId": 2,
+        "method": "GET",
+        "module": "users",
+        "name": "Users.Get",
+        "pattern": "/users/{id:int}",
+        "response": {
+          "helper": "",
+          "kind": "",
+          "status": 0
+        },
+        "source": {
+          "column": 0,
+          "line": 0,
+          "path": ""
+        },
+        "sourceOrder": 0
+      }
+    ]
+  }
+}

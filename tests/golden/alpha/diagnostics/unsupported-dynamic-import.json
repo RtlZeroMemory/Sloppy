@@ -1,0 +1,5 @@
+{
+  "exitCode": 1,
+  "stderr": "<repoRoot>/compiler/tests/fixtures/unsupported-dynamic-import/input.js:5:15: SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT: dynamic import is not supported by the Sloppy module compiler\n  --> <repoRoot>/compiler/tests/fixtures/unsupported-dynamic-import/input.js:5:15\n   |\n5 | const users = import /* unsupported */ (\"./users.js\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nhint: Use static relative imports or documented Sloppy stdlib imports.\n",
+  "stdout": ""
+}

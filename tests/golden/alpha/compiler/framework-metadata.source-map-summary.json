@@ -1,0 +1,170 @@
+{
+  "sources": [
+    "input.ts"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 51,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      },
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 52,
+          "path": "input.ts"
+        },
+        "token": "data.audit"
+      },
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 3,
+          "line": 53,
+          "path": "input.ts"
+        },
+        "token": "data.search"
+      },
+      {
+        "access": "enqueue",
+        "kind": "queue",
+        "source": {
+          "column": 3,
+          "line": 54,
+          "path": "input.ts"
+        },
+        "token": "queue.emails"
+      }
+    ],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 60
+        },
+        "id": 1,
+        "source": {
+          "column": 20,
+          "line": 49,
+          "path": "input.ts"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 76
+        },
+        "id": 2,
+        "source": {
+          "column": 23,
+          "line": 65,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "postgres",
+        "source": {
+          "column": 3,
+          "line": 51,
+          "path": "input.ts"
+        },
+        "token": "data.main"
+      },
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 3,
+          "line": 52,
+          "path": "input.ts"
+        },
+        "token": "data.audit"
+      },
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlserver",
+        "source": {
+          "column": 3,
+          "line": 53,
+          "path": "input.ts"
+        },
+        "token": "data.search"
+      },
+      {
+        "capabilityKind": "queue",
+        "providerKind": "",
+        "source": {
+          "column": 3,
+          "line": 54,
+          "path": "input.ts"
+        },
+        "token": "queue.emails"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "POST",
+        "module": null,
+        "pattern": "/users",
+        "source": {
+          "column": 1,
+          "line": 49,
+          "path": "input.ts"
+        }
+      },
+      {
+        "frameworkPath": "/users/:id",
+        "handlerId": 2,
+        "method": "GET",
+        "module": null,
+        "pattern": "/users/{id}",
+        "source": {
+          "column": 1,
+          "line": 65,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "schemas": [
+      {
+        "name": "UserCreate",
+        "source": {
+          "column": 1,
+          "line": 25,
+          "path": "input.ts"
+        }
+      },
+      {
+        "name": "UserDto",
+        "source": {
+          "column": 1,
+          "line": 41,
+          "path": "input.ts"
+        }
+      }
+    ],
+    "sourceFiles": [
+      {
+        "hash": "sha256:bd77634aa9b5297a9e36b3ea56b783e7992e8a094f6f03c94b297452e5716e49",
+        "path": "input.ts"
+      }
+    ],
+    "version": 1
+  }
+}

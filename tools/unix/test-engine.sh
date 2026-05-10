@@ -13,7 +13,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
+Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
 
 Examples:
   tools/unix/test-engine.sh --tier pr
@@ -70,7 +70,7 @@ case "$tier" in
 esac
 
 case "$area" in
-  all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta) ;;
+  all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
   *) echo "test-engine: invalid --area '$area'" >&2; exit 2 ;;
 esac
 
@@ -173,6 +173,16 @@ ctest_lane() {
     return
   fi
   run_lane "$id" ctest --preset "$preset" --output-on-failure "$@"
+}
+
+alpha_proof_ctest_lane() {
+  local id="$1"
+  shift
+  if [[ -z "${SLOPPY_V8_ROOT:-}" ]]; then
+    add_lane "$id" "unavailable" "0" "ctest --preset $(host_preset)" "alpha proof runner is a Sloppy Program Mode tool and requires a V8-enabled build"
+    return
+  fi
+  ctest_lane "$id" "$(host_preset)" "$@"
 }
 
 tier_iterations() {
@@ -304,6 +314,33 @@ run_meta() {
   run_lane "test-engine.meta.fuzz_help" bash tools/unix/fuzz.sh --help
 }
 
+run_golden() {
+  alpha_proof_ctest_lane "golden.alpha_core" -R 'alpha\.golden\.(cli|compiler|diagnostics)'
+}
+
+run_integration() {
+  alpha_proof_ctest_lane "integration.alpha_flows" -R 'alpha_flow'
+  ctest_lane "integration.conformance" "$(host_preset)" -R 'conformance\.(hello|hello_minimal|framework|source_input|package|program)'
+}
+
+run_examples() {
+  alpha_proof_ctest_lane "examples.alpha_manifest" -R 'alpha\.examples'
+  ctest_lane "examples.existing" "$(host_preset)" -R '^examples\.'
+}
+
+run_templates() {
+  alpha_proof_ctest_lane "templates.alpha" -R 'alpha\.golden\.templates'
+  ctest_lane "templates.create_package_command" "$(host_preset)" -R 'sloppy\.cli\.create_package_command'
+}
+
+run_alpha_flow() {
+  alpha_proof_ctest_lane "alpha_flow.core" -R 'alpha_flow'
+}
+
+run_diagnostics() {
+  alpha_proof_ctest_lane "diagnostics.golden" -R 'alpha\.golden\.diagnostics|diagnostics|sloppy\.(cli|run)\.(missing|malformed|invalid|unsupported)'
+}
+
 run_native() {
   ctest_lane "native.unit" "$(host_preset)" -R '^(core\.|data\.|conformance\.(foundation|http|sqlite|data|capability|net|transport)|smoke\.transport)'
 }
@@ -373,6 +410,12 @@ should_run() {
 }
 
 should_run meta && run_meta
+should_run golden && run_golden
+should_run integration && run_integration
+should_run examples && run_examples
+should_run templates && run_templates
+should_run alpha-flow && run_alpha_flow
+should_run diagnostics && run_diagnostics
 should_run static && run_static
 should_run native && run_native
 should_run compiler && run_compiler

@@ -1,0 +1,139 @@
+{
+  "sources": [
+    "input.js"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 22,
+          "line": 5,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 9
+        },
+        "id": 2,
+        "source": {
+          "column": 23,
+          "line": 6,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 11
+        },
+        "id": 3,
+        "source": {
+          "column": 31,
+          "line": 7,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 13
+        },
+        "id": 4,
+        "source": {
+          "column": 33,
+          "line": 8,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 15
+        },
+        "id": 5,
+        "source": {
+          "column": 34,
+          "line": 9,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/users",
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 2,
+        "method": "POST",
+        "module": null,
+        "pattern": "/users",
+        "source": {
+          "column": 1,
+          "line": 6,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 3,
+        "method": "PUT",
+        "module": null,
+        "pattern": "/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 7,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 4,
+        "method": "PATCH",
+        "module": null,
+        "pattern": "/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 8,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 5,
+        "method": "DELETE",
+        "module": null,
+        "pattern": "/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 9,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:3ef1d0e49b57a6074a74608ba83f7224107f5f386ddfe924aae7e7393abe018e",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
+}

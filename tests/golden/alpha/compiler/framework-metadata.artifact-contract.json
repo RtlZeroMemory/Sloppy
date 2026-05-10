@@ -1,0 +1,14 @@
+{
+  "containsHandlerRegistration": true,
+  "containsProgramMain": false,
+  "containsTypescriptTypeSyntax": false,
+  "duplicateFrameworkHelpers": true,
+  "files": [
+    "app.js",
+    "app.js.map",
+    "app.plan.json"
+  ],
+  "planKind": "web",
+  "sourceMapHasXSloppy": true,
+  "uniqueSources": true
+}

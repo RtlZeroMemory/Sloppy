@@ -1,0 +1,11 @@
+{
+  "artifacts": {
+    "bundle": "artifacts/app.js",
+    "plan": "artifacts/app.plan.json",
+    "sourceMap": "artifacts/app.js.map"
+  },
+  "createdBy": "sloppy package",
+  "entry": "artifacts/app.plan.json",
+  "kind": "web",
+  "schema": "sloppy.app-package.v1"
+}

@@ -1,0 +1,5 @@
+{
+  "exitCode": 1,
+  "stderr": "sloppy run: artifact path not found: tests/fixtures/run/missing/app.plan.json\n",
+  "stdout": ""
+}

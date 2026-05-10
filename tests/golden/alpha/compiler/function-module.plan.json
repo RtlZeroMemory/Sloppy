@@ -1,0 +1,271 @@
+{
+  "bundle": {
+    "hash": "sha256:6b633dc915da252319f751bb8f8135cdb86f6e26f9bf33e40166bc0b74450d05",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [
+    {
+      "access": "read",
+      "kind": "database",
+      "provider": "data.main",
+      "source": {
+        "column": 9,
+        "line": 7,
+        "path": "input.js"
+      },
+      "token": "data.main"
+    }
+  ],
+  "compilerVersion": "sloppyc-0.8.0",
+  "completeness": {
+    "reasons": [],
+    "status": "complete"
+  },
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 4
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 100
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "Sloppy__Providers__sqlite__main__database",
+          "key": "Sloppy:Providers:sqlite:main:database",
+          "secret": false,
+          "type": "string"
+        }
+      ]
+    },
+    "providers": [
+      {
+        "name": "main",
+        "prefix": "Sloppy:Providers:sqlite:main",
+        "provider": "sqlite",
+        "source": "inline"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:sqlite:main:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.js:7",
+        "secret": false,
+        "source": "inline",
+        "status": "present",
+        "type": "string"
+      }
+    ]
+  },
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "capabilityKind": "database",
+      "database": ":memory:",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": null,
+      "source": {
+        "column": 9,
+        "line": 7,
+        "path": "input.js"
+      },
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "metadataInference": true,
+    "sourceMaps": true,
+    "strongPlanMetadata": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "GET /health",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 20,
+        "line": 9,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "GET /users",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 20,
+        "line": 7,
+        "path": "users.js"
+      }
+    }
+  ],
+  "kind": "web",
+  "modules": [
+    {
+      "name": "usersModule",
+      "source": {
+        "path": "users.js"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/health",
+      "response": {
+        "helper": "text",
+        "kind": "text",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 9,
+        "path": "input.js"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "effects": [
+        {
+          "access": "read",
+          "capabilityKind": "database",
+          "operation": "query",
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "reason": "db.query",
+          "source": {
+            "column": 35,
+            "line": 8,
+            "path": "users.js"
+          }
+        }
+      ],
+      "handlerId": 2,
+      "method": "GET",
+      "module": "usersModule",
+      "name": null,
+      "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
+      "source": {
+        "column": 5,
+        "line": 7,
+        "path": "users.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceFiles": [
+    {
+      "hash": "sha256:971a022bf8cb074333536fc06aaf0b94efa81274a1920461d7a6b43c89a138c2",
+      "path": "input.js"
+    },
+    {
+      "hash": "sha256:16070d6996c47009749e1c3984d6d97f0ee0bb97d7ae437f78e520668e03c796",
+      "path": "users.js"
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:9de9670066898bf01126019d7bcfc5e58fdda0643ef189144daa629f194276ec",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": false,
+      "capabilities": true,
+      "effects": true,
+      "providers": true,
+      "routes": true,
+      "sourceGraph": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

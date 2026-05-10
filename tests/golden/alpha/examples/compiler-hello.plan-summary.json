@@ -1,0 +1,22 @@
+{
+  "capabilities": [],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "GET /",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/",
+      "tags": []
+    }
+  ]
+}

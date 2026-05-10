@@ -1,0 +1,171 @@
+{
+  "bundle": {
+    "hash": "sha256:3175afdd7a085426a8025c6638f4d39f38bef19dfe25bc244ba2f4641527d0f4",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [],
+  "compilerVersion": "sloppyc-0.8.0",
+  "completeness": {
+    "reasons": [
+      {
+        "code": "partial-route",
+        "message": "one or more routes have partial inferred metadata"
+      }
+    ],
+    "status": "partial"
+  },
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 4
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 100
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "providers": []
+  },
+  "dataProviders": [],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": false,
+    "dataProviders": false,
+    "metadataInference": true,
+    "sourceMaps": true,
+    "strongPlanMetadata": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "POST /echo",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 19,
+        "line": 5,
+        "path": "input.js"
+      }
+    }
+  ],
+  "kind": "web",
+  "modules": [],
+  "routes": [
+    {
+      "bindings": [
+        {
+          "kind": "body.json",
+          "name": null,
+          "schema": null
+        }
+      ],
+      "completeness": {
+        "reasons": [
+          {
+            "code": "body-schema-missing",
+            "message": "route reads JSON body data without a declared schema"
+          }
+        ],
+        "status": "partial"
+      },
+      "handlerId": 1,
+      "method": "POST",
+      "name": null,
+      "pattern": "/echo",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 5,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceFiles": [
+    {
+      "hash": "sha256:c808b07c59691d5db507b1e062b685ead83e44eb25e587aabe041ecf32589998",
+      "path": "input.js"
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:d6ce2b037dc71c6baad21915ad3cd2294ce20ae475085d8137f12a2fed7ebedd",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": true,
+      "capabilities": false,
+      "effects": false,
+      "providers": false,
+      "routes": true,
+      "sourceGraph": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}
