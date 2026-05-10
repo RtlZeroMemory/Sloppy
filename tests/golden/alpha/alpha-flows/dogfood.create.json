@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-dogfood",
+      "sloppy build",
+      "sloppy run --once GET /health"
+    ],
+    "path": "flow-dogfood",
+    "template": "dogfood"
+  }
+}

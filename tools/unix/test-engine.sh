@@ -13,7 +13,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
+Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
 
 Examples:
   tools/unix/test-engine.sh --tier pr
@@ -70,7 +70,7 @@ case "$tier" in
 esac
 
 case "$area" in
-  all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta) ;;
+  all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
   *) echo "test-engine: invalid --area '$area'" >&2; exit 2 ;;
 esac
 
@@ -173,6 +173,58 @@ ctest_lane() {
     return
   fi
   run_lane "$id" ctest --preset "$preset" --output-on-failure "$@"
+}
+
+alpha_proof_ctest_lane() {
+  local id="$1"
+  shift
+  local preset
+  preset="$(host_preset)"
+  local command_text="ctest --preset $preset --output-on-failure --no-tests=error $*"
+  if [[ -z "${SLOPPY_V8_ROOT:-}" ]]; then
+    add_lane "$id" "unavailable" "0" "$command_text" "alpha proof runner is a Sloppy Program Mode tool and requires a V8-enabled build"
+    return
+  fi
+  if [[ ! -d "$repo_root/build/$preset" ]]; then
+    add_lane "$id" "unavailable" "0" "$command_text" "build preset directory does not exist: $repo_root/build/$preset"
+    return
+  fi
+  if ! command -v ctest >/dev/null 2>&1; then
+    add_lane "$id" "unavailable" "0" "$command_text" "ctest is not available"
+    return
+  fi
+
+  local discovery_output
+  local discovery_code
+  discovery_output="$(cd "$repo_root" && ctest --preset "$preset" -N "$@" 2>&1)"
+  discovery_code=$?
+  if [[ "$discovery_code" -ne 0 ]]; then
+    add_lane "$id" "fail" "0" "$command_text" "ctest test discovery failed with exit code $discovery_code"
+    return
+  fi
+
+  local test_count
+  test_count="$(sed -nE 's/.*Total Tests:[[:space:]]+([0-9]+).*/\1/p' <<<"$discovery_output" | tail -n 1)"
+  if [[ -z "$test_count" ]]; then
+    add_lane "$id" "fail" "0" "$command_text" "ctest test discovery did not report a test count"
+    return
+  fi
+  if [[ "$test_count" -eq 0 ]]; then
+    add_lane "$id" "unavailable" "0" "$command_text" "no alpha-proof tests matched; V8-enabled alpha-proof tests are not registered for this preset"
+    return
+  fi
+
+  local start
+  start="$(date +%s)"
+  (cd "$repo_root" && ctest --preset "$preset" --output-on-failure --no-tests=error "$@")
+  local code=$?
+  local duration
+  duration="$(duration_ms_since "$start")"
+  if [[ "$code" -eq 0 ]]; then
+    add_lane "$id" "pass" "$duration" "$command_text" "matched $test_count test(s)"
+  else
+    add_lane "$id" "fail" "$duration" "$command_text" "exit code $code"
+  fi
 }
 
 tier_iterations() {
@@ -304,6 +356,33 @@ run_meta() {
   run_lane "test-engine.meta.fuzz_help" bash tools/unix/fuzz.sh --help
 }
 
+run_golden() {
+  alpha_proof_ctest_lane "golden.alpha_core" -R 'alpha\.golden\.(cli|compiler|diagnostics)'
+}
+
+run_integration() {
+  alpha_proof_ctest_lane "integration.alpha_flows" -R 'alpha_flow'
+  ctest_lane "integration.conformance" "$(host_preset)" -R 'conformance\.(hello|hello_minimal|framework|source_input|package|program)'
+}
+
+run_examples() {
+  alpha_proof_ctest_lane "examples.alpha_manifest" -R 'alpha\.examples'
+  ctest_lane "examples.existing" "$(host_preset)" -R '^examples\.'
+}
+
+run_templates() {
+  alpha_proof_ctest_lane "templates.alpha" -R 'alpha\.golden\.templates'
+  ctest_lane "templates.create_package_command" "$(host_preset)" -R 'sloppy\.cli\.create_package_command'
+}
+
+run_alpha_flow() {
+  alpha_proof_ctest_lane "alpha_flow.core" -R 'alpha_flow'
+}
+
+run_diagnostics() {
+  alpha_proof_ctest_lane "diagnostics.golden" -R 'alpha\.golden\.diagnostics|diagnostics|sloppy\.(cli|run)\.(missing|malformed|invalid|unsupported)'
+}
+
 run_native() {
   ctest_lane "native.unit" "$(host_preset)" -R '^(core\.|data\.|conformance\.(foundation|http|sqlite|data|capability|net|transport)|smoke\.transport)'
 }
@@ -373,6 +452,12 @@ should_run() {
 }
 
 should_run meta && run_meta
+should_run golden && run_golden
+should_run integration && run_integration
+should_run examples && run_examples
+should_run templates && run_templates
+should_run alpha-flow && run_alpha_flow
+should_run diagnostics && run_diagnostics
 should_run static && run_static
 should_run native && run_native
 should_run compiler && run_compiler

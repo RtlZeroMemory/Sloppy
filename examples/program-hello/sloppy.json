@@ -1,9 +1,5 @@
 {
   "kind": "program",
   "entry": "main.ts",
-  "outDir": ".sloppy",
-  "capabilities": {
-    "fs": true,
-    "time": true
-  }
+  "outDir": ".sloppy"
 }

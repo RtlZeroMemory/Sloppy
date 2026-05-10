@@ -92,6 +92,11 @@ rendering, CLI text). They are semantic contracts, so:
 - The PR body says which lane each updated golden covers and what
   intent the change reflects.
 
+The alpha proof suite under `tests/golden/alpha/` adds normalized goldens for
+CLI help, compiler artifacts, templates, package manifests, diagnostics,
+example coverage, and app-flow integration. See
+[golden-tests.md](golden-tests.md) for the update and review workflow.
+
 ## Negative paths
 
 Required wherever a contract can reject input or clean up resources:

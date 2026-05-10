@@ -1,0 +1,22 @@
+{
+  "capabilities": [],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Users.Create",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "POST",
+      "name": "Users.Create",
+      "pattern": "/users",
+      "tags": []
+    }
+  ]
+}

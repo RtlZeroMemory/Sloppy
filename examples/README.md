@@ -10,6 +10,7 @@ For a new app, use the packaged templates instead of copying an example:
 
 ```powershell
 sloppy create my-api --template minimal-api
+sloppy create my-tool --template program
 ```
 
 ## Example Inventory
@@ -17,7 +18,8 @@ sloppy create my-api --template minimal-api
 | Example | Status | Command | What it covers | Requirements / expected result |
 | --- | --- | --- | --- | --- |
 | `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
-| `program-hello` | Program Mode source fixture | `sloppy run examples/program-hello/main.ts` | Route-free program Plan, relative module import, and optional project pinning | V8 lane returns `hello from sloppy program mode`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
+| `program-hello` | runnable Program Mode source | `sloppy run examples/program-hello/main.ts -- Ada` | Route-free program Plan, relative module import, args/context, and console stdout | V8 lane prints `hello from sloppy program mode Ada`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
+| `program-fs-process` | runnable Program Mode source | `sloppy run` from `examples/program-fs-process` | Program stdlib imports for filesystem and OS/process APIs, package run shape | V8 lane writes under `./tmp`, runs `git --version`, and exits with the child exit code. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
 | `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
 | `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | V8 lane returns JSON request context fields. |

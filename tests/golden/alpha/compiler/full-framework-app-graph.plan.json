@@ -1,0 +1,1846 @@
+{
+  "bundle": {
+    "hash": "sha256:e89504df24d39e532a7f3fcf4755d97f3b4a014e49df286197c7c5cf18c2ac1b",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [
+    {
+      "access": "read",
+      "kind": "database",
+      "provider": "data.main",
+      "source": {
+        "column": 9,
+        "line": 60,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    }
+  ],
+  "compilerVersion": "sloppyc-0.8.0",
+  "completeness": {
+    "reasons": [],
+    "status": "complete"
+  },
+  "configReads": [
+    {
+      "hasDefault": true,
+      "key": "App:Greeting",
+      "required": false,
+      "secret": false,
+      "source": {
+        "column": 18,
+        "line": 78,
+        "path": "input.ts"
+      },
+      "type": "string"
+    }
+  ],
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 4
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 100
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "packageManifest": {
+      "optional": [
+        {
+          "default": "hello",
+          "env": "App__Greeting",
+          "key": "App:Greeting",
+          "secret": false,
+          "type": "string"
+        }
+      ],
+      "required": [
+        {
+          "env": "Sloppy__Providers__sqlite__main__database",
+          "key": "Sloppy:Providers:sqlite:main:database",
+          "secret": false,
+          "type": "string"
+        }
+      ]
+    },
+    "providers": [
+      {
+        "name": "main",
+        "prefix": "Sloppy:Providers:sqlite:main",
+        "provider": "sqlite",
+        "source": "inline"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:sqlite:main:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.ts:60",
+        "secret": false,
+        "source": "inline",
+        "status": "present",
+        "type": "string"
+      },
+      {
+        "default": "hello",
+        "key": "App:Greeting",
+        "redaction": "none",
+        "required": false,
+        "requiredBy": "input.ts:78",
+        "secret": false,
+        "source": null,
+        "status": "defaulted",
+        "type": "string"
+      }
+    ]
+  },
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "capabilityKind": "database",
+      "database": ":memory:",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": null,
+      "source": {
+        "column": 9,
+        "line": 60,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "health": true,
+    "metadataInference": true,
+    "os": true,
+    "sourceMaps": true,
+    "strongPlanMetadata": true
+  },
+  "handlers": [
+    {
+      "async": true,
+      "displayName": "Projects.List",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 62,
+        "line": 84,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Projects.Create",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 66,
+        "line": 89,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Projects.Get",
+      "exportName": "__sloppy_handler_3",
+      "id": 3,
+      "source": {
+        "column": 71,
+        "line": 105,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Health",
+      "exportName": "__sloppy_handler_4",
+      "id": 4,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Health.Liveness",
+      "exportName": "__sloppy_handler_5",
+      "id": 5,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Health.Readiness",
+      "exportName": "__sloppy_handler_6",
+      "id": 6,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Projects.Summary",
+      "exportName": "__sloppy_handler_7",
+      "id": 7,
+      "source": {
+        "column": 10,
+        "line": 46,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "Status.Ping",
+      "exportName": "__sloppy_handler_8",
+      "id": 8,
+      "source": {
+        "column": 23,
+        "line": 5,
+        "path": "health.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /api/project-summary",
+      "exportName": "__sloppy_handler_9",
+      "id": 9,
+      "source": {
+        "column": 10,
+        "line": 46,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /api/projects",
+      "exportName": "__sloppy_handler_10",
+      "id": 10,
+      "source": {
+        "column": 66,
+        "line": 89,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /api/projects/{id:int}",
+      "exportName": "__sloppy_handler_11",
+      "id": 11,
+      "source": {
+        "column": 71,
+        "line": 105,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /status",
+      "exportName": "__sloppy_handler_12",
+      "id": 12,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /status/live",
+      "exportName": "__sloppy_handler_13",
+      "id": 13,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "OPTIONS /status/ready",
+      "exportName": "__sloppy_handler_14",
+      "id": 14,
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "kind": "web",
+  "modules": [
+    {
+      "name": "healthModule",
+      "source": {
+        "path": "health.ts"
+      }
+    }
+  ],
+  "requiredFeatures": [
+    "stdlib.os"
+  ],
+  "routes": [
+    {
+      "bindings": [
+        {
+          "kind": "query",
+          "name": "q",
+          "schema": null
+        }
+      ],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "effects": [
+        {
+          "access": "read",
+          "capabilityKind": "database",
+          "operation": "query",
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "reason": "db.query",
+          "source": {
+            "column": 10,
+            "line": 81,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "handlerId": 1,
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Projects.List",
+      "pattern": "/api/projects",
+      "response": {
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 84,
+        "path": "input.ts"
+      },
+      "tags": [
+        "api",
+        "projects",
+        "list"
+      ]
+    },
+    {
+      "bindings": [
+        {
+          "kind": "body.json",
+          "name": "body",
+          "parameter": "body",
+          "schema": "ProjectCreateInput",
+          "source": {
+            "column": 3,
+            "line": 90,
+            "path": "input.ts"
+          },
+          "type": "Body<ProjectCreateInput>",
+          "wrapper": "Body"
+        },
+        {
+          "capability": "data.main",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "main",
+          "parameter": "database",
+          "providerKind": "sqlite",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 91,
+            "path": "input.ts"
+          },
+          "type": "Sqlite<\"main\">"
+        },
+        {
+          "injectionKind": "service",
+          "kind": "injection",
+          "name": "ClockService",
+          "parameter": "clock",
+          "schema": "ClockService",
+          "source": {
+            "column": 3,
+            "line": 92,
+            "path": "input.ts"
+          },
+          "type": "Service<ClockService>",
+          "wrapper": "Service"
+        },
+        {
+          "kind": "header",
+          "name": "x-trace-id",
+          "parameter": "trace",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 93,
+            "path": "input.ts"
+          },
+          "type": "Header<\"x-trace-id\">",
+          "wrapper": "Header"
+        },
+        {
+          "kind": "config",
+          "name": "App:Greeting",
+          "parameter": "message",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 94,
+            "path": "input.ts"
+          },
+          "type": "Config<\"App:Greeting\">",
+          "wrapper": "Config"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 95,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
+        }
+      ],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 2,
+      "injections": [
+        {
+          "capability": "data.main",
+          "kind": "provider",
+          "name": "main",
+          "parameter": "database",
+          "providerKind": "sqlite"
+        },
+        {
+          "capability": null,
+          "kind": "service",
+          "name": "ClockService",
+          "parameter": "clock",
+          "providerKind": null
+        }
+      ],
+      "method": "POST",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Projects.Create",
+      "pattern": "/api/projects",
+      "response": {
+        "helper": "created",
+        "kind": "json",
+        "status": 201
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "created",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 6,
+            "line": 96,
+            "path": "input.ts"
+          },
+          "status": 201
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 89,
+        "path": "input.ts"
+      },
+      "tags": [
+        "api",
+        "projects",
+        "write"
+      ]
+    },
+    {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "parameter": "id",
+          "schema": "number",
+          "source": {
+            "column": 3,
+            "line": 106,
+            "path": "input.ts"
+          },
+          "type": "Route<number>",
+          "wrapper": "Route"
+        },
+        {
+          "kind": "query",
+          "name": "includeDeleted",
+          "parameter": "includeDeleted",
+          "schema": "bool",
+          "source": {
+            "column": 3,
+            "line": 107,
+            "path": "input.ts"
+          },
+          "type": "Query<boolean>",
+          "wrapper": "Query"
+        },
+        {
+          "capability": "data.main",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "main",
+          "parameter": "database",
+          "providerKind": "sqlite",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 108,
+            "path": "input.ts"
+          },
+          "type": "Sqlite<\"main\">"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 109,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
+        }
+      ],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 3,
+      "injections": [
+        {
+          "capability": "data.main",
+          "kind": "provider",
+          "name": "main",
+          "parameter": "database",
+          "providerKind": "sqlite"
+        }
+      ],
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Projects.Get",
+      "pattern": "/api/projects/{id:int}",
+      "response": {
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 20,
+            "line": 112,
+            "path": "input.ts"
+          },
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "notFound",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 42,
+            "line": 112,
+            "path": "input.ts"
+          },
+          "status": 404
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 105,
+        "path": "input.ts"
+      },
+      "tags": [
+        "api",
+        "projects",
+        "detail"
+      ]
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 4,
+      "health": {
+        "checks": [
+          "database",
+          "scheduler"
+        ],
+        "kind": "aggregate"
+      },
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Health",
+      "pattern": "/status",
+      "response": {
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 503
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 5,
+      "health": {
+        "checks": [
+          "scheduler"
+        ],
+        "kind": "liveness"
+      },
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Health.Liveness",
+      "pattern": "/status/live",
+      "response": {
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 503
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 6,
+      "health": {
+        "checks": [
+          "database"
+        ],
+        "kind": "readiness"
+      },
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Health.Readiness",
+      "pattern": "/status/ready",
+      "response": {
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 1,
+            "line": 115,
+            "path": "input.ts"
+          },
+          "status": 503
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": false
+      },
+      "handlerId": 7,
+      "method": "GET",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": "Projects.Summary",
+      "pattern": "/api/project-summary",
+      "response": {
+        "helper": "problem",
+        "kind": "problem",
+        "partial": true,
+        "status": 500
+      },
+      "source": {
+        "column": 3,
+        "line": 126,
+        "path": "input.ts"
+      },
+      "tags": [
+        "controller"
+      ]
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "handlerId": 8,
+      "method": "GET",
+      "module": "healthModule",
+      "name": "Status.Ping",
+      "pattern": "/status/ping",
+      "response": {
+        "helper": "text",
+        "kind": "text",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "text",
+          "kind": "text",
+          "partial": false,
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 3,
+        "line": 5,
+        "path": "health.ts"
+      },
+      "tags": [
+        "status"
+      ]
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 9,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/api/project-summary",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 3,
+        "line": 126,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 10,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/api/projects",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 89,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 11,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/api/projects/{id:int}",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 105,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 12,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/status",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 13,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/status/live",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "cors": {
+        "credentials": true,
+        "exposedHeaders": [
+          "x-request-id"
+        ],
+        "headers": [
+          "authorization",
+          "content-type"
+        ],
+        "maxAgeSeconds": 600,
+        "methods": [],
+        "origins": [
+          "https://app.example.com"
+        ],
+        "preflight": true
+      },
+      "handlerId": 14,
+      "method": "OPTIONS",
+      "middleware": [
+        {
+          "kind": "requestId",
+          "sequence": 0,
+          "source": {
+            "column": 1,
+            "line": 63,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "requestLogging",
+          "sequence": 1,
+          "source": {
+            "column": 1,
+            "line": 64,
+            "path": "input.ts"
+          }
+        },
+        {
+          "kind": "user",
+          "sequence": 2,
+          "source": {
+            "column": 9,
+            "line": 65,
+            "path": "input.ts"
+          }
+        }
+      ],
+      "name": null,
+      "pattern": "/status/ready",
+      "response": {
+        "helper": "status",
+        "kind": "empty",
+        "status": 204
+      },
+      "responses": [
+        {
+          "bodySchema": null,
+          "helper": "status",
+          "kind": "empty",
+          "partial": false,
+          "status": 204
+        },
+        {
+          "bodySchema": null,
+          "helper": "problem",
+          "kind": "problem",
+          "partial": true,
+          "status": 500
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 115,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "schemas": [
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "name": {
+            "kind": "string",
+            "min": 1
+          },
+          "owner": {
+            "kind": "string",
+            "optional": true
+          }
+        }
+      },
+      "name": "ProjectCreate",
+      "source": {
+        "column": 23,
+        "line": 20,
+        "path": "input.ts"
+      }
+    },
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "name": {
+            "kind": "string"
+          },
+          "owner": {
+            "kind": "string",
+            "optional": true
+          }
+        }
+      },
+      "name": "ProjectCreateInput",
+      "source": {
+        "column": 1,
+        "line": 25,
+        "path": "input.ts"
+      }
+    },
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "id": {
+            "kind": "number"
+          },
+          "name": {
+            "kind": "string"
+          }
+        }
+      },
+      "name": "ProjectDto",
+      "source": {
+        "column": 1,
+        "line": 30,
+        "path": "input.ts"
+      }
+    },
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "now": {
+            "kind": "string"
+          }
+        }
+      },
+      "name": "ClockService",
+      "source": {
+        "column": 1,
+        "line": 35,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "sourceFiles": [
+    {
+      "hash": "sha256:468fe5d9acf60d49a8330a0352e0970b9dbe29443d27b07ef50a33a6ca1abd30",
+      "path": "input.ts"
+    },
+    {
+      "hash": "sha256:aefd1fd2b51f7f6824a90adb04ce38b2da4a081f463a8c7d488048050a9730f1",
+      "path": "health.ts"
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:84ad443829c0a14722115ef79b2d8709c64d80e457fe7a32301fb585d1533849",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": true,
+      "capabilities": true,
+      "effects": true,
+      "health": true,
+      "os": true,
+      "providers": true,
+      "routes": true,
+      "sourceGraph": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "artifacts": "artifacts",
+    "packaged": true,
+    "path": ".sloppy/package"
+  }
+}

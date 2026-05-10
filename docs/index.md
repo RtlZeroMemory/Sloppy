@@ -47,6 +47,9 @@ New to Sloppy? Read these in order:
 4. [Generate OpenAPI and package the app](tutorials/openapi-and-package.md)
 5. [Check the stability matrix](reference/stability.md)
 
+If you are comparing Sloppy with other JavaScript runtimes, read
+[Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md).
+
 ## The app loop
 
 ```sh
@@ -65,14 +68,23 @@ metadata, and writes an app package.
 
 ## What works today
 
-- Templates: `minimal-api`, `full-api`, and `dogfood`.
+- Templates: `minimal-api`, `full-api`, `dogfood`, and `program`.
 - CLI: `create`, `build`, `run`, `package`, `routes`, `capabilities`,
   `doctor`, `audit`, and `openapi`.
-- Runtime: V8-backed handler execution on Windows x64 and Linux x64 alpha
-  packages.
+- Runtime: V8-backed web handler execution and Program Mode entrypoint
+  execution on Windows x64 and Linux x64 alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
+
+## Why Sloppy?
+
+- [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md) explains
+  the compiler-first runtime model with side-by-side route examples.
+- [Why no `node_modules`?](about/why-no-node-modules.md) explains the current
+  dependency boundary.
+- [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
+  Plan exists.
 
 ## Pre-alpha limits
 
@@ -86,4 +98,4 @@ source-build paths until matching alpha packages are available.
 ## Examples
 
 Start with [Examples and demo apps](guide/examples.md). The `minimal-api`,
-`full-api`, and `dogfood` templates are the best first places to copy from.
+`full-api`, `dogfood`, and `program` templates are the best first places to copy from.

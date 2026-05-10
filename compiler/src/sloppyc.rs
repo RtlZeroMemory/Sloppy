@@ -12094,7 +12094,7 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .iter()
             .map(|module| module.emitted_source.len())
             .sum::<usize>()
-            + 2048,
+            + 8192,
     );
     output.push_str("(function() {\n");
     output.push_str("  if (!globalThis.__sloppy_runtime) {\n");
@@ -12124,6 +12124,71 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
         }
         output.push_str("  };\n");
     }
+    output.push_str("  function __sloppy_program_format(value) {\n");
+    output.push_str("    if (typeof value === \"string\") { return value; }\n");
+    output.push_str("    if (typeof value === \"number\" || typeof value === \"boolean\" || typeof value === \"bigint\") { return String(value); }\n");
+    output.push_str("    if (value === undefined) { return \"undefined\"; }\n");
+    output.push_str("    if (value === null) { return \"null\"; }\n");
+    output.push_str("    if (typeof value === \"symbol\") { return String(value); }\n");
+    output.push_str("    if (typeof value === \"function\") { return value.name ? `[Function: ${value.name}]` : \"[Function]\"; }\n");
+    output.push_str("    if (value instanceof Error) {\n");
+    output.push_str(
+        "      let text = value.stack || `${value.name || \"Error\"}: ${value.message || \"\"}`;\n",
+    );
+    output.push_str("      if (typeof AggregateError !== \"undefined\" && value instanceof AggregateError && Array.isArray(value.errors)) {\n");
+    output.push_str(
+        "        const errors = value.errors.map(__sloppy_program_format).join(\"; \");\n",
+    );
+    output.push_str("        text = `${text}\\nErrors: ${errors}`;\n");
+    output.push_str("      }\n");
+    output.push_str("      return text;\n");
+    output.push_str("    }\n");
+    output.push_str("    const seen = [];\n");
+    output.push_str("    try {\n");
+    output.push_str("      const text = JSON.stringify(value, function(_key, nested) {\n");
+    output.push_str("        if (typeof nested === \"bigint\") { return String(nested); }\n");
+    output.push_str("        if (nested !== null && typeof nested === \"object\") {\n");
+    output.push_str("          if (seen.indexOf(nested) !== -1) { return \"[Circular]\"; }\n");
+    output.push_str("          seen.push(nested);\n");
+    output.push_str("        }\n");
+    output.push_str("        return nested;\n");
+    output.push_str("      });\n");
+    output.push_str("      return text === undefined ? String(value) : text;\n");
+    output.push_str("    } catch (_error) {\n");
+    output.push_str("      return \"[Circular]\";\n");
+    output.push_str("    }\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_console(events, stream, values) {\n");
+    output.push_str(
+        "    const parts = Array.prototype.slice.call(values).map(__sloppy_program_format);\n",
+    );
+    output.push_str("    events.push({ stream, text: `${parts.join(\" \")}\\n` });\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_is_result(value) {\n");
+    output.push_str("    return value !== null && typeof value === \"object\" && value.__sloppyResult === true && typeof value.kind === \"string\";\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_has_exit_code(value) {\n");
+    output.push_str("    return value !== null && typeof value === \"object\" && Object.prototype.hasOwnProperty.call(value, \"exitCode\");\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_exit_code(value) {\n");
+    output.push_str("    let code = 0;\n");
+    output.push_str("    if (typeof value === \"number\") { code = value; }\n");
+    output.push_str(
+        "    else if (__sloppy_program_has_exit_code(value)) { code = value.exitCode; }\n",
+    );
+    output.push_str("    else { return 0; }\n");
+    output.push_str("    if (!Number.isInteger(code) || code < 0 || code > 255) {\n");
+    output.push_str(
+        "      throw new Error(\"Sloppy program exit code must be an integer from 0 to 255\");\n",
+    );
+    output.push_str("    }\n");
+    output.push_str("    return code;\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_result(value, events) {\n");
+    output.push_str("    const exitCode = __sloppy_program_exit_code(value);\n");
+    output.push_str("    if (events.length === 0 && (typeof value === \"string\" || __sloppy_program_is_result(value))) { return value; }\n");
+    output.push_str("    return { __sloppyResult: true, kind: \"json\", status: 200, contentType: \"application/json\", body: { __sloppyProgramResult: true, exitCode, events } };\n");
+    output.push_str("  }\n");
     let entry = app
         .program_entry
         .as_deref()
@@ -12132,14 +12197,56 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
     output.push_str(
         "  globalThis.__sloppy_program_main = async function __sloppy_program_main() {\n",
     );
+    output.push_str("    const events = [];\n");
+    output.push_str("    const args = Array.isArray(globalThis.__sloppy_program_args) ? globalThis.__sloppy_program_args.slice() : [];\n");
+    output.push_str("    const ctx = globalThis.__sloppy_program_context && typeof globalThis.__sloppy_program_context === \"object\" ? globalThis.__sloppy_program_context : { kind: \"program\", args, cwd: \"\", environment: \"Development\", plan: { kind: \"program\", metadataCompleteness: \"opaque\" } };\n");
+    output.push_str("    const previousConsole = globalThis.console;\n");
+    output.push_str("    const programConsole = Object.create(previousConsole || null);\n");
+    output.push_str(
+        "    programConsole.log = function() { __sloppy_program_console(events, \"stdout\", arguments); };\n",
+    );
+    output.push_str(
+        "    programConsole.info = function() { __sloppy_program_console(events, \"stdout\", arguments); };\n",
+    );
+    output.push_str(
+        "    programConsole.debug = function() { __sloppy_program_console(events, \"stdout\", arguments); };\n",
+    );
+    output.push_str(
+        "    programConsole.warn = function() { __sloppy_program_console(events, \"stderr\", arguments); };\n",
+    );
+    output.push_str(
+        "    programConsole.error = function() { __sloppy_program_console(events, \"stderr\", arguments); };\n",
+    );
+    output.push_str("    Object.freeze(programConsole);\n");
+    output.push_str("    let value;\n");
+    output.push_str("    let failed = false;\n");
+    output.push_str("    globalThis.console = programConsole;\n");
+    output.push_str("    try {\n");
     output.push_str("    const entry = __sloppy_program_require(");
     output.push_str(&json_string(entry));
     output.push_str(");\n");
-    output.push_str("    if (typeof entry.main === \"function\") { return await entry.main(); }\n");
     output.push_str(
-        "    if (typeof entry.default === \"function\") { return await entry.default(); }\n",
+        "    if (typeof entry.main === \"function\") { value = await entry.main(args, ctx); }\n",
     );
-    output.push_str("    return undefined;\n");
+    output.push_str(
+        "    else if (typeof entry.default === \"function\") { value = await entry.default(args, ctx); }\n",
+    );
+    output.push_str("    } catch (error) {\n");
+    output.push_str("      failed = true;\n");
+    output.push_str("      __sloppy_program_console(events, \"stderr\", [error]);\n");
+    output.push_str("      value = { exitCode: 1 };\n");
+    output.push_str("    } finally {\n");
+    output.push_str("      if (previousConsole === undefined) {\n");
+    output.push_str("        try { delete globalThis.console; } catch (_error) { globalThis.console = undefined; }\n");
+    output.push_str("      } else {\n");
+    output.push_str("        globalThis.console = previousConsole;\n");
+    output.push_str("      }\n");
+    output.push_str("    }\n");
+    output.push_str("    if (!failed) {\n");
+    output.push_str("      try { return __sloppy_program_result(value, events); }\n");
+    output.push_str("      catch (error) { __sloppy_program_console(events, \"stderr\", [error]); value = { exitCode: 1 }; }\n");
+    output.push_str("    }\n");
+    output.push_str("    return __sloppy_program_result(value, events);\n");
     output.push_str("  };\n");
     output.push_str("})();\n");
     EmittedAppJs {

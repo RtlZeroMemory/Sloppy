@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "capabilities": [
+      {
+        "access": "readwrite",
+        "inference": "declared",
+        "kind": "filesystem",
+        "token": "fs"
+      }
+    ]
+  }
+}

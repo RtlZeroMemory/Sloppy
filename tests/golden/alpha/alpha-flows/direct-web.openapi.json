@@ -1,0 +1,75 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "components": {
+      "responses": {
+        "SlopValidationProblem": {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlopValidationProblem"
+              }
+            }
+          },
+          "description": "Slop validation problem response"
+        }
+      },
+      "schemas": {
+        "SlopValidationProblem": {
+          "properties": {
+            "detail": {
+              "type": "string"
+            },
+            "status": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    },
+    "info": {
+      "title": "Sloppy API",
+      "version": "0.0.0"
+    },
+    "openapi": "3.0.3",
+    "paths": {
+      "/health": {
+        "get": {
+          "parameters": [],
+          "responses": {
+            "200": {
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "text"
+            }
+          },
+          "x-slop-capabilities": [],
+          "x-slop-completeness": "complete",
+          "x-slop-optimization-candidates": [
+            "static-route-dispatch"
+          ],
+          "x-slop-source": {
+            "column": 1,
+            "line": 3,
+            "path": "main.ts"
+          }
+        }
+      }
+    },
+    "x-slop-openapi-policy": {
+      "optimizations": "reported-only",
+      "status": "plan-supported-subset",
+      "unknownMetadata": "explicit-partial-markers"
+    }
+  }
+}

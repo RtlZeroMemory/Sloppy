@@ -175,9 +175,9 @@ has timed out) only ever do cleanup. They cannot double-settle JS state.
 - [Runtime](runtime.md) — startup and dispatch in more detail
 - [Plan](plan.md) — what's in `app.plan.json` and how it's validated
 - [V8 bridge](v8-bridge.md) — bridge invariants and ownership
+- [Memory model](memory-model.md) — ownership, lifetimes, and JS/native transfer
 - [HTTP runtime](http-runtime.md) — parser, dispatch, transport
 - [Provider runtime](provider-runtime.md) — how providers plug in
-- [Memory model](memory-model.md) — arenas, lifetimes, ownership
 - [Platform boundaries](platform-boundaries.md) — what crosses `src/platform/`
 - [Async runtime](async-runtime.md) — owner threads, cancellation
 - [Security model](security-model.md) — capabilities and redaction

@@ -1,0 +1,46 @@
+{
+  "capabilities": [],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Health.Get",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    },
+    {
+      "displayName": "Users.List",
+      "exportName": "__sloppy_handler_2",
+      "id": 2
+    },
+    {
+      "displayName": "Users.Get",
+      "exportName": "__sloppy_handler_3",
+      "id": 3
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Health.Get",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": "Users.List",
+      "pattern": "/users",
+      "tags": []
+    },
+    {
+      "handlerId": 3,
+      "method": "GET",
+      "name": "Users.Get",
+      "pattern": "/users/{id}",
+      "tags": []
+    }
+  ]
+}

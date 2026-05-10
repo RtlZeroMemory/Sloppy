@@ -1,0 +1,676 @@
+{
+  "bundle": {
+    "hash": "sha256:e0627bec256a37a2063fd83899c966a5302ecc563d89a1f545222d9dbdfa18fa",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "source": {
+        "column": 3,
+        "line": 51,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    },
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.audit",
+      "source": {
+        "column": 3,
+        "line": 52,
+        "path": "input.ts"
+      },
+      "token": "data.audit"
+    },
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.search",
+      "source": {
+        "column": 3,
+        "line": 53,
+        "path": "input.ts"
+      },
+      "token": "data.search"
+    },
+    {
+      "access": "enqueue",
+      "kind": "queue",
+      "source": {
+        "column": 3,
+        "line": 54,
+        "path": "input.ts"
+      },
+      "token": "queue.emails"
+    }
+  ],
+  "compilerVersion": "sloppyc-0.8.0",
+  "completeness": {
+    "reasons": [],
+    "status": "complete"
+  },
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 4
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 100
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "Sloppy__Providers__postgres__main__connectionString",
+          "key": "Sloppy:Providers:postgres:main:connectionString",
+          "secret": true,
+          "type": "secret"
+        },
+        {
+          "env": "Sloppy__Providers__sqlite__audit__database",
+          "key": "Sloppy:Providers:sqlite:audit:database",
+          "secret": false,
+          "type": "string"
+        },
+        {
+          "env": "Sloppy__Providers__sqlserver__search__connectionString",
+          "key": "Sloppy:Providers:sqlserver:search:connectionString",
+          "secret": true,
+          "type": "secret"
+        }
+      ]
+    },
+    "providers": [],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:postgres:main:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.ts:51",
+        "secret": true,
+        "source": null,
+        "status": "missing",
+        "type": "secret"
+      },
+      {
+        "key": "Sloppy:Providers:sqlite:audit:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.ts:52",
+        "secret": false,
+        "source": null,
+        "status": "missing",
+        "type": "string"
+      },
+      {
+        "key": "Sloppy:Providers:sqlserver:search:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.ts:53",
+        "secret": true,
+        "source": null,
+        "status": "missing",
+        "type": "secret"
+      }
+    ]
+  },
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "capabilityKind": "database",
+      "provider": "postgres",
+      "providerKind": "postgres",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 51,
+        "path": "input.ts"
+      },
+      "token": "data.main"
+    },
+    {
+      "capability": "data.audit",
+      "capabilityKind": "database",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 52,
+        "path": "input.ts"
+      },
+      "token": "data.audit"
+    },
+    {
+      "capability": "data.search",
+      "capabilityKind": "database",
+      "provider": "sqlserver",
+      "providerKind": "sqlserver",
+      "service": null,
+      "source": {
+        "column": 3,
+        "line": 53,
+        "path": "input.ts"
+      },
+      "token": "data.search"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "metadataInference": true,
+    "os": true,
+    "sourceMaps": true,
+    "strongPlanMetadata": true,
+    "workers": true
+  },
+  "handlers": [
+    {
+      "async": true,
+      "displayName": "POST /users",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 20,
+        "line": 49,
+        "path": "input.ts"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "GET /users/{id}",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 23,
+        "line": 65,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "kind": "web",
+  "modules": [],
+  "requiredFeatures": [
+    "stdlib.os",
+    "stdlib.workers"
+  ],
+  "routes": [
+    {
+      "bindings": [
+        {
+          "kind": "body.json",
+          "name": null,
+          "parameter": "input",
+          "schema": "UserCreate",
+          "source": {
+            "column": 3,
+            "line": 50,
+            "path": "input.ts"
+          },
+          "type": "UserCreate"
+        },
+        {
+          "capability": "data.main",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "main",
+          "parameter": "db",
+          "providerKind": "postgres",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 51,
+            "path": "input.ts"
+          },
+          "type": "Postgres<\"main\">"
+        },
+        {
+          "capability": "data.audit",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "audit",
+          "parameter": "audit",
+          "providerKind": "sqlite",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 52,
+            "path": "input.ts"
+          },
+          "type": "Sqlite<\"audit\">"
+        },
+        {
+          "capability": "data.search",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "search",
+          "parameter": "search",
+          "providerKind": "sqlserver",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 53,
+            "path": "input.ts"
+          },
+          "type": "SqlServer<\"search\">"
+        },
+        {
+          "capability": "queue.emails",
+          "injectionKind": "queue",
+          "kind": "injection",
+          "name": "emails",
+          "parameter": "emails",
+          "providerKind": "workqueue",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 54,
+            "path": "input.ts"
+          },
+          "type": "WorkQueue<\"emails\">"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 55,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
+        }
+      ],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "handlerId": 1,
+      "injections": [
+        {
+          "capability": "data.main",
+          "kind": "provider",
+          "name": "main",
+          "parameter": "db",
+          "providerKind": "postgres"
+        },
+        {
+          "capability": "data.audit",
+          "kind": "provider",
+          "name": "audit",
+          "parameter": "audit",
+          "providerKind": "sqlite"
+        },
+        {
+          "capability": "data.search",
+          "kind": "provider",
+          "name": "search",
+          "parameter": "search",
+          "providerKind": "sqlserver"
+        },
+        {
+          "capability": "queue.emails",
+          "kind": "queue",
+          "name": "emails",
+          "parameter": "emails",
+          "providerKind": "workqueue"
+        }
+      ],
+      "method": "POST",
+      "name": null,
+      "pattern": "/users",
+      "response": {
+        "bodySchema": "UserDto",
+        "helper": "created",
+        "kind": "json",
+        "status": 201
+      },
+      "source": {
+        "column": 1,
+        "line": 49,
+        "path": "input.ts"
+      }
+    },
+    {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "parameter": "id",
+          "schema": "number",
+          "source": {
+            "column": 3,
+            "line": 66,
+            "path": "input.ts"
+          },
+          "type": "Route<number>",
+          "wrapper": "Route"
+        },
+        {
+          "kind": "header",
+          "name": "x-trace-id",
+          "parameter": "trace",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 67,
+            "path": "input.ts"
+          },
+          "type": "Header<\"x-trace-id\">",
+          "wrapper": "Header"
+        },
+        {
+          "kind": "query",
+          "name": "includeDeleted",
+          "parameter": "includeDeleted",
+          "schema": "bool",
+          "source": {
+            "column": 3,
+            "line": 68,
+            "path": "input.ts"
+          },
+          "type": "Query<boolean>",
+          "wrapper": "Query"
+        },
+        {
+          "kind": "body.json",
+          "name": "input",
+          "parameter": "input",
+          "schema": "UserCreate",
+          "source": {
+            "column": 3,
+            "line": 69,
+            "path": "input.ts"
+          },
+          "type": "Body<UserCreate>",
+          "wrapper": "Body"
+        },
+        {
+          "capability": "data.main",
+          "injectionKind": "provider",
+          "kind": "injection",
+          "name": "main",
+          "parameter": "db",
+          "providerKind": "postgres",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 70,
+            "path": "input.ts"
+          },
+          "type": "Postgres<\"main\">"
+        },
+        {
+          "kind": "context",
+          "name": "RequestContext",
+          "parameter": "ctx",
+          "schema": null,
+          "source": {
+            "column": 3,
+            "line": 71,
+            "path": "input.ts"
+          },
+          "type": "RequestContext"
+        }
+      ],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "frameworkPath": "/users/:id",
+      "handlerId": 2,
+      "injections": [
+        {
+          "capability": "data.main",
+          "kind": "provider",
+          "name": "main",
+          "parameter": "db",
+          "providerKind": "postgres"
+        }
+      ],
+      "method": "GET",
+      "name": null,
+      "pattern": "/users/{id}",
+      "response": {
+        "bodySchema": "UserDto",
+        "helper": "ok",
+        "kind": "json",
+        "status": 200
+      },
+      "responses": [
+        {
+          "bodySchema": "UserDto",
+          "helper": "ok",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 17,
+            "line": 78,
+            "path": "input.ts"
+          },
+          "status": 200
+        },
+        {
+          "bodySchema": null,
+          "helper": "notFound",
+          "kind": "json",
+          "partial": false,
+          "source": {
+            "column": 36,
+            "line": 78,
+            "path": "input.ts"
+          },
+          "status": 404
+        }
+      ],
+      "source": {
+        "column": 1,
+        "line": 65,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "schemas": [
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "createdAt": {
+            "kind": "string",
+            "semantic": "DateTime",
+            "validation": "datetime"
+          },
+          "email": {
+            "kind": "string",
+            "semantic": "Email",
+            "validation": "email"
+          },
+          "lastSeenAt": {
+            "kind": "string",
+            "nullable": true,
+            "semantic": "Instant",
+            "validation": "datetime"
+          },
+          "loginCount": {
+            "kind": "int",
+            "min": 1,
+            "semantic": "PositiveInt"
+          },
+          "name": {
+            "kind": "string",
+            "min": 1,
+            "semantic": "NonEmptyString"
+          },
+          "password": {
+            "kind": "string",
+            "min": 8,
+            "redaction": "secret",
+            "secret": true,
+            "semantic": "PasswordString"
+          },
+          "profile": {
+            "kind": "object",
+            "optional": true,
+            "properties": {
+              "displayName": {
+                "kind": "string"
+              },
+              "tags": {
+                "items": {
+                  "kind": "string"
+                },
+                "kind": "array"
+              }
+            }
+          },
+          "role": {
+            "kind": "literalUnion",
+            "variants": [
+              {
+                "kind": "literal",
+                "value": "admin"
+              },
+              {
+                "kind": "literal",
+                "value": "user"
+              }
+            ]
+          },
+          "secretNote": {
+            "kind": "string",
+            "redaction": "secret",
+            "secret": true,
+            "semantic": "SecretString"
+          },
+          "tenantId": {
+            "kind": "string",
+            "semantic": "Uuid",
+            "validation": "uuid"
+          }
+        }
+      },
+      "name": "UserCreate",
+      "source": {
+        "column": 1,
+        "line": 25,
+        "path": "input.ts"
+      }
+    },
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "email": {
+            "kind": "string"
+          },
+          "id": {
+            "kind": "number"
+          },
+          "name": {
+            "kind": "string"
+          }
+        }
+      },
+      "name": "UserDto",
+      "source": {
+        "column": 1,
+        "line": 41,
+        "path": "input.ts"
+      }
+    }
+  ],
+  "sourceFiles": [
+    {
+      "hash": "sha256:bd77634aa9b5297a9e36b3ea56b783e7992e8a094f6f03c94b297452e5716e49",
+      "path": "input.ts"
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:aa29aca42054bcaf39505bd0fdad0d863e7db748d629b93501c052acc4f4bcc9",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": true,
+      "capabilities": true,
+      "effects": false,
+      "os": true,
+      "providers": true,
+      "routes": true,
+      "sourceGraph": true,
+      "workers": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

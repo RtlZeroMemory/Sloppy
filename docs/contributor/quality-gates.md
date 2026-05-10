@@ -12,6 +12,8 @@ some run in CI; the local commands mirror what CI does.
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
 .\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
+.\tools\windows\test-engine.ps1 -Tier pr -Area golden -Out artifacts\test-engine\golden.json
+.\tools\windows\test-engine.ps1 -Tier pr -Area integration -Out artifacts\test-engine\integration.json
 git diff --check
 ```
 
@@ -87,6 +89,7 @@ These run on demand or when labels/inputs select them:
 | Package outside-checkout | `package-smoke` / `full-ci` label, or `workflow_dispatch`   |
 | Live PostgreSQL      | `live-postgres` / `live-providers` / `full-ci` label            |
 | Live SQL Server      | `live-sqlserver` / `live-providers` / `full-ci` label           |
+| Windows Debug local-gate mirror | `windows-debug` / `full-ci` label, scheduled run, or `main` push |
 | SIMD backend (SSE2/AVX2) | SIMD-relevant changes                                       |
 | libFuzzer mutation   | Manual workflow dispatch                                        |
 | Test engine extended | Nightly or manual workflow dispatch                             |

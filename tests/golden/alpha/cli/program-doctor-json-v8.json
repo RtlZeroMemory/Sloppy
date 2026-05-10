@@ -1,0 +1,63 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "checks": [
+      {
+        "id": "bootstrap.assets",
+        "message": "bootstrap runtime asset found",
+        "status": "ok"
+      },
+      {
+        "id": "engine.v8",
+        "message": "V8 bridge compiled; runtime success still requires V8 tests",
+        "status": "ok"
+      },
+      {
+        "id": "providers.live",
+        "message": "live provider checks are not configured by default and no live DB was contacted",
+        "status": "warn"
+      },
+      {
+        "id": "package.runtime",
+        "message": "package release status requires package smoke",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.parse",
+        "message": "app plan parsed by native Plan v1 parser",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.routes",
+        "message": "program Plan has no route metadata by design",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.providers",
+        "message": "provider metadata not present",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.capabilities",
+        "message": "capability metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "stdlib.fs.capabilities",
+        "message": "filesystem capability metadata is visible to sloppy/fs policy checks",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.completeness",
+        "message": "Plan completeness is partial, runtime-only, or invalid",
+        "status": "warn"
+      },
+      {
+        "id": "program.metadata",
+        "message": "program Plan has no route metadata by design",
+        "status": "info"
+      }
+    ]
+  }
+}

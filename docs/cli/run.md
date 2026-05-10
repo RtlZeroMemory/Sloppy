@@ -4,10 +4,10 @@ Run a Sloppy app — either as a long-lived HTTP server or as a single
 synthetic request. `run` enters V8, so it requires a V8-enabled build.
 
 ```text
-sloppy run [source | artifacts-dir | --artifacts <dir>] [--stdlib <dir>]
+sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib <dir>]
            [--environment <name>] [--host <ip>] [--port <n>]
            [--kind web|program]
-           [--once METHOD TARGET]
+           [--once METHOD TARGET] [-- <program-args...>]
 ```
 
 ## Modes
@@ -38,6 +38,18 @@ sloppy run .sloppy
 Loads `app.plan.json`, `app.js`, and `app.js.map` from the directory and
 runs them directly. `sloppy run --artifacts .sloppy` is the explicit form for
 scripts that prefer named flags.
+
+**Package directory**:
+
+```sh
+sloppy run .sloppy/package -- one two
+```
+
+Loads `.sloppy/package/manifest.json`, then runs the copied artifacts from
+`.sloppy/package/artifacts`. The current runner expects the canonical
+`artifacts/app.plan.json`, `artifacts/app.js`, and `artifacts/app.js.map`
+layout recorded by `sloppy package`; it does not resolve arbitrary manifest
+artifact paths. Package runs do not need the original source checkout.
 
 ## One-shot requests
 
@@ -84,8 +96,10 @@ preflight detail, or request-scope cleanup without entering V8.
 | `--port <n>`           | `5173`          | Server bind port (1–65535)                           |
 | `--kind web\|program`  | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 | `--once METHOD TARGET` | —               | Run one synthetic request and exit                   |
+| `-- <program-args...>` | empty           | Arguments passed to Program Mode `main(args, ctx)`   |
 
 `--artifacts` and a positional source or artifact path are mutually exclusive.
+Arguments after `--` are valid only for Program Plans.
 
 ## Program Mode
 
@@ -96,8 +110,22 @@ fails before execution with the same V8 required-feature diagnostic used by web
 artifacts.
 
 The current Program runtime calls a named `main` export first, then a default
-function export, then relies on top-level module execution. It does not pass
-CLI arguments or a runtime context object yet.
+function export, then relies on top-level module execution. `main` and default
+functions receive `(args, ctx)`, where `args` is the list after `--` and `ctx`
+contains `kind`, `args`, `cwd`, `environment`, and
+`plan.metadataCompleteness`.
+
+```sh
+sloppy run src/main.ts -- --name Ada
+sloppy run --artifacts .sloppy -- --name Ada
+sloppy run .sloppy/package -- --name Ada
+```
+
+`console.log`, `console.info`, and `console.debug` write to stdout.
+`console.warn` and `console.error` write to stderr. Returning an integer from
+`0` through `255` sets the process exit code. Throwing, rejecting, or returning
+an out-of-range exit code exits non-zero with a diagnostic. Program console
+output is currently buffered until the Program entrypoint completes.
 
 ## Logging Config
 
@@ -148,19 +176,18 @@ sloppy run --environment Staging
 1. Parse CLI flags and resolve project config.
 2. If source input, invoke `sloppyc build` and write artifacts.
 3. Read `app.plan.json`, validate schema, hashes, target metadata, and required features.
-4. Prepare capabilities, server config, logging config, and the Plan-backed route table.
+4. Prepare capabilities, server config, logging config, and the Plan-backed route table for web Plans.
 5. Stage the bootstrap stdlib.
 6. Initialize the native logging runtime.
 7. Initialize the V8 isolate and engine bridge.
-8. Evaluate the artifact bundle and register handlers.
-9. Start the listener (or run the `--once`
-   request).
+8. Evaluate the artifact bundle and register handlers or the Program entrypoint.
+9. Start the listener, run the `--once` request, or call the Program entrypoint.
 
 If any step fails the runtime exits with a diagnostic and a non-zero status.
 
 ## Shutdown
 
-`Ctrl+C` (SIGINT) requests shutdown. The runtime stops accepting new
+For web servers, `Ctrl+C` (SIGINT) requests shutdown. The runtime stops accepting new
 connections, flushes configured logging sinks, and exits. Production-style
 graceful drain (long timeouts, in-flight connection completion, signaled
 load-balancer drain) is not implemented today — terminate behind a reverse proxy

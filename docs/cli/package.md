@@ -45,8 +45,25 @@ when you need a separate artifact root.
 ```
 
 `manifest.json` currently uses `schema: "sloppy.app-package.v1"`. The package
-is a directory shape for local tooling and smoke tests; archive/signing/release
-packaging is handled by the release scripts under `tools/`.
+records the app kind (`"web"` or `"program"`) and copied artifact paths:
+
+```json
+{
+  "schema": "sloppy.app-package.v1",
+  "kind": "program",
+  "entry": "artifacts/app.plan.json",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js",
+    "sourceMap": "artifacts/app.js.map"
+  },
+  "createdBy": "sloppy package"
+}
+```
+
+The package is a directory shape for local tooling and smoke tests; archive,
+signing, and runtime release packaging are handled by the release scripts under
+`tools/`.
 
 ## Flags
 
@@ -72,7 +89,10 @@ sloppy package
 sloppy package src/main.ts
 
 # Package a route-free program source.
-sloppy package src/main.ts
+sloppy package src/main.ts --kind program
+
+# Run a packaged program.
+sloppy run .sloppy/package -- one two
 
 # Machine-readable result.
 sloppy package --format json
@@ -84,3 +104,6 @@ Inspect the packaged Plan with other CLI commands:
 sloppy routes --plan .sloppy/package/artifacts/app.plan.json
 sloppy openapi .sloppy/package/artifacts --output openapi.json
 ```
+
+`sloppy openapi` is web-only; it fails clearly when the packaged Plan is
+`kind: "program"`.

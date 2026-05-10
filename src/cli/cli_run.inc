@@ -2105,6 +2105,136 @@ static bool sl_run_file_exists(const char* path)
            stat.kind == SL_FS_NODE_FILE;
 }
 
+static bool sl_run_copy_current_directory(char* buffer, size_t capacity)
+{
+    SlStatus status;
+
+    if (buffer == NULL || capacity == 0U) {
+        return false;
+    }
+    status = sl_platform_process_current_directory(buffer, capacity);
+    if (!sl_status_is_ok(status) || buffer[0] == '\0') {
+        return false;
+    }
+    return true;
+}
+
+static bool sl_run_append_program_args_json(SlStringBuilder* builder,
+                                            const SlCliOptions* options)
+{
+    size_t index = 0U;
+
+    if (builder == NULL || !sl_status_is_ok(sl_string_builder_append_char(builder, '['))) {
+        return false;
+    }
+    if (options != NULL) {
+        for (index = 0U; index < options->program_arg_count; index += 1U) {
+            const char* arg = options->program_args != NULL ? options->program_args[index] : "";
+            if (index != 0U &&
+                !sl_status_is_ok(sl_string_builder_append_char(builder, ',')))
+            {
+                return false;
+            }
+            if (!sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(arg))) {
+                return false;
+            }
+        }
+    }
+    return sl_status_is_ok(sl_string_builder_append_char(builder, ']'));
+}
+
+static int sl_run_set_program_invocation_context(SlRunApp* app, const SlCliOptions* options,
+                                                 const char* environment)
+{
+    char source_storage[SL_RUN_PROGRAM_CONTEXT_BYTES];
+    char cwd[SL_RUN_PATH_MAX_BYTES];
+    SlStringBuilder builder = {0};
+    SlStr source = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL || app->engine == NULL) {
+        return 1;
+    }
+    if (!sl_run_copy_current_directory(cwd, sizeof(cwd))) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to resolve program working directory\n");
+        return 1;
+    }
+    if (environment == NULL || environment[0] == '\0') {
+        environment = SL_RUN_DEFAULT_ENVIRONMENT;
+    }
+
+    status = sl_string_builder_init_fixed(&builder, source_storage, sizeof(source_storage));
+    if (!sl_status_is_ok(status) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(
+            &builder, "(function(){const __sloppyArgs=")) ||
+        !sl_run_append_program_args_json(&builder, options) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(
+            &builder, ";const __sloppyFrozenArgs=Object.freeze(__sloppyArgs.slice());"
+                      "globalThis.__sloppy_program_args=__sloppyFrozenArgs;"
+                      "globalThis.__sloppy_program_context=Object.freeze({kind:\"program\",args:"
+                      "__sloppyFrozenArgs,cwd:")) ||
+        !sl_cli_json_builder_append_string(&builder, sl_cli_span_cstr(cwd)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",environment:")) ||
+        !sl_cli_json_builder_append_string(&builder, sl_cli_span_cstr(environment)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(
+            &builder,
+            ",plan:Object.freeze({kind:\"program\",metadataCompleteness:\"opaque\"})});})();")) ||
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &source)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: program invocation context is too large\n");
+        return 1;
+    }
+
+    status = sl_engine_eval_source(app->engine, sl_str_from_cstr("sloppy:program-context"),
+                                   source, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to stage program context: ", &app->engine_arena,
+                          &diag);
+        return 1;
+    }
+    return 0;
+}
+
+static int sl_run_resolve_package_artifacts_path(const char* artifacts_path,
+                                                 char* resolved_artifacts_path,
+                                                 size_t resolved_artifacts_path_capacity,
+                                                 const char** out_artifacts_path)
+{
+    if (out_artifacts_path == NULL) {
+        return 1;
+    }
+    *out_artifacts_path = artifacts_path;
+    if (artifacts_path == NULL || artifacts_path[0] == '\0') {
+        return 1;
+    }
+    if (!sl_cli_path_is_directory(artifacts_path)) {
+        return 0;
+    }
+    if (sl_cli_directory_has_plan(artifacts_path)) {
+        return 0;
+    }
+    if (!sl_cli_directory_has_package_manifest(artifacts_path)) {
+        sl_cli_write_cstr(
+            stderr,
+            "sloppy run: artifact or package directory must contain app.plan.json or manifest.json\n");
+        return 1;
+    }
+    if (!sl_run_artifact_file_path(resolved_artifacts_path, resolved_artifacts_path_capacity,
+                                   artifacts_path, "artifacts"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: package artifacts path is too long\n");
+        return 1;
+    }
+    if (!sl_cli_directory_has_plan(resolved_artifacts_path)) {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: package manifest points to missing artifacts/app.plan.json\n");
+        return 1;
+    }
+    *out_artifacts_path = resolved_artifacts_path;
+    return 0;
+}
+
 static bool sl_run_copy_package_stdlib_path(char* buffer, size_t capacity,
                                             const char* executable_path)
 {
@@ -2363,7 +2493,8 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
 }
 
 static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifacts_path,
-                                       size_t artifacts_path_capacity)
+                                       size_t artifacts_path_capacity, char* environment_out,
+                                       size_t environment_out_capacity)
 {
     SlSloppyRunConfig config = {0};
     const char* source_path = NULL;
@@ -2397,6 +2528,13 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
 
     if (!sl_run_source_input_extension_supported(source_path)) {
         sl_cli_write_error_with_value("sloppy run: unsupported source input: ", source_path, "\n");
+        return 1;
+    }
+
+    if (environment_out != NULL && environment_out_capacity != 0U &&
+        !sl_cli_copy_cstr(environment_out, environment_out_capacity, environment))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: environment name is too long\n");
         return 1;
     }
 
@@ -2483,13 +2621,140 @@ static int sl_cli_command_build(const SlCliOptions* options)
     return result;
 }
 
-static int sl_run_program_main(SlRunApp* app)
+static bool sl_run_program_json_object_has_true(yyjson_val* object, const char* name)
+{
+    yyjson_val* value = object != NULL ? yyjson_obj_get(object, name) : NULL;
+    return value != NULL && yyjson_is_bool(value) && yyjson_get_bool(value);
+}
+
+static int sl_run_program_json_exit_code(yyjson_val* object, int* out)
+{
+    yyjson_val* value = object != NULL ? yyjson_obj_get(object, "exitCode") : NULL;
+    int64_t code = 0;
+
+    if (out == NULL) {
+        return 1;
+    }
+    *out = 0;
+    if (value == NULL || yyjson_is_null(value)) {
+        return 0;
+    }
+    if (!yyjson_is_int(value)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: program result exitCode must be an integer from 0 to 255\n");
+        return 1;
+    }
+    code = yyjson_get_sint(value);
+    if (code < 0 || code > 255) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: program result exitCode must be an integer from 0 to 255\n");
+        return 1;
+    }
+    *out = (int)code;
+    return 0;
+}
+
+static int sl_run_program_emit_json_result(SlBytes body, bool* handled, int* out_exit_code)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    yyjson_val* events = NULL;
+    yyjson_arr_iter iter;
+    yyjson_val* event = NULL;
+    int exit_code = 0;
+
+    if (handled == NULL || out_exit_code == NULL) {
+        return 1;
+    }
+    *handled = false;
+    *out_exit_code = 0;
+    if (body.ptr == NULL || body.length == 0U) {
+        return 0;
+    }
+
+    doc = yyjson_read_opts((char*)body.ptr, body.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        return 0;
+    }
+    root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root) || !sl_run_program_json_object_has_true(root, "__sloppyProgramResult"))
+    {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+
+    if (sl_run_program_json_exit_code(root, &exit_code) != 0) {
+        yyjson_doc_free(doc);
+        return 1;
+    }
+
+    events = yyjson_obj_get(root, "events");
+    if (events != NULL && !yyjson_is_arr(events)) {
+        sl_cli_write_cstr(stderr, "sloppy run: program result events must be an array\n");
+        yyjson_doc_free(doc);
+        return 1;
+    }
+
+    if (events != NULL) {
+        yyjson_arr_iter_init(events, &iter);
+        while ((event = yyjson_arr_iter_next(&iter)) != NULL) {
+            yyjson_val* stream_value = yyjson_is_obj(event) ? yyjson_obj_get(event, "stream") : NULL;
+            yyjson_val* text_value = yyjson_is_obj(event) ? yyjson_obj_get(event, "text") : NULL;
+            FILE* stream = NULL;
+            const char* text = NULL;
+            size_t text_length = 0U;
+
+            if (stream_value == NULL || text_value == NULL || !yyjson_is_str(stream_value) ||
+                !yyjson_is_str(text_value))
+            {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy run: program result events must contain stream/text\n");
+                yyjson_doc_free(doc);
+                return 1;
+            }
+            if (sl_run_json_string_equals_cstr(stream_value, "stdout")) {
+                stream = stdout;
+            }
+            else if (sl_run_json_string_equals_cstr(stream_value, "stderr")) {
+                stream = stderr;
+            }
+            else {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy run: program result stream must be stdout or stderr\n");
+                yyjson_doc_free(doc);
+                return 1;
+            }
+
+            text = yyjson_get_str(text_value);
+            text_length = yyjson_get_len(text_value);
+            if (text_length != 0U && fwrite(text, 1U, text_length, stream) != text_length) {
+                yyjson_doc_free(doc);
+                return 1;
+            }
+        }
+    }
+
+    yyjson_doc_free(doc);
+    *handled = true;
+    *out_exit_code = exit_code;
+    return 0;
+}
+
+static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options,
+                               const char* environment)
 {
     SlEngineResult result = {0};
     SlDiag diag = {0};
     SlStatus status;
+    bool handled_program_result = false;
+    int program_exit_code = 0;
 
     if (app == NULL || app->engine == NULL) {
+        return 1;
+    }
+
+    if (sl_run_set_program_invocation_context(app, options, environment) != 0) {
         return 1;
     }
 
@@ -2507,6 +2772,14 @@ static int sl_run_program_main(SlRunApp* app)
         sl_cli_write_cstr(stdout, "\n");
     }
     else if (result.kind == SL_ENGINE_RESULT_JSON) {
+        if (sl_run_program_emit_json_result(result.response.body, &handled_program_result,
+                                            &program_exit_code) != 0)
+        {
+            return 1;
+        }
+        if (handled_program_result) {
+            return program_exit_code;
+        }
         if (result.response.body.length != 0U &&
             fwrite(result.response.body.ptr, 1U, result.response.body.length, stdout) !=
                 result.response.body.length)
@@ -2535,7 +2808,9 @@ static int sl_cli_command_run(const SlCliOptions* options)
     const char* run_host = NULL;
     uint16_t run_port = 0U;
     char source_artifacts_path[SL_RUN_PATH_MAX_BYTES];
+    char resolved_artifacts_path[SL_RUN_PATH_MAX_BYTES];
     char package_stdlib_path[SL_RUN_PATH_MAX_BYTES];
+    char program_environment[SL_RUN_CONFIG_HOST_MAX_BYTES];
     int result = 0;
 
     if (options == NULL) {
@@ -2546,6 +2821,13 @@ static int sl_cli_command_run(const SlCliOptions* options)
     stdlib_path = options->stdlib_path;
     run_host = options->host;
     run_port = options->port;
+    if (!sl_cli_copy_cstr(program_environment, sizeof(program_environment),
+                          options->environment_explicit ? options->environment
+                                                        : SL_RUN_DEFAULT_ENVIRONMENT))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: environment name is too long\n");
+        return 1;
+    }
 
     if (options->environment_explicit && artifacts_path == NULL && options->input_path != NULL &&
         !sl_run_source_input_extension_supported(options->input_path))
@@ -2573,7 +2855,8 @@ static int sl_cli_command_run(const SlCliOptions* options)
             sl_run_source_input_extension_supported(options->input_path))
         {
             if (sl_run_prepare_source_input(options, source_artifacts_path,
-                                            sizeof(source_artifacts_path)) != 0)
+                                            sizeof(source_artifacts_path), program_environment,
+                                            sizeof(program_environment)) != 0)
             {
                 return 1;
             }
@@ -2589,6 +2872,13 @@ static int sl_cli_command_run(const SlCliOptions* options)
     if (artifacts_path == NULL) {
         sl_cli_write_cstr(stderr,
                           "sloppy run: expected source input, sloppy.json, or --artifacts <dir>\n");
+        return 1;
+    }
+
+    if (sl_run_resolve_package_artifacts_path(artifacts_path, resolved_artifacts_path,
+                                              sizeof(resolved_artifacts_path),
+                                              &artifacts_path) != 0)
+    {
         return 1;
     }
 
@@ -2614,11 +2904,23 @@ static int sl_cli_command_run(const SlCliOptions* options)
             result = 1;
         }
         else {
-            result = sl_run_program_main(app);
+            result = sl_run_program_main(app, options, program_environment);
         }
     }
     else if (options->once_method != NULL) {
-        result = sl_run_once(app, options->once_method, options->once_target);
+        if (options->program_args_explicit) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: program arguments after -- are only valid for Program Plans\n");
+            result = 1;
+        }
+        else {
+            result = sl_run_once(app, options->once_method, options->once_target);
+        }
+    }
+    else if (options->program_args_explicit) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: program arguments after -- are only valid for Program Plans\n");
+        result = 1;
     }
     else {
         if (!options->host_explicit && app->config_has_host) {

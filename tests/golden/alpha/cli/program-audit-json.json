@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "findings": [
+      {
+        "code": "SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE",
+        "message": "filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented",
+        "path": "capabilities",
+        "severity": "note"
+      }
+    ]
+  }
+}

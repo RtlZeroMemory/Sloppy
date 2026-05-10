@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-program",
+      "sloppy run -- --name Ada"
+    ],
+    "path": "flow-program",
+    "template": "program"
+  }
+}

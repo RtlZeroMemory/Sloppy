@@ -1,0 +1,55 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "kind": "web",
+    "routes": [
+      {
+        "bindings": [],
+        "completeness": "complete",
+        "handlerId": 1,
+        "method": "GET",
+        "module": "",
+        "name": "Health.Get",
+        "pattern": "/health",
+        "response": {
+          "helper": "text",
+          "kind": "text",
+          "status": 200
+        },
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "main.ts"
+        },
+        "sourceOrder": 0
+      },
+      {
+        "bindings": [
+          {
+            "kind": "route",
+            "name": "name",
+            "schema": ""
+          }
+        ],
+        "completeness": "complete",
+        "handlerId": 2,
+        "method": "GET",
+        "module": "",
+        "name": "Hello.Get",
+        "pattern": "/hello/{name}",
+        "response": {
+          "helper": "json",
+          "kind": "json",
+          "status": 200
+        },
+        "source": {
+          "column": 1,
+          "line": 6,
+          "path": "main.ts"
+        },
+        "sourceOrder": 1
+      }
+    ]
+  }
+}

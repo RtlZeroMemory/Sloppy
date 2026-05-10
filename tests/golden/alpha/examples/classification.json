@@ -1,0 +1,468 @@
+{
+  "examples": [
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "codec-base64-hex",
+      "reason": "stdlib codec runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "codec-checksums",
+      "reason": "stdlib codec runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "codec-compression",
+      "reason": "compression bridge availability is runtime-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "codec-streaming-compression",
+      "reason": "streaming compression bridge availability is runtime-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "codec-text-binary",
+      "reason": "stdlib codec runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "compiler-hello",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "config-basic",
+      "reason": "configuration runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "config-secrets-redaction",
+      "reason": "redaction runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "config-strict-mode",
+      "reason": "configuration runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "configured-api",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-config-secrets",
+      "reason": "core stdlib runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-fs-time-codec",
+      "reason": "filesystem/time runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-network-time-codec",
+      "reason": "network runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-policy-audit",
+      "reason": "policy audit example is covered by static API-shape tests and V8-gated runtime smoke",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-process-time-codec",
+      "reason": "process runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "core-worker-time",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "crypto-hash-hmac",
+      "reason": "crypto runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "crypto-password",
+      "reason": "password hashing runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "crypto-random-token",
+      "reason": "randomness runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "crypto-secret-constant-time",
+      "reason": "crypto runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "data-foundation",
+      "reason": "data foundation example is covered by static API-shape tests and runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "kind": "metadata",
+      "name": "dogfood",
+      "reason": "dogfood metadata fixture is covered through template and prealpha-control-plane flows",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "ergonomics",
+      "reason": "covered by static example API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "framework-controller",
+      "reason": "covered by static example API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-di-services",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-explicit-binding",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-hello",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-postgres-crud",
+      "reason": "requires PostgreSQL provider configuration",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-sqlite-crud",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-sqlserver-crud",
+      "reason": "requires SQL Server provider configuration",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.ts",
+      "kind": "web",
+      "name": "framework-validation-errors",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "fs-basic",
+      "reason": "filesystem runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "fs-roots-policy",
+      "reason": "filesystem policy runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "fs-streams",
+      "reason": "filesystem streaming runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "fs-watch",
+      "reason": "filesystem watch runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "hello",
+      "reason": "covered by static hello API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "src/main.ts",
+      "kind": "web",
+      "name": "hello-minimal",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "http-client-basic",
+      "reason": "live network calls are not PR-tier deterministic",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "modules-api",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "modules-basic",
+      "reason": "covered by static example API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-deadline-cancel",
+      "reason": "network runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-local-ipc",
+      "reason": "local IPC behavior is platform-specific",
+      "tier": "platform-specific"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-policy-strict",
+      "reason": "network policy runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-tcp-client",
+      "reason": "network runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-tcp-echo",
+      "reason": "network runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "net-tcp-server",
+      "reason": "network runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "os-runtime-api",
+      "reason": "process runtime smoke is platform-sensitive",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
+      "name": "postgres-basic",
+      "reason": "requires PostgreSQL provider configuration",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "src/main.js",
+      "kind": "web",
+      "name": "prealpha-control-plane",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "src/main.ts",
+      "kind": "program",
+      "metadata": true,
+      "name": "program-fs-process",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "main.ts",
+      "kind": "program",
+      "metadata": true,
+      "name": "program-hello",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "request-context",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
+      "name": "sqlite-basic",
+      "reason": "covered by static provider API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
+      "name": "sqlserver-basic",
+      "reason": "requires SQL Server provider configuration",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "time-basic",
+      "reason": "time runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "time-deadline-cancellation",
+      "reason": "time cancellation runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "time-fake-clock",
+      "reason": "fake-clock runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "time-interval-schedule",
+      "reason": "timer runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "users-api-sqlite",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "validation-errors",
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "workers-background-service",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "workers-js-isolate",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "workers-shutdown",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "workers-workerpool",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    },
+    {
+      "entry": "app.js",
+      "kind": "program-js",
+      "name": "workers-workqueue",
+      "reason": "worker runtime smoke is V8-gated",
+      "tier": "extended"
+    }
+  ],
+  "schemaVersion": 1
+}

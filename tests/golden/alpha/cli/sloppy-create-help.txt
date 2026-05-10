@@ -1,0 +1,6 @@
+Usage: sloppy create <name> [--template minimal-api|full-api|dogfood|program]
+                     [--force] [--no-git] [--format text|json]
+
+Copies a built-in project template into a new local app directory.
+--force removes an existing destination directory before copying template files.
+--no-git is reserved for future git initialization; template files still copy.

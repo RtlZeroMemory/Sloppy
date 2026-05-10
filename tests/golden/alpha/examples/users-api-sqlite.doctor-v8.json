@@ -1,0 +1,98 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "checks": [
+      {
+        "id": "bootstrap.assets",
+        "message": "bootstrap runtime asset found",
+        "status": "ok"
+      },
+      {
+        "id": "engine.v8",
+        "message": "V8 bridge compiled; runtime success still requires V8 tests",
+        "status": "ok"
+      },
+      {
+        "id": "providers.live",
+        "message": "live provider checks are not configured by default and no live DB was contacted",
+        "status": "warn"
+      },
+      {
+        "id": "package.runtime",
+        "message": "package release status requires package smoke",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.parse",
+        "message": "app plan parsed by native Plan v1 parser",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.routes",
+        "message": "route metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.providers",
+        "message": "provider metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.capabilities",
+        "message": "capability metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.config",
+        "message": "configuration requirements are Plan-visible",
+        "status": "ok"
+      },
+      {
+        "id": "config.Sloppy:Providers:sqlite:main:database",
+        "message": "Config Sloppy:Providers:sqlite:main:database is present from appsettings.Development.json required by app.js:7 (redaction: none)",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.completeness",
+        "message": "Plan completeness is partial, runtime-only, or invalid",
+        "status": "warn"
+      },
+      {
+        "id": "route.completeness",
+        "message": "route has partial/runtime-only/invalid Plan metadata",
+        "status": "warn"
+      },
+      {
+        "id": "route.response",
+        "message": "route response metadata is unknown",
+        "status": "warn"
+      },
+      {
+        "id": "route.completeness",
+        "message": "route has partial/runtime-only/invalid Plan metadata",
+        "status": "warn"
+      },
+      {
+        "id": "route.response",
+        "message": "route response metadata is unknown",
+        "status": "warn"
+      },
+      {
+        "id": "route.completeness",
+        "message": "route has partial/runtime-only/invalid Plan metadata",
+        "status": "warn"
+      },
+      {
+        "id": "route.response",
+        "message": "route response metadata is unknown",
+        "status": "warn"
+      },
+      {
+        "id": "optimization.provider-route-candidate",
+        "message": "route has provider/effect metadata for future route analysis",
+        "status": "ok"
+      }
+    ]
+  }
+}

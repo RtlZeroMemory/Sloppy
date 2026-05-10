@@ -41,7 +41,20 @@ The supported tiers are:
 | `torture` | Manual pressure evidence. Uses the largest default fuzz/property and stress budgets and also asks for the V8 area when `all` is selected. |
 
 The supported areas are `all`, `static`, `native`, `compiler`, `js`, `fuzz`,
-`http2`, `package`, `sanitizer`, `stress`, `v8`, `provider`, and `meta`.
+`http2`, `package`, `sanitizer`, `stress`, `v8`, `provider`, `meta`,
+`golden`, `integration`, `examples`, `templates`, `alpha-flow`, and
+`diagnostics`.
+
+The alpha proof areas wrap focused CTest selections:
+
+| Area | Covers |
+| --- | --- |
+| `golden` | CLI, compiler, and diagnostic alpha goldens. |
+| `integration` | alpha app flows plus source-input/package conformance. |
+| `examples` | example manifest freshness and PR-tier example smoke. |
+| `templates` | template create/build/package goldens. |
+| `alpha-flow` | end-to-end template and direct-source app flows. |
+| `diagnostics` | diagnostic goldens and negative CLI paths. |
 
 `-Out` / `--out` writes a JSON report with:
 
