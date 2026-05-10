@@ -99,7 +99,7 @@ CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
 async support is `UNAVAILABLE` — never folded into a default pass.
 
-## Sanitizer lanes (extended/manual)
+## Sanitizer lanes
 
 ```powershell
 # Windows ASan
@@ -120,6 +120,11 @@ cmake --preset linux-sanitizers
 cmake --build --preset linux-sanitizers
 ctest --preset linux-sanitizers --output-on-failure
 ```
+
+The Linux sanitizer mirror runs for native PR changes. Windows ASan and
+instrumented libFuzzer seed replay run on `main`, scheduled CI, manual
+dispatch, or labels such as `memory-safety`, `windows-asan`, `fuzz`, and
+`full-ci`.
 
 ## Test engine lanes
 

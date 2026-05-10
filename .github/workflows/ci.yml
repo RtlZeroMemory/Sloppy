@@ -47,6 +47,7 @@ concurrency:
 
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
+  VCPKG_CACHE_VERSION: v2
 
 jobs:
   changes:
@@ -262,6 +263,10 @@ jobs:
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
           .\tools\windows\check-release-artifacts.ps1
 
+      - name: Format check
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 format-check -Preset windows-dev
+
       - name: Test engine meta report
         shell: pwsh
         run: .\tools\windows\test-engine.ps1 -Tier pr -Area meta -Out artifacts\test-engine\ci-fast-meta.json
@@ -308,14 +313,16 @@ jobs:
     name: windows-fast
     runs-on: windows-latest
     needs: changes
-    # This is the Windows Debug mirror of the local developer gate. Default
-    # native PR coverage now comes from the Unix platform matrix plus the
-    # Windows ASan/libFuzzer jobs below; keeping this full Debug lane on every
-    # native PR makes CI wait on duplicate, slow vcpkg/CMake work.
+    # Windows Debug is the local developer gate mirror. It is the default
+    # Windows platform signal for native PRs; sanitizer/fuzzer Windows presets
+    # are heavier opt-in lanes.
     if: |
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && (
+        needs.changes.outputs.native_relevant == 'true' ||
+        needs.changes.outputs.windows_tooling_relevant == 'true' ||
         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
         contains(github.event.pull_request.labels.*.name, 'windows-debug')
       ))
@@ -348,8 +355,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -388,7 +396,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: pwsh
@@ -397,22 +405,6 @@ jobs:
       - name: Test
         shell: pwsh
         run: ctest --preset windows-dev --output-on-failure
-
-      - name: Format check
-        shell: pwsh
-        run: .\tools\windows\dev.ps1 format-check -Preset windows-dev
-
-      - name: Test engine PR report
-        shell: pwsh
-        run: .\tools\windows\test-engine.ps1 -Tier pr -Area fuzz -Out artifacts\test-engine\pr-fuzz-windows.json
-
-      - name: Upload test engine PR report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-engine-pr-windows
-          path: artifacts/test-engine/pr-fuzz-windows.json
-          if-no-files-found: error
 
   windows-tooling:
     name: windows-tooling
@@ -447,8 +439,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -480,7 +473,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Bootstrap doctor
         shell: pwsh
@@ -538,8 +531,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -574,7 +568,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Outside-checkout package smoke
         shell: pwsh
@@ -584,7 +578,16 @@ jobs:
     name: memory-safety / ${{ matrix.name }}
     runs-on: windows-latest
     needs: changes
-    if: needs.changes.outputs.native_relevant == 'true' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+        contains(github.event.pull_request.labels.*.name, 'memory-safety') ||
+        contains(github.event.pull_request.labels.*.name, 'windows-asan') ||
+        contains(github.event.pull_request.labels.*.name, 'fuzz')
+      ))
 
     strategy:
       fail-fast: false
@@ -625,9 +628,11 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -666,7 +671,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-memory-safety-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: pwsh
@@ -730,9 +735,11 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: linux-sanitizers-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: linux-sanitizers-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            linux-sanitizers-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             linux-sanitizers-vcpkg-${{ env.VCPKG_COMMIT }}-
+            Linux-linux-clang-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
 
       - name: Bootstrap vcpkg
@@ -779,7 +786,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: linux-sanitizers-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: linux-sanitizers-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: bash
@@ -832,10 +839,13 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
+            windows-memory-simd-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-memory-simd-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -874,7 +884,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: pwsh
@@ -885,8 +895,8 @@ jobs:
         run: ctest --preset "${{ matrix.preset }}" -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
 
   # The full Windows local-gate mirror is opt-in during pre-alpha iteration.
-  # Normal non-docs changes run the Unix platform matrix plus Windows ASan and
-  # libFuzzer lanes; use full-ci for an exact local-gate mirror.
+  # Normal non-docs changes run windows-fast; use full-ci for the slower
+  # build/test/format/lint bundle in one Windows job.
   windows:
     name: ci-full / windows
     runs-on: windows-latest
@@ -920,8 +930,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -968,7 +979,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: pwsh
@@ -1040,9 +1051,11 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-provider-live-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-provider-live-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-vcpkg-
 
@@ -1081,7 +1094,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-provider-live-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Run selected provider live lanes
         shell: pwsh
@@ -1195,8 +1208,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_COMMIT }}-
             ${{ runner.os }}-${{ matrix.preset }}-vcpkg-
 
@@ -1262,7 +1276,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build
         shell: bash
@@ -1391,7 +1405,11 @@ jobs:
     needs: changes
     if: |
       (github.event_name == 'workflow_dispatch' && inputs.advanced_analysis == 'true') ||
-      (github.event_name == 'pull_request' && (needs.changes.outputs.analysis_relevant == 'true' || contains(github.event.pull_request.labels.*.name, 'full-ci') || contains(github.event.pull_request.labels.*.name, 'memory-analysis'))) ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+        contains(github.event.pull_request.labels.*.name, 'memory-analysis')
+      )) ||
       (github.event_name == 'push' && needs.changes.outputs.analysis_relevant == 'true')
 
     steps:
@@ -1431,8 +1449,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: advanced-analysis-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            advanced-analysis-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-
 
       - name: Bootstrap vcpkg
@@ -1477,7 +1496,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: advanced-analysis-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Run repo-wide clang-tidy analyzer profile
         shell: bash
@@ -1554,8 +1573,9 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-v8-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-v8-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            windows-v8-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             windows-v8-vcpkg-${{ env.VCPKG_COMMIT }}-
             windows-v8-vcpkg-
 
@@ -1597,7 +1617,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: windows-v8-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: windows-v8-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build V8 build
         if: steps.v8.outputs.configured == 'true'
