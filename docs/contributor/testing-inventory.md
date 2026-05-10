@@ -99,7 +99,7 @@ CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
 async support is `UNAVAILABLE` — never folded into a default pass.
 
-## Sanitizer lanes (mandatory in CI)
+## Sanitizer lanes (extended/manual)
 
 ```powershell
 # Windows ASan
@@ -107,7 +107,7 @@ async support is `UNAVAILABLE` — never folded into a default pass.
 .\tools\windows\dev.ps1 build -Preset windows-asan
 ctest --preset windows-asan --output-on-failure
 
-# libFuzzer seed replay
+# libFuzzer seed replay with instrumentation
 .\tools\windows\dev.ps1 configure -Preset windows-libfuzzer
 .\tools\windows\dev.ps1 build -Preset windows-libfuzzer
 ctest --preset windows-libfuzzer -L fuzz --output-on-failure
@@ -136,6 +136,8 @@ tools/unix/fuzz.sh --all --iterations 1000 --seed 12345
 The engine records JSON evidence for the selected tier and area. The fuzz
 wrappers cover native seed replay, selected libFuzzer mutation runs, and the
 JavaScript randomized/property targets listed in [test-engine.md](test-engine.md).
+The PR tier keeps iteration counts bounded, while extended and torture tiers
+raise the fuzz/property and stress budgets.
 
 ## SIMD lanes
 
@@ -207,6 +209,12 @@ tests/fixtures/package/
 
 `dev.ps1 package` produces the archive; `dev.ps1 test-package` smokes
 it from outside the repository checkout.
+
+`sloppy.cli.create_package_command` also covers create/package failure paths:
+invalid project names, missing templates, existing files and directories,
+`--force` stale-file behavior, project-mode `package --out` rejection,
+unsupported package source inputs, package cleanup on rerun, and JSON output
+shape.
 
 ## Goldens
 

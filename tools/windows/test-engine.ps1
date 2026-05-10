@@ -343,11 +343,13 @@ function Invoke-AddedLineGuardrails {
     $releasePhrase = "auto-generated" + " release notes"
     $generatedPhrase = "generated" + " with"
     $legacyAgentPhrase = "Claude" + " Code"
+    $speedPhrase = "blazing" + " fast"
+    $productionPhrase = "production" + " ready"
     $codexToken = "CO" + "DEX"
     $blockedPhrasePattern = "(?i)(" + [regex]::Escape($goalPhrase) + "|" +
         [regex]::Escape($releasePhrase) + "|" + [regex]::Escape($generatedPhrase) +
-        "|blazing fast|production ready|" + [regex]::Escape($legacyAgentPhrase) +
-        "|\b" + [regex]::Escape($codexToken) + "\b)"
+        "|" + [regex]::Escape($speedPhrase) + "|" + [regex]::Escape($productionPhrase) +
+        "|" + [regex]::Escape($legacyAgentPhrase) + "|\b" + [regex]::Escape($codexToken) + "\b)"
     $path = ""
     foreach ($line in $diff) {
         if ($line -match '^\+\+\+ b/(.+)$') {

@@ -219,9 +219,13 @@ run_added_line_guardrails() {
   generated_phrase="${generated_phrase} with"
   local legacy_agent_phrase="Claude"
   legacy_agent_phrase="${legacy_agent_phrase} Code"
+  local speed_phrase="blazing"
+  speed_phrase="${speed_phrase} fast"
+  local production_phrase="production"
+  production_phrase="${production_phrase} ready"
   local codex_token="CO"
   codex_token="${codex_token}DEX"
-  local blocked_phrase_pattern="($goal_phrase|$release_phrase|$generated_phrase|blazing fast|production ready|$legacy_agent_phrase|\\b$codex_token\\b)"
+  local blocked_phrase_pattern="($goal_phrase|$release_phrase|$generated_phrase|$speed_phrase|$production_phrase|$legacy_agent_phrase|\\b$codex_token\\b)"
   while IFS= read -r line; do
     if [[ "$line" =~ ^\+\+\+\ b/(.+)$ ]]; then
       path="${BASH_REMATCH[1]}"

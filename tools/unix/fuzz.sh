@@ -58,6 +58,8 @@ js_targets=(
   "http-client-options"
   "results-headers"
   "worker-queue"
+  "h2-client-options"
+  "stdlib-import-shapes"
 )
 
 usage() {

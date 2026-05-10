@@ -229,6 +229,105 @@ static int test_rst_stream_and_goaway_surface_as_events(void)
     return 0;
 }
 
+static int test_multiple_streams_may_complete_out_of_order(void)
+{
+    unsigned char client_storage[65536];
+    unsigned char server_storage[65536];
+    SlArena client_arena = {0};
+    SlArena server_arena = {0};
+    SlHttp2Session client = {0};
+    SlHttp2Session server = {0};
+    SlHttp2HeaderField request_one_fields[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "https"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/one")};
+    SlHttp2HeaderField request_two_fields[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "https"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/two")};
+    SlHttp2HeaderField response_fields[] = {h2_header(":status", "200"),
+                                            h2_header("content-type", "text/plain")};
+    SlHttp2HeaderList request_one_headers = {.fields = request_one_fields,
+                                             .count = sizeof(request_one_fields) /
+                                                      sizeof(request_one_fields[0])};
+    SlHttp2HeaderList request_two_headers = {.fields = request_two_fields,
+                                             .count = sizeof(request_two_fields) /
+                                                      sizeof(request_two_fields[0])};
+    SlHttp2HeaderList response_headers = {
+        .fields = response_fields, .count = sizeof(response_fields) / sizeof(response_fields[0])};
+    SlHttp2EventList events = {0};
+    const SlHttp2Event* first_request = NULL;
+    const SlHttp2Event* second_request = NULL;
+    const SlHttp2Event* first_data = NULL;
+    const SlHttp2Event* second_data = NULL;
+    int32_t first_stream_id = 0;
+    int32_t second_stream_id = 0;
+
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_pair(&client_arena, &server_arena, &client, &server) != 0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_http2_session_submit_request(&client, &request_one_headers,
+                                                      sl_bytes_empty(), &first_stream_id),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_submit_request(&client, &request_two_headers,
+                                                      sl_bytes_empty(), &second_stream_id),
+                      SL_STATUS_OK) != 0 ||
+        first_stream_id != 1 || second_stream_id != 3 || pump(&client, &server) != 0)
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 2;
+    }
+
+    events = sl_http2_session_events(&server);
+    first_request = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, first_stream_id);
+    second_request = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, second_stream_id);
+    if (first_request == NULL || second_request == NULL ||
+        !header_list_has(&first_request->headers, ":path", "/one") ||
+        !header_list_has(&second_request->headers, ":path", "/two"))
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 3;
+    }
+
+    sl_http2_session_clear_events(&client);
+    if (expect_status(sl_http2_session_submit_response(&server, second_stream_id, &response_headers,
+                                                       bytes_from_cstr("two")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_session_submit_response(&server, first_stream_id, &response_headers,
+                                                       bytes_from_cstr("one")),
+                      SL_STATUS_OK) != 0 ||
+        pump(&server, &client) != 0)
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 4;
+    }
+
+    events = sl_http2_session_events(&client);
+    first_data = find_event(&events, SL_HTTP2_EVENT_DATA, first_stream_id);
+    second_data = find_event(&events, SL_HTTP2_EVENT_DATA, second_stream_id);
+    if (first_data == NULL || second_data == NULL ||
+        !sl_bytes_equal(first_data->data, bytes_from_cstr("one")) ||
+        !sl_bytes_equal(second_data->data, bytes_from_cstr("two")) ||
+        find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, first_stream_id) == NULL ||
+        find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, second_stream_id) == NULL)
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 5;
+    }
+
+    sl_http2_session_dispose(&client);
+    sl_http2_session_dispose(&server);
+    return 0;
+}
+
 static int test_session_init_rejects_event_array_size_overflow(void)
 {
     unsigned char storage[128];
@@ -253,6 +352,10 @@ int main(void)
         return result;
     }
     result = test_rst_stream_and_goaway_surface_as_events();
+    if (result != 0) {
+        return result;
+    }
+    result = test_multiple_streams_may_complete_out_of_order();
     if (result != 0) {
         return result;
     }

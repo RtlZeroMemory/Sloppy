@@ -24,7 +24,7 @@ default lane plus a few mandatory ones; the rest are opt-in.
 | V8-gated             | JS handler execution, bridge invariants                |
 | Source-input         | `sloppy run <source>` end-to-end                       |
 | Package outside-checkout | Built archive runs from a clean directory          |
-| Sanitizer            | ASan/UBSan/LSan; mandatory on Windows + Linux          |
+| Sanitizer            | ASan/UBSan/LSan; extended/manual memory-safety checks  |
 | libFuzzer seed replay| Deterministic seed replay; mandatory                   |
 | Advanced static analysis | clang-tidy + analyzer + CodeQL                     |
 | Live providers       | PostgreSQL/SQL Server against real services            |
@@ -115,9 +115,9 @@ checking the diagnostic code or the cleanup behavior is incomplete.
   parsers and binary formats. Use `tools/windows/fuzz.ps1` or
   `tools/unix/fuzz.sh` for seed replay, selected native mutation targets, and
   JavaScript randomized/property targets. Every randomized run must report the
-  seed.
+  seed, target, iteration, and failure artifact or reproduction command.
 - **Sanitizers** — Windows ASan, libFuzzer seed replay, and Linux
-  ASan/UBSan are mandatory CI lanes. Local equivalents:
+  ASan/UBSan are extended/manual lanes. Local equivalents:
 
   ```powershell
   .\tools\windows\dev.ps1 configure -Preset windows-asan
@@ -162,6 +162,12 @@ The test engine wraps the common cross-lane combinations:
 Use [test-engine.md](test-engine.md) for the full option reference. The
 wrapper reports optional missing build presets or tools as unavailable lanes
 instead of folding them into a pass.
+
+Default PR-tier fuzz/property coverage includes native corpus replay plus
+bounded JavaScript properties for codec, Results/ProblemDetails, time,
+HttpClient option validation, workers, logging, and config. Extended and
+torture tiers are where larger iteration counts, sanitizer builds, package
+archive smoke, V8, providers, and long stress runs belong.
 
 ## Conformance and CTest
 

@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
+import * as Stdlib from "../../stdlib/sloppy/index.js";
 import {
+    Base64,
+    Base64Url,
+    CancellationController,
     Deadline,
+    Hex,
     HttpClient,
+    ProblemDetails,
     Results,
     Sloppy,
     Testing,
+    Text,
     WorkQueue,
 } from "../../stdlib/sloppy/index.js";
 
@@ -25,9 +32,19 @@ export const DEFAULT_JS_TARGETS = Object.freeze([
     "http-client-options",
     "results-headers",
     "worker-queue",
+    "h2-client-options",
+    "stdlib-import-shapes",
 ]);
 
 const SECRET_MARKER = "SECRET_JS_FUZZ_SHOULD_NOT_APPEAR";
+const HTTP_METHODS = Object.freeze(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const STD_LIB_EXPORTS = Object.freeze({
+    root: ["Sloppy", "Results", "ProblemDetails", "HttpClient", "WorkQueue", "Time", "Deadline"],
+    codec: ["Base64", "Base64Url", "Hex", "Text", "Binary", "Checksums", "Compression"],
+    time: ["Time", "Deadline", "CancellationController", "TimeoutError", "CancelledError"],
+    net: ["HttpClient", "TcpClient", "TcpListener", "TcpConnection", "LocalEndpoint", "NetworkAddress"],
+    workers: ["WorkQueue", "WorkerPool", "Worker", "BackgroundService"],
+});
 
 function parseArgs(argv) {
     const options = {
@@ -98,9 +115,10 @@ function makePrng(seed) {
             let value = state;
             value = Math.imul(value ^ (value >>> 15), value | 1);
             value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-            return ((value ^ (value >>> 14)) >>> 0);
+            return (value ^ (value >>> 14)) >>> 0;
         },
         int(maxExclusive) {
+            assert(maxExclusive > 0);
             return this.nextU32() % maxExclusive;
         },
         bool() {
@@ -112,7 +130,7 @@ function makePrng(seed) {
     };
 }
 
-function bytesFromPrng(random, maxLength = 128) {
+function bytesFromPrng(random, maxLength = 512) {
     const bytes = new Uint8Array(random.int(maxLength + 1));
     for (let index = 0; index < bytes.length; index += 1) {
         bytes[index] = random.nextU32() & 0xff;
@@ -120,7 +138,7 @@ function bytesFromPrng(random, maxLength = 128) {
     return bytes;
 }
 
-function textFromPrng(random, maxLength = 48) {
+function textFromPrng(random, maxLength = 64) {
     const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:/%+{}[](),; ";
     let output = "";
     const length = random.int(maxLength + 1);
@@ -156,11 +174,6 @@ function jsonValue(random, depth = 0) {
     }
 }
 
-function safeRoutePattern(random) {
-    const roots = ["/", "/items", "/items/{id:int}", "/users/{name}", "/health", "/reports/{slug}"];
-    return random.pick(roots);
-}
-
 function maybeThrows(fn, allowed = [TypeError, Error, RangeError]) {
     try {
         return { ok: true, value: fn() };
@@ -180,69 +193,138 @@ async function maybeRejects(fn) {
 }
 
 function assertResultDescriptor(descriptor) {
-    if (descriptor !== undefined) {
-        assert.equal(descriptor.__sloppyResult, true);
-        assert.equal(Object.isFrozen(descriptor), true);
-        assert.equal(typeof descriptor.status, "number");
+    assert.equal(descriptor.__sloppyResult, true);
+    assert.equal(Object.isFrozen(descriptor), true);
+    assert.equal(typeof descriptor.status, "number");
+}
+
+function randomHeaderName(random, valid = true) {
+    if (!valid) {
+        return random.pick(["", "bad header", "bad\nheader", "content-type", "connection"]);
+    }
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-";
+    const length = 1 + random.int(20);
+    let name = "x-";
+    for (let index = 0; index < length; index += 1) {
+        name += alphabet[random.int(alphabet.length)];
+    }
+    return name;
+}
+
+function randomHeaderValue(random, valid = true) {
+    if (!valid) {
+        return random.pick(["bad\r\nvalue", "bad\0value", 1, {}]);
+    }
+    return textFromPrng(random, 32).replace(/[\r\n\0]/g, "_");
+}
+
+function randomRoutePattern(random) {
+    const bases = ["/", "/items", "/items/{id:int}", "/users/{name}", "/reports/{slug}", "/{tenant}/users"];
+    return random.pick(bases);
+}
+
+function assertBytesEqual(actual, expected) {
+    assert.deepEqual(Array.from(actual), Array.from(expected));
+}
+
+function queryComponent(random) {
+    const raw = textFromPrng(random, 16);
+    if (random.bool()) {
+        return encodeURIComponent(raw);
+    }
+    return raw.replace(/ /g, "+").replace(/[?#&=]/g, "_");
+}
+
+function validateManifestShape(manifest) {
+    assert.equal(typeof manifest, "object");
+    if ("schema" in manifest) {
+        assert.equal(typeof manifest.schema, "string");
+    }
+    if ("files" in manifest) {
+        assert(Array.isArray(manifest.files));
+    }
+    if ("bin" in manifest) {
+        assert.equal(typeof manifest.bin, "object");
     }
 }
 
 const targets = Object.freeze({
     "config-json"(random) {
         const builder = Sloppy.createBuilder();
+        const secretKey = random.pick(["Password", "Token", "ApiKey", "ConnectionString"]);
         const configObject = {
             App: {
                 Name: textFromPrng(random, 20) || "app",
                 Port: String(1024 + random.int(50000)),
                 Enabled: random.bool() ? "true" : "false",
-                Tags: [textFromPrng(random, 8)],
-                Metadata: { sample: jsonValue(random, 1) },
+                Tags: [textFromPrng(random, 8), String(random.int(99))],
+                Nested: { Value: jsonValue(random, 1) },
+                Secrets: { [secretKey]: SECRET_MARKER },
             },
         };
         maybeThrows(() => builder.config.addObject(configObject));
-        maybeThrows(() => builder.config.getString("App:Name", "fallback"));
+        const name = builder.config.getString("App:Name", "fallback");
+        assert.equal(typeof name, "string");
         maybeThrows(() => builder.config.getInt("App:Port", 3000));
         maybeThrows(() => builder.config.getBool("App:Enabled", false));
         maybeThrows(() => builder.config.getArray("App:Tags", []));
         maybeThrows(() => builder.config.bind("App", {
             name: { type: "string", default: "fallback" },
-            port: { type: "integer", default: 3000, min: 1 },
+            port: { type: "integer", default: 3000, min: 1, max: 65535 },
             enabled: { type: "boolean", default: false },
         }));
+        assert.equal(typeof builder.config.__snapshot(), "object");
+        maybeThrows(() => builder.config.addObject(random.pick([null, [], "bad", { "": true }])));
     },
 
     "openapi-plan"(random) {
         const app = Sloppy.create();
-        const count = 1 + random.int(5);
+        const count = 1 + random.int(6);
         for (let index = 0; index < count; index += 1) {
             maybeThrows(() => {
-                app.mapGet(safeRoutePattern(random), () => Results.ok({ index, value: textFromPrng(random, 8) }))
-                    .withName(`Route.${index}`);
+                const method = random.pick(HTTP_METHODS);
+                const pattern = randomRoutePattern(random);
+                app[`map${method[0]}${method.slice(1).toLowerCase()}`](
+                    pattern,
+                    () => Results.ok({ index, value: textFromPrng(random, 8) }),
+                ).withName(`Route.${index}.${method}`);
             });
         }
-        const routes = app.__getRoutes();
-        assert(Array.isArray(routes));
+        const contributions = app.__getPlanContributions();
+        assert.equal(typeof contributions, "object");
+        for (const route of app.__getRoutes()) {
+            assert.equal(typeof route.method, "string");
+            assert.equal(typeof route.pattern, "string");
+        }
         JSON.stringify({
-            routes: routes.map((route) => ({
-                method: route.method,
-                pattern: route.pattern,
-                name: route.name,
-                metadata: route.metadata,
-            })),
-            plan: app.__getPlanContributions(),
+            routes: contributions.routes,
+            capabilities: contributions.capabilities,
+            partialPlan: {
+                version: random.pick([1, "1", null]),
+                routes: random.bool() ? contributions.routes : jsonValue(random, 1),
+            },
         });
     },
 
     headers(random) {
-        const headers = {};
-        const names = ["X-Test", "Cache-Control", "ETag", "Content-Language", `X-${textFromPrng(random, 8)}`];
-        for (let index = 0; index < random.int(4); index += 1) {
-            headers[random.pick(names)] = textFromPrng(random, 24);
+        const validHeaders = {};
+        const invalidHeaders = {};
+        for (let index = 0; index < 1 + random.int(4); index += 1) {
+            validHeaders[randomHeaderName(random, true)] = randomHeaderValue(random, true);
+            invalidHeaders[randomHeaderName(random, false)] = randomHeaderValue(random, random.bool());
         }
-        const result = maybeThrows(() => Results.text(textFromPrng(random, 32), { headers }));
-        if (result.ok) {
-            assertResultDescriptor(result.value);
-        }
+        const result = Results.text(textFromPrng(random, 32), { headers: validHeaders });
+        assertResultDescriptor(result);
+        maybeThrows(() => Results.json({ ok: true }, { headers: invalidHeaders }));
+
+        const descriptor = HttpClient.create({
+            headers: {
+                authorization: "Bearer descriptor-value",
+                [randomHeaderName(random, true)]: randomHeaderValue(random, true),
+            },
+            secretHeaders: ["authorization"],
+        }).__sloppyHttpClientOptions;
+        assert.equal(JSON.stringify(descriptor).includes(SECRET_MARKER), false);
     },
 
     async "query-string"(random) {
@@ -250,11 +332,22 @@ const targets = Object.freeze({
         app.mapGet("/items/{id:int}", ({ query, route }) => Results.ok({ id: route.id ?? "0", query }));
         const host = Testing.createHost(app);
         try {
-            const target = `/items/${1 + random.int(999)}?q=${encodeURIComponent(textFromPrng(random, 12))}&page=${random.int(20)}`;
-            const response = await host.get(target);
-            assert.equal(response.status, 200);
-            const value = await response.json();
-            assert.equal(typeof value.query, "object");
+            const pairs = [];
+            const count = random.int(5);
+            for (let index = 0; index < count; index += 1) {
+                pairs.push(`${queryComponent(random)}=${queryComponent(random)}`);
+            }
+            if (random.bool()) {
+                pairs.push(`repeat=${queryComponent(random)}`);
+                pairs.push(`repeat=${queryComponent(random)}`);
+            }
+            const target = `/items/${1 + random.int(999)}?${pairs.join(random.pick(["&", "&&"]))}`;
+            const result = await maybeRejects(() => host.get(target));
+            if (result.ok) {
+                assert.equal(result.value.status, 200);
+                const value = await result.value.json();
+                assert.equal(typeof value.query, "object");
+            }
         } finally {
             await host.close();
         }
@@ -264,9 +357,9 @@ const targets = Object.freeze({
         const app = Sloppy.create();
         app.mapGet("/echo/{slug}", ({ route, query }) => Results.ok({ route, query }));
         const host = Testing.createHost(app);
-        const encoded = random.pick(["abc", "%7Bok%7D", "%zz", "%E0%A4%A", "hello+world"]);
+        const encoded = random.pick(["abc", "%7Bok%7D", "%zz", "%E0%A4%A", "%", "%2", "%00", "hello+world"]);
         try {
-            await maybeRejects(() => host.get(`/echo/${encoded}?value=${encoded}`));
+            await maybeRejects(() => host.get(`/echo/${encoded}?value=${encoded}&empty=&bare`));
         } finally {
             await host.close();
         }
@@ -274,18 +367,20 @@ const targets = Object.freeze({
 
     "logging-json"(random) {
         const builder = Sloppy.createBuilder();
-        const sink = builder.logging.addMemorySink();
+        const sink = builder.logging.addMemorySink({ capacity: 4 });
         builder.logging.addRedactionKey("customSecret");
         builder.logging.setMinimumLevel("debug");
         const app = builder.build();
-        maybeThrows(() => app.log.info(textFromPrng(random, 20) || "event", {
-            requestId: String(random.int(9999)),
-            token: SECRET_MARKER,
-            customSecret: SECRET_MARKER,
-            ok: random.bool(),
-        }));
+        for (const key of ["authorization", "cookie", "token", "password", "connectionString", "apiKey", "customSecret"]) {
+            maybeThrows(() => app.log.info(`event ${textFromPrng(random, 20)}`, {
+                [key]: SECRET_MARKER,
+                message: `quote " newline\n control ${random.int(100)}`,
+            }));
+        }
+        maybeThrows(() => app.log.info("bad fields", { nested: { no: true } }));
         const serialized = JSON.stringify(sink.entries());
         assert.equal(serialized.includes(SECRET_MARKER), false);
+        assert(sink.overwritten() >= 0);
     },
 
     async "package-manifest"(random) {
@@ -296,37 +391,73 @@ const targets = Object.freeze({
         ]);
         const text = await readFile(manifestPath, "utf8");
         const parsed = JSON.parse(text);
-        assert.equal(typeof parsed, "object");
-        JSON.stringify({ manifestPath, sample: jsonValue(random, 1), parsed });
+        validateManifestShape(parsed);
+        const mutated = { ...parsed };
+        if (random.bool()) {
+            delete mutated.version;
+        }
+        if (random.bool()) {
+            mutated.platform = random.pick(["win32-x64", "linux-x64", 42, null]);
+        }
+        JSON.stringify({ manifestPath, parsed, mutated, staleArtifact: `.sloppy/${textFromPrng(random, 12)}` });
     },
 
     async "route-table"(random) {
         const app = Sloppy.create();
-        app.mapGet("/items", () => Results.ok([]));
+        app.mapGet("/items", () => Results.ok({ route: "static" })).withName("Items.List");
+        app.mapGet("/items/{id:int}", ({ route }) => Results.ok({ route: "param", id: route.id })).withName("Items.Get");
         app.mapPost("/items", ({ request }) => Results.created("/items/1", { length: request.contentLength ?? 0 }));
-        app.mapGet("/items/{id:int}", ({ route }) => Results.ok({ id: route.id ?? "0" }));
+        maybeThrows(() => app.mapGet(random.pick(["/items", "/bad//path", "{missing-root}"]), () => Results.ok({})));
         const host = Testing.createHost(app);
         try {
-            const response = await host.request(random.pick(["GET", "POST", "DELETE"]), random.pick(["/items", "/items/1", "/missing"]), {
-                json: { value: textFromPrng(random, 12) },
-            });
+            const response = await host.request(
+                random.pick(["GET", "POST", "DELETE", "HEAD"]),
+                random.pick(["/items", "/items/1", "/missing", "/items/not-int"]),
+                { json: { value: textFromPrng(random, 12) } },
+            );
             assert(Number.isInteger(response.status));
+            if (response.status === 200) {
+                const body = await response.json();
+                assert(["static", "param"].includes(body.route));
+            }
         } finally {
             await host.close();
         }
     },
 
     async "required-features"(random) {
-        await maybeRejects(() => HttpClient.get(`http://127.0.0.1:${1 + random.int(65534)}/`));
+        const known = new Set([
+            "stdlib.fs",
+            "stdlib.time",
+            "stdlib.crypto",
+            "stdlib.codec",
+            "stdlib.net",
+            "stdlib.os",
+            "stdlib.httpclient",
+            "stdlib.workers",
+        ]);
+        const features = Array.from({ length: random.int(6) }, () =>
+            random.bool() ? random.pick([...known]) : `unknown.${textFromPrng(random, 8)}`);
+        for (const feature of features) {
+            assert.equal(typeof feature, "string");
+            if (!known.has(feature)) {
+                assert.match(feature, /^unknown\./);
+            }
+        }
+        await maybeRejects(() => HttpClient.get(`http://127.0.0.1:${1 + random.int(65534)}/`, {
+            timeoutMs: random.pick([0, 1, 10]),
+        }));
         maybeThrows(() => Deadline.after(random.pick([0, 1, 10, Number.NaN, -1])));
     },
 
     async "http-client-options"(random) {
         const options = {
             method: random.pick(["GET", "POST", "PUT", ""]),
-            headers: random.bool() ? { "X-Test": textFromPrng(random, 16) } : { "Bad\nName": "x" },
-            timeoutMs: random.pick([1, 10, -1, "soon"]),
-            maxResponseBytes: random.pick([1, "1kb", "4 parsecs"]),
+            headers: random.bool() ? { [randomHeaderName(random, true)]: randomHeaderValue(random, true) } : { "Bad\nName": "x" },
+            timeoutMs: random.pick([0, 1, 10, -1, "soon"]),
+            maxResponseBytes: random.pick([0, 1, "1kb", "4 parsecs"]),
+            redirects: random.pick([false, true, { max: random.int(4), allowPost: random.bool() }, { max: 99 }]),
+            body: random.pick([undefined, "text", new Uint8Array([1, 2, 3]), Symbol("bad")]),
         };
         await maybeRejects(() => HttpClient.request(`http://127.0.0.1:${1 + random.int(65534)}/`, options));
     },
@@ -334,10 +465,17 @@ const targets = Object.freeze({
     "results-headers"(random) {
         assertResultDescriptor(Results.ok(jsonValue(random, 1)));
         assertResultDescriptor(Results.noContent());
-        maybeThrows(() => Results.created(textFromPrng(random, 24), jsonValue(random, 1), {
-            headers: { "X-Trace": textFromPrng(random, 16) },
+        maybeThrows(() => Results.created(`/created/${random.int(1000)}`, jsonValue(random, 1), {
+            headers: { [randomHeaderName(random, true)]: randomHeaderValue(random, true) },
         }));
         maybeThrows(() => Results.status(random.pick([100, 200, 299, 600, -1]), jsonValue(random, 1)));
+        maybeThrows(() => Results.text("bad", {
+            headers: { [randomHeaderName(random, false)]: randomHeaderValue(random, false) },
+        }));
+        maybeThrows(() => Results.problem({ title: "problem", extension: jsonValue(random, 1) }, {
+            status: random.pick([400, 500, 99, 1000]),
+        }));
+        assert.deepEqual(ProblemDetails.defaults(), { __sloppyProblemDetails: true, detail: "never" });
     },
 
     async "worker-queue"(random) {
@@ -347,14 +485,54 @@ const targets = Object.freeze({
             overflow: random.pick(["reject", "backpressure"]),
             retry: { maxAttempts: 1 + random.int(3), backoffMs: 0 },
         });
-        queue.process(async (job) => ({ seen: job.data }));
+        queue.process(async (job) => {
+            if (job.data.fail && job.attempt === 1) {
+                throw new Error("planned failure");
+            }
+            return { seen: job.data };
+        });
         const jobs = [];
         const count = 1 + random.int(3);
         for (let index = 0; index < count; index += 1) {
-            jobs.push(maybeRejects(() => queue.enqueue({ index, payload: textFromPrng(random, 12) })));
+            jobs.push(maybeRejects(() => queue.enqueue({ index, payload: textFromPrng(random, 12), fail: index === 0 && random.bool() })));
         }
         await Promise.all(jobs);
+        const controller = new CancellationController();
+        controller.cancel("cancelled before enqueue");
+        await maybeRejects(() => queue.enqueue({ cancelled: true }, { signal: controller.signal }));
         await queue.stop();
+        await queue.stop();
+    },
+
+    async "h2-client-options"(random) {
+        await maybeRejects(() => HttpClient.request("http://example.test/", {
+            protocol: "h2",
+            timeoutMs: 1,
+        }));
+        await maybeRejects(() => HttpClient.request("https://example.test/", {
+            protocol: "h2c",
+            timeoutMs: 1,
+        }));
+        await maybeRejects(() => HttpClient.request("http://example.test/", {
+            protocol: random.pick(["auto", "http/1.1", "h2c"]),
+            tls: random.pick([undefined, {}, { insecureSkipVerify: true }, { alpnProtocols: ["h2"] }]),
+            timeoutMs: 1,
+        }));
+    },
+
+    "stdlib-import-shapes"(random) {
+        const groupName = random.pick(Object.keys(STD_LIB_EXPORTS));
+        const exportName = random.pick(STD_LIB_EXPORTS[groupName]);
+        assert(["function", "object"].includes(typeof Stdlib[exportName]), `${exportName} should be exported`);
+        const generatedImport = `import { ${exportName} } from "sloppy${groupName === "root" ? "" : `/${groupName}`}";`;
+        assert.match(generatedImport, /^import \{ [A-Za-z0-9]+ \} from "sloppy/);
+        assert.equal(generatedImport.includes("node:"), false);
+
+        const bytes = bytesFromPrng(random, 64);
+        assertBytesEqual(Base64.decode(Base64.encode(bytes)), bytes);
+        assertBytesEqual(Base64Url.decode(Base64Url.encode(bytes), { padding: "forbidden" }), bytes);
+        assertBytesEqual(Hex.decode(Hex.encode(bytes)), bytes);
+        assert.equal(Text.utf8.decode(Text.utf8.encode(textFromPrng(random, 16)), { fatal: true }).length >= 0, true);
     },
 });
 
@@ -378,19 +556,21 @@ export async function runTargets(options) {
             try {
                 await targets[name](random, iteration);
             } catch (error) {
+                const repro = options.reproCommand ||
+                    `node tests/fuzz/js_fuzz_targets.mjs --target ${name} --iterations ${iteration + 1} --seed ${options.seed}`;
                 const artifact = await writeFailureArtifact(options.failureRoot, name, {
                     target: name,
                     seed: options.seed,
                     iteration,
                     iterationSeed,
-                    repro: options.reproCommand,
+                    repro,
                     error: {
                         name: error?.name,
                         message: error?.message,
                         stack: error?.stack,
                     },
                 });
-                error.message = `${error.message} (failure artifact: ${artifact})`;
+                error.message = `${error.message} (seed=${options.seed} target=${name} iteration=${iteration} artifact=${artifact})`;
                 throw error;
             }
         }
@@ -407,8 +587,7 @@ async function main() {
     await runTargets(options);
 }
 
-const invokedPath = process.argv[1] === undefined ? "" : fileURLToPath(pathToFileURL(process.argv[1]));
-if (fileURLToPath(import.meta.url) === invokedPath) {
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
     main().catch((error) => {
         console.error(error?.stack ?? String(error));
         process.exitCode = 1;

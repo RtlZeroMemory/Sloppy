@@ -40,7 +40,9 @@ $JsTargets = @(
     "required-features",
     "http-client-options",
     "results-headers",
-    "worker-queue"
+    "worker-queue",
+    "h2-client-options",
+    "stdlib-import-shapes"
 )
 
 function Write-FuzzHelp {

@@ -1,0 +1,3 @@
+GET http://example.test/path HTTP/1.1
+Host: example.test
+tail

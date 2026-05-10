@@ -82,14 +82,57 @@ The current native targets are `plan`, `route-pattern`, `http-request`,
 The current JavaScript targets are `config-json`, `openapi-plan`, `headers`,
 `query-string`, `percent-decoding`, `logging-json`, `package-manifest`,
 `route-table`, `required-features`, `http-client-options`, `results-headers`,
-and `worker-queue`.
+`worker-queue`, `h2-client-options`, and `stdlib-import-shapes`.
+
+The bootstrap property runner covers `codec`, `results`, `time`,
+`http-client`, `workers`, `logging`, and `config`.
+
+Every randomized JavaScript lane accepts `--seed`, `--iterations`, and
+`--failure-root`. Failures print the seed, target, iteration, and failure
+artifact path. Use those fields as the reproduction handle in PR evidence.
+
+## Current coverage payload
+
+The default-safe PR fuzz/property payload now includes:
+
+- codec roundtrips and validation for Base64, Base64Url, Hex, UTF-8, and
+  binary reader/writer bounds;
+- Results and ProblemDetails descriptor shape, body-forbidden status behavior,
+  header validation, and location validation;
+- Deadline, cancellation, timeout, and fake-clock ordering behavior;
+- HttpClient option normalization and rejection paths that do not require a
+  live network bridge;
+- WorkQueue capacity, retry, drain, cancellation-before-start, and idempotent
+  shutdown checks;
+- logging redaction, escaping, level filtering, memory-sink capacity, and sink
+  option validation;
+- configuration object loading, binding, typed reads, and invalid key/type
+  rejection;
+- JavaScript fuzz targets for config JSON, Plan fragments, headers, query and
+  percent decoding, logging JSON, package manifests, route tables, required
+  features, HTTP/1 and HTTP/2 client options, result headers, worker queues,
+  and stdlib import shapes;
+- native seed replay corpora for Plan, route pattern, HTTP request, HTTP query,
+  HTTP/2 frame/HPACK/session, diagnostics rendering, and memory primitives;
+- focused CTest coverage for HTTP/2 multi-stream ordering, create/package
+  failure paths, and test-engine report contracts.
 
 ## Meta coverage
 
 The `meta` area verifies the wrapper contract itself: help output is available,
 invalid arguments fail, and the JSON report shape uses the expected schema and
-status values. Windows also registers `test_engine.windows.contract` with
-CTest when PowerShell is available.
+status values. The Windows CTest contract also parses the Unix wrapper report
+when `bash` is available, verifies invalid areas, verifies unavailable lanes do
+not fail the command, and checks that the extended and torture workflows remain
+manual/scheduled according to their tier.
+
+## Remaining gaps
+
+The test engine does not make optional or heavyweight lanes part of normal PR
+CI. ASan/libFuzzer mutation, V8 bridge execution, live provider services, and
+long stress/torture runs remain extended or manual evidence unless a PR selects
+that area directly. Missing optional tools or environment variables must be
+reported as `UNAVAILABLE` or `SKIPPED`, never as a pass.
 
 ## Reporting
 

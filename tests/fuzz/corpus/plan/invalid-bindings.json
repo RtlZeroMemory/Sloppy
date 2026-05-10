@@ -1,0 +1,1 @@
+{"version":1,"runtimeMinimumVersion":"0.0.0","handlers":[{"id":"h","export":"h"}],"routes":[{"id":"r","method":"POST","pattern":"/bad","handler":"h","bindings":[{"kind":"body.json","parameter":42}]}]}

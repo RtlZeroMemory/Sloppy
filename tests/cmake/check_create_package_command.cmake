@@ -47,6 +47,36 @@ if(NOT EXISTS "${project_dir}/.gitignore")
 endif()
 
 execute_process(
+    COMMAND "${SLOPPY_CLI}" create "bad name" --template minimal-api
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE invalid_name_create_result
+    OUTPUT_VARIABLE invalid_name_create_stdout
+    ERROR_VARIABLE invalid_name_create_stderr)
+
+if(invalid_name_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create unexpectedly accepted an invalid project name")
+endif()
+if(NOT invalid_name_create_stderr MATCHES "project name")
+    message(FATAL_ERROR "sloppy create invalid-name failure did not explain project naming\nstdout:\n${invalid_name_create_stdout}\nstderr:\n${invalid_name_create_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "missing-template" --template definitely-missing
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE missing_template_create_result
+    OUTPUT_VARIABLE missing_template_create_stdout
+    ERROR_VARIABLE missing_template_create_stderr)
+
+if(missing_template_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create unexpectedly accepted a missing template")
+endif()
+if(NOT missing_template_create_stderr MATCHES "unsupported template|template not found")
+    message(FATAL_ERROR "sloppy create missing-template failure did not explain template lookup\nstdout:\n${missing_template_create_stdout}\nstderr:\n${missing_template_create_stderr}")
+endif()
+
+execute_process(
     COMMAND "${SLOPPY_CLI}" create "${default_project_name}" --template minimal-api --format json
     WORKING_DIRECTORY "${work_dir}"
     TIMEOUT 60
@@ -101,6 +131,61 @@ if(NOT occupied_create_stderr MATCHES "destination exists")
     message(FATAL_ERROR "sloppy create existing-file failure was not a destination diagnostic\nstdout:\n${occupied_create_stdout}\nstderr:\n${occupied_create_stderr}")
 endif()
 
+set(empty_dir_project_name "created-empty-dir")
+set(empty_dir_project_dir "${work_dir}/${empty_dir_project_name}")
+file(MAKE_DIRECTORY "${empty_dir_project_dir}")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${empty_dir_project_name}" --template minimal-api --no-git --format json
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE empty_dir_create_result
+    OUTPUT_VARIABLE empty_dir_create_stdout
+    ERROR_VARIABLE empty_dir_create_stderr)
+
+if(NOT empty_dir_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create failed for an existing empty directory\nstdout:\n${empty_dir_create_stdout}\nstderr:\n${empty_dir_create_stderr}")
+endif()
+if(NOT EXISTS "${empty_dir_project_dir}/README.md")
+    message(FATAL_ERROR "sloppy create did not populate existing empty directory")
+endif()
+
+set(non_empty_project_name "created-non-empty")
+set(non_empty_project_dir "${work_dir}/${non_empty_project_name}")
+file(MAKE_DIRECTORY "${non_empty_project_dir}")
+file(WRITE "${non_empty_project_dir}/stale.txt" "stale file\n")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${non_empty_project_name}" --template minimal-api
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE non_empty_create_result
+    OUTPUT_VARIABLE non_empty_create_stdout
+    ERROR_VARIABLE non_empty_create_stderr)
+
+if(non_empty_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create unexpectedly overwrote a non-empty directory without --force")
+endif()
+if(NOT non_empty_create_stderr MATCHES "destination exists")
+    message(FATAL_ERROR "sloppy create non-empty-directory failure did not report destination state\nstdout:\n${non_empty_create_stdout}\nstderr:\n${non_empty_create_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "${non_empty_project_name}" --template minimal-api --force --no-git --format json
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE force_create_result
+    OUTPUT_VARIABLE force_create_stdout
+    ERROR_VARIABLE force_create_stderr)
+
+if(NOT force_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create --force failed for a non-empty directory\nstdout:\n${force_create_stdout}\nstderr:\n${force_create_stderr}")
+endif()
+if(NOT EXISTS "${non_empty_project_dir}/README.md")
+    message(FATAL_ERROR "sloppy create --force did not copy known template files")
+endif()
+if(NOT EXISTS "${non_empty_project_dir}/stale.txt")
+    message(FATAL_ERROR "sloppy create --force deleted stale files despite the documented contract")
+endif()
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" build
     WORKING_DIRECTORY "${project_dir}"
@@ -143,6 +228,38 @@ run_artifacts_metadata("openapi --artifacts" "\"/health\"" openapi)
 run_artifacts_metadata("capabilities --artifacts" "\"capabilities\"" capabilities --format json)
 run_artifacts_metadata("audit --artifacts" "\"findings\"" audit --format json)
 run_artifacts_metadata("doctor --artifacts" "route metadata present" doctor --format text)
+
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package
+            --out custom-out --format json
+    WORKING_DIRECTORY "${project_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE project_out_package_result
+    OUTPUT_VARIABLE project_out_package_stdout
+    ERROR_VARIABLE project_out_package_stderr)
+
+if(project_out_package_result EQUAL 0)
+    message(FATAL_ERROR "sloppy package unexpectedly accepted --out in project mode")
+endif()
+if(NOT project_out_package_stderr MATCHES "--out applies to positional source input")
+    message(FATAL_ERROR "sloppy package project-mode --out failure did not explain the contract\nstdout:\n${project_out_package_stdout}\nstderr:\n${project_out_package_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package
+            README.md --format json
+    WORKING_DIRECTORY "${project_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE unsupported_source_package_result
+    OUTPUT_VARIABLE unsupported_source_package_stdout
+    ERROR_VARIABLE unsupported_source_package_stderr)
+
+if(unsupported_source_package_result EQUAL 0)
+    message(FATAL_ERROR "sloppy package unexpectedly accepted an unsupported source path")
+endif()
+if(NOT unsupported_source_package_stderr MATCHES "unsupported source input")
+    message(FATAL_ERROR "sloppy package unsupported-source failure did not explain the input contract\nstdout:\n${unsupported_source_package_stdout}\nstderr:\n${unsupported_source_package_stderr}")
+endif()
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package
