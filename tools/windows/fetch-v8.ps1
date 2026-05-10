@@ -166,13 +166,17 @@ function Resolve-GitHubReleaseAssetDownload {
         "X-GitHub-Api-Version" = "2022-11-28"
     }
 
-    $release = Invoke-RestMethod -Uri $releaseApiUrl -Headers $apiHeaders -TimeoutSec 120
-    $asset = @($release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1)
-    if ($asset.Count -eq 0) {
-        throw "GitHub release asset '$assetName' was not found on $owner/$repo release '$tag'."
+    try {
+        $release = Invoke-RestMethod -Uri $releaseApiUrl -Headers $apiHeaders -TimeoutSec 120
+        $asset = @($release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1)
+        if ($asset.Count -eq 0) {
+            throw "GitHub release asset '$assetName' was not found on $owner/$repo release '$tag'."
+        }
+        return [string]$asset[0].url
+    } catch {
+        Write-Warning "GitHub release API lookup failed for $owner/$repo '$tag' asset '$assetName'. Falling back to the release download URL. $($_.Exception.Message)"
+        return $Url
     }
-
-    return [string]$asset[0].url
 }
 
 if ($ValidateOnly) {

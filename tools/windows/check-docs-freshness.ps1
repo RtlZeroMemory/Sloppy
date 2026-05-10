@@ -198,7 +198,7 @@ function Test-DocsFreshness {
         }
     }
 
-    foreach ($removedDir in @("docs/skills", "docs/modules", "docs/project", "docs/exec-plans")) {
+    foreach ($removedDir in @("docs/skills", "docs/modules", "docs/project", "docs/exec-plans", "docs/how-to", "docs/explanation")) {
         if (Test-Path -LiteralPath (Join-Path $ScanRoot $removedDir)) {
             $errors.Add("Removed construction-era documentation directory still exists: $removedDir") | Out-Null
         }
@@ -219,7 +219,7 @@ function Test-DocsFreshness {
             continue
         }
         if ($normalized -match '^docs/[^/]+\.md$' -and $allowedRootDocs -notcontains $normalized) {
-            $errors.Add("${normalized}: unexpected root docs page; keep root docs to docs/README.md, docs/glossary.md, docs/documentation-policy.md") | Out-Null
+            $errors.Add("${normalized}: unexpected root docs page; keep root docs to the allowlisted landing, install, quickstart, roadmap, glossary, and policy pages") | Out-Null
         }
         $lines = @(Get-Content -LiteralPath $path)
         $text = $lines -join "`n"

@@ -15,6 +15,7 @@ own the live roadmap and task state.
 `docs/` is organized for the reader, not for the author:
 
 - `docs/install.md`, `docs/quickstart.md` — start here
+- `docs/tutorials/` — guided lessons for first-time workflows
 - `docs/api/` — first-party TypeScript API
 - `docs/cli/` — `sloppy` and `sloppyc` commands
 - `docs/guide/` — task-shaped walkthroughs and project conventions
@@ -27,6 +28,10 @@ own the live roadmap and task state.
 
 A page is the type of its directory. The title and structure should make
 that obvious; you don't need a metadata header announcing it.
+
+`docs/how-to/` and `docs/explanation/` are not active directories. Use
+`docs/guide/` for task recipes, `docs/tutorials/` for guided lessons, and
+`docs/about/` for background material.
 
 ## What to delete
 

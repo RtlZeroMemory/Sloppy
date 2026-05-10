@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentation
-    url: https://rtlzeromemory.github.io/Slop/
-    about: Start with the public docs and current pre-alpha limits.
+    url: https://github.com/RtlZeroMemory/Slop/tree/main/docs
+    about: Browse the source docs. The GitHub Pages site deploys from main after docs changes merge.

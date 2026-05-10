@@ -24,9 +24,11 @@ body:
     id: command
     attributes:
       label: Command you tried
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting commands.
       render: text
   - type: textarea
     id: output
     attributes:
       label: Output
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
       render: text

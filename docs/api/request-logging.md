@@ -27,6 +27,7 @@ Default fields:
 - `path`
 - `status`
 - route pattern when known
+- route name when available
 - request ID when `RequestId` ran earlier in the pipeline
 - `durationMs`
 

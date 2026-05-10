@@ -641,8 +641,12 @@ function Invoke-Package {
         "-Configuration",
         (Get-PackageConfiguration)
     )
-    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
+    if ($V8Mode -eq "REQUIRED") {
+        $nativeArgs += "-RequireV8Runtime"
+    } elseif ($EnableV8) {
         $nativeArgs += "-IncludeV8Runtime"
+    }
+    if ($EnableV8 -or $V8Mode -eq "REQUIRED") {
         if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
             $nativeArgs += @("-V8Root", $V8Root)
         }

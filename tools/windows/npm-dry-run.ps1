@@ -10,6 +10,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($SkipInstallSmoke -and $RequireV8Runtime) {
+    throw "-RequireV8Runtime cannot be combined with -SkipInstallSmoke because V8 runtime execution would not be proven."
+}
+
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $OutputRoot = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
     [System.IO.Path]::GetFullPath($OutputDir)

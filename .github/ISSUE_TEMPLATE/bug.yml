@@ -25,6 +25,7 @@ body:
     id: actual
     attributes:
       label: Actual behavior
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
   - type: input
     id: version
     attributes:
@@ -39,10 +40,11 @@ body:
     id: output
     attributes:
       label: Output
-      description: Paste logs or diagnostics with secrets removed.
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting output.
       render: text
   - type: textarea
     id: commands
     attributes:
       label: Commands run
+      description: Remove tokens, credentials, connection strings, and machine/private paths before pasting commands.
       render: text

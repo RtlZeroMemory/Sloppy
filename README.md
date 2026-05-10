@@ -46,14 +46,16 @@ change between alpha revisions.
 
 ## Start here
 
+The GitHub Pages site is deployed from `main` by the Pages workflow. During
+review, or immediately after a docs change merges, the same source pages are
+available under [`docs/`](docs/README.md).
+
 - Docs site: <https://rtlzeromemory.github.io/Slop/>
 - Quickstart: <https://rtlzeromemory.github.io/Slop/quickstart>
 - Install: <https://rtlzeromemory.github.io/Slop/install>
 - Tutorials: <https://rtlzeromemory.github.io/Slop/tutorials/>
 - API reference: <https://rtlzeromemory.github.io/Slop/api/>
 - Roadmap: <https://rtlzeromemory.github.io/Slop/roadmap>
-
-The same source docs live under [`docs/`](docs/README.md) for GitHub browsing.
 
 ## Install
 

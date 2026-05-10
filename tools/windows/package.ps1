@@ -6,6 +6,7 @@ param(
 
     [switch]$IncludeExamples,
     [switch]$IncludeV8Runtime,
+    [switch]$RequireV8Runtime,
     [string]$V8Root = "",
     [switch]$SkipBuild,
     [switch]$Smoke,
@@ -23,6 +24,7 @@ $PackageOutputRoot = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $Root $OutputDir))
 }
+$ShouldIncludeV8Runtime = $IncludeV8Runtime -or $RequireV8Runtime
 
 function Invoke-Native {
     param(
@@ -251,7 +253,12 @@ if (-not $SkipBuild) {
         "-Preset",
         $Preset
     )
-    if ($IncludeV8Runtime) {
+    if ($RequireV8Runtime) {
+        $configureArgs += @("-V8Mode", "REQUIRED")
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $configureArgs += @("-V8Root", $V8Root)
+        }
+    } elseif ($IncludeV8Runtime) {
         $configureArgs += "-EnableV8"
         if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
             $configureArgs += @("-V8Root", $V8Root)
@@ -298,12 +305,17 @@ $containsV8Runtime = $false
 $v8RuntimeStatus = "not bundled"
 $v8RuntimeDirectory = ""
 $v8RuntimeNotes = "no V8 runtime"
-if ($IncludeV8Runtime) {
-    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
+if ($ShouldIncludeV8Runtime) {
+    $hasExplicitV8Root = -not [string]::IsNullOrWhiteSpace($V8Root)
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require:$hasExplicitV8Root
 
-    $v8Bin = Join-Path $resolvedV8Root "bin"
     $runtimeFiles = @()
-    if (Test-Path -LiteralPath $v8Bin -PathType Container) {
+    if (-not [string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+        $v8Bin = Join-Path $resolvedV8Root "bin"
+    } else {
+        $v8Bin = ""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($v8Bin) -and (Test-Path -LiteralPath $v8Bin -PathType Container)) {
         $runtimeFiles = @(
             Get-ChildItem -LiteralPath $v8Bin -File -ErrorAction SilentlyContinue |
                 Where-Object { $_.Extension -in @(".dll", ".so", ".dylib") }
@@ -320,8 +332,11 @@ if ($IncludeV8Runtime) {
         $v8RuntimeDirectory = "engines/v8"
         $v8RuntimeNotes = "V8 runtime DLLs were bundled from the Sloppy-owned SDK"
     } else {
+        if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+            Write-Warning "No V8 SDK root was found while packaging with V8 runtime requested. Treating this as a linked V8 runtime; V8-required smoke tests must prove the package."
+        }
         $v8RuntimeStatus = "linked runtime"
-        $v8RuntimeNotes = "V8 is linked into the packaged Windows runtime from the Sloppy-owned SDK"
+        $v8RuntimeNotes = "V8 is linked into the packaged Windows runtime; V8-required package smoke proves execution"
     }
     $containsV8Runtime = $true
 }
@@ -439,7 +454,7 @@ if ($Smoke) {
         "-MetadataPath",
         (Join-Path $Root "tests/fixtures/package/windows-default/case.json")
     )
-    if ($IncludeV8Runtime) {
+    if ($RequireV8Runtime) {
         $smokeArgs += "-RequireV8Runtime"
     }
     if ($KeepTemp) {

@@ -71,7 +71,12 @@ if (-not $SkipPackage) {
         "-OutputDir",
         $packageDir
     )
-    if ($IncludeV8Runtime -or $RequireV8Runtime) {
+    if ($RequireV8Runtime) {
+        $packageArgs += "-RequireV8Runtime"
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $packageArgs += @("-V8Root", $V8Root)
+        }
+    } elseif ($IncludeV8Runtime) {
         $packageArgs += "-IncludeV8Runtime"
         if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
             $packageArgs += @("-V8Root", $V8Root)
@@ -97,7 +102,7 @@ if (-not $SkipSmoke) {
     }
     $smokeArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "test-package", "-PackagePath", $packagePath)
     if ($RequireV8Runtime) {
-        $smokeArgs += "-EnableV8"
+        $smokeArgs += @("-V8Mode", "REQUIRED")
     }
     Invoke-Native $powerShellExe $smokeArgs
 }

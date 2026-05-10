@@ -48,12 +48,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22.17.0"
 
       - name: Setup npm
         shell: bash
         run: |
           set -euo pipefail
+          # npm 11 keeps Trusted Publishing/OIDC provenance behavior consistent on Node 22.
           npm install -g npm@11.5.1
           node --version
           npm --version
@@ -114,7 +115,20 @@ jobs:
             (cd "$temp_root/work/$app" && node "$launcher" build)
             (cd "$temp_root/work/$app" && node "$launcher" routes --artifacts .sloppy --format json >/tmp/${template}-routes.json)
             (cd "$temp_root/work/$app" && node "$launcher" doctor --artifacts .sloppy)
-            run_output="$(cd "$temp_root/work/$app" && node "$launcher" run --once GET /health)"
+            set +e
+            run_output="$(cd "$temp_root/work/$app" && timeout 120s node "$launcher" run --once GET /health 2>&1)"
+            run_status=$?
+            set -e
+            if [[ "$run_status" -eq 124 ]]; then
+              echo "Local npm smoke timed out after 120 seconds for $template." >&2
+              echo "$run_output" >&2
+              exit 1
+            fi
+            if [[ "$run_status" -ne 0 ]]; then
+              echo "Local npm smoke failed for $template with exit code $run_status." >&2
+              echo "$run_output" >&2
+              exit 1
+            fi
             if [[ "$run_output" != *"ok"* ]]; then
               echo "Local npm smoke did not return /health ok for $template." >&2
               echo "$run_output" >&2
@@ -143,7 +157,7 @@ jobs:
           set -euo pipefail
           publish_one() {
             local tarball="$1"
-            if ! npm publish "$tarball" --registry https://registry.npmjs.org/ --access public --tag alpha; then
+            if ! npm publish "$tarball" --registry https://registry.npmjs.org/ --access public --tag alpha --provenance; then
               echo "npm publish failed. Confirm npm Trusted Publishing is configured for this GitHub workflow and package on npmjs.com." >&2
               echo "Do not commit .npmrc auth files or print npm tokens." >&2
               exit 1
@@ -157,7 +171,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! npm publish "${{ steps.tarballs.outputs.root }}" --registry https://registry.npmjs.org/ --access public --tag alpha; then
+          if ! npm publish "${{ steps.tarballs.outputs.root }}" --registry https://registry.npmjs.org/ --access public --tag alpha --provenance; then
             echo "npm root package publish failed. Platform packages publish first; reruns must account for already-published versions." >&2
             echo "Confirm npm Trusted Publishing is configured before retrying." >&2
             exit 1
