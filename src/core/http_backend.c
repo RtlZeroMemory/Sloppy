@@ -155,11 +155,14 @@ static SlStatus sl_http_backend_unsupported_media_diag(SlDiag* out_diag)
         out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
         sl_http_backend_literal("HTTP request body content type is not supported",
                                 sizeof("HTTP request body content type is not supported") - 1U),
-        sl_http_backend_literal("use application/json, text/plain, or application/octet-stream for "
-                                "bounded request bodies",
-                                sizeof("use application/json, text/plain, or "
-                                       "application/octet-stream for bounded request bodies") -
-                                    1U),
+        sl_http_backend_literal(
+            "use application/json, text/plain, application/octet-stream, "
+            "application/x-www-form-urlencoded, or multipart/form-data for "
+            "bounded request bodies",
+            sizeof("use application/json, text/plain, application/octet-stream, "
+                   "application/x-www-form-urlencoded, or multipart/form-data for "
+                   "bounded request bodies") -
+                1U),
         SL_STATUS_UNSUPPORTED);
 }
 
@@ -379,6 +382,14 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
     }
     if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/octet-stream"))) {
         *out_kind = SL_HTTP_REQUEST_BODY_BYTES;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/x-www-form-urlencoded"))) {
+        *out_kind = SL_HTTP_REQUEST_BODY_FORM;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data"))) {
+        *out_kind = SL_HTTP_REQUEST_BODY_MULTIPART;
         return sl_status_ok();
     }
 

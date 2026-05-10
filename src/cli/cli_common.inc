@@ -645,6 +645,31 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         return 1;
     }
 
+    if (strcmp(argv[*index], "--header") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --header requires 'Name: value'\n");
+            return -1;
+        }
+        if (out->once_header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many --header values\n");
+            return -1;
+        }
+        out->once_headers[out->once_header_count] = argv[*index + 1];
+        out->once_header_count += 1U;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--body-file") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --body-file requires a path\n");
+            return -1;
+        }
+        out->once_body_file = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
     if (strcmp(argv[*index], "--once") == 0) {
         if (*index + 2 >= argc) {
             sl_cli_write_cstr(stderr, "sloppy run: --once requires METHOD and TARGET\n");

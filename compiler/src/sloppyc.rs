@@ -13325,7 +13325,9 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         "created" => (201, "json"),
         "accepted" => (202, "json"),
         "noContent" => (204, "empty"),
+        "stream" => (200, "stream"),
         "badRequest" => (400, "json"),
+        "unauthorized" => (401, "json"),
         "notFound" => (404, "json"),
         "problem" => (500, "problem"),
         "status" => (status_result_code(call)?, "json"),
@@ -13822,6 +13824,49 @@ fn request_binding_from_call(
     schema_names: &BTreeSet<String>,
 ) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "request" {
+        let kind = match chain[2] {
+            "form" if call.arguments.is_empty() => Some("body.form"),
+            "multipart" if call.arguments.is_empty() => Some("body.multipart"),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            return Some(RequestBinding {
+                kind: kind.to_string(),
+                name: None,
+                schema: None,
+                parameter: None,
+                type_name: None,
+                source_name: None,
+                source_text: None,
+                span: None,
+                wrapper: None,
+                injection_kind: None,
+                provider_kind: None,
+                capability: None,
+                semantic: None,
+                redacted: false,
+            });
+        }
+    }
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "cookies" && chain[2] == "get" {
+        return Some(RequestBinding {
+            kind: "cookie".to_string(),
+            name: call.arguments.first().and_then(argument_string_literal),
+            schema: None,
+            parameter: None,
+            type_name: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            wrapper: None,
+            injection_kind: None,
+            provider_kind: None,
+            capability: None,
+            semantic: None,
+            redacted: true,
+        });
+    }
     if chain.len() >= 2 && chain[0] == ctx_name && chain[1] == "request" {
         return Some(context_request_binding());
     }
@@ -13855,6 +13900,8 @@ fn body_binding_schema(
     match method {
         "text" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.is_empty() => Some(None),
+        "form" if call.arguments.is_empty() => Some(None),
+        "multipart" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.len() == 1 => {
             let schema = call.arguments.first().and_then(argument_identifier)?;
             if schema_names.contains(schema) {
@@ -14423,6 +14470,13 @@ fn sanitize_handler_schema_references(
 fn argument_identifier<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
     match argument {
         Argument::Identifier(identifier) => Some(identifier.name.as_str()),
+        _ => None,
+    }
+}
+
+fn argument_string_literal(argument: &Argument<'_>) -> Option<String> {
+    match argument {
+        Argument::StringLiteral(value) => Some(value.value.as_str().to_string()),
         _ => None,
     }
 }
@@ -15368,6 +15422,16 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut output,
             &mut generated_line,
             "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.form\") { return ctx.request.form(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.multipart\") { return ctx.request.multipart(); }",
         );
         push_generated_line(
             &mut output,

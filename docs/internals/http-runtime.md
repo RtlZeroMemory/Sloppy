@@ -276,8 +276,9 @@ connection draining) is the responsibility of an in-front reverse proxy.
 ## Not implemented
 
 - HTTP/3, gRPC, WebTransport, WebSockets, SSE.
-- Streaming request or response APIs in JS.
-- Multipart/form-data and file uploads.
+- Streaming request bodies exposed directly to handlers.
+- Response streaming is currently represented as bounded chunks before
+  serialization, not transport backpressure.
 - Per-route limits, trusted proxy / forwarded-header policy beyond
   basic header passthrough.
 - HTTP/1.1 pipelining.

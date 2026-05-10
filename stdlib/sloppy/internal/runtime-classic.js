@@ -4,6 +4,7 @@
     const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
     const BYTES_CONTENT_TYPE = "application/octet-stream";
     const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
+    const STREAM_CONTENT_TYPE = "application/octet-stream";
     const FAST_RESULT_KIND = "__sloppyFastResult";
     const FAST_JSON_TEXT = "__sloppyJsonText";
     const FAST_TEXT_OK = 1;
@@ -190,6 +191,17 @@
         return Object.freeze({ ...headers });
     }
 
+    function copySetCookies(options) {
+        const setCookies = options?.setCookies;
+        if (setCookies === undefined) {
+            return undefined;
+        }
+        if (!Array.isArray(setCookies)) {
+            throw new TypeError("Sloppy Results setCookies must be an array when provided.");
+        }
+        return Object.freeze(setCookies.map(String));
+    }
+
     function copyBytes(value) {
         if (value instanceof ArrayBuffer) {
             return new Uint8Array(value.slice(0));
@@ -201,6 +213,106 @@
         }
 
         throw new TypeError("Sloppy Results.bytes body must be binary data or a typed array view.");
+    }
+
+    function encodeUtf8Text(value) {
+        const bytes = [];
+        for (const ch of String(value)) {
+            const code = ch.codePointAt(0);
+            if (code <= 0x7f) {
+                bytes.push(code);
+            } else if (code <= 0x7ff) {
+                bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+            } else if (code <= 0xffff) {
+                bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+            } else {
+                bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+            }
+        }
+        return new Uint8Array(bytes);
+    }
+
+    function assertCookieHeaderValue(value, label) {
+        if (typeof value !== "string" || /[\x00-\x1F\x7F]/.test(value)) {
+            throw new TypeError(`Sloppy Results ${label} must be a safe HTTP header value.`);
+        }
+    }
+
+    function normalizeSameSite(value) {
+        if (value === undefined) {
+            return undefined;
+        }
+        const lowered = String(value).toLowerCase();
+        if (lowered === "lax") {
+            return "Lax";
+        }
+        if (lowered === "strict") {
+            return "Strict";
+        }
+        if (lowered === "none") {
+            return "None";
+        }
+        throw new TypeError("Sloppy Results cookie sameSite must be lax, strict, or none.");
+    }
+
+    function buildSetCookie(name, value, options = undefined) {
+        if (typeof name !== "string" || name.length === 0 || /[^!#$%&'*+\-.^_`|~0-9A-Za-z]/u.test(name)) {
+            throw new TypeError("Sloppy Results cookie name must be a safe HTTP token.");
+        }
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy Results cookie options must be a plain object.");
+        }
+        const encodedValue = encodeURIComponent(String(value));
+        if (/[\x00-\x20\x7F;,]/u.test(encodedValue)) {
+            throw new TypeError("Sloppy Results cookie value must be safe.");
+        }
+        const parts = [`${name}=${encodedValue}`];
+        if (options?.path !== undefined) {
+            assertCookieHeaderValue(options.path, "cookie path");
+            parts.push(`Path=${options.path}`);
+        }
+        if (options?.domain !== undefined) {
+            assertCookieHeaderValue(options.domain, "cookie domain");
+            parts.push(`Domain=${options.domain}`);
+        }
+        const maxAgeSeconds = options?.maxAgeSeconds ?? options?.maxAge;
+        if (maxAgeSeconds !== undefined) {
+            if (!Number.isInteger(maxAgeSeconds)) {
+                throw new TypeError("Sloppy Results cookie maxAgeSeconds must be an integer.");
+            }
+            parts.push(`Max-Age=${maxAgeSeconds}`);
+        }
+        if (options?.expires !== undefined) {
+            const expires = options.expires instanceof Date ? options.expires.toUTCString() : String(options.expires);
+            assertCookieHeaderValue(expires, "cookie expires");
+            parts.push(`Expires=${expires}`);
+        }
+        const sameSite = normalizeSameSite(options?.sameSite);
+        if (sameSite !== undefined) {
+            parts.push(`SameSite=${sameSite}`);
+        }
+        if (options?.httpOnly === true) {
+            parts.push("HttpOnly");
+        }
+        if (options?.secure === true) {
+            parts.push("Secure");
+        }
+        return parts.join("; ");
+    }
+
+    function withCookie(descriptor, name, value, options) {
+        return createResult(
+            descriptor.kind,
+            descriptor.body,
+            descriptor.contentType,
+            {
+                status: descriptor.status,
+                headers: descriptor.headers,
+                setCookies: Object.freeze([...(descriptor.setCookies ?? []), buildSetCookie(name, value, options)]),
+            },
+            descriptor.status,
+            descriptor.location === undefined ? undefined : { location: descriptor.location },
+        );
     }
 
     function resolveContentType(options, defaultContentType) {
@@ -236,6 +348,7 @@
     }
 
     function createResult(kind, body, contentType, options, defaultStatus, extra, fast) {
+        const setCookies = copySetCookies(options);
         const descriptor = {
             __sloppyResult: true,
             kind,
@@ -244,6 +357,10 @@
             headers: copyHeaders(options),
             ...extra,
         };
+
+        if (setCookies !== undefined) {
+            descriptor.setCookies = setCookies;
+        }
 
         if (body !== undefined) {
             descriptor.body = body;
@@ -259,6 +376,12 @@
                 });
             }
         }
+
+        Object.defineProperty(descriptor, "cookie", {
+            value(name, value, options) {
+                return withCookie(descriptor, name, value, options);
+            },
+        });
 
         return Object.freeze(descriptor);
     }
@@ -671,6 +794,43 @@ Operation:
                 200,
             );
         },
+        async stream(callback, options) {
+            if (typeof callback !== "function") {
+                throw new TypeError("Sloppy Results.stream callback must be a function.");
+            }
+            const chunks = [];
+            let closed = false;
+            const writer = Object.freeze({
+                writeText(text) {
+                    if (closed) {
+                        throw new TypeError("Sloppy stream writer is closed.");
+                    }
+                    chunks.push(encodeUtf8Text(text));
+                },
+                writeBytes(bytes) {
+                    if (closed) {
+                        throw new TypeError("Sloppy stream writer is closed.");
+                    }
+                    chunks.push(copyBytes(bytes));
+                },
+                close() {
+                    closed = true;
+                },
+            });
+            try {
+                await callback(writer);
+            } finally {
+                closed = true;
+            }
+            return createResult(
+                "stream",
+                Object.freeze(chunks),
+                resolveContentType(options, STREAM_CONTENT_TYPE),
+                options,
+                200,
+                { chunks: Object.freeze(chunks) },
+            );
+        },
         ok(value, options) {
             const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
             return createResult(
@@ -723,6 +883,15 @@ Operation:
                 JSON_CONTENT_TYPE,
                 { status: 400, ...options },
                 400,
+            );
+        },
+        unauthorized(valueOrProblem, options) {
+            return createResult(
+                "json",
+                valueOrProblem,
+                JSON_CONTENT_TYPE,
+                { status: 401, ...options },
+                401,
             );
         },
         status(statusCode, value, options) {

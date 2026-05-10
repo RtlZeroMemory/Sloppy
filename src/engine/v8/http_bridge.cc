@@ -9,12 +9,14 @@
 #include "string_interop.h"
 
 #include "sloppy/container.h"
+#include "sloppy/fs.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,12 +30,21 @@ struct HttpV8HeaderEntry
 
 void http_v8_headers_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_headers_entries_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_cookies_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_form_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_form_entries_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_form_file_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_file_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_file_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_file_save_to_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_body_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_body_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_body_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_request_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_request_form_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+void http_v8_request_multipart_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_log_trace_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_log_debug_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -42,6 +53,9 @@ void http_v8_log_warn_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_log_error_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_log_is_enabled_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
 void http_v8_log_for_category_callback(const v8::FunctionCallbackInfo<v8::Value>& args);
+bool http_v8_uint8_array_bytes(v8::Local<v8::Value> value, const unsigned char** out_bytes,
+                               size_t* out_length);
+bool http_v8_header_name_char_safe(char ch);
 
 const char* http_v8_string_key_name(SlV8HttpStringKey key)
 {
@@ -61,12 +75,16 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "contentLength";
     case SL_V8_HTTP_STRING_CONTENT_TYPE:
         return "contentType";
+    case SL_V8_HTTP_STRING_COOKIES:
+        return "cookies";
     case SL_V8_HTTP_STRING_DEADLINE:
         return "deadline";
     case SL_V8_HTTP_STRING_ENTRIES:
         return "entries";
     case SL_V8_HTTP_STRING_EXPIRED:
         return "expired";
+    case SL_V8_HTTP_STRING_FILE:
+        return "file";
     case SL_V8_HTTP_STRING_GET:
         return "get";
     case SL_V8_HTTP_STRING_HEADER:
@@ -85,6 +103,8 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "log";
     case SL_V8_HTTP_STRING_METHOD:
         return "method";
+    case SL_V8_HTTP_STRING_MULTIPART:
+        return "multipart";
     case SL_V8_HTTP_STRING_PATH:
         return "path";
     case SL_V8_HTTP_STRING_PROTOCOL:
@@ -109,6 +129,8 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "routePattern";
     case SL_V8_HTTP_STRING_SCHEME:
         return "scheme";
+    case SL_V8_HTTP_STRING_SAVE_TO:
+        return "saveTo";
     case SL_V8_HTTP_STRING_SECURE:
         return "secure";
     case SL_V8_HTTP_STRING_SIGNAL:
@@ -139,6 +161,12 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "__sloppyFastResult";
     case SL_V8_HTTP_STRING_FAST_JSON_TEXT:
         return "__sloppyJsonText";
+    case SL_V8_HTTP_STRING_FORM:
+        return "form";
+    case SL_V8_HTTP_STRING_SET_COOKIES:
+        return "setCookies";
+    case SL_V8_HTTP_STRING_CHUNKS:
+        return "chunks";
     case SL_V8_HTTP_STRING_COUNT:
     default:
         return nullptr;
@@ -160,6 +188,14 @@ const char* http_v8_private_key_name(SlV8HttpPrivateKey key)
         return "__sloppyBodyKind";
     case SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT:
         return "__sloppyHeaderSnapshot";
+    case SL_V8_HTTP_PRIVATE_COOKIE_SNAPSHOT:
+        return "__sloppyCookieSnapshot";
+    case SL_V8_HTTP_PRIVATE_FORM_FIELDS:
+        return "__sloppyFormFields";
+    case SL_V8_HTTP_PRIVATE_FORM_FILES:
+        return "__sloppyFormFiles";
+    case SL_V8_HTTP_PRIVATE_FILE_BYTES:
+        return "__sloppyFileBytes";
     case SL_V8_HTTP_PRIVATE_LOG_CATEGORY:
         return "__sloppyLogCategory";
     case SL_V8_HTTP_PRIVATE_LOG_REQUEST_ID:
@@ -385,6 +421,42 @@ bool http_v8_cached_prototype(v8::Isolate* isolate, v8::Local<v8::Context> conte
             return false;
         }
         break;
+    case SL_V8_HTTP_PROTOTYPE_COOKIES:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_GET,
+                                            SL_V8_HTTP_FUNCTION_COOKIES_GET,
+                                            http_v8_cookies_get_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_FORM:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_GET,
+                                            SL_V8_HTTP_FUNCTION_FORM_GET,
+                                            http_v8_form_get_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_ENTRIES,
+                                            SL_V8_HTTP_FUNCTION_FORM_ENTRIES,
+                                            http_v8_form_entries_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_FILE,
+                                            SL_V8_HTTP_FUNCTION_FORM_FILE,
+                                            http_v8_form_file_callback))
+        {
+            return false;
+        }
+        break;
+    case SL_V8_HTTP_PROTOTYPE_FILE:
+        if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_BYTES,
+                                            SL_V8_HTTP_FUNCTION_FILE_BYTES,
+                                            http_v8_file_bytes_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_TEXT,
+                                            SL_V8_HTTP_FUNCTION_FILE_TEXT,
+                                            http_v8_file_text_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_SAVE_TO,
+                                            SL_V8_HTTP_FUNCTION_FILE_SAVE_TO,
+                                            http_v8_file_save_to_callback))
+        {
+            return false;
+        }
+        break;
     case SL_V8_HTTP_PROTOTYPE_REQUEST:
         if (!http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_BYTES,
                                             SL_V8_HTTP_FUNCTION_REQUEST_BYTES,
@@ -394,7 +466,13 @@ bool http_v8_cached_prototype(v8::Isolate* isolate, v8::Local<v8::Context> conte
                                             http_v8_request_text_callback) ||
             !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_JSON,
                                             SL_V8_HTTP_FUNCTION_REQUEST_JSON,
-                                            http_v8_request_json_callback))
+                                            http_v8_request_json_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_FORM,
+                                            SL_V8_HTTP_FUNCTION_REQUEST_FORM,
+                                            http_v8_request_form_callback) ||
+            !http_v8_prototype_set_function(
+                isolate, context, prototype, SL_V8_HTTP_STRING_MULTIPART,
+                SL_V8_HTTP_FUNCTION_REQUEST_MULTIPART, http_v8_request_multipart_callback))
         {
             return false;
         }
@@ -1468,6 +1546,557 @@ void http_v8_headers_entries_callback(const v8::FunctionCallbackInfo<v8::Value>&
     args.GetReturnValue().Set(entries);
 }
 
+bool http_v8_percent_decode(std::string_view encoded, bool plus_as_space, std::string* out)
+{
+    auto hex = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9') {
+            return ch - '0';
+        }
+        if (ch >= 'A' && ch <= 'F') {
+            return ch - 'A' + 10;
+        }
+        if (ch >= 'a' && ch <= 'f') {
+            return ch - 'a' + 10;
+        }
+        return -1;
+    };
+
+    if (out == nullptr) {
+        return false;
+    }
+    out->clear();
+    out->reserve(encoded.size());
+    for (size_t index = 0U; index < encoded.size(); index += 1U) {
+        char ch = encoded[index];
+        if (plus_as_space && ch == '+') {
+            out->push_back(' ');
+            continue;
+        }
+        if (ch == '%') {
+            if (index + 2U >= encoded.size()) {
+                return false;
+            }
+            int high = hex(encoded[index + 1U]);
+            int low = hex(encoded[index + 2U]);
+            if (high < 0 || low < 0) {
+                return false;
+            }
+            out->push_back(static_cast<char>((high << 4) | low));
+            index += 2U;
+            continue;
+        }
+        out->push_back(ch);
+    }
+    return true;
+}
+
+bool http_v8_set_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> object, const char* name,
+                                 std::string_view value)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::String> local_value;
+    return sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           sl_status_is_ok(http_v8_to_local_string(
+               isolate, sl_str_from_parts(value.data(), value.size()), &local_value)) &&
+           object->Set(context, key, local_value).FromMaybe(false);
+}
+
+bool http_v8_set_value_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                v8::Local<v8::Object> object, const char* name,
+                                v8::Local<v8::Value> value)
+{
+    v8::Local<v8::String> key;
+    return sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           object->Set(context, key, value).FromMaybe(false);
+}
+
+bool http_v8_array_pair(v8::Isolate* isolate, v8::Local<v8::Context> context, std::string_view name,
+                        v8::Local<v8::Value> value, v8::Local<v8::Array>* out)
+{
+    v8::Local<v8::String> local_name;
+    v8::Local<v8::Array> pair = v8::Array::New(isolate, 2);
+    if (out == nullptr ||
+        !sl_status_is_ok(http_v8_to_local_string(
+            isolate, sl_str_from_parts(name.data(), name.size()), &local_name)) ||
+        !pair->Set(context, 0U, local_name).FromMaybe(false) ||
+        !pair->Set(context, 1U, value).FromMaybe(false))
+    {
+        return false;
+    }
+    *out = pair;
+    return true;
+}
+
+bool http_v8_form_array_lookup(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               v8::Local<v8::Value> array_value, std::string_view wanted,
+                               v8::Local<v8::Value>* out, bool* out_found)
+{
+    if (out == nullptr || out_found == nullptr || !array_value->IsArray()) {
+        return false;
+    }
+    v8::Local<v8::Array> array = array_value.As<v8::Array>();
+    *out_found = false;
+    *out = v8::Null(isolate);
+    for (uint32_t index = 0U; index < array->Length(); index += 1U) {
+        v8::Local<v8::Value> pair_value;
+        v8::Local<v8::Value> name_value;
+        v8::Local<v8::Value> current_value;
+        if (!array->Get(context, index).ToLocal(&pair_value) || !pair_value->IsArray()) {
+            return false;
+        }
+        v8::Local<v8::Array> pair = pair_value.As<v8::Array>();
+        if (!pair->Get(context, 0U).ToLocal(&name_value) ||
+            !pair->Get(context, 1U).ToLocal(&current_value) || !name_value->IsString())
+        {
+            return false;
+        }
+        std::string name = http_v8_value_to_string(isolate, name_value);
+        if (name == wanted) {
+            *out = current_value;
+            *out_found = true;
+        }
+    }
+    return true;
+}
+
+void http_v8_cookies_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> fields;
+    v8::Local<v8::Value> value;
+    bool found = false;
+    if (args.Length() < 1 || !args[0]->IsString() ||
+        !http_v8_get_private_value(isolate, context, args.This(),
+                                   SL_V8_HTTP_PRIVATE_COOKIE_SNAPSHOT, &fields) ||
+        !http_v8_form_array_lookup(isolate, context, fields,
+                                   http_v8_value_to_string(isolate, args[0]), &value, &found))
+    {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
+    }
+    args.GetReturnValue().Set(found ? value : v8::Null(isolate));
+}
+
+void http_v8_form_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> fields;
+    v8::Local<v8::Value> value;
+    bool found = false;
+    if (args.Length() < 1 || !args[0]->IsString() ||
+        !http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_FORM_FIELDS,
+                                   &fields) ||
+        !http_v8_form_array_lookup(isolate, context, fields,
+                                   http_v8_value_to_string(isolate, args[0]), &value, &found))
+    {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
+    }
+    args.GetReturnValue().Set(found ? value : v8::Null(isolate));
+}
+
+void http_v8_form_entries_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> fields;
+    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_FORM_FIELDS,
+                                   &fields) ||
+        !fields->IsArray())
+    {
+        args.GetReturnValue().Set(v8::Array::New(isolate, 0));
+        return;
+    }
+    args.GetReturnValue().Set(fields);
+}
+
+void http_v8_form_file_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> files;
+    v8::Local<v8::Value> value;
+    bool found = false;
+    if (args.Length() < 1 || !args[0]->IsString() ||
+        !http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_FORM_FILES,
+                                   &files) ||
+        !http_v8_form_array_lookup(isolate, context, files,
+                                   http_v8_value_to_string(isolate, args[0]), &value, &found))
+    {
+        args.GetReturnValue().Set(v8::Null(isolate));
+        return;
+    }
+    args.GetReturnValue().Set(found ? value : v8::Null(isolate));
+}
+
+bool http_v8_get_file_bytes(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                            v8::Local<v8::Object> file, v8::Local<v8::Value>* out)
+{
+    return out != nullptr &&
+           http_v8_get_private_value(isolate, context, file, SL_V8_HTTP_PRIVATE_FILE_BYTES, out) &&
+           (*out)->IsUint8Array();
+}
+
+void http_v8_file_bytes_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> bytes;
+    if (http_v8_get_file_bytes(isolate, context, args.This(), &bytes)) {
+        args.GetReturnValue().Set(bytes);
+    }
+}
+
+void http_v8_file_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> bytes_value;
+    const unsigned char* bytes = nullptr;
+    size_t length = 0U;
+    v8::Local<v8::String> text;
+    if (!http_v8_get_file_bytes(isolate, context, args.This(), &bytes_value) ||
+        !http_v8_uint8_array_bytes(bytes_value, &bytes, &length) ||
+        !sl_status_is_ok(http_v8_to_local_string(
+            isolate, sl_str_from_parts(reinterpret_cast<const char*>(bytes), length), &text)))
+    {
+        args.GetReturnValue().Set(v8::String::Empty(isolate));
+        return;
+    }
+    args.GetReturnValue().Set(text);
+}
+
+void http_v8_file_save_to_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::Local<v8::Value> bytes_value;
+    const unsigned char* bytes = nullptr;
+    size_t length = 0U;
+    std::string path;
+    std::vector<unsigned char> storage(65536U);
+    SlArena arena = {};
+    SlFsResolvedPath resolved = {};
+    SlDiag diag = {};
+    SlFsPolicy fallback = sl_fs_development_policy(sl_str_from_cstr("."));
+    const SlFsPolicy* policy = backend == nullptr || backend->filesystem_policy == nullptr
+                                   ? &fallback
+                                   : backend->filesystem_policy;
+
+    if (args.Length() < 1 || !args[0]->IsString() ||
+        !http_v8_get_file_bytes(isolate, context, args.This(), &bytes_value) ||
+        !http_v8_uint8_array_bytes(bytes_value, &bytes, &length) ||
+        !sl_v8_std_string_from_value(isolate, args[0], &path) ||
+        !sl_status_is_ok(sl_arena_init(&arena, storage.data(), storage.size())) ||
+        !sl_status_is_ok(sl_fs_resolve_path(
+            &arena, policy, sl_str_from_parts(path.data(), path.size()), &resolved, &diag)) ||
+        !sl_status_is_ok(sl_fs_write_file(sl_owned_str_as_view(resolved.path),
+                                          sl_bytes_from_parts(bytes, length), false, &diag)))
+    {
+        http_v8_log_throw_type_error(isolate, "Sloppy upload file saveTo failed.");
+        return;
+    }
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+bool http_v8_make_file_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              std::string_view field_name, std::string_view filename,
+                              std::string_view content_type, const unsigned char* bytes,
+                              size_t length, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> file = v8::Object::New(isolate);
+    v8::Local<v8::Object> prototype;
+    v8::Local<v8::Uint8Array> byte_array;
+    if (out == nullptr ||
+        !http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_FILE, &prototype) ||
+        !file->SetPrototype(context, prototype).FromMaybe(false) ||
+        !http_v8_set_string_property(isolate, context, file, "fieldName", field_name) ||
+        !http_v8_set_string_property(isolate, context, file, "name", filename) ||
+        !http_v8_set_string_property(isolate, context, file, "contentType", content_type) ||
+        !http_v8_set_value_property(isolate, context, file, "size",
+                                    v8::Number::New(isolate, static_cast<double>(length))) ||
+        !http_v8_make_uint8_array(isolate, sl_bytes_from_parts(bytes, length), &byte_array) ||
+        !http_v8_set_private_value(isolate, context, file, SL_V8_HTTP_PRIVATE_FILE_BYTES,
+                                   byte_array) ||
+        !file->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        return false;
+    }
+    *out = file;
+    return true;
+}
+
+bool http_v8_make_form_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              v8::Local<v8::Array> fields, v8::Local<v8::Array> files,
+                              v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> form = v8::Object::New(isolate);
+    v8::Local<v8::Object> prototype;
+    if (out == nullptr ||
+        !http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_FORM, &prototype) ||
+        !form->SetPrototype(context, prototype).FromMaybe(false) ||
+        !http_v8_set_private_value(isolate, context, form, SL_V8_HTTP_PRIVATE_FORM_FIELDS,
+                                   fields) ||
+        !http_v8_set_private_value(isolate, context, form, SL_V8_HTTP_PRIVATE_FORM_FILES, files) ||
+        !form->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        return false;
+    }
+    *out = form;
+    return true;
+}
+
+bool http_v8_parse_urlencoded_form(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   const unsigned char* bytes, size_t length,
+                                   v8::Local<v8::Object>* out)
+{
+    std::string body(reinterpret_cast<const char*>(bytes), length);
+    v8::Local<v8::Array> fields = v8::Array::New(isolate);
+    v8::Local<v8::Array> files = v8::Array::New(isolate, 0);
+    uint32_t count = 0U;
+    size_t start = 0U;
+    while (start <= body.size()) {
+        size_t end = body.find('&', start);
+        if (end == std::string::npos) {
+            end = body.size();
+        }
+        std::string_view pair(body.data() + start, end - start);
+        size_t equals = pair.find('=');
+        std::string name;
+        std::string value;
+        if (!http_v8_percent_decode(
+                equals == std::string_view::npos ? pair : pair.substr(0, equals), true, &name) ||
+            !http_v8_percent_decode(equals == std::string_view::npos ? std::string_view()
+                                                                     : pair.substr(equals + 1U),
+                                    true, &value))
+        {
+            http_v8_log_throw_type_error(isolate, "Malformed form-urlencoded request body.");
+            return false;
+        }
+        v8::Local<v8::String> local_value;
+        v8::Local<v8::Array> entry;
+        if (!sl_status_is_ok(http_v8_to_local_string(
+                isolate, sl_str_from_parts(value.data(), value.size()), &local_value)) ||
+            !http_v8_array_pair(isolate, context, name, local_value, &entry) ||
+            !fields->Set(context, count++, entry).FromMaybe(false))
+        {
+            return false;
+        }
+        if (end == body.size()) {
+            break;
+        }
+        start = end + 1U;
+    }
+    return http_v8_make_form_object(isolate, context, fields, files, out);
+}
+
+bool http_v8_content_type_boundary(std::string_view content_type, std::string* out)
+{
+    size_t pos = content_type.find("boundary=");
+    if (out == nullptr || pos == std::string_view::npos) {
+        return false;
+    }
+    pos += sizeof("boundary=") - 1U;
+    size_t end = content_type.find(';', pos);
+    std::string boundary(content_type.substr(pos, end == std::string_view::npos ? end : end - pos));
+    if (boundary.size() >= 2U && boundary.front() == '"' && boundary.back() == '"') {
+        boundary = boundary.substr(1U, boundary.size() - 2U);
+    }
+    if (boundary.empty() || boundary.size() > 70U || boundary.find('\r') != std::string::npos ||
+        boundary.find('\n') != std::string::npos)
+    {
+        return false;
+    }
+    *out = boundary;
+    return true;
+}
+
+bool http_v8_header_param(std::string_view value, std::string_view key, std::string* out)
+{
+    size_t pos = value.find(key);
+    if (out == nullptr || pos == std::string_view::npos) {
+        return false;
+    }
+    pos += key.size();
+    size_t end = value.find(';', pos);
+    std::string result(value.substr(pos, end == std::string_view::npos ? end : end - pos));
+    while (!result.empty() && result.front() == ' ') {
+        result.erase(result.begin());
+    }
+    if (result.size() >= 2U && result.front() == '"' && result.back() == '"') {
+        result = result.substr(1U, result.size() - 2U);
+    }
+    *out = result;
+    return !out->empty();
+}
+
+bool http_v8_parse_multipart_form(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  std::string_view content_type, const unsigned char* bytes,
+                                  size_t length, v8::Local<v8::Object>* out)
+{
+    std::string boundary;
+    if (!http_v8_content_type_boundary(content_type, &boundary)) {
+        http_v8_log_throw_type_error(isolate, "Multipart request boundary is invalid.");
+        return false;
+    }
+    std::string body(reinterpret_cast<const char*>(bytes), length);
+    std::string delimiter = "--" + boundary;
+    v8::Local<v8::Array> fields = v8::Array::New(isolate);
+    v8::Local<v8::Array> files = v8::Array::New(isolate);
+    uint32_t field_count = 0U;
+    uint32_t file_count = 0U;
+    size_t cursor = body.find(delimiter);
+    if (cursor == std::string::npos) {
+        http_v8_log_throw_type_error(isolate, "Multipart request boundary is missing.");
+        return false;
+    }
+    while (cursor != std::string::npos) {
+        cursor += delimiter.size();
+        if (body.compare(cursor, 2U, "--") == 0) {
+            break;
+        }
+        if (body.compare(cursor, 2U, "\r\n") != 0) {
+            http_v8_log_throw_type_error(isolate, "Multipart part boundary is malformed.");
+            return false;
+        }
+        cursor += 2U;
+        size_t header_end = body.find("\r\n\r\n", cursor);
+        if (header_end == std::string::npos) {
+            return false;
+        }
+        std::string headers = body.substr(cursor, header_end - cursor);
+        size_t data_start = header_end + 4U;
+        size_t next = body.find("\r\n" + delimiter, data_start);
+        if (next == std::string::npos) {
+            http_v8_log_throw_type_error(isolate, "Multipart closing boundary is missing.");
+            return false;
+        }
+        std::string name;
+        std::string filename;
+        std::string part_content_type = "application/octet-stream";
+        size_t disposition_pos = headers.find("Content-Disposition:");
+        size_t type_pos = headers.find("Content-Type:");
+        if (disposition_pos == std::string::npos) {
+            return false;
+        }
+        size_t disposition_end = headers.find("\r\n", disposition_pos);
+        std::string_view disposition(
+            headers.data() + disposition_pos,
+            (disposition_end == std::string::npos ? headers.size() : disposition_end) -
+                disposition_pos);
+        if (!http_v8_header_param(disposition, "name=", &name)) {
+            return false;
+        }
+        bool is_file = http_v8_header_param(disposition, "filename=", &filename);
+        if (type_pos != std::string::npos) {
+            size_t type_start = type_pos + sizeof("Content-Type:") - 1U;
+            size_t type_end = headers.find("\r\n", type_start);
+            part_content_type = headers.substr(
+                type_start, type_end == std::string::npos ? type_end : type_end - type_start);
+            while (!part_content_type.empty() && part_content_type.front() == ' ') {
+                part_content_type.erase(part_content_type.begin());
+            }
+        }
+        const unsigned char* part_bytes =
+            reinterpret_cast<const unsigned char*>(body.data() + data_start);
+        size_t part_length = next - data_start;
+        if (is_file) {
+            v8::Local<v8::Object> file;
+            v8::Local<v8::Array> entry;
+            if (!http_v8_make_file_object(isolate, context, name, filename, part_content_type,
+                                          part_bytes, part_length, &file) ||
+                !http_v8_array_pair(isolate, context, name, file, &entry) ||
+                !files->Set(context, file_count++, entry).FromMaybe(false))
+            {
+                return false;
+            }
+        }
+        else {
+            v8::Local<v8::String> value;
+            v8::Local<v8::Array> entry;
+            if (!sl_status_is_ok(http_v8_to_local_string(
+                    isolate,
+                    sl_str_from_parts(reinterpret_cast<const char*>(part_bytes), part_length),
+                    &value)) ||
+                !http_v8_array_pair(isolate, context, name, value, &entry) ||
+                !fields->Set(context, field_count++, entry).FromMaybe(false))
+            {
+                return false;
+            }
+        }
+        cursor = next + 2U;
+        if (body.compare(cursor, delimiter.size(), delimiter) != 0) {
+            return false;
+        }
+    }
+    return http_v8_make_form_object(isolate, context, fields, files, out);
+}
+
+void http_v8_request_form_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> kind;
+    v8::Local<v8::Value> bytes_value;
+    const unsigned char* bytes = nullptr;
+    size_t length = 0U;
+    v8::Local<v8::Object> form;
+    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                   &kind) ||
+        !kind->IsString() || http_v8_value_to_string(isolate, kind) != "form" ||
+        !http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   &bytes_value) ||
+        !http_v8_uint8_array_bytes(bytes_value, &bytes, &length) ||
+        !http_v8_parse_urlencoded_form(isolate, context, bytes, length, &form))
+    {
+        return;
+    }
+    args.GetReturnValue().Set(form);
+}
+
+void http_v8_request_multipart_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Value> kind;
+    v8::Local<v8::Value> bytes_value;
+    v8::Local<v8::Value> content_type_value;
+    bool has_content_type = false;
+    const unsigned char* bytes = nullptr;
+    size_t length = 0U;
+    v8::Local<v8::Object> form;
+    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_KIND,
+                                   &kind) ||
+        !kind->IsString() || http_v8_value_to_string(isolate, kind) != "multipart" ||
+        !http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_BYTES,
+                                   &bytes_value) ||
+        !http_v8_uint8_array_bytes(bytes_value, &bytes, &length) ||
+        !http_v8_get_own_value_property_key(isolate, context, args.This(),
+                                            SL_V8_HTTP_STRING_CONTENT_TYPE, &has_content_type,
+                                            &content_type_value) ||
+        !has_content_type || !content_type_value->IsString() ||
+        !http_v8_parse_multipart_form(isolate, context,
+                                      http_v8_value_to_string(isolate, content_type_value), bytes,
+                                      length, &form))
+    {
+        return;
+    }
+    args.GetReturnValue().Set(form);
+}
+
 bool http_v8_body_mark_consumed(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                 v8::Local<v8::Object> body)
 {
@@ -1856,6 +2485,97 @@ bool http_v8_make_header_bag(v8::Isolate* isolate, v8::Local<v8::Context> contex
     return true;
 }
 
+std::string_view http_v8_trim_ascii(std::string_view value)
+{
+    while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) {
+        value.remove_prefix(1U);
+    }
+    while (!value.empty() && (value.back() == ' ' || value.back() == '\t')) {
+        value.remove_suffix(1U);
+    }
+    return value;
+}
+
+bool http_v8_cookie_name_safe(std::string_view name)
+{
+    if (name.empty()) {
+        return false;
+    }
+    for (char ch : name) {
+        if (!http_v8_header_name_char_safe(ch)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool http_v8_make_cookie_bag(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             const SlHttpRequestHead* request, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> cookies = v8::Object::New(isolate);
+    v8::Local<v8::Object> prototype;
+    v8::Local<v8::Array> fields = v8::Array::New(isolate);
+    std::vector<HttpV8HeaderEntry> header_entries;
+    uint32_t count = 0U;
+
+    if (out == nullptr || !http_v8_collect_headers(request, &header_entries)) {
+        return false;
+    }
+
+    for (const HttpV8HeaderEntry& header : header_entries) {
+        if (header.name != "cookie") {
+            continue;
+        }
+        size_t start = 0U;
+        while (start <= header.value.size()) {
+            size_t end = header.value.find(';', start);
+            if (end == std::string::npos) {
+                end = header.value.size();
+            }
+            std::string_view pair =
+                http_v8_trim_ascii(std::string_view(header.value.data() + start, end - start));
+            size_t equals = pair.find('=');
+            if (equals != std::string_view::npos) {
+                std::string_view raw_name = http_v8_trim_ascii(pair.substr(0U, equals));
+                std::string_view raw_value = http_v8_trim_ascii(pair.substr(equals + 1U));
+                if (raw_value.size() >= 2U && raw_value.front() == '"' && raw_value.back() == '"') {
+                    raw_value = raw_value.substr(1U, raw_value.size() - 2U);
+                }
+                std::string decoded;
+                if (http_v8_cookie_name_safe(raw_name) &&
+                    http_v8_percent_decode(raw_value, false, &decoded))
+                {
+                    v8::Local<v8::String> value;
+                    v8::Local<v8::Array> entry;
+                    if (!sl_status_is_ok(http_v8_to_local_string(
+                            isolate, sl_str_from_parts(decoded.data(), decoded.size()), &value)) ||
+                        !http_v8_array_pair(isolate, context, raw_name, value, &entry) ||
+                        !fields->Set(context, count++, entry).FromMaybe(false))
+                    {
+                        return false;
+                    }
+                }
+            }
+            if (end == header.value.size()) {
+                break;
+            }
+            start = end + 1U;
+        }
+    }
+
+    if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_COOKIES, &prototype) ||
+        !cookies->SetPrototype(context, prototype).FromMaybe(false) ||
+        !http_v8_set_private_value(isolate, context, cookies, SL_V8_HTTP_PRIVATE_COOKIE_SNAPSHOT,
+                                   fields) ||
+        !cookies->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        return false;
+    }
+
+    *out = cookies;
+    return true;
+}
+
 SlStr http_v8_request_method_name(SlHttpMethod method)
 {
     switch (method) {
@@ -1887,6 +2607,10 @@ SlStr http_v8_request_body_kind_name(SlHttpRequestBodyKind body_kind)
         return sl_str_from_cstr("text");
     case SL_HTTP_REQUEST_BODY_BYTES:
         return sl_str_from_cstr("bytes");
+    case SL_HTTP_REQUEST_BODY_FORM:
+        return sl_str_from_cstr("form");
+    case SL_HTTP_REQUEST_BODY_MULTIPART:
+        return sl_str_from_cstr("multipart");
     case SL_HTTP_REQUEST_BODY_NONE:
     default:
         return sl_str_from_cstr("none");
@@ -1941,12 +2665,14 @@ bool http_v8_status_supported(uint16_t status)
     case 202U:
     case 204U:
     case 400U:
+    case 401U:
     case 404U:
     case 405U:
     case 413U:
     case 415U:
     case 500U:
     case 501U:
+    case 503U:
         return true;
     default:
         return false;
@@ -2140,7 +2866,10 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     bool has_headers_object = false;
     bool has_headers_property = false;
     bool has_location = false;
+    bool has_set_cookies_property = false;
     std::string location;
+    v8::Local<v8::Value> set_cookies_value;
+    v8::Local<v8::Array> set_cookies;
     SlSlice header_storage = {nullptr, 0U, sizeof(SlHttpHeader)};
     size_t total_header_count = 0U;
     size_t index = 0U;
@@ -2188,6 +2917,21 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
 
     if (has_location) {
         total_header_count += 1U;
+    }
+    if (!http_v8_get_own_value_property_key(isolate, context, descriptor,
+                                            SL_V8_HTTP_STRING_SET_COOKIES,
+                                            &has_set_cookies_property, &set_cookies_value))
+    {
+        return http_v8_write_invalid_headers_diag(engine, out_diag);
+    }
+    if (has_set_cookies_property && !set_cookies_value->IsUndefined() &&
+        !set_cookies_value->IsNull())
+    {
+        if (!set_cookies_value->IsArray()) {
+            return http_v8_write_invalid_headers_diag(engine, out_diag);
+        }
+        set_cookies = set_cookies_value.As<v8::Array>();
+        total_header_count += set_cookies->Length();
     }
     if (total_header_count == 0U) {
         return sl_status_ok();
@@ -2243,6 +2987,25 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
             return status;
         }
         index += 1U;
+    }
+    if (!set_cookies.IsEmpty()) {
+        for (uint32_t cookie_index = 0U; cookie_index < set_cookies->Length(); cookie_index += 1U) {
+            v8::Local<v8::Value> cookie_value;
+            if (!set_cookies->Get(context, cookie_index).ToLocal(&cookie_value) ||
+                !cookie_value->IsString())
+            {
+                return http_v8_write_invalid_headers_diag(engine, out_diag);
+            }
+            std::string cookie = http_v8_value_to_string(isolate, cookie_value);
+            if (!http_v8_header_value_safe(cookie)) {
+                return http_v8_write_invalid_headers_diag(engine, out_diag);
+            }
+            status = http_v8_copy_response_header(arena, "Set-Cookie", cookie, &headers[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            index += 1U;
+        }
     }
 
     *out_headers = headers;
@@ -2493,6 +3256,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     v8::Local<v8::Value> body_bytes_value = v8::Undefined(isolate);
     v8::Local<v8::String> body_kind_value;
     v8::Local<v8::Object> headers;
+    v8::Local<v8::Object> cookies;
     v8::Local<v8::Object> header_facade;
     v8::Local<v8::Object> signal;
     size_t index = 0U;
@@ -2547,6 +3311,11 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
     if (request_context->needs_headers && request_context->needs_request &&
         !http_v8_make_header_bag(isolate, context, request_context->request, &headers))
+    {
+        return false;
+    }
+    if (request_context->needs_request &&
+        !http_v8_make_cookie_bag(isolate, context, request_context->request, &cookies))
     {
         return false;
     }
@@ -2699,6 +3468,11 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     {
         return false;
     }
+    if (request_context->needs_request &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_COOKIES, cookies))
+    {
+        return false;
+    }
     if (request_context->needs_connection &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_CONNECTION,
                                          connection))
@@ -2842,10 +3616,10 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor has an unsupported status",
                             sizeof("JavaScript result descriptor has an unsupported status") - 1U),
-            http_v8_literal("Supported response statuses are 200, 201, 202, 204, 400, 404, "
-                            "405, 413, 415, 500, and 501.",
+            http_v8_literal("Supported response statuses are 200, 201, 202, 204, 400, 401, 404, "
+                            "405, 413, 415, 500, 501, and 503.",
                             sizeof("Supported response statuses are 200, 201, 202, 204, 400, "
-                                   "404, 405, 413, 415, 500, and 501.") -
+                                   "401, 404, 405, 413, 415, 500, 501, and 503.") -
                                 1U));
     }
 
@@ -2950,6 +3724,55 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
+    if (sl_str_equal(kind, sl_str_from_cstr("stream"))) {
+        if (!body->IsArray()) {
+            return http_v8_write_diag(
+                engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                http_v8_literal("Results.stream body must be a chunk array",
+                                sizeof("Results.stream body must be a chunk array") - 1U),
+                sl_str_empty());
+        }
+        v8::Local<v8::Array> chunks = body.As<v8::Array>();
+        SlSlice chunk_storage = {nullptr, 0U, sizeof(SlHttpResponseStreamChunk)};
+        SlHttpResponseStreamChunk* native_chunks = nullptr;
+        SlStatus status = sl_status_ok();
+        if (chunks->Length() != 0U) {
+            status =
+                sl_arena_array_alloc(arena, chunks->Length(), sizeof(SlHttpResponseStreamChunk),
+                                     alignof(SlHttpResponseStreamChunk), &chunk_storage);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            native_chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage.ptr);
+        }
+        for (uint32_t chunk_index = 0U; chunk_index < chunks->Length(); chunk_index += 1U) {
+            v8::Local<v8::Value> chunk;
+            SlBytes bytes = {nullptr, 0U};
+            if (!chunks->Get(context, chunk_index).ToLocal(&chunk)) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                    http_v8_literal("Results.stream chunk could not be read",
+                                    sizeof("Results.stream chunk could not be read") - 1U),
+                    sl_str_empty());
+            }
+            status = http_v8_copy_binary_value_bytes(arena, chunk, &bytes);
+            if (!sl_status_is_ok(status)) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                    http_v8_literal("Results.stream chunks must be binary data",
+                                    sizeof("Results.stream chunks must be binary data") - 1U),
+                    sl_str_empty());
+            }
+            native_chunks[chunk_index].bytes = bytes;
+        }
+        out_result->kind = SL_ENGINE_RESULT_BYTES;
+        out_result->response =
+            sl_http_response_stream(status_code, content_type, native_chunks, chunks->Length());
+        out_result->response.headers = response_headers;
+        out_result->response.header_count = response_header_count;
+        return sl_status_ok();
+    }
+
     bool is_json = sl_str_equal(kind, sl_str_from_cstr("json"));
     bool is_problem = sl_str_equal(kind, sl_str_from_cstr("problem"));
     if (is_json || is_problem) {
@@ -2987,8 +3810,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
         http_v8_literal("JavaScript result descriptor kind is unsupported",
                         sizeof("JavaScript result descriptor kind is unsupported") - 1U),
-        http_v8_literal("Supported result kinds are text, html, bytes, json, empty, and problem.",
-                        sizeof("Supported result kinds are text, html, bytes, json, empty, and "
-                               "problem.") -
-                            1U));
+        http_v8_literal(
+            "Supported result kinds are text, html, bytes, stream, json, empty, and problem.",
+            sizeof("Supported result kinds are text, html, bytes, stream, json, "
+                   "empty, and problem.") -
+                1U));
 }

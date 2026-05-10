@@ -1,4 +1,5 @@
 import { Text } from "./codec.js";
+import * as fsPromises from "node:fs/promises";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -254,6 +255,25 @@ function mediaType(contentType) {
     return contentType.split(";", 1)[0].trim().toLowerCase();
 }
 
+function contentTypeParameter(contentType, name) {
+    const target = name.toLowerCase();
+    for (const part of contentType.split(";").slice(1)) {
+        const equals = part.indexOf("=");
+        if (equals < 0) {
+            continue;
+        }
+        const key = part.slice(0, equals).trim().toLowerCase();
+        let value = part.slice(equals + 1).trim();
+        if (value.length >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+            value = value.slice(1, -1);
+        }
+        if (key === target) {
+            return value;
+        }
+    }
+    return undefined;
+}
+
 function isJsonMediaType(contentType) {
     const type = mediaType(contentType);
     return type === "application/json" || (type.startsWith("application/") && type.endsWith("+json"));
@@ -285,7 +305,180 @@ function bodyKindForRequest(headers, bodyBytes) {
     if (type === "application/octet-stream") {
         return "bytes";
     }
+    if (type === "application/x-www-form-urlencoded") {
+        return "form";
+    }
+    if (type === "multipart/form-data" && contentTypeParameter(contentType, "boundary") !== undefined) {
+        return "multipart";
+    }
+    if (type === "multipart/form-data") {
+        return "malformed-multipart";
+    }
     return "unsupported";
+}
+
+function parseCookieHeader(value) {
+    const cookies = new Map();
+    if (value === undefined) {
+        return cookies;
+    }
+    for (const pair of value.split(";")) {
+        const equals = pair.indexOf("=");
+        if (equals <= 0) {
+            continue;
+        }
+        const name = pair.slice(0, equals).trim();
+        let rawValue = pair.slice(equals + 1).trim();
+        if (!HEADER_TOKEN_PATTERN.test(name)) {
+            continue;
+        }
+        if (rawValue.length >= 2 && rawValue.startsWith("\"") && rawValue.endsWith("\"")) {
+            rawValue = rawValue.slice(1, -1);
+        }
+        cookies.set(name, decodePercentComponent(rawValue, "cookie", false));
+    }
+    return cookies;
+}
+
+function createCookiesLike(headers) {
+    const cookies = parseCookieHeader(headers.get("cookie"));
+    return Object.freeze({
+        get(name) {
+            if (typeof name !== "string") {
+                throw new TypeError("Sloppy test host cookies.get name must be a string.");
+            }
+            return cookies.get(name) ?? null;
+        },
+    });
+}
+
+function arrayPairsLookup(pairs, name) {
+    for (let index = pairs.length - 1; index >= 0; index -= 1) {
+        if (pairs[index][0] === name) {
+            return pairs[index][1];
+        }
+    }
+    return null;
+}
+
+function createFileLike(fieldName, name, contentType, bytes) {
+    const fileBytes = new Uint8Array(bytes);
+    return Object.freeze({
+        fieldName,
+        name,
+        contentType,
+        size: fileBytes.byteLength,
+        bytes() {
+            return new Uint8Array(fileBytes);
+        },
+        text() {
+            return Text.utf8.decode(fileBytes);
+        },
+        async saveTo(path) {
+            await fsPromises.writeFile(path, fileBytes);
+        },
+    });
+}
+
+function createFormLike(fields, files = []) {
+    const frozenFields = Object.freeze(fields.map(([name, value]) => Object.freeze([name, value])));
+    const frozenFiles = Object.freeze(files.map(([name, file]) => Object.freeze([name, file])));
+    return Object.freeze({
+        get(name) {
+            return arrayPairsLookup(frozenFields, name);
+        },
+        entries() {
+            return frozenFields[Symbol.iterator]();
+        },
+        file(name) {
+            return arrayPairsLookup(frozenFiles, name);
+        },
+    });
+}
+
+function parseFormUrlEncoded(bytes) {
+    const fields = [];
+    const text = Text.utf8.decode(bytes);
+    if (text.length === 0) {
+        return createFormLike(fields);
+    }
+    for (const pair of text.split("&")) {
+        const equals = pair.indexOf("=");
+        const name = equals < 0 ? pair : pair.slice(0, equals);
+        const value = equals < 0 ? "" : pair.slice(equals + 1);
+        fields.push([
+            decodePercentComponent(name, "form field", true),
+            decodePercentComponent(value, "form value", true),
+        ]);
+    }
+    return createFormLike(fields);
+}
+
+function parsePartHeaders(text) {
+    const headers = new Map();
+    for (const line of text.split("\r\n")) {
+        const colon = line.indexOf(":");
+        if (colon <= 0) {
+            continue;
+        }
+        headers.set(line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim());
+    }
+    return headers;
+}
+
+function parseContentDisposition(value) {
+    const output = {};
+    for (const part of value.split(";").slice(1)) {
+        const equals = part.indexOf("=");
+        if (equals < 0) {
+            continue;
+        }
+        const key = part.slice(0, equals).trim().toLowerCase();
+        let fieldValue = part.slice(equals + 1).trim();
+        if (fieldValue.length >= 2 && fieldValue.startsWith("\"") && fieldValue.endsWith("\"")) {
+            fieldValue = fieldValue.slice(1, -1);
+        }
+        output[key] = fieldValue;
+    }
+    return output;
+}
+
+function parseMultipart(bytes, contentType) {
+    const boundary = contentTypeParameter(contentType, "boundary");
+    if (boundary === undefined || boundary.length === 0) {
+        throw new TypeError("Sloppy test host multipart boundary is required.");
+    }
+    const text = Text.utf8.decode(bytes);
+    const fields = [];
+    const files = [];
+    for (const rawPart of text.split(`--${boundary}`)) {
+        if (rawPart === "" || rawPart === "--\r\n" || rawPart === "--") {
+            continue;
+        }
+        const part = rawPart.startsWith("\r\n") ? rawPart.slice(2) : rawPart;
+        const headerEnd = part.indexOf("\r\n\r\n");
+        if (headerEnd < 0) {
+            throw new TypeError("Sloppy test host multipart part is malformed.");
+        }
+        const headers = parsePartHeaders(part.slice(0, headerEnd));
+        let body = part.slice(headerEnd + 4);
+        if (body.endsWith("\r\n")) {
+            body = body.slice(0, -2);
+        }
+        const disposition = parseContentDisposition(headers.get("content-disposition") ?? "");
+        if (disposition.name === undefined) {
+            continue;
+        }
+        if (disposition.filename !== undefined) {
+            files.push([
+                disposition.name,
+                createFileLike(disposition.name, disposition.filename, headers.get("content-type") ?? "application/octet-stream", Text.utf8.encode(body)),
+            ]);
+        } else {
+            fields.push([disposition.name, body]);
+        }
+    }
+    return createFormLike(fields, files);
 }
 
 function createBodyObject(kind, bytes) {
@@ -327,6 +520,7 @@ function createBodyObject(kind, bytes) {
 
 function createRequestObject(method, targetParts, headers, bodyKind, bodyBytes) {
     let textCache;
+    let formCache;
     const request = {
         method,
         path: targetParts.path,
@@ -349,6 +543,20 @@ function createRequestObject(method, targetParts, headers, bodyKind, bodyBytes) 
             textCache ??= Text.utf8.decode(bodyBytes);
             return JSON.parse(textCache);
         },
+        form() {
+            if (bodyKind !== "form") {
+                throw new TypeError("Request body is not available as form data.");
+            }
+            formCache ??= parseFormUrlEncoded(bodyBytes);
+            return formCache;
+        },
+        multipart() {
+            if (bodyKind !== "multipart") {
+                throw new TypeError("Request body is not available as multipart data.");
+            }
+            formCache ??= parseMultipart(bodyBytes, headers.get("content-type") ?? "");
+            return formCache;
+        },
     };
     return Object.freeze(request);
 }
@@ -370,6 +578,7 @@ function createContext(app, method, targetParts, headers, route, bodyKind, bodyB
         route,
         query: parseQuery(targetParts.queryString),
         request: createRequestObject(method, targetParts, headers, bodyKind, bodyBytes),
+        cookies: createCookiesLike(headers),
         connection: Object.freeze({
             id: "test-host",
             protocol: "http",
@@ -393,6 +602,11 @@ function descriptorHeaders(result) {
     }
     if (result?.contentType !== undefined) {
         entries.push(["Content-Type", result.contentType]);
+    }
+    if (Array.isArray(result?.setCookies)) {
+        for (const value of result.setCookies) {
+            entries.push(["Set-Cookie", value]);
+        }
     }
     return entries;
 }
@@ -436,6 +650,17 @@ function responseFromResult(result) {
     }
     if (result.kind === "bytes") {
         return responseFromParts(result.status, headers, copyBytes(result.body, "response body"));
+    }
+    if (result.kind === "stream") {
+        const chunks = Array.isArray(result.chunks) ? result.chunks : [];
+        const length = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+        const body = new Uint8Array(length);
+        let offset = 0;
+        for (const chunk of chunks) {
+            body.set(copyBytes(chunk, "stream response chunk"), offset);
+            offset += chunk.byteLength;
+        }
+        return responseFromParts(result.status, headers, body);
     }
     if (result.kind === "json" || result.kind === "problem") {
         const body = result.body === undefined ? null : result.body;
@@ -552,6 +777,9 @@ function createTestHost(app) {
             const bodyKind = bodyKindForRequest(headers, bodyBytes);
             if (bodyKind === "malformed-json") {
                 return responseFromText(400, "Malformed JSON\n");
+            }
+            if (bodyKind === "malformed-multipart") {
+                return responseFromText(400, "Malformed Multipart\n");
             }
             if (bodyKind === "unsupported" && bodyBytes.byteLength !== 0) {
                 return responseFromText(415, "Unsupported Media Type\n");
