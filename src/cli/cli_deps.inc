@@ -81,7 +81,7 @@ static int sl_cli_deps_emit_json(yyjson_val* graph)
     }
     fwrite(json, 1U, length, stdout);
     fputc('\n', stdout);
-    sl_heap_release(json);
+    sl_alloc_release(json);
     return 0;
 }
 

@@ -9,7 +9,7 @@ static int expect_true(int condition)
 
 int main(void)
 {
-    void* ptr = NULL;
+    unsigned char* ptr = NULL;
     SlStatus status = sl_status_ok();
 
     status = sl_alloc_bytes(0U, &ptr);
