@@ -104,6 +104,9 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
     }
 
     if (dispatch_table->handler_cache_trusted) {
+        if (dispatch_table->plan == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
         for (index = 0U; index < dispatch_table->route_count; index += 1U) {
             const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
             if (binding->handler == NULL || binding->handler->id != binding->handler_id) {
@@ -1272,6 +1275,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     if (runnable_route_count == 0U) {
         out_table->dispatch.routes = NULL;
         out_table->dispatch.route_count = 0U;
+        out_table->dispatch.plan = plan;
         out_table->route_count = 0U;
         return sl_status_ok();
     }
@@ -1289,6 +1293,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
 
     out_table->dispatch.routes = bindings;
     out_table->dispatch.route_count = runnable_route_count;
+    out_table->dispatch.plan = plan;
     out_table->dispatch.handler_cache_trusted = true;
     status = sl_http_route_table_build_exact_index(arena, bindings, runnable_route_count,
                                                    &out_table->dispatch);
@@ -1881,7 +1886,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
         return sl_http_dispatch_missing_route(arena, out_diag);
     }
 
-    if (dispatch_table->handler_cache_trusted && binding->handler != NULL &&
+    if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
+        binding->handler != NULL &&
         binding->handler->id == binding->handler_id &&
         !sl_str_is_empty(binding->handler->export_name))
     {

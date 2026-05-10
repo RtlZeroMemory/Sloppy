@@ -20,6 +20,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($PSBoundParameters.ContainsKey("DurationSeconds") -and $DurationSeconds -lt 0) {
+    throw "-DurationSeconds must be greater than or equal to 0."
+}
+if ($PSBoundParameters.ContainsKey("WarmupSeconds") -and $WarmupSeconds -lt 0) {
+    throw "-WarmupSeconds must be greater than or equal to 0."
+}
+
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptRoot "..\..")
 $runner = Join-Path $repoRoot "benchmarks\realistic\runner\bench-realistic.ts"
@@ -83,7 +90,9 @@ $config = [ordered]@{
 
 New-Item -ItemType Directory -Force -Path $outPath | Out-Null
 $configPath = Join-Path $outPath "bench-realistic.config.json"
-($config | ConvertTo-Json -Depth 8) | Set-Content -Path $configPath -Encoding UTF8
+$configJson = $config | ConvertTo-Json -Depth 8
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($configPath, $configJson, $utf8NoBom)
 
 Push-Location $repoRoot
 $oldConfig = $env:SLOPPY_BENCH_CONFIG

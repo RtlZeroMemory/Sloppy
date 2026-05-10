@@ -61,6 +61,7 @@ typedef struct SlHttpDispatchTable
     size_t param_route_bucket_count;
     const SlHttpRouteCandidateBucket** param_route_bucket_slots;
     size_t param_route_bucket_slot_count;
+    const SlPlan* plan;
     bool handler_cache_trusted;
 } SlHttpDispatchTable;
 

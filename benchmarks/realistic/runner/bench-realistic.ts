@@ -695,13 +695,19 @@ export async function main() {
   await Directory.create(options.out, { recursive: true });
   const tools = await detectTools(options);
   const workloads = options.suite === "startup" ? [baseWorkloads[0]] : expandWorkloads(options);
+  const startupWorkloadDefinitions = options.suite === "startup" || options.suite === "all"
+    ? [{ name: "startup-health", description: "Process start to first successful GET /health response." }]
+    : [];
   const result = {
     schemaVersion: 1,
     suite: options.suite,
     startedAt: new Date().toISOString(),
     host: await hostInfo(options.repoRoot),
     tools,
-    workloadDefinitions: workloads.map((workload) => ({ name: workload.name, description: workload.description })),
+    workloadDefinitions: [
+      ...workloads.map((workload) => ({ name: workload.name, description: workload.description })),
+      ...startupWorkloadDefinitions,
+    ],
     options: { durationSeconds: options.durationSeconds, warmupSeconds: options.warmupSeconds, connections: options.connections, iterations: options.iterations, runtimes: options.runtimes, categories: options.categories, quick: options.quick === true, full: options.full === true },
     runs: [],
   };

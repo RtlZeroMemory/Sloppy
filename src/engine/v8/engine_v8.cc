@@ -795,6 +795,28 @@ bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* s
     return !sources->empty();
 }
 
+bool sl_v8_source_map_cache_validation_failed(SlV8SourceMapCache* cache,
+                                              SlV8SourceMapLocation* out)
+{
+    if (cache != nullptr) {
+        if (cache->doc != nullptr) {
+            yyjson_doc_free(cache->doc);
+        }
+        cache->doc = nullptr;
+        cache->root = nullptr;
+        cache->sources.clear();
+        cache->mappings = nullptr;
+        cache->mappings_length = 0U;
+        cache->lines.clear();
+        cache->parsed = false;
+        cache->malformed = true;
+    }
+    if (out != nullptr) {
+        out->malformed = true;
+    }
+    return false;
+}
+
 bool sl_v8_source_map_cache_parse(SlV8Engine* backend, SlV8SourceMapLocation* out)
 {
     yyjson_read_err error = {};
@@ -813,10 +835,11 @@ bool sl_v8_source_map_cache_parse(SlV8Engine* backend, SlV8SourceMapLocation* ou
         return !cache->malformed;
     }
 
-    cache->parsed = true;
+    cache->malformed = false;
     cache->doc = yyjson_read_opts((char*)backend->source_map.ptr, backend->source_map.length, 0U,
                                   nullptr, &error);
     if (cache->doc == nullptr) {
+        cache->parsed = true;
         cache->malformed = true;
         if (out != nullptr) {
             out->malformed = true;
@@ -826,27 +849,20 @@ bool sl_v8_source_map_cache_parse(SlV8Engine* backend, SlV8SourceMapLocation* ou
 
     cache->root = yyjson_doc_get_root(cache->doc);
     if (!yyjson_is_obj(cache->root)) {
-        cache->malformed = true;
-        if (out != nullptr) {
-            out->malformed = true;
-        }
-        return false;
+        return sl_v8_source_map_cache_validation_failed(cache, out);
     }
 
     mappings_value = yyjson_obj_get(cache->root, "mappings");
     if (!yyjson_is_str(mappings_value) ||
         !sl_v8_source_map_read_sources(cache->root, &cache->sources))
     {
-        cache->malformed = true;
-        if (out != nullptr) {
-            out->malformed = true;
-        }
-        return false;
+        return sl_v8_source_map_cache_validation_failed(cache, out);
     }
 
     cache->mappings = yyjson_get_str(mappings_value);
     cache->mappings_length = yyjson_get_len(mappings_value);
     cache->lines.push_back(SlV8SourceMapLineState{});
+    cache->parsed = true;
     return true;
 }
 
