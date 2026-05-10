@@ -1,6 +1,7 @@
 #include "sloppy/status.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 static int expect_true(bool condition)
 {
