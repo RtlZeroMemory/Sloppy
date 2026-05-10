@@ -133,7 +133,7 @@ function Test-ReleaseTextHygiene {
     foreach ($relative in @(
         "LICENSE.md",
         "packages/npm/sloppy/LICENSE",
-        "docs/release/README.md",
+        "docs/release/index.md",
         "docs/release/KNOWN_LIMITATIONS.md",
         "docs/release/LICENSES.md",
         "docs/release/NOTICE.md",

@@ -13,23 +13,23 @@ planned or future work.
 - [Home](index.md) - docs site landing page
 - [Install](install.md) - npm, source builds, and platform notes
 - [Quickstart](quickstart.md) - create, build, run, and package a first API
-- [Tutorials](tutorials/README.md) - guided paths through the app workflow
+- [Tutorials](tutorials/index.md) - guided paths through the app workflow
 - [Roadmap](roadmap.md) - current support and future direction
 
 ## Reference
 
-- [API](api/README.md) - first-party JavaScript/TypeScript API
-- [CLI](cli/README.md) - `sloppy` and `sloppyc`
-- [Guides](guide/README.md) - project layout, TypeScript input, examples, troubleshooting
-- [Reference](reference/README.md) - Plan, config, diagnostics, stability, platform status
+- [API](api/index.md) - first-party JavaScript/TypeScript API
+- [CLI](cli/index.md) - `sloppy` and `sloppyc`
+- [Guides](guide/index.md) - project layout, TypeScript input, examples, troubleshooting
+- [Reference](reference/index.md) - Plan, config, diagnostics, stability, platform status
 
 ## Background
 
-- [About](about/README.md) - design notes and concepts
+- [About](about/index.md) - design notes and concepts
 - [Glossary](glossary.md)
 
 ## Contributors
 
-- [Contributor docs](contributor/README.md)
-- [Internals](internals/README.md)
-- [Release policy](release/README.md)
+- [Contributor docs](contributor/index.md)
+- [Internals](internals/index.md)
+- [Release policy](release/index.md)

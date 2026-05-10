@@ -172,12 +172,12 @@ interop, and production-hardening direction.
 
 - [Quickstart](docs/quickstart.md) - create, build, run, and package a first API
 - [Install](docs/install.md) - npm, source builds, and platform notes
-- [Tutorials](docs/tutorials/README.md) - guided app-building path
-- [API](docs/api/README.md) - first-party stdlib and app APIs
-- [CLI](docs/cli/README.md) - `sloppy` and `sloppyc` commands
-- [Guides](docs/guide/README.md) - project layout, examples, troubleshooting
-- [Reference](docs/reference/README.md) - Plan, syntax, stability, config
-- [Internals](docs/internals/README.md) - runtime/compiler design notes
+- [Tutorials](docs/tutorials/index.md) - guided app-building path
+- [API](docs/api/index.md) - first-party stdlib and app APIs
+- [CLI](docs/cli/index.md) - `sloppy` and `sloppyc` commands
+- [Guides](docs/guide/index.md) - project layout, examples, troubleshooting
+- [Reference](docs/reference/index.md) - Plan, syntax, stability, config
+- [Internals](docs/internals/index.md) - runtime/compiler design notes
 - [Roadmap](docs/roadmap.md) - what exists now and what comes later
 
 ## Contributing and feedback
@@ -187,7 +187,7 @@ confusing diagnostics, examples that do not match behavior, missing docs, and
 small API paper cuts.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
-- [Contributor docs](docs/contributor/README.md)
+- [Contributor docs](docs/contributor/index.md)
 - [Issues](https://github.com/RtlZeroMemory/Slop/issues)
 - [Security policy](SECURITY.md)
 

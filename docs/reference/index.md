@@ -1,6 +1,6 @@
 # Reference
 
-Lookup material. Conceptual guides live under [guide/](../guide/README.md);
+Lookup material. Conceptual guides live under [guide/](../guide/index.md);
 this section is for "what does this flag/field/format actually do".
 
 ## Format and configuration
@@ -11,7 +11,7 @@ this section is for "what does this flag/field/format actually do".
 
 ## API reference
 
-These pages duplicate content from [api/](../api/README.md) at a more
+These pages duplicate content from [api/](../api/index.md) at a more
 exhaustive level — they're there for "I need every option" lookup.
 
 - [Routing](routing.md)
