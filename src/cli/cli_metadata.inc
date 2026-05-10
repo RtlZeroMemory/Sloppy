@@ -379,9 +379,12 @@ static int sl_cli_parse_providers(yyjson_val* root, SlCliMetadata* metadata)
         }
         provider.token = sl_cli_json_span(value, "token");
         provider.provider = sl_cli_json_span(value, "provider");
+        provider.provider_kind = sl_cli_json_span(value, "providerKind");
         provider.capability = sl_cli_json_span(value, "capability");
         provider.required_access = sl_cli_json_span(value, "requiredAccess");
         provider.service = sl_cli_json_span(value, "service");
+        provider.database = sl_cli_json_span(value, "database");
+        provider.config_key = sl_cli_json_span(value, "configKey");
         metadata->providers[metadata->provider_count] = provider;
         metadata->provider_count += 1U;
     }

@@ -150,6 +150,29 @@ const result = await db.query(sql`SELECT 1 AS value, 2 AS value`, {
 `tx.query(...)`, `tx.queryRaw(...)`, `tx.queryOne(...)`, and `tx.exec(...)`
 methods.
 
+### Migrations
+
+SQLite supports first-party migrations through `Migrations` from
+`sloppy/data`:
+
+```ts
+import { Migrations } from "sloppy/data";
+
+await Migrations.apply(db, {
+    provider: "main",
+    path: "migrations/*.sql",
+});
+```
+
+Migration state is stored in `_sloppy_migrations` with `id`, `name`, `hash`,
+and `appliedAt`. Files are read in lexical order, each pending SQLite migration
+runs in its own transaction, and a second run skips unchanged files. If a file
+with the same name was already applied with a different hash, migration fails.
+
+`Migrations.status(db, options)` returns `current`, `pending`, or `changed`
+status without applying pending files. `ProviderHealth.check(db, { provider:
+"main" })` runs a small provider readiness query.
+
 ### Transactions
 
 ```ts
@@ -232,6 +255,10 @@ PostgreSQL-specific value wrappers worth knowing:
 - `sql.json(...)` becomes `jsonb`-friendly text on the wire.
 - `sql.bytes(...)` becomes `bytea`.
 
+PostgreSQL migrations are not executed by `Migrations.apply` or
+`sloppy db migrate` yet. Keep migration metadata as package/reference data only
+until a live PostgreSQL migration path exists.
+
 ## SQL Server
 
 > Experimental. Requires a V8-enabled runtime and an ODBC driver capable
@@ -262,6 +289,10 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
         );
     });
 ```
+
+SQL Server migrations are not executed by `Migrations.apply` or
+`sloppy db migrate` yet. Keep migration metadata as package/reference data only
+until a live SQL Server migration path exists.
 
 Connection strings, decimal handling, and async ODBC support matter;
 check `data.sqlserver.open(...)` diagnostics if startup fails.

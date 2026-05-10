@@ -20,6 +20,7 @@ Supported fields:
 - `environment` (optional string, default `Development`)
 - `kind` (optional string, default `web`)
 - `capabilities` (optional object)
+- `migrations` (optional object)
 - `moduleInclude` (optional string array)
 - `assetInclude` (optional string array)
 - `ffiLibraries` (optional object)
@@ -33,6 +34,7 @@ Unknown fields are rejected.
 | `environment` | string | no | `Development` | Environment name used during source-input build. |
 | `kind` | `"web"` or `"program"` | no | `web` | Source kind for project mode. Existing projects without `kind` stay web projects. |
 | `capabilities` | object | no | none | Boolean stdlib capability declarations preserved in the Plan. |
+| `migrations` | object | no | none | Named database migration sets used by runtime migration APIs, `sloppy db`, and package manifests. |
 | `moduleInclude` | string array | no | none | Project-relative glob patterns for modules that must be sealed into the artifact graph for computed dynamic imports. |
 | `assetInclude` | string array | no | none | Project-relative glob patterns for non-executable assets to record and package. |
 | `ffiLibraries` | object | no | none | Local native library paths used by `sloppy package` for Plan FFI library IDs. |
@@ -76,6 +78,33 @@ Program projects may declare stdlib capability intent:
 Supported names are `fs`, `net`, `os`, `time`, `crypto`, `codec`, and
 `workers`, and `ffi`. Values must be booleans. `true` values become Plan capability
 metadata and required runtime features; `false` values are ignored.
+
+## Migrations
+
+`migrations` maps a provider name to a provider kind and migration path:
+
+```json
+{
+  "entry": "src/main.ts",
+  "capabilities": {
+    "fs": true
+  },
+  "migrations": {
+    "main": {
+      "provider": "sqlite",
+      "path": "migrations/*.sql"
+    }
+  }
+}
+```
+
+Supported provider values are `sqlite`, `postgres`, and `sqlserver`. SQLite is
+the current executable migration path. PostgreSQL and SQL Server entries are
+metadata/package declarations until live migration execution exists.
+
+Paths must be project-relative and currently use the `directory/*.sql` shape.
+`sloppy package` copies matching files into the package and records them in
+`manifest.json`.
 
 ## Module And Asset Includes
 
@@ -158,7 +187,7 @@ resolution.
 
 `moduleInclude` and `assetInclude` patterns follow the same project-relative
 safety rule and reject absolute paths, `..`, and empty path segments.
-`ffiLibraries` paths follow the same project-relative path rules.
+`migrations` and `ffiLibraries` paths follow the same project-relative path rules.
 
 ## Error Messages
 
@@ -170,6 +199,7 @@ Representative failures:
 - `invalid sloppy.json: entry must be a non-empty string`
 - `invalid sloppy.json: kind must be web or program`
 - `invalid sloppy.json: capability values must be true or false`
+- `invalid sloppy.json: migrations entries require provider and path strings`
 - `invalid sloppy.json: moduleInclude must be an array of non-empty relative paths`
 - `invalid sloppy.json: assetInclude must be an array of non-empty relative paths`
 - `invalid sloppy.json: ffiLibraries paths must be relative project paths`

@@ -70,9 +70,12 @@ typedef struct SlCliProvider
 {
     SlCliSpan token;
     SlCliSpan provider;
+    SlCliSpan provider_kind;
     SlCliSpan capability;
     SlCliSpan required_access;
     SlCliSpan service;
+    SlCliSpan database;
+    SlCliSpan config_key;
 } SlCliProvider;
 
 typedef struct SlCliCapability
@@ -214,6 +217,9 @@ typedef struct SlCliOptions
     const char* kind;
     const char* once_method;
     const char* once_target;
+    const char* db_action;
+    const char* db_provider;
+    const char* db_target_path;
     char** program_args;
     size_t program_arg_count;
     uint16_t port;

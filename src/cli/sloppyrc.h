@@ -14,6 +14,9 @@ extern "C" {
 #define SL_SLOPPYRC_CAPABILITY_MAX_BYTES 16U
 #define SL_SLOPPYRC_MAX_MODULE_INCLUDES 32U
 #define SL_SLOPPYRC_MAX_ASSET_INCLUDES 32U
+#define SL_SLOPPYRC_MAX_MIGRATIONS 32U
+#define SL_SLOPPYRC_MIGRATION_NAME_MAX_BYTES 128U
+#define SL_SLOPPYRC_MIGRATION_PROVIDER_MAX_BYTES 32U
 #define SL_SLOPPYRC_MAX_FFI_LIBRARIES 32U
 #define SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES 256U
 #define SL_SLOPPYRC_FFI_LIBRARY_PATH_MAX_BYTES SL_SLOPPYRC_PATH_MAX_BYTES
@@ -23,6 +26,13 @@ typedef struct SlSloppyFfiLibraryConfig
     char name[SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES];
     char path[SL_SLOPPYRC_FFI_LIBRARY_PATH_MAX_BYTES];
 } SlSloppyFfiLibraryConfig;
+
+typedef struct SlSloppyMigrationConfig
+{
+    char name[SL_SLOPPYRC_MIGRATION_NAME_MAX_BYTES];
+    char provider[SL_SLOPPYRC_MIGRATION_PROVIDER_MAX_BYTES];
+    char path[SL_SLOPPYRC_PATH_MAX_BYTES];
+} SlSloppyMigrationConfig;
 
 typedef struct SlSloppyRunConfig
 {
@@ -36,6 +46,8 @@ typedef struct SlSloppyRunConfig
     size_t module_include_count;
     char asset_includes[SL_SLOPPYRC_MAX_ASSET_INCLUDES][SL_SLOPPYRC_PATH_MAX_BYTES];
     size_t asset_include_count;
+    SlSloppyMigrationConfig migrations[SL_SLOPPYRC_MAX_MIGRATIONS];
+    size_t migration_count;
     SlSloppyFfiLibraryConfig ffi_libraries[SL_SLOPPYRC_MAX_FFI_LIBRARIES];
     size_t ffi_library_count;
 } SlSloppyRunConfig;

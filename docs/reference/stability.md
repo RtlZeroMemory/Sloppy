@@ -72,6 +72,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes. Not a runtime release archive. |
+| CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | SQLite no V8 required | `status` and `migrate` work for SQLite artifacts/packages. PostgreSQL and SQL Server migration metadata is not executed. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `deps` | n/a | Plan-derived | metadata-only | no V8 required | Reads dependency graph metadata from Plan or `deps.graph.json`. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |

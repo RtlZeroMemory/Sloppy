@@ -1609,6 +1609,8 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         program_modules: Vec::new(),
         uses_data_runtime: true,
         uses_sql_runtime: false,
+        uses_migrations_runtime: false,
+        uses_provider_health_runtime: false,
         source_files: Vec::new(),
         routes: Vec::new(),
         dynamic_routes: Vec::new(),

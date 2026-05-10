@@ -17,6 +17,7 @@ the compiler before every runtime path is available.
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
 | Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
+| Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite end-to-end; PostgreSQL/SQL Server metadata only |
 | Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
@@ -127,6 +128,29 @@ All three providers expose callback transactions with these enforced rules:
 - nested transaction calls are rejected
 - using transaction object after callback settles is rejected
 - closing a connection during an active transaction is rejected
+
+## Migrations And Health
+
+SQLite exposes first-party migration support through `Migrations.apply` and
+`Migrations.status` from `sloppy/data`. The CLI mirrors that contract with
+`sloppy db status` and `sloppy db migrate`.
+
+SQLite migration behavior:
+
+- migration files come from `migrations/*.sql`-style project paths
+- files apply in lexical order
+- each file runs in its own transaction
+- `_sloppy_migrations` records `id`, `name`, `hash`, and `appliedAt`
+- changed applied hashes fail instead of being silently accepted
+- repeated runs skip unchanged files
+
+`ProviderHealth.check(db, { provider })` runs a small readiness query. For
+PostgreSQL and SQL Server, equivalent live health checks require configured
+live providers and stay outside the default test lane.
+
+PostgreSQL and SQL Server migration metadata can be recorded in `sloppy.json`
+and package manifests, but `sloppy db migrate` does not execute those providers
+yet.
 
 ## Result Modes
 

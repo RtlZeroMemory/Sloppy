@@ -178,6 +178,8 @@ curl -s http://127.0.0.1:5173/users/1
 
 - [API: data](../api/data.md) — `query`, `queryOne`, `exec`, `transaction`,
   cancellation, deadlines.
+- [Database migrations](migrations.md) — move schema setup into versioned
+  `migrations/*.sql` files and apply them from runtime or CLI.
 - [API: services](../api/services.md) — singleton/scoped/transient,
   disposal, scopes.
 - [Examples](examples.md) — typed-handler version of this same app under

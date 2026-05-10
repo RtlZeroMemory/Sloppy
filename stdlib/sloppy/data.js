@@ -1,3 +1,5 @@
+import { Directory, File } from "./fs.js";
+
 const QUERY_MARKER = "__sloppyQuery";
 const DB_VALUE_MARKER = Symbol("sloppyDbValue");
 const DB_BRIDGE_VALUE_MARKER = "__sloppyDbValue";
@@ -37,6 +39,8 @@ const PLACEHOLDER_STYLES = Object.freeze({
         position: index,
     }),
 });
+const MIGRATIONS_TABLE = "_sloppy_migrations";
+const MIGRATION_HASH_PREFIX = "fnv1a32:";
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -106,6 +110,230 @@ function requireStringValue(value, operation) {
         throw new TypeError(`Sloppy ${operation} value must be a non-empty string.`);
     }
     return value;
+}
+
+function normalizeMigrationOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy Migrations options must be a plain object.");
+    }
+    const provider = options.provider;
+    const path = options.path;
+    if (typeof provider !== "string" || provider.length === 0) {
+        throw new TypeError("Sloppy Migrations provider must be a non-empty string.");
+    }
+    if (typeof path !== "string" || path.length === 0) {
+        throw new TypeError("Sloppy Migrations path must be a non-empty string.");
+    }
+    const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const directory = slash < 0 ? "." : path.slice(0, slash);
+    const pattern = slash < 0 ? path : path.slice(slash + 1);
+    if (pattern !== "*.sql") {
+        throw new Error(`sloppy: migration path is unsupported
+
+Provider:
+  ${provider}
+
+Path:
+  ${path}
+
+Fix:
+  Use a project-relative directory glob ending in *.sql, for example migrations/*.sql.`);
+    }
+    return { provider, path, directory };
+}
+
+function migrationHash(text) {
+    let hash = 0x811c9dc5;
+    const addByte = (value) => {
+        hash ^= value & 0xff;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    };
+    for (let index = 0; index < text.length; index += 1) {
+        const code = text.codePointAt(index);
+        if (code > 0xffff) {
+            index += 1;
+        }
+        if (code <= 0x7f) {
+            addByte(code);
+        } else if (code <= 0x7ff) {
+            addByte(0xc0 | (code >> 6));
+            addByte(0x80 | (code & 0x3f));
+        } else if (code <= 0xffff) {
+            addByte(0xe0 | (code >> 12));
+            addByte(0x80 | ((code >> 6) & 0x3f));
+            addByte(0x80 | (code & 0x3f));
+        } else {
+            addByte(0xf0 | (code >> 18));
+            addByte(0x80 | ((code >> 12) & 0x3f));
+            addByte(0x80 | ((code >> 6) & 0x3f));
+            addByte(0x80 | (code & 0x3f));
+        }
+    }
+    return `${MIGRATION_HASH_PREFIX}${hash.toString(16).padStart(8, "0")}`;
+}
+
+async function listMigrationFiles(options) {
+    let entries;
+    try {
+        entries = await Directory.list(options.directory);
+    } catch (error) {
+        throw new Error(`sloppy: migration directory is missing or unreadable
+
+Provider:
+  ${options.provider}
+
+Path:
+  ${options.path}
+
+Fix:
+  Create the configured migration directory before applying migrations.`, { cause: error });
+    }
+    return entries
+        .filter((entry) => entry.kind === "file" && entry.name.endsWith(".sql"))
+        .map((entry) => entry.name)
+        .sort((left, right) => left.localeCompare(right))
+        .map((name) => ({
+            name,
+            path: options.directory === "." ? name : `${options.directory}/${name}`,
+        }));
+}
+
+async function ensureMigrationsTable(db) {
+    await db.exec(
+        `create table if not exists ${MIGRATIONS_TABLE} (` +
+        "id integer primary key autoincrement, " +
+        "name text not null unique, " +
+        "hash text not null, " +
+        "appliedAt text not null)",
+        [],
+    );
+}
+
+async function readAppliedMigrations(db) {
+    await ensureMigrationsTable(db);
+    const rows = await db.query(`select name, hash, appliedAt from ${MIGRATIONS_TABLE} order by id`, []);
+    const applied = new Map();
+    for (const row of rows) {
+        applied.set(row.name, row);
+    }
+    return applied;
+}
+
+function migrationStatusFor(files, applied) {
+    return files.map((file) => {
+        const appliedRow = applied.get(file.name) ?? null;
+        if (appliedRow === null) {
+            return Object.freeze({ name: file.name, path: file.path, status: "pending" });
+        }
+        if (appliedRow.hash !== file.hash) {
+            return Object.freeze({
+                name: file.name,
+                path: file.path,
+                status: "changed",
+                appliedHash: appliedRow.hash,
+                currentHash: file.hash,
+                appliedAt: appliedRow.appliedAt,
+            });
+        }
+        return Object.freeze({
+            name: file.name,
+            path: file.path,
+            status: "applied",
+            hash: file.hash,
+            appliedAt: appliedRow.appliedAt,
+        });
+    });
+}
+
+async function migrationFilesWithContent(options) {
+    const files = await listMigrationFiles(options);
+    const withContent = [];
+    for (const file of files) {
+        const sqlText = await File.readText(file.path);
+        withContent.push({
+            ...file,
+            sql: sqlText,
+            hash: migrationHash(sqlText),
+        });
+    }
+    return withContent;
+}
+
+function assertMigrationHashNotChanged(record) {
+    if (record.status !== "changed") {
+        return;
+    }
+    throw new Error(`sloppy: applied migration hash changed
+
+Migration:
+  ${record.name}
+
+Applied hash:
+  ${record.appliedHash}
+
+Current hash:
+  ${record.currentHash}
+
+Fix:
+  Create a new migration file instead of editing an already-applied migration.`);
+}
+
+async function migrationStatus(db, options) {
+    const checked = normalizeMigrationOptions(options);
+    const files = await migrationFilesWithContent(checked);
+    const applied = await readAppliedMigrations(db);
+    const migrations = migrationStatusFor(files, applied);
+    const changed = migrations.some((migration) => migration.status === "changed");
+    const pending = migrations.filter((migration) => migration.status === "pending").length;
+    return Object.freeze({
+        provider: checked.provider,
+        path: checked.path,
+        status: changed ? "changed" : pending > 0 ? "pending" : "current",
+        pending,
+        applied: migrations.filter((migration) => migration.status === "applied").length,
+        migrations: Object.freeze(migrations),
+    });
+}
+
+async function applyMigrations(db, options) {
+    const checked = normalizeMigrationOptions(options);
+    const files = await migrationFilesWithContent(checked);
+    const applied = await readAppliedMigrations(db);
+    const records = migrationStatusFor(files, applied);
+    for (const record of records) {
+        assertMigrationHashNotChanged(record);
+    }
+
+    let appliedCount = 0;
+    for (const file of files) {
+        if (applied.has(file.name)) {
+            continue;
+        }
+        await db.transaction(async (tx) => {
+            await tx.exec(file.sql, []);
+            await tx.exec(
+                `insert into ${MIGRATIONS_TABLE} (name, hash, appliedAt) values (?, ?, ?)`,
+                [file.name, file.hash, new Date().toISOString()],
+            );
+        });
+        appliedCount += 1;
+    }
+
+    return Object.freeze({
+        provider: checked.provider,
+        path: checked.path,
+        applied: appliedCount,
+        skipped: files.length - appliedCount,
+    });
+}
+
+async function checkProviderHealth(db, options = {}) {
+    const provider = options.provider ?? "sqlite";
+    if (typeof provider !== "string" || provider.length === 0) {
+        throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
+    }
+    await db.queryOne("select 1 as ok", []);
+    return Object.freeze({ provider, ok: true });
 }
 
 function decimal(value) {
@@ -1736,7 +1964,7 @@ const sqliteSupports = {
     transactionsMode: "callback",
     preparedStatements: false,
     pooling: false,
-    migrations: false,
+    migrations: true,
     orm: false,
 };
 
@@ -2131,13 +2359,24 @@ sql.bytes = bytes;
 
 Object.freeze(sql);
 
-export { sql };
+const Migrations = Object.freeze({
+    apply: applyMigrations,
+    status: migrationStatus,
+});
+
+const ProviderHealth = Object.freeze({
+    check: checkProviderHealth,
+});
+
+export { Migrations, ProviderHealth, sql };
 
 export const data = Object.freeze({
     createFakeProvider,
     lowerQueryTemplate: createLoweredQuery,
     isQuery: isLoweredQuery,
     values,
+    migrations: Migrations,
+    providerHealth: ProviderHealth,
     sqlite,
     postgres,
     sqlserver,

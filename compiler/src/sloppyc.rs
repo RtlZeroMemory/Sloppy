@@ -342,6 +342,8 @@ struct AppState {
     results_imported: bool,
     data_imported: bool,
     sql_imported: bool,
+    migrations_imported: bool,
+    provider_health_imported: bool,
     schema_imported: bool,
     time_imported: bool,
     fs_imported: bool,
@@ -399,6 +401,8 @@ impl AppState {
             results_imported: false,
             data_imported: false,
             sql_imported: false,
+            migrations_imported: false,
+            provider_health_imported: false,
             schema_imported: false,
             time_imported: false,
             fs_imported: false,
@@ -952,6 +956,10 @@ struct ModuleGraph {
     modules: BTreeMap<PathBuf, CachedModule>,
     source_file_names: BTreeSet<String>,
     source_files: Vec<SourceFile>,
+    uses_data_runtime: bool,
+    uses_sql_runtime: bool,
+    uses_migrations_runtime: bool,
+    uses_provider_health_runtime: bool,
     uses_time_runtime: bool,
     uses_fs_runtime: bool,
     uses_crypto_runtime: bool,
@@ -991,6 +999,10 @@ impl ModuleGraph {
             modules: BTreeMap::new(),
             source_file_names: BTreeSet::new(),
             source_files: Vec::new(),
+            uses_data_runtime: false,
+            uses_sql_runtime: false,
+            uses_migrations_runtime: false,
+            uses_provider_health_runtime: false,
             uses_time_runtime: false,
             uses_fs_runtime: false,
             uses_crypto_runtime: false,
@@ -1452,8 +1464,10 @@ fn extract_program_with_metrics(
         kind: ProjectKind::Program,
         program_entry: Some(program_entry),
         program_modules: modules,
-        uses_data_runtime: false,
-        uses_sql_runtime: false,
+        uses_data_runtime: graph.uses_data_runtime,
+        uses_sql_runtime: graph.uses_sql_runtime,
+        uses_migrations_runtime: graph.uses_migrations_runtime,
+        uses_provider_health_runtime: graph.uses_provider_health_runtime,
         source_files,
         routes: Vec::new(),
         dynamic_routes: Vec::new(),
@@ -2223,6 +2237,7 @@ fn analyze_program_import(
             Ok(())
         }
         resolver::ImportKind::SlopStdlib
+        | resolver::ImportKind::SlopData
         | resolver::ImportKind::SlopTime
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
@@ -2817,6 +2832,7 @@ fn validate_program_stdlib_import(
 ) -> Result<(), Diagnostic> {
     match import_kind {
         resolver::ImportKind::SlopFilesystem => validate_module_sloppy_fs_import(path, import),
+        resolver::ImportKind::SlopData => validate_module_sloppy_data_import(path, import),
         resolver::ImportKind::SlopTime => validate_module_sloppy_time_import(path, import),
         resolver::ImportKind::SlopCrypto => validate_module_sloppy_crypto_import(path, import),
         resolver::ImportKind::SlopCodec => validate_module_sloppy_codec_import(path, import),
@@ -3301,6 +3317,7 @@ fn program_import_replacement(
             )
         }
         resolver::ImportKind::SlopStdlib
+        | resolver::ImportKind::SlopData
         | resolver::ImportKind::SlopTime
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
@@ -3598,6 +3615,9 @@ fn mark_program_import(
     import: &ImportDeclaration<'_>,
 ) {
     match import_kind {
+        resolver::ImportKind::SlopData => {
+            mark_sloppy_data_runtime_usage(graph, import);
+        }
         resolver::ImportKind::SlopTime => graph.uses_time_runtime = true,
         resolver::ImportKind::SlopFilesystem => graph.uses_fs_runtime = true,
         resolver::ImportKind::SlopCrypto => graph.uses_crypto_runtime = true,
@@ -3943,6 +3963,7 @@ fn extract_entry(
         program_entry: None,
         program_modules: Vec::new(),
         uses_data_runtime: state.data_imported
+            || graph.uses_data_runtime
             || state.sql_imported
             || state.sqlite_imported
             || !state.app_provider_uses.is_empty()
@@ -3954,7 +3975,10 @@ fn extract_entry(
                         .iter()
                         .any(|binding| binding.injection_kind.as_deref() == Some("provider"))
             }),
-        uses_sql_runtime: state.sql_imported,
+        uses_sql_runtime: state.sql_imported || graph.uses_sql_runtime,
+        uses_migrations_runtime: state.migrations_imported || graph.uses_migrations_runtime,
+        uses_provider_health_runtime: state.provider_health_imported
+            || graph.uses_provider_health_runtime,
         source_files: graph.source_files.clone(),
         routes: state.routes,
         dynamic_routes: state.dynamic_routes,
@@ -4052,6 +4076,10 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
         name,
         "Random" | "Hash" | "Hmac" | "Password" | "ConstantTime" | "Secret" | "NonCryptoHash"
     )
+}
+
+fn sloppy_data_import_name_supported(name: &str) -> bool {
+    matches!(name, "sql" | "Migrations" | "ProviderHealth")
 }
 
 fn sloppy_fs_import_name_supported(name: &str) -> bool {
@@ -4472,6 +4500,18 @@ fn validate_module_sloppy_fs_import(
     import: &ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
     validate_module_sloppy_import(path, import, "sloppy/fs", sloppy_fs_import_name_supported)
+}
+
+fn validate_module_sloppy_data_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/data",
+        sloppy_data_import_name_supported,
+    )
 }
 
 fn validate_module_sloppy_net_import(
@@ -5316,6 +5356,26 @@ fn mark_sloppy_net_runtime_usage(
     }
 }
 
+fn mark_sloppy_data_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclaration<'_>) {
+    graph.uses_data_runtime = true;
+    if let Some(specifiers) = &import.specifiers {
+        for specifier in specifiers {
+            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
+                if specifier.imported.name().as_str() == "sql" {
+                    graph.uses_sql_runtime = true;
+                }
+                if specifier.imported.name().as_str() == "Migrations" {
+                    graph.uses_migrations_runtime = true;
+                    graph.uses_fs_runtime = true;
+                }
+                if specifier.imported.name().as_str() == "ProviderHealth" {
+                    graph.uses_provider_health_runtime = true;
+                }
+            }
+        }
+    }
+}
+
 fn mark_sloppy_net_runtime_import(state: &mut AppState, imported: &str) {
     mark_sloppy_net_runtime_usage(
         &mut state.net_imported,
@@ -5487,6 +5547,13 @@ fn extract_import(
                 if imported == "sql" && local == "sql" {
                     state.sql_imported = true;
                     state.data_imported = true;
+                } else if imported == "Migrations" && local == "Migrations" {
+                    state.data_imported = true;
+                    state.migrations_imported = true;
+                    state.fs_imported = true;
+                } else if imported == "ProviderHealth" && local == "ProviderHealth" {
+                    state.data_imported = true;
+                    state.provider_health_imported = true;
                 } else {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
@@ -5536,6 +5603,15 @@ fn extract_import(
                 ("RequestId", "RequestId") => state.request_id_imported = true,
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
                 ("data", "data") => state.data_imported = true,
+                ("Migrations", "Migrations") => {
+                    state.data_imported = true;
+                    state.migrations_imported = true;
+                    state.fs_imported = true;
+                }
+                ("ProviderHealth", "ProviderHealth") => {
+                    state.data_imported = true;
+                    state.provider_health_imported = true;
+                }
                 ("schema", "schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
                 _ if sloppy_root_import_name_supported(imported) => {}
@@ -5607,6 +5683,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "RequestLogging"
             | "Testing"
             | "data"
+            | "Migrations"
+            | "ProviderHealth"
             | "schema"
             | "Email"
             | "NonEmptyString"
@@ -9866,6 +9944,13 @@ fn extract_relative_helper_import(
             }
             continue;
         }
+        if import_source == "sloppy/data" {
+            validate_module_sloppy_data_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                mark_sloppy_data_runtime_usage(graph, import);
+            }
+            continue;
+        }
         if import_source == "sloppy/fs" {
             validate_module_sloppy_fs_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
@@ -10231,6 +10316,13 @@ fn extract_relative_module(
             validate_module_sloppy_time_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
                 graph.uses_time_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/data" {
+            validate_module_sloppy_data_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                mark_sloppy_data_runtime_usage(graph, import);
             }
             continue;
         }
@@ -15209,6 +15301,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_data_runtime {
         runtime_exports.push("data");
+    }
+    if app.uses_migrations_runtime {
+        runtime_exports.push("Migrations");
+    }
+    if app.uses_provider_health_runtime {
+        runtime_exports.push("ProviderHealth");
     }
     if app.uses_sql_runtime {
         runtime_exports.push("sql");
