@@ -1,4 +1,3 @@
 GET / HTTP/1.1
 Host: one.test
 Host: two.test
-
