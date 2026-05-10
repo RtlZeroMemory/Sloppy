@@ -49,6 +49,7 @@ permissions:
 
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
+  VCPKG_CACHE_VERSION: v2
 
 jobs:
   analyze-c-cpp:
@@ -97,9 +98,11 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: codeql-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: codeql-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
+            codeql-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             codeql-vcpkg-${{ env.VCPKG_COMMIT }}-
+            Linux-linux-clang-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
 
       - name: Bootstrap vcpkg
@@ -145,7 +148,7 @@ jobs:
             .sdeps/vcpkg
             .sdeps/vcpkg-bincache
             vcpkg_installed
-          key: codeql-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: codeql-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Build native targets
         shell: bash

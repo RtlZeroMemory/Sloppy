@@ -53,20 +53,28 @@ the PR template. See [test-engine.md](test-engine.md).
 
 ## Mandatory CI lanes
 
-Every PR runs:
+Every PR runs the fast static lane:
 
-- **Default non-V8** — the default `dev.ps1 test` lane plus lint and
-  scanners.
-- **Windows ASan**, **Windows libFuzzer seed replay**, **Linux
-  ASan/UBSan** — sanitizer evidence.
-- **Compiler/Plan** — `sloppyc` fixtures plus Plan parser tests.
-- **Advanced static analysis** — clang-tidy + analyzer for non-doc
-  changes; CodeQL for analysis-relevant changes.
-- **Test engine report** — PR-tier fuzz/property orchestration report when
-  native/tooling changes are relevant. Static, native, compiler, and sanitizer
-  gates still report as their own CI lanes.
+- **Default non-V8 static checks** — whitespace, tracked artifact checks,
+  standards scanners, docs freshness, format verification, and the
+  test-engine meta report.
 
-A PR can't merge with any required lane skipped, stale, or red.
+Relevant PRs also run focused lanes:
+
+- **Windows Debug platform** — `windows-dev` configure, build, and CTest for
+  native or Windows-tooling changes.
+- **Unix platform matrix** — Linux clang, Linux gcc, and macOS native
+  build/test for native changes.
+- **Linux ASan/UBSan** — default native PR sanitizer evidence.
+- **Compiler/Plan** — `sloppyc` fixtures and compiler tests for compiler
+  changes.
+
+CodeQL remains the security-analysis workflow for analysis-relevant paths.
+Advanced clang-tidy/analyzer and Windows sanitizer/fuzzer lanes are not
+default PR gates; they run on `main`, schedules, manual dispatch, or explicit
+labels.
+
+A PR can't merge with any required applicable lane skipped, stale, or red.
 
 Use these statuses in PR reports: `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
 `DEFERRED`, `NOT RUN`.
@@ -89,7 +97,9 @@ These run on demand or when labels/inputs select them:
 | Package outside-checkout | `package-smoke` / `full-ci` label, or `workflow_dispatch`   |
 | Live PostgreSQL      | `live-postgres` / `live-providers` / `full-ci` label            |
 | Live SQL Server      | `live-sqlserver` / `live-providers` / `full-ci` label           |
-| Windows Debug local-gate mirror | `windows-debug` / `full-ci` label, scheduled run, or `main` push |
+| Windows sanitizer/fuzzer | `memory-safety`, `windows-asan`, `fuzz`, or `full-ci` label; scheduled run; `main` push; or `workflow_dispatch` |
+| Advanced static analysis | `memory-analysis` / `full-ci` label, scheduled run, `main` push, or `workflow_dispatch` |
+| Full Windows local-gate bundle | `full-ci` label or `workflow_dispatch`                |
 | SIMD backend (SSE2/AVX2) | SIMD-relevant changes                                       |
 | libFuzzer mutation   | Manual workflow dispatch                                        |
 | Test engine extended | Nightly or manual workflow dispatch                             |
