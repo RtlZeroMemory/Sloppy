@@ -184,17 +184,17 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
     endforeach()
     if(public_template STREQUAL "package-api")
-        if(SLOPPY_TEST_NPM)
+        if(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
             execute_process(
-                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result
                 OUTPUT_VARIABLE public_npm_stdout
                 ERROR_VARIABLE public_npm_stderr)
-        elseif(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
+        elseif(SLOPPY_TEST_NPM)
             execute_process(
-                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result

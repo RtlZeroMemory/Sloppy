@@ -232,8 +232,9 @@ Working with examples in the repo:
 
 ## Boundaries
 
-- No Node `fs` compatibility. `node:fs`, `fs/promises`, `fs.readFile`, and the
-  Node options shape are not provided.
+- Node `fs` compatibility is partial and lives in explicit compatibility
+  modules. `node:fs/promises` maps a practical async subset to this `sloppy/fs`
+  surface; sync APIs, watchers, and full Node option parity are not provided.
 - No `Buffer`. Bytes are `Uint8Array`.
 - No synchronous variants. Every operation is async.
 - No streaming write API beyond `FileHandle.writeBytes`/`writeText`. There is

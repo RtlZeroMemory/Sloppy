@@ -1187,9 +1187,67 @@ fn program_mode_resolves_node_compat_shim_and_plan_features() {
 
 #[test]
 fn node_buffer_shim_uses_multibyte_utf8_decode_fallback() {
-    assert!(super::NODE_BUFFER_SHIM.contains("String.fromCodePoint"));
-    assert!(super::NODE_BUFFER_SHIM.contains("0xf4"));
-    assert!(!super::NODE_BUFFER_SHIM.contains("fromCharCode(value[i])"));
+    assert!(super::NODE_BUFFER_SHIM.contains("rt.Text.utf8.decode"));
+    assert!(super::NODE_BUFFER_SHIM.contains("Buffer.concat"));
+    assert!(super::NODE_BUFFER_SHIM.contains("rt.Base64.decode"));
+}
+
+#[test]
+fn program_mode_resolves_expanded_node_compat_shims() {
+    let root = fixture_temp_dir("program-node-compat-expanded");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import assert from "node:assert";
+import process from "node:process";
+import { Buffer } from "node:buffer";
+import { Readable } from "node:stream";
+import crypto from "node:crypto";
+export function main() {
+  assert.ok(Buffer.isBuffer(Buffer.concat([Buffer.from("a"), Buffer.from("b")])));
+  return `${process.platform}:${typeof Readable.from}:${typeof crypto.createHash}`;
+}"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let required = plan["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array");
+    for feature in [
+        "node.compat.assert",
+        "node.compat.buffer",
+        "node.compat.crypto",
+        "node.compat.process",
+        "node.compat.stream",
+        "stdlib.crypto",
+        "stdlib.os",
+    ] {
+        assert!(
+            required.contains(&serde_json::json!(feature)),
+            "missing required feature {feature}: {required:?}"
+        );
+    }
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    for module_id in [
+        "sloppy/node/assert",
+        "sloppy/node/buffer",
+        "sloppy/node/crypto",
+        "sloppy/node/events",
+        "sloppy/node/process",
+        "sloppy/node/stream",
+    ] {
+        assert!(
+            app_js.contains(module_id),
+            "missing embedded shim {module_id}"
+        );
+    }
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
 
 #[test]
@@ -1257,7 +1315,8 @@ fn program_mode_json_modules_preserve_default_export_binding() {
     super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
     assert!(app_js.contains("module.exports.default = __sloppy_json_module;"));
-    assert!(app_js.contains("__sloppy_program_require(\"data.json\").default"));
+    assert!(app_js.contains("Object.prototype.hasOwnProperty.call(__sloppy_default_module"));
+    assert!(app_js.contains("__sloppy_program_require(\"data.json\")"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }

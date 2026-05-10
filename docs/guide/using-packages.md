@@ -23,6 +23,13 @@ native package shape is recognized.
 Unrestricted Node builtins and packages that rely on implicit Node globals may
 also fail with clear diagnostics.
 
+The current Node compatibility layer covers practical subsets of common
+pure-JavaScript package assumptions: explicit `node:process`, `node:buffer`,
+`node:fs/promises`, `node:assert`, `node:stream`, `node:crypto`, path/events,
+and related utility shims. See the
+[Node compatibility reference](../reference/node-compatibility.md) for exact
+members and known differences from Node.
+
 ## Install With Your Package Manager
 
 ```sh
@@ -140,8 +147,9 @@ shims, and compatibility findings.
 - No registry install or package manager integration.
 - No native Node addons or N-API. Obvious native addon shapes are rejected, but
   detection is not a complete native-package classifier.
-- No full Node builtins, streams, workers, VM, child process, inspector, or
-  REPL compatibility.
+- No full Node builtin parity. The stream and crypto shims are partial, and
+  workers, VM, child process, inspector, REPL, and Node internals remain
+  unsupported.
 - No implicit global Node runtime identity.
 - No unrestricted runtime discovery outside the sealed graph.
 

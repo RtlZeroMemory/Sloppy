@@ -7,6 +7,9 @@ Package support is experimental. Sloppy consumes packages that are already
 installed in `node_modules`, bundles compatible pure-JS modules into the
 generated artifacts, and records the graph for `sloppy deps`. This is not full
 npm ecosystem compatibility; native addons and N-API are unsupported.
+Packages must use JavaScript and runtime APIs Sloppy can transform and shim.
+The supported Node compatibility surface is documented in
+`docs/reference/node-compatibility.md`.
 
 ```sh
 npm install --ignore-scripts --no-audit

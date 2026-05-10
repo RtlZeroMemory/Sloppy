@@ -169,12 +169,20 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
                 | "os"
                 | "process"
                 | "crypto"
+                | "assert"
+                | "assert/strict"
+                | "stream"
                 | "timers"
         ) =>
         {
             format!("node:{specifier}")
         }
         None => return None,
+    };
+    let normalized = if normalized == "node:assert/strict" {
+        "node:assert".to_string()
+    } else {
+        normalized
     };
     let (status, backing, capability) = match normalized.as_str() {
         "node:path" => ("supported", Some("sloppy/node/path"), None),
@@ -189,6 +197,8 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
         "node:os" => ("partial", Some("sloppy/node/os"), Some("os")),
         "node:process" => ("partial", Some("sloppy/node/process"), Some("os")),
         "node:crypto" => ("partial", Some("sloppy/node/crypto"), Some("crypto")),
+        "node:assert" | "node:assert/strict" => ("partial", Some("sloppy/node/assert"), None),
+        "node:stream" => ("partial", Some("sloppy/node/stream"), None),
         _ => ("unsupported", None, None),
     };
     Some(NodeBuiltinResolution {

@@ -1,5 +1,16 @@
 {
-  "capabilities": [],
+  "capabilities": [
+    {
+      "access": "info",
+      "kind": "os",
+      "token": "os"
+    },
+    {
+      "access": "use",
+      "kind": "crypto",
+      "token": "crypto"
+    }
+  ],
   "completeness": {
     "reasons": [
       {
@@ -12,10 +23,16 @@
   "handlers": [],
   "kind": "program",
   "requiredFeatures": [
+    "node.compat.assert",
     "node.compat.buffer",
+    "node.compat.crypto",
     "node.compat.events",
     "node.compat.path",
-    "node.compat.querystring"
+    "node.compat.process",
+    "node.compat.querystring",
+    "node.compat.stream",
+    "stdlib.crypto",
+    "stdlib.os"
   ],
   "routes": []
 }

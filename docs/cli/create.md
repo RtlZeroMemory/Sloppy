@@ -25,7 +25,8 @@ templates: they are intended for real experiments and early apps, but their
 structure and supported runtime surface can still change before a stable
 release. The `package-api` template includes a local `file:` dependency and
 needs `npm install --ignore-scripts --no-audit` before `sloppy build`. Sloppy
-can bundle supported package modules from `node_modules`, but it does not
+can bundle supported package modules from `node_modules`, including packages
+that stay inside the documented Node compatibility shims, but it does not
 install packages, solve versions, or provide full Node compatibility.
 
 ## Examples

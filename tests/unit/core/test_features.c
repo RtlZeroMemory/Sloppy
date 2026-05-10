@@ -204,16 +204,20 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_PATH);
     const SlRuntimeFeatureDescriptor* node_fs_promises =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES);
+    const SlRuntimeFeatureDescriptor* node_assert =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_ASSERT);
+    const SlRuntimeFeatureDescriptor* node_stream =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM);
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 33) {
+    if (SL_RUNTIME_FEATURE_COUNT != 35) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
         fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL ||
-        ffi == NULL)
+        node_assert == NULL || node_stream == NULL || ffi == NULL)
     {
         return 61;
     }
@@ -348,6 +352,22 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 77;
     }
+    if (!sl_str_equal(node_assert->stable_id, sl_str_from_cstr("node.compat.assert")) ||
+        !sl_str_equal(node_assert->stdlib_import, sl_str_from_cstr("sloppy/node/assert")) ||
+        !sl_str_is_empty(node_assert->v8_intrinsic_namespace) ||
+        node_assert->requires_v8_intrinsics ||
+        (node_assert->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U)
+    {
+        return 78;
+    }
+    if (!sl_str_equal(node_stream->stable_id, sl_str_from_cstr("node.compat.stream")) ||
+        !sl_str_equal(node_stream->stdlib_import, sl_str_from_cstr("sloppy/node/stream")) ||
+        !sl_str_is_empty(node_stream->v8_intrinsic_namespace) ||
+        node_stream->requires_v8_intrinsics ||
+        (node_stream->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U)
+    {
+        return 79;
+    }
     return 0;
 }
 
@@ -445,6 +465,8 @@ static int test_node_compat_required_features_activate_v8_dependency(void)
         {"node.compat.os", SL_RUNTIME_FEATURE_NODE_COMPAT_OS},
         {"node.compat.process", SL_RUNTIME_FEATURE_NODE_COMPAT_PROCESS},
         {"node.compat.crypto", SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO},
+        {"node.compat.assert", SL_RUNTIME_FEATURE_NODE_COMPAT_ASSERT},
+        {"node.compat.stream", SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM},
     };
     size_t index = 0U;
 

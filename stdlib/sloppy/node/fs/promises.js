@@ -1,1 +1,8 @@
-export { promises as default, promises, readFile, writeFile } from "../fs.js";
+export {
+    appendFile,
+    promises as default,
+    promises,
+    readFile,
+    unlink,
+    writeFile,
+} from "../fs.js";

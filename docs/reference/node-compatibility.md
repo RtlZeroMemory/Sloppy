@@ -24,19 +24,21 @@ packages unrestricted access to Node internals.
 | `node:events`, `events` | `supported` | `sloppy/node/events` | Basic `EventEmitter` methods. |
 | `node:url`, `url` | `supported` | `sloppy/node/url` | Re-exports `URL` and `URLSearchParams` when the JS environment provides them. |
 | `node:querystring`, `querystring` | `supported` | `sloppy/node/querystring` | Basic `parse` and `stringify`. |
-| `node:buffer`, `buffer` | `partial` | `sloppy/node/buffer` | `Buffer.from`, `Buffer.alloc`, byte arrays, and simple encoding helpers. No full Node buffer identity. |
+| `node:buffer`, `buffer` | `partial` | `sloppy/node/buffer` | `Buffer.from`, `Buffer.alloc`, zero-filled `allocUnsafe`, `isBuffer`, `byteLength`, `concat`, `equals`, `slice`/`subarray`, and UTF-8/hex/base64 conversion. No full Node buffer identity. |
 | `node:util`, `util` | `partial` | `sloppy/node/util` | Minimal `inspect`, `format`, `promisify`, and type helpers. |
 | `node:timers`, `timers` | `partial` | `sloppy/node/timers` | Maps to available global timers where present; missing timer globals fail clearly. |
-| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Maps selected async/file helpers to `sloppy/fs` where equivalent behavior exists. Watchers and many sync Node APIs are not implemented. |
-| `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | Promise-shaped filesystem subset backed by `sloppy/fs`. |
+| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Async helpers and `promises` backed by `sloppy/fs`. Watchers and sync Node APIs are not implemented. |
+| `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | `readFile`, `writeFile`, `appendFile`, `stat`, `mkdir`, `readdir`, `rm`, `unlink`, and `access` backed by `sloppy/fs`. |
 | `node:os`, `os` | `partial` | `sloppy/node/os` | Minimal platform/environment helpers backed by `sloppy/os` where possible. |
-| `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only. Sloppy does not install a global Node `process` object. |
-| `node:crypto`, `crypto` | `partial` | `sloppy/node/crypto` | Random helpers where backed by Sloppy crypto; unsupported hash/HMAC members throw. |
+| `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only: `platform`, `arch`, read-only `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, and `exitCode`. Sloppy does not install a global Node `process` object. |
+| `node:crypto`, `crypto` | `partial` | `sloppy/node/crypto` | `randomBytes`, `randomUUID`, SHA-2 `createHash`, SHA-256 `createHmac`, and `timingSafeEqual` backed by `sloppy/crypto`. Hash/HMAC digest helpers are Promise-shaped because the Sloppy crypto API is async. |
+| `node:assert`, `assert`, `node:assert/strict`, `assert/strict` | `partial` | `sloppy/node/assert` | `ok`, `equal`, `strictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `rejects`, and `AssertionError`. |
+| `node:stream`, `stream` | `partial` | `sloppy/node/stream` | Small EventEmitter-based subset: `Readable.from`, minimal `Writable`, `PassThrough`, and `pipeline`. No full Node stream backpressure or transform contract. |
 
-Unsupported families include `node:stream`, `node:http`, `node:https`,
-`node:http2`, `node:net`, `node:tls`, `node:dns`, `node:worker_threads`,
-`node:child_process`, `node:vm`, `node:inspector`, `node:test`, `node:repl`,
-and Node internal modules.
+Unsupported families include `node:http`, `node:https`, `node:http2`,
+`node:net`, `node:tls`, `node:dns`, `node:worker_threads`,
+`node:child_process`, `node:vm`, `node:inspector`, `node:test`,
+`node:repl`, and Node internal modules.
 
 ## Runtime Globals
 
@@ -58,7 +60,7 @@ Unsupported builtins fail at build time:
 
 ```text
 SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN
-node:stream is not supported by Sloppy's Node compatibility registry yet.
+node:child_process is not supported by Sloppy's Node compatibility registry yet.
 ```
 
 Unsupported members inside a partial shim fail at runtime with a

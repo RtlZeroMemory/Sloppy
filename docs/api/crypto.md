@@ -202,8 +202,11 @@ In-repo references:
 - No streaming HMAC or PBKDF2. Argon2id is the password KDF.
 - No public AEAD/cipher API in `sloppy/crypto` today. Symmetric and asymmetric
   encryption are roadmap work.
-- No Node `crypto` compatibility. `crypto.createHash`, `crypto.randomBytes`,
-  `crypto.subtle`, and the `node:crypto` import are not provided.
+- Node `crypto` compatibility is partial and lives in the explicit
+  `node:crypto` shim. It exposes `randomBytes`, `randomUUID`, SHA-2
+  `createHash`, SHA-256 `createHmac`, and `timingSafeEqual` through this
+  Sloppy crypto surface. It does not provide `crypto.subtle`, ciphers,
+  PBKDF2, broad OpenSSL algorithm names, or full synchronous Node semantics.
 - Secrets clone on construction and on `bytes()` — callers cannot mutate the
   underlying buffer through a returned view.
 
