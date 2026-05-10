@@ -469,6 +469,79 @@ int test_listener_accept_timeout_and_stale_handle()
     return 0;
 }
 
+int test_read_until_binary_delimiter_and_limits()
+{
+    EchoServer server;
+    unsigned char arena_storage[64U * 1024U];
+    SlArena arena;
+    SlTcpConnection* connection = nullptr;
+    SlTcpConnectOptions options = {};
+    SlOwnedBytes bytes = {};
+    const unsigned char first[] = {'a', 'b', '\0'};
+    const unsigned char second[] = {'c', 'd'};
+    const unsigned char expected[] = {'a', 'b', '\0', 'c'};
+    const unsigned char delimiter[] = {'\0', 'c'};
+    const unsigned char overflow_delimiter[] = {'z'};
+
+    if (!echo_server_start(&server)) {
+        return 1;
+    }
+    sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    options = sl_tcp_connect_options_default(sl_str_from_cstr("127.0.0.1"), server.port);
+
+    if (expect_status(sl_tcp_client_connect(&arena, &options, &connection, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        connection == nullptr)
+    {
+        echo_server_stop(&server);
+        return 2;
+    }
+
+    if (expect_status(
+            sl_tcp_connection_write(connection, sl_bytes_from_parts(first, sizeof(first)), nullptr),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_tcp_connection_write(connection,
+                                              sl_bytes_from_parts(second, sizeof(second)), nullptr),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_tcp_connection_read_until(
+                          connection, &arena, sl_bytes_from_parts(delimiter, sizeof(delimiter)), 8U,
+                          &bytes, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        bytes.length != sizeof(expected) || std::memcmp(bytes.ptr, expected, sizeof(expected)) != 0)
+    {
+        (void)sl_tcp_connection_abort(connection, nullptr);
+        echo_server_stop(&server);
+        return 3;
+    }
+
+    if (expect_status(
+            sl_tcp_connection_read_until(connection, &arena, sl_bytes_empty(), 8U, &bytes, nullptr),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        (void)sl_tcp_connection_abort(connection, nullptr);
+        echo_server_stop(&server);
+        return 4;
+    }
+
+    if (expect_status(sl_tcp_connection_read_until(
+                          connection, &arena,
+                          sl_bytes_from_parts(overflow_delimiter, sizeof(overflow_delimiter)), 1U,
+                          &bytes, nullptr),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        (void)sl_tcp_connection_abort(connection, nullptr);
+        echo_server_stop(&server);
+        return 5;
+    }
+
+    if (expect_status(sl_tcp_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
+        echo_server_stop(&server);
+        return 6;
+    }
+    echo_server_stop(&server);
+    return 0;
+}
+
 } // namespace
 
 int main()
@@ -486,6 +559,9 @@ int main()
         return 1;
     }
     if (test_listener_accept_timeout_and_stale_handle() != 0) {
+        return 1;
+    }
+    if (test_read_until_binary_delimiter_and_limits() != 0) {
         return 1;
     }
     return 0;

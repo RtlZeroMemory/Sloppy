@@ -119,6 +119,9 @@ SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, cons
     }
 
     *out_result = (SlEngineResult){0};
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
 
     status = sl_runtime_resolve_handler(engine, arena, plan, handler_id, &handler, out_diag);
     if (!sl_status_is_ok(status)) {
@@ -145,6 +148,9 @@ SlStatus sl_runtime_contract_call_handler_with_context(SlEngine* engine, SlArena
     }
 
     *out_result = (SlEngineResult){0};
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
 
     if (request_context == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);

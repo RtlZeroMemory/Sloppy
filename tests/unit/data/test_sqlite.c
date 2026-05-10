@@ -639,15 +639,23 @@ static int test_empty_result_and_duplicate_column_names(void)
 static int test_sqlite_text_blob_interop_helpers(void)
 {
     unsigned char storage[128];
+    unsigned char tiny_storage[4];
     SlArena arena = {0};
+    SlArena tiny_arena = {0};
     SlStr text = sl_str_from_cstr("owned-text");
     SlStr copied_text = sl_str_from_cstr("stale-text");
     SlBytes blob = sl_bytes_from_parts((const unsigned char*)"abc", 3U);
     SlBytes copied_blob = sl_bytes_from_parts((const unsigned char*)"old", 3U);
     SlSqliteParam param = {.kind = SL_SQLITE_PARAM_INTEGER, .value.integer = 99};
+    SlSqliteParam sentinel_param = {.kind = SL_SQLITE_PARAM_INTEGER, .value.integer = 321};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
 
     if (!sl_status_is_ok(status)) {
+        return 110;
+    }
+    if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0)
+    {
         return 110;
     }
 
@@ -672,26 +680,53 @@ static int test_sqlite_text_blob_interop_helpers(void)
         return 113;
     }
 
+    copied_text = sl_str_from_cstr("stale-text");
+    status = sl_sqlite_copy_result_text_to_arena(&tiny_arena, sl_str_from_cstr("owned-text"),
+                                                 &copied_text);
+    if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        !sl_str_equal(copied_text, sl_str_from_cstr("stale-text")))
+    {
+        return 114;
+    }
+
+    copied_blob = sl_bytes_from_parts((const unsigned char*)"old", 3U);
+    status = sl_sqlite_copy_result_blob_to_arena(
+        &tiny_arena, sl_bytes_from_parts((const unsigned char*)"abcde", 5U), &copied_blob);
+    if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        expect_bytes_equal(copied_blob, (const unsigned char*)"old", 3U) != 0)
+    {
+        return 115;
+    }
+
+    param = sentinel_param;
+    status =
+        sl_sqlite_param_copy_text_to_arena(&tiny_arena, sl_str_from_cstr("owned-text"), &param);
+    if (expect_status(status, SL_STATUS_OUT_OF_MEMORY) != 0 || param.kind != sentinel_param.kind ||
+        param.value.integer != sentinel_param.value.integer)
+    {
+        return 116;
+    }
+
     status = sl_sqlite_param_copy_blob_to_arena(&arena, blob, &param);
     if (expect_status(status, SL_STATUS_OK) != 0 || param.kind != SL_SQLITE_PARAM_BLOB ||
         expect_bytes_equal(param.value.blob, blob.ptr, blob.length) != 0 ||
         param.value.blob.ptr == blob.ptr)
     {
-        return 114;
+        return 117;
     }
 
     status = sl_sqlite_param_copy_text_to_arena(&arena, sl_str_empty(), &param);
     if (expect_status(status, SL_STATUS_OK) != 0 || param.kind != SL_SQLITE_PARAM_TEXT ||
         param.value.text.length != 0U)
     {
-        return 115;
+        return 118;
     }
 
     status = sl_sqlite_param_copy_blob_to_arena(&arena, sl_bytes_empty(), &param);
     if (expect_status(status, SL_STATUS_OK) != 0 || param.kind != SL_SQLITE_PARAM_BLOB ||
         param.value.blob.length != 0U)
     {
-        return 116;
+        return 119;
     }
 
     return 0;
@@ -752,9 +787,11 @@ static int test_transactions_commit_rollback_and_lifetime(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || !tx.active) {
         return close_and_return(&connection, 43);
     }
+    nested.connection = &connection;
+    nested.active = true;
     status = sl_sqlite_transaction_begin(&arena, &connection, &nested, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
-        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR)
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || nested.connection != NULL || nested.active)
     {
         return close_and_return(&connection, 44);
     }
@@ -1130,6 +1167,44 @@ static int test_query_failure_clears_rolled_back_outputs(void)
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 145;
 }
 
+static int test_query_max_rows_overflow_preserves_outputs(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char query_storage[64];
+    SlArena arena = {0};
+    SlArena query_arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteQueryOptions options = {.max_rows = SIZE_MAX};
+    SlSqliteResult result = {.column_count = 9U,
+                             .column_names = (SlStr*)storage,
+                             .row_count = 5U,
+                             .rows = (SlSqliteRow*)storage};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 146;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 147;
+    }
+    if (expect_status(sl_arena_init(&query_arena, query_storage, sizeof(query_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return close_and_return(&connection, 148);
+    }
+
+    status = sl_sqlite_query(&query_arena, &connection, sl_str_from_cstr("select 1 as a, 2 as b"),
+                             NULL, 0U, &options, &result, NULL);
+    if (expect_status(status, SL_STATUS_OVERFLOW) != 0 || result.column_count != 0U ||
+        result.column_names != NULL || result.row_count != 0U || result.rows != NULL ||
+        sl_arena_used(&query_arena) != 0U)
+    {
+        return close_and_return(&connection, 149);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 150;
+}
+
 int main(void)
 {
     int result = test_open_close_and_use_after_close();
@@ -1213,6 +1288,11 @@ int main(void)
     }
 
     result = test_query_failure_clears_rolled_back_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_query_max_rows_overflow_preserves_outputs();
     if (result != 0) {
         return result;
     }

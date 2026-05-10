@@ -1,0 +1,1 @@
+{"version":1,"runtimeMinimumVersion":"0.0.0","handlers":[{"id":"h","export":"h"}],"routes":[{"id":"r","method":"GET","pattern":"/old","handler":"h"}]}

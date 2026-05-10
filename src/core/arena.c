@@ -43,6 +43,7 @@ static void sl_arena_poison(unsigned char* ptr, size_t size, unsigned char value
 static SlStatus sl_arena_alignment_padding(const SlArena* arena, size_t alignment,
                                            size_t* out_padding)
 {
+    uintptr_t base_address = 0U;
     uintptr_t current_address = 0U;
     size_t mask = 0U;
     size_t misalignment = 0U;
@@ -51,7 +52,12 @@ static SlStatus sl_arena_alignment_padding(const SlArena* arena, size_t alignmen
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    current_address = (uintptr_t)arena->base + arena->offset;
+    base_address = (uintptr_t)arena->base;
+    if ((uintptr_t)arena->offset > UINTPTR_MAX - base_address) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    current_address = base_address + (uintptr_t)arena->offset;
     mask = alignment - 1U;
     misalignment = (size_t)(current_address & (uintptr_t)mask);
 

@@ -1,0 +1,2 @@
+diagnostic with tab	and newline
+second line and quote " plus slash \.

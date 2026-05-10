@@ -86,6 +86,39 @@ static int test_fixed_vec_push_pop_and_clear(void)
     return 0;
 }
 
+static int test_zero_capacity_fixed_vec_and_ring_queue(void)
+{
+    int storage[1] = {17};
+    SlFixedVec vec;
+    SlRingQueue queue;
+    int value = 5;
+    int out = 99;
+    void* slot = (void*)storage;
+
+    if (expect_status(sl_fixed_vec_init(&vec, NULL, sizeof(int), 0U), SL_STATUS_OK) != 0 ||
+        sl_fixed_vec_count(&vec) != 0U || sl_fixed_vec_capacity(&vec) != 0U ||
+        sl_fixed_vec_at(&vec, 0U) != NULL || sl_fixed_vec_at_const(&vec, 0U) != NULL ||
+        expect_status(sl_fixed_vec_push(&vec, &value, &slot), SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        slot != (void*)storage ||
+        expect_status(sl_fixed_vec_push_zero(&vec, &slot), SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        slot != (void*)storage || sl_fixed_vec_pop(&vec, &out))
+    {
+        return 15;
+    }
+
+    if (expect_status(sl_ring_queue_init(&queue, NULL, sizeof(int), 0U), SL_STATUS_OK) != 0 ||
+        sl_ring_queue_count(&queue) != 0U || sl_ring_queue_capacity(&queue) != 0U ||
+        !sl_ring_queue_is_empty(&queue) || !sl_ring_queue_is_full(&queue) ||
+        expect_status(sl_ring_queue_push(&queue, &value), SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        sl_ring_queue_peek_front(&queue, &out) || sl_ring_queue_discard_front(&queue) ||
+        sl_ring_queue_pop_front(&queue, &out) || sl_ring_queue_pop_back(&queue, &out))
+    {
+        return 16;
+    }
+
+    return 0;
+}
+
 static int test_ring_queue_fifo_wrap_and_pop_back(void)
 {
     int storage[3] = {0};
@@ -189,6 +222,54 @@ static int test_hash_index_find_insert(void)
     return 0;
 }
 
+static int test_hash_index_corruption_and_capacity_guards(void)
+{
+    unsigned char storage[256];
+    SlArena arena;
+    SlArenaHashIndex index = {0};
+    HashRecord record = {0};
+    size_t found = 77U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_hash_index_init(&index, &arena, 2U, 1U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_hash_index_insert(&index, 3U, 1U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_hash_index_insert(&index, 4U, 2U), SL_STATUS_OK) != 0)
+    {
+        return 36;
+    }
+
+    if (expect_status(sl_arena_hash_index_insert(&index, 5U, 1U), SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(sl_arena_hash_index_insert(&index, 6U, 2U), SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(sl_arena_hash_index_insert(&index, 7U, 3U), SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 37;
+    }
+
+    if (expect_status(sl_arena_hash_index_insert(&index, 8U, 0U), SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 38;
+    }
+
+    index.buckets[0] = 3U;
+    record.target = 1U;
+    if (expect_status(sl_arena_hash_index_find(&index, 3U, hash_equals, &record, &found),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        found != 77U)
+    {
+        return 39;
+    }
+
+    index.buckets[0] = 1U;
+    index.next_indices[0] = 1U;
+    if (expect_status(sl_arena_hash_index_insert(&index, 9U, 2U), SL_STATUS_INVALID_STATE) != 0 ||
+        index.count != 2U)
+    {
+        return 40;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_arena_array_alloc_and_copy();
@@ -199,9 +280,17 @@ int main(void)
     if (result != 0) {
         return result;
     }
+    result = test_zero_capacity_fixed_vec_and_ring_queue();
+    if (result != 0) {
+        return result;
+    }
     result = test_ring_queue_fifo_wrap_and_pop_back();
     if (result != 0) {
         return result;
     }
-    return test_hash_index_find_insert();
+    result = test_hash_index_find_insert();
+    if (result != 0) {
+        return result;
+    }
+    return test_hash_index_corruption_and_capacity_guards();
 }

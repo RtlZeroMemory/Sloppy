@@ -43,6 +43,73 @@ static SlPlan one_handler_plan(SlPlanHandler* handler)
     return plan;
 }
 
+static int test_invalid_arguments_clear_outputs_atomically(void)
+{
+    unsigned char engine_storage[1024];
+    unsigned char diag_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena diag_arena = {0};
+    SlEngineOptions options = noop_options();
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRequestContext request_context = {0};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
+    SlDiag diag = {.code = SL_DIAG_INTERNAL_ERROR};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&diag_arena, diag_storage, sizeof(diag_storage)) != 0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 2;
+    }
+
+    if (expect_status(
+            sl_runtime_contract_call_handler(NULL, &diag_arena, &plan, 1U, &result, &diag),
+            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        sl_engine_destroy(engine);
+        return 3;
+    }
+
+    result.kind = SL_ENGINE_RESULT_TEXT;
+    diag.code = SL_DIAG_INTERNAL_ERROR;
+    if (expect_status(sl_runtime_contract_call_handler_with_context(engine, &diag_arena, &plan, 1U,
+                                                                    NULL, &result, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        sl_engine_destroy(engine);
+        return 4;
+    }
+
+    if (expect_status(sl_runtime_contract_call_handler(engine, &diag_arena, &plan, 1U, NULL, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_NONE)
+    {
+        sl_engine_destroy(engine);
+        return 5;
+    }
+
+    result.kind = SL_ENGINE_RESULT_TEXT;
+    diag.code = SL_DIAG_INTERNAL_ERROR;
+    if (expect_status(sl_runtime_contract_call_handler_with_context(engine, &diag_arena, &plan, 1U,
+                                                                    &request_context, NULL, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INTERNAL_ERROR)
+    {
+        sl_engine_destroy(engine);
+        return 6;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_missing_handler_id_returns_diagnostic_without_v8(void)
 {
     unsigned char engine_storage[1024];
@@ -131,14 +198,67 @@ static int test_duplicate_handler_ids_return_diagnostic_without_v8(void)
     return 0;
 }
 
+static int test_missing_export_name_returns_diagnostic_without_v8(void)
+{
+    unsigned char engine_storage[1024];
+    unsigned char diag_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena diag_arena = {0};
+    SlEngineOptions options = noop_options();
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRequestContext request_context = {0};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
+    SlDiag diag = {.code = SL_DIAG_INTERNAL_ERROR};
+
+    handler.export_name = sl_str_empty();
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&diag_arena, diag_storage, sizeof(diag_storage)) != 0)
+    {
+        return 20;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 21;
+    }
+
+    if (expect_status(sl_runtime_contract_call_handler_with_context(
+                          engine, &diag_arena, &plan, 1U, &request_context, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 22;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message, sl_str_from_cstr("app plan handler export name is missing")))
+    {
+        sl_engine_destroy(engine);
+        return 23;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
-    if (test_missing_handler_id_returns_diagnostic_without_v8() != 0) {
+    if (test_invalid_arguments_clear_outputs_atomically() != 0) {
         return 1;
     }
 
-    if (test_duplicate_handler_ids_return_diagnostic_without_v8() != 0) {
+    if (test_missing_handler_id_returns_diagnostic_without_v8() != 0) {
         return 2;
+    }
+
+    if (test_missing_export_name_returns_diagnostic_without_v8() != 0) {
+        return 3;
+    }
+
+    if (test_duplicate_handler_ids_return_diagnostic_without_v8() != 0) {
+        return 4;
     }
 
     return 0;

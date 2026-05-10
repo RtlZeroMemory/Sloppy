@@ -1,6 +1,8 @@
 #include "sloppy/arena.h"
+#include "sloppy/string.h"
 
 #include <stdbool.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -199,10 +201,28 @@ static int test_capacity_and_overflow(void)
 
     corrupt_arena = arena;
     corrupt_arena.capacity = SIZE_MAX;
-    corrupt_arena.offset = SIZE_MAX - 1U;
-    if (expect_status(sl_arena_alloc(&corrupt_arena, SIZE_MAX, 1U, &ptr), SL_STATUS_OVERFLOW) != 0)
-    {
+    corrupt_arena.base = (unsigned char*)1U;
+    corrupt_arena.offset = SIZE_MAX - 2U;
+    if (expect_status(sl_arena_alloc(&corrupt_arena, 3U, 1U, &ptr), SL_STATUS_OVERFLOW) != 0) {
         return 33;
+    }
+
+    ptr = (void*)small;
+    corrupt_arena = arena;
+    corrupt_arena.offset = 7U;
+    corrupt_arena.base = (unsigned char*)(UINTPTR_MAX - 2U);
+    if (expect_status(sl_arena_alloc(&corrupt_arena, 1U, 8U, &ptr), SL_STATUS_INTERNAL) != 0 ||
+        ptr != (void*)small || corrupt_arena.offset != 7U)
+    {
+        return 34;
+    }
+
+    ptr = (void*)small;
+    if (expect_status(sl_arena_alloc(&arena, 1U, (size_t)1U << ((sizeof(size_t) * 8U) - 1U), &ptr),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        ptr != (void*)small || sl_arena_used(&arena) != 0U)
+    {
+        return 35;
     }
 
     return 0;
@@ -250,6 +270,15 @@ static int test_mark_invalid_inputs(void)
 
     if (expect_status(sl_arena_reset_to(&arena, mark), SL_STATUS_INVALID_ARGUMENT) != 0) {
         return 46;
+    }
+
+    arena.generation = UINT_MAX;
+    mark = sl_arena_mark(&arena);
+    sl_arena_reset(&arena);
+    if (arena.generation != 1U ||
+        expect_status(sl_arena_reset_to(&arena, mark), SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 47;
     }
 
     return 0;
@@ -398,6 +427,47 @@ static int test_stats_snapshot_contract(void)
     return 0;
 }
 
+static int test_contains_str_bounds_and_overflow(void)
+{
+    unsigned char buffer[16];
+    SlArena arena;
+    SlArena huge_arena;
+
+    fill_bytes(buffer, sizeof(buffer), 0U);
+
+    if (expect_status(sl_arena_init(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 90;
+    }
+
+    if (expect_true(sl_arena_contains_str(&arena, sl_str_from_parts((const char*)buffer, 16U))) !=
+            0 ||
+        expect_true(
+            !sl_arena_contains_str(&arena, sl_str_from_parts((const char*)buffer + 8U, 9U))) != 0 ||
+        expect_true(!sl_arena_contains_str(
+            &arena, sl_str_from_parts((const char*)(UINTPTR_MAX - 1U), 4U))) != 0)
+    {
+        return 91;
+    }
+
+    huge_arena = arena;
+    huge_arena.base = (unsigned char*)(UINTPTR_MAX - 4U);
+    huge_arena.capacity = 8U;
+    if (expect_true(
+            !sl_arena_contains_str(&huge_arena, sl_str_from_parts((const char*)buffer, 1U))) != 0)
+    {
+        return 92;
+    }
+
+    sl_arena_dispose(&arena);
+    if (expect_true(!sl_arena_contains_str(&arena, sl_str_from_parts((const char*)buffer, 1U))) !=
+        0)
+    {
+        return 93;
+    }
+
+    return 0;
+}
+
 static int test_debug_poisoning(void)
 {
 #if SL_ENABLE_ASSERTS
@@ -498,6 +568,11 @@ int main(void)
     }
 
     result = test_stats_snapshot_contract();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_contains_str_bounds_and_overflow();
     if (result != 0) {
         return result;
     }

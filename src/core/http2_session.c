@@ -563,6 +563,7 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
     if (sl_http2_session_bytes_start_with_preface(bytes)) {
         offset = sizeof(SL_HTTP2_SESSION_PREFACE);
     }
+    bool header_block_open = false;
     while (bytes.length - offset >= 9U) {
         const unsigned char* frame = &bytes.ptr[offset];
         size_t length = ((size_t)frame[0] << 16U) | ((size_t)frame[1] << 8U) | (size_t)frame[2];
@@ -570,9 +571,35 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
         uint8_t flags = frame[4];
         int32_t stream_id = sl_http2_session_frame_stream_id(frame);
         SlHttp2ClosedStream* closed = NULL;
+        const uint8_t continuation_type = NGHTTP2_CONTINUATION;
+        const uint8_t headers_type = NGHTTP2_HEADERS;
+        const uint8_t push_promise_type = NGHTTP2_PUSH_PROMISE;
+        const uint8_t end_headers_flag = NGHTTP2_FLAG_END_HEADERS;
 
         if (length > bytes.length - offset - 9U) {
             break;
+        }
+        if ((!header_block_open && type == continuation_type) ||
+            (header_block_open && type != continuation_type))
+        {
+            SlStatus status =
+                sl_http2_session_submit_prescan_goaway(session, NGHTTP2_PROTOCOL_ERROR);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_http2_session_note_invalid_frame(session, stream_id, -NGHTTP2_ERR_PROTO);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        if (!header_block_open && (type == headers_type || type == push_promise_type) &&
+            (flags & end_headers_flag) == 0U)
+        {
+            header_block_open = true;
+        }
+        else if (header_block_open && type == continuation_type && (flags & end_headers_flag) != 0U)
+        {
+            header_block_open = false;
         }
         if (type == NGHTTP2_PING && stream_id != 0) {
             session->close_without_goaway = true;
@@ -580,6 +607,19 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
         }
         if (type == NGHTTP2_SETTINGS && stream_id == 0 && (flags & NGHTTP2_FLAG_ACK) == 0U) {
             SlStatus status = sl_http2_session_track_peer_settings(session, &frame[9], length);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        if (type == NGHTTP2_SETTINGS && stream_id == 0 && (flags & NGHTTP2_FLAG_ACK) != 0U &&
+            length != 0U)
+        {
+            SlStatus status =
+                sl_http2_session_submit_prescan_goaway(session, NGHTTP2_PROTOCOL_ERROR);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_http2_session_note_invalid_frame(session, stream_id, -NGHTTP2_ERR_PROTO);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
@@ -809,6 +849,7 @@ static int sl_http2_on_frame_recv(nghttp2_session* ng_session, const nghttp2_fra
                                     .error_code = frame->rst_stream.error_code});
     }
     else if (frame->hd.type == NGHTTP2_GOAWAY) {
+        session->received_goaway = true;
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_GOAWAY,
                                     .last_stream_id = frame->goaway.last_stream_id,
@@ -1253,6 +1294,9 @@ SlStatus sl_http2_session_submit_request(SlHttp2Session* session, const SlHttp2H
         session->config.role != SL_HTTP2_SESSION_ROLE_CLIENT)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (session->received_goaway) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     mark = sl_arena_mark(session->arena);

@@ -140,7 +140,9 @@ set(
     tests/unit/core/test_fs.c
     tests/unit/core/test_os.c
     tests/unit/core/test_logging.c
+    tests/unit/core/test_platform_thread.c
     tests/unit/core/test_app_host.c
+    tests/unit/core/test_request_validation.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
     tests/unit/core/test_async_backend.c
@@ -174,6 +176,7 @@ set(
     tests/fuzz/fuzz_http2_frame.c
     tests/fuzz/fuzz_http2_hpack.c
     tests/fuzz/fuzz_http2_session.c
+    tests/fuzz/fuzz_http_query.c
     tests/fuzz/fuzz_http_request.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
@@ -190,7 +193,8 @@ if(CMAKE_CXX_COMPILER)
         SLOPPY_C_LINT_SOURCES
         tests/unit/core/test_net_tcp_client.cc
         tests/unit/core/test_async_backend_libuv.cc
-        tests/unit/core/test_source_loc_cpp.cpp)
+        tests/unit/core/test_source_loc_cpp.cpp
+        tests/unit/core/test_public_headers_cpp.cpp)
     if(WIN32)
         list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/core/test_net_local_win32.cc)
     else()

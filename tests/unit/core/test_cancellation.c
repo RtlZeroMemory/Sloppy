@@ -15,7 +15,10 @@ static int expect_status(SlStatus status, SlStatusCode code)
 int main(void)
 {
     SlCancellationToken token = {0};
+    SlCancellationToken second = {0};
+    SlStr invalid_detail = {NULL, 1U};
 
+    sl_cancellation_token_init(NULL);
     sl_cancellation_token_init(&token);
     if (expect_true(!sl_cancellation_token_is_cancelled(&token)) != 0 ||
         sl_cancellation_token_reason(&token) != SL_CANCELLATION_REASON_NONE)
@@ -59,6 +62,16 @@ int main(void)
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 6;
+    }
+
+    sl_cancellation_token_init(&second);
+    if (expect_status(
+            sl_cancellation_token_cancel(&second, SL_CANCELLATION_REASON_CANCELLED, invalid_detail),
+            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        sl_cancellation_token_is_cancelled(&second) ||
+        sl_cancellation_token_reason(&second) != SL_CANCELLATION_REASON_NONE)
+    {
+        return 9;
     }
 
     if (sl_cancellation_status_code(SL_CANCELLATION_REASON_BACKPRESSURE) !=

@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 #define TEST_ARENA_SIZE 65536U
@@ -110,6 +111,9 @@ static SlPlan one_handler_plan(SlPlanHandler* handler)
 static SlPlan route_table_plan(SlPlanHandler* handlers, SlPlanRoute* routes)
 {
     SlPlan plan = {0};
+
+    memset(handlers, 0, 2U * sizeof(handlers[0]));
+    memset(routes, 0, 2U * sizeof(routes[0]));
 
     handlers[0].id = 1U;
     handlers[0].export_name = sl_str_from_cstr("__sloppy_handler_1");
@@ -233,6 +237,50 @@ static int test_route_table_build_orders_literal_before_params(void)
     }
 
     return expect_true(diag.code == SL_DIAG_NONE);
+}
+
+static int test_literal_route_wins_over_param_route_end_to_end(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handlers[2];
+    SlPlanRoute routes[2];
+    SlPlanRequestBinding stale_header = {0};
+    SlPlan plan = route_table_plan(handlers, routes);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    routes[0].bindings = &stale_header;
+    routes[0].binding_count = 1U;
+    stale_header.kind = SL_PLAN_REQUEST_BINDING_HEADER;
+    stale_header.name = sl_str_from_cstr("x-param-only");
+    stale_header.type = sl_str_from_cstr("string");
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users/me HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 60;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        return 61;
+    }
+    return 0;
 }
 
 static int test_route_table_rejects_duplicate_method_pattern(void)
@@ -1131,7 +1179,7 @@ static int test_body_too_large_fails_before_handler_call(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
-    static const unsigned char body_byte = 'x';
+    static unsigned char body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U];
     SlArena arena = {0};
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
@@ -1163,12 +1211,9 @@ static int test_body_too_large_fails_before_handler_call(void)
     request.raw_target = sl_str_from_cstr("/hello");
     request.headers = headers;
     request.header_count = 2U;
-    /*
-     * test_body_too_large_fails_before_handler_call intentionally points the
-     * oversized SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1 body at one valid byte:
-     * sl_http_dispatch_apply_body_policy rejects the length before dereference.
-     */
-    request.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
+    body[0] = 'x';
+    body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH] = 'x';
+    request.body = sl_bytes_from_parts(body, sizeof(body));
 
     route.method = SL_HTTP_METHOD_POST;
     route.pattern = &pattern;
@@ -2109,52 +2154,59 @@ typedef int (*HttpDispatchTestFn)(void);
 typedef struct HttpDispatchTestCase
 {
     HttpDispatchTestFn fn;
+    const char* name;
 } HttpDispatchTestCase;
+
+#define HTTP_DISPATCH_TEST(fn) {fn, #fn}
 
 int main(void)
 {
     static const HttpDispatchTestCase tests[] = {
-        {test_get_missing_route_fails_cleanly},
-        {test_route_table_build_orders_literal_before_params},
-        {test_route_table_rejects_duplicate_method_pattern},
-        {test_route_table_build_keeps_method_metadata},
-        {test_route_table_exact_index_reports_method_mismatch},
-        {test_route_table_param_buckets_preserve_source_order},
-        {test_route_table_param_buckets_report_method_mismatch},
-        {test_parameter_first_route_reaches_bucket},
-        {test_generated_options_route_reaches_engine},
-        {test_route_table_build_accepts_non_get_only_metadata},
-        {test_allow_header_lists_matching_methods_and_head_for_get},
-        {test_method_mismatch_returns_method_not_allowed},
-        {test_head_request_matches_get_route_before_engine},
-        {test_head_route_binding_is_rejected},
-        {test_supported_non_get_methods_reach_engine},
-        {test_transfer_encoding_body_is_rejected_before_handler_call},
-        {test_json_body_reaches_engine_when_valid},
-        {test_invalid_json_body_fails_before_handler_call},
-        {test_unsupported_body_content_type_fails_before_handler_call},
-        {test_non_empty_body_without_content_length_fails_before_handler_call},
-        {test_body_too_large_fails_before_handler_call},
-        {test_lifecycle_dispatch_uses_backend_body_limit},
-        {test_missing_plan_handler_fails_before_engine_call},
-        {test_plan_backed_body_validation_returns_problem_before_handler_call},
-        {test_plan_backed_route_query_header_validation_returns_problem},
-        {test_plan_backed_nullable_required_body_field_must_be_present},
-        {test_plan_backed_array_validation_reports_indexed_paths},
-        {test_plan_backed_body_validation_rejects_excessive_json_depth},
-        {test_plan_backed_body_validation_accepts_max_json_depth},
-        {test_manual_dispatch_ignores_stale_route_index_for_validation},
-        {test_route_params_may_match_but_are_not_required_by_dispatch},
-        {test_conformance_smoke_default_http_cases},
-        {test_plan_route_without_query_binding_skips_malformed_query},
-        {test_plan_route_with_query_binding_rejects_malformed_query},
-        {test_plan_route_with_middleware_keeps_query_conservative},
+        HTTP_DISPATCH_TEST(test_get_missing_route_fails_cleanly),
+        HTTP_DISPATCH_TEST(test_route_table_build_orders_literal_before_params),
+        HTTP_DISPATCH_TEST(test_literal_route_wins_over_param_route_end_to_end),
+        HTTP_DISPATCH_TEST(test_route_table_rejects_duplicate_method_pattern),
+        HTTP_DISPATCH_TEST(test_route_table_build_keeps_method_metadata),
+        HTTP_DISPATCH_TEST(test_route_table_exact_index_reports_method_mismatch),
+        HTTP_DISPATCH_TEST(test_route_table_param_buckets_preserve_source_order),
+        HTTP_DISPATCH_TEST(test_route_table_param_buckets_report_method_mismatch),
+        HTTP_DISPATCH_TEST(test_parameter_first_route_reaches_bucket),
+        HTTP_DISPATCH_TEST(test_generated_options_route_reaches_engine),
+        HTTP_DISPATCH_TEST(test_route_table_build_accepts_non_get_only_metadata),
+        HTTP_DISPATCH_TEST(test_allow_header_lists_matching_methods_and_head_for_get),
+        HTTP_DISPATCH_TEST(test_method_mismatch_returns_method_not_allowed),
+        HTTP_DISPATCH_TEST(test_head_request_matches_get_route_before_engine),
+        HTTP_DISPATCH_TEST(test_head_route_binding_is_rejected),
+        HTTP_DISPATCH_TEST(test_supported_non_get_methods_reach_engine),
+        HTTP_DISPATCH_TEST(test_transfer_encoding_body_is_rejected_before_handler_call),
+        HTTP_DISPATCH_TEST(test_json_body_reaches_engine_when_valid),
+        HTTP_DISPATCH_TEST(test_invalid_json_body_fails_before_handler_call),
+        HTTP_DISPATCH_TEST(test_unsupported_body_content_type_fails_before_handler_call),
+        HTTP_DISPATCH_TEST(test_non_empty_body_without_content_length_fails_before_handler_call),
+        HTTP_DISPATCH_TEST(test_body_too_large_fails_before_handler_call),
+        HTTP_DISPATCH_TEST(test_lifecycle_dispatch_uses_backend_body_limit),
+        HTTP_DISPATCH_TEST(test_missing_plan_handler_fails_before_engine_call),
+        HTTP_DISPATCH_TEST(test_plan_backed_body_validation_returns_problem_before_handler_call),
+        HTTP_DISPATCH_TEST(test_plan_backed_route_query_header_validation_returns_problem),
+        HTTP_DISPATCH_TEST(test_plan_backed_nullable_required_body_field_must_be_present),
+        HTTP_DISPATCH_TEST(test_plan_backed_array_validation_reports_indexed_paths),
+        HTTP_DISPATCH_TEST(test_plan_backed_body_validation_rejects_excessive_json_depth),
+        HTTP_DISPATCH_TEST(test_plan_backed_body_validation_accepts_max_json_depth),
+        HTTP_DISPATCH_TEST(test_manual_dispatch_ignores_stale_route_index_for_validation),
+        HTTP_DISPATCH_TEST(test_route_params_may_match_but_are_not_required_by_dispatch),
+        HTTP_DISPATCH_TEST(test_conformance_smoke_default_http_cases),
+        HTTP_DISPATCH_TEST(test_plan_route_without_query_binding_skips_malformed_query),
+        HTTP_DISPATCH_TEST(test_plan_route_with_query_binding_rejects_malformed_query),
+        HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
     };
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
+        fprintf(stderr, "running %s\n", tests[index].name);
+        fflush(stderr);
         int result = tests[index].fn();
         if (result != 0) {
+            fprintf(stderr, "%s failed with code %d\n", tests[index].name, result);
             return result;
         }
     }

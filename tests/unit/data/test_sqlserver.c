@@ -368,6 +368,53 @@ static int test_pool_state_machine_without_live_connection(void)
 #endif
 }
 
+static int test_invalid_outputs_are_preserved_without_live_connection(void)
+{
+#ifndef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+    return 0;
+#else
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqlServerConnection sentinel = {.env_handle = storage,
+                                      .dbc_handle = storage + 1U,
+                                      .open = true,
+                                      .transaction_active = true,
+                                      .access = SL_SQLSERVER_ACCESS_READWRITE};
+    SlSqlServerConnection* acquired = &sentinel;
+    SlSqlServerOpenOptions options = sl_sqlserver_open_options_connection_string(sl_str_empty());
+    SlSqlServerPool pool = {.closed = true};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 35;
+    }
+
+    status = sl_sqlserver_open(&arena, &options, &sentinel, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || sentinel.env_handle != storage ||
+        sentinel.dbc_handle != storage + 1U || !sentinel.open || !sentinel.transaction_active)
+    {
+        return 36;
+    }
+
+    options.connection_string = sl_str_from_cstr("Driver={x};Server=x");
+    options.access = (SlSqlServerAccess)99;
+    status = sl_sqlserver_open(&arena, &options, &sentinel, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || sentinel.env_handle != storage ||
+        sentinel.dbc_handle != storage + 1U || !sentinel.open || !sentinel.transaction_active)
+    {
+        return 37;
+    }
+
+    status = sl_sqlserver_pool_acquire(&arena, &pool, &acquired, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 || acquired != &sentinel) {
+        return 38;
+    }
+
+    return 0;
+#endif
+}
+
 static int test_live_failure_classification_ignores_provider_hint(void)
 {
     SlDiag diag = {0};
@@ -639,7 +686,7 @@ static int run_default_tests(void)
     if (result != 0) {
         return result;
     }
-    return 0;
+    return test_invalid_outputs_are_preserved_without_live_connection();
 }
 
 static int run_live_tests(void)

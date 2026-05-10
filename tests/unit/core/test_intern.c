@@ -154,6 +154,89 @@ static int test_capacity_and_failure_outputs(void)
     return 0;
 }
 
+static int test_init_and_lookup_failure_atomicity(void)
+{
+    unsigned char storage[256];
+    unsigned char tiny_storage[32];
+    SlArena arena;
+    SlArena tiny_arena;
+    SlInternTable table = {0U};
+    SlInternedString sentinel;
+    SlInternedString first;
+    SlInternedString fetched;
+    SlSymbol stale_symbol;
+
+    sentinel.symbol.index = 88U;
+    sentinel.symbol.generation = 55U;
+    sentinel.text = sl_str_from_cstr("sentinel");
+    sentinel.hash = 123U;
+    fetched = sentinel;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 25;
+    }
+
+    if (expect_status(sl_intern_table_init(&table, &tiny_arena, 4U, 4U), SL_STATUS_OUT_OF_MEMORY) !=
+            0 ||
+        table.initialized || table.entries != NULL || table.index.buckets != NULL ||
+        table.index.next_indices != NULL || table.count != 0U || table.capacity != 0U)
+    {
+        return 26;
+    }
+
+    if (expect_status(sl_intern_table_init(&table, &arena, 2U, 2U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_intern_table_intern(&table, sl_str_from_cstr("alpha"), &first),
+                      SL_STATUS_OK) != 0)
+    {
+        return 27;
+    }
+
+    if (expect_status(sl_intern_table_find(&table, sl_str_from_cstr("missing"), &fetched),
+                      SL_STATUS_OUT_OF_RANGE) != 0 ||
+        expect_interned_string(fetched, sentinel) != 0)
+    {
+        return 28;
+    }
+
+    if (expect_status(sl_intern_table_find(&table, sl_str_from_parts(NULL, 1U), &fetched),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_interned_string(fetched, sentinel) != 0)
+    {
+        return 29;
+    }
+
+    stale_symbol = first.symbol;
+    sl_intern_table_dispose(&table);
+    if (expect_status(sl_intern_table_get(&table, stale_symbol, &fetched),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        expect_interned_string(fetched, sentinel) != 0)
+    {
+        return 30;
+    }
+
+    if (expect_status(sl_intern_table_init(&table, &arena, 2U, 2U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_intern_table_intern(&table, sl_str_from_cstr("beta"), &first),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_intern_table_get(&table, stale_symbol, &fetched),
+                      SL_STATUS_STALE_RESOURCE) != 0 ||
+        expect_interned_string(fetched, sentinel) != 0)
+    {
+        return 31;
+    }
+
+    if (expect_status(sl_intern_table_get(&table, sl_symbol_invalid(), &fetched),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_interned_string(fetched, sentinel) != 0)
+    {
+        return 32;
+    }
+
+    return 0;
+}
+
 static int test_symbol_get_and_stale_generation(void)
 {
     unsigned char storage[512];
@@ -222,6 +305,11 @@ int main(void)
     }
 
     result = test_capacity_and_failure_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_init_and_lookup_failure_atomicity();
     if (result != 0) {
         return result;
     }

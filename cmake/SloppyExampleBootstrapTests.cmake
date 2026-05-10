@@ -123,6 +123,11 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec_properties.mjs")
         add_test(
+            NAME bootstrap.stdlib.property
+            COMMAND
+                "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/property/run_property_tests.mjs"
+                "--seed" "12345" "--iterations" "256")
+        add_test(
             NAME bootstrap.stdlib.os
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
         add_test(
@@ -139,7 +144,8 @@
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.property
+            bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES

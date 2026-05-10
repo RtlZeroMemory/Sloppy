@@ -364,6 +364,80 @@ static int test_noncrypto_xxhash64_vectors(void)
     return 0;
 }
 
+static int test_invalid_and_capacity_guards(void)
+{
+    static const unsigned char password[] = "pw";
+    unsigned char digest[SL_CRYPTO_SHA256_SIZE] = {0};
+    char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
+    char token[8] = {0};
+    char tiny[3] = {0};
+    char huge_hex[(1025U * 2U) + 1U] = {0};
+    size_t written = 999U;
+    bool equal = true;
+    SlCryptoHashAlgorithm algorithm = SL_CRYPTO_HASH_SHA256;
+    SlCryptoPasswordOptions bad = sl_crypto_password_default_options();
+
+    bad.ops_limit = SL_CRYPTO_PASSWORD_OPSLIMIT_MIN - 1U;
+
+    if (expect_status(sl_crypto_hash_algorithm_from_str(sl_str_from_parts(NULL, 1U), &algorithm),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_crypto_hash_algorithm_from_str(sl_str_from_cstr("sha3-256"), &algorithm),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_crypto_hex_encode(sl_bytes_from_parts((const unsigned char*)"ab", 2U),
+                                           tiny, sizeof(tiny)),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_status(sl_crypto_base64_encode(sl_bytes_from_parts((const unsigned char*)"abc", 3U),
+                                              tiny, sizeof(tiny), &written),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        return 71;
+    }
+
+    if (expect_status(sl_crypto_random_uuid_v4(token, sizeof(token) - 1U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_crypto_random_hex(2U, tiny, sizeof(tiny)), SL_STATUS_CAPACITY_EXCEEDED) !=
+            0 ||
+        expect_status(sl_crypto_random_hex(1025U, huge_hex, sizeof(huge_hex)),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        expect_status(sl_crypto_random_token(sizeof(token), token, sizeof(token) - 1U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_crypto_random_numeric_code(sizeof(token), token, sizeof(token) - 1U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 72;
+    }
+
+    if (expect_status(sl_crypto_hash(SL_CRYPTO_HASH_SHA256, sl_bytes_from_parts(NULL, 1U),
+                                     (SlOwnedBytes){digest, sizeof(digest)}),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_crypto_hmac(SL_CRYPTO_HASH_SHA256, sl_bytes_empty(),
+                                     sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                     (SlOwnedBytes){digest, sizeof(digest)}),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(
+            sl_crypto_constant_time_equals(sl_bytes_from_parts(NULL, 1U), sl_bytes_empty(), &equal),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 73;
+    }
+
+    if (expect_status(sl_crypto_password_hash(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                              NULL, encoded, sizeof(encoded) - 1U, &written),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_status(sl_crypto_password_hash(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                              &bad, encoded, sizeof(encoded), &written),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 74;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_random_shapes();
@@ -390,5 +464,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_noncrypto_xxhash64_vectors();
+    result = test_noncrypto_xxhash64_vectors();
+    if (result != 0) {
+        return result;
+    }
+    return test_invalid_and_capacity_guards();
 }

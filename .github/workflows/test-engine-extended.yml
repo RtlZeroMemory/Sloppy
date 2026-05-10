@@ -1,0 +1,194 @@
+name: test-engine-extended
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Seed for randomized/property lanes."
+        required: true
+        default: "12345"
+        type: string
+      fuzz_iterations:
+        description: "Fuzz/property iterations per target."
+        required: true
+        default: "10000"
+        type: string
+      stress_seconds:
+        description: "Default stress budget in seconds."
+        required: true
+        default: "60"
+        type: string
+
+env:
+  VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
+  TEST_ENGINE_SEED: ${{ github.event.inputs.seed || '12345' }}
+  TEST_ENGINE_FUZZ_ITERATIONS: ${{ github.event.inputs.fuzz_iterations || '10000' }}
+  TEST_ENGINE_STRESS_SECONDS: ${{ github.event.inputs.stress_seconds || '60' }}
+
+jobs:
+  windows:
+    name: extended / windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: test-engine-extended-windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            test-engine-extended-windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Toolchain bootstrap
+        shell: pwsh
+        run: .\tools\windows\bootstrap.ps1
+
+      - name: Configure default preset
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset windows-dev
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: test-engine-extended-windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build default preset
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 build -Preset windows-dev
+
+      - name: Package archive for package lane
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 package -Preset windows-dev
+
+      - name: Run extended test engine
+        shell: pwsh
+        run: |
+          .\tools\windows\test-engine.ps1 `
+            -Tier extended `
+            -Area all `
+            -Seed ([int]$env:TEST_ENGINE_SEED) `
+            -FuzzIterations ([int]$env:TEST_ENGINE_FUZZ_ITERATIONS) `
+            -StressSeconds ([int]$env:TEST_ENGINE_STRESS_SECONDS) `
+            -Out artifacts\test-engine\extended-windows.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-extended-windows
+          path: artifacts/test-engine/extended-windows.json
+          if-no-files-found: ignore
+
+  linux:
+    name: extended / linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake ninja-build pkg-config curl zip unzip tar \
+            autoconf autoconf-archive automake libtool bison flex ccache
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache" "$(dirname "$vcpkg_root")"
+          if [ ! -d "$vcpkg_root/.git" ]; then
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Configure default preset
+        shell: bash
+        run: tools/unix/dev.sh configure --preset linux-clang
+
+      - name: Build default preset
+        shell: bash
+        run: tools/unix/dev.sh build --preset linux-clang
+
+      - name: Package archive for package lane
+        shell: bash
+        run: tools/unix/dev.sh package --preset linux-clang
+
+      - name: Run extended test engine
+        shell: bash
+        run: |
+          tools/unix/test-engine.sh \
+            --tier extended \
+            --area all \
+            --seed "$TEST_ENGINE_SEED" \
+            --fuzz-iterations "$TEST_ENGINE_FUZZ_ITERATIONS" \
+            --stress-seconds "$TEST_ENGINE_STRESS_SECONDS" \
+            --out artifacts/test-engine/extended-linux.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-extended-linux
+          path: artifacts/test-engine/extended-linux.json
+          if-no-files-found: ignore

@@ -73,10 +73,14 @@
                            tests/unit/core/test_os.c)
     sloppy_add_c_unit_test(core_logging_structured core.logging.structured
                            tests/unit/core/test_logging.c)
+    sloppy_add_c_unit_test(core_platform_thread core.platform.thread
+                           tests/unit/core/test_platform_thread.c)
     add_test(NAME stress.logging.structured COMMAND $<TARGET_FILE:core_logging_structured> --stress)
     set_tests_properties(stress.logging.structured PROPERTIES LABELS "stress;logging")
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
+    sloppy_add_c_unit_test(
+        core_request_validation core.request_validation tests/unit/core/test_request_validation.c)
     sloppy_add_c_unit_test(
         core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
     sloppy_add_c_unit_test(
@@ -250,6 +254,8 @@
         fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
         http-request)
     sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http_query fuzz.http_query.seed_replay tests/fuzz/fuzz_http_query.c http-query)
+    sloppy_add_fuzz_seed_replay(
         fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
         tests/fuzz/fuzz_diagnostics_render.c diagnostics-render)
     sloppy_add_fuzz_seed_replay(
@@ -261,6 +267,7 @@
     sloppy_add_libfuzzer_target(fuzz_http2_hpack_libfuzzer tests/fuzz/fuzz_http2_hpack.c)
     sloppy_add_libfuzzer_target(fuzz_http2_session_libfuzzer tests/fuzz/fuzz_http2_session.c)
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
+    sloppy_add_libfuzzer_target(fuzz_http_query_libfuzzer tests/fuzz/fuzz_http_query.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
     sloppy_add_libfuzzer_target(
@@ -321,7 +328,17 @@
         target_include_directories(
             core_source_loc_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
         target_compile_features(core_source_loc_cpp_syntax PRIVATE cxx_std_17)
+        sloppy_apply_warnings(core_source_loc_cpp_syntax)
+        sloppy_apply_sanitizers(core_source_loc_cpp_syntax)
         add_test(NAME core.source_loc.cpp_syntax COMMAND core_source_loc_cpp_syntax)
+        add_executable(core_public_headers_cpp_syntax tests/unit/core/test_public_headers_cpp.cpp)
+        target_include_directories(
+            core_public_headers_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_link_libraries(core_public_headers_cpp_syntax PRIVATE sloppy_core)
+        target_compile_features(core_public_headers_cpp_syntax PRIVATE cxx_std_17)
+        sloppy_apply_warnings(core_public_headers_cpp_syntax)
+        sloppy_apply_sanitizers(core_public_headers_cpp_syntax)
+        add_test(NAME core.public_headers.cpp_syntax COMMAND core_public_headers_cpp_syntax)
     endif()
 
     add_test(NAME sloppy.cli.version COMMAND sloppy --version)
@@ -372,4 +389,12 @@
                 powershell -NoProfile -ExecutionPolicy Bypass -File
                 "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
                 "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME test_engine.windows.contract
+            COMMAND
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/tests/scripts/test_test_engine_contract.ps1" -RepoRoot
+                "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            test_engine.windows.contract PROPERTIES LABELS "meta;test-engine")
     endif()

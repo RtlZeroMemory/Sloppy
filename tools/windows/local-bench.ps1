@@ -48,7 +48,7 @@ function Split-BenchSelection {
 function Get-GitValue {
     param([string[]]$Arguments)
 
-    $value = & git -C $Root @Arguments 2>$null
+    $value = & git -c core.excludesfile= -C $Root @Arguments 2>$null
     if ($LASTEXITCODE -ne 0) {
         return $null
     }
@@ -56,10 +56,14 @@ function Get-GitValue {
 }
 
 function Get-BenchGitInfo {
+    $status = & git -c core.excludesfile= -C $Root status --short --untracked-files=no 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $status = @()
+    }
     return [ordered]@{
         commit = Get-GitValue @("rev-parse", "HEAD")
         branch = Get-GitValue @("branch", "--show-current")
-        dirty = ((& git -C $Root status --short 2>$null) | Measure-Object).Count -gt 0
+        dirty = ($status | Measure-Object).Count -gt 0
     }
 }
 

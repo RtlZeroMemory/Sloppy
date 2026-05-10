@@ -1,0 +1,2 @@
+/users/{id}
+/users/123/

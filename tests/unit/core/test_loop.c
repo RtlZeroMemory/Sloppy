@@ -32,6 +32,14 @@ typedef struct StopPayload
     int value;
 } StopPayload;
 
+typedef struct ResetPostPayload
+{
+    LoopPayload* posted_payload;
+    LoopRecord* record;
+    SlStatus nested_status;
+    SlStatus post_status;
+} ResetPostPayload;
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -157,6 +165,24 @@ static SlStatus reset_then_nested_drain_completion(SlLoop* loop, SlCompletionKin
 
     sl_loop_reset(loop);
     *out_status = sl_loop_drain(loop, NULL);
+    return sl_status_ok();
+}
+
+static SlStatus reset_and_post_completion(SlLoop* loop, SlCompletionKind kind, void* payload,
+                                          void* user)
+{
+    ResetPostPayload* reset_payload = (ResetPostPayload*)payload;
+
+    (void)kind;
+    (void)user;
+    if (reset_payload == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    sl_loop_reset(loop);
+    reset_payload->nested_status = sl_loop_drain(loop, NULL);
+    reset_payload->post_status = sl_loop_post(loop, SL_COMPLETION_KIND_TEST, record_completion,
+                                              reset_payload->posted_payload, reset_payload->record);
     return sl_status_ok();
 }
 
@@ -473,6 +499,42 @@ static int test_reset_preserves_active_drain_guard(void)
     return 0;
 }
 
+static int test_reset_inside_callback_discards_pending_and_continues_new_posts(void)
+{
+    SlCompletion storage[3];
+    SlLoop loop;
+    LoopRecord record = {{0}, {SL_COMPLETION_KIND_NONE}, {NULL}, {NULL}, 0U};
+    LoopPayload discarded = {&record, 100};
+    LoopPayload posted = {&record, 200};
+    ResetPostPayload reset_payload = {&posted, &record, sl_status_ok(), sl_status_ok()};
+    size_t ran = 0U;
+
+    if (expect_status(sl_loop_init(&loop, storage, 3U), SL_STATUS_OK) != 0) {
+        return 70;
+    }
+
+    if (expect_status(sl_loop_post(&loop, SL_COMPLETION_KIND_TEST, reset_and_post_completion,
+                                   &reset_payload, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_loop_post(&loop, SL_COMPLETION_KIND_TEST, record_completion, &discarded, NULL),
+            SL_STATUS_OK) != 0)
+    {
+        return 71;
+    }
+
+    if (expect_status(sl_loop_drain(&loop, &ran), SL_STATUS_OK) != 0 || ran != 2U ||
+        record.count != 1U || record.values[0] != 200 ||
+        sl_status_code(reset_payload.nested_status) != SL_STATUS_INVALID_STATE ||
+        sl_status_code(reset_payload.post_status) != SL_STATUS_OK ||
+        sl_loop_pending_count(&loop) != 0U || sl_loop_is_stopped(&loop))
+    {
+        return 72;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -507,5 +569,10 @@ int main(void)
         return result;
     }
 
-    return test_reset_preserves_active_drain_guard();
+    result = test_reset_preserves_active_drain_guard();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_reset_inside_callback_discards_pending_and_continues_new_posts();
 }

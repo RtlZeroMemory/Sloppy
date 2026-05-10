@@ -37,7 +37,7 @@ static SlDiagCode sl_fs_win32_diag_code(DWORD error)
     if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
         return SL_DIAG_INVALID_ARGUMENT;
     }
-    if (error == ERROR_ACCESS_DENIED) {
+    if (error == ERROR_ACCESS_DENIED || error == ERROR_PRIVILEGE_NOT_HELD) {
         return SL_DIAG_PERMISSION_DENIED;
     }
     if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS) {
@@ -67,6 +67,9 @@ static SlStatus sl_fs_win32_status(DWORD error, SlDiag* out_diag, SlStr message)
     }
     if (error == ERROR_ACCESS_DENIED) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    if (error == ERROR_PRIVILEGE_NOT_HELD) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
     if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
@@ -758,6 +761,7 @@ SlStatus sl_fs_platform_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, S
     wchar_t* wide = NULL;
     HANDLE file = INVALID_HANDLE_VALUE;
     wchar_t target[MAXIMUM_REPARSE_DATA_BUFFER_SIZE / sizeof(wchar_t)];
+    FILE_ATTRIBUTE_TAG_INFO tag_info = {0};
     DWORD read = 0;
     SlStatus status;
 
@@ -775,6 +779,13 @@ SlStatus sl_fs_platform_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, S
     if (file == INVALID_HANDLE_VALUE) {
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem readlink failed"));
+    }
+    if (!GetFileInformationByHandleEx(file, FileAttributeTagInfo, &tag_info, sizeof(tag_info)) ||
+        (tag_info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0U ||
+        tag_info.ReparseTag != IO_REPARSE_TAG_SYMLINK)
+    {
+        CloseHandle(file);
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     read = GetFinalPathNameByHandleW(file, target, (DWORD)(sizeof(target) / sizeof(target[0])),
                                      FILE_NAME_NORMALIZED);

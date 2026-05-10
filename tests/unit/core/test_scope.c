@@ -22,6 +22,14 @@ typedef struct CleanupUser
     int value;
 } CleanupUser;
 
+typedef struct ReentrantCleanup
+{
+    SlScope* scope;
+    int value;
+    SlStatus add_status;
+    SlStatus close_status;
+} ReentrantCleanup;
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -74,6 +82,21 @@ static void increment_cleanup(void* payload, void* user)
     if (value != NULL) {
         *value += 1;
     }
+}
+
+static void reentrant_cleanup(void* payload, void* user)
+{
+    ReentrantCleanup* cleanup = (ReentrantCleanup*)payload;
+
+    (void)user;
+    if (cleanup == NULL || cleanup->scope == NULL) {
+        return;
+    }
+
+    cleanup->value += 1;
+    cleanup->add_status =
+        sl_scope_add_cleanup(cleanup->scope, increment_cleanup, &cleanup->value, NULL);
+    cleanup->close_status = sl_scope_close(cleanup->scope);
 }
 
 static int test_initialization(void)
@@ -309,6 +332,40 @@ static int test_reset_discards_without_cleanup(void)
     return 0;
 }
 
+static int test_close_reentrant_cleanup_does_not_readd_or_double_run(void)
+{
+    SlScopeCleanup storage[2];
+    SlScope scope;
+    ReentrantCleanup cleanup = {0};
+
+    if (expect_status(sl_scope_init(&scope, storage, 2U), SL_STATUS_OK) != 0) {
+        return 45;
+    }
+
+    cleanup.scope = &scope;
+    cleanup.add_status = sl_status_ok();
+    cleanup.close_status = sl_status_from_code(SL_STATUS_INTERNAL);
+    if (expect_status(sl_scope_add_cleanup(&scope, reentrant_cleanup, &cleanup, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_scope_close(&scope), SL_STATUS_OK) != 0)
+    {
+        return 46;
+    }
+
+    if (cleanup.value != 1 || expect_status(cleanup.add_status, SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(cleanup.close_status, SL_STATUS_OK) != 0 ||
+        sl_scope_cleanup_count(&scope) != 0U)
+    {
+        return 47;
+    }
+
+    if (expect_status(sl_scope_close(&scope), SL_STATUS_OK) != 0 || cleanup.value != 1) {
+        return 48;
+    }
+
+    return 0;
+}
+
 static int test_init_from_arena(void)
 {
     unsigned char buffer[128];
@@ -377,6 +434,11 @@ int main(void)
     }
 
     result = test_reset_discards_without_cleanup();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_close_reentrant_cleanup_does_not_readd_or_double_run();
     if (result != 0) {
         return result;
     }

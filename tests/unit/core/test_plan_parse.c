@@ -131,6 +131,28 @@ static SlStatus parse_inline_plan(const char* json, SlPlan* out_plan, SlDiag* ou
     return sl_plan_parse_json(&arena, bytes_from_cstr(json), &options, out_plan, out_diag);
 }
 
+static int expect_inline_plan_failure(const char* json, SlStatusCode status_code,
+                                      SlDiagCode diag_code, const char* message)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(json, &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, status_code) != 0) {
+        return 1;
+    }
+    if (diag.code != diag_code || !sl_str_equal(diag.message, sl_str_from_cstr(message))) {
+        return 2;
+    }
+    if (plan.version != 0U || plan.routes != NULL || plan.route_count != 0U ||
+        plan.schemas != NULL || plan.schema_count != 0U)
+    {
+        return 3;
+    }
+    return 0;
+}
+
 static int expect_common_plan_fields(const SlPlan* plan)
 {
     if (plan == NULL) {
@@ -699,6 +721,111 @@ static int test_route_middleware_marks_context_needs_conservative(void)
     return 0;
 }
 
+static int test_route_binding_kind_must_be_supported(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.Get\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/users/{id}\",\"handlerId\":1,"
+        "\"bindings\":[{\"kind\":\"cookie\",\"name\":\"session\"}]}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "unsupported route binding kind");
+}
+
+static int test_route_bindings_must_be_an_array(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.Get\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/users\",\"handlerId\":1,"
+        "\"bindings\":{}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type");
+}
+
+static int test_array_schemas_require_items_metadata(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.List\"}],"
+        "\"schemas\":[{\"name\":\"Tags\",\"definition\":{\"kind\":\"array\"}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD,
+        "missing schema array item metadata");
+}
+
+static int test_literal_union_variants_must_be_an_array(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.List\"}],"
+        "\"schemas\":[{\"name\":\"Role\",\"definition\":{\"kind\":\"literalUnion\","
+        "\"variants\":{}}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type");
+}
+
+static int test_literal_union_variants_must_not_be_empty(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.List\"}],"
+        "\"schemas\":[{\"name\":\"Role\",\"definition\":{\"kind\":\"literalUnion\","
+        "\"variants\":[]}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "missing literal union variants");
+}
+
+static int test_literal_schema_values_must_use_supported_json_scalars(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.List\"}],"
+        "\"schemas\":[{\"name\":\"Role\",\"definition\":{\"kind\":\"literal\","
+        "\"value\":null}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "unsupported literal schema value");
+}
+
+static int test_route_middleware_must_be_an_array(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Home\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,"
+        "\"middleware\":{}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type");
+}
+
 static int test_invalid_fixture_matrix(void)
 {
     static const InvalidFixtureCase cases[] = {
@@ -972,46 +1099,102 @@ int main(void)
 
     result = test_valid_fixture_matrix();
     if (result != 0) {
+        fprintf(stderr, "test_valid_fixture_matrix failed: %d\n", result);
+        fflush(stderr);
         return result;
     }
 
     result = test_valid_filesystem_capability_accesses_fixture();
     if (result != 0) {
+        fprintf(stderr, "test_valid_filesystem_capability_accesses_fixture failed: %d\n", result);
+        fflush(stderr);
         return result;
     }
 
     result = test_valid_os_capability_accesses_fixture();
     if (result != 0) {
+        fprintf(stderr, "test_valid_os_capability_accesses_fixture failed: %d\n", result);
         return result;
     }
 
     result = test_framework_metadata_bindings_and_schemas_fixture();
     if (result != 0) {
+        fprintf(stderr, "test_framework_v2_metadata_bindings_and_schemas_fixture failed: %d\n",
+                result);
         return result;
     }
 
     result = test_schema_names_must_be_unique();
     if (result != 0) {
+        fprintf(stderr, "test_schema_names_must_be_unique failed: %d\n", result);
         return result;
     }
 
     result = test_body_schema_references_must_resolve();
     if (result != 0) {
+        fprintf(stderr, "test_body_schema_references_must_resolve failed: %d\n", result);
         return result;
     }
 
     result = test_empty_bindings_marks_route_metadata_available();
     if (result != 0) {
+        fprintf(stderr, "test_empty_bindings_marks_route_metadata_available failed: %d\n", result);
         return result;
     }
 
     result = test_route_middleware_marks_context_needs_conservative();
     if (result != 0) {
+        fprintf(stderr, "test_route_middleware_marks_context_needs_conservative failed: %d\n",
+                result);
+        return result;
+    }
+
+    result = test_route_binding_kind_must_be_supported();
+    if (result != 0) {
+        fprintf(stderr, "test_route_binding_kind_must_be_supported failed: %d\n", result);
+        return result;
+    }
+
+    result = test_route_bindings_must_be_an_array();
+    if (result != 0) {
+        fprintf(stderr, "test_route_bindings_must_be_an_array failed: %d\n", result);
+        return result;
+    }
+
+    result = test_array_schemas_require_items_metadata();
+    if (result != 0) {
+        fprintf(stderr, "test_array_schemas_require_items_metadata failed: %d\n", result);
+        return result;
+    }
+
+    result = test_literal_union_variants_must_be_an_array();
+    if (result != 0) {
+        fprintf(stderr, "test_literal_union_variants_must_be_an_array failed: %d\n", result);
+        return result;
+    }
+
+    result = test_literal_union_variants_must_not_be_empty();
+    if (result != 0) {
+        fprintf(stderr, "test_literal_union_variants_must_not_be_empty failed: %d\n", result);
+        return result;
+    }
+
+    result = test_literal_schema_values_must_use_supported_json_scalars();
+    if (result != 0) {
+        fprintf(stderr, "test_literal_schema_values_must_use_supported_json_scalars failed: %d\n",
+                result);
+        return result;
+    }
+
+    result = test_route_middleware_must_be_an_array();
+    if (result != 0) {
+        fprintf(stderr, "test_route_middleware_must_be_an_array failed: %d\n", result);
         return result;
     }
 
     result = test_invalid_fixture_matrix();
     if (result != 0) {
+        fprintf(stderr, "test_invalid_fixture_matrix failed: %d\n", result);
         return result;
     }
 
@@ -1022,13 +1205,20 @@ int main(void)
 
     result = test_failed_parse_rolls_back_plan_allocations();
     if (result != 0) {
+        fprintf(stderr, "test_failed_parse_rolls_back_plan_allocations failed: %d\n", result);
         return result;
     }
 
     result = test_wrong_handler_id_type_fails();
     if (result != 0) {
+        fprintf(stderr, "test_wrong_handler_id_type_fails failed: %d\n", result);
         return result;
     }
 
-    return test_invalid_arguments();
+    result = test_invalid_arguments();
+    if (result != 0) {
+        fprintf(stderr, "test_invalid_arguments failed: %d\n", result);
+        return result;
+    }
+    return 0;
 }

@@ -1,6 +1,8 @@
 #include "sloppy/fs.h"
 
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -12,6 +14,17 @@ static int expect_true(bool condition)
 static int expect_status(SlStatus status, SlStatusCode code)
 {
     return expect_true(sl_status_code(status) == code);
+}
+
+static bool str_has_prefix(SlStr value, const char* prefix)
+{
+    size_t length = 0U;
+
+    if (value.ptr == NULL || prefix == NULL) {
+        return false;
+    }
+    length = strlen(prefix);
+    return value.length >= length && memcmp(value.ptr, prefix, length) == 0;
 }
 
 static void wait_for_timestamp_tick(void)
@@ -147,6 +160,7 @@ static int test_directory_temp_atomic_lock_and_handle(void)
     SlFsFileLock* second_lock = NULL;
     SlOwnedBytes bytes = {0};
     uint64_t position = 0U;
+    bool lock_exists = true;
     bool saw_file = false;
     size_t index = 0U;
 
@@ -202,7 +216,10 @@ static int test_directory_temp_atomic_lock_and_handle(void)
             0 ||
         expect_status(sl_fs_acquire_lock(&arena, lock_path, &second_lock, NULL),
                       SL_STATUS_INVALID_STATE) != 0 ||
-        expect_status(sl_fs_release_lock(first_lock, NULL), SL_STATUS_OK) != 0)
+        expect_status(sl_fs_release_lock(first_lock, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_exists(lock_path, &lock_exists, NULL), SL_STATUS_OK) != 0 ||
+        lock_exists ||
+        expect_status(sl_fs_release_lock(first_lock, NULL), SL_STATUS_INVALID_STATE) != 0)
     {
         return 25;
     }
@@ -227,6 +244,131 @@ static int test_directory_temp_atomic_lock_and_handle(void)
 
     if (expect_status(sl_fs_delete_directory(dir, true, NULL), SL_STATUS_OK) != 0) {
         return 27;
+    }
+    return 0;
+}
+
+static int test_symlink_readlink_and_atomic_cleanup(void)
+{
+    unsigned char storage[131072];
+    SlArena arena = {0};
+    SlFsDirectoryList list = {0};
+    SlOwnedStr link_target = {0};
+#ifndef _WIN32
+    SlOwnedBytes bytes = {0};
+#endif
+#ifdef _WIN32
+    char absolute_target[4096];
+#endif
+    SlStr dir = sl_str_from_cstr("./sloppy-fs-links");
+    SlStr target = sl_str_from_cstr("./sloppy-fs-links/target.txt");
+    SlStr link = sl_str_from_cstr("./sloppy-fs-links/target.link");
+#ifdef _WIN32
+    SlStr link_target_path = {0};
+#else
+    SlStr link_target_path = sl_str_from_cstr("target.txt");
+#endif
+    SlStr plain = sl_str_from_cstr("./sloppy-fs-links/plain.txt");
+    SlStr failing_target = sl_str_from_cstr("./sloppy-fs-links/atomic-as-directory");
+    SlStatus symlink_status;
+    size_t index = 0U;
+
+    (void)sl_fs_delete_directory(dir, true, NULL);
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_create_directory(dir, false, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_write_file(target,
+                                       sl_bytes_from_parts((const unsigned char*)"target", 6U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_write_file(plain,
+                                       sl_bytes_from_parts((const unsigned char*)"plain", 5U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_create_directory(failing_target, false, NULL), SL_STATUS_OK) != 0)
+    {
+        fprintf(stderr, "fs symlink subtest failed at 40\n");
+        return 40;
+    }
+
+#ifdef _WIN32
+    if (_fullpath(absolute_target, target.ptr, sizeof(absolute_target)) == NULL) {
+        (void)sl_fs_delete_directory(dir, true, NULL);
+        fprintf(stderr, "fs symlink subtest failed at 40\n");
+        return 40;
+    }
+    link_target_path = sl_str_from_cstr(absolute_target);
+#endif
+    symlink_status = sl_fs_create_symlink(link_target_path, link, false, NULL);
+    if (sl_status_is_ok(symlink_status)) {
+        if (expect_status(sl_fs_read_link(&arena, link, &link_target, NULL), SL_STATUS_OK) != 0) {
+            (void)sl_fs_delete_directory(dir, true, NULL);
+            fprintf(stderr, "fs symlink subtest failed at 41\n");
+            fprintf(stderr, "fs symlink subtest failed at 41 status=%d\n",
+                    (int)sl_status_code(symlink_status));
+            return 41;
+        }
+
+#ifdef _WIN32
+        if (link_target.length == 0U) {
+            (void)sl_fs_delete_directory(dir, true, NULL);
+            fprintf(stderr, "fs symlink subtest failed at 42\n");
+            return 42;
+        }
+#else
+        if (!sl_str_equal(sl_owned_str_as_view(link_target), link_target_path)) {
+            (void)sl_fs_delete_directory(dir, true, NULL);
+            fprintf(stderr, "fs symlink subtest failed at 42\n");
+            return 42;
+        }
+#endif
+
+#ifndef _WIN32
+        if (expect_status(sl_fs_read_file(&arena, link, &bytes, NULL), SL_STATUS_OK) != 0 ||
+            bytes.length != 6U || memcmp(bytes.ptr, "target", 6U) != 0)
+        {
+            (void)sl_fs_delete_directory(dir, true, NULL);
+            fprintf(stderr, "fs symlink subtest failed at 43\n");
+            return 43;
+        }
+#endif
+    }
+    else if (expect_status(symlink_status, SL_STATUS_UNSUPPORTED) != 0) {
+        (void)sl_fs_delete_directory(dir, true, NULL);
+        fprintf(stderr, "fs symlink subtest failed at 41 status=%d\n",
+                (int)sl_status_code(symlink_status));
+        return 41;
+    }
+
+    if (sl_status_is_ok(sl_fs_read_link(&arena, plain, &link_target, NULL))) {
+        (void)sl_fs_delete_directory(dir, true, NULL);
+        fprintf(stderr, "fs symlink subtest failed at 44\n");
+        return 44;
+    }
+
+    if (sl_status_is_ok(sl_fs_atomic_write_file(
+            &arena, failing_target, sl_bytes_from_parts((const unsigned char*)"atomic", 6U), NULL)))
+    {
+        (void)sl_fs_delete_directory(dir, true, NULL);
+        fprintf(stderr, "fs symlink subtest failed at 45\n");
+        return 45;
+    }
+
+    if (expect_status(sl_fs_list_directory(&arena, dir, &list, NULL), SL_STATUS_OK) != 0) {
+        (void)sl_fs_delete_directory(dir, true, NULL);
+        fprintf(stderr, "fs symlink subtest failed at 46\n");
+        return 46;
+    }
+    for (index = 0U; index < list.count; index += 1U) {
+        if (str_has_prefix(sl_owned_str_as_view(list.entries[index].name), ".sloppy-atomic-")) {
+            (void)sl_fs_delete_directory(dir, true, NULL);
+            fprintf(stderr, "fs symlink subtest failed at 47\n");
+            return 47;
+        }
+    }
+
+    if (expect_status(sl_fs_delete_directory(dir, true, NULL), SL_STATUS_OK) != 0) {
+        fprintf(stderr, "fs symlink subtest failed at 48\n");
+        return 48;
     }
     return 0;
 }
@@ -368,8 +510,11 @@ int main(void)
     if (test_directory_temp_atomic_lock_and_handle() != 0) {
         return 3;
     }
-    if (test_watch_directory_and_file_events() != 0) {
+    if (test_symlink_readlink_and_atomic_cleanup() != 0) {
         return 4;
+    }
+    if (test_watch_directory_and_file_events() != 0) {
+        return 5;
     }
     return 0;
 }

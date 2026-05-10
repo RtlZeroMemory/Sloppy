@@ -3469,6 +3469,21 @@ export default app;
 }
 
 #[test]
+fn root_sloppy_import_rejects_net_only_exports() {
+    let source = r#"import { Sloppy, Results, TcpClient } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.js"), source)
+        .expect_err("root sloppy import should reject net-only exports");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+    assert!(diagnostic
+        .message
+        .contains("unsupported sloppy import \"TcpClient\""));
+}
+
+#[test]
 fn type_only_sloppy_os_import_does_not_emit_runtime_feature() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 import type { Process } from "sloppy/os";

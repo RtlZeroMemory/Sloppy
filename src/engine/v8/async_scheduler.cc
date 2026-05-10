@@ -121,6 +121,12 @@ SlStatus sl_v8_native_continuation_prepare(SlEngine* engine, SlV8NativeContinuat
     v8::Isolate* isolate = backend->isolate;
     v8::Local<v8::Context> context = backend->context.Get(isolate);
     v8::Local<v8::Promise::Resolver> resolver;
+    {
+        std::lock_guard<std::mutex> lock(continuation->mutex);
+        if (continuation->resolver_ready || continuation->queued) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+    }
     if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }

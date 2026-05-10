@@ -931,8 +931,8 @@ SlStatus sl_sqlite_transaction_begin(SlArena* arena, SlSqliteConnection* connect
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    *out_tx = (SlSqliteTransaction){0};
     if (sl_sqlite_db(connection) == NULL) {
+        *out_tx = (SlSqliteTransaction){0};
         return sl_sqlite_invalid_state_diag(
             arena, out_diag,
             sl_sqlite_literal("operation: transaction.begin",
@@ -940,6 +940,7 @@ SlStatus sl_sqlite_transaction_begin(SlArena* arena, SlSqliteConnection* connect
     }
 
     if (connection->transaction_active) {
+        *out_tx = (SlSqliteTransaction){0};
         return sl_sqlite_diag(
             arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
             sl_sqlite_literal("sqlite nested transactions are not supported",
@@ -952,6 +953,7 @@ SlStatus sl_sqlite_transaction_begin(SlArena* arena, SlSqliteConnection* connect
     status = sl_sqlite_exec(arena, connection, sl_str_from_cstr("BEGIN"), NULL, 0U, &exec_result,
                             out_diag);
     if (!sl_status_is_ok(status)) {
+        *out_tx = (SlSqliteTransaction){0};
         return status;
     }
 

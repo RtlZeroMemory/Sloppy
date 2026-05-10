@@ -532,6 +532,151 @@ static int test_string_builder_arena_growth_preserves_failed_prefix(void)
     return 0;
 }
 
+static int test_builder_invalid_and_corrupt_state_failures(void)
+{
+    unsigned char fixed_storage[4];
+    unsigned char arena_storage[32];
+    char string_storage[4];
+    SlArena arena;
+    SlByteBuilder byte_builder = {0};
+    SlByteBuilder corrupt_byte_builder;
+    SlStringBuilder string_builder = {0};
+    SlStringBuilder corrupt_string_builder;
+
+    if (expect_status(sl_byte_builder_append_byte(&byte_builder, 1U), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        expect_status(sl_byte_builder_reserve(&byte_builder, 1U), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        expect_status(sl_string_builder_append_cstr(&string_builder, "x"),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_string_builder_reserve(&string_builder, 1U), SL_STATUS_INVALID_ARGUMENT) !=
+            0)
+    {
+        return 80;
+    }
+
+    if (expect_status(sl_byte_builder_init_fixed(&byte_builder, NULL, 0U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_bytes(&byte_builder, sl_bytes_empty()),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_byte(&byte_builder, 1U),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        sl_byte_builder_length(&byte_builder) != 0U)
+    {
+        return 81;
+    }
+
+    if (expect_status(
+            sl_byte_builder_init_fixed(&byte_builder, fixed_storage, sizeof(fixed_storage)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_bytes(
+                          &byte_builder, sl_bytes_from_parts((const unsigned char*)"ab", 2U)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 82;
+    }
+
+    corrupt_byte_builder = byte_builder;
+    corrupt_byte_builder.length = SIZE_MAX;
+    if (expect_status(sl_byte_builder_reserve(&corrupt_byte_builder, 1U), SL_STATUS_OVERFLOW) !=
+            0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), (const unsigned char*)"ab", 2U) != 0)
+    {
+        return 83;
+    }
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_byte_builder_init_arena(&byte_builder, &arena, 0U, 2U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_byte_builder_append_bytes(
+                          &byte_builder, sl_bytes_from_parts((const unsigned char*)"ab", 2U)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 84;
+    }
+
+    if (expect_status(sl_byte_builder_append_bytes(
+                          &byte_builder, sl_bytes_from_parts((const unsigned char*)"c", 1U)),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), (const unsigned char*)"ab", 2U) != 0)
+    {
+        return 85;
+    }
+
+    if (expect_status(
+            sl_string_builder_init_fixed(&string_builder, string_storage, sizeof(string_storage)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&string_builder, "xy"), SL_STATUS_OK) != 0)
+    {
+        return 86;
+    }
+
+    corrupt_string_builder = string_builder;
+    corrupt_string_builder.bytes.length = SIZE_MAX;
+    if (expect_status(sl_string_builder_append_cstr(&corrupt_string_builder, "z"),
+                      SL_STATUS_OVERFLOW) != 0 ||
+        expect_str(sl_string_builder_view(&string_builder), "xy", 2U) != 0)
+    {
+        return 87;
+    }
+
+    return 0;
+}
+
+static int test_formatters_reject_invalid_arguments_atomically(void)
+{
+    char buffer[SL_STRING_FORMAT_F64_CAPACITY];
+    SlStr sentinel = sl_str_from_cstr("sentinel");
+    SlStr out = sentinel;
+
+    if (expect_status(sl_string_format_u64(NULL, sizeof(buffer), 1U, &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length ||
+        expect_status(sl_string_format_u64(buffer, sizeof(buffer), 1U, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 90;
+    }
+
+    out = sentinel;
+    buffer[0] = 'x';
+    if (expect_status(sl_string_format_u64(buffer, 1U, 10U, &out), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length || buffer[0] != 'x')
+    {
+        return 91;
+    }
+
+    out = sentinel;
+    buffer[0] = 'x';
+    if (expect_status(sl_string_format_i64(buffer, 3U, -100, &out), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length || buffer[0] != '\0')
+    {
+        return 92;
+    }
+
+    out = sentinel;
+    buffer[0] = 'x';
+    if (expect_status(sl_string_format_f32(buffer, SL_STRING_FORMAT_F32_CAPACITY - 1U, 1.0F, &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length || buffer[0] != 'x')
+    {
+        return 93;
+    }
+
+    out = sentinel;
+    buffer[0] = 'x';
+    if (expect_status(sl_string_format_f64(buffer, SL_STRING_FORMAT_F64_CAPACITY - 1U, 1.0, &out),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        out.ptr != sentinel.ptr || out.length != sentinel.length || buffer[0] != 'x')
+    {
+        return 94;
+    }
+
+    return 0;
+}
+
 static int test_arena_builders_fail_cleanly_after_dispose(void)
 {
     unsigned char byte_arena_storage[64];
@@ -622,6 +767,16 @@ int main(void)
     }
 
     result = test_string_builder_arena_growth_preserves_failed_prefix();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_builder_invalid_and_corrupt_state_failures();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_formatters_reject_invalid_arguments_atomically();
     if (result != 0) {
         return result;
     }

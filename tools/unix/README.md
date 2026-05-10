@@ -14,6 +14,7 @@ tools/unix/dev.sh lint
 tools/unix/dev.sh package
 tools/unix/dev.sh test-package
 tools/unix/dev.sh dogfood
+tools/unix/test-engine.sh --tier pr --out artifacts/test-engine/pr.json
 tools/unix/check-platform-boundaries.sh
 tools/unix/check-c-standards.sh --self-test
 tools/unix/check-c-standards.sh
@@ -23,6 +24,16 @@ The Unix `bootstrap.sh` and `dev.sh` command contract mirrors the Windows vocabu
 Linux and macOS. Unsupported optional lanes are reported as unavailable. Linux x64 V8 does not use distro Node/V8 development packages; it uses the
 Sloppy-owned SDK produced by `tools/unix/build-v8.sh` or an extracted matching SDK
 artifact.
+
+The Unix test engine and fuzz wrappers mirror the Windows quality-engine shape:
+
+```sh
+tools/unix/test-engine.sh --help
+tools/unix/fuzz.sh --help
+tools/unix/fuzz.sh --all --iterations 1000 --seed 12345
+```
+
+See `docs/contributor/test-engine.md` for tier, area, and status semantics.
 
 On Debian/Ubuntu-style Linux containers or hosts, install the current non-V8 Linux clang
 lane prerequisites before running bootstrap:

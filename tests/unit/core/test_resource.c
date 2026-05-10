@@ -21,6 +21,16 @@ typedef struct CleanupUser
     int value;
 } CleanupUser;
 
+typedef struct ReentrantCloseUser
+{
+    SlResourceTable* table;
+    SlResourceId target;
+    SlStatus close_status;
+    SlDiag diag;
+    size_t live_count_before_reentrant_close;
+    int value;
+} ReentrantCloseUser;
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -51,6 +61,50 @@ static void record_cleanup(void* ptr, void* user)
     record->values[index] = payload->value;
     record->users[index] = cleanup_user == NULL ? -1 : cleanup_user->value;
     record->count += 1U;
+}
+
+static void reentrant_self_close_cleanup(void* ptr, void* user)
+{
+    CleanupPayload* payload = (CleanupPayload*)ptr;
+    ReentrantCloseUser* cleanup_user = (ReentrantCloseUser*)user;
+    CleanupRecord* record = payload == NULL ? NULL : payload->record;
+    size_t index = 0U;
+
+    if (record != NULL && record->count < 8U) {
+        index = record->count;
+        record->values[index] = payload->value;
+        record->users[index] = cleanup_user == NULL ? -1 : cleanup_user->value;
+        record->count += 1U;
+    }
+
+    if (cleanup_user != NULL && cleanup_user->table != NULL) {
+        cleanup_user->live_count_before_reentrant_close =
+            sl_resource_table_live_count(cleanup_user->table);
+        cleanup_user->close_status =
+            sl_resource_table_close(cleanup_user->table, cleanup_user->target, &cleanup_user->diag);
+    }
+}
+
+static void reentrant_close_other_cleanup(void* ptr, void* user)
+{
+    CleanupPayload* payload = (CleanupPayload*)ptr;
+    ReentrantCloseUser* cleanup_user = (ReentrantCloseUser*)user;
+    CleanupRecord* record = payload == NULL ? NULL : payload->record;
+    size_t index = 0U;
+
+    if (record != NULL && record->count < 8U) {
+        index = record->count;
+        record->values[index] = payload->value;
+        record->users[index] = cleanup_user == NULL ? -1 : cleanup_user->value;
+        record->count += 1U;
+    }
+
+    if (cleanup_user != NULL && cleanup_user->table != NULL) {
+        cleanup_user->live_count_before_reentrant_close =
+            sl_resource_table_live_count(cleanup_user->table);
+        cleanup_user->close_status =
+            sl_resource_table_close(cleanup_user->table, cleanup_user->target, &cleanup_user->diag);
+    }
 }
 
 static int test_id_model_and_init(void)
@@ -458,6 +512,221 @@ static int test_exhaustion_cleanup_and_dispose(void)
     return 0;
 }
 
+static int test_invalid_close_and_dispose_are_cleanup_safe(void)
+{
+    SlResourceEntry storage[2];
+    SlResourceTable table = {0};
+    SlResourceTable uninitialized = {0};
+    CleanupRecord record = {{0}, {0}, 0U};
+    CleanupPayload payload = {&record, 77};
+    CleanupUser user = {700};
+    SlResourceId id = sl_resource_id_invalid();
+    SlResourceId missing = {3U, 1U};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_init(&table, storage, 2U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE, &payload,
+                                               record_cleanup, &user, &id, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 55;
+    }
+
+    if (expect_status(sl_resource_table_close(NULL, id, &diag), SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID ||
+        expect_status(sl_resource_table_close(&uninitialized, id, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID ||
+        expect_status(sl_resource_table_close_kind(&table, id, SL_RESOURCE_KIND_NONE, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_resource_table_close(&table, sl_resource_id_invalid(), &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID ||
+        expect_status(sl_resource_table_close(&table, missing, &diag), SL_STATUS_OUT_OF_RANGE) !=
+            0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID || record.count != 0U ||
+        sl_resource_table_live_count(&table) != 1U)
+    {
+        return 56;
+    }
+
+    sl_resource_table_dispose(NULL);
+    sl_resource_table_dispose(&uninitialized);
+    sl_resource_table_dispose(&table);
+    sl_resource_table_dispose(&table);
+    if (record.count != 1U || record.values[0] != 77 || record.users[0] != 700 ||
+        sl_resource_table_capacity(&table) != 0U || sl_resource_table_live_count(&table) != 0U)
+    {
+        return 57;
+    }
+
+    if (expect_status(sl_resource_table_close(&table, id, &diag), SL_STATUS_OUT_OF_RANGE) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID || record.count != 1U)
+    {
+        return 58;
+    }
+
+    return 0;
+}
+
+static int test_current_empty_slot_and_generation_overflow(void)
+{
+    SlResourceEntry storage[1];
+    SlResourceTable table = {0};
+    SlResourceId current_empty = {1U, 1U};
+    SlResourceId overflow_id = {1U, UINT32_MAX};
+    int value = 41;
+    void* ptr = &table;
+    SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_init(&table, storage, 1U), SL_STATUS_OK) != 0) {
+        return 59;
+    }
+
+    if (expect_status(sl_resource_table_get(&table, current_empty, SL_RESOURCE_KIND_TEST_RESOURCE,
+                                            &ptr, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        ptr != &table || diag.code != SL_DIAG_RESOURCE_CLOSED ||
+        expect_status(sl_resource_table_close(&table, current_empty, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_CLOSED || sl_resource_table_is_alive(&table, current_empty) ||
+        sl_resource_table_contains(&table, current_empty, SL_RESOURCE_KIND_TEST_RESOURCE))
+    {
+        return 60;
+    }
+
+    storage[0].ptr = &value;
+    storage[0].kind = SL_RESOURCE_KIND_TEST_RESOURCE;
+    storage[0].occupied = true;
+    storage[0].generation = UINT32_MAX;
+    ptr = &table;
+    if (expect_status(
+            sl_resource_table_get(&table, overflow_id, SL_RESOURCE_KIND_TEST_RESOURCE, &ptr, NULL),
+            SL_STATUS_OK) != 0 ||
+        ptr != &value ||
+        expect_status(sl_resource_table_close(&table, overflow_id, &diag), SL_STATUS_OVERFLOW) !=
+            0 ||
+        !sl_resource_table_is_alive(&table, overflow_id) ||
+        sl_resource_table_live_count(&table) != 1U)
+    {
+        return 61;
+    }
+
+    storage[0].ptr = NULL;
+    storage[0].kind = SL_RESOURCE_KIND_NONE;
+    storage[0].occupied = false;
+    storage[0].generation = 0U;
+    if (expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE, &value, NULL,
+                                               NULL, &overflow_id, NULL),
+                      SL_STATUS_OK) != 0 ||
+        overflow_id.slot != 1U || overflow_id.generation != 1U)
+    {
+        return 62;
+    }
+
+    return 0;
+}
+
+static int test_close_cleanup_reentrant_self_close_is_stale_and_runs_once(void)
+{
+    SlResourceEntry storage[1];
+    SlResourceTable table = {0};
+    CleanupRecord record = {{0}, {0}, 0U};
+    CleanupPayload payload = {&record, 88};
+    ReentrantCloseUser cleanup_user = {0};
+    SlResourceId id = sl_resource_id_invalid();
+    SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_init(&table, storage, 1U), SL_STATUS_OK) != 0) {
+        return 59;
+    }
+
+    cleanup_user.table = &table;
+    cleanup_user.value = 808;
+    cleanup_user.close_status = sl_status_ok();
+    if (expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE, &payload,
+                                               reentrant_self_close_cleanup, &cleanup_user, &id,
+                                               NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 60;
+    }
+    cleanup_user.target = id;
+
+    if (expect_status(
+            sl_resource_table_close_kind(&table, id, SL_RESOURCE_KIND_TEST_RESOURCE, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 61;
+    }
+
+    if (record.count != 1U || record.values[0] != 88 || record.users[0] != 808 ||
+        cleanup_user.live_count_before_reentrant_close != 0U ||
+        expect_status(cleanup_user.close_status, SL_STATUS_STALE_RESOURCE) != 0 ||
+        cleanup_user.diag.code != SL_DIAG_RESOURCE_STALE_ID ||
+        sl_resource_table_live_count(&table) != 0U)
+    {
+        return 62;
+    }
+
+    if (expect_status(sl_resource_table_close(&table, id, &diag), SL_STATUS_STALE_RESOURCE) != 0 ||
+        record.count != 1U)
+    {
+        return 63;
+    }
+
+    sl_resource_table_dispose(&table);
+    return 0;
+}
+
+static int test_dispose_cleanup_may_close_other_live_id_without_double_cleanup(void)
+{
+    SlResourceEntry storage[2];
+    SlResourceTable table = {0};
+    CleanupRecord record = {{0}, {0}, 0U};
+    CleanupPayload first = {&record, 1};
+    CleanupPayload second = {&record, 2};
+    ReentrantCloseUser first_user = {0};
+    CleanupUser second_user = {22};
+    SlResourceId first_id = sl_resource_id_invalid();
+    SlResourceId second_id = sl_resource_id_invalid();
+
+    if (expect_status(sl_resource_table_init(&table, storage, 2U), SL_STATUS_OK) != 0) {
+        return 64;
+    }
+
+    first_user.table = &table;
+    first_user.value = 11;
+    first_user.close_status = sl_status_from_code(SL_STATUS_INTERNAL);
+    if (expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE, &first,
+                                               reentrant_close_other_cleanup, &first_user,
+                                               &first_id, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_FS_FILE_HANDLE, &second,
+                                               record_cleanup, &second_user, &second_id, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 65;
+    }
+    first_user.target = second_id;
+
+    sl_resource_table_dispose(&table);
+
+    if (expect_status(first_user.close_status, SL_STATUS_OK) != 0 ||
+        first_user.live_count_before_reentrant_close != 1U || record.count != 2U ||
+        record.values[0] != 1 || record.users[0] != 11 || record.values[1] != 2 ||
+        record.users[1] != 22 || sl_resource_table_live_count(&table) != 0U)
+    {
+        return 66;
+    }
+
+    sl_resource_table_dispose(&table);
+    if (record.count != 2U) {
+        return 67;
+    }
+    return 0;
+}
+
 static int test_snapshot_and_leak_assertion(void)
 {
     SlResourceTable uninitialized = {0};
@@ -557,6 +826,26 @@ int main(void)
     }
 
     result = test_exhaustion_cleanup_and_dispose();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_invalid_close_and_dispose_are_cleanup_safe();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_current_empty_slot_and_generation_overflow();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_close_cleanup_reentrant_self_close_is_stale_and_runs_once();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_dispose_cleanup_may_close_other_live_id_without_double_cleanup();
     if (result != 0) {
         return result;
     }

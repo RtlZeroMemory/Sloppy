@@ -1,0 +1,1 @@
+{"version":1,"runtimeMinimumVersion":"0.0.0","requiredFeatures":["stdlib.codec","unknown.future"],"handlers":[{"id":"h","export":"h"}],"routes":[{"id":"r","method":"GET","pattern":"/","handler":"h"}]}

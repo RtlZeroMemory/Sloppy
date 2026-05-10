@@ -34,9 +34,10 @@ tests/
     plan/
     diagnostics/
     cli/
-  fuzz/            fuzz harnesses and seed corpora
-    seeds/
-    targets/
+  fuzz/            fuzz harnesses, JavaScript randomized targets, and corpora
+    corpus/
+    fuzz_*.c
+    js_fuzz_targets.mjs
   live/            live-provider scripts (PostgreSQL, SQL Server)
   scripts/         test helpers
   cmake/           CMake helpers used by CTest fixtures
@@ -62,6 +63,7 @@ suite when Cargo is available. That covers:
 - Conformance fixtures that don't require V8
 - Compiler/Plan tests
 - Default-safe fuzz seed replay
+- JavaScript property tests for bootstrap stdlib and app-host surfaces
 - Lint and standards scanners
 
 ## V8-gated lane
@@ -97,7 +99,7 @@ CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
 async support is `UNAVAILABLE` — never folded into a default pass.
 
-## Sanitizer lanes (mandatory in CI)
+## Sanitizer lanes (extended/manual)
 
 ```powershell
 # Windows ASan
@@ -105,7 +107,7 @@ async support is `UNAVAILABLE` — never folded into a default pass.
 .\tools\windows\dev.ps1 build -Preset windows-asan
 ctest --preset windows-asan --output-on-failure
 
-# libFuzzer seed replay
+# libFuzzer seed replay with instrumentation
 .\tools\windows\dev.ps1 configure -Preset windows-libfuzzer
 .\tools\windows\dev.ps1 build -Preset windows-libfuzzer
 ctest --preset windows-libfuzzer -L fuzz --output-on-failure
@@ -118,6 +120,24 @@ cmake --preset linux-sanitizers
 cmake --build --preset linux-sanitizers
 ctest --preset linux-sanitizers --output-on-failure
 ```
+
+## Test engine lanes
+
+```powershell
+.\tools\windows\test-engine.ps1 -Tier pr -Area all -Out artifacts\test-engine\pr.json
+.\tools\windows\fuzz.ps1 -All -Iterations 1000 -Seed 12345
+```
+
+```sh
+tools/unix/test-engine.sh --tier pr --area all --out artifacts/test-engine/pr.json
+tools/unix/fuzz.sh --all --iterations 1000 --seed 12345
+```
+
+The engine records JSON evidence for the selected tier and area. The fuzz
+wrappers cover native seed replay, selected libFuzzer mutation runs, and the
+JavaScript randomized/property targets listed in [test-engine.md](test-engine.md).
+The PR tier keeps iteration counts bounded, while extended and torture tiers
+raise the fuzz/property and stress budgets.
 
 ## SIMD lanes
 
@@ -189,6 +209,12 @@ tests/fixtures/package/
 
 `dev.ps1 package` produces the archive; `dev.ps1 test-package` smokes
 it from outside the repository checkout.
+
+`sloppy.cli.create_package_command` also covers create/package failure paths:
+invalid project names, missing templates, existing files and directories,
+`--force` stale-file behavior, project-mode `package --out` rejection,
+unsupported package source inputs, package cleanup on rerun, and JSON output
+shape.
 
 ## Goldens
 
