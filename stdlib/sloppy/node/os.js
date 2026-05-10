@@ -3,11 +3,11 @@ import { Environment, System } from "../os.js";
 const EOL = "\n";
 
 function platform() {
-    return System.platform?.() ?? "sloppy";
+    return System?.platform ?? "sloppy";
 }
 
 function arch() {
-    return System.arch?.() ?? "x64";
+    return System?.arch ?? "x64";
 }
 
 function tmpdir() {
