@@ -1448,6 +1448,81 @@ fn program_mode_project_includes_are_config_root_relative() {
 }
 
 #[test]
+fn web_static_files_emit_routes_and_dependency_assets_from_config_root() {
+    let root = fixture_temp_dir("web-static-files-config-root");
+    let src_dir = root.join("src");
+    let public_dir = root.join("public");
+    let input = src_dir.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&src_dir).expect("source directory should be created");
+    fs::create_dir_all(&public_dir).expect("public directory should be created");
+    fs::write(public_dir.join("hello.txt"), "hello static").expect("text asset should write");
+    fs::write(public_dir.join("app.js"), "export const ok = true;\n")
+        .expect("script asset should write");
+    fs::write(
+        &input,
+        r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.useStaticFiles({
+  requestPath: "/public",
+  root: "public",
+  cache: { maxAgeSeconds: 60 }
+});
+
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Web),
+        config_dir: Some(root.clone()),
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("web static files should build");
+    let plan_text = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("routes should be an array");
+    assert!(routes.iter().any(|route| route["method"] == "GET"
+        && route["pattern"] == "/public/hello.txt"
+        && route["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag == "static")));
+    assert!(routes
+        .iter()
+        .any(|route| route["method"] == "GET" && route["pattern"] == "/public/app.js"));
+
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app js should emit");
+    assert!(app_js.contains("Results.bytes(new Uint8Array(["));
+    assert!(app_js.contains("\"Cache-Control\":\"public, max-age=60\""));
+    assert!(app_js.contains("\"ETag\":\"\\\"sha256:"));
+
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/hello.txt"
+            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/app.js"
+            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
 fn program_mode_marks_each_runtime_stdlib_subpath() {
     let cases = [
         ("sloppy/fs", "File", "stdlib.fs"),

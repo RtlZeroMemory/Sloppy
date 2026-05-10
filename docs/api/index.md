@@ -13,6 +13,7 @@ configuration, services, validation, or data access.
 
 - [App](app.md) — `Sloppy.create()`, the builder, modules, freezing
 - [Routing](routing.md) — `app.get`/`post`/`put`/`patch`/`delete`, route patterns, groups, controllers
+- [Static files](static-files.md) — `app.useStaticFiles(...)`, build-time asset routes
 - [Middleware](middleware.md) — `app.use(fn)`, `group.use(fn)`, pipeline order
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
 - [Health checks](health.md) — `app.mapHealthChecks(options?)`, liveness/readiness

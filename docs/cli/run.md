@@ -7,7 +7,9 @@ synthetic request. `run` enters V8, so it requires a V8-enabled build.
 sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib <dir>]
            [--environment <name>] [--host <ip>] [--port <n>]
            [--kind web|program]
-           [--once METHOD TARGET] [-- <program-args...>]
+           [--once METHOD TARGET] [--header name:value]
+           [--body text | --body-file path | --json json]
+           [-- <program-args...>]
 ```
 
 ## Modes
@@ -60,7 +62,8 @@ runtime and exits. Use it for smoke tests:
 
 ```sh
 sloppy run .sloppy --once GET /health
-sloppy run src/main.ts --once POST /users
+sloppy run src/main.ts --once POST /users --json '{"name":"Ada"}'
+sloppy run .sloppy --once POST /upload --header content-type:text/plain --body-file request.txt
 ```
 
 The full HTTP response is written to stdout — status line, response
@@ -82,10 +85,25 @@ mapped error responses like 404). It is non-zero only on internal
 failures (parse, V8 init, target validation).
 
 `--once` doesn't open a listener, so `--host` and `--port` are ignored.
-It currently creates a minimal synthetic request from only the method and
-target. There are no CLI flags yet for request headers or body bytes. Use the
-app test host for handler tests that need JSON bodies, request headers, CORS
-preflight detail, or request-scope cleanup without entering V8.
+
+Use `--header name:value` to add request headers. The flag is repeatable.
+Header names must be HTTP token names, and header names/values cannot contain
+CR or LF bytes.
+
+Use one body flag at most:
+
+- `--body <text>` sends text exactly as provided by the shell.
+- `--body-file <path>` reads bounded bytes from a local file.
+- `--json <json>` sends JSON text and adds
+  `Content-Type: application/json; charset=utf-8`.
+
+When a body is present, `sloppy run` adds `Content-Length`. Do not pass your
+own `Content-Length` header. For `--body` and `--body-file`, pass an explicit
+`Content-Type` such as `application/json`, `text/plain`, or
+`application/octet-stream`.
+
+Header and body one-shot dispatch currently requires static route metadata.
+Dynamic fallback routes still support method-and-target one-shot requests only.
 
 ## Flags
 
@@ -98,10 +116,16 @@ preflight detail, or request-scope cleanup without entering V8.
 | `--port <n>`           | `5173`          | Server bind port (1–65535)                           |
 | `--kind web\|program`  | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 | `--once METHOD TARGET` | —               | Run one synthetic request and exit                   |
+| `--header name:value`  | empty           | Add a synthetic one-shot request header              |
+| `--body <text>`        | empty           | Add a synthetic one-shot text body                   |
+| `--body-file <path>`   | empty           | Read a synthetic one-shot body from a file           |
+| `--json <json>`        | empty           | Add a JSON one-shot body and JSON content type       |
 | `-- <program-args...>` | empty           | Arguments passed to Program Mode `main(args, ctx)`   |
 
 `--artifacts` and a positional source or artifact path are mutually exclusive.
 Arguments after `--` are valid only for Program Plans.
+`--header`, `--body`, `--body-file`, and `--json` are valid only with
+`--once`.
 
 ## Program Mode
 
@@ -198,6 +222,9 @@ sloppy run .sloppy --host 0.0.0.0 --port 8080
 
 # Smoke a single request.
 sloppy run src/main.ts --once GET /health
+
+# Smoke a JSON POST.
+sloppy run src/main.ts --once POST /users --json "{\"name\":\"Ada Lovelace\",\"email\":\"ada@example.test\"}"
 
 # Use a non-Development environment overlay.
 sloppy run --environment Staging

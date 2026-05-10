@@ -83,6 +83,70 @@ static SlCliSpan sl_package_path_leaf(const char* path)
     return (SlCliSpan){start, (size_t)(cursor - start)};
 }
 
+static bool sl_package_source_root_from_source(char* buffer, size_t capacity,
+                                               const char* source_path)
+{
+    const char* cursor = source_path;
+    const char* last_separator = NULL;
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (buffer == NULL || capacity == 0U || source_path == NULL || source_path[0] == '\0') {
+        return false;
+    }
+    while (*cursor != '\0') {
+        if (*cursor == '/' || *cursor == '\\') {
+            last_separator = cursor;
+        }
+        cursor += 1;
+    }
+    if (last_separator == NULL) {
+        return sl_cli_copy_cstr(buffer, capacity, ".");
+    }
+    if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity))) {
+        return false;
+    }
+    for (cursor = source_path; cursor < last_separator; cursor += 1) {
+        if (!sl_status_is_ok(sl_string_builder_append_char(&builder, *cursor))) {
+            return false;
+        }
+    }
+    if (!sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view))) {
+        return false;
+    }
+    return view.length != 0U;
+}
+
+static int sl_package_create_parent_directory(const char* path)
+{
+    char parent[SL_RUN_PATH_MAX_BYTES];
+    size_t index = 0U;
+    size_t last_separator = 0U;
+    SlStatus status;
+
+    if (path == NULL || path[0] == '\0') {
+        return 1;
+    }
+    while (path[index] != '\0') {
+        if (path[index] == '/' || path[index] == '\\') {
+            last_separator = index;
+        }
+        index += 1U;
+    }
+    if (last_separator == 0U || last_separator >= sizeof(parent)) {
+        return 1;
+    }
+    memcpy(parent, path, last_separator);
+    parent[last_separator] = '\0';
+    status = sl_fs_create_directory(sl_str_from_cstr(parent), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy package: failed to create asset directory: ",
+                                      parent, "\n");
+        return 1;
+    }
+    return 0;
+}
+
 static const SlSloppyFfiLibraryConfig*
 sl_package_find_ffi_library_config(const SlSloppyRunConfig* config, SlStr name)
 {
@@ -248,7 +312,7 @@ static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder
 static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
                                      const char* config_dir, const SlRunApp* app,
                                      const SlSloppyRunConfig* project_config,
-                                     bool has_dependency_graph)
+                                     bool has_dependency_graph, bool has_assets)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
     unsigned char manifest_storage[SL_PACKAGE_MANIFEST_BYTES];
@@ -297,6 +361,10 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
               sl_string_builder_append_cstr(&builder, ",\n    \"dependencyGraph\": ")) ||
           !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
                                                     sl_cli_span_cstr("deps.graph.json")))) ||
+        (has_assets &&
+         (!sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"assets\": ")) ||
+          !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
+                                                    sl_cli_span_cstr("assets")))) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder, "\n"
                                                                  "  }")) ||
         !sl_package_append_native_libraries_manifest(&builder, artifact_dir_name, config_dir, app,
@@ -369,13 +437,115 @@ static int sl_package_prepare_clean_directory(const char* package_dir)
     return 0;
 }
 
+static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
+                                             const char* asset_root_dir,
+                                             const char* package_dir,
+                                             bool* out_has_assets)
+{
+    static unsigned char graph_storage[SL_CLI_FILE_MAX_BYTES];
+    SlBytes graph_bytes = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    yyjson_val* assets = NULL;
+    yyjson_val* asset = NULL;
+    size_t index = 0U;
+    size_t max = 0U;
+    yyjson_read_err error = {0};
+    char assets_dir[SL_RUN_PATH_MAX_BYTES];
+    SlStatus status;
+
+    if (out_has_assets != NULL) {
+        *out_has_assets = false;
+    }
+    if (dependency_graph_path == NULL || asset_root_dir == NULL || package_dir == NULL ||
+        out_has_assets == NULL || !sl_cli_path_is_file(dependency_graph_path))
+    {
+        return 0;
+    }
+    if (sl_read_file_with_messages(dependency_graph_path, graph_storage, sizeof(graph_storage),
+                                   &graph_bytes,
+                                   "sloppy package: missing dependency graph: ",
+                                   "sloppy package: dependency graph is too large: ",
+                                   "sloppy package: failed to read dependency graph: ") != 0)
+    {
+        return 1;
+    }
+    doc = yyjson_read_opts((char*)graph_bytes.ptr, graph_bytes.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        sl_cli_write_error_with_value("sloppy package: malformed dependency graph: ",
+                                      dependency_graph_path, "\n");
+        return 1;
+    }
+    root = yyjson_doc_get_root(doc);
+    assets = yyjson_obj_get(root, "assets");
+    if (assets == NULL || !yyjson_is_arr(assets) || yyjson_arr_size(assets) == 0U) {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+    if (!sl_run_artifact_file_path(assets_dir, sizeof(assets_dir), package_dir,
+                                   "artifacts/assets"))
+    {
+        yyjson_doc_free(doc);
+        sl_cli_write_cstr(stderr, "sloppy package: assets path is too long\n");
+        return 1;
+    }
+    status = sl_fs_create_directory(sl_str_from_cstr(assets_dir), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        yyjson_doc_free(doc);
+        sl_cli_write_error_with_value("sloppy package: failed to create assets directory: ",
+                                      assets_dir, "\n");
+        return 1;
+    }
+
+    yyjson_arr_foreach(assets, index, max, asset)
+    {
+        yyjson_val* path_value = yyjson_obj_get(asset, "path");
+        const char* path = yyjson_is_str(path_value) ? yyjson_get_str(path_value) : NULL;
+        size_t path_length = yyjson_is_str(path_value) ? yyjson_get_len(path_value) : 0U;
+        SlCliSpan path_span = {path, path_length};
+        char source_path[SL_RUN_PATH_MAX_BYTES];
+        char target_path[SL_RUN_PATH_MAX_BYTES];
+
+        if (path == NULL || path_length == 0U || !sl_run_relative_artifact_path_is_safe(path_span))
+        {
+            yyjson_doc_free(doc);
+            sl_cli_write_cstr(stderr, "sloppy package: dependency graph contains unsafe asset path\n");
+            return 1;
+        }
+        if (!sl_run_join_path(source_path, sizeof(source_path), asset_root_dir, path_span) ||
+            !sl_run_join_path(target_path, sizeof(target_path), assets_dir, path_span))
+        {
+            yyjson_doc_free(doc);
+            sl_cli_write_cstr(stderr, "sloppy package: asset path is too long\n");
+            return 1;
+        }
+        if (sl_package_create_parent_directory(target_path) != 0) {
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        status = sl_fs_copy_file(sl_str_from_cstr(source_path), sl_str_from_cstr(target_path), true,
+                                 NULL);
+        if (!sl_status_is_ok(status)) {
+            yyjson_doc_free(doc);
+            sl_cli_write_error_with_value("sloppy package: failed to copy asset: ", source_path,
+                                          "\n");
+            return 1;
+        }
+        *out_has_assets = true;
+    }
+    yyjson_doc_free(doc);
+    return 0;
+}
+
 static int sl_package_copy_artifacts(const char* out_dir, const char* package_dir,
                                      const SlRunApp* app, const char* config_dir,
-                                     const SlSloppyRunConfig* project_config)
+                                     const SlSloppyRunConfig* project_config,
+                                     const char* asset_root_dir)
 {
     char artifacts_dir[SL_RUN_PATH_MAX_BYTES];
     char dependency_graph_path[SL_RUN_PATH_MAX_BYTES];
     bool has_dependency_graph = false;
+    bool has_assets = false;
     SlStatus status;
 
     if (out_dir == NULL || package_dir == NULL || app == NULL) {
@@ -419,6 +589,12 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
             return 1;
         }
         has_dependency_graph = true;
+        if (sl_package_copy_dependency_assets(dependency_graph_path, asset_root_dir, package_dir,
+                                              &has_assets) != 0)
+        {
+            sl_package_cleanup_partial(package_dir);
+            return 1;
+        }
     }
 
     if (sl_package_copy_native_libraries(package_dir, config_dir, app, project_config) != 0) {
@@ -427,7 +603,7 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
     }
 
     if (sl_package_write_manifest(package_dir, "artifacts", config_dir, app, project_config,
-                                  has_dependency_graph) != 0)
+                                  has_dependency_graph, has_assets) != 0)
     {
         sl_package_cleanup_partial(package_dir);
         return 1;
@@ -447,6 +623,7 @@ static int sl_cli_command_package(const SlCliOptions* options)
     const char* project_kind = NULL;
     const SlSloppyRunConfig* project_config = NULL;
     char package_dir[SL_RUN_PATH_MAX_BYTES];
+    char asset_root_dir[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
 
     if (options == NULL) {
@@ -467,6 +644,10 @@ static int sl_cli_command_package(const SlCliOptions* options)
         out_dir = config.out_dir;
         environment = options->environment_explicit ? options->environment : config.environment;
         config_dir = ".";
+        if (!sl_cli_copy_cstr(asset_root_dir, sizeof(asset_root_dir), config_dir)) {
+            sl_cli_write_cstr(stderr, "sloppy package: asset root path is too long\n");
+            return 1;
+        }
         project_kind = config.kind;
         project_config = &config;
     }
@@ -475,6 +656,12 @@ static int sl_cli_command_package(const SlCliOptions* options)
         out_dir = options->out_explicit ? options->out_dir : SL_RUN_DEFAULT_SOURCE_OUT_DIR;
         environment =
             options->environment_explicit ? options->environment : SL_RUN_DEFAULT_ENVIRONMENT;
+        if (!sl_package_source_root_from_source(asset_root_dir, sizeof(asset_root_dir),
+                                                source_path))
+        {
+            sl_cli_write_cstr(stderr, "sloppy package: asset root path is too long\n");
+            return 1;
+        }
     }
 
     if (!sl_run_source_input_extension_supported(source_path)) {
@@ -496,8 +683,8 @@ static int sl_cli_command_package(const SlCliOptions* options)
             result = 1;
         }
         else {
-            result =
-                sl_package_copy_artifacts(out_dir, package_dir, app, config_dir, project_config);
+            result = sl_package_copy_artifacts(out_dir, package_dir, app, config_dir,
+                                               project_config, asset_root_dir);
         }
     }
     if (sl_run_shutdown_app(app) != 0 && result == 0) {

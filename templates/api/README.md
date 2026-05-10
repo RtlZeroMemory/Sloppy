@@ -12,6 +12,7 @@ flow.
 - `src/services/` contains business logic.
 - `src/db/` contains the SQLite migration and repository helpers.
 - `src/models/` contains request and response shapes.
+- `public/` contains static assets served under `/public`.
 - `appsettings*.json` contains runtime configuration.
 - `data/` is where the development SQLite file is created.
 
@@ -30,10 +31,12 @@ sloppy audit .sloppy
 ```sh
 sloppy run .sloppy --once GET /health
 sloppy run .sloppy --once GET /users
+sloppy run .sloppy --once GET /public/hello.txt
+sloppy run .sloppy --once POST /users --json "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
 ```
 
-To exercise `POST /users`, run the development server and send a request with
-your HTTP client:
+You can also run the development server and send requests with your HTTP
+client:
 
 ```sh
 sloppy run .sloppy
@@ -46,6 +49,7 @@ curl -X POST http://127.0.0.1:5173/users -H "content-type: application/json" -d 
 sloppy package
 sloppy run .sloppy/package --once GET /health
 sloppy run .sloppy/package --once GET /users
+sloppy run .sloppy/package --once GET /public/hello.txt
 ```
 
 The alpha package format contains the compiled Sloppy artifacts. The SQLite

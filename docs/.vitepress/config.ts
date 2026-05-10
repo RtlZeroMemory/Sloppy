@@ -46,6 +46,8 @@ export default defineConfig({
         text: "Guides",
         items: [
           { text: "Project layout", link: "/guide/project-layout" },
+          { text: "Templates", link: "/guide/templates" },
+          { text: "Static assets", link: "/guide/static-assets" },
           { text: "TypeScript source input", link: "/guide/typescript" },
           { text: "Examples and demo app", link: "/guide/examples" },
           { text: "Testing apps", link: "/api/testing" },
@@ -60,6 +62,7 @@ export default defineConfig({
         items: [
           { text: "App", link: "/api/app" },
           { text: "Routing", link: "/api/routing" },
+          { text: "Static files", link: "/api/static-files" },
           { text: "Middleware", link: "/api/middleware" },
           { text: "CORS", link: "/api/cors" },
           { text: "Health checks", link: "/api/health" },

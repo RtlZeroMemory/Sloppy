@@ -50,8 +50,9 @@ compiler refuses the input rather than emitting a partial Plan.
 | Routing | supported | supported | supported | supported | Direct route registration supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; generated CORS preflight routes bind `OPTIONS` in Plan metadata. |
 | Route params | supported | supported | supported | supported | `{name}`, `{name:str}`, and `{name:int}` values are strings in handler context. |
 | Query | supported | supported | supported | supported | Last value wins for repeated keys. |
-| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` cannot supply custom headers. |
+| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once --header name:value` supplies bounded synthetic request headers. |
 | Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes are bounded in memory. |
+| Static files | API shape supported | supported for literal `app.useStaticFiles(...)` options | generated `GET` routes and asset graph records | supported through generated handlers | Build/package-time snapshot for supported file extensions; no directory listings or runtime file watching. |
 | Results helpers | supported | supported subset | supported | supported | `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`, `badRequest`, `problem`, `status`, `html`, and `bytes` have compiler/runtime coverage where fixtures exercise them. |
 | ProblemDetails | supported | supported as literal `ProblemDetails.defaults(...)` | supported | supported | Safe handler-error mapping. |
 | Middleware | supported | supported static subset | supported | supported | Inline/top-level middleware is emitted into generated handlers; dynamic lookup and unsupported captures fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`. |
@@ -69,9 +70,9 @@ compiler refuses the input rather than emitting a partial Plan.
 | OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
-| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
+| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a bounded synthetic request; repeatable headers plus text, file, and JSON bodies are supported for static route metadata. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
-| CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes. Not a runtime release archive. |
+| CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; dependency graph assets and local FFI libraries configured through `ffiLibraries` are copied with package manifest metadata. Not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `deps` | n/a | Plan-derived | metadata-only | no V8 required | Reads dependency graph metadata from Plan or `deps.graph.json`. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |

@@ -109,6 +109,50 @@ function validateHealthCheckFunction(check) {
     }
 }
 
+function validateStaticRequestPath(path) {
+    if (typeof path !== "string" || path.length === 0 || !path.startsWith("/")) {
+        throw new TypeError("Sloppy static files requestPath must be a non-empty string starting with '/'.");
+    }
+    if (path.length > 1 && path.endsWith("/")) {
+        throw new TypeError("Sloppy static files requestPath must not end with '/'.");
+    }
+    if (path.includes("{") || path.includes("}")) {
+        throw new TypeError("Sloppy static files requestPath must be a static route prefix.");
+    }
+}
+
+function validateStaticRoot(root) {
+    if (typeof root !== "string" || root.length === 0) {
+        throw new TypeError("Sloppy static files root must be a non-empty string.");
+    }
+    if (root.startsWith("/") || /^[A-Za-z]:[\\/]/.test(root)) {
+        throw new TypeError("Sloppy static files root must be project-relative.");
+    }
+    const parts = root.split(/[\\/]+/);
+    if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
+        throw new TypeError("Sloppy static files root must not contain empty, '.', or '..' path segments.");
+    }
+}
+
+function validateStaticFilesOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.useStaticFiles options must be a plain object.");
+    }
+    validateStaticRequestPath(options.requestPath);
+    validateStaticRoot(options.root);
+    if (options.cache !== undefined) {
+        if (!isPlainObject(options.cache)) {
+            throw new TypeError("Sloppy static files cache option must be a plain object.");
+        }
+        if (
+            options.cache.maxAgeSeconds !== undefined &&
+            (!Number.isInteger(options.cache.maxAgeSeconds) || options.cache.maxAgeSeconds < 0)
+        ) {
+            throw new TypeError("Sloppy static files cache.maxAgeSeconds must be a non-negative integer.");
+        }
+    }
+}
+
 function normalizeHealthCheck(check, index) {
     if (typeof check === "function") {
         const name = check.name.length > 0 ? check.name : `check-${index + 1}`;
@@ -349,6 +393,12 @@ function createApp(host) {
         useCors(policy) {
             assertAppMutable();
             corsPolicy = normalizeCorsPolicy(policy);
+            return app;
+        },
+
+        useStaticFiles(options) {
+            assertAppMutable();
+            validateStaticFilesOptions(options);
             return app;
         },
 

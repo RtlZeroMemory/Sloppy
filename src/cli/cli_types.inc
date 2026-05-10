@@ -214,6 +214,11 @@ typedef struct SlCliOptions
     const char* kind;
     const char* once_method;
     const char* once_target;
+    const char* once_headers[SL_HTTP_DEFAULT_MAX_HEADERS];
+    size_t once_header_count;
+    const char* once_body;
+    const char* once_body_file;
+    const char* once_json;
     char** program_args;
     size_t program_arg_count;
     uint16_t port;
