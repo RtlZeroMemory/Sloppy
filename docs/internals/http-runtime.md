@@ -134,14 +134,14 @@ waiting for the request body or entering handler dispatch.
 
 Server-wide limits are read from Plan-emitted server config:
 
-- `max-connections` — bounded pool of in-flight connections
+- `max-connections` — admission limit for in-flight connections
 - `max-request-body-bytes` — hard ceiling per request body
 - `max-target-length` — request target string limit
 - `max-query-params` — bounded query parameter count
 - `request-timeout-ms` — per-request deadline
 - `keep-alive-idle-timeout-ms` — idle timeout between requests on a
   connection
-- `max-requests-per-connection` — keep-alive cap
+- `max-requests-per-connection` — optional keep-alive cap; `0` disables the cap
 
 These are baked into the Plan from `appsettings.{Environment}.json` /
 the env layer. Per-route limits are not surfaced today.

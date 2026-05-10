@@ -65,11 +65,11 @@ impl ConfigurationModel {
         for (key, value) in [
             ("Sloppy:Server:Host", json!("127.0.0.1")),
             ("Sloppy:Server:Port", json!(5173)),
-            ("Sloppy:Server:MaxConnections", json!(4)),
+            ("Sloppy:Server:MaxConnections", json!(128)),
             ("Sloppy:Server:MaxRequestBodyBytes", json!(8192)),
             ("Sloppy:Server:KeepAliveEnabled", json!(true)),
             ("Sloppy:Server:KeepAliveIdleTimeoutMs", json!(5000)),
-            ("Sloppy:Server:MaxRequestsPerConnection", json!(100)),
+            ("Sloppy:Server:MaxRequestsPerConnection", json!(0)),
             ("Sloppy:Server:RequestTimeoutMs", json!(30000)),
             ("Sloppy:Runtime:V8MicrotaskDrainLimit", json!(64)),
         ] {

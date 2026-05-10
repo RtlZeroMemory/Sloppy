@@ -1527,9 +1527,9 @@ static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_d
                              "drain") -
                           1U),
         sl_str_empty(),
-        sl_v8_literal("This V8 runtime drains Promise microtasks and bounded native async "
-                      "completions, but does not implement timers, fetch, or Node APIs.",
-                      sizeof("This V8 runtime drains Promise microtasks and bounded native async "
+        sl_v8_literal("This V8 runtime drains Promise microtasks and native async completions, "
+                      "but does not implement timers, fetch, or Node APIs.",
+                      sizeof("This V8 runtime drains Promise microtasks and native async "
                              "completions, but does not implement timers, fetch, or Node APIs.") -
                           1U));
 }
@@ -1541,9 +1541,7 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(
     SlV8Engine* backend = sl_v8_backend(engine);
     size_t idle_spins = 0U;
     bool saw_native_activity = false;
-    std::chrono::steady_clock::time_point native_activity_started = {};
     constexpr size_t kIdleSpinLimit = 1000U;
-    constexpr std::chrono::seconds kNativeActivityLimit{35};
 
     if (backend == nullptr || backend->async_loop == nullptr) {
         return sl_status_ok();
@@ -1572,20 +1570,12 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(
         }
         else {
             idle_spins = 0U;
-            if (!saw_native_activity) {
-                saw_native_activity = true;
-                native_activity_started = std::chrono::steady_clock::now();
-            }
+            saw_native_activity = true;
         }
         if (promise->State() != v8::Promise::kPending) {
             break;
         }
         if (!saw_native_activity && idle_spins >= kIdleSpinLimit) {
-            break;
-        }
-        if (saw_native_activity &&
-            std::chrono::steady_clock::now() - native_activity_started > kNativeActivityLimit)
-        {
             break;
         }
         if (ran == 0U) {

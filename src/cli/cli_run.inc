@@ -364,6 +364,15 @@ static bool sl_run_plan_config_parse_u64(yyjson_val* value, uint64_t* out)
     return *out != 0U;
 }
 
+static bool sl_run_plan_config_parse_u64_allow_zero(yyjson_val* value, uint64_t* out)
+{
+    if (value == NULL || out == NULL || !yyjson_is_uint(value)) {
+        return false;
+    }
+    *out = yyjson_get_uint(value);
+    return true;
+}
+
 static bool sl_run_plan_config_u64_fits_size_t(uint64_t value)
 {
     return value <= (uint64_t)SIZE_MAX;
@@ -603,11 +612,12 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_keep_alive_idle_timeout_ms = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestsPerConnection")) {
-        if (!sl_run_plan_config_parse_u64(value, &app->config_max_requests_per_connection) ||
+        if (!sl_run_plan_config_parse_u64_allow_zero(
+                value, &app->config_max_requests_per_connection) ||
             !sl_run_plan_config_u64_fits_size_t(app->config_max_requests_per_connection))
         {
             sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
-                                      "Sloppy:Server:MaxRequestsPerConnection must be a positive "
+                                      "Sloppy:Server:MaxRequestsPerConnection must be a non-negative "
                                       "integer\n");
             return 1;
         }
@@ -1937,10 +1947,10 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
 
     config.host = sl_str_from_cstr(host);
     config.port = port;
-    config.max_connections = SL_RUN_MAX_CLIENTS;
-    config.max_active_requests = SL_RUN_MAX_CLIENTS;
-    config.connection_capacity = SL_RUN_MAX_CLIENTS;
-    config.backlog = 16;
+    config.max_connections = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
+    config.max_active_requests = SL_HTTP_BACKEND_DEFAULT_MAX_ACTIVE_REQUESTS;
+    config.connection_capacity = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
+    config.backlog = SL_HTTP_TRANSPORT_DEFAULT_BACKLOG;
     config.max_request_head_bytes = SL_RUN_REQUEST_MAX_BYTES;
     config.request_arena_bytes = SL_RUN_ARENA_BYTES;
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
@@ -1956,6 +1966,12 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
         config.max_connections = (size_t)app->config_max_connections;
         config.max_active_requests = (size_t)app->config_max_connections;
         config.connection_capacity = (size_t)app->config_max_connections;
+        config.backlog = app->config_max_connections > (uint64_t)INT_MAX
+                             ? INT_MAX
+                             : (int)app->config_max_connections;
+        if (config.backlog < SL_HTTP_TRANSPORT_DEFAULT_BACKLOG) {
+            config.backlog = SL_HTTP_TRANSPORT_DEFAULT_BACKLOG;
+        }
     }
     if (app != NULL && app->config_has_max_request_body_bytes) {
         config.parse.max_body_length = (size_t)app->config_max_request_body_bytes;
@@ -1989,45 +2005,9 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     return config;
 }
 
-enum
-{
-    SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS = 64U,
-    SL_RUN_TRANSPORT_STORAGE_BLOCKS =
-        (SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS + SL_RUN_MAX_CLIENTS - 1U) / SL_RUN_MAX_CLIENTS,
-    SL_RUN_TRANSPORT_STORAGE_BYTES = SL_RUN_TRANSPORT_ARENA_BYTES * SL_RUN_TRANSPORT_STORAGE_BLOCKS
-};
-
-static bool sl_run_transport_arena_size(const SlHttpTransportConfig* config, size_t* out_bytes)
-{
-    size_t connection_units = SL_RUN_MAX_CLIENTS;
-    size_t rounded_units = 0U;
-    size_t block_count = 0U;
-
-    if (config == NULL || out_bytes == NULL) {
-        return false;
-    }
-    if (config->connection_capacity > connection_units) {
-        connection_units = config->connection_capacity;
-    }
-    if (connection_units > SL_RUN_TRANSPORT_STORAGE_MAX_CLIENTS) {
-        return false;
-    }
-    if (!sl_status_is_ok(
-            sl_checked_add_size(connection_units, SL_RUN_MAX_CLIENTS - 1U, &rounded_units)))
-    {
-        return false;
-    }
-    block_count = rounded_units / SL_RUN_MAX_CLIENTS;
-    if (!sl_status_is_ok(sl_checked_mul_size(SL_RUN_TRANSPORT_ARENA_BYTES, block_count, out_bytes)))
-    {
-        return false;
-    }
-    return *out_bytes <= SL_RUN_TRANSPORT_STORAGE_BYTES;
-}
-
 static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 {
-    static unsigned char transport_storage[SL_RUN_TRANSPORT_STORAGE_BYTES];
+    unsigned char* transport_storage = NULL;
     size_t transport_storage_bytes = 0U;
     SlArena transport_arena = {0};
     SlHttpTransportServer server = {0};
@@ -2036,9 +2016,14 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     SlStatus status;
     int result = 0;
 
-    if (!sl_run_transport_arena_size(&config, &transport_storage_bytes)) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy run: dev server MaxConnections exceeds bounded storage\n");
+    status = sl_http_transport_server_arena_size(&config, &transport_storage_bytes, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to size dev server storage: ", NULL, &diag);
+        return 1;
+    }
+    transport_storage = (unsigned char*)malloc(transport_storage_bytes);
+    if (transport_storage == NULL) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to allocate dev server storage\n");
         return 1;
     }
 
@@ -2046,12 +2031,14 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
             sl_arena_init(&transport_arena, transport_storage, transport_storage_bytes)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server storage\n");
+        free(transport_storage);
         return 1;
     }
 
     status = sl_http_transport_server_init(&server, &transport_arena, &config, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: failed to initialize dev server: ", &transport_arena, &diag);
+        free(transport_storage);
         return 1;
     }
     status = sl_http_transport_server_listen(&server, &diag);
@@ -2063,18 +2050,20 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
             sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
         }
         (void)sl_http_transport_server_dispose(&server, NULL);
+        free(transport_storage);
         return 1;
     }
 
     printf("Sloppy dev server listening on %s://%s:%u\n", config.tls.enabled ? "https" : "http",
            host, (unsigned)port);
-    printf("Bounded development server: HTTP/1.1%s, local development only.\n",
+    printf("Development server: HTTP/1.1%s, local development only.\n",
            config.tls.enabled ? " over TLS" : "");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {
         result = 1;
     }
     (void)sl_http_transport_server_dispose(&server, NULL);
+    free(transport_storage);
     return result;
 }
 

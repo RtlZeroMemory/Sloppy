@@ -1,7 +1,7 @@
 /*
  * Sloppy CLI.
  *
- * Provides plan introspection commands and the bounded development `sloppy run` path.
+ * Provides plan introspection commands and the development `sloppy run` path.
  * Runtime execution requires V8-enabled artifacts and intentionally avoids production
  * HTTP, package-manager behavior, Node behavior, middleware, streaming, and hot
  * reload behavior.
@@ -30,6 +30,7 @@
 
 #include "cli/sloppyrc.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -62,16 +63,14 @@
 #define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_READ_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_RUN_FILE_READ_ARENA_BYTES                                                               \
     (SL_RUN_ARTIFACT_FILE_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
-#define SL_RUN_ARENA_BYTES 65536U
+#define SL_RUN_ARENA_BYTES 262144U
 #define SL_RUN_PLAN_ARENA_BYTES SL_CLI_ARENA_BYTES
 #define SL_RUN_ROUTE_ARENA_BYTES 524288U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
-#define SL_RUN_MAX_CLIENTS 4U
 #define SL_RUN_APP_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
-#define SL_RUN_RESPONSE_MAX_BYTES 16384U
-#define SL_RUN_TRANSPORT_ARENA_BYTES 1048576U
+#define SL_RUN_RESPONSE_MAX_BYTES SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES
 #define SL_RUN_LOGGING_ARENA_BYTES 262144U
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_PATH_MAX_BYTES 1024U

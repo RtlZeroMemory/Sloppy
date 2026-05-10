@@ -28,22 +28,22 @@ The repo has microbenchmark harnesses under `benchmarks/` that can be run on
 demand. The smoke variant verifies the harness executes; it proves nothing
 about throughput or latency.
 
-The repo also has a local runtime comparison runner for internal
+The repo also has local runtime comparison runners for internal
 engineering feedback:
 
 ```powershell
 tools/windows/bench.ps1 -Suite http -Runtime sloppy,node,bun,deno
+tools/windows/bench-realistic.ps1 -Suite http -Runtime sloppy,node,bun,deno
 ```
 
-It records host metadata, runtime versions, warmup/sample counts, and
-structured JSON results. HTTP workloads include process-level CPU and
-memory counters when the child process exposes them, and a separate
-`concurrency` suite exercises fixed concurrent request batches. Route
-workloads separate `generated-table` from `compact-prefix` comparator
-shapes; only compare route results within the same shape. Missing
-comparator runtimes are reported as unavailable. Use larger measured
-runs to compare branches on the same machine, not to rank Sloppy
-publicly.
+The realistic suite under `benchmarks/realistic/` is the longer-lived
+Sloppy/Node/Bun/Deno comparison harness. It records host metadata, runtime
+versions, warmup/sample counts, process memory where practical, raw artifacts,
+structured JSON, and a Markdown summary. It keeps baseline, framework-equivalent,
+and feature-rich app shapes separate so unlike rows are not treated as
+apples-to-apples measurements. Missing comparator runtimes are reported as
+`UNAVAILABLE`. Use larger measured runs to compare branches on the same machine,
+not to rank Sloppy publicly.
 
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy
@@ -52,7 +52,8 @@ benchmark" without that context is informal, not a project claim.
 ## What hasn't been done yet
 
 - No published competitive comparison against Node/Bun/Deno or
-  framework-specific baselines.
+  framework-specific baselines. The realistic suite is local engineering
+  evidence only.
 - No published latency or throughput targets.
 - No performance regression gates beyond "the harness still runs".
 - No production deployment evidence.

@@ -29,15 +29,18 @@ Default environment is `Development`.
 | --- | --- |
 | `Sloppy:Server:Host` | `127.0.0.1` |
 | `Sloppy:Server:Port` | `5173` |
-| `Sloppy:Server:MaxConnections` | `4` |
+| `Sloppy:Server:MaxConnections` | `128` |
 | `Sloppy:Server:MaxRequestBodyBytes` | `8192` |
 | `Sloppy:Server:KeepAliveEnabled` | `true` |
 | `Sloppy:Server:KeepAliveIdleTimeoutMs` | `5000` |
-| `Sloppy:Server:MaxRequestsPerConnection` | `100` |
+| `Sloppy:Server:MaxRequestsPerConnection` | `0` |
 | `Sloppy:Server:RequestTimeoutMs` | `30000` |
 | `Sloppy:Runtime:V8MicrotaskDrainLimit` | `64` |
 
 TLS `CertificatePath` and `PrivateKeyPath` values are absolutized against config directory before Plan emission. Diagnostic messages redact TLS certificate, private-key, client-certificate, CA-bundle, and trust-store path values.
+
+`Sloppy:Server:MaxRequestsPerConnection = 0` disables the keep-alive request count cap. Connection
+admission still respects `Sloppy:Server:MaxConnections` and available process memory.
 
 When inbound TLS is enabled, the development HTTP listener can negotiate
 `h2` or `http/1.1` with ALPN. There is no separate appsettings key for HTTP/2

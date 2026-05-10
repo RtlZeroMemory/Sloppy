@@ -257,9 +257,7 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.keep_alive_idle_timeout_ms = input->keep_alive_idle_timeout_ms == 0U
                                                 ? config.keep_alive_idle_timeout_ms
                                                 : input->keep_alive_idle_timeout_ms;
-        config.max_requests_per_connection = input->max_requests_per_connection == 0U
-                                                 ? config.max_requests_per_connection
-                                                 : input->max_requests_per_connection;
+        config.max_requests_per_connection = input->max_requests_per_connection;
         config.keep_alive_disabled = input->keep_alive_disabled;
         config.http2_prior_knowledge_only = input->http2_prior_knowledge_only;
         config.tls = input->tls;
@@ -299,8 +297,7 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
     }
     if (config.max_request_head_bytes == 0U || config.request_arena_bytes == 0U ||
         config.read_chunk_bytes == 0U || config.max_response_bytes == 0U ||
-        config.max_pending_write_bytes == 0U || config.keep_alive_idle_timeout_ms == 0U ||
-        config.max_requests_per_connection == 0U)
+        config.max_pending_write_bytes == 0U || config.keep_alive_idle_timeout_ms == 0U)
     {
         return sl_http_transport_invalid_config(
             out_diag, sl_http_transport_literal(
@@ -367,6 +364,168 @@ static SlStatus sl_http_transport_alloc(SlArena* arena, size_t size, size_t alig
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     return sl_arena_alloc(arena, size, align, out);
+}
+
+static SlStatus sl_http_transport_add_arena_alloc_size(size_t size, size_t align,
+                                                       size_t* in_out_bytes)
+{
+    size_t padded = 0U;
+
+    if (in_out_bytes == NULL || size == 0U || align == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_status_is_ok(sl_checked_add_size(size, align - 1U, &padded))) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
+    }
+    return sl_checked_add_size(*in_out_bytes, padded, in_out_bytes);
+}
+
+static SlStatus sl_http_transport_add_arena_array_size(size_t count, size_t elem_size,
+                                                       size_t align, size_t* in_out_bytes)
+{
+    size_t size = 0U;
+    SlStatus status;
+
+    status = sl_checked_mul_size(count, elem_size, &size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_http_transport_add_arena_alloc_size(size, align, in_out_bytes);
+}
+
+static SlStatus sl_http_transport_add_cstr_copy_size(SlStr value, size_t* in_out_bytes)
+{
+    size_t size = 0U;
+
+    if (value.length <= SL_OWNED_STR_SSO_MAX_LENGTH) {
+        return sl_status_ok();
+    }
+    if (!sl_status_is_ok(sl_checked_add_size(value.length, 1U, &size))) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
+    }
+    return sl_http_transport_add_arena_alloc_size(size, _Alignof(uint64_t), in_out_bytes);
+}
+
+SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config,
+                                             size_t* out_bytes, SlDiag* out_diag)
+{
+    SlHttpTransportConfig normalized = {0};
+    SlStatus status;
+    size_t total = 0U;
+    size_t chunked_wire_body_capacity = 0U;
+    size_t body_accumulation_capacity = 0U;
+    size_t accumulation_capacity = 0U;
+    size_t tls_write_buffer_size = 0U;
+
+    sl_http_transport_clear_diag(out_diag);
+    if (out_bytes == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_bytes = 0U;
+
+    status = sl_http_transport_normalize_config(config, &normalized, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_http_transport_add_arena_alloc_size(
+        sizeof(SlHttpPlatformListener), _Alignof(SlHttpPlatformListener), &total);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_transport_add_cstr_copy_size(normalized.host, &total);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (normalized.tls.enabled) {
+        status = sl_http_transport_add_cstr_copy_size(normalized.tls.certificate_path, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_transport_add_cstr_copy_size(normalized.tls.private_key_path, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (!sl_str_is_empty(normalized.tls.passphrase)) {
+            status = sl_http_transport_add_cstr_copy_size(normalized.tls.passphrase, &total);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+    }
+
+    status = sl_http_transport_add_arena_array_size(normalized.connection_capacity,
+                                                   sizeof(SlHttpTransportConnection),
+                                                   _Alignof(SlHttpTransportConnection), &total);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_transport_add_arena_array_size(normalized.connection_capacity,
+                                                   sizeof(SlHttpPlatformConnection),
+                                                   _Alignof(SlHttpPlatformConnection), &total);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(normalized.parse.max_body_length, 8U,
+                                 &chunked_wire_body_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(chunked_wire_body_capacity, 5U, &chunked_wire_body_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    body_accumulation_capacity =
+        chunked_wire_body_capacity > normalized.parse.max_body_length
+            ? chunked_wire_body_capacity
+            : normalized.parse.max_body_length;
+    status = sl_checked_add_size(normalized.max_request_head_bytes, body_accumulation_capacity,
+                                 &accumulation_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(normalized.max_response_bytes, 4096U, &tls_write_buffer_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (size_t index = 0U; index < normalized.connection_capacity; index += 1U) {
+        status = sl_http_transport_add_arena_alloc_size(accumulation_capacity, 1U, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_transport_add_arena_alloc_size(normalized.max_response_bytes, 1U, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_transport_add_arena_alloc_size(normalized.request_arena_bytes, 1U, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_transport_add_arena_alloc_size(normalized.read_chunk_bytes, 1U, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (normalized.tls.enabled) {
+            status =
+                sl_http_transport_add_arena_alloc_size(normalized.read_chunk_bytes, 1U, &total);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_http_transport_add_arena_alloc_size(tls_write_buffer_size, 1U, &total);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_http_transport_add_arena_alloc_size(tls_write_buffer_size, 1U, &total);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+    }
+
+    *out_bytes = total;
+    return sl_status_ok();
 }
 
 static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
@@ -1017,7 +1176,9 @@ static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnect
         server->client_close_requests += 1U;
         return false;
     }
-    if (connection->core.request_count >= server->config.max_requests_per_connection) {
+    if (server->config.max_requests_per_connection != 0U &&
+        connection->core.request_count >= server->config.max_requests_per_connection)
+    {
         server->max_requests_reached += 1U;
         return false;
     }
