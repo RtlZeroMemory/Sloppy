@@ -221,6 +221,31 @@ jobs:
             Linux-linux-clang-release-ccache-
             Linux-linux-clang-ccache-
 
+      - name: Restore Linux V8 SDK cache
+        id: linux-v8-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/v8/linux-x64
+            artifacts/v8-sdk
+          key: linux-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+          restore-keys: |
+            linux-v8-sdk-
+
+      - name: Validate Linux V8 SDK cache
+        id: linux-v8-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tools/unix/resolve-v8-sdk.sh --mode AUTO --quiet > /tmp/sloppy-v8-root && [ -s /tmp/sloppy-v8-root ]; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+            echo "Using cached Linux V8 SDK: $(cat /tmp/sloppy-v8-root)"
+          else
+            rm -rf .sdeps/v8/linux-x64 artifacts/v8-sdk
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+            echo "No compatible cached Linux V8 SDK found."
+          fi
+
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -254,8 +279,19 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
       - name: Build Linux V8 SDK
+        if: steps.linux-v8-sdk.outputs.cached != 'true'
         shell: bash
         run: tools/unix/dev.sh build-v8
+
+      - name: Save Linux V8 SDK cache
+        if: steps.linux-v8-sdk.outputs.cached != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/v8/linux-x64
+            artifacts/v8-sdk
+          key: ${{ steps.linux-v8-sdk-cache.outputs.cache-primary-key }}
 
       - name: Release artifact dry-run
         shell: bash
