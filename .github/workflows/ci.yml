@@ -1306,7 +1306,7 @@ jobs:
           path: |
             artifacts/test-engine/golden-${{ matrix.preset }}.json
             artifacts/test-engine/integration-${{ matrix.preset }}.json
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Set up Go for HTTP/2 conformance tools
         if: matrix.name == 'linux-clang'

@@ -149,7 +149,8 @@ function Invoke-ExternalLane {
         [string]$File,
         [string[]]$Arguments = @(),
         [string]$WorkingDirectory = $Root,
-        [string]$UnavailableNote = ""
+        [string]$UnavailableNote = "",
+        [string]$SuccessNote = ""
     )
 
     $resolved = Resolve-CommandFile -File $File
@@ -175,7 +176,7 @@ function Invoke-ExternalLane {
     }
 
     if ($exitCode -eq 0) {
-        Add-Lane $Id "pass" $stopwatch.ElapsedMilliseconds $commandText ""
+        Add-Lane $Id "pass" $stopwatch.ElapsedMilliseconds $commandText $SuccessNote
     } else {
         Add-Lane $Id "fail" $stopwatch.ElapsedMilliseconds $commandText "exit code $exitCode"
     }
@@ -228,7 +229,53 @@ function Invoke-AlphaProofCtestLane {
         [string[]]$Arguments = @()
     )
 
-    Invoke-CtestLane $Id "windows-relwithdebinfo" $Arguments
+    $preset = "windows-relwithdebinfo"
+    $buildDir = Join-Path (Join-Path $Root "build") $preset
+    $commandText = Join-CommandText "ctest" (@("--preset", $preset, "--output-on-failure", "--no-tests=error") + $Arguments)
+    if (-not (Test-Path -LiteralPath $buildDir -PathType Container)) {
+        Add-Lane $Id "unavailable" 0 $commandText "build preset directory does not exist: $buildDir"
+        return
+    }
+
+    $ctest = Resolve-CommandFile -File "ctest"
+    if ($null -eq $ctest) {
+        Add-Lane $Id "unavailable" 0 $commandText "ctest is not available"
+        return
+    }
+
+    $previous = (Get-Location).Path
+    try {
+        Set-Location -LiteralPath $Root
+        $showOnlyOutput = & $ctest @("--preset", $preset, "-N") @Arguments 2>&1
+        $showOnlyExitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } elseif ($?) { 0 } else { 1 }
+    } catch {
+        $showOnlyOutput = @($_.Exception.Message)
+        $showOnlyExitCode = 1
+    } finally {
+        Set-Location -LiteralPath $previous
+    }
+
+    if ($showOnlyExitCode -ne 0) {
+        Add-Lane $Id "fail" 0 $commandText "ctest test discovery failed with exit code $showOnlyExitCode"
+        return
+    }
+
+    $testCount = $null
+    foreach ($line in $showOnlyOutput) {
+        if ([string]$line -match "Total Tests:\s+([0-9]+)") {
+            $testCount = [int]$Matches[1]
+        }
+    }
+    if ($null -eq $testCount) {
+        Add-Lane $Id "fail" 0 $commandText "ctest test discovery did not report a test count"
+        return
+    }
+    if ($testCount -eq 0) {
+        Add-Lane $Id "unavailable" 0 $commandText "no alpha-proof tests matched; V8-enabled alpha-proof tests are not registered for this preset"
+        return
+    }
+
+    Invoke-ExternalLane $Id "ctest" (@("--preset", $preset, "--output-on-failure", "--no-tests=error") + $Arguments) -SuccessNote "matched $testCount test(s)"
 }
 
 function Get-TierIterations {

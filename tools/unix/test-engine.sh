@@ -178,11 +178,53 @@ ctest_lane() {
 alpha_proof_ctest_lane() {
   local id="$1"
   shift
+  local preset
+  preset="$(host_preset)"
+  local command_text="ctest --preset $preset --output-on-failure --no-tests=error $*"
   if [[ -z "${SLOPPY_V8_ROOT:-}" ]]; then
-    add_lane "$id" "unavailable" "0" "ctest --preset $(host_preset)" "alpha proof runner is a Sloppy Program Mode tool and requires a V8-enabled build"
+    add_lane "$id" "unavailable" "0" "$command_text" "alpha proof runner is a Sloppy Program Mode tool and requires a V8-enabled build"
     return
   fi
-  ctest_lane "$id" "$(host_preset)" "$@"
+  if [[ ! -d "$repo_root/build/$preset" ]]; then
+    add_lane "$id" "unavailable" "0" "$command_text" "build preset directory does not exist: $repo_root/build/$preset"
+    return
+  fi
+  if ! command -v ctest >/dev/null 2>&1; then
+    add_lane "$id" "unavailable" "0" "$command_text" "ctest is not available"
+    return
+  fi
+
+  local discovery_output
+  local discovery_code
+  discovery_output="$(cd "$repo_root" && ctest --preset "$preset" -N "$@" 2>&1)"
+  discovery_code=$?
+  if [[ "$discovery_code" -ne 0 ]]; then
+    add_lane "$id" "fail" "0" "$command_text" "ctest test discovery failed with exit code $discovery_code"
+    return
+  fi
+
+  local test_count
+  test_count="$(sed -nE 's/.*Total Tests:[[:space:]]+([0-9]+).*/\1/p' <<<"$discovery_output" | tail -n 1)"
+  if [[ -z "$test_count" ]]; then
+    add_lane "$id" "fail" "0" "$command_text" "ctest test discovery did not report a test count"
+    return
+  fi
+  if [[ "$test_count" -eq 0 ]]; then
+    add_lane "$id" "unavailable" "0" "$command_text" "no alpha-proof tests matched; V8-enabled alpha-proof tests are not registered for this preset"
+    return
+  fi
+
+  local start
+  start="$(date +%s)"
+  (cd "$repo_root" && ctest --preset "$preset" --output-on-failure --no-tests=error "$@")
+  local code=$?
+  local duration
+  duration="$(duration_ms_since "$start")"
+  if [[ "$code" -eq 0 ]]; then
+    add_lane "$id" "pass" "$duration" "$command_text" "matched $test_count test(s)"
+  else
+    add_lane "$id" "fail" "$duration" "$command_text" "exit code $code"
+  fi
 }
 
 tier_iterations() {
