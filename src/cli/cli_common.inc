@@ -358,7 +358,7 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
-    printf("  sloppy create <name> [--template minimal-api|full-api|dogfood|program] [--force]\n");
+    printf("  sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
@@ -439,10 +439,19 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "create") == 0) {
-        printf("Usage: sloppy create <name> [--template minimal-api|full-api|dogfood|program]\n");
+        printf("Usage: sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat]\n");
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
+        printf("\n");
+        printf("Templates:\n");
+        printf("  api          SQLite-backed backend starter with routes, services, config, and packaging flow\n");
+        printf("  minimal-api  Tiny API for the smallest possible first run\n");
+        printf("  program      Small Program Mode starter\n");
+        printf("  cli          Practical CLI-style Program Mode starter\n");
+        printf("  package-api  Backend starter using a compatible local pure-JS package\n");
+        printf("  node-compat  Program starter using supported Node compatibility shims\n");
+        printf("\n");
         printf(
             "--force removes an existing destination directory before copying template files.\n");
         printf("--no-git is reserved for future git initialization; template files still copy.\n");

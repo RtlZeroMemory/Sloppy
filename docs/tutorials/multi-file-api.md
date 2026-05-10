@@ -1,12 +1,12 @@
 # Build A Multi-File API
 
-Use the `full-api` template when you want route modules without adding external
-dependencies.
+Use the `api` template when you want route modules, configuration, services,
+SQLite provider metadata, and packaging flow.
 
 ## Create
 
 ```sh
-sloppy create team-api --template full-api
+sloppy create team-api --template api
 cd team-api
 ```
 
@@ -19,8 +19,8 @@ sloppy build
 sloppy routes .sloppy --format json
 ```
 
-Expected result: JSON route metadata is printed for the health, users, and
-projects routes.
+Expected result: JSON route metadata is printed for the health and users
+routes.
 
 ## Run Health
 

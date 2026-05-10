@@ -1,0 +1,105 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "components": {
+      "responses": {
+        "SlopValidationProblem": {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlopValidationProblem"
+              }
+            }
+          },
+          "description": "Slop validation problem response"
+        }
+      },
+      "schemas": {
+        "SlopValidationProblem": {
+          "properties": {
+            "detail": {
+              "type": "string"
+            },
+            "status": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    },
+    "info": {
+      "title": "Sloppy API",
+      "version": "0.0.0"
+    },
+    "openapi": "3.0.3",
+    "paths": {
+      "/health": {
+        "get": {
+          "operationId": "Health.Get",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "text"
+            }
+          },
+          "x-slop-capabilities": [],
+          "x-slop-completeness": "complete",
+          "x-slop-optimization-candidates": [
+            "static-route-dispatch"
+          ],
+          "x-slop-source": {
+            "column": 5,
+            "line": 4,
+            "path": "health.ts"
+          }
+        }
+      },
+      "/users/{name}": {
+        "get": {
+          "operationId": "Users.Validate",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "name",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "response metadata unknown",
+              "x-slop-partial": "response metadata unknown"
+            }
+          },
+          "x-slop-capabilities": [],
+          "x-slop-completeness": "partial",
+          "x-slop-optimization-candidates": [],
+          "x-slop-source": {
+            "column": 5,
+            "line": 5,
+            "path": "users.ts"
+          }
+        }
+      }
+    },
+    "x-slop-openapi-policy": {
+      "optimizations": "reported-only",
+      "status": "plan-supported-subset",
+      "unknownMetadata": "explicit-partial-markers"
+    }
+  }
+}

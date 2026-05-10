@@ -3,23 +3,26 @@ use super::*;
 pub(super) fn helper_effects_from_initializer(
     expression: &Expression<'_>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
     source: &str,
     source_name: &str,
 ) -> FunctionEffectSummary {
     match expression {
-        Expression::ArrowFunctionExpression(function) => function_effects_from_arrow(
+        Expression::ArrowFunctionExpression(function) => function_effects_from_arrow_impl(
             function,
             provider_bindings,
-            &BTreeMap::new(),
+            helper_effects,
             source,
             source_name,
+            true,
         ),
-        Expression::FunctionExpression(function) => function_effects_from_function(
+        Expression::FunctionExpression(function) => function_effects_from_function_impl(
             function,
             provider_bindings,
-            &BTreeMap::new(),
+            helper_effects,
             source,
             source_name,
+            true,
         ),
         _ => FunctionEffectSummary::default(),
     }
@@ -32,8 +35,45 @@ pub(super) fn function_effects_from_arrow(
     source: &str,
     source_name: &str,
 ) -> FunctionEffectSummary {
+    function_effects_from_arrow_impl(
+        function,
+        provider_bindings,
+        helper_effects,
+        source,
+        source_name,
+        false,
+    )
+}
+
+pub(super) fn helper_effects_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    source: &str,
+    source_name: &str,
+) -> FunctionEffectSummary {
+    function_effects_from_function_impl(
+        function,
+        provider_bindings,
+        helper_effects,
+        source,
+        source_name,
+        true,
+    )
+}
+
+fn function_effects_from_arrow_impl(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    source: &str,
+    source_name: &str,
+    _treat_parameters_as_provider_candidates: bool,
+) -> FunctionEffectSummary {
+    let parameters = function_param_names(&function.params);
     let mut summary = FunctionEffectSummary {
         provider_bindings: provider_bindings.clone(),
+        parameters,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
         ..FunctionEffectSummary::default()
@@ -52,8 +92,28 @@ pub(super) fn function_effects_from_function(
     source: &str,
     source_name: &str,
 ) -> FunctionEffectSummary {
+    function_effects_from_function_impl(
+        function,
+        provider_bindings,
+        helper_effects,
+        source,
+        source_name,
+        false,
+    )
+}
+
+fn function_effects_from_function_impl(
+    function: &oxc_ast::ast::Function<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    source: &str,
+    source_name: &str,
+    _treat_parameters_as_provider_candidates: bool,
+) -> FunctionEffectSummary {
+    let parameters = function_param_names(&function.params);
     let mut summary = FunctionEffectSummary {
         provider_bindings: provider_bindings.clone(),
+        parameters,
         source_name: source_name.to_string(),
         source_text: source.to_string(),
         ..FunctionEffectSummary::default()
@@ -65,6 +125,22 @@ pub(super) fn function_effects_from_function(
     }
     dedupe_effects(&mut summary.effects);
     summary
+}
+
+fn function_param_names(params: &oxc_ast::ast::FormalParameters<'_>) -> Vec<String> {
+    params
+        .items
+        .iter()
+        .filter_map(|parameter| binding_identifier(&parameter.pattern).map(str::to_string))
+        .collect()
+}
+
+fn parameter_provider_token(name: &str) -> String {
+    format!("$param:{name}")
+}
+
+fn provider_token_parameter(token: &str) -> Option<&str> {
+    token.strip_prefix("$param:")
 }
 
 pub(super) fn collect_statement_effects(
@@ -387,22 +463,136 @@ pub(super) fn collect_call_effects(
             } else if method != "close" {
                 summary.unknown_provider_usage = true;
             }
+        } else if summary
+            .parameters
+            .iter()
+            .any(|parameter| parameter == receiver)
+        {
+            let binding = ProviderBinding {
+                token: parameter_provider_token(receiver),
+                capability_kind: "database".to_string(),
+                provider: "sqlite".to_string(),
+            };
+            if let Some(access) = provider_method_access(&binding, method, call) {
+                summary.effects.push(EffectMetadata {
+                    provider: binding.token,
+                    capability_kind: binding.capability_kind,
+                    provider_kind: binding.provider,
+                    access,
+                    operation: method.to_string(),
+                    reason: format!("{receiver}.{method}"),
+                    source_name: summary.source_name.clone(),
+                    source_text: summary.source_text.clone(),
+                    span: call.span,
+                });
+            }
         }
     }
+    collect_callee_object_effects(&call.callee, helper_effects, summary);
 
     if let Expression::Identifier(identifier) = &call.callee {
         let helper_name = identifier.name.as_str();
         summary.helper_calls.insert(helper_name.to_string());
         if let Some(helper) = helper_effects.get(helper_name) {
-            summary.effects.extend(helper.effects.iter().cloned());
+            apply_helper_effects(call, helper, summary);
             summary.unknown_provider_usage |= helper.unknown_provider_usage;
             for (name, binding) in &helper.provider_bindings {
+                if provider_token_parameter(&binding.token).is_some() {
+                    continue;
+                }
                 summary
                     .provider_bindings
                     .entry(name.clone())
                     .or_insert_with(|| binding.clone());
             }
         }
+    }
+}
+
+fn collect_callee_object_effects(
+    callee: &Expression<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match callee {
+        Expression::StaticMemberExpression(member) => {
+            if !matches!(member.object, Expression::Identifier(_)) {
+                collect_expression_effects(&member.object, helper_effects, summary);
+            }
+        }
+        Expression::ComputedMemberExpression(member) => {
+            if !matches!(member.object, Expression::Identifier(_)) {
+                collect_expression_effects(&member.object, helper_effects, summary);
+            }
+            collect_expression_effects(&member.expression, helper_effects, summary);
+        }
+        Expression::ChainExpression(chain) => {
+            collect_chain_effects(&chain.expression, helper_effects, summary)
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_callee_object_effects(&parenthesized.expression, helper_effects, summary);
+        }
+        _ => {}
+    }
+}
+
+fn apply_helper_effects(
+    call: &CallExpression<'_>,
+    helper: &FunctionEffectSummary,
+    summary: &mut FunctionEffectSummary,
+) {
+    for effect in &helper.effects {
+        let Some(parameter) = provider_token_parameter(&effect.provider) else {
+            summary.effects.push(effect.clone());
+            continue;
+        };
+        let Some(argument_binding) = helper
+            .parameters
+            .iter()
+            .position(|name| name == parameter)
+            .and_then(|index| call.arguments.get(index))
+            .and_then(argument_identifier)
+            .and_then(|name| argument_provider_binding(name, summary))
+        else {
+            summary.unknown_provider_usage = true;
+            continue;
+        };
+        let mut substituted = effect.clone();
+        substituted.provider = argument_binding.token.clone();
+        substituted.capability_kind = argument_binding.capability_kind.clone();
+        substituted.provider_kind = argument_binding.provider.clone();
+        summary.effects.push(substituted);
+    }
+}
+
+fn argument_provider_binding(
+    name: &str,
+    summary: &FunctionEffectSummary,
+) -> Option<ProviderBinding> {
+    if let Some(binding) = summary.provider_bindings.get(name) {
+        return Some(binding.clone());
+    }
+    if summary.parameters.iter().any(|parameter| parameter == name) {
+        return Some(ProviderBinding {
+            token: parameter_provider_token(name),
+            capability_kind: "database".to_string(),
+            provider: "sqlite".to_string(),
+        });
+    }
+    None
+}
+
+fn argument_identifier<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
+    match argument {
+        Argument::Identifier(identifier) => Some(identifier.name.as_str()),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            if let Expression::Identifier(identifier) = &parenthesized.expression {
+                Some(identifier.name.as_str())
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -420,12 +610,23 @@ pub(super) fn resolve_helper_effect_callgraph(
                     continue;
                 };
                 let before_effects = summary.effects.len();
-                summary.effects.extend(callee.effects.iter().cloned());
+                summary
+                    .effects
+                    .extend(callee.effects.iter().filter_map(|effect| {
+                        if provider_token_parameter(&effect.provider).is_some() {
+                            None
+                        } else {
+                            Some(effect.clone())
+                        }
+                    }));
                 dedupe_effects(&mut summary.effects);
                 if summary.effects.len() != before_effects {
                     changed = true;
                 }
                 for (name, binding) in &callee.provider_bindings {
+                    if provider_token_parameter(&binding.token).is_some() {
+                        continue;
+                    }
                     if summary
                         .provider_bindings
                         .insert(name.clone(), binding.clone())

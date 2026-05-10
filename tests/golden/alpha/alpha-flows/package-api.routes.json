@@ -1,0 +1,55 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "kind": "web",
+    "routes": [
+      {
+        "bindings": [],
+        "completeness": "complete",
+        "handlerId": 1,
+        "method": "GET",
+        "module": "healthModule",
+        "name": "Health.Get",
+        "pattern": "/health",
+        "response": {
+          "helper": "text",
+          "kind": "text",
+          "status": 200
+        },
+        "source": {
+          "column": 5,
+          "line": 4,
+          "path": "health.ts"
+        },
+        "sourceOrder": 0
+      },
+      {
+        "bindings": [
+          {
+            "kind": "route",
+            "name": "name",
+            "schema": ""
+          }
+        ],
+        "completeness": "partial",
+        "handlerId": 2,
+        "method": "GET",
+        "module": "usersModule",
+        "name": "Users.Validate",
+        "pattern": "/users/{name}",
+        "response": {
+          "helper": "",
+          "kind": "",
+          "status": 0
+        },
+        "source": {
+          "column": 5,
+          "line": 5,
+          "path": "users.ts"
+        },
+        "sourceOrder": 1
+      }
+    ]
+  }
+}

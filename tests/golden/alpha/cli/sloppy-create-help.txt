@@ -1,6 +1,15 @@
-Usage: sloppy create <name> [--template minimal-api|full-api|dogfood|program]
+Usage: sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat]
                      [--force] [--no-git] [--format text|json]
 
 Copies a built-in project template into a new local app directory.
+
+Templates:
+  api          SQLite-backed backend starter with routes, services, config, and packaging flow
+  minimal-api  Tiny API for the smallest possible first run
+  program      Small Program Mode starter
+  cli          Practical CLI-style Program Mode starter
+  package-api  Backend starter using a compatible local pure-JS package
+  node-compat  Program starter using supported Node compatibility shims
+
 --force removes an existing destination directory before copying template files.
 --no-git is reserved for future git initialization; template files still copy.

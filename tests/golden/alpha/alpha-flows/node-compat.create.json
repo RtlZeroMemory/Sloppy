@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-node-compat",
+      "sloppy build",
+      "sloppy run .sloppy"
+    ],
+    "path": "flow-node-compat",
+    "template": "node-compat"
+  }
+}

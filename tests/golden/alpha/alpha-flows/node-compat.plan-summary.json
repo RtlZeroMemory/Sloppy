@@ -1,0 +1,21 @@
+{
+  "capabilities": [],
+  "completeness": {
+    "reasons": [
+      {
+        "code": "program-mode",
+        "message": "program mode does not require static web route metadata"
+      }
+    ],
+    "status": "opaque"
+  },
+  "handlers": [],
+  "kind": "program",
+  "requiredFeatures": [
+    "node.compat.buffer",
+    "node.compat.events",
+    "node.compat.path",
+    "node.compat.querystring"
+  ],
+  "routes": []
+}

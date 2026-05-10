@@ -1,0 +1,9 @@
+[
+  ".gitignore",
+  "README.md",
+  "package.json",
+  "sloppy.json",
+  "src/commands/echo.ts",
+  "src/commands/inspect.ts",
+  "src/main.ts"
+]

@@ -1,0 +1,10 @@
+{
+  "name": "sloppy-cli-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sloppy build",
+    "run": "sloppy run .sloppy -- --help",
+    "package": "sloppy package"
+  }
+}

@@ -10,6 +10,33 @@ endif()
 if(NOT DEFINED SLOPPYC_EXECUTABLE)
     message(FATAL_ERROR "SLOPPYC_EXECUTABLE is required")
 endif()
+find_program(SLOPPY_TEST_NPM NAMES npm.cmd npm)
+if(NOT SLOPPY_TEST_NPM AND DEFINED ENV{APPDATA})
+    set(SLOPPY_TEST_NPM "$ENV{APPDATA}/npm/npm.cmd")
+endif()
+find_program(SLOPPY_TEST_NODE NAMES node.exe node)
+if(NOT SLOPPY_TEST_NODE AND EXISTS "C:/Program Files/nodejs/node.exe")
+    set(SLOPPY_TEST_NODE "C:/Program Files/nodejs/node.exe")
+endif()
+if(DEFINED ENV{APPDATA})
+    set(SLOPPY_TEST_NPM_CLI "$ENV{APPDATA}/npm/node_modules/npm/bin/npm-cli.js")
+endif()
+
+function(assert_sloppy_command_success label working_dir expected_stdout)
+    execute_process(
+        COMMAND "${SLOPPY_CLI}" ${ARGN}
+        WORKING_DIRECTORY "${working_dir}"
+        TIMEOUT 180
+        RESULT_VARIABLE command_result
+        OUTPUT_VARIABLE command_stdout
+        ERROR_VARIABLE command_stderr)
+    if(NOT command_result EQUAL 0)
+        message(FATAL_ERROR "${label} failed\nstdout:\n${command_stdout}\nstderr:\n${command_stderr}")
+    endif()
+    if(NOT "${expected_stdout}" STREQUAL "" AND NOT command_stdout MATCHES "${expected_stdout}")
+        message(FATAL_ERROR "${label} output did not match ${expected_stdout}\nstdout:\n${command_stdout}\nstderr:\n${command_stderr}")
+    endif()
+endfunction()
 
 set(work_dir "${CMAKE_BINARY_DIR}/create-package-command")
 set(project_name "created-api")
@@ -39,7 +66,7 @@ endif()
 if(NOT create_stdout MATCHES "\"created\":true")
     message(FATAL_ERROR "sloppy create did not report JSON success\nstdout:\n${create_stdout}")
 endif()
-foreach(expected IN ITEMS README.md sloppy.json appsettings.json src/main.ts)
+foreach(expected IN ITEMS README.md package.json sloppy.json src/main.ts)
     if(NOT EXISTS "${project_dir}/${expected}")
         message(FATAL_ERROR "sloppy create did not copy ${expected}")
     endif()
@@ -79,7 +106,7 @@ if(NOT missing_template_create_stderr MATCHES "unsupported template|template not
 endif()
 
 execute_process(
-    COMMAND "${SLOPPY_CLI}" create "${default_project_name}" --template minimal-api --format json
+    COMMAND "${SLOPPY_CLI}" create "${default_project_name}" --format json
     WORKING_DIRECTORY "${work_dir}"
     TIMEOUT 60
     RESULT_VARIABLE default_create_result
@@ -91,6 +118,175 @@ if(NOT default_create_result EQUAL 0)
 endif()
 if(NOT EXISTS "${default_project_dir}/.gitignore")
     message(FATAL_ERROR "sloppy create without --no-git did not copy .gitignore")
+endif()
+if(NOT default_create_stdout MATCHES "\"template\":\"api\"")
+    message(FATAL_ERROR "sloppy create default did not use api template\nstdout:\n${default_create_stdout}")
+endif()
+foreach(expected_default IN ITEMS README.md package.json sloppy.json appsettings.json appsettings.Development.json data/.gitkeep src/main.ts src/routes/users.ts src/services/usersService.ts src/db/usersRepository.ts)
+    if(NOT EXISTS "${default_project_dir}/${expected_default}")
+        message(FATAL_ERROR "sloppy create default api template did not copy ${expected_default}")
+    endif()
+endforeach()
+
+set(public_template_smoke_dir "${work_dir}/public-template-smoke")
+file(MAKE_DIRECTORY "${public_template_smoke_dir}")
+file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${public_template_smoke_dir}")
+foreach(public_template IN ITEMS api minimal-api program cli package-api node-compat)
+    set(public_project_name "smoke-${public_template}")
+    set(public_project_dir "${public_template_smoke_dir}/${public_project_name}")
+    execute_process(
+        COMMAND "${SLOPPY_CLI}" create "${public_project_name}" --template "${public_template}" --no-git --format json
+        WORKING_DIRECTORY "${public_template_smoke_dir}"
+        TIMEOUT 60
+        RESULT_VARIABLE public_create_result
+        OUTPUT_VARIABLE public_create_stdout
+        ERROR_VARIABLE public_create_stderr)
+    if(NOT public_create_result EQUAL 0)
+        message(FATAL_ERROR "sloppy create ${public_template} template failed\nstdout:\n${public_create_stdout}\nstderr:\n${public_create_stderr}")
+    endif()
+    foreach(expected_public_file IN ITEMS README.md package.json sloppy.json src/main.ts)
+        if(NOT EXISTS "${public_project_dir}/${expected_public_file}")
+            message(FATAL_ERROR "sloppy create ${public_template} template did not copy ${expected_public_file}")
+        endif()
+    endforeach()
+    if(public_template STREQUAL "package-api")
+        if(NOT SLOPPY_TEST_NODE OR NOT EXISTS "${SLOPPY_TEST_NODE}" OR NOT EXISTS "${SLOPPY_TEST_NPM_CLI}")
+            message(FATAL_ERROR "package-api template test requires node and npm to install the local file dependency")
+        endif()
+        execute_process(
+            COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
+            WORKING_DIRECTORY "${public_project_dir}"
+            TIMEOUT 120
+            RESULT_VARIABLE public_npm_result
+            OUTPUT_VARIABLE public_npm_stdout
+            ERROR_VARIABLE public_npm_stderr)
+        if(NOT public_npm_result EQUAL 0)
+            message(FATAL_ERROR "package-api npm install failed\nstdout:\n${public_npm_stdout}\nstderr:\n${public_npm_stderr}")
+        endif()
+    endif()
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" build
+        WORKING_DIRECTORY "${public_project_dir}"
+        TIMEOUT 180
+        RESULT_VARIABLE public_build_result
+        OUTPUT_VARIABLE public_build_stdout
+        ERROR_VARIABLE public_build_stderr)
+    if(NOT public_build_result EQUAL 0)
+        message(FATAL_ERROR "${public_template} template build failed\nstdout:\n${public_build_stdout}\nstderr:\n${public_build_stderr}")
+    endif()
+    if(public_template STREQUAL "api" OR public_template STREQUAL "minimal-api" OR public_template STREQUAL "package-api")
+        execute_process(
+            COMMAND "${SLOPPY_CLI}" routes .sloppy
+            WORKING_DIRECTORY "${public_project_dir}"
+            TIMEOUT 60
+            RESULT_VARIABLE public_routes_result
+            OUTPUT_VARIABLE public_routes_stdout
+            ERROR_VARIABLE public_routes_stderr)
+        if(NOT public_routes_result EQUAL 0)
+            message(FATAL_ERROR "${public_template} template routes failed\nstdout:\n${public_routes_stdout}\nstderr:\n${public_routes_stderr}")
+        endif()
+        if(NOT public_routes_stdout MATCHES "/health")
+            message(FATAL_ERROR "${public_template} template routes did not include /health\nstdout:\n${public_routes_stdout}")
+        endif()
+    endif()
+    if(SLOPPY_ENABLE_V8)
+        if(public_template STREQUAL "api")
+            assert_sloppy_command_success("api template source /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health)
+            assert_sloppy_command_success("api template source /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /users)
+        elseif(public_template STREQUAL "minimal-api")
+            assert_sloppy_command_success("minimal-api template source /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health)
+            assert_sloppy_command_success("minimal-api template source /hello" "${public_project_dir}" "Ada" run .sloppy --once GET /hello/Ada)
+        elseif(public_template STREQUAL "program")
+            assert_sloppy_command_success("program template source run" "${public_project_dir}" "Hello, Ada" run src/main.ts -- --name Ada)
+            assert_sloppy_command_success("program template artifact run" "${public_project_dir}" "Hello, Ada" run .sloppy -- --name Ada)
+        elseif(public_template STREQUAL "cli")
+            assert_sloppy_command_success("cli template source help" "${public_project_dir}" "Commands:" run src/main.ts -- --help)
+            assert_sloppy_command_success("cli template source inspect" "${public_project_dir}" "\"path\": \"./package.json\"" run src/main.ts -- inspect package.json)
+            assert_sloppy_command_success("cli template artifact help" "${public_project_dir}" "Commands:" run .sloppy -- --help)
+        elseif(public_template STREQUAL "package-api")
+            assert_sloppy_command_success("package-api template source /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health)
+            assert_sloppy_command_success("package-api template source /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /users/Ada)
+        elseif(public_template STREQUAL "node-compat")
+            assert_sloppy_command_success("node-compat template artifact run" "${public_project_dir}" "\"event\":\"ok\"|\"event\": \"ok\"" run .sloppy)
+        endif()
+    endif()
+    if(public_template STREQUAL "api")
+        execute_process(
+            COMMAND "${SLOPPY_CLI}" capabilities .sloppy
+            WORKING_DIRECTORY "${public_project_dir}"
+            TIMEOUT 60
+            RESULT_VARIABLE public_capabilities_result
+            OUTPUT_VARIABLE public_capabilities_stdout
+            ERROR_VARIABLE public_capabilities_stderr)
+        if(NOT public_capabilities_result EQUAL 0)
+            message(FATAL_ERROR "api template capabilities failed\nstdout:\n${public_capabilities_stdout}\nstderr:\n${public_capabilities_stderr}")
+        endif()
+        if(NOT public_capabilities_stdout MATCHES "data.main")
+            message(FATAL_ERROR "api template capabilities did not include SQLite provider metadata\nstdout:\n${public_capabilities_stdout}")
+        endif()
+    endif()
+    if(public_template STREQUAL "package-api" OR public_template STREQUAL "node-compat")
+        execute_process(
+            COMMAND "${SLOPPY_CLI}" deps .sloppy --format json
+            WORKING_DIRECTORY "${public_project_dir}"
+            TIMEOUT 60
+            RESULT_VARIABLE public_deps_result
+            OUTPUT_VARIABLE public_deps_stdout
+            ERROR_VARIABLE public_deps_stderr)
+        if(NOT public_deps_result EQUAL 0)
+            message(FATAL_ERROR "${public_template} template deps failed\nstdout:\n${public_deps_stdout}\nstderr:\n${public_deps_stderr}")
+        endif()
+        if(public_template STREQUAL "package-api" AND NOT public_deps_stdout MATCHES "validator-lite")
+            message(FATAL_ERROR "package-api deps did not include validator-lite\nstdout:\n${public_deps_stdout}")
+        endif()
+        if(public_template STREQUAL "node-compat" AND NOT public_deps_stdout MATCHES "node:path")
+            message(FATAL_ERROR "node-compat deps did not include node:path\nstdout:\n${public_deps_stdout}")
+        endif()
+    endif()
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package --format json
+        WORKING_DIRECTORY "${public_project_dir}"
+        TIMEOUT 180
+        RESULT_VARIABLE public_package_result
+        OUTPUT_VARIABLE public_package_stdout
+        ERROR_VARIABLE public_package_stderr)
+    if(NOT public_package_result EQUAL 0)
+        message(FATAL_ERROR "${public_template} template package failed\nstdout:\n${public_package_stdout}\nstderr:\n${public_package_stderr}")
+    endif()
+    if(NOT EXISTS "${public_project_dir}/.sloppy/package/manifest.json")
+        message(FATAL_ERROR "${public_template} template package did not create manifest")
+    endif()
+    if(SLOPPY_ENABLE_V8)
+        if(public_template STREQUAL "api")
+            assert_sloppy_command_success("api template packaged /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health)
+            assert_sloppy_command_success("api template packaged /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /users)
+        elseif(public_template STREQUAL "minimal-api")
+            assert_sloppy_command_success("minimal-api template packaged /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health)
+        elseif(public_template STREQUAL "program")
+            assert_sloppy_command_success("program template packaged run" "${public_project_dir}" "Hello, Ada" run .sloppy/package -- --name Ada)
+        elseif(public_template STREQUAL "cli")
+            assert_sloppy_command_success("cli template packaged help" "${public_project_dir}" "Commands:" run .sloppy/package -- --help)
+        elseif(public_template STREQUAL "package-api")
+            assert_sloppy_command_success("package-api template packaged /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health)
+            assert_sloppy_command_success("package-api template packaged /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /users/Ada)
+        elseif(public_template STREQUAL "node-compat")
+            assert_sloppy_command_success("node-compat template packaged run" "${public_project_dir}" "\"event\":\"ok\"|\"event\": \"ok\"" run .sloppy/package)
+        endif()
+    endif()
+endforeach()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" create "dogfood-public" --template dogfood
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE dogfood_create_result
+    OUTPUT_VARIABLE dogfood_create_stdout
+    ERROR_VARIABLE dogfood_create_stderr)
+if(dogfood_create_result EQUAL 0)
+    message(FATAL_ERROR "sloppy create unexpectedly accepted public dogfood template")
+endif()
+if(NOT dogfood_create_stderr MATCHES "unsupported template: dogfood")
+    message(FATAL_ERROR "sloppy create dogfood failure did not explain unsupported template\nstdout:\n${dogfood_create_stdout}\nstderr:\n${dogfood_create_stderr}")
 endif()
 
 execute_process(
@@ -107,7 +303,7 @@ endif()
 if(NOT program_create_stdout MATCHES "\"template\":\"program\"")
     message(FATAL_ERROR "sloppy create program template did not report program template\nstdout:\n${program_create_stdout}")
 endif()
-foreach(expected IN ITEMS README.md sloppy.json src/main.ts)
+foreach(expected IN ITEMS README.md package.json sloppy.json src/main.ts)
     if(NOT EXISTS "${program_project_dir}/${expected}")
         message(FATAL_ERROR "sloppy create program template did not copy ${expected}")
     endif()

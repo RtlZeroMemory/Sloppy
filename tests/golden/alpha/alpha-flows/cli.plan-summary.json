@@ -1,0 +1,30 @@
+{
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "filesystem",
+      "token": "fs"
+    },
+    {
+      "access": "info",
+      "kind": "os",
+      "token": "os"
+    }
+  ],
+  "completeness": {
+    "reasons": [
+      {
+        "code": "program-mode",
+        "message": "program mode does not require static web route metadata"
+      }
+    ],
+    "status": "opaque"
+  },
+  "handlers": [],
+  "kind": "program",
+  "requiredFeatures": [
+    "stdlib.fs",
+    "stdlib.os"
+  ],
+  "routes": []
+}

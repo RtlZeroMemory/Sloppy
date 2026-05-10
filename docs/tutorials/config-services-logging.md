@@ -3,10 +3,10 @@
 This tutorial uses the current app-host/stdlib shape. Keep values static and
 literal when you want the compiler to extract metadata.
 
-## Start From A Full API
+## Start From The API Template
 
 ```sh
-sloppy create config-api --template full-api
+sloppy create config-api --template api
 cd config-api
 ```
 

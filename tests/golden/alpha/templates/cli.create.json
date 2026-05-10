@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd alpha-cli",
+      "sloppy run src/main.ts -- --help"
+    ],
+    "path": "alpha-cli",
+    "template": "cli"
+  }
+}

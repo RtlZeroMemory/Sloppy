@@ -1,0 +1,13 @@
+{
+  "name": "sloppy-api-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sloppy build",
+    "run": "sloppy run .sloppy",
+    "package": "sloppy package",
+    "routes": "sloppy routes .sloppy",
+    "doctor": "sloppy doctor .sloppy",
+    "audit": "sloppy audit .sloppy"
+  }
+}

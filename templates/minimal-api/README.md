@@ -1,13 +1,13 @@
-# Minimal Sloppy API
+# Minimal API Template
 
-This template is the smallest project layout that `sloppy create` ships.
+This is the smallest public API starter. Use it for a quick first run or a
+smoke test; use `api` when you want a fuller backend layout.
 
-## Run
-
-```powershell
+```sh
 sloppy build
-sloppy run --once GET /health
+sloppy routes .sloppy
+sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /hello/Ada
+sloppy package
+sloppy run .sloppy/package --once GET /health
 ```
-
-`sloppy run` requires a V8-enabled runtime build. `sloppy build` verifies the
-compiler and artifact path without entering V8.

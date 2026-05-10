@@ -20,6 +20,15 @@ $DebugSloppyc = Join-Path $Root "compiler/target/debug/sloppyc.exe"
 $Sloppyc = if (Test-Path -LiteralPath $ReleaseSloppyc -PathType Leaf) { $ReleaseSloppyc } else { $DebugSloppyc }
 $Script = Join-Path $Root "tools/golden/alpha-proof.ts"
 $Mode = if ($RequireV8) { "v8" } else { "default" }
+$Node = (Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+$NpmCli = $null
+foreach ($npmCommand in @(Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+    $candidate = Join-Path (Split-Path -Parent $npmCommand.Source) "node_modules/npm/bin/npm-cli.js"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $NpmCli = $candidate
+        break
+    }
+}
 
 function Invoke-AlphaProof {
     param(
@@ -49,6 +58,9 @@ function Invoke-AlphaProof {
     if ($RequireV8) {
         $arguments += "--require-v8"
     }
+    if ($Node -and $NpmCli) {
+        $arguments += @("--node", $Node, "--npm-cli", $NpmCli)
+    }
 
     & $Runner @arguments
     if ($LASTEXITCODE -ne 0) {
@@ -67,7 +79,7 @@ if ($Area -eq "all" -or $Area -eq "compiler") {
     }
 }
 if ($Area -eq "all" -or $Area -eq "templates") {
-    foreach ($template in @("minimal-api", "full-api", "dogfood", "program")) {
+    foreach ($template in @("api", "minimal-api", "program", "cli", "package-api", "node-compat")) {
         Invoke-AlphaProof "templates" @("--template", $template)
     }
 }
@@ -75,7 +87,7 @@ if ($Area -eq "all" -or $Area -eq "diagnostics") {
     Invoke-AlphaProof "diagnostics"
 }
 if ($Area -eq "all" -or $Area -eq "alpha-flows") {
-    foreach ($flow in @("minimal-api", "full-api", "dogfood", "program", "direct-program", "direct-web")) {
+    foreach ($flow in @("api", "minimal-api", "program", "cli", "package-api", "node-compat", "direct-program", "direct-web")) {
         Invoke-AlphaProof "alpha-flows" @("--flow", $flow)
     }
 }

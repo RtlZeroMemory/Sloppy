@@ -5,7 +5,7 @@
     "created": true,
     "next": [
       "cd alpha-program",
-      "sloppy run -- --name Ada"
+      "sloppy run src/main.ts -- --name Ada"
     ],
     "path": "alpha-program",
     "template": "program"

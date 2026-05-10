@@ -158,7 +158,7 @@
     {
       "kind": "metadata",
       "name": "dogfood",
-      "reason": "dogfood metadata fixture is covered through template and prealpha-control-plane flows",
+      "reason": "dogfood metadata fixture remains internal; prealpha-control-plane covers the supported dogfood flow",
       "tier": "pr"
     },
     {
@@ -461,13 +461,6 @@
       "kind": "web",
       "name": "web-dynamic-routes",
       "reason": "covered by dynamic route compiler tests and manual example validation",
-      "tier": "pr"
-    },
-    {
-      "entry": "app.js",
-      "kind": "web",
-      "name": "web-dynamic-routes",
-      "reason": "covered by static example API-shape tests",
       "tier": "pr"
     },
     {

@@ -1398,9 +1398,10 @@ fn extract_program_with_metrics(
     let source_files = graph.source_files.clone();
     let capabilities = program_inferred_capabilities(&graph);
     let dependency_graph = graph.dependency_graph.clone();
+    let program_entry = program_module_id(&graph, path, None);
     Ok(ExtractedApp {
         kind: ProjectKind::Program,
-        program_entry: Some(source_map_source_name(path)),
+        program_entry: Some(program_entry),
         program_modules: modules,
         uses_data_runtime: false,
         uses_sql_runtime: false,
@@ -1779,16 +1780,8 @@ fn extract_program_module_with_context(
     Ok(())
 }
 
-fn program_module_id(graph: &ModuleGraph, path: &Path, package: Option<&str>) -> String {
-    if package.is_some()
-        || path
-            .components()
-            .any(|component| component.as_os_str() == "node_modules")
-    {
-        resolver::normalized_artifact_id(path, &graph.entry_dir)
-    } else {
-        source_map_source_name(path)
-    }
+fn program_module_id(graph: &ModuleGraph, path: &Path, _package: Option<&str>) -> String {
+    resolver::normalized_artifact_id(path, &graph.entry_dir)
 }
 
 fn transform_program_source(
@@ -2609,7 +2602,7 @@ const NODE_URL_SHIM: &str = r#"module.exports={URL:globalThis.URL,URLSearchParam
 
 const NODE_QUERYSTRING_SHIM: &str = r#"function parse(text){const out=Object.create(null);for(const part of String(text||"").split("&")){if(!part)continue;const [k,v=""]=part.split("=");out[decodeURIComponent(k.replace(/\+/g," "))]=decodeURIComponent(v.replace(/\+/g," "));}return out;}function stringify(value){return Object.entries(value||{}).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");}module.exports={parse,stringify,escape:encodeURIComponent,unescape:decodeURIComponent,default:null};module.exports.default=module.exports;"#;
 
-const NODE_BUFFER_SHIM: &str = r#"const textEncoder=new TextEncoder();const textDecoder=new TextDecoder();class Buffer extends Uint8Array{static from(value,encoding){if(typeof value==="string")return new Buffer(textEncoder.encode(value));if(value instanceof ArrayBuffer)return new Buffer(value);if(value instanceof Uint8Array)return new Buffer(value);if(Array.isArray(value))return new Buffer(value);throw new TypeError("Buffer.from only supports string, ArrayBuffer, Uint8Array, or byte arrays in Sloppy.");}static isBuffer(value){return value instanceof Buffer;}toString(encoding="utf8"){if(encoding!=="utf8"&&encoding!=="utf-8")throw new Error("node:buffer shim only implements utf8 toString.");return textDecoder.decode(this);}}module.exports={Buffer,default:Buffer};"#;
+const NODE_BUFFER_SHIM: &str = r#"const Text=globalThis.__sloppy_runtime?.Text;function encodeUtf8(value){if(Text?.utf8?.encode)return Text.utf8.encode(value);const bytes=[];for(const ch of String(value)){const code=ch.codePointAt(0);if(code<=0x7f){bytes.push(code);}else if(code<=0x7ff){bytes.push(0xc0|(code>>6),0x80|(code&0x3f));}else if(code<=0xffff){bytes.push(0xe0|(code>>12),0x80|((code>>6)&0x3f),0x80|(code&0x3f));}else{bytes.push(0xf0|(code>>18),0x80|((code>>12)&0x3f),0x80|((code>>6)&0x3f),0x80|(code&0x3f));}}return new Uint8Array(bytes);}function decodeUtf8(value){if(Text?.utf8?.decode)return Text.utf8.decode(value);let out="";for(let i=0;i<value.length;i+=1){out+=String.fromCharCode(value[i]);}return out;}class Buffer extends Uint8Array{static from(value,encoding="utf8"){if(typeof value==="string"){if(encoding!=="utf8"&&encoding!=="utf-8")throw new TypeError("Buffer.from string input only supports utf8 in Sloppy.");return new Buffer(encodeUtf8(value));}if(value instanceof ArrayBuffer)return new Buffer(value);if(value instanceof Uint8Array)return new Buffer(value);if(Array.isArray(value))return new Buffer(value);throw new TypeError("Buffer.from only supports string, ArrayBuffer, Uint8Array, or byte arrays in Sloppy.");}static isBuffer(value){return value instanceof Buffer;}static byteLength(value,encoding="utf8"){return Buffer.from(value,encoding).byteLength;}toString(encoding="utf8"){if(encoding!=="utf8"&&encoding!=="utf-8")throw new Error("node:buffer shim only implements utf8 toString.");return decodeUtf8(this);}}module.exports={Buffer,default:Buffer};"#;
 
 const NODE_UTIL_SHIM: &str = r#"function inspect(value){try{return typeof value==="string"?value:JSON.stringify(value,null,2);}catch(_){return String(value);}}function promisify(fn){if(typeof fn!=="function")throw new TypeError("promisify expects a function");return function(){const args=Array.prototype.slice.call(arguments);return new Promise((resolve,reject)=>fn.call(this,...args,(error,value)=>error?reject(error):resolve(value)));};}module.exports={inspect,promisify,types:{isUint8Array(value){return value instanceof Uint8Array;}},default:null};module.exports.default=module.exports;"#;
 
@@ -3749,6 +3742,8 @@ fn extract_entry(
     }
 
     for (local_name, span) in state.used_modules.clone() {
+        state.helper_sources.remove(&local_name);
+        state.helper_effects.remove(&local_name);
         let Some(imported) = state
             .imported_modules
             .iter()
@@ -3774,6 +3769,7 @@ fn extract_entry(
             .modules
             .entry((module.source_name.clone(), module.name.clone()))
             .or_insert(module);
+        state.uses_health |= module_routes.iter().any(|route| route.health.is_some());
         state.routes.extend(module_routes);
     }
     if let Some(metrics) = metrics.as_mut() {
@@ -3946,7 +3942,7 @@ fn extract_entry(
         },
         uses_health: state.uses_health,
         problem_details: state.problem_details.clone(),
-        dependency_graph: DependencyGraph::default(),
+        dependency_graph: graph.dependency_graph.clone(),
     })
 }
 
@@ -5321,7 +5317,7 @@ fn handle_sloppy_stdlib_import(
 
 fn extract_import(
     path: &Path,
-    graph: &ModuleGraph,
+    graph: &mut ModuleGraph,
     state: &mut AppState,
     import: &oxc_ast::ast::ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
@@ -5357,9 +5353,44 @@ fn extract_import(
                     path: resolved.clone(),
                     span: specifier.span,
                 });
+                for helper in extract_relative_helper_import(
+                    graph,
+                    &ImportedModule {
+                        local_name: specifier.local.name.as_str().to_string(),
+                        export_name: specifier.imported.name().as_str().to_string(),
+                        path: resolved.clone(),
+                        span: specifier.span,
+                    },
+                )? {
+                    state
+                        .helper_sources
+                        .entry(helper.name.clone())
+                        .or_insert(helper.source);
+                    state
+                        .helper_effects
+                        .entry(helper.name)
+                        .or_insert(helper.summary);
+                }
+                resolve_helper_effect_callgraph(&mut state.helper_effects);
             }
         }
         return Ok(());
+    }
+
+    match resolver::classify_import(path, import_source) {
+        resolver::ImportKind::Package(package_resolution) => {
+            extract_package_helper_imports(path, graph, state, import, &package_resolution)?;
+            return Ok(());
+        }
+        resolver::ImportKind::NativeAddonUnsupported(package_resolution) => {
+            graph.add_package_record(&package_resolution);
+            state.unsupported_import_specifier =
+                Some((import.source.value.as_str().to_string(), import.source.span));
+            return Ok(());
+        }
+        resolver::ImportKind::PackageExportUnsupported(_)
+        | resolver::ImportKind::UnsupportedBare(_) => {}
+        _ => {}
     }
 
     if matches!(
@@ -5463,6 +5494,54 @@ fn extract_import(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn extract_package_helper_imports(
+    path: &Path,
+    graph: &mut ModuleGraph,
+    state: &mut AppState,
+    import: &oxc_ast::ast::ImportDeclaration<'_>,
+    package: &resolver::PackageResolution,
+) -> Result<(), Diagnostic> {
+    graph.add_package_record(package);
+    let package_id = program_module_id(graph, &package.entry, Some(&package.name));
+    graph.add_dependency_module(
+        package_id.clone(),
+        package_id.clone(),
+        package.format,
+        Some(package.name.clone()),
+        Some(source_map_source_name(path)),
+    );
+    let Some(specifiers) = &import.specifiers else {
+        state.unsupported_import_specifier =
+            Some((import.source.value.as_str().to_string(), import.source.span));
+        return Ok(());
+    };
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            state.unsupported_import_specifier =
+                Some((import.source.value.as_str().to_string(), import.source.span));
+            return Ok(());
+        };
+        let imported = ImportedModule {
+            local_name: specifier.local.name.as_str().to_string(),
+            export_name: specifier.imported.name().as_str().to_string(),
+            path: package.entry.clone(),
+            span: specifier.span,
+        };
+        for helper in extract_relative_helper_import(graph, &imported)? {
+            state
+                .helper_sources
+                .entry(helper.name.clone())
+                .or_insert(helper.source);
+            state
+                .helper_effects
+                .entry(helper.name)
+                .or_insert(helper.summary);
+        }
+        resolve_helper_effect_callgraph(&mut state.helper_effects);
     }
     Ok(())
 }
@@ -5598,6 +5677,7 @@ fn extract_variable_declaration(
             let summary = helper_effects_from_initializer(
                 init,
                 &state.provider_bindings,
+                &state.helper_effects,
                 source,
                 source_name,
             );
@@ -5653,10 +5733,10 @@ fn extract_function_declaration(
         .with_span(function.span));
     };
     let name = identifier.name.as_str().to_string();
-    let summary = function_effects_from_function(
+    let summary = helper_effects_from_function(
         function,
         &state.provider_bindings,
-        &BTreeMap::new(),
+        &state.helper_effects,
         source,
         source_name,
     );
@@ -5948,7 +6028,9 @@ fn extract_expression_statement(
     if handler.requires_results_import && state.results_required_span.is_none() {
         state.results_required_span = Some(handler.span);
     }
-    if !handler.effects.is_empty() {
+    let helper_sources =
+        helper_sources_referenced_by_handler(&handler.emitted_source, &state.helper_sources);
+    if !handler.effects.is_empty() || !helper_sources.is_empty() {
         let providers = providers_used_by_effects(&state.provider_bindings, &handler.effects);
         if let Some((name, binding)) = providers
             .iter()
@@ -5967,7 +6049,6 @@ fn extract_expression_statement(
             "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
             )));
         }
-        let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
         handler.emitted_source = wrap_handler_with_providers_and_helpers(
             &handler.emitted_source,
             &providers,
@@ -9669,6 +9750,353 @@ fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<PathBuf>
     resolver::resolve_relative_import(from_path, specifier)
 }
 
+#[derive(Debug, Clone)]
+struct ImportedHelper {
+    name: String,
+    source: String,
+    summary: FunctionEffectSummary,
+}
+
+fn extract_relative_helper_import(
+    graph: &mut ModuleGraph,
+    imported: &ImportedModule,
+) -> Result<Vec<ImportedHelper>, Diagnostic> {
+    if graph.visiting.contains(&imported.path) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_CIRCULAR_IMPORT",
+            "circular relative imports are not supported",
+        )
+        .with_path(&imported.path)
+        .with_span(imported.span)
+        .with_hint("Keep relative helper modules acyclic."));
+    }
+
+    graph.visiting.insert(imported.path.clone());
+    let source = fs::read_to_string(&imported.path).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_INPUT",
+            format!("failed to read imported module: {error}"),
+        )
+        .with_path(&imported.path)
+    })?;
+    let source_name = graph.record_source(&imported.path, &source);
+    graph.noncrypto_hash_security_context_visible |=
+        noncrypto_hash_security_context_visible(&source);
+    graph.checksum_security_context_visible |= checksum_security_context_visible(&source);
+    let source_type = source_type_for_path(&imported.path, ParseContext::Module)?;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &source, source_type).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        graph.visiting.remove(&imported.path);
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_PARSE",
+            format!("failed to parse module: {error}"),
+        )
+        .with_path(&imported.path));
+    }
+
+    let mut helpers = Vec::<ImportedHelper>::new();
+    let mut helper_sources = BTreeMap::<String, String>::new();
+    let mut helper_effects = BTreeMap::<String, FunctionEffectSummary>::new();
+
+    for statement in &parsed.program.body {
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        let import_source = import.source.value.as_str();
+        if import_source == "sloppy" {
+            validate_module_sloppy_root_import(&imported.path, import)?;
+            continue;
+        }
+        if import_source == "sloppy/time" {
+            validate_module_sloppy_time_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_time_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/fs" {
+            validate_module_sloppy_fs_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_fs_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/crypto" {
+            validate_module_sloppy_crypto_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_crypto_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/codec" {
+            validate_module_sloppy_codec_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_codec_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/net" {
+            validate_module_sloppy_net_import(&imported.path, import)?;
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
+                        if import_specifier_is_runtime_value(import, specifier) {
+                            mark_sloppy_net_runtime_usage(
+                                &mut graph.uses_net_runtime,
+                                &mut graph.uses_http_client_runtime,
+                                specifier.imported.name().as_str(),
+                            );
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if import_source == "sloppy/os" {
+            validate_module_sloppy_os_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_os_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/workers" {
+            validate_module_sloppy_workers_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_workers_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/ffi" {
+            validate_module_sloppy_ffi_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_ffi_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/providers/sqlite" {
+            continue;
+        }
+        if import_source.starts_with("./") || import_source.starts_with("../") {
+            let nested =
+                resolve_relative_import(&imported.path, import_source).ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+                        format!("relative import \"{import_source}\" could not be resolved"),
+                    )
+                    .with_path(&imported.path)
+                    .with_span(import.source.span)
+                })?;
+            if !resolver::stays_within_source_root(&nested, &graph.entry_dir) {
+                graph.visiting.remove(&imported.path);
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
+                    "relative imports must stay within the source root",
+                )
+                .with_path(&imported.path)
+                .with_span(import.source.span));
+            }
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                            format!("unsupported import specifier \"{import_source}\""),
+                        )
+                        .with_path(&imported.path)
+                        .with_span(import.source.span));
+                    };
+                    let nested_import = ImportedModule {
+                        local_name: specifier.local.name.as_str().to_string(),
+                        export_name: specifier.imported.name().as_str().to_string(),
+                        path: nested.clone(),
+                        span: specifier.span,
+                    };
+                    for helper in extract_relative_helper_import(graph, &nested_import)? {
+                        helper_sources
+                            .entry(helper.name.clone())
+                            .or_insert(helper.source.clone());
+                        helper_effects
+                            .entry(helper.name.clone())
+                            .or_insert(helper.summary.clone());
+                        helpers.push(helper);
+                    }
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+            }
+            continue;
+        }
+        if let resolver::ImportKind::Package(package_resolution) =
+            resolver::classify_import(&imported.path, import_source)
+        {
+            graph.add_package_record(&package_resolution);
+            let package_id = program_module_id(
+                graph,
+                &package_resolution.entry,
+                Some(&package_resolution.name),
+            );
+            graph.add_dependency_module(
+                package_id.clone(),
+                package_id,
+                package_resolution.format,
+                Some(package_resolution.name.clone()),
+                Some(source_name.clone()),
+            );
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                            format!("unsupported import specifier \"{import_source}\""),
+                        )
+                        .with_path(&imported.path)
+                        .with_span(import.source.span));
+                    };
+                    let package_import = ImportedModule {
+                        local_name: specifier.local.name.as_str().to_string(),
+                        export_name: specifier.imported.name().as_str().to_string(),
+                        path: package_resolution.entry.clone(),
+                        span: specifier.span,
+                    };
+                    for helper in extract_relative_helper_import(graph, &package_import)? {
+                        helper_sources
+                            .entry(helper.name.clone())
+                            .or_insert(helper.source.clone());
+                        helper_effects
+                            .entry(helper.name.clone())
+                            .or_insert(helper.summary.clone());
+                        helpers.push(helper);
+                    }
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+            }
+            continue;
+        }
+        graph.visiting.remove(&imported.path);
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            format!("unsupported import specifier \"{import_source}\""),
+        )
+        .with_path(&imported.path)
+        .with_span(import.source.span));
+    }
+
+    let mut found = None::<ImportedHelper>;
+    for statement in &parsed.program.body {
+        let Statement::ExportNamedDeclaration(export) = statement else {
+            continue;
+        };
+        match &export.declaration {
+            Some(Declaration::FunctionDeclaration(function)) => {
+                let Some(identifier) = &function.id else {
+                    continue;
+                };
+                let export_name = identifier.name.as_str();
+                if export_name != imported.export_name {
+                    continue;
+                }
+                let Some(source_text) = source_slice(&source, function.span) else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper source could not be extracted",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let summary = helper_effects_from_function(
+                    function,
+                    &BTreeMap::new(),
+                    &helper_effects,
+                    &source,
+                    &source_name,
+                );
+                found = Some(imported_helper_with_alias(
+                    imported,
+                    export_name,
+                    source_text,
+                    summary,
+                ));
+                break;
+            }
+            Some(Declaration::VariableDeclaration(declaration)) => {
+                for declarator in &declaration.declarations {
+                    let Some(export_name) = binding_identifier(&declarator.id) else {
+                        continue;
+                    };
+                    if export_name != imported.export_name {
+                        continue;
+                    }
+                    let Some(init) = &declarator.init else {
+                        continue;
+                    };
+                    let Some(init_source) = source_slice(&source, init.span()) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper source could not be extracted",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(init.span()));
+                    };
+                    let source_text = format!("const {export_name} = {init_source};");
+                    let summary = helper_effects_from_initializer(
+                        init,
+                        &BTreeMap::new(),
+                        &helper_effects,
+                        &source,
+                        &source_name,
+                    );
+                    found = Some(imported_helper_with_alias(
+                        imported,
+                        export_name,
+                        source_text,
+                        summary,
+                    ));
+                    break;
+                }
+            }
+            _ => {}
+        }
+        if found.is_some() {
+            break;
+        }
+    }
+
+    graph.visiting.remove(&imported.path);
+    let Some(helper) = found else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_MISSING_EXPORT",
+            format!(
+                "imported module does not export \"{}\"",
+                imported.export_name
+            ),
+        )
+        .with_path(&imported.path)
+        .with_span(imported.span));
+    };
+    helpers.push(helper);
+    Ok(helpers)
+}
+
+fn imported_helper_with_alias(
+    imported: &ImportedModule,
+    export_name: &str,
+    mut source: String,
+    summary: FunctionEffectSummary,
+) -> ImportedHelper {
+    if imported.local_name != export_name {
+        source.push_str(&format!("\nconst {} = {export_name};", imported.local_name));
+    }
+    ImportedHelper {
+        name: imported.local_name.clone(),
+        source,
+        summary,
+    }
+}
+
 fn extract_relative_module(
     graph: &mut ModuleGraph,
     imported: &ImportedModule,
@@ -9732,6 +10160,8 @@ fn extract_relative_module(
     let mut duplicate_exports = BTreeSet::<String>::new();
     let extract_start = Instant::now();
     let mut module_results_imported = false;
+    let mut imported_helper_sources = BTreeMap::<String, String>::new();
+    let mut imported_helper_effects = BTreeMap::<String, FunctionEffectSummary>::new();
     for statement in &parsed.program.body {
         let Statement::ImportDeclaration(import) = statement else {
             continue;
@@ -9827,7 +10257,84 @@ fn extract_relative_module(
                 .with_path(&imported.path)
                 .with_span(import.source.span));
             }
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                            format!("unsupported import specifier \"{import_source}\""),
+                        )
+                        .with_path(&imported.path)
+                        .with_span(import.source.span));
+                    };
+                    let nested_import = ImportedModule {
+                        local_name: specifier.local.name.as_str().to_string(),
+                        export_name: specifier.imported.name().as_str().to_string(),
+                        path: nested.clone(),
+                        span: specifier.span,
+                    };
+                    for helper in extract_relative_helper_import(graph, &nested_import)? {
+                        imported_helper_sources
+                            .entry(helper.name.clone())
+                            .or_insert(helper.source);
+                        imported_helper_effects
+                            .entry(helper.name)
+                            .or_insert(helper.summary);
+                    }
+                    resolve_helper_effect_callgraph(&mut imported_helper_effects);
+                }
+            }
             continue;
+        }
+        match resolver::classify_import(&imported.path, import_source) {
+            resolver::ImportKind::Package(package_resolution) => {
+                graph.add_package_record(&package_resolution);
+                let package_id = program_module_id(
+                    graph,
+                    &package_resolution.entry,
+                    Some(&package_resolution.name),
+                );
+                graph.add_dependency_module(
+                    package_id.clone(),
+                    package_id,
+                    package_resolution.format,
+                    Some(package_resolution.name.clone()),
+                    Some(source_name.clone()),
+                );
+                if let Some(specifiers) = &import.specifiers {
+                    for specifier in specifiers {
+                        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier
+                        else {
+                            return Err(Diagnostic::new(
+                                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                                format!("unsupported import specifier \"{import_source}\""),
+                            )
+                            .with_path(&imported.path)
+                            .with_span(import.source.span));
+                        };
+                        let package_import = ImportedModule {
+                            local_name: specifier.local.name.as_str().to_string(),
+                            export_name: specifier.imported.name().as_str().to_string(),
+                            path: package_resolution.entry.clone(),
+                            span: specifier.span,
+                        };
+                        for helper in extract_relative_helper_import(graph, &package_import)? {
+                            imported_helper_sources
+                                .entry(helper.name.clone())
+                                .or_insert(helper.source);
+                            imported_helper_effects
+                                .entry(helper.name)
+                                .or_insert(helper.summary);
+                        }
+                        resolve_helper_effect_callgraph(&mut imported_helper_effects);
+                    }
+                }
+                continue;
+            }
+            resolver::ImportKind::NativeAddonUnsupported(package_resolution) => {
+                graph.add_package_record(&package_resolution);
+            }
+            _ => {}
         }
         if import_source != "sloppy/providers/sqlite" {
             return Err(Diagnostic::new(
@@ -9866,6 +10373,8 @@ fn extract_relative_module(
                     &source_name,
                     export_name,
                     function,
+                    &imported_helper_sources,
+                    &imported_helper_effects,
                 )?;
                 if !module_results_imported {
                     if let Some(route) = routes
@@ -9938,6 +10447,8 @@ fn extract_module_function_routes(
     source_name: &str,
     module_name: &str,
     function: &oxc_ast::ast::Function<'_>,
+    imported_helper_sources: &BTreeMap<String, String>,
+    imported_helper_effects: &BTreeMap<String, FunctionEffectSummary>,
 ) -> Result<Vec<Route>, Diagnostic> {
     if function.params.items.len() != 1 || function.params.rest.is_some() {
         return Err(Diagnostic::new(
@@ -9971,10 +10482,41 @@ fn extract_module_function_routes(
 
     let mut groups = BTreeMap::<String, RouteGroupState>::new();
     let mut providers = BTreeMap::<String, ProviderBinding>::new();
+    let mut helper_sources = imported_helper_sources.clone();
+    let mut helper_effects = imported_helper_effects.clone();
     let mut routes = Vec::new();
 
     for statement in &body.statements {
         match statement {
+            Statement::FunctionDeclaration(function) => {
+                let Some(identifier) = &function.id else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                        "function module helper declarations must be named",
+                    )
+                    .with_path(path)
+                    .with_span(function.span));
+                };
+                let Some(helper_source) = source_slice(source, function.span) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                        "function module helper source could not be extracted",
+                    )
+                    .with_path(path)
+                    .with_span(function.span));
+                };
+                let name = identifier.name.as_str().to_string();
+                let summary = helper_effects_from_function(
+                    function,
+                    &providers,
+                    &helper_effects,
+                    source,
+                    source_name,
+                );
+                helper_sources.insert(name.clone(), helper_source);
+                helper_effects.insert(name, summary);
+                resolve_helper_effect_callgraph(&mut helper_effects);
+            }
             Statement::VariableDeclaration(declaration) => {
                 for declarator in &declaration.declarations {
                     let Some(name) = binding_identifier(&declarator.id) else {
@@ -10020,10 +10562,45 @@ fn extract_module_function_routes(
                                 middleware: Vec::new(),
                             },
                         );
+                    } else if helper_initializer(init).is_some() {
+                        let Some(init_source) = source_slice(source, init.span()) else {
+                            return Err(Diagnostic::new(
+                                "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                                "function module helper source could not be extracted",
+                            )
+                            .with_path(path)
+                            .with_span(init.span()));
+                        };
+                        let helper_source = format!("const {name} = {init_source};");
+                        let summary = helper_effects_from_initializer(
+                            init,
+                            &providers,
+                            &helper_effects,
+                            source,
+                            source_name,
+                        );
+                        helper_sources.insert(name.to_string(), helper_source);
+                        helper_effects.insert(name.to_string(), summary);
+                        resolve_helper_effect_callgraph(&mut helper_effects);
                     }
                 }
             }
             Statement::ExpressionStatement(statement) => {
+                let mut module_app_state = AppState::new();
+                module_app_state.app_vars.insert(app_name.to_string());
+                if let Some(mut health_routes) = app_map_health_checks_call(
+                    path,
+                    source,
+                    source_name,
+                    &statement.expression,
+                    &module_app_state,
+                )? {
+                    for route in &mut health_routes {
+                        route.module = Some(module_name.to_string());
+                    }
+                    routes.extend(health_routes);
+                    continue;
+                }
                 let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let static_strings = StaticStringEnv::default();
@@ -10065,12 +10642,11 @@ fn extract_module_function_routes(
                 }
 
                 let schema_names = BTreeSet::new();
-                let helper_effects = BTreeMap::new();
                 let handler_context = HandlerExtractionContext {
                     route_pattern: &full_pattern,
                     source,
                     source_name,
-                    allow_data_handler_body: false,
+                    allow_data_handler_body: !providers.is_empty(),
                     schema_names: &schema_names,
                     provider_bindings: &providers,
                     helper_effects: &helper_effects,
@@ -10085,7 +10661,12 @@ fn extract_module_function_routes(
                     ));
                 };
 
-                if !handler.effects.is_empty() {
+                let referenced_helper_sources =
+                    helper_sources_referenced_by_handler(&handler.emitted_source, &helper_sources);
+                if !handler.effects.is_empty()
+                    || !handler_context.helper_effects.is_empty()
+                    || !referenced_helper_sources.is_empty()
+                {
                     let used_providers = providers_used_by_effects(&providers, &handler.effects);
                     if let Some((name, binding)) = used_providers
                         .iter()
@@ -10104,9 +10685,10 @@ fn extract_module_function_routes(
                             "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
                         )));
                     }
-                    handler.emitted_source = wrap_module_handler_with_providers(
+                    handler.emitted_source = wrap_handler_with_providers_and_helpers(
                         &handler.emitted_source,
                         &used_providers,
+                        &referenced_helper_sources,
                         handler.is_async,
                     );
                 }
@@ -10155,16 +10737,59 @@ fn app_provider_call(expression: &Expression<'_>, app_name: &str) -> Option<Prov
     database_provider_binding_from_token(token)
 }
 
-fn wrap_module_handler_with_providers(
-    handler_source: &str,
-    providers: &BTreeMap<String, ProviderBinding>,
-    is_async: bool,
-) -> String {
-    wrap_handler_with_providers_and_helpers(handler_source, providers, &[], is_async)
-}
-
 fn provider_has_generated_runtime_bridge(binding: &ProviderBinding) -> bool {
     binding.capability_kind == "database" && binding.provider == "sqlite"
+}
+
+fn helper_sources_referenced_by_handler(
+    handler_source: &str,
+    helper_sources: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut selected = BTreeSet::<String>::new();
+    let mut pending_sources = vec![handler_source.to_string()];
+    while let Some(source) = pending_sources.pop() {
+        for (name, helper_source) in helper_sources {
+            if selected.contains(name) || !source_contains_identifier(&source, name) {
+                continue;
+            }
+            selected.insert(name.clone());
+            pending_sources.push(helper_source.clone());
+        }
+    }
+    selected
+        .into_iter()
+        .filter_map(|name| helper_sources.get(&name).cloned())
+        .collect()
+}
+
+fn source_contains_identifier(source: &str, identifier: &str) -> bool {
+    if identifier.is_empty() {
+        return false;
+    }
+    let source_bytes = source.as_bytes();
+    let identifier_bytes = identifier.as_bytes();
+    if identifier_bytes.len() > source_bytes.len() {
+        return false;
+    }
+    for index in 0..=source_bytes.len() - identifier_bytes.len() {
+        if &source_bytes[index..index + identifier_bytes.len()] != identifier_bytes {
+            continue;
+        }
+        let before = index
+            .checked_sub(1)
+            .and_then(|before| source_bytes.get(before));
+        let after = source_bytes.get(index + identifier_bytes.len());
+        if before.is_none_or(|byte| !is_js_identifier_byte(*byte))
+            && after.is_none_or(|byte| !is_js_identifier_byte(*byte))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_js_identifier_byte(byte: u8) -> bool {
+    byte == b'$' || byte == b'_' || byte.is_ascii_alphanumeric()
 }
 
 fn wrap_handler_with_providers_and_helpers(
@@ -10804,6 +11429,7 @@ fn handler_from_argument(
                 || effects.unknown_provider_usage
                 || (!context.allow_data_handler_body
                     && effects.effects.is_empty()
+                    && effects.helper_calls.is_empty()
                     && !handler_body_is_supported_arrow(function, context.schema_names))
             {
                 return None;
@@ -10858,6 +11484,7 @@ fn handler_from_argument(
                 || effects.unknown_provider_usage
                 || (!context.allow_data_handler_body
                     && effects.effects.is_empty()
+                    && effects.helper_calls.is_empty()
                     && !handler_body_is_supported_function(function, context.schema_names))
             {
                 return None;

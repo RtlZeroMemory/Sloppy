@@ -1,0 +1,47 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "assets": [],
+    "compatibilityFindings": [],
+    "modules": [
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
+        "imports": [],
+        "includedBy": "users.ts",
+        "package": "validator-lite",
+        "resolvedImports": [],
+        "source": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js"
+      }
+    ],
+    "nodeBuiltins": [],
+    "packages": [
+      {
+        "entry": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
+        "format": "esm",
+        "name": "validator-lite",
+        "packageJson": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/package.json",
+        "root": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite",
+        "source": "installed",
+        "version": "0.0.0"
+      }
+    ],
+    "resolver": {
+      "conditions": [
+        "sloppy",
+        "import",
+        "require",
+        "default"
+      ],
+      "profiles": [
+        "sloppy-stdlib",
+        "relative-source",
+        "installed-packages",
+        "node-compat-shims"
+      ]
+    },
+    "schemaVersion": 1
+  }
+}
