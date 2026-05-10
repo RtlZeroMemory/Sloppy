@@ -281,7 +281,8 @@ import { unsafeFfi as ffi, t } from "sloppy/ffi";
 
 const native = ffi.library("ffi-test", {
   addI32: ffi.fn(t.i32, [t.i32, t.i32], { symbol: "sloppy_ffi_add_i32", convention: "cdecl" }),
-  defaulted: ffi.fn(t.ntstatus, [t.handle], { symbol: "sloppy_ffi_defaulted", callback: false })
+  defaulted: ffi.fn(t.ntstatus, [t.handle], { symbol: "sloppy_ffi_defaulted", callback: false }),
+  winFlag: ffi.fn(t.bool32, [t.bool32], { symbol: "sloppy_ffi_win_flag" })
 }, { convention: "stdcall" });
 const Point = ffi.struct("Point", { x: t.i32, y: t.i32 }, { layout: "sequential", pack: 4 });
 
@@ -343,6 +344,11 @@ export default function main() {
     assert_eq!(
         plan["native"]["ffi"][0]["functions"][1]["parameters"],
         serde_json::json!(["handle"])
+    );
+    assert_eq!(plan["native"]["ffi"][0]["functions"][2]["return"], "bool32");
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][2]["parameters"],
+        serde_json::json!(["bool32"])
     );
     assert_eq!(
         plan["native"]["ffi"][0]["functions"][0]["source"]["path"],
@@ -525,6 +531,64 @@ export default function main() {
     let error =
         super::build(&input, &out_dir, &CompileOptions::new()).expect_err("callbacks should fail");
     assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_variadic_functions() {
+    let root = fixture_temp_dir("program-ffi-variadic");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  printf: ffi.fn(t.i32, [t.cstring], { variadic: true })
+});
+
+export default function main() {
+  return native.printf("ok");
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("variadic functions should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_VARIADIC");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_struct_by_value_function_types() {
+    let root = fixture_temp_dir("program-ffi-struct-by-value");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const Point = ffi.struct("Point", { x: t.i32, y: t.i32 });
+const native = ffi.library("ffi-test", {
+  byValue: ffi.fn(t.i32, [Point])
+});
+
+export default function main() {
+  void Point;
+  return native.byValue({ x: 1, y: 2 });
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("struct-by-value function types should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_INVALID_TYPE");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }

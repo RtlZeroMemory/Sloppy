@@ -61,6 +61,7 @@
     { "name": "time-interval-schedule", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "timer runtime smoke is V8-gated" },
     { "name": "users-api-sqlite", "kind": "web", "entry": "app.js", "tier": "pr", "prSmoke": true, "package": true },
     { "name": "validation-errors", "kind": "web", "entry": "app.js", "tier": "pr", "prSmoke": true },
+    { "name": "web-dynamic-routes", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "covered by static example API-shape tests" },
     { "name": "workers-background-service", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "worker runtime smoke is V8-gated" },
     { "name": "workers-js-isolate", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "worker runtime smoke is V8-gated" },
     { "name": "workers-shutdown", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "worker runtime smoke is V8-gated" },

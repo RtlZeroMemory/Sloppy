@@ -3046,6 +3046,17 @@ fn extract_ffi_function_declaration(
         .with_path(context.path)
         .with_span(call.span));
     }
+    if options
+        .and_then(|object| object_bool_property_value(object, "variadic"))
+        .unwrap_or(false)
+    {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_FFI_UNSUPPORTED_VARIADIC",
+            "FFI variadic functions are not supported",
+        )
+        .with_path(context.path)
+        .with_span(call.span));
+    }
     let symbol = options
         .and_then(|object| object_string_property_value(object, "symbol"))
         .unwrap_or(function_name);
@@ -3292,6 +3303,7 @@ fn ffi_type_supported(name: &str) -> bool {
         name,
         "void"
             | "bool"
+            | "bool32"
             | "i8"
             | "u8"
             | "i16"
@@ -3329,6 +3341,7 @@ fn ffi_struct_field_type_supported(name: &str) -> bool {
     matches!(
         name,
         "bool"
+            | "bool32"
             | "i8"
             | "u8"
             | "i16"

@@ -28,74 +28,91 @@ int main(int argc, char** argv)
                                     SL_PLAN_FFI_TYPE_U8};
     SlPlanFfiType write_u32_params[1] = {SL_PLAN_FFI_TYPE_PTR};
     SlPlanFfiType point_sum_params[1] = {SL_PLAN_FFI_TYPE_PTR};
-    SlPlanFfiFunction functions[8] = {{.id = sl_str_from_cstr("ffi:ffi-test:addI32"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("addI32"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_add_i32"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_I32,
-                                       .parameters = add_i32_params,
-                                       .parameter_count = 2U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:addU64"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("addU64"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_add_u64"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_U64,
-                                       .parameters = add_u64_params,
-                                       .parameter_count = 2U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:addF64"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("addF64"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_add_f64"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_F64,
-                                       .parameters = add_f64_params,
-                                       .parameter_count = 2U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:strlen"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("strlen"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_strlen"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_U32,
-                                       .parameters = strlen_params,
-                                       .parameter_count = 1U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:sumBytes"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("sumBytes"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_sum_bytes"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_U32,
-                                       .parameters = sum_bytes_params,
-                                       .parameter_count = 2U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:fill"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("fill"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_fill"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_VOID,
-                                       .parameters = fill_params,
-                                       .parameter_count = 3U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:writeU32"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("writeU32"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_write_u32"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_VOID,
-                                       .parameters = write_u32_params,
-                                       .parameter_count = 1U},
-                                      {.id = sl_str_from_cstr("ffi:ffi-test:pointSum"),
-                                       .library = sl_str_from_cstr("ffi-test"),
-                                       .name = sl_str_from_cstr("pointSum"),
-                                       .symbol = sl_str_from_cstr("sloppy_ffi_point_sum"),
-                                       .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
-                                       .return_type = SL_PLAN_FFI_TYPE_I32,
-                                       .parameters = point_sum_params,
-                                       .parameter_count = 1U}};
+    SlPlanFfiFunction functions[10] = {
+        {.id = sl_str_from_cstr("ffi:ffi-test:addI32"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("addI32"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_add_i32"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_I32,
+         .parameters = add_i32_params,
+         .parameter_count = 2U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:addU64"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("addU64"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_add_u64"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_U64,
+         .parameters = add_u64_params,
+         .parameter_count = 2U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:addF64"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("addF64"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_add_f64"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_F64,
+         .parameters = add_f64_params,
+         .parameter_count = 2U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:strlen"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("strlen"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_strlen"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_U32,
+         .parameters = strlen_params,
+         .parameter_count = 1U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:sumBytes"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("sumBytes"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_sum_bytes"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_U32,
+         .parameters = sum_bytes_params,
+         .parameter_count = 2U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:fill"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("fill"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_fill"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_VOID,
+         .parameters = fill_params,
+         .parameter_count = 3U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:writeU32"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("writeU32"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_write_u32"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_VOID,
+         .parameters = write_u32_params,
+         .parameter_count = 1U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:pointSum"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("pointSum"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_point_sum"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_I32,
+         .parameters = point_sum_params,
+         .parameter_count = 1U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:nullPointer"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("nullPointer"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_null_pointer"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_PTR,
+         .parameters = NULL,
+         .parameter_count = 0U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:staticPointPointer"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("staticPointPointer"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_static_point_pointer"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_PTR,
+         .parameters = NULL,
+         .parameter_count = 0U}};
     SlPlanFfiLibrary library = {.name = sl_str_from_cstr("ffi-test"),
                                 .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
                                 .functions = functions,
-                                .function_count = 8U};
+                                .function_count = 10U};
     SlPlanCapability capability = {.token = sl_str_from_cstr("ffi"),
                                    .kind = sl_str_from_cstr("ffi"),
                                    .access = sl_str_from_cstr("use")};
@@ -123,18 +140,26 @@ int main(int argc, char** argv)
         "sumBytes:{kind:'ffi.fn',returnType:'u32',parameters:['bytes','usize']},"
         "fill:{kind:'ffi.fn',returnType:'void',parameters:['mutBytes','usize','u8']},"
         "writeU32:{kind:'ffi.fn',returnType:'void',parameters:['ptr']},"
-        "pointSum:{kind:'ffi.fn',returnType:'i32',parameters:['ptr']}"
+        "pointSum:{kind:'ffi.fn',returnType:'i32',parameters:['ptr']},"
+        "nullPointer:{kind:'ffi.fn',returnType:'ptr',parameters:[]},"
+        "staticPointPointer:{kind:'ffi.fn',returnType:'ptr',parameters:[]}"
         "});"
         "const ref = ffi.ref('u32', 0);"
         "const bytes = new Uint8Array([1, 2, 3, 4]);"
+        "const writable = new Uint8Array([0, 0, 0]);"
         "const mut = ffi.buffer(3);"
         "const Point = ffi.struct('Point', { x: 'i32', y: 'i32' }, { layout: 'sequential' });"
         "const point = Point.alloc({ x: 19, y: 23 });"
         "lib.fill(mut, 3, 7);"
+        "lib.fill(writable, writable.length, 9);"
         "lib.writeU32(ref);"
+        "const nullPointer = lib.nullPointer();"
+        "const nativePointer = lib.staticPointPointer();"
         "return [lib.addI32(40,2), String(lib.addU64(40n,2n)), lib.addF64(40,2.5),"
         "lib.strlen('sloppy'), lib.sumBytes(bytes, bytes.length),"
-        "Array.from(mut.read()).join(','), ref.get(), lib.pointSum(point)].join(':');"
+        "Array.from(mut.read()).join(','), Array.from(writable).join(','), ref.get(),"
+        "lib.pointSum(point), nullPointer === null, typeof nativePointer, nativePointer.isNull(),"
+        "typeof nativePointer.dispose, lib.pointSum(nativePointer)].join(':');"
         "};"
         "globalThis.ffiNegative = function () {"
         "const ffi = __sloppy.ffi;"
@@ -152,7 +177,16 @@ int main(int argc, char** argv)
         "capture(() => lib.addI32(2147483648, 0), 'SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE'),"
         "capture(() => lib.strlen('bad\\u0000text'), 'SLOPPY_E_FFI_STRING_NUL'),"
         "capture(() => { const ref = ffi.ref('u32', 1); ref.dispose(); lib.writeU32(ref); },"
-        "'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE')"
+        "'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE'),"
+        "capture(() => { const buffer = ffi.buffer(4); buffer.dispose(); lib.writeU32(buffer); },"
+        "'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE'),"
+        "capture(() => { const Point = ffi.struct('Point', { x: 'i32', y: 'i32' });"
+        "const point = Point.alloc({ x: 1, y: 2 }); point.dispose(); lib.writeU32(point); },"
+        "'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE'),"
+        "capture(() => { const ref = ffi.ref('u32', 1); ref.dispose(); ref.dispose(); },"
+        "'NO_THROW'),"
+        "capture(() => ffi.cstringBuffer('bad\\u0000text'), 'SLOPPY_E_FFI_STRING_NUL'),"
+        "capture(() => ffi.utf16Buffer('bad\\u0000text'), 'SLOPPY_E_FFI_STRING_NUL')"
         "].join(':');"
         "};";
 
@@ -209,7 +243,10 @@ int main(int argc, char** argv)
         return 6;
     }
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("42:42:42.5:6:10:7,7,7:3737844653:42")))
+        !sl_str_equal(
+            result.text,
+            sl_str_from_cstr("42:42:42.5:6:10:7,7,7:9,9,9:3737844653:42:true:object:false:"
+                             "undefined:42")))
     {
         sl_engine_destroy(engine);
         fprintf(stderr, "unexpected FFI smoke result\n");
@@ -227,7 +264,10 @@ int main(int argc, char** argv)
                       sl_str_from_cstr(
                           "SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT:SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:"
                           "SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE:SLOPPY_E_FFI_STRING_NUL:"
-                          "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE")))
+                          "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:"
+                          "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:"
+                          "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:NO_THROW:"
+                          "SLOPPY_E_FFI_STRING_NUL:SLOPPY_E_FFI_STRING_NUL")))
     {
         sl_engine_destroy(engine);
         fprintf(stderr, "unexpected FFI negative result\n");

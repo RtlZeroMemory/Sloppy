@@ -23,14 +23,14 @@ the call site and in code review.
 `t` exports frozen type descriptors:
 
 - integers: `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `isize`, `usize`
-- scalars: `void`, `bool`, `f32`, `f64`
+- scalars: `void`, `bool`, `bool32`, `f32`, `f64`
 - pointers and handles: `ptr`, `handle`, `hwnd`, `hmodule`
 - strings and bytes: `cstring`, `lpcstr`, `utf16`, `lpcwstr`, `bytes`, `mutBytes`
 - Windows readability alias: `ntstatus`
 
 Aliases normalize to their ABI type: `handle`, `hwnd`, and `hmodule` are
-pointer-sized handles; `ntstatus` is `i32`; `lpcstr` is `cstring`; `lpcwstr`
-is `utf16`.
+pointer-sized handles; `bool32` and `ntstatus` are `i32`; `lpcstr` is
+`cstring`; `lpcwstr` is `utf16`.
 
 ## Library Declarations
 
@@ -68,7 +68,8 @@ and struct-by-value signatures are rejected.
 Integer arguments are range checked. `i64` and `u64` require `BigInt`; smaller
 integer types use finite integer numbers. `isize` and `usize` accept safe
 integer numbers or `BigInt` values in range. `f32` and `f64` use JavaScript
-numbers. `bool` uses JavaScript booleans.
+numbers. `bool` uses JavaScript booleans and maps to C `_Bool` / one-byte
+`bool`. Do not use `t.bool` for WinAPI `BOOL`; use `t.bool32` or `t.i32`.
 
 `cstring` converts a JavaScript string to a NUL-terminated UTF-8 temporary for
 the duration of the call. `utf16` does the same with UTF-16 code units.
@@ -82,6 +83,9 @@ Pointer-like parameters accept `null` or Sloppy-owned FFI resources such as
 refs, buffers, C string buffers, UTF-16 buffers, and struct instances. Raw
 native addresses are not exposed as JavaScript numbers.
 
+Returned non-null `ptr` values are borrowed `NativePointer` objects with
+`isNull()`. They can be passed back to `ptr` parameters, but they do not expose
+arithmetic, numeric addresses, or `dispose()` because ownership is unknown.
 Returned `cstring`, `utf16`, `bytes`, and `mutBytes` are rejected in v1. Return
 strings or buffers through caller-owned out parameters instead.
 

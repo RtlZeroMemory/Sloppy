@@ -1534,7 +1534,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_FFI_CALL_FAILED; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1542,9 +1542,8 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA + 1U)),
-            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    if (expect_str_equal(sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_FFI_CALL_FAILED + 1U)),
+                         sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
     }

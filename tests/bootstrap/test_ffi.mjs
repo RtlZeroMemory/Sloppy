@@ -88,6 +88,8 @@ globalThis.__sloppy = {
 
 assert.equal(t.i32.kind, "ffi.type");
 assert.equal(t.ntstatus.name, "ntstatus");
+assert.equal(t.bool.name, "bool");
+assert.equal(t.bool32.name, "bool32");
 
 const add = unsafeFfi.fn(t.i32, [t.i32, t.i32], { symbol: "sloppy_ffi_add_i32" });
 assert.deepEqual(add, {

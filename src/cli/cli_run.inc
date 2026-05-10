@@ -917,7 +917,13 @@ static bool sl_run_sha256_file_hex(const char* path, char out[sizeof("sha256:") 
         return false;
     }
 
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        file = NULL;
+    }
+#else
     file = fopen(path, "rb");
+#endif
     if (file == NULL) {
         return false;
     }
@@ -1256,6 +1262,33 @@ static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capa
     status = sl_checked_add_size(capacity, plan->required_feature_count, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+
+    for (size_t library_index = 0U; library_index < plan->ffi_library_count; library_index += 1U) {
+        status = sl_checked_add_size(capacity, 1U, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_checked_mul_size(plan->ffi_libraries[library_index].function_count, 4U, &addend);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_checked_add_size(capacity, addend, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    for (size_t struct_index = 0U; struct_index < plan->ffi_struct_count; struct_index += 1U) {
+        status = sl_checked_add_size(capacity, 2U, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_checked_add_size(capacity, plan->ffi_structs[struct_index].field_count, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
     *out_capacity = capacity;
@@ -1623,11 +1656,15 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path,
                            const char* package_path, SlRunApp* app)
 {
     char app_js_path[1024];
+    bool is_package = package_path != NULL;
 
-    if (sl_run_load_artifacts(artifacts_path, "sloppy run", app, true) != 0) {
+    if (sl_run_load_artifacts(artifacts_path, "sloppy run", app, !is_package) != 0) {
         return 1;
     }
-    if (package_path != NULL && sl_run_load_package_native_overrides(app, package_path) != 0) {
+    if (is_package && sl_run_load_package_native_overrides(app, package_path) != 0) {
+        return 1;
+    }
+    if (is_package && sl_run_validate_runtime_features(app) != 0) {
         return 1;
     }
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
@@ -2360,9 +2397,6 @@ static bool sl_run_package_native_hash_matches(const char* path, yyjson_val* sha
 {
     SlStr expected = {0};
 
-    if (sha256 == NULL || yyjson_is_null(sha256)) {
-        return true;
-    }
     if (path == NULL || !yyjson_is_str(sha256)) {
         return false;
     }

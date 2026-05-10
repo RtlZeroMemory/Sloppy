@@ -168,7 +168,7 @@ static int sl_package_copy_native_libraries(const char* package_dir, const char*
 
 static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder,
                                                         const char* artifact_dir_name,
-                                                        const char* config_dir, SlRunApp* app,
+                                                        const char* config_dir, const SlRunApp* app,
                                                         const SlSloppyRunConfig* project_config)
 {
     if (builder == NULL || app == NULL || app->plan.ffi_library_count == 0U) {
@@ -221,7 +221,10 @@ static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder
             return false;
         }
         for (size_t leaf_index = 0U; leaf_index < leaf.length; leaf_index += 1U) {
-            char ch = leaf.ptr[leaf_index] == '\\' ? '/' : leaf.ptr[leaf_index];
+            char ch = leaf.ptr[leaf_index];
+            if (ch == '\\') {
+                ch = '/';
+            }
             if (!sl_status_is_ok(sl_string_builder_append_char(&native_path_builder, ch))) {
                 return false;
             }
@@ -243,7 +246,8 @@ static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder
 }
 
 static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
-                                     SlRunApp* app, const SlSloppyRunConfig* project_config)
+                                     const char* config_dir, const SlRunApp* app,
+                                     const SlSloppyRunConfig* project_config)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
     unsigned char manifest_storage[SL_PACKAGE_MANIFEST_BYTES];
@@ -399,7 +403,7 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         return 1;
     }
 
-    if (sl_package_write_manifest(package_dir, "artifacts", app, project_config) != 0) {
+    if (sl_package_write_manifest(package_dir, "artifacts", config_dir, app, project_config) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }

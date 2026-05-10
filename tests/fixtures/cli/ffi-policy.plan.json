@@ -22,6 +22,8 @@
     "id": "cli-ffi-test-map",
     "hash": "test-only"
   },
+  "handlers": [],
+  "routes": [],
   "capabilities": [
     {
       "token": "ffi",

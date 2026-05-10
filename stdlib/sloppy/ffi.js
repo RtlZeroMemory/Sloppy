@@ -1,6 +1,7 @@
 const TYPE_NAMES = Object.freeze([
     "void",
     "bool",
+    "bool32",
     "i8",
     "u8",
     "i16",

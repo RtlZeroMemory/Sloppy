@@ -138,6 +138,11 @@ SlStatus sl_plan_ffi_type_from_str(SlStr text, SlPlanFfiType* out)
     else if (sl_str_equal(text, sl_str_from_cstr("bool"))) {
         *out = SL_PLAN_FFI_TYPE_BOOL;
     }
+    else if (sl_str_equal(text, sl_str_from_cstr("bool32")) ||
+             sl_str_equal(text, sl_str_from_cstr("win.BOOL")))
+    {
+        *out = SL_PLAN_FFI_TYPE_I32;
+    }
     else if (sl_str_equal(text, sl_str_from_cstr("i8"))) {
         *out = SL_PLAN_FFI_TYPE_I8;
     }

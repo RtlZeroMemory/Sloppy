@@ -220,11 +220,11 @@ static void sl_cli_capabilities_emit_json_declared(const SlCliCapability* capabi
 
 static void sl_cli_capabilities_emit_text_declared(const SlCliCapability* capability)
 {
-    printf("PLAN  %.*s  %.*s  %.*s  declared  ", (int)capability->token.length,
-           capability->token.ptr, (int)capability->kind.length, capability->kind.ptr,
-           (int)capability->access.length, capability->access.ptr);
+    printf("PLAN  %.*s  %.*s  %.*s  declared", (int)capability->token.length, capability->token.ptr,
+           (int)capability->kind.length, capability->kind.ptr, (int)capability->access.length,
+           capability->access.ptr);
     if (!sl_cli_span_empty(capability->provider)) {
-        printf("%.*s", (int)capability->provider.length, capability->provider.ptr);
+        printf("  %.*s", (int)capability->provider.length, capability->provider.ptr);
     }
     printf("\n");
 }

@@ -252,7 +252,10 @@ static int test_native_ffi_metadata_parses_typed_libraries_and_structs(void)
         "\"native\":{\"ffi\":[{\"name\":\"ffi-test\",\"convention\":\"system\","
         "\"functions\":[{\"id\":\"ffi:ffi-test:addI32\",\"name\":\"addI32\","
         "\"symbol\":\"sloppy_ffi_add_i32\",\"convention\":\"system\",\"return\":\"i32\","
-        "\"parameters\":[\"i32\",\"i32\"]}]}],"
+        "\"parameters\":[\"i32\",\"i32\"]},"
+        "{\"id\":\"ffi:ffi-test:enabled\",\"name\":\"enabled\","
+        "\"symbol\":\"sloppy_ffi_enabled\",\"convention\":\"system\",\"return\":\"bool32\","
+        "\"parameters\":[\"win.BOOL\"]}]}],"
         "\"ffiStructs\":[{\"name\":\"Point\",\"layout\":\"sequential\",\"pack\":4,"
         "\"fields\":[{\"name\":\"x\",\"type\":\"i32\"},"
         "{\"name\":\"y\",\"type\":\"i32\"}]}]}}",
@@ -261,7 +264,7 @@ static int test_native_ffi_metadata_parses_typed_libraries_and_structs(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
         return 1;
     }
-    if (plan.ffi_library_count != 1U || plan.ffi_libraries[0].function_count != 1U ||
+    if (plan.ffi_library_count != 1U || plan.ffi_libraries[0].function_count != 2U ||
         !sl_str_equal(plan.ffi_libraries[0].name, sl_str_from_cstr("ffi-test")) ||
         plan.ffi_libraries[0].functions[0].return_type != SL_PLAN_FFI_TYPE_I32 ||
         plan.ffi_libraries[0].functions[0].parameter_count != 2U ||
@@ -269,6 +272,12 @@ static int test_native_ffi_metadata_parses_typed_libraries_and_structs(void)
         plan.ffi_libraries[0].functions[0].parameters[1] != SL_PLAN_FFI_TYPE_I32)
     {
         return 2;
+    }
+    if (plan.ffi_libraries[0].functions[1].return_type != SL_PLAN_FFI_TYPE_I32 ||
+        plan.ffi_libraries[0].functions[1].parameter_count != 1U ||
+        plan.ffi_libraries[0].functions[1].parameters[0] != SL_PLAN_FFI_TYPE_I32)
+    {
+        return 4;
     }
     if (plan.ffi_struct_count != 1U || plan.ffi_structs[0].field_count != 2U ||
         !sl_str_equal(plan.ffi_structs[0].name, sl_str_from_cstr("Point")) ||

@@ -26,7 +26,8 @@ enum class FfiResourceKind
     CString,
     Utf16,
     Struct,
-    StructLayout
+    StructLayout,
+    NativePointer
 };
 
 enum class FfiMarshalError
@@ -49,6 +50,7 @@ struct SlV8FfiResource
     SlPlanFfiType type = SL_PLAN_FFI_TYPE_PTR;
     std::vector<unsigned char> bytes;
     std::vector<FfiStructField> fields;
+    void* native_pointer = nullptr;
     size_t byte_length = 0U;
     bool disposed = false;
 };
@@ -147,7 +149,8 @@ SlV8FfiResource* ffi_resource_from_value(v8::Isolate* isolate, v8::Local<v8::Val
     {
         return nullptr;
     }
-    return static_cast<SlV8FfiResource*>(private_value.As<v8::External>()->Value());
+    return static_cast<SlV8FfiResource*>(
+        private_value.As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
 }
 
 SlV8FfiResource* ffi_new_resource(SlV8Engine* backend, FfiResourceKind kind)
@@ -167,9 +170,14 @@ bool ffi_set_resource(v8::Isolate* isolate, v8::Local<v8::Context> context,
     v8::Local<v8::Private> key;
     return ffi_get_private(isolate, "sloppy.ffi.resource", &key) &&
            object
-               ->SetPrivate(context, key, v8::External::New(isolate, static_cast<void*>(resource)))
+               ->SetPrivate(context, key,
+                            v8::External::New(isolate, static_cast<void*>(resource),
+                                              v8::kExternalPointerTypeTagDefault))
                .FromMaybe(false);
 }
+
+bool ffi_make_resource_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              SlV8FfiResource* resource, v8::Local<v8::Object>* out);
 
 bool ffi_string_value(v8::Isolate* isolate, v8::Local<v8::Value> value, std::string* out)
 {
@@ -440,9 +448,16 @@ bool ffi_pointer_from_value(v8::Isolate* isolate, v8::Local<v8::Value> value, vo
         return true;
     }
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, value);
-    if (resource == nullptr || resource->disposed || resource->bytes.empty() ||
+    if (resource == nullptr || resource->disposed ||
         resource->kind == FfiResourceKind::StructLayout)
     {
+        return false;
+    }
+    if (resource->kind == FfiResourceKind::NativePointer) {
+        *out = resource->native_pointer;
+        return true;
+    }
+    if (resource->bytes.empty()) {
         return false;
     }
     *out = resource->bytes.data();
@@ -775,11 +790,11 @@ bool ffi_marshal_arg(v8::Isolate* isolate, const SlFfiFunction* function, size_t
         if (*utf16 == nullptr) {
             return false;
         }
-        for (int i = 0; i < utf16.length(); i += 1) {
-            if ((*utf16)[i] == 0U) {
+        for (uint32_t i = 0; i < utf16.length(); i += 1U) {
+            if ((*utf16)[static_cast<int>(i)] == 0U) {
                 return false;
             }
-            storage->utf16.push_back(static_cast<uint16_t>((*utf16)[i]));
+            storage->utf16.push_back(static_cast<uint16_t>((*utf16)[static_cast<int>(i)]));
         }
         storage->utf16.push_back(0U);
         storage->value.ptr = storage->utf16.data();
@@ -878,8 +893,8 @@ FfiMarshalError ffi_marshal_error_for_value(v8::Isolate* isolate, SlPlanFfiType 
         if (value->IsString()) {
             v8::String::Value utf16(isolate, value);
             if (*utf16 != nullptr) {
-                for (int i = 0; i < utf16.length(); i += 1) {
-                    if ((*utf16)[i] == 0U) {
+                for (uint32_t i = 0; i < utf16.length(); i += 1U) {
+                    if ((*utf16)[static_cast<int>(i)] == 0U) {
                         return FfiMarshalError::StringNul;
                     }
                 }
@@ -940,7 +955,27 @@ v8::Local<v8::Value> ffi_return_value(v8::Isolate* isolate, const SlFfiFunction*
         if (result->value.ptr == nullptr) {
             return v8::Null(isolate);
         }
-        return v8::Undefined(isolate);
+        {
+            SlV8Engine* backend = ffi_backend(isolate);
+            v8::Local<v8::Context> context = isolate->GetCurrentContext();
+            v8::Local<v8::Object> object;
+            SlV8FfiResource* resource =
+                backend == nullptr ? nullptr
+                                   : ffi_new_resource(backend, FfiResourceKind::NativePointer);
+            if (resource == nullptr) {
+                ffi_throw_error(
+                    isolate,
+                    "SLOPPY_E_FFI_CALL_FAILED: failed to allocate NativePointer resource.");
+                return v8::Undefined(isolate);
+            }
+            resource->native_pointer = result->value.ptr;
+            if (!ffi_make_resource_object(isolate, context, resource, &object)) {
+                ffi_throw_error(
+                    isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to create NativePointer resource.");
+                return v8::Undefined(isolate);
+            }
+            return object;
+        }
     default:
         return v8::Undefined(isolate);
     }
@@ -949,8 +984,8 @@ v8::Local<v8::Value> ffi_return_value(v8::Isolate* isolate, const SlFfiFunction*
 void ffi_call_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
-    const SlFfiFunction* function =
-        static_cast<const SlFfiFunction*>(args.Data().As<v8::External>()->Value());
+    const SlFfiFunction* function = static_cast<const SlFfiFunction*>(
+        args.Data().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
     if (function == nullptr) {
         ffi_throw_error(isolate, "SLOPPY_E_FFI_RUNTIME_UNAVAILABLE: FFI function is not bound.");
         return;
@@ -1031,9 +1066,10 @@ void ffi_library_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             return;
         }
         v8::Local<v8::Function> callable;
-        if (!v8::FunctionTemplate::New(
-                 isolate, ffi_call_callback,
-                 v8::External::New(isolate, const_cast<SlFfiFunction*>(function)))
+        if (!v8::FunctionTemplate::New(isolate, ffi_call_callback,
+                                       v8::External::New(isolate,
+                                                         const_cast<SlFfiFunction*>(function),
+                                                         v8::kExternalPointerTypeTagDefault))
                  ->GetFunction(context)
                  .ToLocal(&callable) ||
             !output->Set(context, key_value, callable).FromMaybe(false))
@@ -1057,6 +1093,17 @@ void ffi_dispose_resource_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
     args.GetReturnValue().Set(v8::Undefined(args.GetIsolate()));
 }
 
+void ffi_native_pointer_is_null_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
+    if (resource == nullptr || resource->kind != FfiResourceKind::NativePointer) {
+        ffi_throw_type_error(isolate, "NativePointer resource is invalid.");
+        return;
+    }
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, resource->native_pointer == nullptr));
+}
+
 bool ffi_copy_uint8_array(v8::Local<v8::Value> value, const unsigned char** data, size_t* length)
 {
     if (data == nullptr || length == nullptr || !value->IsUint8Array()) {
@@ -1073,9 +1120,6 @@ bool ffi_copy_uint8_array(v8::Local<v8::Value> value, const unsigned char** data
     *length = view->ByteLength();
     return true;
 }
-
-bool ffi_make_resource_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                              SlV8FfiResource* resource, v8::Local<v8::Object>* out);
 
 void ffi_ref_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
@@ -1243,8 +1287,8 @@ void ffi_utf16_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         ffi_throw_type_error(isolate, "unsafeFfi.utf16Buffer value does not fit.");
         return;
     }
-    for (int i = 0; i < value.length(); i += 1) {
-        if ((*value)[i] == 0U) {
+    for (uint32_t i = 0; i < value.length(); i += 1U) {
+        if ((*value)[static_cast<int>(i)] == 0U) {
             ffi_throw_type_error(isolate,
                                  "SLOPPY_E_FFI_STRING_NUL: UTF-16 strings cannot contain NUL.");
             return;
@@ -1369,12 +1413,21 @@ bool ffi_make_resource_object(v8::Isolate* isolate, v8::Local<v8::Context> conte
     v8::Local<v8::Object> object = v8::Object::New(isolate);
     if (out == nullptr || resource == nullptr ||
         !ffi_set_resource(isolate, context, object, resource) ||
-        !ffi_set_function(isolate, context, object, "dispose", ffi_dispose_resource_callback) ||
         !object
              ->Set(context, v8::String::NewFromUtf8Literal(isolate, "byteLength"),
                    v8::Integer::NewFromUnsigned(isolate,
                                                 static_cast<uint32_t>(resource->byte_length)))
              .FromMaybe(false))
+    {
+        return false;
+    }
+    if (resource->kind != FfiResourceKind::NativePointer &&
+        !ffi_set_function(isolate, context, object, "dispose", ffi_dispose_resource_callback))
+    {
+        return false;
+    }
+    if (resource->kind == FfiResourceKind::NativePointer &&
+        !ffi_set_function(isolate, context, object, "isNull", ffi_native_pointer_is_null_callback))
     {
         return false;
     }
@@ -1544,13 +1597,13 @@ void ffi_utf16_buffer_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         }
         units = static_cast<size_t>(value.length()) + 1U;
         text.reserve(units);
-        for (int i = 0; i < value.length(); i += 1) {
-            if ((*value)[i] == 0U) {
+        for (uint32_t i = 0; i < value.length(); i += 1U) {
+            if ((*value)[static_cast<int>(i)] == 0U) {
                 ffi_throw_type_error(isolate,
                                      "SLOPPY_E_FFI_STRING_NUL: UTF-16 strings cannot contain NUL.");
                 return;
             }
-            text.push_back(static_cast<uint16_t>((*value)[i]));
+            text.push_back(static_cast<uint16_t>((*value)[static_cast<int>(i)]));
         }
     }
     else if (args[0]->IsUint32()) {

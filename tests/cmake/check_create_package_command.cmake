@@ -160,6 +160,21 @@ string(FIND "${ffi_package_manifest_slash}" "${program_project_dir_slash}" ffi_m
 if(NOT ffi_manifest_absolute_path_index EQUAL -1)
     message(FATAL_ERROR "FFI package manifest leaked an absolute project path\n${ffi_package_manifest}")
 endif()
+file(APPEND "${program_project_dir}/.sloppy/package/artifacts/native/sloppy_ffi_test.dll" "corrupt packaged native library\n")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" run
+            .sloppy/package
+    WORKING_DIRECTORY "${program_project_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE ffi_corrupt_package_run_result
+    OUTPUT_VARIABLE ffi_corrupt_package_run_stdout
+    ERROR_VARIABLE ffi_corrupt_package_run_stderr)
+if(ffi_corrupt_package_run_result EQUAL 0)
+    message(FATAL_ERROR "sloppy run unexpectedly accepted a package with a corrupt native library")
+endif()
+if(NOT ffi_corrupt_package_run_stderr MATCHES "package native library hash mismatch")
+    message(FATAL_ERROR "sloppy run corrupt package failure did not report native hash mismatch\nstdout:\n${ffi_corrupt_package_run_stdout}\nstderr:\n${ffi_corrupt_package_run_stderr}")
+endif()
 
 file(MAKE_DIRECTORY "${placeholder_work_dir}")
 file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${placeholder_work_dir}")
