@@ -23,7 +23,6 @@ own the live roadmap and task state.
 - `docs/internals/` — implementation-level docs for contributors
 - `docs/contributor/` — building, testing, releasing
 - `docs/release/` — release artifact policy
-- `docs/skills/` — agent skill playbooks
 - `docs/glossary.md` — vocabulary
 
 A page is the type of its directory. The title and structure should make
