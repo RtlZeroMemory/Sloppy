@@ -65,15 +65,15 @@ they can be baked into the Plan but doesn't open a socket. `--environment`
 selects which `appsettings.{Environment}.json` overlay applies.
 
 `sloppy create` defaults to `minimal-api`. The current template names are
-`minimal-api`, `full-api`, and `dogfood`.
+`minimal-api`, `full-api`, `dogfood`, and `program`.
 
 ## Exit codes
 
 | Code | Meaning                                  |
 | ---- | ---------------------------------------- |
 | 0    | Success                                  |
-| 1    | Recoverable error (bad flags, validation, missing files) |
-| Other| Internal error from the runtime          |
+| 1    | Recoverable CLI/runtime error, or Program Mode `main` returned `1`; check stderr for the source |
+| 2-255| Program Mode `main` returned that exit code, or the runtime hit an internal error |
 
 Diagnostics print to stderr; structured output (when `--format json` is
 available) goes to stdout.

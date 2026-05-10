@@ -65,11 +65,12 @@ compiler refuses the input rather than emitting a partial Plan.
 | Static provider handles | sqlite supported | sqlite supported | sqlite supported | sqlite supported | Static non-SQLite handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. |
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
+| Program Mode | n/a | supported route-free subset | emits `kind: "program"` Plan and generated entrypoint | supported with V8 | `main(args, ctx)`, default function entrypoints, top-level-only modules, console stdout/stderr, numeric exit codes, stdlib imports, and packaged runs are covered. No Node globals, npm resolution, FFI, or raw terminal API. |
 | OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
-| CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates are packaged with local archives and npm platform packages. |
+| CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `minimal-api`, `full-api`, `dogfood`, and `program`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |

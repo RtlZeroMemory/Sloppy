@@ -137,9 +137,12 @@ The runtime skips web route-table startup validation for Program Plans. CLI
 inspection commands report the absence of routes as intentional. OpenAPI is
 web-only and fails clearly for Program Plans.
 
-Program runtime execution currently calls a named `main` export first, then a
-default function export, then relies on top-level module execution. CLI
-arguments and a Program context object are not passed yet.
+Program runtime execution calls a named `main` export first, then a default
+function export, then relies on top-level module execution. Function entrypoints
+receive `(args, ctx)`, where `args` comes from `sloppy run ... -- <args>` and
+`ctx` records `kind`, `args`, `cwd`, `environment`, and
+`plan.metadataCompleteness`. The Program console writes stdout/stderr through
+the CLI, and numeric returns in the range `0..255` set the process exit code.
 
 ## Providers And Capabilities
 

@@ -16,12 +16,30 @@ endif()
 
 set(work_dir "${CMAKE_BINARY_DIR}/program-artifact-shorthand")
 set(simple_dir "${work_dir}/simple")
+set(console_dir "${work_dir}/console")
+set(named_main_dir "${work_dir}/named-main")
+set(default_dir "${work_dir}/default")
+set(top_level_dir "${work_dir}/top-level")
+set(exit_dir "${work_dir}/exit")
+set(invalid_exit_dir "${work_dir}/invalid-exit")
+set(throw_dir "${work_dir}/throw")
+set(outside_dir "${work_dir}/outside")
 set(capability_dir "${work_dir}/capability")
 set(bytes_dir "${work_dir}/bytes")
+set(web_dir "${work_dir}/web")
 file(REMOVE_RECURSE "${work_dir}")
 file(MAKE_DIRECTORY "${simple_dir}/src")
+file(MAKE_DIRECTORY "${console_dir}/src")
+file(MAKE_DIRECTORY "${named_main_dir}/src")
+file(MAKE_DIRECTORY "${default_dir}/src")
+file(MAKE_DIRECTORY "${top_level_dir}/src")
+file(MAKE_DIRECTORY "${exit_dir}/src")
+file(MAKE_DIRECTORY "${invalid_exit_dir}/src")
+file(MAKE_DIRECTORY "${throw_dir}/src")
+file(MAKE_DIRECTORY "${outside_dir}")
 file(MAKE_DIRECTORY "${capability_dir}/src")
 file(MAKE_DIRECTORY "${bytes_dir}/src")
+file(MAKE_DIRECTORY "${web_dir}/src")
 
 file(WRITE "${simple_dir}/src/message.ts" "export const message: string = \"hello from program shorthand\";\n")
 file(WRITE "${simple_dir}/src/main.ts" [=[
@@ -31,6 +49,69 @@ type ProgramResult = string;
 
 export async function main(): Promise<ProgramResult> {
   return message;
+}
+]=])
+
+file(WRITE "${console_dir}/sloppy.json" [=[{
+  "kind": "program",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy"
+}
+]=])
+file(WRITE "${console_dir}/src/main.ts" [=[
+export function main(args, ctx) {
+  if (typeof console.assert !== "function") {
+    throw new Error("console.assert missing");
+  }
+  console.assert(true);
+  console.log(`args=${args.join("|")}`);
+  console.info(`kind=${ctx.kind}`);
+  console.debug(`cwd=${ctx.cwd.length > 0 ? "set" : "missing"}`);
+  console.error("err-channel");
+  console.error(new Error("err-object"));
+  return 0;
+}
+]=])
+
+file(WRITE "${named_main_dir}/src/main.ts" [=[
+export default function(args) {
+  console.log(`default=${args[0]}`);
+  return 0;
+}
+
+export function main(args) {
+  console.log(`main=${args[0]}`);
+  return 0;
+}
+]=])
+
+file(WRITE "${default_dir}/src/main.ts" [=[
+export default function(args, ctx) {
+  console.log(`default=${args[0]}`);
+  console.log(`plan=${ctx.plan.kind}/${ctx.plan.metadataCompleteness}`);
+}
+]=])
+
+file(WRITE "${top_level_dir}/src/main.ts" [=[
+console.log("top-level program ran");
+]=])
+
+file(WRITE "${exit_dir}/src/main.ts" [=[
+export function main() {
+  return 7;
+}
+]=])
+
+file(WRITE "${invalid_exit_dir}/src/main.ts" [=[
+export function main() {
+  return 256;
+}
+]=])
+
+file(WRITE "${throw_dir}/src/main.ts" [=[
+export async function main() {
+  console.log("before boom");
+  throw new Error("program boom");
 }
 ]=])
 
@@ -54,6 +135,21 @@ export function main() {
     body: new Uint8Array([65, 66])
   };
 }
+]=])
+
+file(WRITE "${web_dir}/sloppy.json" [=[{
+  "kind": "web",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy"
+}
+]=])
+file(WRITE "${web_dir}/src/main.ts" [=[
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+
+export default app;
 ]=])
 
 function(run_cli_expect_success description working_dir expected_pattern)
@@ -95,6 +191,34 @@ function(run_cli_expect_failure description working_dir expected_pattern)
     endif()
 endfunction()
 
+function(run_cli_expect_exit description working_dir expected_exit expected_stdout_pattern expected_stderr_pattern)
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}"
+                ${ARGN}
+        WORKING_DIRECTORY "${working_dir}"
+        TIMEOUT 180
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE stdout
+        ERROR_VARIABLE stderr)
+    if(NOT result EQUAL expected_exit)
+        message(FATAL_ERROR "${description} exited ${result}, expected ${expected_exit}\nstdout:\n${stdout}\nstderr:\n${stderr}")
+    endif()
+    if(expected_stdout_pattern)
+        string(REGEX MATCH "${expected_stdout_pattern}" matched_stdout "${stdout}")
+        if(NOT matched_stdout)
+            message(FATAL_ERROR "${description} stdout did not match '${expected_stdout_pattern}'\nstdout:\n${stdout}\nstderr:\n${stderr}")
+        endif()
+    endif()
+    if(expected_stderr_pattern)
+        string(REGEX MATCH "${expected_stderr_pattern}" matched_stderr "${stderr}")
+        if(NOT matched_stderr)
+            message(FATAL_ERROR "${description} stderr did not match '${expected_stderr_pattern}'\nstdout:\n${stdout}\nstderr:\n${stderr}")
+        endif()
+    endif()
+    set(RUN_CLI_STDOUT "${stdout}" PARENT_SCOPE)
+    set(RUN_CLI_STDERR "${stderr}" PARENT_SCOPE)
+endfunction()
+
 run_cli_expect_success("sloppy build src/main.ts" "${simple_dir}" "" build src/main.ts)
 foreach(artifact IN ITEMS app.plan.json app.js app.js.map)
     if(NOT EXISTS "${simple_dir}/.sloppy/${artifact}")
@@ -119,15 +243,54 @@ file(READ "${simple_dir}/.sloppy/package/artifacts/app.plan.json" package_plan)
 if(NOT package_plan MATCHES "\"kind\": \"program\"")
     message(FATAL_ERROR "sloppy package src/main.ts did not package Program Plan\n${package_plan}")
 endif()
+file(READ "${simple_dir}/.sloppy/package/manifest.json" package_manifest)
+if(NOT package_manifest MATCHES "\"kind\": \"program\"")
+    message(FATAL_ERROR "sloppy package manifest did not record program kind\n${package_manifest}")
+endif()
+foreach(required_manifest_entry IN ITEMS "\"plan\": \"artifacts/app.plan.json\"" "\"bundle\": \"artifacts/app.js\"" "\"sourceMap\": \"artifacts/app.js.map\"")
+    if(NOT package_manifest MATCHES "${required_manifest_entry}")
+        message(FATAL_ERROR "sloppy package manifest is missing ${required_manifest_entry}\n${package_manifest}")
+    endif()
+endforeach()
+
+run_cli_expect_success("sloppy build program project" "${console_dir}" "" build)
+run_cli_expect_success("sloppy build web project" "${web_dir}" "" build)
 
 if(SLOPPY_EXPECT_RUN_SUCCESS)
     run_cli_expect_success("sloppy run src/main.ts" "${simple_dir}" "hello from program shorthand" run src/main.ts)
     run_cli_expect_success("sloppy run .sloppy" "${simple_dir}" "hello from program shorthand" run .sloppy)
     run_cli_expect_success("sloppy run fallback .sloppy" "${simple_dir}" "hello from program shorthand" run)
+    run_cli_expect_success("sloppy run program args source" "${console_dir}" "args=--name\\|Ada\\|--verbose" run src/main.ts -- --name Ada --verbose)
+    if(NOT RUN_CLI_STDOUT MATCHES "kind=program" OR NOT RUN_CLI_STDOUT MATCHES "cwd=set")
+        message(FATAL_ERROR "sloppy run did not pass Program context\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    if(NOT RUN_CLI_STDERR MATCHES "err-channel")
+        message(FATAL_ERROR "sloppy run did not route console.error to stderr\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    if(NOT RUN_CLI_STDERR MATCHES "err-object")
+        message(FATAL_ERROR "sloppy run did not preserve Error details in console.error\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    run_cli_expect_success("sloppy run program args artifacts" "${console_dir}" "args=hello\\|artifact" run --artifacts .sloppy -- hello artifact)
+    run_cli_expect_success("sloppy run program project" "${console_dir}" "args=project" run -- project)
+    run_cli_expect_success("sloppy run named main precedence" "${named_main_dir}" "main=winner" run src/main.ts -- winner)
+    if(RUN_CLI_STDOUT MATCHES "default=winner")
+        message(FATAL_ERROR "sloppy run invoked default export even though named main exists\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    run_cli_expect_success("sloppy run default export" "${default_dir}" "default=delta" run src/main.ts -- delta)
+    if(NOT RUN_CLI_STDOUT MATCHES "plan=program/opaque")
+        message(FATAL_ERROR "sloppy run default export did not receive Program Plan context\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    run_cli_expect_success("sloppy run top-level program" "${top_level_dir}" "top-level program ran" run src/main.ts)
+    run_cli_expect_exit("sloppy run numeric exit" "${exit_dir}" 7 "" "" run src/main.ts)
+    run_cli_expect_exit("sloppy run invalid numeric exit" "${invalid_exit_dir}" 1 "" "exit code must be an integer from 0 to 255" run src/main.ts)
+    run_cli_expect_exit("sloppy run thrown program" "${throw_dir}" 1 "before boom" "program boom" run src/main.ts)
+    run_cli_expect_success("sloppy package console program" "${console_dir}" "Created Sloppy app package" package)
+    run_cli_expect_success("sloppy run package directory outside checkout" "${outside_dir}" "args=packaged\\|run" run "${console_dir}/.sloppy/package" -- packaged run)
     run_cli_expect_success("sloppy run bytes src/main.ts" "${bytes_dir}" "" run src/main.ts)
     if(NOT RUN_CLI_STDOUT STREQUAL "AB")
         message(FATAL_ERROR "sloppy run Program bytes output was not exact\nstdout:\n${RUN_CLI_STDOUT}")
     endif()
+    run_cli_expect_failure("sloppy run web plan with program args" "${web_dir}" "program arguments after -- are only valid for Program Plans" run .sloppy -- one two)
 else()
     run_cli_expect_failure("non-V8 sloppy run src/main.ts" "${simple_dir}" "requires V8-enabled build" run src/main.ts)
     run_cli_expect_failure("non-V8 sloppy run .sloppy" "${simple_dir}" "requires V8-enabled build" run .sloppy)

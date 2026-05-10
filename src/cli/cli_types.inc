@@ -169,6 +169,8 @@ typedef struct SlCliOptions
     const char* kind;
     const char* once_method;
     const char* once_target;
+    char** program_args;
+    size_t program_arg_count;
     uint16_t port;
     SlCliFormat format;
     bool host_explicit;
@@ -178,5 +180,6 @@ typedef struct SlCliOptions
     bool out_explicit;
     bool create_force;
     bool create_no_git;
+    bool program_args_explicit;
     bool help;
 } SlCliOptions;

@@ -22,6 +22,9 @@ endif()
 if(NOT DEFINED SLOPPY_EXPECTED_PLAN)
     set(SLOPPY_EXPECTED_PLAN "")
 endif()
+if(NOT DEFINED SLOPPY_EXPECTED_PLAN_SECONDARY)
+    set(SLOPPY_EXPECTED_PLAN_SECONDARY "")
+endif()
 if(NOT DEFINED SLOPPY_EXPECTED_SOURCE_MAP)
     set(SLOPPY_EXPECTED_SOURCE_MAP "")
 endif()
@@ -115,6 +118,13 @@ if(DEFINED SLOPPY_EXPECTED_ARTIFACT_DIR)
             message(
                 FATAL_ERROR
                     "source-input app.plan.json did not match '${SLOPPY_EXPECTED_PLAN}'\nplan:\n${plan_json}")
+        endif()
+    endif()
+    if(SLOPPY_EXPECTED_PLAN_SECONDARY)
+        if(NOT plan_json MATCHES "${SLOPPY_EXPECTED_PLAN_SECONDARY}")
+            message(
+                FATAL_ERROR
+                    "source-input app.plan.json did not match '${SLOPPY_EXPECTED_PLAN_SECONDARY}'\nplan:\n${plan_json}")
         endif()
     endif()
     if(SLOPPY_EXPECTED_SOURCE_MAP)

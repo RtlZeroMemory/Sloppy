@@ -32,15 +32,56 @@ static int sl_package_copy_artifact_leaf(const char* source_dir, const char* tar
     return 0;
 }
 
-static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name)
+static bool sl_package_append_artifact_manifest_path(SlStringBuilder* builder,
+                                                     const char* artifact_dir_name,
+                                                     SlCliSpan leaf)
+{
+    char path_storage[SL_RUN_PATH_MAX_BYTES];
+    SlStringBuilder path_builder = {0};
+    SlStr path = {0};
+    size_t index = 0U;
+
+    if (builder == NULL || artifact_dir_name == NULL || artifact_dir_name[0] == '\0' ||
+        leaf.ptr == NULL || leaf.length == 0U ||
+        !sl_status_is_ok(sl_string_builder_init_fixed(&path_builder, path_storage,
+                                                      sizeof(path_storage))) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&path_builder, artifact_dir_name)) ||
+        !sl_status_is_ok(sl_string_builder_append_char(&path_builder, '/')))
+    {
+        return false;
+    }
+
+    for (index = 0U; index < leaf.length; index += 1U) {
+        char ch = leaf.ptr[index];
+        if (ch == '\\') {
+            ch = '/';
+        }
+        if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, ch))) {
+            return false;
+        }
+    }
+
+    if (!sl_status_is_ok(sl_string_builder_view_with_nul(&path_builder, &path))) {
+        return false;
+    }
+    return sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(path));
+}
+
+static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
+                                     const SlRunApp* app)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
     unsigned char manifest_storage[SL_PACKAGE_MANIFEST_BYTES];
     SlStringBuilder builder = {0};
     SlStr manifest = {0};
+    const char* app_kind = "web";
     SlStatus status;
 
-    if (package_dir == NULL || artifact_dir_name == NULL ||
+    if (app != NULL && app->plan.kind == SL_PLAN_KIND_PROGRAM) {
+        app_kind = "program";
+    }
+
+    if (package_dir == NULL || artifact_dir_name == NULL || app == NULL ||
         !sl_run_artifact_file_path(manifest_path, sizeof(manifest_path), package_dir,
                                    "manifest.json"))
     {
@@ -55,13 +96,25 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
                                                        "{\n"
                                                        "  \"schema\": "
                                                        "\"sloppy.app-package.v1\",\n"
-                                                       "  \"kind\": \"sloppy-app-package\",\n"
-                                                       "  \"artifacts\": \"")) ||
-        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, artifact_dir_name)) ||
+                                                       "  \"kind\": \"")) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, app_kind)) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder,
                                                        "\",\n"
                                                        "  \"entry\": "
                                                        "\"artifacts/app.plan.json\",\n"
+                                                       "  \"artifacts\": {\n"
+                                                       "    \"plan\": ")) ||
+        !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
+                                                 sl_cli_span_cstr("app.plan.json")) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"bundle\": ")) ||
+        !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
+                                                 sl_run_str_span(app->plan.bundle.path)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"sourceMap\": ")) ||
+        !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
+                                                 sl_run_str_span(app->plan.source_map.path)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder,
+                                                       "\n"
+                                                       "  },\n"
                                                        "  \"createdBy\": \"sloppy package\"\n"
                                                        "}\n")))
     {
@@ -166,7 +219,7 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         return 1;
     }
 
-    if (sl_package_write_manifest(package_dir, "artifacts") != 0) {
+    if (sl_package_write_manifest(package_dir, "artifacts", app) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }

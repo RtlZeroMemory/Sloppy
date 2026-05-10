@@ -1,0 +1,9 @@
+{
+  "kind": "program",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy",
+  "capabilities": {
+    "fs": true,
+    "os": true
+  }
+}

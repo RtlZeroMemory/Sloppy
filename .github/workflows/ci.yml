@@ -308,7 +308,17 @@ jobs:
     name: windows-fast
     runs-on: windows-latest
     needs: changes
-    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.native_relevant == 'true' || needs.changes.outputs.rust_relevant == 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    # This is the Windows Debug mirror of the local developer gate. Default
+    # native PR coverage now comes from the Unix platform matrix plus the
+    # Windows ASan/libFuzzer jobs below; keeping this full Debug lane on every
+    # native PR makes CI wait on duplicate, slow vcpkg/CMake work.
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+        contains(github.event.pull_request.labels.*.name, 'windows-debug')
+      ))
 
     steps:
       - name: Checkout
@@ -875,7 +885,8 @@ jobs:
         run: ctest --preset "${{ matrix.preset }}" -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
 
   # The full Windows local-gate mirror is opt-in during pre-alpha iteration.
-  # Normal non-docs changes already run windows-fast plus the Unix platform matrix below.
+  # Normal non-docs changes run the Unix platform matrix plus Windows ASan and
+  # libFuzzer lanes; use full-ci for an exact local-gate mirror.
   windows:
     name: ci-full / windows
     runs-on: windows-latest

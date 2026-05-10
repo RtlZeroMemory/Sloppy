@@ -162,9 +162,9 @@ Options:
 - No detached/inherited stdio fan-out beyond `"ignore"` and `"pipe"`.
 - Native handles are never exposed to JS — `ProcessHandle` is opaque.
 
-For broader execution surfaces — Program Mode, FFI, capability-scoped
-sandboxing — see the project roadmap. Those are not part of current alpha
-support.
+Program Mode is the current route-free execution surface for tools that need
+`Process.run` or `Process.start`. FFI and capability-scoped OS sandboxing remain
+roadmap work.
 
 ## Signals
 
