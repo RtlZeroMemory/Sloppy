@@ -2,9 +2,11 @@ export function normalizeCreateUserRequest(input) {
     const body = input !== null && typeof input === "object" && !Array.isArray(input)
         ? input
         : {};
+    const name = typeof body.name === "string" ? body.name : "";
+    const email = typeof body.email === "string" ? body.email : "";
     return {
-        name: String(body.name || "").trim(),
-        email: String(body.email || "").trim().toLowerCase(),
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
     };
 }
 
