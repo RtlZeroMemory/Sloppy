@@ -174,6 +174,7 @@ set(
     tests/fuzz/fuzz_http2_frame.c
     tests/fuzz/fuzz_http2_hpack.c
     tests/fuzz/fuzz_http2_session.c
+    tests/fuzz/fuzz_http_query.c
     tests/fuzz/fuzz_http_request.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c

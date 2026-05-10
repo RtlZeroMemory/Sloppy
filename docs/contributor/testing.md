@@ -112,7 +112,10 @@ checking the diagnostic code or the cleanup behavior is incomplete.
 
 - **Fuzz / property** — deterministic seed replay (default-safe) plus
   optional libFuzzer mutation runs. Seed replay is mandatory for
-  parsers and binary formats.
+  parsers and binary formats. Use `tools/windows/fuzz.ps1` or
+  `tools/unix/fuzz.sh` for seed replay, selected native mutation targets, and
+  JavaScript randomized/property targets. Every randomized run must report the
+  seed.
 - **Sanitizers** — Windows ASan, libFuzzer seed replay, and Linux
   ASan/UBSan are mandatory CI lanes. Local equivalents:
 
@@ -148,6 +151,17 @@ build/windows-dev/sloppy_bench.exe --smoke --format json --bench logging.enabled
 
 Use the stress test for queue pressure, flushing, and shutdown regressions. Use
 the benchmark smoke only to check that the benchmark harness still runs.
+
+The test engine wraps the common cross-lane combinations:
+
+```powershell
+.\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
+.\tools\windows\test-engine.ps1 -Tier extended -Area fuzz -Seed 12345
+```
+
+Use [test-engine.md](test-engine.md) for the full option reference. The
+wrapper reports optional missing build presets or tools as unavailable lanes
+instead of folding them into a pass.
 
 ## Conformance and CTest
 

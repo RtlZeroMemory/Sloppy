@@ -14,6 +14,7 @@ test matrix, contributing PRs.
 - [Development workflow](development-workflow.md) — local loop, PR shape
 - [Testing](testing.md) — how to run and write tests
 - [Testing inventory](testing-inventory.md) — what gets exercised in which lane
+- [Test engine](test-engine.md) — combined quality/fuzz/stress wrappers
 - [Quality gates](quality-gates.md) — CI gates and their evidence
 - [Review playbook](review-playbook.md) — what reviewers look for
 - [Documentation](documentation.md) — docs operating notes

@@ -176,7 +176,7 @@ jobs:
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|tools/deps/**|tools/windows/**|tools/unix/**)
+              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|.github/workflows/test-engine-*.yml|tools/deps/**|tools/windows/**|tools/unix/**)
                 windows_tooling_relevant=true
                 ;;
             esac
@@ -261,6 +261,18 @@ jobs:
           .\tools\windows\check-test-governance.ps1
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
           .\tools\windows\check-release-artifacts.ps1
+
+      - name: Test engine meta report
+        shell: pwsh
+        run: .\tools\windows\test-engine.ps1 -Tier pr -Area meta -Out artifacts\test-engine\ci-fast-meta.json
+
+      - name: Upload test engine meta report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-ci-fast-meta
+          path: artifacts/test-engine/ci-fast-meta.json
+          if-no-files-found: ignore
 
   rust:
     name: rust
@@ -379,6 +391,18 @@ jobs:
       - name: Format check
         shell: pwsh
         run: .\tools\windows\dev.ps1 format-check -Preset windows-dev
+
+      - name: Test engine PR report
+        shell: pwsh
+        run: .\tools\windows\test-engine.ps1 -Tier pr -Area fuzz -Out artifacts\test-engine\pr-fuzz-windows.json
+
+      - name: Upload test engine PR report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-pr-windows
+          path: artifacts/test-engine/pr-fuzz-windows.json
+          if-no-files-found: ignore
 
   windows-tooling:
     name: windows-tooling

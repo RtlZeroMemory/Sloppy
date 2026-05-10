@@ -11,6 +11,7 @@ some run in CI; the local commands mirror what CI does.
 .\tools\windows\dev.ps1 test
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
+.\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
 git diff --check
 ```
 
@@ -38,6 +39,16 @@ Without V8 it must report V8-required dogfood lanes as `UNAVAILABLE` after
 verifying compile/diagnostic behavior. With `-EnableV8`, the same wrapper may
 record `PASS` for V8-gated hello and pre-alpha control-plane execution.
 
+For cross-lane evidence, use the test engine wrapper:
+
+```powershell
+.\tools\windows\test-engine.ps1 -Tier pr -Area all -Out artifacts\test-engine\pr.json
+```
+
+The JSON report uses lower-case `pass`, `fail`, `skipped`, and `unavailable`
+values. Convert those to the PR evidence status vocabulary when filling out
+the PR template. See [test-engine.md](test-engine.md).
+
 ## Mandatory CI lanes
 
 Every PR runs:
@@ -49,6 +60,9 @@ Every PR runs:
 - **Compiler/Plan** — `sloppyc` fixtures plus Plan parser tests.
 - **Advanced static analysis** — clang-tidy + analyzer for non-doc
   changes; CodeQL for analysis-relevant changes.
+- **Test engine report** — PR-tier fuzz/property orchestration report when
+  native/tooling changes are relevant. Static, native, compiler, and sanitizer
+  gates still report as their own CI lanes.
 
 A PR can't merge with any required lane skipped, stale, or red.
 
@@ -75,7 +89,8 @@ These run on demand or when labels/inputs select them:
 | Live SQL Server      | `live-sqlserver` / `live-providers` / `full-ci` label           |
 | SIMD backend (SSE2/AVX2) | SIMD-relevant changes                                       |
 | libFuzzer mutation   | Manual workflow dispatch                                        |
-| Stress / torture     | Manual workflow dispatch                                        |
+| Test engine extended | Nightly or manual workflow dispatch                             |
+| Stress / torture     | Manual workflow dispatch through the torture workflow            |
 | Benchmark            | Manual; output is measurement only, never correctness           |
 | benchmark | Manual/local for reports; Cargo scale smoke runs with compiler tests |
 
@@ -128,6 +143,8 @@ PRs that conflate any of these will be sent back.
 | `.\tools\windows\dev.ps1 analyze`      | clang-tidy + analyzer (`sloppy_memory_analysis`) |
 | `.\tools\windows\dev.ps1 package`      | Build a local archive                   |
 | `.\tools\windows\dev.ps1 test-package` | Smoke the archive from outside the repo |
+| `.\tools\windows\test-engine.ps1 -Help` | Test engine command reference          |
+| `.\tools\windows\fuzz.ps1 -Help`       | Fuzz runner command reference           |
 
 The Unix wrappers (`tools/unix/dev.sh`) implement the same shape where
 ported.

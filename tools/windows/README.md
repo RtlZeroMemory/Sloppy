@@ -18,9 +18,20 @@ needed:
 .\tools\windows\dev.ps1 test-package
 .\tools\windows\dev.ps1 npm-dry-run
 .\tools\windows\dev.ps1 dogfood
+.\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
 ```
 
 The root `tools/*.ps1` files forward here as convenience entrypoints.
+
+The quality engine wrapper records combined lane evidence as JSON:
+
+```powershell
+.\tools\windows\test-engine.ps1 -Help
+.\tools\windows\fuzz.ps1 -Help
+.\tools\windows\fuzz.ps1 -All -Iterations 1000 -Seed 12345
+```
+
+See `docs/contributor/test-engine.md` for tier, area, and status semantics.
 
 For memory-sensitive changes, `lint` remains the fast default gate and `analyze` is the
 controlled memory/core clang-tidy/Clang Static Analyzer lane:

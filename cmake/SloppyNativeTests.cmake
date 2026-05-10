@@ -250,6 +250,8 @@
         fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
         http-request)
     sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http_query fuzz.http_query.seed_replay tests/fuzz/fuzz_http_query.c http-query)
+    sloppy_add_fuzz_seed_replay(
         fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
         tests/fuzz/fuzz_diagnostics_render.c diagnostics-render)
     sloppy_add_fuzz_seed_replay(
@@ -261,6 +263,7 @@
     sloppy_add_libfuzzer_target(fuzz_http2_hpack_libfuzzer tests/fuzz/fuzz_http2_hpack.c)
     sloppy_add_libfuzzer_target(fuzz_http2_session_libfuzzer tests/fuzz/fuzz_http2_session.c)
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
+    sloppy_add_libfuzzer_target(fuzz_http_query_libfuzzer tests/fuzz/fuzz_http_query.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
     sloppy_add_libfuzzer_target(
@@ -372,4 +375,12 @@
                 powershell -NoProfile -ExecutionPolicy Bypass -File
                 "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
                 "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME test_engine.windows.contract
+            COMMAND
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/tests/scripts/test_test_engine_contract.ps1" -RepoRoot
+                "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            test_engine.windows.contract PROPERTIES LABELS "meta;test-engine")
     endif()
