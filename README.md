@@ -63,8 +63,7 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Funny name. Serious engineering. Pre-alpha means APIs and artifact formats can
-change between alpha revisions.
+Pre-alpha means APIs and artifact formats canchange between alpha revisions.
 
 ## Start here
 
