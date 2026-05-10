@@ -3,6 +3,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -55,8 +57,23 @@ struct ClientExchange
     unsigned char storage[64U * 1024U] = {};
     SlArena arena = {};
     std::string path;
+    std::mutex mutex;
+    std::condition_variable close_ready;
+    bool close_requested = false;
     int result = 0;
 };
+
+void request_idle_client_close(ClientExchange* exchange)
+{
+    if (exchange == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(exchange->mutex);
+        exchange->close_requested = true;
+    }
+    exchange->close_ready.notify_all();
+}
 
 void run_idle_client(ClientExchange* exchange)
 {
@@ -75,6 +92,10 @@ void run_idle_client(ClientExchange* exchange)
     {
         exchange->result = 1;
         return;
+    }
+    {
+        std::unique_lock<std::mutex> lock(exchange->mutex);
+        exchange->close_ready.wait(lock, [exchange]() { return exchange->close_requested; });
     }
     if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
         exchange->result = 2;
@@ -441,6 +462,7 @@ int test_io_timeout_and_precancel()
             SL_STATUS_OK) != 0 ||
         accepted == nullptr)
     {
+        request_idle_client_close(&exchange);
         client.join();
         (void)sl_local_server_abort(server, nullptr);
         (void)unlink(path.c_str());
@@ -455,6 +477,7 @@ int test_io_timeout_and_precancel()
                                                        sl_str_from_cstr("test cancellation")),
                           SL_STATUS_OK) != 0)
         {
+            request_idle_client_close(&exchange);
             client.join();
             (void)sl_local_connection_abort(accepted, nullptr);
             (void)sl_local_server_abort(server, nullptr);
@@ -468,6 +491,7 @@ int test_io_timeout_and_precancel()
                     accepted, sl_bytes_from_parts(payload, sizeof(payload)), &io_options, nullptr),
                 SL_STATUS_CANCELLED) != 0)
         {
+            request_idle_client_close(&exchange);
             client.join();
             (void)sl_local_connection_abort(accepted, nullptr);
             (void)sl_local_server_abort(server, nullptr);
@@ -483,12 +507,14 @@ int test_io_timeout_and_precancel()
                       SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
         bytes.length != 0U)
     {
+        request_idle_client_close(&exchange);
         client.join();
         (void)sl_local_connection_abort(accepted, nullptr);
         (void)sl_local_server_abort(server, nullptr);
         (void)unlink(path.c_str());
         return 5;
     }
+    request_idle_client_close(&exchange);
     client.join();
     if (exchange.result != 0 ||
         expect_status(sl_local_connection_abort(accepted, nullptr), SL_STATUS_OK) != 0 ||

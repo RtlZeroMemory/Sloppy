@@ -1175,7 +1175,7 @@ static int test_body_too_large_fails_before_handler_call(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
-    static const unsigned char body_byte = 'x';
+    static unsigned char body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U];
     SlArena arena = {0};
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
@@ -1207,12 +1207,9 @@ static int test_body_too_large_fails_before_handler_call(void)
     request.raw_target = sl_str_from_cstr("/hello");
     request.headers = headers;
     request.header_count = 2U;
-    /*
-     * test_body_too_large_fails_before_handler_call intentionally points the
-     * oversized SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1 body at one valid byte:
-     * sl_http_dispatch_apply_body_policy rejects the length before dereference.
-     */
-    request.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
+    body[0] = 'x';
+    body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH] = 'x';
+    request.body = sl_bytes_from_parts(body, sizeof(body));
 
     route.method = SL_HTTP_METHOD_POST;
     route.pattern = &pattern;
