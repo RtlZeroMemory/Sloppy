@@ -8,7 +8,6 @@ set(
     src/core/cancellation.c
     src/core/checked_math.c
     src/core/arena.c
-    src/core/alloc.c
     src/core/container.c
     src/core/builder.c
     src/core/intern.c

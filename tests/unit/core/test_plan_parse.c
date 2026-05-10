@@ -291,6 +291,22 @@ static int test_native_ffi_metadata_parses_typed_libraries_and_structs(void)
     return 0;
 }
 
+static int test_native_ffi_function_parameters_reject_void(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[],"
+        "\"native\":{\"ffi\":[{\"name\":\"ffi-test\",\"convention\":\"system\","
+        "\"functions\":[{\"id\":\"ffi:ffi-test:bad\","
+        "\"name\":\"bad\",\"symbol\":\"sloppy_bad\",\"convention\":\"system\","
+        "\"return\":\"void\",\"parameters\":[\"void\"]}]}]}}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "unsupported FFI parameter type");
+}
+
 static int test_native_ffi_struct_fields_reject_unsized_types(void)
 {
     return expect_inline_plan_failure(
@@ -1378,6 +1394,11 @@ int main(void)
     if (result != 0) {
         fprintf(stderr, "test_native_ffi_metadata_parses_typed_libraries_and_structs failed: %d\n",
                 result);
+        return result;
+    }
+    result = test_native_ffi_function_parameters_reject_void();
+    if (result != 0) {
+        fprintf(stderr, "test_native_ffi_function_parameters_reject_void failed: %d\n", result);
         return result;
     }
     result = test_native_ffi_struct_fields_reject_unsized_types();

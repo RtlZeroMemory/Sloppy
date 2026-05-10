@@ -597,6 +597,14 @@ static SlStatus sl_plan_parse_ffi_parameters(SlPlanParseContext* ctx, yyjson_val
                                              "aliases") -
                                           1U));
         }
+        if (parsed[index] == SL_PLAN_FFI_TYPE_VOID) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("unsupported FFI parameter type",
+                                      sizeof("unsupported FFI parameter type") - 1U),
+                sl_plan_parse_literal("FFI parameter types cannot be void",
+                                      sizeof("FFI parameter types cannot be void") - 1U));
+        }
         index += 1U;
     }
     out->parameters = parsed;

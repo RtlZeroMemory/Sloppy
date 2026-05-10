@@ -362,6 +362,38 @@ export default function main() {
 }
 
 #[test]
+fn program_ffi_exported_declarations_emit_native_metadata() {
+    let root = fixture_temp_dir("program-ffi-exported-metadata");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi, t } from "sloppy/ffi";
+
+export const native = unsafeFfi.library("ffi-test", {
+  addI32: unsafeFfi.fn(t.i32, [t.i32, t.i32])
+});
+
+export default function main() {
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("exported FFI declaration should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["native"]["ffi"][0]["name"], "ffi-test");
+    assert_eq!(plan["native"]["ffi"][0]["functions"][0]["name"], "addI32");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn program_ffi_function_specs_must_be_static() {
     let root = fixture_temp_dir("program-ffi-dynamic-spec");
     let input = root.join("main.ts");
@@ -417,6 +449,47 @@ export default function main() {
     assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_INVALID_TYPE");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_malformed_options() {
+    for (case, source) in [
+        (
+            "library-options",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { addI32: ffi.fn(t.i32, [t.i32]) }, { convention: false });
+export default function main() { return native.addI32(1); }
+"#,
+        ),
+        (
+            "function-options",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { addI32: ffi.fn(t.i32, [t.i32], { symbol: 42 }) });
+export default function main() { return native.addI32(1); }
+"#,
+        ),
+        (
+            "boolean-options",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { addI32: ffi.fn(t.i32, [t.i32], { callback: "no" }) });
+export default function main() { return native.addI32(1); }
+"#,
+        ),
+    ] {
+        let root = fixture_temp_dir(&format!("program-ffi-malformed-options-{case}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(&input, source).expect("program fixture should be writable");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("malformed FFI options should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
 }
 
 #[test]
@@ -502,6 +575,34 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("unsupported FFI return buffers should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_void_parameters() {
+    let root = fixture_temp_dir("program-ffi-void-parameter");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  bad: ffi.fn(t.void, [t.void])
+});
+
+export default function main() {
+  return native.bad();
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("void FFI parameters should fail");
     assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");

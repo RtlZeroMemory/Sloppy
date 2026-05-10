@@ -150,6 +150,8 @@ int main(int argc, char** argv)
         "const mut = ffi.buffer(3);"
         "const Point = ffi.struct('Point', { x: 'i32', y: 'i32' }, { layout: 'sequential' });"
         "const point = Point.alloc({ x: 19, y: 23 });"
+        "const Padded = ffi.struct('Padded', { tag: 'u8', value: 'i32' });"
+        "const padded = Padded.alloc();"
         "lib.fill(mut, 3, 7);"
         "lib.fill(writable, writable.length, 9);"
         "lib.writeU32(ref);"
@@ -158,7 +160,8 @@ int main(int argc, char** argv)
         "return [lib.addI32(40,2), String(lib.addU64(40n,2n)), lib.addF64(40,2.5),"
         "lib.strlen('sloppy'), lib.sumBytes(bytes, bytes.length),"
         "Array.from(mut.read()).join(','), Array.from(writable).join(','), ref.get(),"
-        "lib.pointSum(point), nullPointer === null, typeof nativePointer, nativePointer.isNull(),"
+        "lib.pointSum(point), padded.byteLength, nullPointer === null, typeof nativePointer, "
+        "nativePointer.isNull(),"
         "typeof nativePointer.dispose, lib.pointSum(nativePointer)].join(':');"
         "};"
         "globalThis.ffiNegative = function () {"
@@ -245,7 +248,7 @@ int main(int argc, char** argv)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(
             result.text,
-            sl_str_from_cstr("42:42:42.5:6:10:7,7,7:9,9,9:3737844653:42:true:object:false:"
+            sl_str_from_cstr("42:42:42.5:6:10:7,7,7:9,9,9:3737844653:42:8:true:object:false:"
                              "undefined:42")))
     {
         sl_engine_destroy(engine);

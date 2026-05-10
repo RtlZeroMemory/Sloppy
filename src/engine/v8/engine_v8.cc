@@ -535,8 +535,8 @@ bool sl_v8_write_file(const std::filesystem::path& path, const char* data, int l
     }
 
     uint64_t temp_id = temp_counter.fetch_add(1U, std::memory_order_relaxed);
-    uint64_t tick = static_cast<uint64_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    uint64_t tick =
+        static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::path temp_path = path;
     temp_path += ".";
     temp_path += std::to_string(tick);
@@ -787,8 +787,7 @@ bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* s
     return !sources->empty();
 }
 
-bool sl_v8_source_map_cache_validation_failed(SlV8SourceMapCache* cache,
-                                              SlV8SourceMapLocation* out)
+bool sl_v8_source_map_cache_validation_failed(SlV8SourceMapCache* cache, SlV8SourceMapLocation* out)
 {
     if (cache != nullptr) {
         if (cache->doc != nullptr) {

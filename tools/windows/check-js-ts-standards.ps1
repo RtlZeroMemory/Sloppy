@@ -186,7 +186,7 @@ $violations = @()
 $stdlibRules = @(
     @{ Rule = "JS001"; Pattern = '(^|[^\w$.])require\s*\(\s*["'']'; Message = "CommonJS require is forbidden in bootstrap stdlib." },
     @{ Rule = "JS002"; Pattern = '\bprocess\.'; Message = "Node process global is forbidden in bootstrap stdlib." },
-    @{ Rule = "JS003"; Pattern = '\bBuffer\b'; Message = "Node Buffer global is forbidden in bootstrap stdlib." },
+    @{ Rule = "JS003"; Pattern = '\bBuffer\b'; CaseSensitive = $true; Message = "Node Buffer global is forbidden in bootstrap stdlib." },
     @{ Rule = "JS004"; Pattern = '(^|\s)import\s+.*["''](?:node:)?fs["'']|(^|[^\w$.])require\s*\(\s*["''](?:node:)?fs["'']\s*\)'; Message = "Node fs usage is forbidden in bootstrap stdlib." },
     @{ Rule = "JS005"; Pattern = '(^|\s)import\s+.*["''](?:node:)?path["'']|(^|[^\w$.])require\s*\(\s*["''](?:node:)?path["'']\s*\)'; Message = "Node path usage is forbidden in bootstrap stdlib." },
     @{ Rule = "JS006"; Pattern = '\b__dirname\b'; Message = "__dirname is forbidden in bootstrap stdlib." },
@@ -227,7 +227,12 @@ foreach ($file in $files) {
 
         if ($relativePath.StartsWith("stdlib/sloppy/", [System.StringComparison]::OrdinalIgnoreCase)) {
             foreach ($rule in $stdlibRules) {
-                if ($line -match $rule.Pattern) {
+                $ruleMatched = if ($rule.ContainsKey("CaseSensitive") -and $rule.CaseSensitive) {
+                    $line -cmatch $rule.Pattern
+                } else {
+                    $line -match $rule.Pattern
+                }
+                if ($ruleMatched) {
                     if ($rule.Rule -eq "JS010" -and
                         (Test-AllowedStdlibDynamicImport -RelativePath $relativePath -Line $line))
                     {

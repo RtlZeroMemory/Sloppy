@@ -29,6 +29,8 @@ const TYPE_NAMES = Object.freeze([
 
 export const t = Object.freeze(Object.fromEntries(TYPE_NAMES.map((name) => [name, Object.freeze({ kind: "ffi.type", name })])));
 
+const STRUCT_RESERVED_FIELDS = new Set(["ptr", "get", "set"]);
+
 function ffiBridge(operation) {
     const bridge = globalThis.__sloppy?.ffi ?? null;
     if (bridge === null) {
@@ -50,7 +52,13 @@ function typeName(value, operation) {
     if (value === undefined) {
         return undefined;
     }
-    if (value === null || typeof value !== "object" || value.kind !== "ffi.type" || typeof value.name !== "string") {
+    if (
+        value === null ||
+        typeof value !== "object" ||
+        value.kind !== "ffi.type" ||
+        typeof value.name !== "string" ||
+        t[value.name] !== value
+    ) {
         throw new TypeError(`${operation} requires FFI types from sloppy/ffi t.`);
     }
     return value.name;
@@ -91,7 +99,7 @@ function ref(type, initialValue = undefined) {
         },
     });
     Object.defineProperty(cell, "ptr", {
-        enumerable: true,
+        enumerable: false,
         value: cell,
     });
     return cell;
@@ -100,7 +108,7 @@ function ref(type, initialValue = undefined) {
 function buffer(byteLength) {
     const bytes = ffiBridge("unsafeFfi.buffer").buffer(byteLength);
     Object.defineProperty(bytes, "ptr", {
-        enumerable: true,
+        enumerable: false,
         value: bytes,
     });
     return bytes;
@@ -109,7 +117,7 @@ function buffer(byteLength) {
 function cstringBuffer(valueOrByteLength) {
     const cstring = ffiBridge("unsafeFfi.cstringBuffer").cstringBuffer(valueOrByteLength);
     Object.defineProperty(cstring, "ptr", {
-        enumerable: true,
+        enumerable: false,
         value: cstring,
     });
     return cstring;
@@ -118,7 +126,7 @@ function cstringBuffer(valueOrByteLength) {
 function utf16Buffer(valueOrCodeUnits) {
     const utf16 = ffiBridge("unsafeFfi.utf16Buffer").utf16Buffer(valueOrCodeUnits);
     Object.defineProperty(utf16, "ptr", {
-        enumerable: true,
+        enumerable: false,
         value: utf16,
     });
     return utf16;
@@ -132,7 +140,12 @@ function struct(name, fields, options = undefined) {
         throw new TypeError("unsafeFfi.struct fields must be an object.");
     }
     const normalized = Object.fromEntries(
-        Object.entries(fields).map(([field, fieldType]) => [field, typeName(fieldType, "unsafeFfi.struct")]),
+        Object.entries(fields).map(([field, fieldType]) => {
+            if (STRUCT_RESERVED_FIELDS.has(field)) {
+                throw new TypeError(`unsafeFfi.struct field '${field}' is reserved.`);
+            }
+            return [field, typeName(fieldType, "unsafeFfi.struct")];
+        }),
     );
     const layout = ffiBridge("unsafeFfi.struct").struct(name, normalized, options ?? {});
     const alloc = layout.alloc.bind(layout);
@@ -141,7 +154,7 @@ function struct(name, fields, options = undefined) {
         value(initial = undefined) {
             const instance = alloc(initial);
             Object.defineProperty(instance, "ptr", {
-                enumerable: true,
+                enumerable: false,
                 value: instance,
             });
             for (const field of Object.keys(normalized)) {

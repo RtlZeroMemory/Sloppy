@@ -2842,7 +2842,7 @@ fn extract_ffi_declarations_from_statements(
     };
 
     for statement in statements {
-        let Statement::VariableDeclaration(declaration) = statement else {
+        let Some(declaration) = ffi_variable_declaration_from_statement(statement) else {
             continue;
         };
         for declarator in &declaration.declarations {
@@ -2867,6 +2867,23 @@ fn extract_ffi_declarations_from_statements(
     }
 
     Ok(())
+}
+
+fn ffi_variable_declaration_from_statement<'a>(
+    statement: &'a Statement<'a>,
+) -> Option<&'a VariableDeclaration<'a>> {
+    match statement {
+        Statement::VariableDeclaration(declaration) => Some(declaration),
+        Statement::ExportNamedDeclaration(export)
+            if export.export_kind != ImportOrExportKind::Type && export.source.is_none() =>
+        {
+            match &export.declaration {
+                Some(Declaration::VariableDeclaration(declaration)) => Some(declaration),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 fn ffi_static_member_call<'a>(
@@ -2922,12 +2939,13 @@ fn extract_ffi_library_declaration(
             "unsafeFfi.library requires a static object literal of functions",
         ));
     };
-    let convention = call
-        .arguments
-        .get(2)
-        .and_then(object_argument)
-        .and_then(|object| object_string_property_value(object, "convention"))
-        .unwrap_or("system");
+    let options = ffi_options_object(context, call, 2, "unsafeFfi.library")?;
+    let convention = match options {
+        Some(object) => {
+            ffi_string_option(context, call.span, object, "convention")?.unwrap_or("system")
+        }
+        None => "system",
+    };
     validate_ffi_convention(context.path, call.span, convention)?;
 
     let mut functions = Vec::new();
@@ -3028,15 +3046,22 @@ fn extract_ffi_function_declaration(
                 "unsafeFfi.fn parameter types must be static type aliases",
             ));
         };
-        parameter_types.push(ffi_type_name_from_expression(
-            context.path,
-            expression,
-            bindings,
-        )?);
+        let parameter_type = ffi_type_name_from_expression(context.path, expression, bindings)?;
+        if parameter_type == "void" {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+                "FFI parameters cannot use void",
+            )
+            .with_path(context.path)
+            .with_span(expression.span()));
+        }
+        parameter_types.push(parameter_type);
     }
-    let options = call.arguments.get(2).and_then(object_argument);
+    let options = ffi_options_object(context, call, 2, "unsafeFfi.fn")?;
     if options
-        .and_then(|object| object_bool_property_value(object, "callback"))
+        .map(|object| ffi_bool_option(context, call.span, object, "callback"))
+        .transpose()?
+        .flatten()
         .unwrap_or(false)
     {
         return Err(Diagnostic::new(
@@ -3047,7 +3072,9 @@ fn extract_ffi_function_declaration(
         .with_span(call.span));
     }
     if options
-        .and_then(|object| object_bool_property_value(object, "variadic"))
+        .map(|object| ffi_bool_option(context, call.span, object, "variadic"))
+        .transpose()?
+        .flatten()
         .unwrap_or(false)
     {
         return Err(Diagnostic::new(
@@ -3057,9 +3084,12 @@ fn extract_ffi_function_declaration(
         .with_path(context.path)
         .with_span(call.span));
     }
-    let symbol = options
-        .and_then(|object| object_string_property_value(object, "symbol"))
-        .unwrap_or(function_name);
+    let symbol = match options {
+        Some(object) => {
+            ffi_string_option(context, call.span, object, "symbol")?.unwrap_or(function_name)
+        }
+        None => function_name,
+    };
     if symbol.is_empty() {
         return Err(ffi_dynamic_declaration_diag(
             context.path,
@@ -3067,9 +3097,11 @@ fn extract_ffi_function_declaration(
             "unsafeFfi.fn symbol must be a non-empty string",
         ));
     }
-    let convention = options
-        .and_then(|object| object_string_property_value(object, "convention"))
-        .unwrap_or(library_convention);
+    let convention = match options {
+        Some(object) => ffi_string_option(context, call.span, object, "convention")?
+            .unwrap_or(library_convention),
+        None => library_convention,
+    };
     validate_ffi_convention(context.path, call.span, convention)?;
 
     Ok(FfiFunctionMetadata {
@@ -3373,6 +3405,82 @@ fn validate_ffi_convention(path: &Path, span: Span, convention: &str) -> Result<
     .with_path(path)
     .with_span(span)
     .with_hint("Supported FFI conventions are system, cdecl, and stdcall."))
+}
+
+fn ffi_options_object<'a>(
+    context: &FfiSourceContext<'_>,
+    call: &'a CallExpression<'a>,
+    index: usize,
+    operation: &str,
+) -> Result<Option<&'a oxc_ast::ast::ObjectExpression<'a>>, Diagnostic> {
+    let Some(argument) = call.arguments.get(index) else {
+        return Ok(None);
+    };
+    object_argument(argument).map(Some).ok_or_else(|| {
+        ffi_dynamic_declaration_diag(
+            context.path,
+            call.span,
+            format!("{operation} options must be a static object literal"),
+        )
+    })
+}
+
+fn ffi_string_option<'a>(
+    context: &FfiSourceContext<'_>,
+    span: Span,
+    object: &'a oxc_ast::ast::ObjectExpression<'a>,
+    name: &str,
+) -> Result<Option<&'a str>, Diagnostic> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                span,
+                "FFI options do not support spreads",
+            ));
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        let Expression::StringLiteral(value) = &property.value else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                property.span,
+                format!("FFI option \"{name}\" must be a string literal"),
+            ));
+        };
+        return Ok(Some(value.value.as_str()));
+    }
+    Ok(None)
+}
+
+fn ffi_bool_option(
+    context: &FfiSourceContext<'_>,
+    span: Span,
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    name: &str,
+) -> Result<Option<bool>, Diagnostic> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                span,
+                "FFI options do not support spreads",
+            ));
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        let Expression::BooleanLiteral(value) = &property.value else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                property.span,
+                format!("FFI option \"{name}\" must be a boolean literal"),
+            ));
+        };
+        return Ok(Some(value.value));
+    }
+    Ok(None)
 }
 
 fn ffi_dynamic_declaration_diag(path: &Path, span: Span, message: impl Into<String>) -> Diagnostic {

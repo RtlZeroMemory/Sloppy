@@ -1,8 +1,10 @@
 #include "sloppy/ffi.h"
 
+#include "sloppy/checked_math.h"
 #include "sloppy/container.h"
 #include "sloppy/platform.h"
 
+#include <ffi.h>
 #include <stdint.h>
 
 static SlStatus sl_ffi_alloc_array(SlArena* arena, size_t count, size_t elem_size, size_t alignment,
@@ -44,7 +46,7 @@ static void sl_ffi_set_diag(SlDiag* out_diag, SlDiagCode code, SlStr message, Sl
     }
 }
 
-ffi_type* sl_ffi_type_for_plan_type(SlPlanFfiType type)
+static ffi_type* sl_ffi_type_for_plan_type(SlPlanFfiType type)
 {
     switch (type) {
     case SL_PLAN_FFI_TYPE_VOID:
@@ -85,7 +87,7 @@ ffi_type* sl_ffi_type_for_plan_type(SlPlanFfiType type)
     }
 }
 
-ffi_abi sl_ffi_abi_for_convention(SlPlanFfiCallingConvention convention)
+static ffi_abi sl_ffi_abi_for_convention(SlPlanFfiCallingConvention convention)
 {
     switch (convention) {
     case SL_PLAN_FFI_CALLING_CONVENTION_CDECL:
@@ -145,9 +147,12 @@ size_t sl_ffi_type_alignment(SlPlanFfiType type)
 static SlStatus sl_ffi_prepare_function(SlFfiFunction* function, SlDiag* out_diag)
 {
     ffi_type* return_type = sl_ffi_type_for_plan_type(function->return_type);
+    ffi_type** parameters = (ffi_type**)function->native_parameters;
+    ffi_cif* cif = (ffi_cif*)function->native_cif;
     ffi_status status;
 
-    if (return_type == NULL || (function->parameter_count > 0U && function->ffi_parameters == NULL))
+    if (return_type == NULL || cif == NULL ||
+        (function->parameter_count > 0U && parameters == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -158,15 +163,25 @@ static SlStatus sl_ffi_prepare_function(SlFfiFunction* function, SlDiag* out_dia
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
 #endif
     }
-    status = ffi_prep_cif(&function->cif, sl_ffi_abi_for_convention(function->convention),
-                          (unsigned int)function->parameter_count, return_type,
-                          function->ffi_parameters);
+    status = ffi_prep_cif(cif, sl_ffi_abi_for_convention(function->convention),
+                          (unsigned int)function->parameter_count, return_type, parameters);
     if (status != FFI_OK) {
         sl_ffi_set_diag(out_diag, SL_DIAG_FFI_UNSUPPORTED_CALLING_CONVENTION,
                         sl_str_from_cstr("libffi rejected the FFI calling convention"),
                         function->symbol);
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
+    return sl_status_ok();
+}
+
+SlStatus sl_ffi_call(const SlFfiFunction* function, void* result, void** args, SlDiag* out_diag)
+{
+    if (function == NULL || function->native_cif == NULL || function->symbol_ptr == NULL) {
+        sl_ffi_set_diag(out_diag, SL_DIAG_FFI_CALL_FAILED,
+                        sl_str_from_cstr("FFI function is not prepared"), sl_str_empty());
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    ffi_call((ffi_cif*)function->native_cif, FFI_FN(function->symbol_ptr), result, args);
     return sl_status_ok();
 }
 
@@ -208,8 +223,18 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
         registry->initialized = true;
         return sl_status_ok();
     }
+    if (plan->ffi_libraries == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
     for (library_index = 0U; library_index < plan->ffi_library_count; library_index += 1U) {
-        function_total += plan->ffi_libraries[library_index].function_count;
+        const SlPlanFfiLibrary* plan_library = &plan->ffi_libraries[library_index];
+        if (sl_str_is_empty(plan_library->name) ||
+            (plan_library->function_count > 0U && plan_library->functions == NULL) ||
+            !sl_status_is_ok(
+                sl_checked_add_size(function_total, plan_library->function_count, &function_total)))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
     }
     status = sl_ffi_alloc_array(arena, plan->ffi_library_count, sizeof(SlFfiLibrary),
                                 _Alignof(SlFfiLibrary), (void**)&registry->libraries);
@@ -222,7 +247,6 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
         return status;
     }
 
-    registry->library_count = plan->ffi_library_count;
     registry->function_count = function_total;
     for (library_index = 0U; library_index < plan->ffi_library_count; library_index += 1U) {
         const SlPlanFfiLibrary* plan_library = &plan->ffi_libraries[library_index];
@@ -236,9 +260,18 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
             sl_ffi_registry_dispose(registry);
             return status;
         }
+        registry->library_count = library_index + 1U;
         for (size_t fn = 0U; fn < plan_library->function_count; fn += 1U) {
             const SlPlanFfiFunction* plan_function = &plan_library->functions[fn];
             SlFfiFunction* function = &registry->functions[function_index];
+            ffi_type** parameters = NULL;
+            if (sl_str_is_empty(plan_function->id) || sl_str_is_empty(plan_function->name) ||
+                sl_str_is_empty(plan_function->symbol) ||
+                (plan_function->parameter_count > 0U && plan_function->parameters == NULL))
+            {
+                sl_ffi_registry_dispose(registry);
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
             function->id = plan_function->id;
             function->library = plan_library->name;
             function->name = plan_function->name;
@@ -254,16 +287,22 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
                 sl_ffi_registry_dispose(registry);
                 return status;
             }
-            status = sl_ffi_alloc_array(arena, function->parameter_count, sizeof(ffi_type*),
-                                        _Alignof(ffi_type*), (void**)&function->ffi_parameters);
+            status = sl_ffi_alloc_array(arena, 1U, sizeof(ffi_cif), _Alignof(ffi_cif),
+                                        &function->native_cif);
             if (!sl_status_is_ok(status)) {
                 sl_ffi_registry_dispose(registry);
                 return status;
             }
+            status = sl_ffi_alloc_array(arena, function->parameter_count, sizeof(ffi_type*),
+                                        _Alignof(ffi_type*), (void**)&parameters);
+            if (!sl_status_is_ok(status)) {
+                sl_ffi_registry_dispose(registry);
+                return status;
+            }
+            function->native_parameters = parameters;
             for (size_t param = 0U; param < function->parameter_count; param += 1U) {
-                function->ffi_parameters[param] =
-                    sl_ffi_type_for_plan_type(function->parameters[param]);
-                if (function->ffi_parameters[param] == NULL) {
+                parameters[param] = sl_ffi_type_for_plan_type(function->parameters[param]);
+                if (parameters[param] == NULL) {
                     sl_ffi_registry_dispose(registry);
                     return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
                 }

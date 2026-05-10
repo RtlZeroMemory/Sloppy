@@ -8,6 +8,7 @@ typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char package_manifest_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char file_read_storage[SL_RUN_FILE_READ_ARENA_BYTES];
@@ -76,9 +77,21 @@ typedef struct SlRunApp
 
 static SlRunApp sl_run_command_app_storage;
 
+static void sl_run_reset_app_storage(SlRunApp* app)
+{
+    unsigned char* bytes = (unsigned char*)app;
+
+    if (app == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < sizeof(*app); index += 1U) {
+        bytes[index] = 0U;
+    }
+}
+
 static SlRunApp* sl_run_command_app(void)
 {
-    sl_run_command_app_storage = (SlRunApp){0};
+    sl_run_reset_app_storage(&sl_run_command_app_storage);
     return &sl_run_command_app_storage;
 }
 
@@ -1565,7 +1578,7 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         return 1;
     }
 
-    *app = (SlRunApp){0};
+    sl_run_reset_app_storage(app);
     app->config_logging_minimum_level = SL_LOG_LEVEL_INFO;
     app->config_logging_queue_capacity = SL_LOG_DEFAULT_QUEUE_CAPACITY;
     app->config_logging_console_enabled = true;
@@ -2427,8 +2440,8 @@ static int sl_run_load_package_native_overrides(SlRunApp* app, const char* packa
         sl_cli_write_cstr(stderr, "sloppy run: package manifest path is too long\n");
         return 1;
     }
-    if (sl_run_read_file(app, manifest_path, app->metadata_json_storage,
-                         sizeof(app->metadata_json_storage), &manifest) != 0)
+    if (sl_run_read_file(app, manifest_path, app->package_manifest_json_storage,
+                         sizeof(app->package_manifest_json_storage), &manifest) != 0)
     {
         return 1;
     }

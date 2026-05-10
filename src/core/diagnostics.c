@@ -1410,14 +1410,14 @@ SlStr sl_diag_code_name(SlDiagCode code)
         return sl_diag_literal("SLOPPY_E_FFI_RUNTIME_UNAVAILABLE",
                                sizeof("SLOPPY_E_FFI_RUNTIME_UNAVAILABLE") - 1U);
     case SL_DIAG_FFI_LIBRARY_NOT_FOUND:
-        return sl_diag_literal("SLOPPYC_E_FFI_LIBRARY_NOT_FOUND",
-                               sizeof("SLOPPYC_E_FFI_LIBRARY_NOT_FOUND") - 1U);
+        return sl_diag_literal("SLOPPY_E_FFI_LIBRARY_NOT_FOUND",
+                               sizeof("SLOPPY_E_FFI_LIBRARY_NOT_FOUND") - 1U);
     case SL_DIAG_FFI_SYMBOL_NOT_FOUND:
-        return sl_diag_literal("SLOPPYC_E_FFI_SYMBOL_NOT_FOUND",
-                               sizeof("SLOPPYC_E_FFI_SYMBOL_NOT_FOUND") - 1U);
+        return sl_diag_literal("SLOPPY_E_FFI_SYMBOL_NOT_FOUND",
+                               sizeof("SLOPPY_E_FFI_SYMBOL_NOT_FOUND") - 1U);
     case SL_DIAG_FFI_UNSUPPORTED_CALLING_CONVENTION:
-        return sl_diag_literal("SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION",
-                               sizeof("SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION") - 1U);
+        return sl_diag_literal("SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION",
+                               sizeof("SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION") - 1U);
     case SL_DIAG_FFI_INVALID_ARGUMENT_COUNT:
         return sl_diag_literal("SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT",
                                sizeof("SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT") - 1U);

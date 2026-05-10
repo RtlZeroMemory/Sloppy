@@ -94,11 +94,11 @@ SlStatus sl_platform_dynlib_symbol(const SlPlatformDynlib* library, SlStr symbol
     }
     (void)dlerror();
     pointer = dlsym(library->handle, csymbol);
-    if (pointer == NULL) {
-        const char* message = dlerror();
+    const char* message = dlerror();
+    if (message != NULL) {
         sl_dynlib_diag(out_diag, SL_DIAG_FFI_SYMBOL_NOT_FOUND,
                        sl_str_from_cstr("FFI symbol could not be resolved"),
-                       message == NULL ? sl_str_empty() : sl_str_from_cstr(message));
+                       sl_str_from_cstr(message));
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
     }
     *out = pointer;

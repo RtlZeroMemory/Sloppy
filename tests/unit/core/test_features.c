@@ -440,7 +440,7 @@ static int test_ffi_plan_metadata_activates_runtime_feature(void)
 {
     unsigned char diag_storage[2048];
     SlArena diag_arena = {0};
-    SlPlanFfiLibrary libraries[1] = {{0}};
+    SlPlanFfiLibrary libraries[1] = {0};
     SlPlan plan = target_only_plan();
     SlRuntimeFeatureAvailability availability = all_available();
     SlRuntimeFeatureSet set = {0};

@@ -72,13 +72,6 @@ typedef struct SlEngineOptions
      */
     const SlRuntimeFeatureSet* runtime_features;
     /*
-     * Optional borrowed native-library path overrides for Plan FFI library IDs. Package runs
-     * use this to resolve copied local native libraries by Plan-visible ID while preserving
-     * normal platform loader behavior for libraries without an override.
-     */
-    const SlFfiLibraryOverride* ffi_library_overrides;
-    size_t ffi_library_override_count;
-    /*
      * Optional borrowed structured logging runtime. When supplied, V8 request-context
      * loggers submit bounded SlLogEvent records into this runtime. The caller owns startup,
      * flush, and shutdown and must keep the runtime alive for the engine lifetime.
@@ -94,6 +87,13 @@ typedef struct SlEngineOptions
      */
     SlBytes source_map;
     SlStr source_map_source_name;
+    /*
+     * Optional borrowed native-library path overrides for Plan FFI library IDs. Package runs
+     * use this to resolve copied local native libraries by Plan-visible ID while preserving
+     * normal platform loader behavior for libraries without an override.
+     */
+    const SlFfiLibraryOverride* ffi_library_overrides;
+    size_t ffi_library_override_count;
 } SlEngineOptions;
 
 /*

@@ -1148,8 +1148,7 @@ static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnect
 {
     SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
 
-    if (connection == NULL || server == NULL || server->config.keep_alive_disabled)
-    {
+    if (connection == NULL || server == NULL || server->config.keep_alive_disabled) {
         return false;
     }
     if (server->state != SL_HTTP_TRANSPORT_SERVER_STATE_LISTENING ||

@@ -1008,8 +1008,13 @@ void ffi_call_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         }
     }
     FfiArgStorage result;
-    ffi_call(const_cast<ffi_cif*>(&function->cif), FFI_FN(function->symbol_ptr), &result.value,
-             ffi_args.empty() ? nullptr : ffi_args.data());
+    SlDiag diag = {};
+    SlStatus status =
+        sl_ffi_call(function, &result.value, ffi_args.empty() ? nullptr : ffi_args.data(), &diag);
+    if (!sl_status_is_ok(status)) {
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: native FFI call failed.");
+        return;
+    }
     args.GetReturnValue().Set(ffi_return_value(isolate, function, &result));
 }
 
@@ -1055,8 +1060,8 @@ void ffi_library_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             &backend->ffi_registry, sl_str_from_parts(library_name.data(), library_name.size()),
             sl_str_from_parts(function_name.data(), function_name.size()), &function);
         if (!sl_status_is_ok(status)) {
-            ffi_throw_error(
-                isolate, "SLOPPYC_E_FFI_SYMBOL_NOT_FOUND: FFI function is not in Plan metadata.");
+            ffi_throw_error(isolate,
+                            "SLOPPY_E_FFI_SYMBOL_NOT_FOUND: FFI function is not in Plan metadata.");
             return;
         }
         if (!ffi_descriptor_matches(isolate, context, descriptor_value, function)) {
@@ -1253,14 +1258,16 @@ void ffi_utf16_read_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         ffi_throw_type_error(isolate, "unsafeFfi.utf16Buffer resource is disposed or invalid.");
         return;
     }
-    const uint16_t* data = reinterpret_cast<const uint16_t*>(resource->bytes.data());
     size_t units = resource->byte_length / sizeof(uint16_t);
+    std::vector<uint16_t> data(units);
+    auto* data_bytes = reinterpret_cast<unsigned char*>(data.data());
+    std::copy_n(resource->bytes.data(), resource->byte_length, data_bytes);
     size_t length = 0U;
     while (length < units && data[length] != 0U) {
         length += 1U;
     }
     v8::Local<v8::String> value;
-    if (!v8::String::NewFromTwoByte(isolate, data, v8::NewStringType::kNormal,
+    if (!v8::String::NewFromTwoByte(isolate, data.data(), v8::NewStringType::kNormal,
                                     static_cast<int>(length))
              .ToLocal(&value))
     {
@@ -1686,6 +1693,7 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     size_t offset = 0U;
+    size_t max_alignment = 1U;
     for (uint32_t index = 0U; index < names->Length(); index += 1U) {
         v8::Local<v8::Value> key;
         v8::Local<v8::Value> type_value;
@@ -1703,10 +1711,14 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         if (pack > 0U && alignment > pack) {
             alignment = pack;
         }
+        if (alignment > max_alignment) {
+            max_alignment = alignment;
+        }
         offset = (offset + alignment - 1U) & ~(alignment - 1U);
         layout->fields.push_back({name, type, offset});
         offset += size;
     }
+    offset = (offset + max_alignment - 1U) & ~(max_alignment - 1U);
     layout->byte_length = offset;
     layout->bytes.resize(offset == 0U ? 1U : offset);
     v8::Local<v8::Object> object;

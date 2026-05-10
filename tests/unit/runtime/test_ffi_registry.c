@@ -28,7 +28,9 @@ static int call_add_i32(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == 42 ? 0 : 2;
 }
 
@@ -47,7 +49,9 @@ static int call_add_u64(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == UINT64_C(42) ? 0 : 2;
 }
 
@@ -66,7 +70,9 @@ static int call_add_f64(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == 42.5 ? 0 : 2;
 }
 
@@ -85,7 +91,9 @@ static int call_strlen(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == 6U ? 0 : 2;
 }
 
@@ -105,7 +113,9 @@ static int call_sum_bytes(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == 10U ? 0 : 2;
 }
 
@@ -124,7 +134,9 @@ static int call_fill(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), NULL, args);
+    if (expect_status(sl_ffi_call(function, NULL, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return bytes[0] == 7U && bytes[1] == 7U && bytes[2] == 7U ? 0 : 2;
 }
 
@@ -142,7 +154,9 @@ static int call_write_u32(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), NULL, args);
+    if (expect_status(sl_ffi_call(function, NULL, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return value == 0xdecafbadU ? 0 : 2;
 }
 
@@ -167,7 +181,9 @@ static int call_point_sum(const SlFfiRegistry* registry, SlStr library)
     {
         return 1;
     }
-    ffi_call((ffi_cif*)&function->cif, FFI_FN(function->symbol_ptr), &result, args);
+    if (expect_status(sl_ffi_call(function, &result, args, NULL), SL_STATUS_OK) != 0) {
+        return 3;
+    }
     return result == 42 ? 0 : 2;
 }
 
@@ -250,7 +266,7 @@ int main(int argc, char** argv)
                                        .return_type = SL_PLAN_FFI_TYPE_I32,
                                        .parameters = point_params,
                                        .parameter_count = 1U}};
-    SlPlanFfiLibrary libraries[1] = {{0}};
+    SlPlanFfiLibrary libraries[1] = {0};
     SlPlan plan = {0};
     SlStr library_name = {0};
 
@@ -271,6 +287,18 @@ int main(int argc, char** argv)
     plan.ffi_libraries = libraries;
     plan.ffi_library_count = 1U;
 
+    {
+        SlPlan invalid_plan = {0};
+
+        invalid_plan.ffi_library_count = 1U;
+        if (expect_status(
+                sl_ffi_registry_init_from_plan(&registry, &arena, &invalid_plan, NULL, 0U, &diag),
+                SL_STATUS_INVALID_ARGUMENT) != 0)
+        {
+            return 8;
+        }
+    }
+
     if (expect_status(sl_ffi_registry_init_from_plan(&registry, &arena, &plan, NULL, 0U, &diag),
                       SL_STATUS_OK) != 0 ||
         diag.code != SL_DIAG_NONE)
@@ -290,7 +318,7 @@ int main(int argc, char** argv)
 
     {
         SlPlanFfiFunction missing_symbol = functions[0];
-        SlPlanFfiLibrary missing_symbol_libraries[1] = {{0}};
+        SlPlanFfiLibrary missing_symbol_libraries[1] = {0};
         SlPlan missing_symbol_plan = {0};
 
         missing_symbol.symbol = sl_str_from_cstr("sloppy_ffi_missing_symbol");
@@ -311,7 +339,7 @@ int main(int argc, char** argv)
     }
 
     {
-        SlPlanFfiLibrary missing_library_libraries[1] = {{0}};
+        SlPlanFfiLibrary missing_library_libraries[1] = {0};
         SlPlan missing_library_plan = {0};
 
         missing_library_libraries[0].name =
@@ -334,7 +362,7 @@ int main(int argc, char** argv)
 #if !SL_PLATFORM_WINDOWS
     {
         SlPlanFfiFunction stdcall_function = functions[0];
-        SlPlanFfiLibrary stdcall_libraries[1] = {{0}};
+        SlPlanFfiLibrary stdcall_libraries[1] = {0};
         SlPlan stdcall_plan = {0};
 
         stdcall_function.convention = SL_PLAN_FFI_CALLING_CONVENTION_STDCALL;

@@ -7,7 +7,7 @@
 #include "sloppy/plan.h"
 #include "sloppy/status.h"
 
-#include <ffi.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,8 +23,8 @@ typedef struct SlFfiFunction
     SlPlanFfiType return_type;
     const SlPlanFfiType* parameters;
     size_t parameter_count;
-    ffi_type** ffi_parameters;
-    ffi_cif cif;
+    void* native_parameters;
+    void* native_cif;
     void* symbol_ptr;
 } SlFfiFunction;
 
@@ -56,8 +56,7 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
 SlStatus sl_ffi_registry_find(const SlFfiRegistry* registry, SlStr library, SlStr name,
                               const SlFfiFunction** out);
 void sl_ffi_registry_dispose(SlFfiRegistry* registry);
-ffi_type* sl_ffi_type_for_plan_type(SlPlanFfiType type);
-ffi_abi sl_ffi_abi_for_convention(SlPlanFfiCallingConvention convention);
+SlStatus sl_ffi_call(const SlFfiFunction* function, void* result, void** args, SlDiag* out_diag);
 size_t sl_ffi_type_size(SlPlanFfiType type);
 size_t sl_ffi_type_alignment(SlPlanFfiType type);
 

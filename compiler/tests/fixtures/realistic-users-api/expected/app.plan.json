@@ -393,7 +393,7 @@
           },
           "name": {
             "kind": "string",
-            "min": 1.0
+            "min": 1
           },
           "tags": {
             "items": {
