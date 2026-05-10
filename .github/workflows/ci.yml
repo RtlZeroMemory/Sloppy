@@ -272,6 +272,7 @@ jobs:
         with:
           name: test-engine-ci-fast-meta
           path: artifacts/test-engine/ci-fast-meta.json
+          if-no-files-found: error
 
   rust:
     name: rust
@@ -401,6 +402,7 @@ jobs:
         with:
           name: test-engine-pr-windows
           path: artifacts/test-engine/pr-fuzz-windows.json
+          if-no-files-found: error
 
   windows-tooling:
     name: windows-tooling
@@ -488,6 +490,7 @@ jobs:
         with:
           name: test-engine-pr-windows-tooling
           path: artifacts/test-engine/pr-fuzz-windows-tooling.json
+          if-no-files-found: error
 
   windows-package-smoke:
     name: windows-package-smoke

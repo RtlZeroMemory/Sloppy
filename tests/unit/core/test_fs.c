@@ -26,18 +26,6 @@ static bool str_has_prefix(SlStr value, const char* prefix)
     return value.length >= length && memcmp(value.ptr, prefix, length) == 0;
 }
 
-static bool str_has_suffix(SlStr value, const char* suffix)
-{
-    size_t length = 0U;
-
-    if (value.ptr == NULL || suffix == NULL) {
-        return false;
-    }
-    length = strlen(suffix);
-    return value.length >= length &&
-           memcmp(value.ptr + (value.length - length), suffix, length) == 0;
-}
-
 static void wait_for_timestamp_tick(void)
 {
     clock_t start = clock();
@@ -49,6 +37,20 @@ static void wait_for_timestamp_tick(void)
     while ((clock() - start) < ticks) {
     }
 }
+
+#ifdef _WIN32
+static bool str_has_suffix(SlStr value, const char* suffix)
+{
+    size_t length = 0U;
+
+    if (value.ptr == NULL || suffix == NULL) {
+        return false;
+    }
+    length = strlen(suffix);
+    return value.length >= length &&
+           memcmp(value.ptr + (value.length - length), suffix, length) == 0;
+}
+#endif
 
 static int test_path_classification_and_policy(void)
 {
