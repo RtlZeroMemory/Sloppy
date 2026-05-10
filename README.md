@@ -63,7 +63,7 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Pre-alpha means APIs and artifact formats canchange between alpha revisions.
+Pre-alpha means APIs and artifact formats can change between alpha revisions.
 
 ## Start here
 
@@ -161,8 +161,9 @@ For a practical comparison, see
 - **Stdlib.** App host, routing, results, config, services, logging,
   capabilities, data, schema, filesystem, network, OS, process boundary, time,
   crypto, codec, and workers.
-- **Templates and examples.** `minimal-api`, `full-api`, `dogfood`, and `program`
-  templates, plus source examples under [`examples/`](examples/README.md).
+- **Templates and examples.** `api`, `minimal-api`, `program`, `cli`,
+  `package-api`, and `node-compat` templates, plus source examples under
+  [`examples/`](examples/README.md).
 
 Surface-by-surface status is tracked in
 [Stability Reference](docs/reference/stability.md).

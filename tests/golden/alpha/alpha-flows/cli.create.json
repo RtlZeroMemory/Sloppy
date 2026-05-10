@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-cli",
+      "sloppy run src/main.ts -- --help"
+    ],
+    "path": "flow-cli",
+    "template": "cli"
+  }
+}

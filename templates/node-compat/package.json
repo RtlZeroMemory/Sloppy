@@ -1,0 +1,11 @@
+{
+  "name": "sloppy-node-compat-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sloppy build",
+    "run": "sloppy run .sloppy",
+    "package": "sloppy package",
+    "deps": "sloppy deps .sloppy"
+  }
+}

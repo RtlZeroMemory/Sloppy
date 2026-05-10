@@ -1,0 +1,14 @@
+{
+  "name": "sloppy-package-api-starter",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "validator-lite": "file:./fixtures/validator-lite"
+  },
+  "scripts": {
+    "build": "sloppy build",
+    "run": "sloppy run .sloppy",
+    "package": "sloppy package",
+    "deps": "sloppy deps .sloppy"
+  }
+}

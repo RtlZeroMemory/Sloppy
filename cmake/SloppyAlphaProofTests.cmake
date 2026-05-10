@@ -1,6 +1,41 @@
 # Alpha golden and app-flow proof tests. Included by cmake/SloppyTests.cmake.
 
 if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
+    find_program(SLOPPY_ALPHA_PROOF_NODE NAMES node.exe node)
+    find_program(SLOPPY_ALPHA_PROOF_NPM NAMES npm.cmd npm)
+    set(SLOPPY_ALPHA_PROOF_NPM_CLI "")
+    if(SLOPPY_ALPHA_PROOF_NPM)
+        get_filename_component(SLOPPY_ALPHA_PROOF_NPM_DIR "${SLOPPY_ALPHA_PROOF_NPM}" DIRECTORY)
+        set(SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE
+            "${SLOPPY_ALPHA_PROOF_NPM_DIR}/node_modules/npm/bin/npm-cli.js")
+        if(EXISTS "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+            set(SLOPPY_ALPHA_PROOF_NPM_CLI "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+        endif()
+    endif()
+    if(NOT SLOPPY_ALPHA_PROOF_NPM_CLI AND DEFINED ENV{APPDATA})
+        set(SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE
+            "$ENV{APPDATA}/npm/node_modules/npm/bin/npm-cli.js")
+        if(EXISTS "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+            set(SLOPPY_ALPHA_PROOF_NPM_CLI "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+        endif()
+    endif()
+    if(NOT SLOPPY_ALPHA_PROOF_NPM_CLI AND SLOPPY_ALPHA_PROOF_NPM)
+        execute_process(
+            COMMAND "${SLOPPY_ALPHA_PROOF_NPM}" root -g
+            TIMEOUT 30
+            RESULT_VARIABLE SLOPPY_ALPHA_PROOF_NPM_ROOT_RESULT
+            OUTPUT_VARIABLE SLOPPY_ALPHA_PROOF_NPM_ROOT
+            ERROR_QUIET)
+        if(SLOPPY_ALPHA_PROOF_NPM_ROOT_RESULT EQUAL 0)
+            string(STRIP "${SLOPPY_ALPHA_PROOF_NPM_ROOT}" SLOPPY_ALPHA_PROOF_NPM_ROOT)
+            set(SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE
+                "${SLOPPY_ALPHA_PROOF_NPM_ROOT}/npm/bin/npm-cli.js")
+            if(EXISTS "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+                set(SLOPPY_ALPHA_PROOF_NPM_CLI "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+            endif()
+        endif()
+    endif()
+
     function(sloppy_add_alpha_proof_test test_name area)
         set(alpha_proof_args
             "--root" "${PROJECT_SOURCE_DIR}"
@@ -9,6 +44,10 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
             "--area" "${area}"
             "--work-root" "${CMAKE_BINARY_DIR}/alpha-proof/${test_name}"
             "--require-v8")
+        if(SLOPPY_ALPHA_PROOF_NODE AND SLOPPY_ALPHA_PROOF_NPM_CLI)
+            list(APPEND alpha_proof_args "--node" "${SLOPPY_ALPHA_PROOF_NODE}" "--npm-cli"
+                 "${SLOPPY_ALPHA_PROOF_NPM_CLI}")
+        endif()
         list(APPEND alpha_proof_args ${ARGN})
 
         add_test(
@@ -36,7 +75,7 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
         sloppy_add_alpha_proof_test(alpha.golden.compiler.${case_name} compiler
                                     "--compiler-case" "${case_name}")
     endforeach()
-    foreach(template IN ITEMS minimal-api full-api dogfood program)
+    foreach(template IN ITEMS api minimal-api program cli package-api node-compat)
         sloppy_add_alpha_proof_test(alpha.golden.templates.${template} templates "--template"
                                     "${template}")
         set_tests_properties(alpha.golden.templates.${template} PROPERTIES LABELS
@@ -45,7 +84,7 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
     sloppy_add_alpha_proof_test(alpha.golden.diagnostics diagnostics)
     set_tests_properties(alpha.golden.diagnostics PROPERTIES LABELS
                                                              "golden;alpha-proof;diagnostic")
-    foreach(flow IN ITEMS minimal-api full-api dogfood program direct-program direct-web)
+    foreach(flow IN ITEMS api minimal-api program cli package-api node-compat direct-program direct-web)
         sloppy_add_alpha_proof_test(alpha_flow.core.${flow} alpha-flows "--flow" "${flow}")
         set_tests_properties(alpha_flow.core.${flow} PROPERTIES LABELS
                                                                 "golden;alpha-proof;alpha-flows;integration;package;program")

@@ -33,6 +33,10 @@ typedef struct SlCliRoute
     SlCliSpan response_kind;
     SlCliSpan response_helper;
     uint64_t response_status;
+    SlCliSpan response_kinds[SL_CLI_MAX_ROUTE_RESPONSES];
+    SlCliSpan response_helpers[SL_CLI_MAX_ROUTE_RESPONSES];
+    uint64_t response_statuses[SL_CLI_MAX_ROUTE_RESPONSES];
+    size_t response_count;
     SlCliSpan binding_kinds[SL_CLI_MAX_ROUTE_BINDINGS];
     SlCliSpan binding_names[SL_CLI_MAX_ROUTE_BINDINGS];
     SlCliSpan binding_schemas[SL_CLI_MAX_ROUTE_BINDINGS];

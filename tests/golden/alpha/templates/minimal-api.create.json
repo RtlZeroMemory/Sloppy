@@ -6,7 +6,7 @@
     "next": [
       "cd alpha-minimal-api",
       "sloppy build",
-      "sloppy run --once GET /health"
+      "sloppy run .sloppy --once GET /health"
     ],
     "path": "alpha-minimal-api",
     "template": "minimal-api"

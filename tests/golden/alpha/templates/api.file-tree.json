@@ -1,0 +1,19 @@
+[
+  ".gitignore",
+  "README.md",
+  "appsettings.Development.json",
+  "appsettings.json",
+  "data/.gitkeep",
+  "package.json",
+  "sloppy.json",
+  "src/config.ts",
+  "src/db/migrate.ts",
+  "src/db/schema.ts",
+  "src/db/usersRepository.ts",
+  "src/main.ts",
+  "src/models/createUserRequest.ts",
+  "src/models/user.ts",
+  "src/routes/health.ts",
+  "src/routes/users.ts",
+  "src/services/usersService.ts"
+]

@@ -16,6 +16,8 @@ let selectedCompilerCase = "";
 let selectedTemplate = "";
 let selectedFlow = "";
 let selectedExample = "";
+let node = "";
+let npmCli = "";
 
 const compilerCases = [
     ["hello-mapget", "compiler/tests/fixtures/hello-mapget/input.js"],
@@ -30,7 +32,7 @@ const compilerCases = [
     ["source-map", "compiler/tests/fixtures/source-map/input.js"],
 ];
 
-const templates = ["minimal-api", "full-api", "dogfood", "program"];
+const templates = ["api", "minimal-api", "program", "cli", "package-api", "node-compat"];
 
 const diagnosticCases = [
     {
@@ -55,6 +57,16 @@ const diagnosticCases = [
         name: "create-invalid-name",
         sloppyArgs: ["create", "bad name", "--template", "minimal-api"],
         expect: "project name",
+    },
+    {
+        name: "create-removed-dogfood",
+        sloppyArgs: ["create", "removed-dogfood", "--template", "dogfood"],
+        expect: "unsupported template",
+    },
+    {
+        name: "create-removed-full-api",
+        sloppyArgs: ["create", "removed-full-api", "--template", "full-api"],
+        expect: "unsupported template",
     },
     {
         name: "run-missing-artifacts",
@@ -157,8 +169,21 @@ function cmdFileQuote(value) {
     return `"${winPath(value).replace(/"/g, '""')}"`;
 }
 
+function cmdCommandQuote(value) {
+    const text = String(value || "");
+    return /[\\/:]/.test(text) ? cmdFileQuote(text) : text;
+}
+
 function commandFromCwd(executable, cwd) {
     return executable;
+}
+
+function shouldUseWindowsCommandScript(executable) {
+    if (System.platform !== "windows") {
+        return false;
+    }
+    const text = String(executable || "").toLowerCase();
+    return /[\\/:]/.test(text) || text === "npm" || text.endsWith(".cmd") || text.endsWith(".bat");
 }
 
 function parseArgs(raw) {
@@ -230,11 +255,11 @@ async function run(executable, runArgs, options = {}) {
         maxStdoutBytes: 16 * 1024 * 1024,
         maxStderrBytes: 16 * 1024 * 1024,
     };
-    if (System.platform === "windows" && /[\\/:]/.test(executable)) {
+    if (shouldUseWindowsCommandScript(executable)) {
         commandCounter += 1;
         const scriptDir = joinPath(workRoot, "_commands");
         const script = joinPath(scriptDir, `run-${commandCounter}.cmd`);
-        const commandLine = [cmdFileQuote(executable), ...runArgs.map((part) => cmdFileQuote(part))].join(" ");
+        const commandLine = [cmdCommandQuote(executable), ...runArgs.map((part) => cmdFileQuote(part))].join(" ");
         await Directory.create(fsPath(scriptDir), { recursive: true });
         await File.writeText(fsPath(script), `@echo off\r\ncd /d ${cmdFileQuote(cwd)}\r\n${commandLine}\r\n`);
         command = "cmd.exe";
@@ -478,6 +503,22 @@ async function packageWithSloppy(cwd, extraArgs = []) {
     return result;
 }
 
+async function installTemplateDependencies(projectDir, template) {
+    if (template !== "package-api") {
+        return;
+    }
+    const command = node && npmCli ? node : "npm";
+    const args = node && npmCli
+        ? [npmCli, "install", "--ignore-scripts", "--no-audit"]
+        : ["install", "--ignore-scripts", "--no-audit"];
+    const result = await run(command, args, { cwd: projectDir, timeout: 180000 });
+    requireSuccess(result, `npm install for ${template}`);
+}
+
+function withPassthroughArgs(runArgs) {
+    return runArgs.length > 0 ? ["--", ...runArgs] : [];
+}
+
 async function runCliArea() {
     if (!selectedCliSection || selectedCliSection === "help") {
         const commands = [
@@ -590,6 +631,7 @@ async function runTemplateArea() {
         const projectDir = joinPath(areaRoot, projectName);
         await commandSnapshot("templates", `${template}.create`, result, { jsonStdout: true });
         await snapshotJson("templates", `${template}.file-tree`, await stableFileList(projectDir, { skip: [".sloppy", ".git"] }));
+        await installTemplateDependencies(projectDir, template);
         await buildWithSloppy(projectDir);
         const artifactDir = joinPath(projectDir, ".sloppy");
         await snapshotJson("templates", `${template}.plan-summary`, planSummary(await readJson(joinPath(artifactDir, "app.plan.json"))));
@@ -597,8 +639,9 @@ async function runTemplateArea() {
         await commandSnapshot("templates", `${template}.package-output`, packageResult, { jsonStdout: true });
         await snapshotJson("templates", `${template}.package-manifest`, await readJson(joinPath(projectDir, ".sloppy/package/manifest.json")));
 
-        if (template === "program") {
-            const runResult = await run(sloppy, ["run", ".sloppy", "--", "--name", "Ada"], { cwd: projectDir });
+        if (template === "program" || template === "cli" || template === "node-compat") {
+            const runArgs = template === "program" ? ["--name", "Ada"] : template === "cli" ? ["--help"] : [];
+            const runResult = await run(sloppy, ["run", ".sloppy", ...withPassthroughArgs(runArgs)], { cwd: projectDir });
             if (requireV8) {
                 requireSuccess(runResult, `${template} run`);
             } else {
@@ -612,6 +655,11 @@ async function runTemplateArea() {
             const openapiResult = await run(sloppy, ["openapi", ".sloppy"], { cwd: projectDir });
             requireSuccess(openapiResult, `${template} openapi`);
             await commandSnapshot("templates", `${template}.openapi`, openapiResult, { jsonStdout: true });
+            if (template === "package-api") {
+                const depsResult = await run(sloppy, ["deps", ".sloppy", "--format", "json"], { cwd: projectDir });
+                requireSuccess(depsResult, `${template} deps`);
+                await commandSnapshot("templates", `${template}.deps`, depsResult, { jsonStdout: true });
+            }
         }
     }
 }
@@ -645,7 +693,7 @@ async function runAlphaFlowsArea() {
     if (!selectedFlow || templates.includes(selectedFlow)) {
         await seedTemplates(flowsRoot, selectedFlow && templates.includes(selectedFlow) ? selectedFlow : "");
     }
-    for (const template of ["minimal-api", "full-api", "dogfood", "program"]) {
+    for (const template of templates) {
         if (selectedFlow && selectedFlow !== template) {
             continue;
         }
@@ -654,15 +702,17 @@ async function runAlphaFlowsArea() {
         requireSuccess(create, `flow create ${template}`);
         await commandSnapshot("alpha-flows", `${template}.create`, create, { jsonStdout: true });
         const projectDir = joinPath(flowsRoot, projectName);
+        await installTemplateDependencies(projectDir, template);
         await buildWithSloppy(projectDir);
         const artifactDir = joinPath(projectDir, ".sloppy");
         await snapshotJson("alpha-flows", `${template}.plan-summary`, planSummary(await readJson(joinPath(artifactDir, "app.plan.json"))));
-        if (template === "program") {
-            const runSource = await run(sloppy, ["run", "src/main.ts", "--", "--name", "Ada"], { cwd: projectDir });
+        if (template === "program" || template === "cli" || template === "node-compat") {
+            const runArgs = template === "program" ? ["--name", "Ada"] : template === "cli" ? ["--help"] : [];
+            const runSource = await run(sloppy, ["run", "src/main.ts", ...withPassthroughArgs(runArgs)], { cwd: projectDir });
             if (requireV8) {
-                requireSuccess(runSource, "program source flow");
+                requireSuccess(runSource, `${template} source flow`);
             } else {
-                requireFailure(runSource, "requires V8-enabled build", "program non-V8 source flow");
+                requireFailure(runSource, "requires V8-enabled build", `${template} non-V8 source flow`);
             }
             await commandSnapshot("alpha-flows", `${template}.run-source-${requireV8 ? "v8" : "non-v8"}`, runSource);
         } else {
@@ -672,6 +722,11 @@ async function runAlphaFlowsArea() {
             const openapi = await run(sloppy, ["openapi", ".sloppy"], { cwd: projectDir });
             requireSuccess(openapi, `${template} openapi`);
             await commandSnapshot("alpha-flows", `${template}.openapi`, openapi, { jsonStdout: true });
+            if (template === "package-api") {
+                const deps = await run(sloppy, ["deps", ".sloppy", "--format", "json"], { cwd: projectDir });
+                requireSuccess(deps, `${template} deps`);
+                await commandSnapshot("alpha-flows", `${template}.deps`, deps, { jsonStdout: true });
+            }
         }
         const packaged = await packageWithSloppy(projectDir);
         await commandSnapshot("alpha-flows", `${template}.package`, packaged, { jsonStdout: true });
@@ -754,6 +809,8 @@ export async function main(args, ctx) {
     repoRoot = resolvePath(ctx.cwd, parsed.root || ctx.cwd);
     sloppy = resolvePath(ctx.cwd, parsed.sloppy || joinPath(repoRoot, "build/windows-dev/sloppy.exe"));
     sloppyc = resolvePath(ctx.cwd, parsed.sloppyc || joinPath(repoRoot, "compiler/target/release/sloppyc.exe"));
+    node = parsed.node ? resolvePath(ctx.cwd, parsed.node) : "";
+    npmCli = parsed["npm-cli"] ? resolvePath(ctx.cwd, parsed["npm-cli"]) : "";
     update = Boolean(parsed.update);
     requireV8 = Boolean(parsed.requireV8);
     selectedArea = parsed.area || "all";
@@ -771,6 +828,15 @@ export async function main(args, ctx) {
     }
     if (!(await File.exists(fsPath(sloppyc)))) {
         throw new Error(`sloppyc executable not found: ${sloppyc}`);
+    }
+    if ((node && !npmCli) || (!node && npmCli)) {
+        throw new Error("--node and --npm-cli must be provided together");
+    }
+    if (node && !(await File.exists(fsPath(node)))) {
+        throw new Error(`node executable not found: ${node}`);
+    }
+    if (npmCli && !(await File.exists(fsPath(npmCli)))) {
+        throw new Error(`npm CLI not found: ${npmCli}`);
     }
     await withFsContext(`create work root ${workRoot}`, async () => {
         await Directory.create(fsPath(workRoot), { recursive: true });

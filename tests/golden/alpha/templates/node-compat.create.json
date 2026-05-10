@@ -1,0 +1,14 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd alpha-node-compat",
+      "sloppy build",
+      "sloppy run .sloppy"
+    ],
+    "path": "alpha-node-compat",
+    "template": "node-compat"
+  }
+}

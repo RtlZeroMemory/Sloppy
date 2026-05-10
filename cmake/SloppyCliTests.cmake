@@ -279,7 +279,8 @@
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
                 "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" -P
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_ENABLE_V8=$<BOOL:${SLOPPY_ENABLE_V8}>" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_create_package_command.cmake")
         set_tests_properties(sloppy.cli.create_package_command PROPERTIES LABELS "cli;source-input")
     endif()

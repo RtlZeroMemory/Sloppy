@@ -67,6 +67,11 @@
         "id": "optimization.provider-route-candidate",
         "message": "route has provider/effect metadata for future route analysis",
         "status": "ok"
+      },
+      {
+        "id": "dependency.graph",
+        "message": "Dependency graph emitted with 0 package(s), 7 module(s), and 0 Node compatibility binding(s).",
+        "status": "info"
       }
     ]
   }

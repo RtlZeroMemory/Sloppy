@@ -1,0 +1,10 @@
+{
+  "name": "sloppy-program-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sloppy build",
+    "run": "sloppy run .sloppy",
+    "package": "sloppy package"
+  }
+}

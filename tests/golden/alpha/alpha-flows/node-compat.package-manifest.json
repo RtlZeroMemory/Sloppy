@@ -1,0 +1,13 @@
+{
+  "artifacts": {
+    "bundle": "artifacts/app.js",
+    "dependencyGraph": "artifacts/deps.graph.json",
+    "plan": "artifacts/app.plan.json",
+    "sourceMap": "artifacts/app.js.map"
+  },
+  "createdBy": "sloppy package",
+  "dependencyMode": "bundled",
+  "entry": "artifacts/app.plan.json",
+  "kind": "program",
+  "schema": "sloppy.app-package.v1"
+}

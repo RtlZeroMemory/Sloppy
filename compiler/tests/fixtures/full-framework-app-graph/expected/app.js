@@ -97,23 +97,7 @@ function auditMiddleware(ctx, next) {
   return next();
 }
 
-globalThis.__sloppy_handler_1 = async function(ctx) { try { return await (async function(ctx) { return await __sloppy_finish_cors(await (() => __sloppy_run_middleware(ctx, [__sloppy_request_id({"header":"x-request-id","responseHeader":true,"trustIncoming":true}), __sloppy_request_logging({"includeDuration":false,"includeRequestId":true,"includeRoute":true}), auditMiddleware], () => (function(ctx) { const __sloppy_opened_providers = []; let db; try { db = __sloppy_open_data_provider("sqlite", "data.main"); __sloppy_opened_providers.push(db); class ProjectSummaryController {
-  static inject = ["ClockService"];
-
-  constructor(clock) {
-    this.clock = clock;
-  }
-
-  summary(ctx) {
-    return Results.ok({
-      at: this.clock.now,
-      route: ctx.routeName,
-      requestId: ctx.requestId,
-    });
-  }
-} function auditMiddleware(ctx, next) {
-  return next();
-} function listProjects() {
+globalThis.__sloppy_handler_1 = async function(ctx) { try { return await (async function(ctx) { return await __sloppy_finish_cors(await (() => __sloppy_run_middleware(ctx, [__sloppy_request_id({"header":"x-request-id","responseHeader":true,"trustIncoming":true}), __sloppy_request_logging({"includeDuration":false,"includeRequestId":true,"includeRoute":true}), auditMiddleware], () => (function(ctx) { const __sloppy_opened_providers = []; let db; try { db = __sloppy_open_data_provider("sqlite", "data.main"); __sloppy_opened_providers.push(db); function listProjects() {
   return db.query("select id, name from projects", []);
 } return ((ctx) => Results.ok({
   q: ctx.query.q,

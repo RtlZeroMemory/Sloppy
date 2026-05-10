@@ -4,7 +4,7 @@ Pre-alpha runtime foundation with bounded run and metadata CLI introspection.
 Usage:
   sloppy --help
   sloppy --version
-  sloppy create <name> [--template minimal-api|full-api|dogfood|program] [--force]
+  sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat] [--force]
                        [--no-git] [--format text|json]
   sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
                [--environment Development] [--host 127.0.0.1] [--port <port>]

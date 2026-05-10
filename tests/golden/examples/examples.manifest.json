@@ -23,7 +23,7 @@
     { "name": "crypto-secret-constant-time", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "crypto runtime smoke is V8-gated" },
     { "name": "data-foundation", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "data foundation example is covered by static API-shape tests and runtime smoke is V8-gated" },
     { "name": "dependency-graph", "kind": "program", "entry": "src/main.ts", "tier": "pr", "reason": "requires local fixture npm install before PR smoke; covered by compiler resolver tests and manual example validation" },
-    { "name": "dogfood", "kind": "metadata", "tier": "pr", "reason": "dogfood metadata fixture is covered through template and prealpha-control-plane flows" },
+    { "name": "dogfood", "kind": "metadata", "tier": "pr", "reason": "dogfood metadata fixture remains internal; prealpha-control-plane covers the supported dogfood flow" },
     { "name": "dynamic-module-include", "kind": "program", "entry": "src/main.ts", "tier": "pr", "reason": "project-config moduleInclude behavior is covered by compiler tests and manual example validation" },
     { "name": "ergonomics", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "covered by static example API-shape tests" },
     { "name": "framework-controller", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "covered by static example API-shape tests" },

@@ -366,6 +366,7 @@ pub(crate) struct FunctionEffectSummary {
     pub(crate) effects: Vec<EffectMetadata>,
     pub(crate) provider_bindings: BTreeMap<String, ProviderBinding>,
     pub(crate) helper_calls: BTreeSet<String>,
+    pub(crate) parameters: Vec<String>,
     pub(crate) unknown_provider_usage: bool,
     pub(crate) source_name: String,
     pub(crate) source_text: String,

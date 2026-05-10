@@ -68,7 +68,8 @@ metadata, and writes an app package.
 
 ## What works today
 
-- Templates: `minimal-api`, `full-api`, `dogfood`, and `program`.
+- Templates: `api`, `minimal-api`, `program`, `cli`, `package-api`, and
+  `node-compat`.
 - CLI: `create`, `build`, `run`, `package`, `routes`, `deps`,
   `capabilities`, `doctor`, `audit`, and `openapi`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
@@ -98,5 +99,6 @@ source-build paths until matching alpha packages are available.
 
 ## Examples
 
-Start with [Examples and demo apps](guide/examples.md). The `minimal-api`,
-`full-api`, `dogfood`, and `program` templates are the best first places to copy from.
+Start with [Examples and demo apps](guide/examples.md). The `api`,
+`minimal-api`, `program`, `cli`, `package-api`, and `node-compat` templates are
+the best first places to copy from.

@@ -77,6 +77,10 @@ endpoint kind/check names from `app.mapHealthChecks(...)`.
 Sloppy does not require every route to be statically understood. If the
 compiler can emit runnable JavaScript, the app can run. Static source gives
 stronger Plan metadata; dynamic source produces partial metadata and findings.
+The compiler must not reject runnable JavaScript only because metadata is
+incomplete. Fatal diagnostics are reserved for execution impossibility, invalid
+artifact shape, unsafe static-required declarations such as FFI, unsupported
+runtime features, or source that cannot be resolved or transformed.
 
 Generated typed-handler wrappers read `Config<"KEY">` from the environment
 first. If AppGraph recorded a literal default for the same key, the wrapper uses
@@ -134,6 +138,9 @@ results; they do not link to the compiler library.
 - Unsupported runtime dependencies, invalid artifact shapes, and source that
   cannot be transformed into runnable JavaScript fail with stable
   `SLOPPYC_E_*` diagnostics instead of being silently ignored.
+- Metadata incompleteness is not by itself a fatal error when the generated
+  JavaScript remains runnable. Emit partial/dynamic Plan metadata and honest
+  dependency graph entries instead.
 - Dynamic web route shapes that remain runnable emit `SLOPPYC_W_DYNAMIC_ROUTE`
   findings and partial/dynamic Plan metadata instead of fatal diagnostics.
 - Generated provider bridges remain honest about runtime support. Static
