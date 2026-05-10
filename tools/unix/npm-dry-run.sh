@@ -81,12 +81,12 @@ rm -rf "$stage_root" "$tarball_root"
 mkdir -p "$extract_root" "$stage_root" "$tarball_root"
 tar -xzf "$package_path" -C "$extract_root"
 
-mapfile -t roots < <(find "$extract_root" -mindepth 1 -maxdepth 1 -type d)
-if [[ "${#roots[@]}" -ne 1 ]]; then
-  echo "Expected one package root in archive for npm staging, found ${#roots[@]}." >&2
+root_count="$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d '[:space:]')"
+if [[ "$root_count" -ne 1 ]]; then
+  echo "Expected one package root in archive for npm staging, found $root_count." >&2
   exit 1
 fi
-package_root="${roots[0]}"
+package_root="$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 manifest_path="$package_root/manifest.json"
 [[ -f "$manifest_path" ]] || { echo "Archive package is missing manifest.json." >&2; exit 1; }
 
