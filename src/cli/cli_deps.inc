@@ -71,17 +71,18 @@ static int sl_cli_deps_load_graph(const SlCliOptions* options, yyjson_doc** out_
     return 1;
 }
 
-static void sl_cli_deps_emit_json(yyjson_val* graph)
+static int sl_cli_deps_emit_json(yyjson_val* graph)
 {
     size_t length = 0U;
     char* json = yyjson_val_write(graph, YYJSON_WRITE_PRETTY, &length);
     if (json == NULL) {
         sl_cli_write_cstr(stderr, "sloppy deps: failed to serialize dependency graph JSON\n");
-        return;
+        return 1;
     }
     fwrite(json, 1U, length, stdout);
     fputc('\n', stdout);
     sl_heap_release(json);
+    return 0;
 }
 
 static void sl_cli_deps_emit_text_array(yyjson_val* graph, const char* label, const char* name,
@@ -191,7 +192,10 @@ static int sl_cli_command_deps(const SlCliOptions* options)
     }
 
     if (options->format == SL_CLI_FORMAT_JSON) {
-        sl_cli_deps_emit_json(graph);
+        if (sl_cli_deps_emit_json(graph) != 0) {
+            yyjson_doc_free(doc);
+            return 1;
+        }
     }
     else {
         sl_cli_deps_emit_text(graph);

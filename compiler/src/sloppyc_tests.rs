@@ -610,7 +610,7 @@ fn program_mode_reports_missing_package_with_install_hint() {
     let out_dir = root.join(".sloppy");
     fs::write(
         &input,
-        "import dependency from \"express\";\nexport function main() { return dependency; }\n",
+        "import dependency from \"__sloppy_missing_pkg_for_test__\";\nexport function main() { return dependency; }\n",
     )
     .expect("entry should write");
 
@@ -622,7 +622,7 @@ fn program_mode_reports_missing_package_with_install_hint() {
         .hint
         .as_deref()
         .unwrap_or_default()
-        .contains("npm install express"));
+        .contains("npm install __sloppy_missing_pkg_for_test__"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
