@@ -34,7 +34,8 @@ export default app;
 ```
 
 ```sh
-sloppy run --once GET /hello/Ada
+sloppy build
+sloppy run .sloppy --once GET /hello/Ada
 ```
 
 ```json
@@ -71,7 +72,7 @@ Create, build, and run a minimal API:
 sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
-sloppy run --once GET /health
+sloppy run .sloppy --once GET /health
 ```
 
 Windows x64 and Linux x64 are the npm runtime targets for this alpha. macOS and
@@ -126,6 +127,11 @@ for an existing app. A Sloppy app imports the Sloppy stdlib and runs with the
   TLS bridge is available.
 - **CLI tooling.** `sloppy create`, `build`, `run`, `routes`, `capabilities`,
   `doctor`, `audit`, `openapi`, and `package`.
+- **Program Mode.** Route-free source files can compile to Program Plans with
+  opaque metadata and a generated `main`/default entrypoint. Direct source
+  commands such as `sloppy run src/main.ts`, `sloppy build src/main.ts`, and
+  `sloppy package src/main.ts` do not require `sloppy.json`; execution still
+  requires a V8-enabled runtime build.
 - **Stdlib.** App host, routing, results, config, services, logging,
   capabilities, data, schema, filesystem, network, OS, process boundary, time,
   crypto, codec, and workers.

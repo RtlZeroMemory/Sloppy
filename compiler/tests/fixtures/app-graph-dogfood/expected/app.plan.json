@@ -250,6 +250,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [
     {
       "name": "healthModule",

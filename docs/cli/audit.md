@@ -4,12 +4,13 @@ Run static policy checks against a compiled Plan. `audit` is read-only and does
 not enter V8.
 
 ```sh
+sloppy audit <artifacts-dir|plan.json> [--format text|json]
 sloppy audit --plan <path> [--format text|json]
 sloppy audit --artifacts <dir> [--format text|json]
 ```
 
-`<path>` is an `app.plan.json` file or a directory containing one.
-`--artifacts <dir>` is equivalent to `--plan <dir>/app.plan.json`.
+Use `sloppy audit .sloppy` for the common case. `--plan` and `--artifacts`
+remain explicit forms for scripts.
 
 ## What it checks
 

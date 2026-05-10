@@ -267,7 +267,7 @@
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
             "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_artifact;extra;--once;GET;/"
-            "-DSLOPPY_EXPECTED_ERROR=expected either --artifacts <dir> or one positional artifact path"
+            "-DSLOPPY_EXPECTED_ERROR=expected either --artifacts <dir> or one positional source or artifact path"
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

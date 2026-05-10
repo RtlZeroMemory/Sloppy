@@ -3,20 +3,20 @@
 List the routes a Plan declares. Read-only; doesn't enter V8.
 
 ```sh
+sloppy routes <artifacts-dir|plan.json> [--format text|json]
 sloppy routes --plan <path> [--format text|json]
 sloppy routes --artifacts <dir> [--format text|json]
 ```
 
-Use `--plan <path>` for either an `app.plan.json` file directly or a directory
-containing one (e.g. `.sloppy/`). Use `--artifacts <dir>` as the equivalent
-artifact-directory alias.
+Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
+`--artifacts <dir>` remain explicit forms for scripts.
 
 ## Output
 
 **Text** (default):
 
 ```text
-$ sloppy routes --plan .sloppy/app.plan.json
+$ sloppy routes .sloppy
 GET    /health           handler=1 name=Health.Get
 GET    /hello/{name}     handler=2 name=Hello.Get
 ```
@@ -27,15 +27,21 @@ by source order (matching the runtime's match precedence).
 **JSON**:
 
 ```text
-$ sloppy routes --plan .sloppy/app.plan.json --format json
-[
-  { "method": "GET", "pattern": "/health", "handlerId": 1, "name": "Health.Get" },
-  { "method": "GET", "pattern": "/hello/{name}", "handlerId": 2, "name": "Hello.Get" }
-]
+$ sloppy routes .sloppy --format json
+{
+  "kind": "web",
+  "routes": [
+    { "method": "GET", "pattern": "/health", "handlerId": 1, "name": "Health.Get" },
+    { "method": "GET", "pattern": "/hello/{name}", "handlerId": 2, "name": "Hello.Get" }
+  ]
+}
 ```
 
 JSON output is stable; tooling can pipe it through `jq` or feed it into
 custom validation.
+
+For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
+array. Text output says no route metadata is expected for a program Plan.
 
 ## Use cases
 
@@ -44,5 +50,5 @@ custom validation.
 - Generate human-readable documentation for an API.
 - Wire into CI to fail when routes change unexpectedly.
 
-For OpenAPI output, use [`sloppy openapi`](openapi.md). `routes` accepts either
-`--plan <path>` or `--artifacts <dir>`. `routes` is the lower-level dump.
+For OpenAPI output, use [`sloppy openapi`](openapi.md). `routes` is the
+lower-level dump.

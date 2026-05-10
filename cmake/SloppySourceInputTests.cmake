@@ -41,7 +41,7 @@
                     "-DSLOPPY_CASE=hello-non-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
                     "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
                     "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.source_input_emits_artifacts_non_v8
                                  PROPERTIES LABELS "source-input")
@@ -89,7 +89,7 @@
                     "-DSLOPPY_ONCE_TARGET=/users"
                     "-DSLOPPY_ENVIRONMENT=Development"
                     "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
                     "-DSLOPPY_EXPECTED_PLAN=users-api-sqlite-runtime.db" -P
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.source_input_config_driven_sqlite_non_v8
@@ -104,7 +104,7 @@
                     "-DSLOPPY_SOURCE=examples/hello-minimal/src/main.ts" "-DSLOPPY_ONCE_METHOD=GET"
                     "-DSLOPPY_ONCE_TARGET=/hello/Ada"
                     "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
                     "-DSLOPPY_EXPECTED_PLAN=Hello.Get" -P
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.hello_minimal_source_input_non_v8
@@ -145,7 +145,7 @@
                     "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
                     "-DSLOPPY_COMMAND=build" "-DSLOPPY_CASE=hello-minimal-build-non-v8"
                     "-DSLOPPY_SOURCE=examples/hello-minimal/src/main.ts"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy"
                     "-DSLOPPY_EXPECTED_PLAN=Hello.Get" -P
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.build.source_input_non_v8
@@ -197,6 +197,31 @@
             set_tests_properties(sloppy.run.prealpha_control_plane_project_non_v8
                                  PROPERTIES LABELS "source-input;dogfood;sqlite")
         endif()
+
+        add_test(
+            NAME sloppy.build.program_project_capabilities_non_v8
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" "-DSLOPPY_COMMAND=build"
+                "-DSLOPPY_CASE=program-project-capabilities"
+                "-DSLOPPY_PROJECT_FIXTURE=examples/program-hello"
+                "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" "-DSLOPPY_EXPECTED_PLAN=\"token\": \"fs\""
+                "-DSLOPPY_EXPECTED_SOURCE_MAP=programModules" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.build.program_project_capabilities_non_v8
+                             PROPERTIES LABELS "source-input;program-mode")
+
+        add_test(
+            NAME sloppy.program_artifact_shorthand
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_EXPECT_RUN_SUCCESS=${SLOPPY_ENABLE_V8}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_program_artifact_shorthand.cmake")
+        set_tests_properties(sloppy.program_artifact_shorthand
+                             PROPERTIES LABELS "source-input;program-mode")
 
         add_test(
             NAME sloppy.build.missing_project_config
@@ -534,7 +559,7 @@
                         "-DSLOPPY_CASE=hello-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
                         "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
                         "-DSLOPPY_EXPECTED_OUTPUT=Hello from Sloppy"
-                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                         "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
                 set_tests_properties(conformance.hello.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input")
@@ -549,7 +574,7 @@
                         "-DSLOPPY_SOURCE=examples/hello-minimal/src/main.ts"
                         "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/hello/Ada"
                         "-DSLOPPY_EXPECTED_OUTPUT=\"hello\":\"Ada\""
-                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                         "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
                 set_tests_properties(conformance.hello_minimal.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input")
@@ -564,7 +589,7 @@
                         "-DSLOPPY_SOURCE=examples/users-api-sqlite/app.js"
                         "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
                         "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
-                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                         "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
                 set_tests_properties(conformance.users_api_sqlite.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input;sqlite")

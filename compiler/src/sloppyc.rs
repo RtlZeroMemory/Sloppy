@@ -9,12 +9,16 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, ClassElement,
-    Declaration, Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
-    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ObjectPropertyKind,
-    PropertyKey, PropertyKind, Statement, TSLiteral, TSSignature, TSType, TSTypeName,
+    Declaration, ExportDefaultDeclaration, ExportNamedDeclaration, Expression, ExpressionStatement,
+    ForStatementInit, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionKind, ModuleExportName, ObjectPropertyKind, PropertyKey, PropertyKind,
+    Statement, TSLiteral, TSSignature, TSType, TSTypeName, VariableDeclaration,
 };
+use oxc_codegen::Codegen;
 use oxc_parser::Parser;
-use oxc_span::Span;
+use oxc_semantic::SemanticBuilder;
+use oxc_span::{SourceType, Span};
+use oxc_transformer::{Module, TransformOptions, Transformer};
 use serde_json::json;
 use serde_json::Value;
 
@@ -72,29 +76,35 @@ enum CliCommand {
     Build {
         input: PathBuf,
         out_dir: PathBuf,
-        options: CompileOptions,
+        options: Box<CompileOptions>,
     },
     Invalid(String),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CompileOptions {
+    pub kind: Option<ProjectKind>,
     pub environment: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub config_dir: Option<PathBuf>,
     pub config_overrides: Vec<(String, String)>,
+    pub declared_capabilities: Vec<String>,
+    pub declared_capabilities_from_sloppy_json: bool,
     pub timings_json: Option<PathBuf>,
 }
 
 impl CompileOptions {
     pub fn new() -> Self {
         Self {
+            kind: None,
             environment: None,
             host: None,
             port: None,
             config_dir: None,
             config_overrides: Vec::new(),
+            declared_capabilities: Vec::new(),
+            declared_capabilities_from_sloppy_json: false,
             timings_json: None,
         }
     }
@@ -530,6 +540,25 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
                 ));
             };
             options.port = Some(port);
+        } else if arg == "--kind" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires web or program after --kind".to_string(),
+                );
+            }
+            let Some(kind_text) = values[index].to_str() else {
+                return CliCommand::Invalid("build kind must be valid UTF-8".to_string());
+            };
+            options.kind = match kind_text {
+                "web" => Some(ProjectKind::Web),
+                "program" => Some(ProjectKind::Program),
+                _ => {
+                    return CliCommand::Invalid(format!(
+                        "build --kind expects web or program, got '{kind_text}'"
+                    ));
+                }
+            };
         } else if arg == "--config-dir" {
             index += 1;
             if index >= values.len() {
@@ -555,6 +584,43 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
             options
                 .config_overrides
                 .push((key.to_string(), value.to_string()));
+        } else if arg == "--capability" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires a capability name after --capability".to_string(),
+                );
+            }
+            let Some(capability) = values[index].to_str() else {
+                return CliCommand::Invalid("build capability must be valid UTF-8".to_string());
+            };
+            if declared_capability_shape(capability).is_none() {
+                return CliCommand::Invalid(format!(
+                    "build --capability expects fs, net, os, time, crypto, codec, or workers, got '{capability}'"
+                ));
+            }
+            options.declared_capabilities.push(capability.to_string());
+        } else if arg == "--capability-origin" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires an origin after --capability-origin".to_string(),
+                );
+            }
+            let Some(origin) = values[index].to_str() else {
+                return CliCommand::Invalid(
+                    "build capability origin must be valid UTF-8".to_string(),
+                );
+            };
+            match origin {
+                "command-line" => options.declared_capabilities_from_sloppy_json = false,
+                "sloppy.json" => options.declared_capabilities_from_sloppy_json = true,
+                _ => {
+                    return CliCommand::Invalid(
+                        "build --capability-origin expects command-line or sloppy.json".to_string(),
+                    );
+                }
+            }
         } else if arg == "--timings-json" || arg == "--diagnostics-timing-json" {
             index += 1;
             if index >= values.len() {
@@ -575,7 +641,7 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
         (Some(input), Some(out_dir)) => CliCommand::Build {
             input,
             out_dir,
-            options,
+            options: Box::new(options),
         },
         (None, _) => CliCommand::Invalid("build requires an input file".to_string()),
         (_, None) => CliCommand::Invalid("build requires --out <directory>".to_string()),
@@ -596,7 +662,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js|input.ts> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json|--diagnostics-timing-json <file>]\n",
+        "  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json|--diagnostics-timing-json <file>]\n",
     );
     text
 }
@@ -637,8 +703,8 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
         metrics.add_phase("readInputMs", read_start.elapsed());
     }
 
-    let mut extracted =
-        extract_with_metrics(input, &source, metrics.as_mut()).map_err(|diagnostic| {
+    let mut extracted = extract_for_options_with_metrics(input, &source, options, metrics.as_mut())
+        .map_err(|diagnostic| {
             let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
             Box::new(CompileError {
                 code: 1,
@@ -670,6 +736,14 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
                 source: diagnostic_source,
             })
         })?;
+    apply_declared_capabilities(&mut extracted, options).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
+        Box::new(CompileError {
+            code: 1,
+            diagnostic,
+            source: diagnostic_source,
+        })
+    })?;
     if let Some(metrics) = metrics.as_mut() {
         metrics.record_app(&extracted);
     }
@@ -826,6 +900,7 @@ struct ModuleGraph {
     source_file_names: BTreeSet<String>,
     source_files: Vec<SourceFile>,
     uses_time_runtime: bool,
+    uses_fs_runtime: bool,
     uses_crypto_runtime: bool,
     noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
@@ -858,6 +933,7 @@ impl ModuleGraph {
             source_file_names: BTreeSet::new(),
             source_files: Vec::new(),
             uses_time_runtime: false,
+            uses_fs_runtime: false,
             uses_crypto_runtime: false,
             noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
@@ -881,9 +957,125 @@ impl ModuleGraph {
     }
 }
 
+fn declared_capability_shape(name: &str) -> Option<(&'static str, &'static str)> {
+    match name {
+        "fs" => Some(("filesystem", "readwrite")),
+        "net" => Some(("network", "connect-listen")),
+        "os" => Some(("os", "info")),
+        "time" => Some(("time", "use")),
+        "crypto" => Some(("crypto", "use")),
+        "codec" => Some(("codec", "use")),
+        "workers" => Some(("workers", "use")),
+        _ => None,
+    }
+}
+
+fn apply_declared_capabilities(
+    app: &mut ExtractedApp,
+    options: &CompileOptions,
+) -> Result<(), Diagnostic> {
+    let mut seen = app
+        .capabilities
+        .iter()
+        .map(|capability| capability.token.clone())
+        .collect::<BTreeSet<_>>();
+
+    for capability in &options.declared_capabilities {
+        let Some((kind, access)) = declared_capability_shape(capability) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_INVALID_CAPABILITY",
+                format!("unsupported declared capability '{capability}'"),
+            ));
+        };
+        match capability.as_str() {
+            "fs" => app.uses_fs_runtime = true,
+            "net" => app.uses_net_runtime = true,
+            "os" => app.uses_os_runtime = true,
+            "time" => app.uses_time_runtime = true,
+            "crypto" => app.uses_crypto_runtime = true,
+            "codec" => app.uses_codec_runtime = true,
+            "workers" => app.uses_workers_runtime = true,
+            _ => {}
+        }
+        if !seen.insert(capability.clone()) {
+            continue;
+        }
+        let (source_name, source) = if options.declared_capabilities_from_sloppy_json {
+            (
+                "sloppy.json".to_string(),
+                format!("capabilities.{capability}"),
+            )
+        } else {
+            (
+                "command-line".to_string(),
+                format!("--capability {capability}"),
+            )
+        };
+        app.capabilities.push(DatabaseCapability {
+            token: capability.clone(),
+            capability_kind: kind.to_string(),
+            provider: String::new(),
+            config_name: None,
+            config_key: None,
+            access: access.to_string(),
+            database: None,
+            config_source: None,
+            source_name,
+            source,
+            span: Span::new(0, 0),
+            from_provider_use: false,
+        });
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
     extract_with_metrics(path, source, None)
+}
+
+fn extract_for_options_with_metrics(
+    path: &Path,
+    source: &str,
+    options: &CompileOptions,
+    mut metrics: Option<&mut CompileMetrics>,
+) -> Result<ExtractedApp, Diagnostic> {
+    match options.kind {
+        Some(ProjectKind::Web) => extract_with_metrics(path, source, metrics),
+        Some(ProjectKind::Program) => extract_program_with_metrics(path, source, metrics),
+        None => {
+            match extract_with_metrics(path, source, metrics.as_deref_mut()) {
+                Ok(app) => Ok(app),
+                Err(web_error) => {
+                    if source_has_sloppy_web_import(path, source)?
+                        && web_error_indicates_missing_web_shape(&web_error)
+                    {
+                        return Err(Diagnostic::new(
+                        "SLOPPYC_E_AMBIGUOUS_SOURCE_KIND",
+                        "This source imports Sloppy but does not export a supported web app shape.",
+                    )
+                    .with_path(path)
+                    .with_hint("Use --kind program to run it as a program, or export a Sloppy app."));
+                    }
+                    if source_has_sloppy_web_import(path, source)? {
+                        return Err(web_error);
+                    }
+                    extract_program_with_metrics(path, source, metrics)
+                }
+            }
+        }
+    }
+}
+
+fn web_error_indicates_missing_web_shape(error: &Diagnostic) -> bool {
+    matches!(
+        error.code,
+        "SLOPPYC_E_MISSING_APP"
+            | "SLOPPYC_E_MISSING_ROUTE"
+            | "SLOPPYC_E_UNSUPPORTED_IMPORT"
+            | "SLOPPYC_E_UNSUPPORTED_TOP_LEVEL"
+    )
 }
 
 fn extract_with_metrics(
@@ -893,6 +1085,687 @@ fn extract_with_metrics(
 ) -> Result<ExtractedApp, Diagnostic> {
     let mut graph = ModuleGraph::new(path);
     extract_entry(path, source, &mut graph, metrics)
+}
+
+fn source_has_sloppy_web_import(path: &Path, source: &str) -> Result<bool, Diagnostic> {
+    let source_type = source_type_for_path(path, ParseContext::Entry)?;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(
+            Diagnostic::new("SLOPPYC_E_PARSE", format!("failed to parse input: {error}"))
+                .with_path(path),
+        );
+    }
+    Ok(parsed.program.body.iter().any(|statement| {
+        matches!(
+            statement,
+            Statement::ImportDeclaration(import) if import.source.value.as_str() == "sloppy"
+        )
+    }))
+}
+
+fn extract_program_with_metrics(
+    path: &Path,
+    source: &str,
+    mut metrics: Option<&mut CompileMetrics>,
+) -> Result<ExtractedApp, Diagnostic> {
+    let parse_start = Instant::now();
+    let source_type = source_type_for_path(path, ParseContext::Entry)?;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("parseEntryMs", parse_start.elapsed());
+    }
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(
+            Diagnostic::new("SLOPPYC_E_PARSE", format!("failed to parse input: {error}"))
+                .with_path(path),
+        );
+    }
+    for statement in &parsed.program.body {
+        if let Some(span) = statement_dynamic_import_span(statement) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT",
+                "dynamic import is not supported by program mode",
+            )
+            .with_path(path)
+            .with_span(span)
+            .with_hint("Use static relative imports or documented Sloppy stdlib imports."));
+        }
+    }
+
+    let extract_start = Instant::now();
+    let mut graph = ModuleGraph::new(path);
+    let mut modules = Vec::new();
+    let mut visiting = BTreeSet::new();
+    extract_program_module(path, source, &mut graph, &mut visiting, &mut modules)?;
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("extractMs", extract_start.elapsed());
+    }
+    let source_files = graph.source_files.clone();
+    let capabilities = program_inferred_capabilities(&graph);
+    Ok(ExtractedApp {
+        kind: ProjectKind::Program,
+        program_entry: Some(source_map_source_name(path)),
+        program_modules: modules,
+        uses_data_runtime: false,
+        uses_sql_runtime: false,
+        source_files,
+        routes: Vec::new(),
+        service_registrations: Vec::new(),
+        modules: Vec::new(),
+        helper_sources: Vec::new(),
+        capabilities,
+        configuration: None,
+        schemas: Vec::new(),
+        config_reads: Vec::new(),
+        uses_time_runtime: graph.uses_time_runtime,
+        uses_fs_runtime: graph.uses_fs_runtime,
+        uses_crypto_runtime: graph.uses_crypto_runtime,
+        noncrypto_hash_security_context_visible: graph.noncrypto_hash_security_context_visible,
+        uses_codec_runtime: graph.uses_codec_runtime,
+        checksum_security_context_visible: graph.checksum_security_context_visible,
+        uses_net_runtime: graph.uses_net_runtime,
+        uses_os_runtime: graph.uses_os_runtime,
+        uses_http_client_runtime: graph.uses_http_client_runtime,
+        uses_workers_runtime: graph.uses_workers_runtime,
+        uses_health: false,
+        problem_details: None,
+    })
+}
+
+fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability> {
+    let mut capabilities = Vec::new();
+    if graph.uses_fs_runtime {
+        push_program_inferred_capability(&mut capabilities, "fs");
+    }
+    if graph.uses_net_runtime || graph.uses_http_client_runtime {
+        push_program_inferred_capability(&mut capabilities, "net");
+    }
+    if graph.uses_os_runtime {
+        push_program_inferred_capability(&mut capabilities, "os");
+    }
+    if graph.uses_time_runtime {
+        push_program_inferred_capability(&mut capabilities, "time");
+    }
+    if graph.uses_crypto_runtime {
+        push_program_inferred_capability(&mut capabilities, "crypto");
+    }
+    if graph.uses_codec_runtime {
+        push_program_inferred_capability(&mut capabilities, "codec");
+    }
+    if graph.uses_workers_runtime {
+        push_program_inferred_capability(&mut capabilities, "workers");
+    }
+    capabilities
+}
+
+fn push_program_inferred_capability(capabilities: &mut Vec<DatabaseCapability>, token: &str) {
+    let Some((kind, access)) = declared_capability_shape(token) else {
+        return;
+    };
+    capabilities.push(DatabaseCapability {
+        token: token.to_string(),
+        capability_kind: kind.to_string(),
+        provider: String::new(),
+        config_name: None,
+        config_key: None,
+        access: access.to_string(),
+        database: None,
+        config_source: None,
+        source_name: "program import".to_string(),
+        source: format!("import:{token}"),
+        span: Span::new(0, 0),
+        from_provider_use: false,
+    });
+}
+
+fn extract_program_module(
+    path: &Path,
+    source: &str,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+) -> Result<(), Diagnostic> {
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if modules
+        .iter()
+        .any(|module| module.id == source_map_source_name(&canonical))
+    {
+        return Ok(());
+    }
+    if !visiting.insert(canonical.clone()) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_MODULE_CYCLE",
+            "program mode does not support cyclic relative imports",
+        )
+        .with_path(path));
+    }
+    let source_name = graph.record_source(&canonical, source);
+    let transformed = transform_program_source(&canonical, source, graph, visiting, modules)?;
+    visiting.remove(&canonical);
+    modules.push(ProgramModule {
+        id: source_name.clone(),
+        source_name,
+        source: source.to_string(),
+        emitted_source: transformed,
+    });
+    Ok(())
+}
+
+fn transform_program_source(
+    path: &Path,
+    source: &str,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+) -> Result<String, Diagnostic> {
+    let source_type = source_type_for_path(path, ParseContext::Module)?;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_PARSE",
+            format!("failed to parse program module: {error}"),
+        )
+        .with_path(path));
+    }
+
+    let mut program = parsed.program;
+    analyze_program_imports(path, &program.body, graph, visiting, modules)?;
+    let transformed = transpile_program_typescript(path, &allocator, &mut program)?;
+    rewrite_program_module_exports(path, &transformed)
+}
+
+fn analyze_program_imports(
+    path: &Path,
+    statements: &[Statement<'_>],
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+) -> Result<(), Diagnostic> {
+    for statement in statements {
+        if let Some(span) = statement_dynamic_import_span(statement) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT",
+                "dynamic import is not supported by program mode",
+            )
+            .with_path(path)
+            .with_span(span)
+            .with_hint("Use static relative imports or documented Sloppy stdlib imports."));
+        }
+        if let Statement::ImportDeclaration(import) = statement {
+            analyze_program_import(path, import, graph, visiting, modules)?;
+        }
+    }
+    Ok(())
+}
+
+fn analyze_program_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+) -> Result<(), Diagnostic> {
+    let specifier = import.source.value.as_str();
+    if !program_import_has_runtime_value(import) {
+        return Ok(());
+    }
+    let import_kind = resolver::classify_import(path, specifier);
+    match import_kind {
+        resolver::ImportKind::Relative(resolved) => {
+            let source = fs::read_to_string(&resolved).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INPUT",
+                    format!("failed to read program module: {error}"),
+                )
+                .with_path(&resolved)
+            })?;
+            extract_program_module(&resolved, &source, graph, visiting, modules)?;
+            Ok(())
+        }
+        resolver::ImportKind::SlopStdlib
+        | resolver::ImportKind::SlopTime
+        | resolver::ImportKind::SlopFilesystem
+        | resolver::ImportKind::SlopCrypto
+        | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopWorkers => {
+            validate_program_stdlib_import(path, import, &import_kind)?;
+            mark_program_import(graph, &import_kind, import);
+            Ok(())
+        }
+        resolver::ImportKind::SqliteProvider => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            "program mode does not support provider imports yet",
+        )
+        .with_path(path)
+        .with_span(import.source.span)
+        .with_hint("Use documented Sloppy stdlib imports or relative source imports.")),
+        resolver::ImportKind::UnresolvedRelative(specifier)
+        | resolver::ImportKind::UnsupportedBare(specifier)
+        | resolver::ImportKind::Remote(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            format!(
+                "Program Mode does not support npm or Node built-in imports yet: \"{specifier}\""
+            ),
+        )
+        .with_path(path)
+        .with_span(import.source.span)
+        .with_hint("Use Sloppy stdlib imports or relative modules.")),
+    }
+}
+
+fn program_import_has_runtime_value(import: &ImportDeclaration<'_>) -> bool {
+    if import.import_kind == ImportOrExportKind::Type {
+        return false;
+    }
+    let Some(specifiers) = &import.specifiers else {
+        return true;
+    };
+    specifiers.iter().any(|specifier| match specifier {
+        ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+            specifier.import_kind != ImportOrExportKind::Type
+        }
+        ImportDeclarationSpecifier::ImportDefaultSpecifier(_)
+        | ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => true,
+    })
+}
+
+fn validate_program_stdlib_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+    import_kind: &resolver::ImportKind,
+) -> Result<(), Diagnostic> {
+    match import_kind {
+        resolver::ImportKind::SlopFilesystem => validate_module_sloppy_fs_import(path, import),
+        resolver::ImportKind::SlopTime => validate_module_sloppy_time_import(path, import),
+        resolver::ImportKind::SlopCrypto => validate_module_sloppy_crypto_import(path, import),
+        resolver::ImportKind::SlopCodec => validate_module_sloppy_codec_import(path, import),
+        resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
+        resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
+        resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
+        resolver::ImportKind::SlopStdlib => {
+            validate_module_sloppy_root_import(path, import).map(|_| ())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn transpile_program_typescript<'a>(
+    path: &Path,
+    allocator: &'a Allocator,
+    program: &mut oxc_ast::ast::Program<'a>,
+) -> Result<String, Diagnostic> {
+    let semantic = SemanticBuilder::new()
+        .with_excess_capacity(2.0)
+        .with_enum_eval(true)
+        .build(program);
+    if let Some(error) = semantic.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT",
+            format!("unsupported Program Mode syntax: {error}"),
+        )
+        .with_path(path)
+        .with_hint(
+            "Program Mode uses the Oxc TypeScript transform and does not type-check code.",
+        ));
+    }
+    let mut options = TransformOptions::default();
+    options.env.module = Module::Preserve;
+    let transform = Transformer::new(allocator, path, &options)
+        .build_with_scoping(semantic.semantic.into_scoping(), program);
+    if let Some(error) = transform.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT",
+            format!("unsupported Program Mode transform: {error}"),
+        )
+        .with_path(path));
+    }
+    Ok(Codegen::new().build(program).code)
+}
+
+fn rewrite_program_module_exports(path: &Path, source: &str) -> Result<String, Diagnostic> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::mjs()).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_TRANSFORM",
+            format!("failed to parse transformed Program Mode JavaScript: {error}"),
+        )
+        .with_path(path));
+    }
+
+    let mut replacements = Vec::<ProgramReplacement>::new();
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::ImportDeclaration(import) => {
+                replacements.push(ProgramReplacement {
+                    span: import.span,
+                    text: program_import_replacement(path, import)?,
+                });
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                replacements.push(ProgramReplacement {
+                    span: export.span,
+                    text: program_named_export_replacement(path, source, export)?,
+                });
+            }
+            Statement::ExportDefaultDeclaration(export) => {
+                replacements.push(ProgramReplacement {
+                    span: export.span,
+                    text: program_default_export_replacement(source, export),
+                });
+            }
+            Statement::ExportAllDeclaration(export) => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_EXPORT",
+                    "program mode does not support export-all declarations",
+                )
+                .with_path(path)
+                .with_span(export.span)
+                .with_hint("Export values explicitly from the module that defines them."));
+            }
+            _ => {}
+        }
+    }
+    Ok(apply_program_replacements(source, &replacements))
+}
+
+struct ProgramReplacement {
+    span: Span,
+    text: String,
+}
+
+fn apply_program_replacements(source: &str, replacements: &[ProgramReplacement]) -> String {
+    let mut output = String::with_capacity(source.len() + replacements.len() * 32);
+    let mut cursor = 0usize;
+    for replacement in replacements {
+        let start = replacement.span.start as usize;
+        let end = replacement.span.end as usize;
+        output.push_str(&source[cursor..start]);
+        output.push_str(&replacement.text);
+        cursor = end;
+    }
+    output.push_str(&source[cursor..]);
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn program_import_replacement(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<String, Diagnostic> {
+    if import.import_kind == ImportOrExportKind::Type {
+        return Ok(String::new());
+    }
+    let specifier = import.source.value.as_str();
+    let require_expr = match resolver::classify_import(path, specifier) {
+        resolver::ImportKind::Relative(resolved) => {
+            format!(
+                "__sloppy_program_require({})",
+                json_string(&source_map_source_name(&resolved))
+            )
+        }
+        resolver::ImportKind::SlopStdlib
+        | resolver::ImportKind::SlopTime
+        | resolver::ImportKind::SlopFilesystem
+        | resolver::ImportKind::SlopCrypto
+        | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopWorkers => "globalThis.__sloppy_runtime".to_string(),
+        _ => {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("Program Mode does not support npm or Node built-in imports yet: \"{specifier}\""),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint("Use Sloppy stdlib imports or relative modules."));
+        }
+    };
+    let Some(specifiers) = &import.specifiers else {
+        return Ok(format!("{require_expr};"));
+    };
+    if specifiers.is_empty() {
+        return Ok(format!("{require_expr};"));
+    }
+    let mut defaults = Vec::new();
+    let mut namespaces = Vec::new();
+    let mut named = Vec::new();
+    for specifier in specifiers {
+        match specifier {
+            ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                defaults.push(specifier.local.name.as_str().to_string());
+            }
+            ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                namespaces.push(specifier.local.name.as_str().to_string());
+            }
+            ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                if specifier.import_kind == ImportOrExportKind::Type {
+                    continue;
+                }
+                let imported = module_export_name_text(&specifier.imported);
+                let local = specifier.local.name.as_str();
+                if imported == local {
+                    named.push(imported);
+                } else {
+                    named.push(format!("{imported}: {local}"));
+                }
+            }
+        }
+    }
+    let mut output = String::new();
+    if !named.is_empty() {
+        output.push_str("const { ");
+        output.push_str(&named.join(", "));
+        output.push_str(" } = ");
+        output.push_str(&require_expr);
+        output.push(';');
+    }
+    for default in defaults {
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        output.push_str("const ");
+        output.push_str(&default);
+        output.push_str(" = ");
+        output.push_str(&require_expr);
+        output.push_str(".default;");
+    }
+    for namespace in namespaces {
+        if !output.is_empty() {
+            output.push(' ');
+        }
+        output.push_str("const ");
+        output.push_str(&namespace);
+        output.push_str(" = ");
+        output.push_str(&require_expr);
+        output.push(';');
+    }
+    Ok(output)
+}
+
+fn program_named_export_replacement(
+    path: &Path,
+    source: &str,
+    export: &ExportNamedDeclaration<'_>,
+) -> Result<String, Diagnostic> {
+    if export.export_kind == ImportOrExportKind::Type {
+        return Ok(String::new());
+    }
+    if export.source.is_some() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_EXPORT",
+            "program mode does not support re-export declarations",
+        )
+        .with_path(path)
+        .with_span(export.span)
+        .with_hint("Import the value, then export it explicitly."));
+    }
+    let mut output = String::new();
+    if let Some(declaration) = &export.declaration {
+        output.push_str(span_source(source, declaration.span()));
+        for name in declaration_export_names(declaration) {
+            output.push('\n');
+            output.push_str(&export_assignment(&name, &name));
+        }
+        return Ok(output);
+    }
+    for specifier in &export.specifiers {
+        if specifier.export_kind == ImportOrExportKind::Type {
+            continue;
+        }
+        let local = module_export_name_text(&specifier.local);
+        let exported = module_export_name_text(&specifier.exported);
+        if !identifier_like(&local) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_EXPORT",
+                "program mode named exports must reference local identifiers",
+            )
+            .with_path(path)
+            .with_span(specifier.span));
+        }
+        output.push_str(&export_assignment(&exported, &local));
+        output.push('\n');
+    }
+    Ok(output)
+}
+
+fn program_default_export_replacement(
+    source: &str,
+    export: &ExportDefaultDeclaration<'_>,
+) -> String {
+    let declaration = span_source(source, export.declaration.span()).trim_end_matches(';');
+    format!("exports.default = {declaration};")
+}
+
+fn declaration_export_names(declaration: &Declaration<'_>) -> Vec<String> {
+    match declaration {
+        Declaration::FunctionDeclaration(function) => function
+            .id
+            .as_ref()
+            .map(|id| vec![id.name.as_str().to_string()])
+            .unwrap_or_default(),
+        Declaration::ClassDeclaration(class) => class
+            .id
+            .as_ref()
+            .map(|id| vec![id.name.as_str().to_string()])
+            .unwrap_or_default(),
+        Declaration::VariableDeclaration(declaration) => variable_declaration_names(declaration),
+        _ => Vec::new(),
+    }
+}
+
+fn variable_declaration_names(declaration: &VariableDeclaration<'_>) -> Vec<String> {
+    let mut names = Vec::new();
+    for declarator in &declaration.declarations {
+        binding_pattern_names(&declarator.id, &mut names);
+    }
+    names
+}
+
+fn binding_pattern_names(pattern: &BindingPattern<'_>, names: &mut Vec<String>) {
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => {
+            names.push(identifier.name.as_str().to_string());
+        }
+        BindingPattern::ObjectPattern(pattern) => {
+            for property in &pattern.properties {
+                binding_pattern_names(&property.value, names);
+            }
+            if let Some(rest) = &pattern.rest {
+                binding_pattern_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::ArrayPattern(pattern) => {
+            for element in pattern.elements.iter().flatten() {
+                binding_pattern_names(element, names);
+            }
+            if let Some(rest) = &pattern.rest {
+                binding_pattern_names(&rest.argument, names);
+            }
+        }
+        BindingPattern::AssignmentPattern(pattern) => {
+            binding_pattern_names(&pattern.left, names);
+        }
+    }
+}
+
+fn module_export_name_text(name: &ModuleExportName<'_>) -> String {
+    name.name().as_str().to_string()
+}
+
+fn export_assignment(exported: &str, local: &str) -> String {
+    if identifier_like(exported) {
+        format!("exports.{exported} = {local};")
+    } else {
+        format!("exports[{}] = {local};", json_string(exported))
+    }
+}
+
+fn span_source(source: &str, span: Span) -> &str {
+    &source[span.start as usize..span.end as usize]
+}
+
+fn identifier_like(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first == '$' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch == '$' || ch.is_ascii_alphanumeric())
+}
+
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
+}
+
+fn mark_program_import(
+    graph: &mut ModuleGraph,
+    import_kind: &resolver::ImportKind,
+    import: &ImportDeclaration<'_>,
+) {
+    match import_kind {
+        resolver::ImportKind::SlopTime => graph.uses_time_runtime = true,
+        resolver::ImportKind::SlopFilesystem => graph.uses_fs_runtime = true,
+        resolver::ImportKind::SlopCrypto => graph.uses_crypto_runtime = true,
+        resolver::ImportKind::SlopCodec => graph.uses_codec_runtime = true,
+        resolver::ImportKind::SlopNet => {
+            if let Some(specifiers) = &import.specifiers {
+                for specifier in specifiers {
+                    if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
+                        if specifier.import_kind == ImportOrExportKind::Type {
+                            continue;
+                        }
+                        mark_sloppy_net_runtime_usage(
+                            &mut graph.uses_net_runtime,
+                            &mut graph.uses_http_client_runtime,
+                            specifier.imported.name().as_str(),
+                        );
+                    }
+                }
+            }
+        }
+        resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
+        resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
+        resolver::ImportKind::SlopStdlib => {
+            graph.uses_time_runtime = true;
+            graph.uses_fs_runtime = true;
+            graph.uses_crypto_runtime = true;
+            graph.uses_codec_runtime = true;
+            graph.uses_net_runtime = true;
+            graph.uses_os_runtime = true;
+            graph.uses_workers_runtime = true;
+        }
+        _ => {}
+    }
 }
 
 fn extract_entry(
@@ -1173,6 +2046,9 @@ fn extract_entry(
     }
 
     Ok(ExtractedApp {
+        kind: ProjectKind::Web,
+        program_entry: None,
+        program_modules: Vec::new(),
         uses_data_runtime: state.data_imported
             || state.sql_imported
             || state.sqlite_imported
@@ -1268,6 +2144,13 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
     matches!(
         name,
         "Random" | "Hash" | "Hmac" | "Password" | "ConstantTime" | "Secret" | "NonCryptoHash"
+    )
+}
+
+fn sloppy_fs_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
     )
 }
 
@@ -1510,10 +2393,7 @@ impl SloppyStdlibImport {
 
     fn name_supported(self, name: &str) -> bool {
         match self {
-            Self::Fs => matches!(
-                name,
-                "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
-            ),
+            Self::Fs => sloppy_fs_import_name_supported(name),
             Self::Time => sloppy_time_import_name_supported(name),
             Self::Crypto => sloppy_crypto_import_name_supported(name),
             Self::Codec => sloppy_codec_import_name_supported(name),
@@ -1671,6 +2551,13 @@ fn validate_module_sloppy_codec_import(
         "sloppy/codec",
         sloppy_codec_import_name_supported,
     )
+}
+
+fn validate_module_sloppy_fs_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(path, import, "sloppy/fs", sloppy_fs_import_name_supported)
 }
 
 fn validate_module_sloppy_net_import(
@@ -10571,6 +11458,9 @@ fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> 
 }
 
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
+    if app.kind == ProjectKind::Program {
+        return emit_program_app_js(app);
+    }
     let mut output = String::with_capacity(estimate_app_js_capacity(app));
     let mut mappings = Vec::with_capacity(app.routes.len());
     let mut handler_generated_starts = Vec::with_capacity(app.routes.len());
@@ -11198,6 +12088,67 @@ fn estimate_app_js_capacity(app: &ExtractedApp) -> usize {
     handler_bytes + helper_bytes + 8192
 }
 
+fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
+    let mut output = String::with_capacity(
+        app.program_modules
+            .iter()
+            .map(|module| module.emitted_source.len())
+            .sum::<usize>()
+            + 2048,
+    );
+    output.push_str("(function() {\n");
+    output.push_str("  if (!globalThis.__sloppy_runtime) {\n");
+    output.push_str("    throw new Error(\"Sloppy bootstrap runtime was not loaded\");\n");
+    output.push_str("  }\n");
+    output.push_str("  const __sloppy_program_modules = Object.create(null);\n");
+    output.push_str("  const __sloppy_program_cache = Object.create(null);\n");
+    output.push_str("  function __sloppy_program_require(id) {\n");
+    output.push_str(
+        "    if (__sloppy_program_cache[id]) { return __sloppy_program_cache[id].exports; }\n",
+    );
+    output.push_str("    const factory = __sloppy_program_modules[id];\n");
+    output.push_str("    if (typeof factory !== \"function\") { throw new Error(`Sloppy program module '${id}' was not found`); }\n");
+    output.push_str("    const module = { exports: {} };\n");
+    output.push_str("    __sloppy_program_cache[id] = module;\n");
+    output.push_str("    factory(module.exports, module);\n");
+    output.push_str("    return module.exports;\n");
+    output.push_str("  }\n");
+    for module in &app.program_modules {
+        output.push_str("  __sloppy_program_modules[");
+        output.push_str(&json_string(&module.id));
+        output.push_str("] = function(exports, module) {\n");
+        for line in module.emitted_source.lines() {
+            output.push_str("    ");
+            output.push_str(line);
+            output.push('\n');
+        }
+        output.push_str("  };\n");
+    }
+    let entry = app
+        .program_entry
+        .as_deref()
+        .or_else(|| app.program_modules.last().map(|module| module.id.as_str()))
+        .unwrap_or("");
+    output.push_str(
+        "  globalThis.__sloppy_program_main = async function __sloppy_program_main() {\n",
+    );
+    output.push_str("    const entry = __sloppy_program_require(");
+    output.push_str(&json_string(entry));
+    output.push_str(");\n");
+    output.push_str("    if (typeof entry.main === \"function\") { return await entry.main(); }\n");
+    output.push_str(
+        "    if (typeof entry.default === \"function\") { return await entry.default(); }\n",
+    );
+    output.push_str("    return undefined;\n");
+    output.push_str("  };\n");
+    output.push_str("})();\n");
+    EmittedAppJs {
+        source: output,
+        mappings: Vec::new(),
+        handler_generated_starts: Vec::new(),
+    }
+}
+
 fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
     let mappings = &emitted_js.mappings;
     let sources = app
@@ -11374,6 +12325,34 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
             })
         })
         .collect::<Vec<_>>();
+    let mut x_sloppy = json!({
+        "version": 1,
+        "sourceFiles": source_files,
+        "handlers": handlers,
+        "routes": routes,
+        "modules": modules,
+        "schemas": schemas,
+        "providers": providers,
+        "capabilities": capabilities,
+        "effects": effects
+    });
+    if app.kind == ProjectKind::Program {
+        let program_modules = app
+            .program_modules
+            .iter()
+            .map(|module| {
+                json!({
+                    "id": module.id,
+                    "source": {
+                        "path": module.source_name
+                    },
+                    "hash": sha256_hex(&module.source)
+                })
+            })
+            .collect::<Vec<_>>();
+        x_sloppy["kind"] = json!(app.kind.as_str());
+        x_sloppy["programModules"] = json!(program_modules);
+    }
     let value = json!({
         "version": 3,
         "file": "app.js",
@@ -11381,17 +12360,7 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
         "sourcesContent": sources_content,
         "names": [],
         "mappings": encode_source_map_mappings(mappings),
-        "x_sloppy": {
-            "version": 1,
-            "sourceFiles": source_files,
-            "handlers": handlers,
-            "routes": routes,
-            "modules": modules,
-            "schemas": schemas,
-            "providers": providers,
-            "capabilities": capabilities,
-            "effects": effects
-        }
+        "x_sloppy": x_sloppy
     });
 
     let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
@@ -11587,6 +12556,77 @@ impl AstSpan for Statement<'_> {
             Statement::ExportNamedDeclaration(node) => node.span,
             Statement::TSExportAssignment(node) => node.span,
             Statement::TSNamespaceExportDeclaration(node) => node.span,
+        }
+    }
+}
+
+impl AstSpan for Declaration<'_> {
+    fn span(&self) -> Span {
+        match self {
+            Declaration::VariableDeclaration(node) => node.span,
+            Declaration::FunctionDeclaration(node) => node.span,
+            Declaration::ClassDeclaration(node) => node.span,
+            Declaration::TSTypeAliasDeclaration(node) => node.span,
+            Declaration::TSInterfaceDeclaration(node) => node.span,
+            Declaration::TSEnumDeclaration(node) => node.span,
+            Declaration::TSModuleDeclaration(node) => node.span,
+            Declaration::TSGlobalDeclaration(node) => node.span,
+            Declaration::TSImportEqualsDeclaration(node) => node.span,
+        }
+    }
+}
+
+impl AstSpan for oxc_ast::ast::ExportDefaultDeclarationKind<'_> {
+    fn span(&self) -> Span {
+        match self {
+            oxc_ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSInterfaceDeclaration(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::BooleanLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::NullLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::NumericLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::BigIntLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::RegExpLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::StringLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TemplateLiteral(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::MetaProperty(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::Super(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ArrayExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ArrowFunctionExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::AssignmentExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::AwaitExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::BinaryExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::CallExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ChainExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ClassExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ConditionalExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::FunctionExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ImportExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::LogicalExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::NewExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ObjectExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ParenthesizedExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::SequenceExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TaggedTemplateExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ThisExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::UnaryExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::UpdateExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::YieldExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::PrivateInExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::JSXElement(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::JSXFragment(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSAsExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSSatisfiesExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSTypeAssertion(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSNonNullExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::TSInstantiationExpression(node) => {
+                node.span
+            }
+            oxc_ast::ast::ExportDefaultDeclarationKind::V8IntrinsicExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::ComputedMemberExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::StaticMemberExpression(node) => node.span,
+            oxc_ast::ast::ExportDefaultDeclarationKind::PrivateFieldExpression(node) => node.span,
         }
     }
 }

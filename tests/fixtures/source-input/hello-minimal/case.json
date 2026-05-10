@@ -15,7 +15,7 @@
       "\"hello\":\"Ada\""
     ],
     "stderrContains": [],
-    "artifactDir": ".sloppy/cache/dev/source-input",
+    "artifactDir": ".sloppy",
     "planContains": [
       "Hello.Get",
       "/hello/{name}"

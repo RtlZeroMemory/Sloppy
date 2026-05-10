@@ -44,7 +44,7 @@ Expected result: `.sloppy/app.plan.json`, `.sloppy/app.js`, and
 ## Run One Request
 
 ```sh
-sloppy run --once GET /hello/Ada
+sloppy run .sloppy --once GET /hello/Ada
 ```
 
 Expected body:
@@ -60,7 +60,7 @@ valid.
 ## Inspect Routes
 
 ```sh
-sloppy routes --artifacts .sloppy
+sloppy routes .sloppy
 ```
 
 Expected result: the route list includes `GET /health` and `GET /hello/{name}`.

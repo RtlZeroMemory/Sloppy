@@ -183,6 +183,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [],
   "routes": [
     {

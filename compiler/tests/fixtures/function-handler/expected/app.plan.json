@@ -92,6 +92,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [],
   "routes": [
     {

@@ -52,7 +52,7 @@ function(sloppy_add_framework_compile_example_tests)
     sloppy_add_example_tooling_test(
         examples.framework_sqlite_crud.tooling framework-sqlite-crud
         examples/framework-sqlite-crud/app.ts "data.main" "injection:main"
-        "No inferred route capabilities" "\"findings\"" "x-slop-capabilities")
+        "PLAN[ ]+data.main" "\"findings\"" "x-slop-capabilities")
 endfunction()
 
 function(sloppy_add_framework_v8_example_tests)
@@ -84,7 +84,7 @@ function(sloppy_add_framework_v8_example_tests)
                 "-DSLOPPY_SOURCE=examples/framework-hello/app.ts"
                 "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/hello/Ada"
                 "-DSLOPPY_EXPECTED_OUTPUT=\"hello\":\"Ada\""
-                "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(
             conformance.framework_hello.source_input_run_once
@@ -101,7 +101,7 @@ function(sloppy_add_framework_v8_example_tests)
                 "-DSLOPPY_SOURCE=examples/framework-sqlite-crud/app.ts"
                 "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
                 "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
-                "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(
             conformance.framework_sqlite_crud.source_input_run_once

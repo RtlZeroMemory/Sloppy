@@ -30,6 +30,12 @@ typedef uint32_t SlHandlerId;
 
 #define SL_HANDLER_ID_INVALID UINT32_C(0)
 
+typedef enum SlPlanKind
+{
+    SL_PLAN_KIND_WEB = 0,
+    SL_PLAN_KIND_PROGRAM = 1
+} SlPlanKind;
+
 /*
  * Sloppy Plan v1 is the minimal native representation of `app.plan.json`.
  *
@@ -201,6 +207,7 @@ typedef struct SlPlanRequiredFeature
 typedef struct SlPlan
 {
     uint32_t version;
+    SlPlanKind kind;
     SlStr compiler_version;
     SlStr runtime_min_version;
     SlStr stdlib_version;

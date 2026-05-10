@@ -19,7 +19,7 @@ Create and run a minimal app:
 sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
-sloppy run --once GET /health
+sloppy run .sloppy --once GET /health
 ```
 
 Expected response body:

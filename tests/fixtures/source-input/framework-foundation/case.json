@@ -15,7 +15,7 @@
       "\"ok\":true"
     ],
     "stderrContains": [],
-    "artifactDir": ".sloppy/cache/dev/source-input",
+    "artifactDir": ".sloppy",
     "sourceMapSources": [
       "app.ts"
     ],

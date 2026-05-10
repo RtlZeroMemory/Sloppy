@@ -95,14 +95,17 @@ fn build_args_accept_environment_and_runtime_overrides() {
         CliCommand::Build {
             input: std::path::PathBuf::from("app.js"),
             out_dir: std::path::PathBuf::from(".sloppy"),
-            options: CompileOptions {
+            options: Box::new(CompileOptions {
+                kind: None,
                 environment: Some("Development".to_string()),
                 host: Some("127.0.0.1".to_string()),
                 port: Some(5173),
                 config_dir: None,
                 config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+                declared_capabilities: Vec::new(),
+                declared_capabilities_from_sloppy_json: false,
                 timings_json: None,
-            },
+            }),
         }
     );
 }
@@ -121,12 +124,518 @@ fn build_args_accept_timings_json_output() {
         CliCommand::Build {
             input: std::path::PathBuf::from("app.js"),
             out_dir: std::path::PathBuf::from(".sloppy"),
-            options: CompileOptions {
+            options: Box::new(CompileOptions {
                 timings_json: Some(std::path::PathBuf::from("artifacts/bench/timings.json")),
                 ..CompileOptions::default()
-            },
+            }),
         }
     );
+}
+
+#[test]
+fn build_args_accept_project_kind() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("main.ts"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--kind"),
+            OsString::from("program"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("main.ts"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: Box::new(CompileOptions {
+                kind: Some(super::ProjectKind::Program),
+                ..CompileOptions::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn build_args_accept_declared_capability_handoff() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("main.ts"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--capability"),
+            OsString::from("fs"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("main.ts"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: Box::new(CompileOptions {
+                declared_capabilities: vec!["fs".to_string()],
+                ..CompileOptions::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn build_args_accept_sloppy_json_capability_origin_handoff() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("main.ts"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--capability-origin"),
+            OsString::from("sloppy.json"),
+            OsString::from("--capability"),
+            OsString::from("fs"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("main.ts"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: Box::new(CompileOptions {
+                declared_capabilities: vec!["fs".to_string()],
+                declared_capabilities_from_sloppy_json: true,
+                ..CompileOptions::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn program_mode_builds_entry_and_relative_modules_without_routes() {
+    let root = std::env::temp_dir().join(format!("sloppyc-program-mode-{}", std::process::id()));
+    let input = root.join("main.ts");
+    let helper = root.join("message.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(&helper, "export const message = \"hello\";\n").expect("helper should write");
+    fs::write(
+        &input,
+        "import { message } from \"./message\";\nexport function main() { return message; }\n",
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let plan = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+    assert!(plan.contains("\"kind\": \"program\""));
+    assert!(plan.contains("\"status\": \"opaque\""));
+    assert!(plan.contains("\"handlers\": []"));
+    assert!(plan.contains("\"routes\": []"));
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
+    assert!(app_js.contains("__sloppy_program_main"));
+    assert!(app_js.contains("__sloppy_program_require(\"message.ts\")"));
+}
+
+#[test]
+fn program_mode_preserves_declared_capabilities() {
+    let root = std::env::temp_dir().join(format!(
+        "sloppyc-program-capabilities-{}",
+        std::process::id()
+    ));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(&input, "export function main() { return \"ok\"; }\n").expect("input should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Program),
+        declared_capabilities: vec!["fs".to_string(), "time".to_string()],
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["kind"], "program");
+    assert_eq!(plan["capabilities"][0]["token"], "fs");
+    assert_eq!(plan["capabilities"][0]["kind"], "filesystem");
+    assert_eq!(plan["capabilities"][0]["source"]["path"], "command-line");
+    assert_eq!(plan["capabilities"][1]["token"], "time");
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .contains(&serde_json::json!("stdlib.fs")));
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .contains(&serde_json::json!("stdlib.time")));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn sloppy_json_declared_program_capabilities_keep_sloppy_json_provenance() {
+    let root = std::env::temp_dir().join(format!(
+        "sloppyc-program-sloppy-json-capabilities-{}",
+        std::process::id()
+    ));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(&input, "export function main() { return \"ok\"; }\n").expect("input should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Program),
+        declared_capabilities: vec!["fs".to_string()],
+        declared_capabilities_from_sloppy_json: true,
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["capabilities"][0]["source"]["path"], "sloppy.json");
+    assert_eq!(plan["capabilities"][0]["source"]["line"], 1);
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn inferred_program_mode_preserves_timing_metrics() {
+    let root = std::env::temp_dir().join(format!("sloppyc-program-timings-{}", std::process::id()));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    let timings = root.join("timings.json");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(&input, "type User = { name: string };\nconst user: User = { name: \"Ada\" };\nconsole.log(user.name);\n")
+        .expect("input should write");
+
+    let options = CompileOptions {
+        timings_json: Some(timings.clone()),
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("inferred program should build");
+    let timings_text = fs::read_to_string(&timings).expect("timings JSON should exist");
+    let timings_json: serde_json::Value =
+        serde_json::from_str(&timings_text).expect("timings JSON should parse");
+    assert!(timings_json["phases"]["parseEntryMs"].is_number());
+    assert!(timings_json["phases"]["extractMs"].is_number());
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_rejects_re_export_declarations() {
+    for source in [
+        "export { value } from \"./dep\";\n",
+        "export * from \"./dep\";\n",
+    ] {
+        let root = std::env::temp_dir().join(format!(
+            "sloppyc-program-reexport-{}-{}",
+            std::process::id(),
+            source.len()
+        ));
+        let input = root.join("main.ts");
+        let dep = root.join("dep.ts");
+        let out_dir = root.join(".sloppy");
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+        }
+        fs::create_dir_all(&root).expect("program fixture directory should be created");
+        fs::write(&input, source).expect("input should write");
+        fs::write(&dep, "export const value = 1;\n").expect("dep should write");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("re-export should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPYC_E_UNSUPPORTED_EXPORT");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
+}
+
+#[test]
+fn program_plan_shape_rejects_web_routes_and_handlers() {
+    let path = Path::new("app.ts");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+    let mut app = extract(path, source).expect("web app should extract");
+    app.kind = super::ProjectKind::Program;
+
+    let error = super::emit_plan(&app, "bundle-hash", "map-hash")
+        .expect_err("program plan with web routes should fail");
+    assert_eq!(error.code, "SLOPPYC_E_PROGRAM_PLAN_SHAPE");
+}
+
+#[test]
+fn explicit_program_kind_allows_sources_that_import_sloppy_name() {
+    let root =
+        std::env::temp_dir().join(format!("sloppyc-explicit-program-{}", std::process::id()));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(
+        &input,
+        "import { Sloppy } from \"sloppy\";\nexport async function main() { return typeof Sloppy; }\n",
+    )
+    .expect("entry should write");
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Program),
+        ..CompileOptions::default()
+    };
+
+    super::build(&input, &out_dir, &options).expect("explicit program should build");
+    let plan = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+    assert!(plan.contains("\"kind\": \"program\""));
+    assert!(plan.contains("\"stdlib.time\""));
+    assert!(plan.contains("\"stdlib.fs\""));
+}
+
+#[test]
+fn inferred_source_with_sloppy_web_import_and_no_web_shape_is_ambiguous() {
+    let root =
+        std::env::temp_dir().join(format!("sloppyc-ambiguous-program-{}", std::process::id()));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(
+        &input,
+        "import { Sloppy } from \"sloppy\";\nexport function main() { return Sloppy; }\n",
+    )
+    .expect("entry should write");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("ambiguous source should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_AMBIGUOUS_SOURCE_KIND");
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("This source imports Sloppy but does not export a supported web app shape."));
+}
+
+#[test]
+fn ast_kind_inference_ignores_fake_sloppy_imports_in_comments_and_strings() {
+    let root = fixture_temp_dir("program-fake-sloppy-imports");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"// import { Sloppy } from "sloppy";
+const text = "from \"sloppy\"";
+export function main() { return text; }
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("plain program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["kind"], "program");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn ast_kind_inference_detects_web_app_shape() {
+    let root = fixture_temp_dir("program-web-inference");
+    let input = root.join("app.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("web app should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["kind"], "web");
+    assert_eq!(
+        plan["routes"]
+            .as_array()
+            .expect("routes should exist")
+            .len(),
+        1
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_supports_multiline_imports_types_and_default_main() {
+    let root = fixture_temp_dir("program-multiline-types-default");
+    let input = root.join("main.ts");
+    let helper = root.join("value.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(&helper, "export const value: string = \"Ada\";\n").expect("helper should write");
+    fs::write(
+        &input,
+        r#"import {
+  File,
+  Directory
+} from "sloppy/fs";
+import type { Process } from "sloppy/os";
+import { value } from "./value";
+
+type User = { name: string };
+const user: User = { name: value };
+
+export default async function main(args: string[]) {
+  console.log(File, Directory, args);
+  return user.name;
+}
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app should exist");
+    assert!(app_js.contains("const { File, Directory } = globalThis.__sloppy_runtime;"));
+    assert!(app_js.contains("const { value } = __sloppy_program_require(\"value.ts\");"));
+    assert!(app_js.contains("const user = {"));
+    assert!(app_js.contains("exports.default = async function main(args)"));
+    assert!(!app_js.contains("import type"));
+    assert!(!app_js.contains(": string"));
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["kind"], "program");
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .contains(&serde_json::json!("stdlib.fs")));
+    assert!(!plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .contains(&serde_json::json!("stdlib.os")));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_named_main_takes_precedence_over_default_export() {
+    let root = fixture_temp_dir("program-main-precedence");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"export default async function main() { return "default"; }
+export async function main() { return "named"; }
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app should exist");
+    assert!(app_js.contains("exports.main = main;"));
+    assert!(app_js.contains("typeof entry.main === \"function\""));
+    assert!(
+        app_js.find("entry.main").expect("named check should exist")
+            < app_js
+                .find("entry.default")
+                .expect("default check should exist")
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_ignores_non_function_default_entrypoint() {
+    let root = fixture_temp_dir("program-default-non-function");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"const value = { message: "not an entrypoint" };
+export default value;
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app should exist");
+    assert!(app_js.contains("exports.default = value;"));
+    assert!(!app_js.contains("return entry.default;"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_rejects_node_and_npm_imports_with_clear_diagnostic() {
+    for (index, specifier) in ["node:fs", "express"].iter().enumerate() {
+        let root = fixture_temp_dir(&format!("program-unsupported-imports-{index}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(
+            &input,
+            format!(
+                "import dependency from \"{specifier}\";\nexport function main() {{ return dependency; }}\n"
+            ),
+        )
+        .expect("entry should write");
+
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("unsupported import should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+        assert!(failure
+            .diagnostic
+            .message
+            .contains("Program Mode does not support npm or Node built-in imports yet"));
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
+}
+
+#[test]
+fn program_mode_marks_each_runtime_stdlib_subpath() {
+    let cases = [
+        ("sloppy/fs", "File", "stdlib.fs"),
+        ("sloppy/net", "HttpClient", "stdlib.httpclient"),
+        ("sloppy/os", "Process", "stdlib.os"),
+        ("sloppy/time", "Time", "stdlib.time"),
+        ("sloppy/crypto", "Random", "stdlib.crypto"),
+        ("sloppy/codec", "Base64", "stdlib.codec"),
+        ("sloppy/workers", "WorkQueue", "stdlib.workers"),
+    ];
+    for (index, (module, imported, feature)) in cases.iter().enumerate() {
+        let root = fixture_temp_dir(&format!("program-stdlib-feature-{index}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(
+            &input,
+            format!(
+                "import {{ {imported} }} from \"{module}\";\nexport function main() {{ return {imported}; }}\n"
+            ),
+        )
+        .expect("entry should write");
+
+        super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+        let plan_text =
+            fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+        let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+        assert!(plan["requiredFeatures"]
+            .as_array()
+            .expect("required features should be an array")
+            .contains(&serde_json::json!(feature)));
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
 }
 
 #[test]
@@ -214,11 +723,14 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         .expect("environment appsettings should be written");
 
     let options = CompileOptions {
+        kind: None,
         environment: Some("Development".to_string()),
         host: Some("0.0.0.0".to_string()),
         port: Some(6000),
         config_dir: None,
         config_overrides: Vec::new(),
+        declared_capabilities: Vec::new(),
+        declared_capabilities_from_sloppy_json: false,
         timings_json: None,
     };
     let config =
@@ -245,6 +757,9 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
     );
 
     let mut app = super::ExtractedApp {
+        kind: super::ProjectKind::Web,
+        program_entry: None,
+        program_modules: Vec::new(),
         uses_data_runtime: true,
         uses_sql_runtime: false,
         source_files: Vec::new(),
@@ -340,11 +855,14 @@ export default app;
     )
     .expect("config app should extract");
     let options = CompileOptions {
+        kind: None,
         environment: Some("Development".to_string()),
         host: None,
         port: None,
         config_dir: None,
         config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+        declared_capabilities: Vec::new(),
+        declared_capabilities_from_sloppy_json: false,
         timings_json: None,
     };
     let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)

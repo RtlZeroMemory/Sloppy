@@ -26,7 +26,7 @@ endforeach()
 foreach(required IN ITEMS
         "import { Sloppy, Results } from \"sloppy\";"
         "sloppy build"
-        "sloppy run --artifacts .sloppy --once GET /hello/Ada"
+        "sloppy run .sloppy --once GET /hello/Ada"
         "{\"hello\":\"Ada\"}"
         "app.plan.json")
     require_file_substring("${quickstart}" "${required}" "quickstart is missing MAIN contract text")

@@ -393,10 +393,15 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
                                              const SlCliMetadata* metadata, bool* emitted)
 {
     sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.routes"),
-                       metadata->route_count > 0U ? sl_cli_span_cstr("ok")
-                                                  : sl_cli_span_cstr("warn"),
-                       metadata->route_count > 0U ? sl_cli_span_cstr("route metadata present")
-                                                  : sl_cli_span_cstr("no route metadata present"),
+                       (metadata->route_count > 0U ||
+                        sl_cli_span_equal_cstr(metadata->kind, "program"))
+                           ? sl_cli_span_cstr("ok")
+                           : sl_cli_span_cstr("warn"),
+                       metadata->route_count > 0U
+                           ? sl_cli_span_cstr("route metadata present")
+                           : (sl_cli_span_equal_cstr(metadata->kind, "program")
+                                  ? sl_cli_span_cstr("program Plan has no route metadata by design")
+                                  : sl_cli_span_cstr("no route metadata present")),
                        emitted);
     sl_cli_doctor_emit(
         options, arena, sl_cli_span_cstr("app.plan.providers"),

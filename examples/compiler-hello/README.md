@@ -60,7 +60,7 @@ From the repository root:
 .\build\windows-relwithdebinfo\sloppy.exe run examples/compiler-hello/app.js --once GET /
 ```
 
-This writes generated artifacts under `.sloppy/cache/dev/source-input` for positional
+This writes generated artifacts under `.sloppy` for positional
 source input. The explicit `--artifacts` form remains useful when inspecting a known output
 directory or debugging generated files.
 

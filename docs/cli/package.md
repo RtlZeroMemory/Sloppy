@@ -6,6 +6,7 @@ by default, or under `<out>/package/` for explicit source output.
 ```sh
 sloppy package [source.js|source.mjs|source.ts] [--out <dir>]
                [--environment <name>] [--host <ip>] [--port <n>]
+               [--kind web|program]
                [--format text|json]
 ```
 
@@ -26,10 +27,11 @@ artifacts, then writes `<outDir>/package/`.
 **Explicit source**:
 
 ```sh
-sloppy package src/main.ts --out dist
+sloppy package src/main.ts
 ```
 
-Compiles the supplied source and writes `dist/package/`.
+Compiles the supplied source and writes `.sloppy/package/`. Use `--out dist`
+when you need a separate artifact root.
 
 ## Output
 
@@ -54,6 +56,7 @@ packaging is handled by the release scripts under `tools/`.
 | `--environment <name>` | `Development` | Selects `appsettings.{Environment}.json` overlay |
 | `--host <ip>` | `127.0.0.1` | Server host baked into the Plan |
 | `--port <n>` | `5173` | Server port baked into the Plan |
+| `--kind web\|program` | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 | `--format json` / `--json` | text | Print structured success output |
 
 Project mode owns `outDir` through `sloppy.json`; `sloppy package --out ...`
@@ -66,7 +69,10 @@ without a positional source is rejected so the project contract stays explicit.
 sloppy package
 
 # Package a one-off source file.
-sloppy package src/main.ts --out dist
+sloppy package src/main.ts
+
+# Package a route-free program source.
+sloppy package src/main.ts
 
 # Machine-readable result.
 sloppy package --format json
@@ -76,5 +82,5 @@ Inspect the packaged Plan with other CLI commands:
 
 ```sh
 sloppy routes --plan .sloppy/package/artifacts/app.plan.json
-sloppy openapi --artifacts .sloppy/package/artifacts --output openapi.json
+sloppy openapi .sloppy/package/artifacts --output openapi.json
 ```

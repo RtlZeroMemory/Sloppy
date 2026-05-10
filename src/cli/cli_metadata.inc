@@ -584,6 +584,30 @@ static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* met
     return 0;
 }
 
+static int sl_cli_parse_plan_kind(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* kind = yyjson_obj_get(root, "kind");
+
+    if (kind == NULL || yyjson_is_null(kind)) {
+        metadata->kind = sl_cli_span_cstr("web");
+        return 0;
+    }
+    if (!yyjson_is_str(kind)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: kind must be web or program\n");
+        return 1;
+    }
+
+    metadata->kind = (SlCliSpan){yyjson_get_str(kind), yyjson_get_len(kind)};
+    if (sl_cli_span_equal_cstr(metadata->kind, "web") ||
+        sl_cli_span_equal_cstr(metadata->kind, "program"))
+    {
+        return 0;
+    }
+
+    sl_cli_write_cstr(stderr, "sloppy: malformed metadata: kind must be web or program\n");
+    return 1;
+}
+
 static int sl_cli_validate_native_plan(const char* path, SlBytes json, SlArena* arena)
 {
     SlPlan plan = {0};
@@ -635,6 +659,9 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
     }
 
     *out_metadata = (SlCliMetadata){0};
+    if (sl_cli_parse_plan_kind(root, out_metadata) != 0) {
+        return 1;
+    }
     {
         yyjson_val* completeness = yyjson_obj_get(root, "completeness");
         if (completeness != NULL && yyjson_is_obj(completeness)) {

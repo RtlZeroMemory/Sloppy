@@ -627,9 +627,11 @@ int main()
     const TestCase tests[] = {
         {"test_unix_socket_loopback_preserves_binary", test_unix_socket_loopback_preserves_binary},
         {"test_stale_socket_cleanup_and_permissions", test_stale_socket_cleanup_and_permissions},
-        {"test_accept_timeout_and_unsupported_backend", test_accept_timeout_and_unsupported_backend},
+        {"test_accept_timeout_and_unsupported_backend",
+         test_accept_timeout_and_unsupported_backend},
         {"test_io_timeout_and_precancel", test_io_timeout_and_precancel},
-        {"test_read_until_binary_delimiter_and_limits", test_read_until_binary_delimiter_and_limits},
+        {"test_read_until_binary_delimiter_and_limits",
+         test_read_until_binary_delimiter_and_limits},
     };
 
     for (const TestCase& test : tests) {

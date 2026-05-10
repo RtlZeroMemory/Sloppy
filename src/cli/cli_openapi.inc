@@ -683,6 +683,15 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         }
         return 1;
     }
+    if (sl_cli_span_equal_cstr(metadata->kind, "program")) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy openapi: OpenAPI is only available for web Plans with route metadata.\n");
+        yyjson_doc_free(doc);
+        if (out != stdout) {
+            (void)fclose(out);
+        }
+        return 1;
+    }
     sl_cli_sort_routes(metadata);
     if (sl_cli_openapi_prepare_paths(metadata, path_buffers, openapi_paths) != 0) {
         yyjson_doc_free(doc);

@@ -54,8 +54,8 @@ npm install -g @rtlzeromemory/sloppy@alpha
 sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
-sloppy run --once GET /health
-sloppy openapi --artifacts .sloppy
+sloppy run .sloppy --once GET /health
+sloppy openapi .sloppy
 sloppy package --format json
 ```
 

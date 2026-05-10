@@ -4,6 +4,9 @@
 pub enum CompletenessStatus {
     Complete,
     Partial,
+    Declared,
+    Dynamic,
+    Opaque,
     RuntimeOnly,
     Invalid,
 }
@@ -13,6 +16,9 @@ impl CompletenessStatus {
         match self {
             Self::Complete => "complete",
             Self::Partial => "partial",
+            Self::Declared => "declared",
+            Self::Dynamic => "dynamic",
+            Self::Opaque => "opaque",
             Self::RuntimeOnly => "runtime-only",
             Self::Invalid => "invalid",
         }
@@ -59,6 +65,13 @@ impl Completeness {
                 "runtime-only-route",
                 "route explicitly requires runtime-only metadata",
             )],
+        }
+    }
+
+    pub fn opaque(reasons: Vec<CompletenessReason>) -> Self {
+        Self {
+            status: CompletenessStatus::Opaque,
+            reasons,
         }
     }
 

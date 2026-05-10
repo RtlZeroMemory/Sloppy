@@ -182,6 +182,8 @@ static int sl_cli_command_package(const SlCliOptions* options)
     const char* out_dir = NULL;
     const char* environment = NULL;
     const char* config_dir = NULL;
+    const char* project_kind = NULL;
+    const SlSloppyRunConfig* project_config = NULL;
     char package_dir[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
 
@@ -204,6 +206,8 @@ static int sl_cli_command_package(const SlCliOptions* options)
         out_dir = config.out_dir;
         environment = options->environment_explicit ? options->environment : config.environment;
         config_dir = ".";
+        project_kind = config.kind;
+        project_config = &config;
     }
     else {
         source_path = options->input_path;
@@ -219,7 +223,7 @@ static int sl_cli_command_package(const SlCliOptions* options)
     }
 
     if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy package",
-                              config_dir) != 0)
+                              config_dir, project_kind, project_config) != 0)
     {
         return 1;
     }

@@ -152,9 +152,9 @@ src/main.c::main
 ```
 
 Source-input `sloppy run src/main.ts` invokes `sloppyc build` first,
-writes artifacts to a deterministic cache (`.sloppy/cache/dev/source-input`
-by default, see `SL_RUN_DEFAULT_SOURCE_OUT_DIR` in `src/main.c`), then
-executes the same artifact path.
+writes artifacts to `.sloppy` by default (see
+`SL_RUN_DEFAULT_SOURCE_OUT_DIR` in `src/main.c`), then executes the same
+artifact path.
 
 ## What you can rely on
 

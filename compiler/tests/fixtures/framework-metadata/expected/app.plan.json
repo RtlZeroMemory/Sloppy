@@ -244,6 +244,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [],
   "requiredFeatures": [
     "stdlib.os",

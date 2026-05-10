@@ -163,6 +163,10 @@ static int expect_common_plan_fields(const SlPlan* plan)
         return 2;
     }
 
+    if (expect_true(plan->kind == SL_PLAN_KIND_WEB) != 0) {
+        return 22;
+    }
+
     if (expect_true(
             sl_str_equal(plan->compiler_version, sl_str_from_cstr("sloppyc-placeholder"))) != 0)
     {
@@ -196,6 +200,159 @@ static int expect_common_plan_fields(const SlPlan* plan)
         return 7;
     }
 
+    return 0;
+}
+
+static const char* minimal_program_plan_json(void)
+{
+    return "{"
+           "\"schemaVersion\":1,"
+           "\"kind\":\"program\","
+           "\"compilerVersion\":\"sloppyc-placeholder\","
+           "\"runtimeMinimumVersion\":\"0.1.0\","
+           "\"stdlibVersion\":\"0.1.0\","
+           "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+           "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+           "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+           "\"hash\":\"test-only\"},"
+           "\"handlers\":[],"
+           "\"routes\":[]"
+           "}";
+}
+
+static int test_program_kind_allows_empty_handlers_and_routes(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(minimal_program_plan_json(), &plan, &diag, arena_storage,
+                                        sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 1;
+    }
+    if (plan.kind != SL_PLAN_KIND_PROGRAM || plan.handler_count != 0U || plan.route_count != 0U) {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_program_kind_rejects_non_empty_handlers(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"main\"}],\"routes\":[]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_program_kind_rejects_non_empty_routes(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/\",\"handlerId\":1}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_missing_plan_kind_defaults_to_web(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"main\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/\",\"handlerId\":1}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 1;
+    }
+    if (plan.kind != SL_PLAN_KIND_WEB || plan.handler_count != 1U || plan.route_count != 1U) {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_invalid_plan_kind_is_rejected(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"kind\":\"worker\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_numeric_plan_kind_is_rejected(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"kind\":1,\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
+        return 2;
+    }
     return 0;
 }
 
@@ -1139,6 +1296,42 @@ int main(void)
     result = test_empty_bindings_marks_route_metadata_available();
     if (result != 0) {
         fprintf(stderr, "test_empty_bindings_marks_route_metadata_available failed: %d\n", result);
+        return result;
+    }
+
+    result = test_program_kind_allows_empty_handlers_and_routes();
+    if (result != 0) {
+        fprintf(stderr, "test_program_kind_allows_empty_handlers_and_routes failed: %d\n", result);
+        return result;
+    }
+
+    result = test_program_kind_rejects_non_empty_handlers();
+    if (result != 0) {
+        fprintf(stderr, "test_program_kind_rejects_non_empty_handlers failed: %d\n", result);
+        return result;
+    }
+
+    result = test_program_kind_rejects_non_empty_routes();
+    if (result != 0) {
+        fprintf(stderr, "test_program_kind_rejects_non_empty_routes failed: %d\n", result);
+        return result;
+    }
+
+    result = test_missing_plan_kind_defaults_to_web();
+    if (result != 0) {
+        fprintf(stderr, "test_missing_plan_kind_defaults_to_web failed: %d\n", result);
+        return result;
+    }
+
+    result = test_invalid_plan_kind_is_rejected();
+    if (result != 0) {
+        fprintf(stderr, "test_invalid_plan_kind_is_rejected failed: %d\n", result);
+        return result;
+    }
+
+    result = test_numeric_plan_kind_is_rejected();
+    if (result != 0) {
+        fprintf(stderr, "test_numeric_plan_kind_is_rejected failed: %d\n", result);
         return result;
     }
 

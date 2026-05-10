@@ -17,6 +17,7 @@ sloppy create my-api --template minimal-api
 | Example | Status | Command | What it covers | Requirements / expected result |
 | --- | --- | --- | --- | --- |
 | `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
+| `program-hello` | Program Mode source fixture | `sloppy run examples/program-hello/main.ts` | Route-free program Plan, relative module import, and optional project pinning | V8 lane returns `hello from sloppy program mode`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
 | `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
 | `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | V8 lane returns JSON request context fields. |

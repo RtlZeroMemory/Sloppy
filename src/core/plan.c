@@ -63,7 +63,11 @@ bool sl_plan_capability_kind_supported(SlStr kind)
            sl_str_equal(kind, sl_str_from_cstr("os")) ||
            sl_str_equal(kind, sl_str_from_cstr("env")) ||
            sl_str_equal(kind, sl_str_from_cstr("process")) ||
-           sl_str_equal(kind, sl_str_from_cstr("signals"));
+           sl_str_equal(kind, sl_str_from_cstr("signals")) ||
+           sl_str_equal(kind, sl_str_from_cstr("time")) ||
+           sl_str_equal(kind, sl_str_from_cstr("crypto")) ||
+           sl_str_equal(kind, sl_str_from_cstr("codec")) ||
+           sl_str_equal(kind, sl_str_from_cstr("workers"));
 }
 
 bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
@@ -109,6 +113,13 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
     }
     if (sl_str_equal(kind, sl_str_from_cstr("signals"))) {
         return sl_str_equal(access, sl_str_from_cstr("shutdown"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("time")) ||
+        sl_str_equal(kind, sl_str_from_cstr("crypto")) ||
+        sl_str_equal(kind, sl_str_from_cstr("codec")) ||
+        sl_str_equal(kind, sl_str_from_cstr("workers")))
+    {
+        return sl_str_equal(access, sl_str_from_cstr("use"));
     }
     return false;
 }
