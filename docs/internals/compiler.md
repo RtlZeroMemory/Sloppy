@@ -106,7 +106,9 @@ rejects dynamic imports, bare npm/Node imports, remote imports, and unsupported
 Sloppy provider imports. It preserves opaque metadata instead of claiming route
 or OpenAPI structure. It uses Oxc transform support to strip supported
 TypeScript syntax, then rewrites supported static ESM imports/exports into the
-generated artifact bundle.
+generated artifact bundle. The emitted entry wrapper supplies Program
+arguments/context, installs the Program console while top-level code and the
+entrypoint run, and converts numeric returns into CLI exit codes.
 
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
@@ -178,9 +180,9 @@ For compiler performance work, also run the benchmark workflow documented in
 - Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
   remains responsible for that.
 - Program Mode is not Node compatibility. It supports the current static import
-  subset, Sloppy stdlib imports that the runtime exposes, and generated
-  `main`/default entrypoint execution when V8 is enabled. Program CLI
-  arguments and a context object are deferred.
+  subset, Sloppy stdlib imports that the runtime exposes, generated
+  `main(args, ctx)`/default/top-level entrypoint execution, Program console
+  stdout/stderr, and numeric exit codes when V8 is enabled.
 - Middleware, CORS, RequestId, RequestLogging, and controller mapping execute in
   the bootstrap app-host path today. The compiler recognizes those source
   surfaces and rejects them with specific diagnostics instead of silently

@@ -10,6 +10,8 @@ Current Sloppy includes:
 - compiler source input for the supported app subset;
 - deterministic Plan-backed artifacts;
 - V8-backed handler execution on V8-enabled builds and alpha packages;
+- Program Mode for route-free console tools, local automation, packaged
+  programs, and stdlib-backed worker entrypoints;
 - `sloppy create`, `build`, `run`, `routes`, `capabilities`, `doctor`,
   `audit`, `openapi`, and `package`;
 - HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c;
@@ -34,18 +36,25 @@ shape:
 
 ## Program Mode
 
-Sloppy should not be limited to web APIs. Program Mode is the planned path for
-CLI tools, background services, workers, and terminal apps.
+Sloppy is not limited to web APIs. Program Mode is the current route-free path
+for CLI tools, local automation, background jobs, and worker entrypoints.
 
-Expected metadata direction:
+Current support:
 
-- entrypoint;
-- lifecycle;
-- declared capabilities;
-- filesystem, network, process, and terminal needs;
-- package/runtime metadata.
+- `sloppy run src/main.ts`, `sloppy build src/main.ts`,
+  `sloppy package src/main.ts`, and project mode with `kind: "program"`;
+- named `main(args, ctx)`, default function entrypoints, and top-level-only
+  modules;
+- arguments after `--`, Program context metadata, console stdout/stderr, and
+  numeric exit codes;
+- Sloppy stdlib imports for filesystem, network, OS/process, time, crypto,
+  codec, and workers where the runtime bridge is available;
+- package manifests that record `kind: "program"` and copied artifact paths;
+- Plan inspection through `routes`, `capabilities`, `doctor`, and `audit`.
 
-Program Mode is a roadmap direction, not current support.
+Future Program Mode work is not hidden Node emulation. It includes more
+job/lifecycle policy, richer worker packaging, raw terminal ergonomics if they
+fit the Sloppy boundary, and broader conformance evidence.
 
 ## FFI and native modules
 

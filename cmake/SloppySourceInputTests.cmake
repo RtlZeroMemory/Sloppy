@@ -205,8 +205,9 @@
                 "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" "-DSLOPPY_COMMAND=build"
                 "-DSLOPPY_CASE=program-project-capabilities"
-                "-DSLOPPY_PROJECT_FIXTURE=examples/program-hello"
+                "-DSLOPPY_PROJECT_FIXTURE=examples/program-fs-process"
                 "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" "-DSLOPPY_EXPECTED_PLAN=\"token\": \"fs\""
+                "-DSLOPPY_EXPECTED_PLAN_SECONDARY=\"token\": \"os\""
                 "-DSLOPPY_EXPECTED_SOURCE_MAP=programModules" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(sloppy.build.program_project_capabilities_non_v8

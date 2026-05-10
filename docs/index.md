@@ -65,11 +65,11 @@ metadata, and writes an app package.
 
 ## What works today
 
-- Templates: `minimal-api`, `full-api`, and `dogfood`.
+- Templates: `minimal-api`, `full-api`, `dogfood`, and `program`.
 - CLI: `create`, `build`, `run`, `package`, `routes`, `capabilities`,
   `doctor`, `audit`, and `openapi`.
-- Runtime: V8-backed handler execution on Windows x64 and Linux x64 alpha
-  packages.
+- Runtime: V8-backed web handler execution and Program Mode entrypoint
+  execution on Windows x64 and Linux x64 alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
@@ -86,4 +86,4 @@ source-build paths until matching alpha packages are available.
 ## Examples
 
 Start with [Examples and demo apps](guide/examples.md). The `minimal-api`,
-`full-api`, and `dogfood` templates are the best first places to copy from.
+`full-api`, `dogfood`, and `program` templates are the best first places to copy from.

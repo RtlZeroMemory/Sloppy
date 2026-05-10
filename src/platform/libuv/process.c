@@ -71,6 +71,27 @@ SlStatus sl_platform_process_executable_path(char* buffer, size_t capacity)
     return sl_status_ok();
 }
 
+SlStatus sl_platform_process_current_directory(char* buffer, size_t capacity)
+{
+    size_t length = capacity;
+    int uv_status = 0;
+
+    if (buffer == NULL || capacity == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    buffer[0] = '\0';
+    uv_status = uv_cwd(buffer, &length);
+    if (uv_status != 0) {
+        return sl_platform_process_status_from_uv(uv_status);
+    }
+    if (length >= capacity) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+    }
+    buffer[length] = '\0';
+    return sl_status_ok();
+}
+
 SlStatus sl_platform_process_run(const SlPlatformProcessArgs* args, int* out_exit_code)
 {
     uv_loop_t loop;

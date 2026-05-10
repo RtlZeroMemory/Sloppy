@@ -66,8 +66,29 @@ export default async function main() {
 
 If both named `main` and default function exports exist, named `main` wins.
 Non-function default exports are ignored as entrypoints after their module
-top-level code has executed. The current runtime does not pass CLI arguments or
-a context object to Program Mode `main`.
+top-level code has executed.
+
+`main` and default function entrypoints receive `(args, ctx)`. `args` contains
+the strings passed after `--` to `sloppy run`. `ctx` is the Program context:
+
+```ts
+{
+  kind: "program",
+  args: string[],
+  cwd: string,
+  environment: string,
+  plan: {
+    kind: "program",
+    metadataCompleteness: "opaque"
+  }
+}
+```
+
+Program Mode installs a Sloppy-owned `console` while the entry module runs.
+`log`, `info`, and `debug` write to stdout; `warn` and `error` write to
+stderr. Returning an integer from `0` through `255` sets the process exit code.
+Throwing, rejecting, or returning an out-of-range exit code exits non-zero with
+a diagnostic.
 
 Program Mode accepts static relative imports and the documented Sloppy stdlib
 subpaths. Type-only imports do not emit runtime stdlib features. Dynamic

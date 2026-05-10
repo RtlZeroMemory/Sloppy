@@ -38,7 +38,9 @@ one Sloppy app as default and register at least one route.
 
 `kind: "program"` compiles a route-free program entrypoint. The compiler emits a
 program Plan, skips web route requirements, and records opaque metadata because
-Program Mode does not claim a static web app graph.
+Program Mode does not claim a static web app graph. At run time, `main(args,
+ctx)` receives arguments passed after `--` plus a Program context with
+`kind`, `cwd`, `environment`, and Plan metadata.
 
 Direct source input without `sloppy.json` infers kind. Project mode defaults to
 `web` when `kind` is omitted, preserving existing web projects.

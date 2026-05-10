@@ -162,6 +162,15 @@ static bool sl_cli_directory_has_plan(const char* path)
            sl_cli_path_is_file(plan_path);
 }
 
+static bool sl_cli_directory_has_package_manifest(const char* path)
+{
+    char manifest_path[SL_RUN_PATH_MAX_BYTES];
+
+    return path != NULL && path[0] != '\0' &&
+           sl_cli_join_leaf(manifest_path, sizeof(manifest_path), path, "manifest.json") &&
+           sl_cli_path_is_file(manifest_path);
+}
+
 static bool sl_cli_set_plan_path(SlCliOptions* out, const char* path)
 {
     SlFsStat stat = {0};
@@ -209,6 +218,67 @@ static bool sl_cli_set_default_artifacts_plan_path(SlCliOptions* out)
 static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpan span)
 {
     return sl_status_is_ok(sl_string_builder_append_str(builder, sl_cli_span_str(span)));
+}
+
+static bool sl_cli_json_builder_append_string(SlStringBuilder* builder, SlCliSpan span)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t index = 0U;
+
+    if (builder == NULL) {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_string_builder_append_char(builder, '"'))) {
+        return false;
+    }
+    for (index = 0U; index < span.length; index += 1U) {
+        unsigned char ch = (unsigned char)span.ptr[index];
+        if (ch == '"' || ch == '\\') {
+            if (!sl_status_is_ok(sl_string_builder_append_char(builder, '\\')) ||
+                !sl_status_is_ok(sl_string_builder_append_char(builder, (char)ch)))
+            {
+                return false;
+            }
+        }
+        else if (ch == '\n') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\n"))) {
+                return false;
+            }
+        }
+        else if (ch == '\r') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\r"))) {
+                return false;
+            }
+        }
+        else if (ch == '\t') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\t"))) {
+                return false;
+            }
+        }
+        else if (ch == '\b') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\b"))) {
+                return false;
+            }
+        }
+        else if (ch == '\f') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\f"))) {
+                return false;
+            }
+        }
+        else if (ch < 0x20U) {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\u00")) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU])) ||
+                !sl_status_is_ok(sl_string_builder_append_char(builder, hex[ch & 0x0FU])))
+            {
+                return false;
+            }
+        }
+        else if (!sl_status_is_ok(sl_string_builder_append_char(builder, (char)ch))) {
+            return false;
+        }
+    }
+    return sl_status_is_ok(sl_string_builder_append_char(builder, '"'));
 }
 
 static SlCliSpan sl_cli_json_span(yyjson_val* object, const char* name)
@@ -288,16 +358,16 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
-    printf("  sloppy create <name> [--template minimal-api|full-api|dogfood] [--force]\n");
+    printf("  sloppy create <name> [--template minimal-api|full-api|dogfood|program] [--force]\n");
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     printf("                 [--format text|json]\n");
-    printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|--artifacts <dir>] [--stdlib <dir>]\n");
+    printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib <dir>]\n");
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
-    printf("             [--once METHOD TARGET]\n");
+    printf("             [--once METHOD TARGET] [-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
     printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]\n");
@@ -316,10 +386,11 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        printf("Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|--artifacts <dir>] [--stdlib "
+        printf("Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib "
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
         printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
+        printf("                  [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
                "artifact path.\n");
@@ -347,7 +418,7 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "create") == 0) {
-        printf("Usage: sloppy create <name> [--template minimal-api|full-api|dogfood]\n");
+        printf("Usage: sloppy create <name> [--template minimal-api|full-api|dogfood|program]\n");
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
@@ -439,10 +510,12 @@ static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCli
             out->input_path = argv[*index];
         }
         else if (sl_cli_path_is_directory(argv[*index])) {
-            if (!sl_cli_directory_has_plan(argv[*index])) {
+            if (!sl_cli_directory_has_plan(argv[*index]) &&
+                !sl_cli_directory_has_package_manifest(argv[*index]))
+            {
                 sl_cli_write_cstr(
                     stderr,
-                    "sloppy run: artifact directory must contain app.plan.json\n");
+                    "sloppy run: artifact or package directory must contain app.plan.json or manifest.json\n");
                 return -1;
             }
             out->artifacts_path = argv[*index];
@@ -473,6 +546,19 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         strcmp(out->command, "run") != 0)
     {
         return 0;
+    }
+
+    if (strcmp(argv[*index], "--") == 0) {
+        int remaining = argc - *index - 1;
+        if (remaining > (int)SL_CLI_MAX_PROGRAM_ARGS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many program arguments after --\n");
+            return -1;
+        }
+        out->program_args_explicit = true;
+        out->program_args = &argv[*index + 1];
+        out->program_arg_count = (size_t)remaining;
+        *index = argc;
+        return 1;
     }
 
     if (strcmp(argv[*index], "--host") == 0) {

@@ -7,7 +7,7 @@
 static bool sl_create_template_name_supported(const char* name)
 {
     return name != NULL && (strcmp(name, "minimal-api") == 0 || strcmp(name, "full-api") == 0 ||
-                            strcmp(name, "dogfood") == 0);
+                            strcmp(name, "dogfood") == 0 || strcmp(name, "program") == 0);
 }
 
 static bool sl_create_project_name_is_valid(const char* name)
@@ -293,7 +293,12 @@ static void sl_create_print_json_success(const char* project_name, const char* t
     sl_cli_json_escape(stdout, sl_cli_span_cstr(template_name));
     printf(",\"next\":[\"cd ");
     sl_cli_write_cstr(stdout, project_name);
-    printf("\",\"sloppy build\",\"sloppy run --once GET /health\"]}\n");
+    if (strcmp(template_name, "program") == 0) {
+        printf("\",\"sloppy run -- --name Ada\"]}\n");
+    }
+    else {
+        printf("\",\"sloppy build\",\"sloppy run --once GET /health\"]}\n");
+    }
 }
 
 static int sl_cli_command_create(const SlCliOptions* options)
@@ -360,7 +365,12 @@ static int sl_cli_command_create(const SlCliOptions* options)
     printf("Created Sloppy app in ./%s\n\n", project_name);
     printf("Next:\n");
     printf("  cd %s\n", project_name);
-    printf("  sloppy build\n");
-    printf("  sloppy run --once GET /health\n");
+    if (strcmp(template_name, "program") == 0) {
+        printf("  sloppy run -- --name Ada\n");
+    }
+    else {
+        printf("  sloppy build\n");
+        printf("  sloppy run --once GET /health\n");
+    }
     return 0;
 }

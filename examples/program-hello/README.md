@@ -7,14 +7,14 @@ compiler emits a Program Plan with an opaque metadata status and a
 Run the source directly when using a V8-enabled build:
 
 ```powershell
-sloppy run main.ts
+sloppy run main.ts -- Ada
 ```
 
 Build and inspect the generated artifacts:
 
 ```powershell
 sloppy build main.ts
-sloppy run .sloppy
+sloppy run .sloppy -- Ada
 sloppy routes .sloppy --format json
 sloppy capabilities .sloppy
 ```
@@ -24,9 +24,9 @@ the same project can be built with:
 
 ```powershell
 sloppy build
-sloppy run .sloppy
+sloppy run .sloppy -- Ada
 ```
 
 Program execution requires a V8-enabled build. In a default non-V8 developer
-build, `sloppy run main.ts` and `sloppy run .sloppy` fail before V8
+build, `sloppy run main.ts -- Ada` and `sloppy run .sloppy -- Ada` fail before V8
 initialization with a required-feature diagnostic.
