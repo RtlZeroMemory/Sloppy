@@ -1,0 +1,73 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "checks": [
+      {
+        "id": "bootstrap.assets",
+        "message": "bootstrap runtime asset found",
+        "status": "ok"
+      },
+      {
+        "id": "engine.v8",
+        "message": "V8 bridge disabled in this build; V8 runtime tests not run",
+        "status": "warn"
+      },
+      {
+        "id": "providers.live",
+        "message": "live provider checks are not configured by default and no live DB was contacted",
+        "status": "warn"
+      },
+      {
+        "id": "package.runtime",
+        "message": "package release status requires package smoke",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.parse",
+        "message": "app plan parsed by native Plan v1 parser",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.routes",
+        "message": "route metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.providers",
+        "message": "provider metadata not present",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.capabilities",
+        "message": "capability metadata not present",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.config",
+        "message": "configuration requirements are Plan-visible",
+        "status": "ok"
+      },
+      {
+        "id": "config.App:Name",
+        "message": "Config App:Name is present from appsettings.json required by app.js:4 (redaction: none)",
+        "status": "ok"
+      },
+      {
+        "id": "config.App:Greeting",
+        "message": "Config App:Greeting is present from appsettings.Development.json required by app.js:5 (redaction: none)",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.completeness",
+        "message": "Plan completeness is complete",
+        "status": "ok"
+      },
+      {
+        "id": "optimization.native-json-candidate",
+        "message": "route has response metadata for future native JSON analysis",
+        "status": "ok"
+      }
+    ]
+  }
+}

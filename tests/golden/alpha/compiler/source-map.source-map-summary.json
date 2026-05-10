@@ -1,0 +1,47 @@
+{
+  "sources": [
+    "input.js"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 23,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/source",
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:6ab23bc0446ae0ac2fafa2f6e0ed66a23e5336c644784479ff57c231fd6598d5",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
+}

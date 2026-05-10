@@ -1,0 +1,118 @@
+{
+  "capabilities": [],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Health.Get",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    },
+    {
+      "displayName": "Projects.List",
+      "exportName": "__sloppy_handler_2",
+      "id": 2
+    },
+    {
+      "displayName": "Projects.Get",
+      "exportName": "__sloppy_handler_3",
+      "id": 3
+    },
+    {
+      "displayName": "Apps.List",
+      "exportName": "__sloppy_handler_4",
+      "id": 4
+    },
+    {
+      "displayName": "Apps.Get",
+      "exportName": "__sloppy_handler_5",
+      "id": 5
+    },
+    {
+      "displayName": "Builds.List",
+      "exportName": "__sloppy_handler_6",
+      "id": 6
+    },
+    {
+      "displayName": "Builds.Create",
+      "exportName": "__sloppy_handler_7",
+      "id": 7
+    },
+    {
+      "displayName": "Deployments.List",
+      "exportName": "__sloppy_handler_8",
+      "id": 8
+    },
+    {
+      "displayName": "Diagnostics.Summary",
+      "exportName": "__sloppy_handler_9",
+      "id": 9
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Health.Get",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": "Projects.List",
+      "pattern": "/projects",
+      "tags": []
+    },
+    {
+      "handlerId": 3,
+      "method": "GET",
+      "name": "Projects.Get",
+      "pattern": "/projects/{id}",
+      "tags": []
+    },
+    {
+      "handlerId": 4,
+      "method": "GET",
+      "name": "Apps.List",
+      "pattern": "/apps",
+      "tags": []
+    },
+    {
+      "handlerId": 5,
+      "method": "GET",
+      "name": "Apps.Get",
+      "pattern": "/apps/{id}",
+      "tags": []
+    },
+    {
+      "handlerId": 6,
+      "method": "GET",
+      "name": "Builds.List",
+      "pattern": "/apps/{id}/builds",
+      "tags": []
+    },
+    {
+      "handlerId": 7,
+      "method": "POST",
+      "name": "Builds.Create",
+      "pattern": "/apps/{id}/builds",
+      "tags": []
+    },
+    {
+      "handlerId": 8,
+      "method": "GET",
+      "name": "Deployments.List",
+      "pattern": "/deployments",
+      "tags": []
+    },
+    {
+      "handlerId": 9,
+      "method": "GET",
+      "name": "Diagnostics.Summary",
+      "pattern": "/diagnostics/summary",
+      "tags": []
+    }
+  ]
+}

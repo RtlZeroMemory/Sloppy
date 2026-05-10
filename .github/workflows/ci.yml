@@ -129,7 +129,7 @@ jobs:
 
             case "$file" in
               CMakeLists.txt|CMakePresets.json|vcpkg.json|vcpkg-configuration.json|\
-              include/**|src/**|tests/**|benchmarks/**|third_party/**)
+              include/**|src/**|tests/**|benchmarks/**|third_party/**|tools/golden/**)
                 native_relevant=true
                 ;;
             esac
@@ -176,7 +176,7 @@ jobs:
             esac
 
             case "$file" in
-              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|.github/workflows/test-engine-*.yml|tools/deps/**|tools/windows/**|tools/unix/**)
+              .github/workflows/ci.yml|.github/workflows/release-artifacts.yml|.github/workflows/test-engine-*.yml|tools/deps/**|tools/windows/**|tools/unix/**|tools/golden/**)
                 windows_tooling_relevant=true
                 ;;
             esac
@@ -1290,6 +1290,23 @@ jobs:
       - name: Test
         shell: bash
         run: ctest --preset "${{ matrix.preset }}" --output-on-failure
+
+      - name: Alpha proof test engine reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/unix/test-engine.sh --tier pr --area golden --out "artifacts/test-engine/golden-${{ matrix.preset }}.json"
+          tools/unix/test-engine.sh --tier pr --area integration --out "artifacts/test-engine/integration-${{ matrix.preset }}.json"
+
+      - name: Upload alpha proof reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-engine-alpha-proof-${{ matrix.preset }}
+          path: |
+            artifacts/test-engine/golden-${{ matrix.preset }}.json
+            artifacts/test-engine/integration-${{ matrix.preset }}.json
+          if-no-files-found: error
 
       - name: Set up Go for HTTP/2 conformance tools
         if: matrix.name == 'linux-clang'

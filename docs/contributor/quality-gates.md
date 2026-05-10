@@ -12,6 +12,8 @@ some run in CI; the local commands mirror what CI does.
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
 .\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
+.\tools\windows\test-engine.ps1 -Tier pr -Area golden -Out artifacts\test-engine\golden.json
+.\tools\windows\test-engine.ps1 -Tier pr -Area integration -Out artifacts\test-engine\integration.json
 git diff --check
 ```
 

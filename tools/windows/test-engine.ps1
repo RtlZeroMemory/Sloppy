@@ -2,7 +2,7 @@ param(
     [ValidateSet("pr", "extended", "torture")]
     [string]$Tier = "pr",
 
-    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta")]
+    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
     [string]$Area = "all",
 
     [int]$Seed = 12345,
@@ -21,7 +21,7 @@ $StartedAt = (Get-Date).ToUniversalTime()
 $FailedLaneCount = 0
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -149,7 +149,8 @@ function Invoke-ExternalLane {
         [string]$File,
         [string[]]$Arguments = @(),
         [string]$WorkingDirectory = $Root,
-        [string]$UnavailableNote = ""
+        [string]$UnavailableNote = "",
+        [string]$SuccessNote = ""
     )
 
     $resolved = Resolve-CommandFile -File $File
@@ -175,7 +176,7 @@ function Invoke-ExternalLane {
     }
 
     if ($exitCode -eq 0) {
-        Add-Lane $Id "pass" $stopwatch.ElapsedMilliseconds $commandText ""
+        Add-Lane $Id "pass" $stopwatch.ElapsedMilliseconds $commandText $SuccessNote
     } else {
         Add-Lane $Id "fail" $stopwatch.ElapsedMilliseconds $commandText "exit code $exitCode"
     }
@@ -220,6 +221,61 @@ function Invoke-CtestLane {
     }
 
     Invoke-ExternalLane $Id "ctest" (@("--preset", $Preset, "--output-on-failure") + $Arguments)
+}
+
+function Invoke-AlphaProofCtestLane {
+    param(
+        [string]$Id,
+        [string[]]$Arguments = @()
+    )
+
+    $preset = "windows-relwithdebinfo"
+    $buildDir = Join-Path (Join-Path $Root "build") $preset
+    $commandText = Join-CommandText "ctest" (@("--preset", $preset, "--output-on-failure", "--no-tests=error") + $Arguments)
+    if (-not (Test-Path -LiteralPath $buildDir -PathType Container)) {
+        Add-Lane $Id "unavailable" 0 $commandText "build preset directory does not exist: $buildDir"
+        return
+    }
+
+    $ctest = Resolve-CommandFile -File "ctest"
+    if ($null -eq $ctest) {
+        Add-Lane $Id "unavailable" 0 $commandText "ctest is not available"
+        return
+    }
+
+    $previous = (Get-Location).Path
+    try {
+        Set-Location -LiteralPath $Root
+        $showOnlyOutput = & $ctest @("--preset", $preset, "-N") @Arguments 2>&1
+        $showOnlyExitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } elseif ($?) { 0 } else { 1 }
+    } catch {
+        $showOnlyOutput = @($_.Exception.Message)
+        $showOnlyExitCode = 1
+    } finally {
+        Set-Location -LiteralPath $previous
+    }
+
+    if ($showOnlyExitCode -ne 0) {
+        Add-Lane $Id "fail" 0 $commandText "ctest test discovery failed with exit code $showOnlyExitCode"
+        return
+    }
+
+    $testCount = $null
+    foreach ($line in $showOnlyOutput) {
+        if ([string]$line -match "Total Tests:\s+([0-9]+)") {
+            $testCount = [int]$Matches[1]
+        }
+    }
+    if ($null -eq $testCount) {
+        Add-Lane $Id "fail" 0 $commandText "ctest test discovery did not report a test count"
+        return
+    }
+    if ($testCount -eq 0) {
+        Add-Lane $Id "unavailable" 0 $commandText "no alpha-proof tests matched; V8-enabled alpha-proof tests are not registered for this preset"
+        return
+    }
+
+    Invoke-ExternalLane $Id "ctest" (@("--preset", $preset, "--output-on-failure", "--no-tests=error") + $Arguments) -SuccessNote "matched $testCount test(s)"
 }
 
 function Get-TierIterations {
@@ -483,6 +539,33 @@ function Invoke-MetaArea {
     Invoke-PowerShellLane "test-engine.meta.fuzz_help" (Join-Path $Root "tools/windows/fuzz.ps1") @("-Help")
 }
 
+function Invoke-GoldenArea {
+    Invoke-AlphaProofCtestLane "golden.alpha_core" @("-R", "alpha\.golden\.(cli|compiler|diagnostics)")
+}
+
+function Invoke-IntegrationArea {
+    Invoke-AlphaProofCtestLane "integration.alpha_flows" @("-R", "alpha_flow")
+    Invoke-CtestLane "integration.conformance" "windows-relwithdebinfo" @("-R", "conformance\.(hello|hello_minimal|framework|source_input|package|program)")
+}
+
+function Invoke-ExamplesArea {
+    Invoke-AlphaProofCtestLane "examples.alpha_manifest" @("-R", "alpha\.examples")
+    Invoke-CtestLane "examples.existing" "windows-relwithdebinfo" @("-R", "^examples\.")
+}
+
+function Invoke-TemplatesArea {
+    Invoke-AlphaProofCtestLane "templates.alpha" @("-R", "alpha\.golden\.templates")
+    Invoke-CtestLane "templates.create_package_command" "windows-relwithdebinfo" @("-R", "sloppy\.cli\.create_package_command")
+}
+
+function Invoke-AlphaFlowArea {
+    Invoke-AlphaProofCtestLane "alpha_flow.core" @("-R", "alpha_flow")
+}
+
+function Invoke-DiagnosticsArea {
+    Invoke-AlphaProofCtestLane "diagnostics.golden" @("-R", "alpha\.golden\.diagnostics|diagnostics|sloppy\.(cli|run)\.(missing|malformed|invalid|unsupported)")
+}
+
 function Should-Run {
     param([string]$Name)
     return $Area -eq "all" -or $Area -eq $Name
@@ -490,6 +573,24 @@ function Should-Run {
 
 if (Should-Run "meta") {
     Invoke-MetaArea
+}
+if (Should-Run "golden") {
+    Invoke-GoldenArea
+}
+if (Should-Run "integration") {
+    Invoke-IntegrationArea
+}
+if (Should-Run "examples") {
+    Invoke-ExamplesArea
+}
+if (Should-Run "templates") {
+    Invoke-TemplatesArea
+}
+if (Should-Run "alpha-flow") {
+    Invoke-AlphaFlowArea
+}
+if (Should-Run "diagnostics") {
+    Invoke-DiagnosticsArea
 }
 if (Should-Run "static") {
     Invoke-StaticArea

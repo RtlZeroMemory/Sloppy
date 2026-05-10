@@ -1,0 +1,10 @@
+[
+  ".gitignore",
+  "README.md",
+  "appsettings.json",
+  "sloppy.json",
+  "src/main.ts",
+  "src/routes/health.ts",
+  "src/routes/projects.ts",
+  "src/routes/users.ts"
+]

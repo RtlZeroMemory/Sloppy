@@ -1,0 +1,173 @@
+{
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Health",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    },
+    {
+      "displayName": "Health.Liveness",
+      "exportName": "__sloppy_handler_2",
+      "id": 2
+    },
+    {
+      "displayName": "Health.Readiness",
+      "exportName": "__sloppy_handler_3",
+      "id": 3
+    },
+    {
+      "displayName": "Projects.List",
+      "exportName": "__sloppy_handler_4",
+      "id": 4
+    },
+    {
+      "displayName": "Projects.Create",
+      "exportName": "__sloppy_handler_5",
+      "id": 5
+    },
+    {
+      "displayName": "Projects.Get",
+      "exportName": "__sloppy_handler_6",
+      "id": 6
+    },
+    {
+      "displayName": "Apps.List",
+      "exportName": "__sloppy_handler_7",
+      "id": 7
+    },
+    {
+      "displayName": "Apps.Create",
+      "exportName": "__sloppy_handler_8",
+      "id": 8
+    },
+    {
+      "displayName": "Apps.Get",
+      "exportName": "__sloppy_handler_9",
+      "id": 9
+    },
+    {
+      "displayName": "Builds.Create",
+      "exportName": "__sloppy_handler_10",
+      "id": 10
+    },
+    {
+      "displayName": "Builds.List",
+      "exportName": "__sloppy_handler_11",
+      "id": 11
+    },
+    {
+      "displayName": "Deployments.Create",
+      "exportName": "__sloppy_handler_12",
+      "id": 12
+    },
+    {
+      "displayName": "Diagnostics.Recent",
+      "exportName": "__sloppy_handler_13",
+      "id": 13
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Health",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": "Health.Liveness",
+      "pattern": "/health/live",
+      "tags": []
+    },
+    {
+      "handlerId": 3,
+      "method": "GET",
+      "name": "Health.Readiness",
+      "pattern": "/health/ready",
+      "tags": []
+    },
+    {
+      "handlerId": 4,
+      "method": "GET",
+      "name": "Projects.List",
+      "pattern": "/projects",
+      "tags": []
+    },
+    {
+      "handlerId": 5,
+      "method": "POST",
+      "name": "Projects.Create",
+      "pattern": "/projects",
+      "tags": []
+    },
+    {
+      "handlerId": 6,
+      "method": "GET",
+      "name": "Projects.Get",
+      "pattern": "/projects/{id:int}",
+      "tags": []
+    },
+    {
+      "handlerId": 7,
+      "method": "GET",
+      "name": "Apps.List",
+      "pattern": "/apps",
+      "tags": []
+    },
+    {
+      "handlerId": 8,
+      "method": "POST",
+      "name": "Apps.Create",
+      "pattern": "/apps",
+      "tags": []
+    },
+    {
+      "handlerId": 9,
+      "method": "GET",
+      "name": "Apps.Get",
+      "pattern": "/apps/{id:int}",
+      "tags": []
+    },
+    {
+      "handlerId": 10,
+      "method": "POST",
+      "name": "Builds.Create",
+      "pattern": "/apps/{id:int}/builds",
+      "tags": []
+    },
+    {
+      "handlerId": 11,
+      "method": "GET",
+      "name": "Builds.List",
+      "pattern": "/apps/{id:int}/builds",
+      "tags": []
+    },
+    {
+      "handlerId": 12,
+      "method": "POST",
+      "name": "Deployments.Create",
+      "pattern": "/apps/{id:int}/deployments",
+      "tags": []
+    },
+    {
+      "handlerId": 13,
+      "method": "GET",
+      "name": "Diagnostics.Recent",
+      "pattern": "/diagnostics/recent",
+      "tags": []
+    }
+  ]
+}

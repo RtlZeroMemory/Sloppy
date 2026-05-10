@@ -1,0 +1,21 @@
+Sloppy 0.0.0-foundation
+Pre-alpha runtime foundation with bounded run and metadata CLI introspection.
+
+Usage:
+  sloppy --help
+  sloppy --version
+  sloppy create <name> [--template minimal-api|full-api|dogfood|program] [--force]
+                       [--no-git] [--format text|json]
+  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
+               [--environment Development] [--host 127.0.0.1] [--port <port>]
+  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
+                 [--environment Development] [--host 127.0.0.1] [--port <port>]
+                 [--format text|json]
+  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib <dir>]
+             [--kind web|program] [--environment Development] [--host 127.0.0.1] [--port <port>]
+             [--once METHOD TARGET] [-- <program-args...>]
+  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output <path>]

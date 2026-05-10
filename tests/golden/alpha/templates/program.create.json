@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd alpha-program",
+      "sloppy run -- --name Ada"
+    ],
+    "path": "alpha-program",
+    "template": "program"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "exitCode": 1,
+  "stderr": "sloppy openapi: OpenAPI is only available for web Plans with route metadata.\n",
+  "stdout": ""
+}

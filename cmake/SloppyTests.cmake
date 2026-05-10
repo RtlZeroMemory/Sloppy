@@ -1,6 +1,7 @@
 if(SLOPPY_ENABLE_TESTS)
     include(CTest)
     include(cmake/SloppyTestHelpers.cmake)
+    include(cmake/SloppyAlphaProofTests.cmake)
     include(cmake/SloppyNativeTests.cmake)
     include(cmake/SloppyCliTests.cmake)
     include(cmake/SloppyCompilerConformanceTests.cmake)
