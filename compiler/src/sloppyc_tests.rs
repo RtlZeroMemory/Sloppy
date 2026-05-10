@@ -2356,6 +2356,58 @@ export default app;
 }
 
 #[test]
+fn function_module_exports_local_schema_metadata() {
+    let root = fixture_temp_dir("function-module-local-schema-metadata");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results, Schema } from "sloppy";
+
+export function usersModule(app) {
+    const CreateUser = Schema.object({
+        name: Schema.string().min(1),
+    });
+    const User = Schema.object({
+        id: Schema.integer(),
+        name: Schema.string(),
+    });
+
+    app.post("/users", async (ctx) =>
+        Results.created("/users/1", await ctx.body.validate(CreateUser))
+    ).accepts(CreateUser).returns(User).withName("Users.Create");
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module schemas should extract");
+    assert_eq!(app.schemas.len(), 2);
+    let route = &app.routes[0];
+    assert_eq!(route.handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        route.handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        route
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn function_module_can_register_health_checks() {
     let root = fixture_temp_dir("function-module-health");
     let modules = root.join("modules");
@@ -3686,6 +3738,87 @@ export default app;
     assert_eq!(plan["routes"][0]["bindings"][4]["name"], "content-md5");
     assert_eq!(plan["routes"][0]["response"]["helper"], "json");
     assert_eq!(plan["features"]["metadataInference"], true);
+}
+
+#[test]
+fn extracts_schema_alias_body_validate_and_fluent_route_schemas() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({
+  name: Schema.string().min(1).max(100),
+  email: Schema.string().email()
+});
+const User = Schema.object({
+  id: Schema.integer(),
+  name: Schema.string(),
+  email: Schema.string(),
+  role: Schema.enum(["admin", "user"]),
+  status: Schema.literal("active")
+});
+const app = Sloppy.create();
+app.post("/users", async (ctx) =>
+  Results.created("/users/1", await ctx.body.validate(CreateUser))
+).accepts(CreateUser).returns(User).withName("Users.Create");
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("Schema alias and fluent schemas should extract");
+    assert_eq!(app.schemas.len(), 2);
+    assert_eq!(app.routes[0].name.as_deref(), Some("Users.Create"));
+    assert_eq!(app.routes[0].handler.bindings.len(), 1);
+    assert_eq!(app.routes[0].handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        app.routes[0]
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.validate(CreateUser)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["bindings"][0]["schema"], "CreateUser");
+    assert_eq!(plan["routes"][0]["response"]["bodySchema"], "User");
+    assert_eq!(
+        plan["schemas"][1]["definition"]["properties"]["role"]["kind"],
+        "literalUnion"
+    );
+    assert_eq!(
+        plan["schemas"][1]["definition"]["properties"]["role"]["variants"][0]["value"],
+        "admin"
+    );
+    assert_eq!(
+        plan["schemas"][1]["definition"]["properties"]["status"]["kind"],
+        "literal"
+    );
+    assert_eq!(
+        plan["schemas"][1]["definition"]["properties"]["status"]["value"],
+        "active"
+    );
+}
+
+#[test]
+fn rejects_unresolved_fluent_route_schema_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", () => Results.created("/users/1", {})).accepts(CreateUser);
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.ts"), source)
+        .expect_err("unresolved fluent schema metadata should fail extraction");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA");
 }
 
 #[test]

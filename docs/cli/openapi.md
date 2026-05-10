@@ -66,14 +66,15 @@ keyed by media type:
 
 | Plan response kind | Media type                  | Schema                                  |
 | ------------------ | --------------------------- | --------------------------------------- |
-| `json`             | `application/json`          | `x-slop-partial` until shape declared   |
+| `json`             | `application/json`          | schema `$ref` when declared, otherwise `x-slop-partial` |
 | `problem`          | `application/problem+json`  | `{ status, title, detail }`             |
 | `text`             | `text/plain`                | `{ type: "string" }`                    |
 | `html`             | `text/html`                 | `{ type: "string" }`                    |
 | `bytes`            | `application/octet-stream`  | `{ type: "string", format: "binary" }`  |
 | `empty`            | none                        | status and description only             |
 
-JSON responses carry `x-slop-partial` until the compiler records a declared
+JSON responses use the declared Plan response body schema when the schema is
+available. They carry `x-slop-partial` when the compiler could not see a
 response body schema.
 
 ## Sloppy extensions
@@ -102,9 +103,7 @@ suitable for diffing.
 
 - Full request body schemas beyond what the Plan emitted from
   `schema.object(...)` (partials get `x-slop-partial`).
-- Declared `application/json` response body schemas (the Plan carries the
-  visible `Results.*` kinds and status codes today; the JSON entry is a
-  `x-slop-partial`).
+- Response bodies that are not declared in Plan metadata.
 - Security schemes beyond Plan-visible Sloppy auth providers.
 - Servers or external-docs metadata.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are

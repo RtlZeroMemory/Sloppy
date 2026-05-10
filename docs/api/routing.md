@@ -82,6 +82,18 @@ app.get("/users", handler).withName("Users.List");
 ```
 
 `withName(...)` returns the same registration object so you can chain.
+`accepts(schema)` records a JSON request body schema, and `returns(schema)`
+records the default JSON response schema:
+
+```ts
+app.post("/users", createUser)
+    .accepts(CreateUser)
+    .returns(User)
+    .withName("Users.Create");
+```
+
+The app host stores this metadata in route snapshots. The compiler also uses
+static schema identifiers in these fluent calls for Plan and OpenAPI metadata.
 
 Use `requireAuth(...)` to protect a route:
 

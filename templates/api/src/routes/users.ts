@@ -1,8 +1,4 @@
-import { Results } from "sloppy";
-import {
-    createUserValidationErrors,
-    normalizeCreateUserRequest,
-} from "../models/createUserRequest.ts";
+import { Results, Schema } from "sloppy";
 import {
     createUser,
     getUser,
@@ -11,6 +7,15 @@ import {
 
 export function usersModule(app) {
     const db = app.provider("sqlite:main");
+    const CreateUser = Schema.object({
+        name: Schema.string().min(1).max(100),
+        email: Schema.string().email(),
+    });
+    const User = Schema.object({
+        id: Schema.integer(),
+        name: Schema.string(),
+        email: Schema.string(),
+    });
 
     app.get("/users", async () => Results.ok(await listUsers(db)))
         .withName("Users.List");
@@ -25,16 +30,11 @@ export function usersModule(app) {
         .withName("Users.Get");
 
     app.post("/users", async (ctx) => {
-        const input = normalizeCreateUserRequest(ctx.body.json());
-        const errors = createUserValidationErrors(input);
-        if (Object.keys(errors).length > 0) {
-            return Results.badRequest({
-                title: "Validation failed",
-                status: 400,
-                errors,
-            });
-        }
+        const input = await ctx.body.validate(CreateUser);
         const user = await createUser(db, input);
         return Results.created(`/users/${user.id}`, user);
-    }).withName("Users.Create");
+    })
+        .accepts(CreateUser)
+        .returns(User)
+        .withName("Users.Create");
 }

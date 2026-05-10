@@ -499,18 +499,31 @@ pub(super) fn schema_definition(expression: &Expression<'_>) -> Option<Value> {
 pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
     if let Expression::StaticMemberExpression(member) = &call.callee {
         let property = member.property.name.as_str();
-        if matches!(property, "optional" | "min" | "max" | "email") {
+        if matches!(
+            property,
+            "optional" | "nullable" | "min" | "max" | "minLength" | "maxLength" | "email" | "uuid"
+        ) {
             let mut base = schema_definition(&member.object)?;
             if property == "optional" {
                 if !call.arguments.is_empty() {
                     return None;
                 }
                 base["optional"] = json!(true);
+            } else if property == "nullable" {
+                if !call.arguments.is_empty() {
+                    return None;
+                }
+                base["nullable"] = json!(true);
             } else if property == "email" {
                 if !call.arguments.is_empty() {
                     return None;
                 }
                 base["format"] = json!("email");
+            } else if property == "uuid" {
+                if !call.arguments.is_empty() {
+                    return None;
+                }
+                base["format"] = json!("uuid");
             } else {
                 if call.arguments.len() != 1 {
                     return None;
@@ -519,19 +532,31 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                     .arguments
                     .first()
                     .and_then(numeric_argument_json_value)?;
-                base[property] = number;
+                let key = match property {
+                    "minLength" => "min",
+                    "maxLength" => "max",
+                    _ => property,
+                };
+                base[key] = number;
             }
             return Some(base);
         }
     }
 
     let (object, method) = static_member_name(&call.callee)?;
-    if object != "schema" {
+    if !matches!(object, "schema" | "Schema") {
         return None;
     }
     match method {
-        "string" | "int" | "number" | "bool" if call.arguments.is_empty() => {
-            Some(json!({ "kind": method }))
+        "string" | "int" | "integer" | "number" | "bool" | "boolean"
+            if call.arguments.is_empty() =>
+        {
+            let kind = match method {
+                "integer" => "int",
+                "boolean" => "bool",
+                _ => method,
+            };
+            Some(json!({ "kind": kind }))
         }
         "array" if call.arguments.len() == 1 => {
             let inner = call
@@ -561,6 +586,27 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                 properties.insert(key, value);
             }
             Some(json!({ "kind": "object", "properties": properties }))
+        }
+        "literal" if call.arguments.len() == 1 => {
+            let value = call
+                .arguments
+                .first()
+                .and_then(literal_argument_json_value)?;
+            Some(json!({ "kind": "literal", "value": value }))
+        }
+        "enum" if call.arguments.len() == 1 => {
+            let Argument::ArrayExpression(array) = call.arguments.first()? else {
+                return None;
+            };
+            let mut variants = Vec::new();
+            for element in &array.elements {
+                let value = literal_array_element_json_value(element)?;
+                variants.push(json!({ "kind": "literal", "value": value }));
+            }
+            if variants.is_empty() {
+                return None;
+            }
+            Some(json!({ "kind": "literalUnion", "variants": variants }))
         }
         _ => None,
     }
@@ -617,7 +663,8 @@ pub(super) fn expression_mentions_schema(expression: &Expression<'_>) -> bool {
 }
 
 pub(super) fn call_mentions_schema(call: &CallExpression<'_>) -> bool {
-    static_member_name(&call.callee).is_some_and(|(object, _)| object == "schema")
+    static_member_name(&call.callee)
+        .is_some_and(|(object, _)| matches!(object, "schema" | "Schema"))
         || match &call.callee {
             Expression::StaticMemberExpression(member) => {
                 expression_mentions_schema(&member.object)
@@ -689,6 +736,56 @@ pub(super) fn numeric_argument_value(argument: &Argument<'_>) -> Option<f64> {
 pub(super) fn numeric_argument_json_value(argument: &Argument<'_>) -> Option<Value> {
     let value = numeric_argument_value(argument)?;
     if value.is_finite() && value.fract() == 0.0 {
+        if value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+            return Some(json!(value as i64));
+        }
+        if value >= 0.0 && value <= u64::MAX as f64 {
+            return Some(json!(value as u64));
+        }
+    }
+    Some(json!(value))
+}
+
+pub(super) fn literal_argument_json_value(argument: &Argument<'_>) -> Option<Value> {
+    match argument {
+        Argument::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Argument::NumericLiteral(_) => numeric_argument_json_value(argument),
+        Argument::BooleanLiteral(value) => Some(json!(value.value)),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            literal_expression_json_value(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn literal_expression_json_value(expression: &Expression<'_>) -> Option<Value> {
+    match expression {
+        Expression::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Expression::NumericLiteral(value) => numeric_json_value(value.value),
+        Expression::BooleanLiteral(value) => Some(json!(value.value)),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            literal_expression_json_value(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn literal_array_element_json_value(
+    element: &ArrayExpressionElement<'_>,
+) -> Option<Value> {
+    match element {
+        ArrayExpressionElement::StringLiteral(value) => Some(json!(value.value.as_str())),
+        ArrayExpressionElement::NumericLiteral(value) => numeric_json_value(value.value),
+        ArrayExpressionElement::BooleanLiteral(value) => Some(json!(value.value)),
+        _ => None,
+    }
+}
+
+fn numeric_json_value(value: f64) -> Option<Value> {
+    if !value.is_finite() {
+        return None;
+    }
+    if value.fract() == 0.0 {
         if value >= i64::MIN as f64 && value <= i64::MAX as f64 {
             return Some(json!(value as i64));
         }

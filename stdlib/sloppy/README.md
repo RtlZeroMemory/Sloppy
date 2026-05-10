@@ -67,8 +67,10 @@ lib/sloppy/bootstrap/sloppy/
   IDs, trusted incoming ID admission, and optional response headers.
 - `request-logging.js` provides `RequestLogging.defaults(...)` middleware that writes
   one structured entry per completed app-host request through the configured logger.
-- `schema.js` provides the current validation metadata surface for strings, numbers,
-  integers, booleans, arrays, optional fields, and object shapes.
+- `schema.js` provides the current `Schema` validation metadata surface for
+  strings, numbers, integers, booleans, arrays, enums, literals, optional,
+  nullable, defaulted fields, object shapes, and request body validation
+  errors.
 - `testing.js` provides the bootstrap app test host for in-memory JS app-host
   dispatch through route handlers, middleware, results, CORS, health checks, and
   scoped services. The dogfood proof in

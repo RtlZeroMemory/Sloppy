@@ -247,6 +247,8 @@ struct RouteMetadata {
     name: Option<String>,
     tags: Vec<String>,
     auth: Option<AuthRequirementMetadata>,
+    accepts_schema: Option<String>,
+    returns_schema: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -986,8 +988,14 @@ struct ModuleGraph {
 
 #[derive(Debug, Clone)]
 struct CachedModule {
-    exports: BTreeMap<String, Vec<Route>>,
+    exports: BTreeMap<String, CachedModuleExport>,
     duplicate_exports: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedModuleExport {
+    routes: Vec<Route>,
+    schemas: Vec<SchemaMetadata>,
 }
 
 impl ModuleGraph {
@@ -3869,7 +3877,7 @@ fn extract_entry(
                 "Import a named function module and pass it directly to app.useModule(...).",
             ));
         };
-        let module_routes = extract_relative_module(graph, &imported, metrics.as_deref_mut())?;
+        let module_export = extract_relative_module(graph, &imported, metrics.as_deref_mut())?;
         let module = FunctionModule {
             name: imported.export_name.clone(),
             source_name: source_map_source_name(&imported.path),
@@ -3878,8 +3886,15 @@ fn extract_entry(
             .modules
             .entry((module.source_name.clone(), module.name.clone()))
             .or_insert(module);
-        state.uses_health |= module_routes.iter().any(|route| route.health.is_some());
-        state.routes.extend(module_routes);
+        state.uses_health |= module_export
+            .routes
+            .iter()
+            .any(|route| route.health.is_some());
+        for schema in &module_export.schemas {
+            state.schema_names.insert(schema.name.clone());
+        }
+        state.schemas.extend(module_export.schemas);
+        state.routes.extend(module_export.routes);
     }
     if let Some(metrics) = metrics.as_mut() {
         metrics.add_phase("resolveModuleGraphMs", module_graph_start.elapsed());
@@ -5685,6 +5700,7 @@ fn extract_import(
                     }
                 }
                 ("schema", "schema") => state.schema_imported = true,
+                ("Schema", "Schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
                 _ if sloppy_root_import_name_supported(imported) => {}
                 _ => {
@@ -5759,6 +5775,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "Migrations"
             | "ProviderHealth"
             | "schema"
+            | "Schema"
             | "Email"
             | "NonEmptyString"
             | "PasswordString"
@@ -6250,6 +6267,39 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
+    if let Some(schema) = &fluent_metadata.accepts_schema {
+        validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
+        if let Some(binding) = handler
+            .bindings
+            .iter_mut()
+            .find(|binding| binding.kind == "body.json")
+        {
+            if binding.schema.is_none() {
+                binding.schema = Some(schema.clone());
+            }
+        } else {
+            handler.bindings.push(framework_binding(
+                "body.json",
+                None,
+                Some(schema),
+                None,
+                statement.span,
+            ));
+        }
+    }
+    if let Some(schema) = &fluent_metadata.returns_schema {
+        validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
+        if let Some(response) = &mut handler.response {
+            if response.body_schema.is_none() {
+                response.body_schema = Some(schema.clone());
+            }
+        }
+        for response in &mut handler.responses {
+            if response.body_schema.is_none() && response.kind == "json" {
+                response.body_schema = Some(schema.clone());
+            }
+        }
+    }
     if handler.requires_results_import && state.results_required_span.is_none() {
         state.results_required_span = Some(handler.span);
     }
@@ -10894,7 +10944,7 @@ fn extract_relative_module(
     graph: &mut ModuleGraph,
     imported: &ImportedModule,
     mut metrics: Option<&mut CompileMetrics>,
-) -> Result<Vec<Route>, Diagnostic> {
+) -> Result<CachedModuleExport, Diagnostic> {
     if graph.visiting.contains(&imported.path) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_CIRCULAR_IMPORT",
@@ -10949,7 +10999,7 @@ fn extract_relative_module(
         &mut graph.ffi_structs,
     )?;
 
-    let mut exports = BTreeMap::<String, Vec<Route>>::new();
+    let mut exports = BTreeMap::<String, CachedModuleExport>::new();
     let mut duplicate_exports = BTreeSet::<String>::new();
     let extract_start = Instant::now();
     let mut module_results_imported = false;
@@ -11247,7 +11297,7 @@ fn extract_relative_module(
                     .with_span(function.span));
                 };
                 let export_name = identifier.name.as_str();
-                let routes = extract_module_function_routes(
+                let module_export = extract_module_function_routes(
                     &imported.path,
                     &source,
                     &source_name,
@@ -11257,7 +11307,8 @@ fn extract_relative_module(
                     &imported_helper_effects,
                 )?;
                 if !module_results_imported {
-                    if let Some(route) = routes
+                    if let Some(route) = module_export
+                        .routes
                         .iter()
                         .find(|route| route.handler.requires_results_import)
                     {
@@ -11267,7 +11318,10 @@ fn extract_relative_module(
                         ));
                     }
                 }
-                if exports.insert(export_name.to_string(), routes).is_some() {
+                if exports
+                    .insert(export_name.to_string(), module_export)
+                    .is_some()
+                {
                     duplicate_exports.insert(export_name.to_string());
                 }
             }
@@ -11309,7 +11363,7 @@ fn module_variable_declaration_is_helper(declaration: &VariableDeclaration<'_>) 
 fn cached_module_routes(
     module: &CachedModule,
     imported: &ImportedModule,
-) -> Result<Vec<Route>, Diagnostic> {
+) -> Result<CachedModuleExport, Diagnostic> {
     if module.duplicate_exports.contains(&imported.export_name) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_DUPLICATE_EXPORT",
@@ -11318,7 +11372,7 @@ fn cached_module_routes(
         .with_path(&imported.path)
         .with_span(imported.span));
     }
-    let Some(routes) = module.exports.get(&imported.export_name) else {
+    let Some(module_export) = module.exports.get(&imported.export_name) else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_EXPORT",
             format!(
@@ -11329,7 +11383,7 @@ fn cached_module_routes(
         .with_path(&imported.path)
         .with_span(imported.span));
     };
-    Ok(routes.clone())
+    Ok(module_export.clone())
 }
 
 fn extract_module_function_routes(
@@ -11340,7 +11394,7 @@ fn extract_module_function_routes(
     function: &oxc_ast::ast::Function<'_>,
     imported_helper_sources: &BTreeMap<String, String>,
     imported_helper_effects: &BTreeMap<String, FunctionEffectSummary>,
-) -> Result<Vec<Route>, Diagnostic> {
+) -> Result<CachedModuleExport, Diagnostic> {
     if function.params.items.len() != 1 || function.params.rest.is_some() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -11375,6 +11429,8 @@ fn extract_module_function_routes(
     let mut providers = BTreeMap::<String, ProviderBinding>::new();
     let mut helper_sources = imported_helper_sources.clone();
     let mut helper_effects = imported_helper_effects.clone();
+    let schema_names = collect_schema_declaration_names(&body.statements);
+    let mut schemas = Vec::new();
     let mut routes = Vec::new();
 
     for statement in &body.statements {
@@ -11423,6 +11479,12 @@ fn extract_module_function_routes(
                     };
                     if let Some(binding) = app_provider_call(init, app_name) {
                         providers.insert(name.to_string(), binding);
+                    } else if schema_names.contains(name) {
+                        if let Some(schema) =
+                            schema_declaration(path, source, source_name, name, init)?
+                        {
+                            schemas.push(schema);
+                        }
                     } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
                         let full_prefix = if receiver == app_name {
                             prefix.to_string()
@@ -11546,7 +11608,6 @@ fn extract_module_function_routes(
                     .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
                 }
 
-                let schema_names = BTreeSet::new();
                 let handler_context = HandlerExtractionContext {
                     route_pattern: &full_pattern,
                     source,
@@ -11597,6 +11658,39 @@ fn extract_module_function_routes(
                         handler.is_async,
                     );
                 }
+                if let Some(schema) = &fluent_metadata.accepts_schema {
+                    validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
+                    if let Some(binding) = handler
+                        .bindings
+                        .iter_mut()
+                        .find(|binding| binding.kind == "body.json")
+                    {
+                        if binding.schema.is_none() {
+                            binding.schema = Some(schema.clone());
+                        }
+                    } else {
+                        handler.bindings.push(framework_binding(
+                            "body.json",
+                            None,
+                            Some(schema),
+                            None,
+                            statement.span,
+                        ));
+                    }
+                }
+                if let Some(schema) = &fluent_metadata.returns_schema {
+                    validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
+                    if let Some(response) = &mut handler.response {
+                        if response.body_schema.is_none() {
+                            response.body_schema = Some(schema.clone());
+                        }
+                    }
+                    for response in &mut handler.responses {
+                        if response.body_schema.is_none() && response.kind == "json" {
+                            response.body_schema = Some(schema.clone());
+                        }
+                    }
+                }
                 tags.extend(route_metadata.tags);
                 tags.extend(fluent_metadata.tags);
                 let auth = fluent_metadata
@@ -11637,7 +11731,7 @@ fn extract_module_function_routes(
             }
         }
     }
-    Ok(routes)
+    Ok(CachedModuleExport { routes, schemas })
 }
 
 fn app_provider_call(expression: &Expression<'_>, app_name: &str) -> Option<ProviderBinding> {
@@ -11934,6 +12028,18 @@ fn route_metadata_chain<'a>(
                 }
                 current = &member.object;
             }
+            "accepts" => {
+                if metadata.accepts_schema.is_none() {
+                    metadata.accepts_schema = Some(route_schema_from_argument(call, "accepts", 1)?);
+                }
+                current = &member.object;
+            }
+            "returns" => {
+                if metadata.returns_schema.is_none() {
+                    metadata.returns_schema = Some(route_schema_from_argument(call, "returns", 2)?);
+                }
+                current = &member.object;
+            }
             "withTags" => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
@@ -12040,6 +12146,47 @@ fn auth_requirement_from_call(
         }
     }
     Ok(requirement)
+}
+
+fn route_schema_from_argument(
+    call: &CallExpression<'_>,
+    method: &str,
+    max_arguments: usize,
+) -> Result<String, Diagnostic> {
+    if call.arguments.is_empty() || call.arguments.len() > max_arguments {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_SCHEMA",
+            format!("{method} requires a schema identifier"),
+        )
+        .with_span(call.span));
+    }
+
+    let Some(schema) = call.arguments.first().and_then(argument_identifier) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_SCHEMA",
+            format!("{method} schema must be a static identifier"),
+        )
+        .with_span(call.span));
+    };
+    Ok(schema.to_string())
+}
+
+fn validate_route_schema_reference(
+    path: &Path,
+    span: Span,
+    schema: &str,
+    schema_names: &BTreeSet<String>,
+) -> Result<(), Diagnostic> {
+    if schema_names.contains(schema) {
+        return Ok(());
+    }
+    Err(Diagnostic::new(
+        "SLOPPYC_E_UNRESOLVED_SCHEMA",
+        format!("route schema '{schema}' is not declared as a supported Sloppy schema"),
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Declare the schema with Schema.object(...), Schema.array(...), or another supported Schema constructor in compiler-visible source."))
 }
 
 fn route_name_from_argument(call: &CallExpression<'_>) -> Result<String, Diagnostic> {
@@ -14758,8 +14905,13 @@ fn request_binding_from_call(
     }
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" {
         let schema = body_binding_schema(call, chain[2], schema_names)?;
+        let kind = if chain[2] == "validate" {
+            "body.json".to_string()
+        } else {
+            format!("body.{}", chain[2])
+        };
         return Some(RequestBinding {
-            kind: format!("body.{}", chain[2]),
+            kind,
             name: None,
             schema,
             parameter: None,
@@ -14789,6 +14941,14 @@ fn body_binding_schema(
         "form" if call.arguments.is_empty() => Some(None),
         "multipart" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.len() == 1 => {
+            let schema = call.arguments.first().and_then(argument_identifier)?;
+            if schema_names.contains(schema) {
+                Some(Some(schema.to_string()))
+            } else {
+                None
+            }
+        }
+        "validate" if call.arguments.len() == 1 => {
             let schema = call.arguments.first().and_then(argument_identifier)?;
             if schema_names.contains(schema) {
                 Some(Some(schema.to_string()))
@@ -15311,7 +15471,11 @@ fn body_json_schema_argument_span(
     schema_names: &BTreeSet<String>,
 ) -> Option<Span> {
     let chain = static_member_chain(&call.callee)?;
-    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" && chain[2] == "json" {
+    if chain.len() == 3
+        && chain[0] == ctx_name
+        && chain[1] == "body"
+        && matches!(chain[2], "json" | "validate")
+    {
         if call.arguments.len() != 1 {
             return None;
         }
@@ -15350,6 +15514,7 @@ fn sanitize_handler_schema_references(
             source.replace_range(start..end, "undefined");
         }
     }
+    source = source.replace(".body.validate(undefined)", ".body.json(undefined)");
     source
 }
 
@@ -15694,6 +15859,11 @@ fn argument_is_inline_json_safe_value(
         Argument::CallExpression(call) => {
             body_binding_call_is_supported(call, allowed_roots, schema_names)
         }
+        Argument::AwaitExpression(await_expression) => expression_is_inline_json_safe_value(
+            &await_expression.argument,
+            allowed_roots,
+            schema_names,
+        ),
         Argument::ParenthesizedExpression(parenthesized) => expression_is_inline_json_safe_value(
             &parenthesized.expression,
             allowed_roots,
@@ -15778,6 +15948,11 @@ fn expression_is_inline_json_safe_value(
         Expression::CallExpression(call) => {
             body_binding_call_is_supported(call, allowed_roots, schema_names)
         }
+        Expression::AwaitExpression(await_expression) => expression_is_inline_json_safe_value(
+            &await_expression.argument,
+            allowed_roots,
+            schema_names,
+        ),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
