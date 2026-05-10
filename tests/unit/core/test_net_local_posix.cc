@@ -141,6 +141,7 @@ void run_client(ClientExchange* exchange)
     }
 }
 
+#ifndef __APPLE__
 void run_split_client(ClientExchange* exchange)
 {
     SlLocalConnection* connection = nullptr;
@@ -176,6 +177,7 @@ void run_split_client(ClientExchange* exchange)
         exchange->result = 3;
     }
 }
+#endif
 
 int test_unix_socket_loopback_preserves_binary()
 {

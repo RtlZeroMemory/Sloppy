@@ -112,6 +112,9 @@ static SlPlan route_table_plan(SlPlanHandler* handlers, SlPlanRoute* routes)
 {
     SlPlan plan = {0};
 
+    memset(handlers, 0, 2U * sizeof(handlers[0]));
+    memset(routes, 0, 2U * sizeof(routes[0]));
+
     handlers[0].id = 1U;
     handlers[0].export_name = sl_str_from_cstr("__sloppy_handler_1");
     handlers[0].display_name = sl_str_from_cstr("Users.Param");
