@@ -122,6 +122,20 @@ bool os_v8_set_uint32(v8::Isolate* isolate, v8::Local<v8::Context> context,
            object->Set(context, key, v8::Integer::NewFromUnsigned(isolate, value)).FromMaybe(false);
 }
 
+bool os_v8_resource_private(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
+{
+    v8::Local<v8::String> key;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)))
+    {
+        return false;
+    }
+
+    *out = v8::Private::ForApi(isolate, key);
+    return true;
+}
+
 void os_v8_throw(v8::Isolate* isolate, const char* message)
 {
     v8::Local<v8::String> text;
@@ -439,19 +453,18 @@ bool os_v8_handle_arg(v8::Isolate* isolate, v8::Local<v8::Context> context,
 {
     v8::Local<v8::Value> slot_value;
     v8::Local<v8::Value> generation_value;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
 
     if (out == nullptr || value.IsEmpty() || !value->IsObject() ||
-        !sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            os_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)))
+        !os_v8_resource_private(isolate, "sloppy.os.resource.slot", &slot_key) ||
+        !os_v8_resource_private(isolate, "sloppy.os.resource.generation", &generation_key))
     {
         return false;
     }
     v8::Local<v8::Object> object = value.As<v8::Object>();
-    if (!object->Get(context, slot_key).ToLocal(&slot_value) ||
-        !object->Get(context, generation_key).ToLocal(&generation_value) ||
+    if (!object->GetPrivate(context, slot_key).ToLocal(&slot_value) ||
+        !object->GetPrivate(context, generation_key).ToLocal(&generation_value) ||
         !slot_value->IsUint32() || !generation_value->IsUint32())
     {
         return false;
@@ -464,20 +477,21 @@ bool os_v8_handle_arg(v8::Isolate* isolate, v8::Local<v8::Context> context,
 bool os_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> context, SlResourceId id,
                               v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
-    if (out == nullptr ||
-        !sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            os_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)))
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
+    if (out == nullptr || !os_v8_resource_private(isolate, "sloppy.os.resource.slot", &slot_key) ||
+        !os_v8_resource_private(isolate, "sloppy.os.resource.generation", &generation_key))
     {
         return false;
     }
     v8::Local<v8::Object> object = v8::Object::New(isolate);
-    if (!object->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
+    if (!object->SetPrivate(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
              .FromMaybe(false) ||
-        !object->Set(context, generation_key, v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false))
+        !object
+             ->SetPrivate(context, generation_key,
+                          v8::Integer::NewFromUnsigned(isolate, id.generation))
+             .FromMaybe(false) ||
+        !object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
     {
         return false;
     }

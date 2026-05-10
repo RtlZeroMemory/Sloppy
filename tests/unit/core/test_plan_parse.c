@@ -796,6 +796,44 @@ static int test_invalid_fixture_matrix(void)
     return 0;
 }
 
+static int test_secret_field_rejection_checks_full_normalized_key(void)
+{
+    static const char json[] =
+        "{"
+        "\"schemaVersion\":1,"
+        "\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\","
+        "\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Home\"}],"
+        "\"dataProviders\":[{"
+        "\"token\":\"data.main\","
+        "\"provider\":\"sqlite\","
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaPassword\":\"redacted\""
+        "}]"
+        "}";
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(json, &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 1;
+    }
+    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message, sl_str_from_cstr("app plan contains secret-bearing field")))
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
 static int test_failed_parse_rolls_back_plan_allocations(void)
 {
     unsigned char json_storage[TEST_JSON_SIZE];
@@ -973,6 +1011,11 @@ int main(void)
     }
 
     result = test_invalid_fixture_matrix();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_secret_field_rejection_checks_full_normalized_key();
     if (result != 0) {
         return result;
     }

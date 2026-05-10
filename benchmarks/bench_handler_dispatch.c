@@ -45,6 +45,22 @@ static SlStatus sl_bench_create_noop_engine(SlArena* arena, SlEngine** out_engin
     return sl_engine_create(&options, arena, out_engine);
 }
 
+static SlStatus sl_bench_format_route_path(char* buffer, size_t buffer_size, size_t route_index)
+{
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    written = snprintf(buffer, buffer_size, "/routes/%zu", route_index);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    return sl_status_ok();
+}
+
 static SlStatus bench_plan_handler_lookup(const SlBenchContext* context, uint64_t iterations,
                                           uint64_t* out_checksum)
 {
@@ -243,8 +259,12 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     }
 
     for (route_index = 0U; route_index < route_count; route_index += 1U) {
-        (void)snprintf(pattern_storage[route_index], sizeof(pattern_storage[route_index]),
-                       "/routes/%zu", route_index);
+        status = sl_bench_format_route_path(pattern_storage[route_index],
+                                            sizeof(pattern_storage[route_index]), route_index);
+        if (!sl_status_is_ok(status)) {
+            sl_engine_destroy(engine);
+            return status;
+        }
         routes[route_index] = (SlPlanRoute){0};
         routes[route_index].method = sl_str_from_cstr("GET");
         routes[route_index].pattern = sl_str_from_cstr(pattern_storage[route_index]);
@@ -258,7 +278,11 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
         return status;
     }
 
-    (void)snprintf(request_path, sizeof(request_path), "/routes/%zu", target_index);
+    status = sl_bench_format_route_path(request_path, sizeof(request_path), target_index);
+    if (!sl_status_is_ok(status)) {
+        sl_engine_destroy(engine);
+        return status;
+    }
     request.method = SL_HTTP_METHOD_GET;
     request.path = sl_str_from_cstr(request_path);
     request.raw_target = request.path;

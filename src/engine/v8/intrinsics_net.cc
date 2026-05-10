@@ -285,6 +285,20 @@ bool net_v8_set_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return object->Set(context, key, text).FromMaybe(false);
 }
 
+bool net_v8_resource_private(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
+{
+    v8::Local<v8::String> key;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)))
+    {
+        return false;
+    }
+
+    *out = v8::Private::ForApi(isolate, key);
+    return true;
+}
+
 std::string net_v8_diag_message(const SlV8NetRequest& request)
 {
     SlStr code = sl_diag_code_name(request.diag.code);
@@ -776,21 +790,20 @@ bool net_v8_handle_to_resource(v8::Isolate* isolate, v8::Local<v8::Context> cont
                                v8::Local<v8::Value> value, SlResourceId* out)
 {
     v8::Local<v8::Object> object;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
     v8::Local<v8::Value> slot_value;
     v8::Local<v8::Value> generation_value;
 
     if (out == nullptr || value.IsEmpty() || !value->IsObject() ||
-        !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            net_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)))
+        !net_v8_resource_private(isolate, "sloppy.net.resource.slot", &slot_key) ||
+        !net_v8_resource_private(isolate, "sloppy.net.resource.generation", &generation_key))
     {
         return false;
     }
     object = value.As<v8::Object>();
-    if (!object->Get(context, slot_key).ToLocal(&slot_value) ||
-        !object->Get(context, generation_key).ToLocal(&generation_value) ||
+    if (!object->GetPrivate(context, slot_key).ToLocal(&slot_value) ||
+        !object->GetPrivate(context, generation_key).ToLocal(&generation_value) ||
         !slot_value->IsUint32() || !generation_value->IsUint32())
     {
         return false;
@@ -804,23 +817,23 @@ bool net_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> cont
                                SlResourceId id, v8::Local<v8::Object>* out)
 {
     v8::Local<v8::Object> object;
-    v8::Local<v8::String> slot_key;
-    v8::Local<v8::String> generation_key;
+    v8::Local<v8::Private> slot_key;
+    v8::Local<v8::Private> generation_key;
 
     if (out == nullptr ||
-        !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key)) ||
-        !sl_status_is_ok(
-            net_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key)))
+        !net_v8_resource_private(isolate, "sloppy.net.resource.slot", &slot_key) ||
+        !net_v8_resource_private(isolate, "sloppy.net.resource.generation", &generation_key))
     {
         return false;
     }
     object = v8::Object::New(isolate);
-    if (!object->Set(context, slot_key, v8::Uint32::New(isolate, static_cast<int32_t>(id.slot)))
+    if (!object->SetPrivate(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
              .FromMaybe(false) ||
         !object
-             ->Set(context, generation_key,
-                   v8::Uint32::New(isolate, static_cast<int32_t>(id.generation)))
-             .FromMaybe(false))
+             ->SetPrivate(context, generation_key,
+                          v8::Integer::NewFromUnsigned(isolate, id.generation))
+             .FromMaybe(false) ||
+        !object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
     {
         return false;
     }

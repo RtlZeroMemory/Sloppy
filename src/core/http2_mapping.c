@@ -1,6 +1,7 @@
 #include "sloppy/http2_mapping.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
 
 #include <stdint.h>
 
@@ -352,8 +353,7 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
         (connection->scheme.ptr != NULL && connection->scheme.length != 0U &&
          !sl_str_equal(scheme, connection->scheme)) ||
         sl_str_equal_ci_ascii(method, sl_str_from_cstr("CONNECT")) ||
-        (!sl_str_is_empty(authority) && !sl_str_is_empty(host) &&
-         !sl_str_equal(host, authority)) ||
+        (!sl_str_is_empty(authority) && !sl_str_is_empty(host) && !sl_str_equal(host, authority)) ||
         (has_content_length && declared_content_length != body.length))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -379,8 +379,13 @@ SlStatus sl_http2_request_from_headers(SlArena* arena, SlHttpConnection* connect
     }
 
     if (regular_header_count != 0U) {
-        status = sl_arena_alloc(arena, sizeof(SlHttpHeader) * regular_header_count,
-                                _Alignof(SlHttpHeader), &header_storage);
+        size_t header_bytes = 0U;
+        status = sl_checked_array_size(regular_header_count, sizeof(SlHttpHeader), &header_bytes);
+        if (!sl_status_is_ok(status)) {
+            (void)sl_http_request_fail(out_request, out_diag);
+            return status;
+        }
+        status = sl_arena_alloc(arena, header_bytes, _Alignof(SlHttpHeader), &header_storage);
         if (!sl_status_is_ok(status)) {
             (void)sl_http_request_fail(out_request, out_diag);
             return status;
@@ -526,10 +531,19 @@ SlStatus sl_http2_response_to_headers(SlArena* arena, const SlHttpResponse* resp
         return status;
     }
 
-    field_capacity = 1U + response->header_count + (response->content_type.length == 0U ? 0U : 1U) +
-                     (no_body_status ? 0U : 1U);
-    status = sl_arena_alloc(arena, sizeof(SlHttp2HeaderField) * field_capacity,
-                            _Alignof(SlHttp2HeaderField), &field_storage);
+    status = sl_checked_add3_size(response->header_count, 1U,
+                                  response->content_type.length == 0U ? 0U : 1U, &field_capacity);
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size(field_capacity, no_body_status ? 0U : 1U, &field_capacity);
+    }
+    if (sl_status_is_ok(status)) {
+        size_t field_bytes = 0U;
+        status = sl_checked_array_size(field_capacity, sizeof(SlHttp2HeaderField), &field_bytes);
+        if (sl_status_is_ok(status)) {
+            status =
+                sl_arena_alloc(arena, field_bytes, _Alignof(SlHttp2HeaderField), &field_storage);
+        }
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }

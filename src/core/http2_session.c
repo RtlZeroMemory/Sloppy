@@ -147,8 +147,7 @@ static SlHttp2ClosedStream* sl_http2_session_track_stream(SlHttp2Session* sessio
         session->next_closed_stream =
             (session->next_closed_stream + 1U) % SL_HTTP2_SESSION_CLOSED_STREAM_TRACK;
         *closed = (SlHttp2ClosedStream){.stream_id = stream_id,
-                                        .outbound_window =
-                                            session->outbound_initial_stream_window,
+                                        .outbound_window = session->outbound_initial_stream_window,
                                         .active = true,
                                         .outbound_window_known = true};
     }
@@ -377,10 +376,10 @@ static SlStatus sl_http2_session_note_invalid_frame(SlHttp2Session* session, int
     if (session == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    return sl_http2_session_push_event(
-        session, (SlHttp2Event){.type = SL_HTTP2_EVENT_INVALID_FRAME,
-                                .stream_id = stream_id,
-                                .error_code = (uint32_t)(-lib_error_code)});
+    return sl_http2_session_push_event(session,
+                                       (SlHttp2Event){.type = SL_HTTP2_EVENT_INVALID_FRAME,
+                                                      .stream_id = stream_id,
+                                                      .error_code = (uint32_t)(-lib_error_code)});
 }
 
 static bool sl_http2_session_bytes_start_with_preface(SlBytes bytes)
@@ -405,29 +404,27 @@ static int32_t sl_http2_session_frame_stream_id(const unsigned char* ptr)
 
 static uint32_t sl_http2_session_read_u32(const unsigned char* ptr)
 {
-    return ((uint32_t)ptr[0] << 24U) | ((uint32_t)ptr[1] << 16U) |
-           ((uint32_t)ptr[2] << 8U) | (uint32_t)ptr[3];
+    return ((uint32_t)ptr[0] << 24U) | ((uint32_t)ptr[1] << 16U) | ((uint32_t)ptr[2] << 8U) |
+           (uint32_t)ptr[3];
 }
 
 static SlStatus sl_http2_session_submit_prescan_rst_stream(SlHttp2Session* session,
-                                                           int32_t stream_id,
-                                                           uint32_t error_code)
+                                                           int32_t stream_id, uint32_t error_code)
 {
     int rv = 0;
 
     if (session == NULL || session->session == NULL || stream_id <= 0) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    rv = nghttp2_submit_rst_stream((nghttp2_session*)session->session, NGHTTP2_FLAG_NONE,
-                                   stream_id, error_code);
+    rv = nghttp2_submit_rst_stream((nghttp2_session*)session->session, NGHTTP2_FLAG_NONE, stream_id,
+                                   error_code);
     if (rv == 0 || rv == NGHTTP2_ERR_STREAM_CLOSED || rv == NGHTTP2_ERR_INVALID_STREAM_ID) {
         return sl_status_ok();
     }
     return sl_http2_session_status_from_nghttp2(rv);
 }
 
-static SlStatus sl_http2_session_submit_prescan_goaway(SlHttp2Session* session,
-                                                       uint32_t error_code)
+static SlStatus sl_http2_session_submit_prescan_goaway(SlHttp2Session* session, uint32_t error_code)
 {
     int rv = 0;
 
@@ -449,8 +446,8 @@ static SlStatus sl_http2_session_track_peer_settings(SlHttp2Session* session,
         return sl_status_ok();
     }
     for (size_t offset = 0U; offset < length; offset += 6U) {
-        uint16_t id = (uint16_t)(((uint16_t)payload[offset] << 8U) |
-                                 (uint16_t)payload[offset + 1U]);
+        uint16_t id =
+            (uint16_t)(((uint16_t)payload[offset] << 8U) | (uint16_t)payload[offset + 1U]);
         uint32_t value = sl_http2_session_read_u32(payload + offset + 2U);
         int64_t delta = 0;
 
@@ -470,8 +467,7 @@ static SlStatus sl_http2_session_track_peer_settings(SlHttp2Session* session,
             }
             stream->outbound_window += delta;
             if (stream->outbound_window > INT32_MAX) {
-                return sl_http2_session_submit_prescan_goaway(session,
-                                                             NGHTTP2_FLOW_CONTROL_ERROR);
+                return sl_http2_session_submit_prescan_goaway(session, NGHTTP2_FLOW_CONTROL_ERROR);
             }
         }
     }
@@ -569,8 +565,7 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
     }
     while (bytes.length - offset >= 9U) {
         const unsigned char* frame = &bytes.ptr[offset];
-        size_t length =
-            ((size_t)frame[0] << 16U) | ((size_t)frame[1] << 8U) | (size_t)frame[2];
+        size_t length = ((size_t)frame[0] << 16U) | ((size_t)frame[1] << 8U) | (size_t)frame[2];
         uint8_t type = frame[3];
         uint8_t flags = frame[4];
         int32_t stream_id = sl_http2_session_frame_stream_id(frame);
@@ -618,9 +613,8 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
             if (type == NGHTTP2_RST_STREAM) {
                 sl_http2_session_record_closed_stream(session, stream_id, true);
             }
-            if (type == NGHTTP2_HEADERS &&
-                nghttp2_session_get_stream_remote_close((nghttp2_session*)session->session,
-                                                        stream_id) == -1)
+            if (type == NGHTTP2_HEADERS && nghttp2_session_get_stream_remote_close(
+                                               (nghttp2_session*)session->session, stream_id) == -1)
             {
                 if (stream_id > session->highest_peer_stream_id) {
                     session->highest_peer_stream_id = stream_id;
@@ -639,8 +633,8 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
                      ((uint32_t)payload[2] << 8U) | (uint32_t)payload[3]) > (uint32_t)INT32_MAX
                         ? 0
                         : (int32_t)(((uint32_t)(payload[0] & 0x7fU) << 24U) |
-                                    ((uint32_t)payload[1] << 16U) |
-                                    ((uint32_t)payload[2] << 8U) | (uint32_t)payload[3]);
+                                    ((uint32_t)payload[1] << 16U) | ((uint32_t)payload[2] << 8U) |
+                                    (uint32_t)payload[3]);
                 if (dependency == stream_id) {
                     SlStatus status =
                         sl_http2_session_submit_prescan_goaway(session, NGHTTP2_PROTOCOL_ERROR);
@@ -715,16 +709,15 @@ static int sl_http2_on_begin_frame(nghttp2_session* ng_session, const nghttp2_fr
     if (session->config.role == SL_HTTP2_SESSION_ROLE_SERVER && hd->type == NGHTTP2_PRIORITY &&
         hd->stream_id == 0)
     {
-        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE,
-                                   session->highest_peer_stream_id, NGHTTP2_PROTOCOL_ERROR, NULL,
-                                   0U);
+        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE, session->highest_peer_stream_id,
+                                   NGHTTP2_PROTOCOL_ERROR, NULL, 0U);
         if (rv != 0) {
             return sl_http2_session_callback_result(session,
-                                                   sl_http2_session_status_from_nghttp2(rv));
+                                                    sl_http2_session_status_from_nghttp2(rv));
         }
         return sl_http2_session_callback_result(
-            session, sl_http2_session_note_invalid_frame(session, hd->stream_id,
-                                                         -NGHTTP2_ERR_PROTO));
+            session,
+            sl_http2_session_note_invalid_frame(session, hd->stream_id, -NGHTTP2_ERR_PROTO));
     }
 
     if (!sl_http2_session_peer_initiated_stream_id(session, hd->stream_id)) {
@@ -735,12 +728,11 @@ static int sl_http2_on_begin_frame(nghttp2_session* ng_session, const nghttp2_fr
     if (closed != NULL && closed->reset_by_peer && hd->type != NGHTTP2_PRIORITY &&
         hd->type != NGHTTP2_RST_STREAM)
     {
-        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE,
-                                   session->highest_peer_stream_id, NGHTTP2_STREAM_CLOSED, NULL,
-                                   0U);
+        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE, session->highest_peer_stream_id,
+                                   NGHTTP2_STREAM_CLOSED, NULL, 0U);
         if (rv != 0) {
             return sl_http2_session_callback_result(session,
-                                                   sl_http2_session_status_from_nghttp2(rv));
+                                                    sl_http2_session_status_from_nghttp2(rv));
         }
         return sl_http2_session_callback_result(
             session, sl_http2_session_note_invalid_frame(session, hd->stream_id,
@@ -754,12 +746,12 @@ static int sl_http2_on_begin_frame(nghttp2_session* ng_session, const nghttp2_fr
                                        session->highest_peer_stream_id, NGHTTP2_PROTOCOL_ERROR,
                                        NULL, 0U);
             if (rv != 0) {
-                return sl_http2_session_callback_result(
-                    session, sl_http2_session_status_from_nghttp2(rv));
+                return sl_http2_session_callback_result(session,
+                                                        sl_http2_session_status_from_nghttp2(rv));
             }
             return sl_http2_session_callback_result(
-                session, sl_http2_session_note_invalid_frame(session, hd->stream_id,
-                                                             -NGHTTP2_ERR_PROTO));
+                session,
+                sl_http2_session_note_invalid_frame(session, hd->stream_id, -NGHTTP2_ERR_PROTO));
         }
         session->highest_peer_stream_id = hd->stream_id;
     }
@@ -842,12 +834,11 @@ static int sl_http2_on_invalid_frame_recv(nghttp2_session* ng_session, const ngh
     int rv = 0;
 
     if (session != NULL && ng_session != NULL && frame != NULL) {
-        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE,
-                                   session->highest_peer_stream_id, NGHTTP2_PROTOCOL_ERROR, NULL,
-                                   0U);
+        rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE, session->highest_peer_stream_id,
+                                   NGHTTP2_PROTOCOL_ERROR, NULL, 0U);
         if (rv != 0 && rv != NGHTTP2_ERR_STREAM_CLOSED) {
             return sl_http2_session_callback_result(session,
-                                                   sl_http2_session_status_from_nghttp2(rv));
+                                                    sl_http2_session_status_from_nghttp2(rv));
         }
     }
     return sl_http2_session_callback_result(
@@ -1019,18 +1010,16 @@ SlStatus sl_http2_session_init(SlHttp2Session* session, SlArena* arena,
     nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks,
                                                               sl_http2_on_data_chunk_recv);
     nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, sl_http2_on_frame_recv);
-    nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(
-        callbacks, sl_http2_on_invalid_frame_recv);
+    nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(callbacks,
+                                                                 sl_http2_on_invalid_frame_recv);
     nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, sl_http2_on_stream_close);
 
-    *session =
-        (SlHttp2Session){.arena = arena,
-                         .config = normalized,
-                         .outbound_connection_window =
-                             (int64_t)SL_HTTP2_SESSION_DEFAULT_INITIAL_WINDOW_SIZE,
-                         .outbound_initial_stream_window =
-                             (int64_t)SL_HTTP2_SESSION_DEFAULT_INITIAL_WINDOW_SIZE,
-                         .callback_status = sl_status_ok()};
+    *session = (SlHttp2Session){
+        .arena = arena,
+        .config = normalized,
+        .outbound_connection_window = (int64_t)SL_HTTP2_SESSION_DEFAULT_INITIAL_WINDOW_SIZE,
+        .outbound_initial_stream_window = (int64_t)SL_HTTP2_SESSION_DEFAULT_INITIAL_WINDOW_SIZE,
+        .callback_status = sl_status_ok()};
 
     if (normalized.role == SL_HTTP2_SESSION_ROLE_CLIENT) {
         rv = nghttp2_session_client_new(&ng_session, callbacks, session);
@@ -1142,7 +1131,7 @@ SlStatus sl_http2_session_receive(SlHttp2Session* session, SlBytes bytes, size_t
                                    receive_bytes.length);
     if (rv >= 0 && prescan.submit_rst_stream) {
         status = sl_http2_session_submit_prescan_rst_stream(session, prescan.rst_stream_id,
-                                                           prescan.rst_error_code);
+                                                            prescan.rst_error_code);
         if (!sl_status_is_ok(status)) {
             return status;
         }
