@@ -115,6 +115,56 @@ static int sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_auth_array(yyjson_val* array, SlCliSpan* values, size_t* count,
+                                         size_t capacity)
+{
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (array == NULL || !yyjson_is_arr(array)) {
+        return 0;
+    }
+    yyjson_arr_iter_init(array, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            continue;
+        }
+        if (*count >= capacity) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route auth entries in metadata\n");
+            return 1;
+        }
+        values[*count] = (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        *count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* auth = yyjson_obj_get(value, "auth");
+    yyjson_val* required = NULL;
+
+    if (auth == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(auth)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route auth must be an object\n");
+        return 1;
+    }
+    required = yyjson_obj_get(auth, "required");
+    route->auth_required = required == NULL || yyjson_get_bool(required);
+    route->auth_policy = sl_cli_json_span(auth, "policy");
+    if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "roles"), route->auth_roles,
+                                      &route->auth_role_count,
+                                      SL_CLI_MAX_ROUTE_AUTH_ROLES) != 0)
+    {
+        return 1;
+    }
+    return sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "claims"), route->auth_claims,
+                                         &route->auth_claim_count,
+                                         SL_CLI_MAX_ROUTE_AUTH_CLAIMS);
+}
+
 static int sl_cli_parse_route_response_entry(yyjson_val* value, SlCliRoute* route)
 {
     if (!yyjson_is_obj(value)) {
@@ -181,6 +231,9 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         route->response_status = route->response_statuses[0];
     }
     if (sl_cli_parse_route_tags(value, route) != 0) {
+        return 1;
+    }
+    if (sl_cli_parse_route_auth(value, route) != 0) {
         return 1;
     }
     sl_cli_parse_route_bindings(value, route);
@@ -695,6 +748,67 @@ static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* met
     return 0;
 }
 
+static int sl_cli_parse_auth_metadata(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* auth = yyjson_obj_get(root, "auth");
+    yyjson_val* schemes = NULL;
+    yyjson_val* policies = NULL;
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (auth == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(auth)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: auth must be an object\n");
+        return 1;
+    }
+    schemes = yyjson_obj_get(auth, "schemes");
+    if (schemes != NULL) {
+        if (!yyjson_is_arr(schemes)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed metadata: auth.schemes must be an array\n");
+            return 1;
+        }
+        yyjson_arr_iter_init(schemes, &iter);
+        while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+            SlCliAuthScheme scheme = {0};
+            if (!yyjson_is_obj(value)) {
+                continue;
+            }
+            if (metadata->auth_scheme_count >= SL_CLI_MAX_AUTH_SCHEMES) {
+                sl_cli_write_cstr(stderr, "sloppy: too many auth schemes in metadata\n");
+                return 1;
+            }
+            scheme.kind = sl_cli_json_span(value, "kind");
+            scheme.name = sl_cli_json_span(value, "name");
+            scheme.header = sl_cli_json_span(value, "header");
+            metadata->auth_schemes[metadata->auth_scheme_count] = scheme;
+            metadata->auth_scheme_count += 1U;
+        }
+    }
+    policies = yyjson_obj_get(auth, "policies");
+    if (policies != NULL) {
+        if (!yyjson_is_arr(policies)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed metadata: auth.policies must be an array\n");
+            return 1;
+        }
+        yyjson_arr_iter_init(policies, &iter);
+        while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+            if (!yyjson_is_str(value)) {
+                continue;
+            }
+            if (metadata->auth_policy_count >= SL_CLI_MAX_AUTH_POLICIES) {
+                sl_cli_write_cstr(stderr, "sloppy: too many auth policies in metadata\n");
+                return 1;
+            }
+            metadata->auth_policies[metadata->auth_policy_count] =
+                (SlCliSpan){yyjson_get_str(value), yyjson_get_len(value)};
+            metadata->auth_policy_count += 1U;
+        }
+    }
+    return 0;
+}
+
 static int sl_cli_parse_ffi_parameters(yyjson_val* function_value, SlCliFfiFunction* function)
 {
     yyjson_val* parameters = yyjson_obj_get(function_value, "parameters");
@@ -975,6 +1089,7 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_required_features(root, out_metadata) != 0 ||
         sl_cli_parse_http_clients(root, out_metadata) != 0 ||
         sl_cli_parse_config_requirements(root, out_metadata) != 0 ||
+        sl_cli_parse_auth_metadata(root, out_metadata) != 0 ||
         sl_cli_parse_ffi_metadata(root, out_metadata) != 0)
     {
         return 1;

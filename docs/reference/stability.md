@@ -56,6 +56,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | ProblemDetails | supported | supported as literal `ProblemDetails.defaults(...)` | supported | supported | Safe handler-error mapping. |
 | Middleware | supported | supported static subset | supported | supported | Inline/top-level middleware is emitted into generated handlers; dynamic lookup and unsupported captures fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`. |
 | CORS | supported | supported static subset | supported | supported | Literal `app.useCors({...})` policies emit response wrapping, Plan metadata, and generated `OPTIONS` preflight routes; dynamic policies fail with `SLOPPYC_E_UNSUPPORTED_CORS`. |
+| Auth | supported | supported static subset | supported | supported with V8 stdlib crypto/codec/os features | JWT bearer is HS256-only; API keys use header validation; route/group `requireAuth`, roles, claims, policies, Plan metadata, and OpenAPI security schemes are covered. OIDC/JWKS/session cookies are not included. |
 | Health | supported | supported for literal static shapes | supported | supported | Compiler emits aggregate/live/ready handlers and health metadata. |
 | Services | supported | supported for literal registrations and `Service<T>` | supported | supported through generated wrappers | App-host exposes `ctx.services`; native base context does not. |
 | Config/defaults/secrets | supported | supported for config metadata and `Config<"KEY">` defaults | supported | supported | Secret values are not persisted in Plan metadata. |
@@ -66,7 +67,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
 | Program Mode | n/a | supported route-free subset | emits `kind: "program"` Plan and generated entrypoint | supported with V8 | `main(args, ctx)`, default function entrypoints, top-level-only modules, console stdout/stderr, numeric exit codes, stdlib imports, compatible bundled packages, and packaged runs are covered. No full Node globals, native addons, or raw terminal API. |
-| OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
+| OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Route, response, validation, and auth security metadata are emitted from the Plan-supported subset. Full runtime-pipeline semantics remain outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
 | CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |

@@ -26,6 +26,12 @@ typedef struct SlCliRoute
     SlCliSpan capability;
     SlCliSpan tags[SL_CLI_MAX_ROUTE_TAGS];
     size_t tag_count;
+    bool auth_required;
+    SlCliSpan auth_roles[SL_CLI_MAX_ROUTE_AUTH_ROLES];
+    size_t auth_role_count;
+    SlCliSpan auth_claims[SL_CLI_MAX_ROUTE_AUTH_CLAIMS];
+    size_t auth_claim_count;
+    SlCliSpan auth_policy;
     SlCliSpan completeness;
     SlCliSpan source_path;
     uint64_t source_line;
@@ -110,6 +116,13 @@ typedef struct SlCliConfigRequirement
     bool secret;
 } SlCliConfigRequirement;
 
+typedef struct SlCliAuthScheme
+{
+    SlCliSpan kind;
+    SlCliSpan name;
+    SlCliSpan header;
+} SlCliAuthScheme;
+
 typedef struct SlCliFfiFunction
 {
     SlCliSpan library;
@@ -186,6 +199,10 @@ typedef struct SlCliMetadata
     size_t http_client_count;
     SlCliConfigRequirement config_requirements[SL_CLI_MAX_CONFIG_REQUIREMENTS];
     size_t config_requirement_count;
+    SlCliAuthScheme auth_schemes[SL_CLI_MAX_AUTH_SCHEMES];
+    size_t auth_scheme_count;
+    SlCliSpan auth_policies[SL_CLI_MAX_AUTH_POLICIES];
+    size_t auth_policy_count;
     SlCliFfiLibrary ffi_libraries[SL_CLI_MAX_FFI_LIBRARIES];
     size_t ffi_library_count;
     SlCliFfiFunction ffi_functions[SL_CLI_MAX_FFI_FUNCTIONS];

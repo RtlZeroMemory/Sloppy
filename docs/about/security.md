@@ -36,11 +36,11 @@ documents what Sloppy does today and what it doesn't.
   V8 intrinsics, but once enabled they perform real OS calls. Treat
   capability checks as policy, not a sandbox; if you need process
   isolation, that's the OS's job.
-- **Authenticate or authorize end users.** Sloppy ships no auth stack
-  today. Implement auth as handlers, services, or app-host middleware that
-  runs before protected work, or terminate auth at an upstream API gateway.
-  Compiler source input does not emit middleware yet, so compiled artifacts
-  should keep auth checks explicit in supported handler/service code.
+- **Replace an identity provider.** Sloppy's auth stack covers HS256 JWT bearer
+  tokens, API keys, route requirements, roles, claims, and policies. It does
+  not implement OIDC discovery, JWKS, OAuth flows, refresh tokens, session
+  cookies, or user management. Use an upstream identity provider when you need
+  those features.
 - **Encrypt secrets at rest.** Config files are plaintext. Use your
   platform's secret store (Kubernetes secrets, AWS Secrets Manager,
   Vault) and inject through environment variables read via

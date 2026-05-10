@@ -24,7 +24,8 @@ Sloppy has two current execution shapes:
 
 The Plan contains the parts a backend runtime usually has to discover while the
 process is already running: routes, handlers, configuration, capabilities,
-middleware, response metadata, providers, and generated artifacts.
+auth requirements, middleware, response metadata, providers, and generated
+artifacts.
 
 ```ts
 import { Sloppy, Results } from "sloppy";
@@ -115,6 +116,10 @@ Sloppy explores a different shape:
 - one native runtime that validates the Plan before dispatch;
 - tooling that reads app metadata instead of reverse-engineering a live
   process.
+
+Current web-app features include routing, Results, middleware, CORS, health
+checks, JWT/API-key auth, config metadata, OpenAPI, and Plan-based audit/doctor
+commands.
 
 The developer experience is closer to ASP.NET Core Minimal APIs than to an
 Express-style middleware stack. The runtime model is its own: a C kernel,

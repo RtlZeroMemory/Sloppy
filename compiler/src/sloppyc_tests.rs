@@ -1613,6 +1613,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         routes: Vec::new(),
         dynamic_routes: Vec::new(),
         dynamic_entry_source: None,
+        auth: super::AuthMetadata::default(),
         service_registrations: Vec::new(),
         modules: Vec::new(),
         helper_sources: Vec::new(),

@@ -74,6 +74,7 @@ After construction, every app exposes:
 | `app.log`         | `Logger`                                                       |
 | `app.services`    | Service resolver (root scope)                                  |
 | `app.capabilities`| Capability provider                                            |
+| `app.auth`        | Auth policy registry                                           |
 | `app.use(...)`    | Register a provider descriptor or worker resource              |
 | `app.useModule(...)`| Register a route-only or full module                         |
 | `app.get/post/put/patch/delete(...)` | Register a route                            |

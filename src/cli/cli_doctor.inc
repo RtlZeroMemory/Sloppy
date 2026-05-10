@@ -441,6 +441,30 @@ static void sl_cli_doctor_emit_config_requirements(const SlCliOptions* options, 
     }
 }
 
+static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
+                                    const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_protected_routes = false;
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (metadata->routes[index].auth_required) {
+            has_protected_routes = true;
+            break;
+        }
+    }
+    if (!has_protected_routes && metadata->auth_scheme_count == 0U) {
+        return;
+    }
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("app.auth.metadata"),
+        metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+        metadata->auth_scheme_count > 0U
+            ? sl_cli_span_cstr("auth scheme metadata is Plan-visible")
+            : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
+        emitted);
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -474,6 +498,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_workers(options, arena, metadata, emitted);
     sl_cli_doctor_emit_ffi(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_auth(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =

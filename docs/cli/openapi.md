@@ -105,7 +105,7 @@ suitable for diffing.
 - Declared `application/json` response body schemas (the Plan carries the
   visible `Results.*` kinds and status codes today; the JSON entry is a
   `x-slop-partial`).
-- Security schemes.
+- Security schemes beyond Plan-visible Sloppy auth providers.
 - Servers or external-docs metadata.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are
   reflected only to the extent they are visible in current Plan route metadata;

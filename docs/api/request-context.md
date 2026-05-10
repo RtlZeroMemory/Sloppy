@@ -26,6 +26,7 @@ services and config arguments when the compiled handler declares them.
 | `ctx.routeName`    | string                | Matched route name, when known                     |
 | `ctx.routePattern` | string                | Matched route pattern, when known                  |
 | `ctx.log`          | `Logger`              | Request logger                                     |
+| `ctx.user`         | `AuthUser`            | Anonymous by default; authenticated after JWT/API-key auth succeeds |
 | `ctx.services`     | service scope         | App-host/test-host direct field; compiler-generated wrappers use request scopes for `Service<T>` |
 | `ctx.config`       | `ConfigProvider`      | App-host/test-host direct field; compiled `Config<"KEY">` parameters are materialized by generated wrappers |
 | `ctx.capabilities` | capability provider   | App-host/test-host direct field                    |
