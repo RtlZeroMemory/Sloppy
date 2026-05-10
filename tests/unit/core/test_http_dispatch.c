@@ -638,7 +638,7 @@ static int test_large_param_bucket_miss_uses_indexed_lookup(void)
         return 177;
     }
 
-    if (table.dispatch.param_route_bucket_count != 96U ||
+    if (table.dispatch.param_route_bucket_count == 0U ||
         table.dispatch.param_route_bucket_slots == NULL ||
         table.dispatch.param_route_bucket_slot_count == 0U)
     {

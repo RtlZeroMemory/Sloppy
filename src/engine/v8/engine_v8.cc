@@ -29,6 +29,7 @@
 #include <v8.h>
 #include <yyjson.h>
 
+#include <atomic>
 #include <cstdint>
 #include <chrono>
 #include <cstdlib>
@@ -40,6 +41,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -528,6 +530,8 @@ bool sl_v8_read_file(const std::filesystem::path& path, std::vector<uint8_t>* ou
 
 bool sl_v8_write_file(const std::filesystem::path& path, const char* data, int length)
 {
+    static std::atomic<uint64_t> temp_counter{0U};
+
     if (data == nullptr || length <= 0) {
         return false;
     }
@@ -538,24 +542,29 @@ bool sl_v8_write_file(const std::filesystem::path& path, const char* data, int l
         return false;
     }
 
+    uint64_t temp_id = temp_counter.fetch_add(1U, std::memory_order_relaxed);
+    uint64_t tick = static_cast<uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::path temp_path = path;
+    temp_path += ".";
+    temp_path += std::to_string(tick);
+    temp_path += ".";
+    temp_path += std::to_string(temp_id);
     temp_path += ".tmp";
+
     {
         std::ofstream output(temp_path, std::ios::binary | std::ios::trunc);
         if (!output) {
+            std::filesystem::remove(temp_path, error);
             return false;
         }
         output.write(data, length);
         if (!output) {
+            std::filesystem::remove(temp_path, error);
             return false;
         }
     }
     std::filesystem::rename(temp_path, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp_path, path, error);
-    }
     if (error) {
         std::filesystem::remove(temp_path, error);
         return false;
@@ -636,8 +645,8 @@ SlV8StartupSnapshotProbe sl_v8_startup_snapshot_probe(const SlEngineOptions* opt
             probe.bytes.clear();
             return probe;
         }
-        (void)sl_v8_write_file(probe.path, reinterpret_cast<const char*>(probe.bytes.data()),
-                               static_cast<int>(probe.bytes.size()));
+        sl_v8_write_file(probe.path, reinterpret_cast<const char*>(probe.bytes.data()),
+                         static_cast<int>(probe.bytes.size()));
     }
 
     probe.blob.data = reinterpret_cast<const char*>(probe.bytes.data());
@@ -919,8 +928,8 @@ bool sl_v8_source_map_ensure_line_state(SlV8SourceMapCache* cache, size_t target
         int64_t previous_generated_column = 0;
 
         while (cursor < cache->mappings_length && cache->mappings[cursor] != ';') {
-            size_t generated_column = 0U;
-            bool has_original = false;
+            [[maybe_unused]] size_t generated_column = 0U;
+            [[maybe_unused]] bool has_original = false;
 
             if (!sl_v8_source_map_decode_segment(
                     *cache, &cursor, &previous_generated_column, &state.previous_source,
@@ -932,8 +941,6 @@ bool sl_v8_source_map_ensure_line_state(SlV8SourceMapCache* cache, size_t target
                 }
                 return false;
             }
-            (void)generated_column;
-            (void)has_original;
         }
 
         if (cursor >= cache->mappings_length) {
@@ -1033,8 +1040,7 @@ SlV8SourceMapLocation sl_v8_remap_generated_span(SlV8Engine* backend,
         return result;
     }
 
-    (void)sl_v8_source_map_find_mapping(backend, generated_span.line, generated_span.column,
-                                        &result);
+    sl_v8_source_map_find_mapping(backend, generated_span.line, generated_span.column, &result);
     return result;
 }
 
@@ -1744,7 +1750,12 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     startup_snapshot = sl_v8_startup_snapshot_probe(options);
     backend->startup_snapshot_active = startup_snapshot.active;
     if (startup_snapshot.active) {
-        create_params.snapshot_blob = &startup_snapshot.blob;
+        backend->startup_snapshot_bytes = std::move(startup_snapshot.bytes);
+        backend->startup_snapshot_blob.data =
+            reinterpret_cast<const char*>(backend->startup_snapshot_bytes.data());
+        backend->startup_snapshot_blob.raw_size =
+            static_cast<int>(backend->startup_snapshot_bytes.size());
+        create_params.snapshot_blob = &backend->startup_snapshot_blob;
         create_params.external_references = sl_v8_external_references();
     }
     backend->isolate = v8::Isolate::New(create_params);
@@ -1948,7 +1959,6 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     v8::ScriptOrigin origin(source_name_string);
     v8::Local<v8::Script> script;
     std::unordered_map<uint32_t, v8::Global<v8::Function>> pending_handlers;
-    bool compiled_with_accepted_cache = false;
     SlV8CodeCacheProbe code_cache = backend->startup_snapshot_active
                                         ? SlV8CodeCacheProbe{}
                                         : sl_v8_code_cache_probe(source_name, source);
@@ -1960,10 +1970,7 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
         v8::ScriptCompiler::Source cached_source(source_string, origin, &cached_data);
         v8::MaybeLocal<v8::Script> maybe_cached_script = v8::ScriptCompiler::Compile(
             context, &cached_source, v8::ScriptCompiler::kConsumeCodeCache);
-        if (!cached_data.rejected && maybe_cached_script.ToLocal(&script)) {
-            compiled_with_accepted_cache = true;
-        }
-        else {
+        if (cached_data.rejected || !maybe_cached_script.ToLocal(&script)) {
             try_catch.Reset();
         }
     }
@@ -1988,8 +1995,6 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                        "remapping.") -
                     1U));
     }
-    (void)compiled_with_accepted_cache;
-
     backend->pending_handlers = &pending_handlers;
     if (script->Run(context).IsEmpty()) {
         backend->pending_handlers = nullptr;

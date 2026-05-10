@@ -207,6 +207,8 @@ struct SlV8Engine
     SlStr source_map_source_name = {};
     SlV8SourceMapCache source_map_cache = {};
     bool startup_snapshot_active = false;
+    std::vector<uint8_t> startup_snapshot_bytes = {};
+    v8::StartupData startup_snapshot_blob = {};
     bool has_runtime_features = false;
     SlRuntimeFeatureSet runtime_features = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};

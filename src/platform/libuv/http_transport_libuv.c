@@ -1144,13 +1144,11 @@ static bool sl_http_transport_client_requested_close(const SlHttpRequestHead* he
     return sl_http_transport_connection_header_has_token(value, sl_str_from_cstr("close"));
 }
 
-static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnection* connection,
-                                                          const SlHttpResponse* response)
+static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnection* connection)
 {
     SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
 
-    if (connection == NULL || response == NULL || server == NULL ||
-        server->config.keep_alive_disabled)
+    if (connection == NULL || server == NULL || server->config.keep_alive_disabled)
     {
         return false;
     }
@@ -2232,8 +2230,7 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
         return status;
     }
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
-    connection->keep_alive_after_write =
-        sl_http_transport_request_keep_alive_eligible(connection, response);
+    connection->keep_alive_after_write = sl_http_transport_request_keep_alive_eligible(connection);
     connection->close_after_write = !connection->keep_alive_after_write;
     write_options.connection = connection->keep_alive_after_write
                                    ? SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE
