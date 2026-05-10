@@ -18,8 +18,12 @@ Current Sloppy includes:
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;
-- Windows x64 and Linux x64 npm platform packages;
-- source/archive build paths for other platforms.
+- experimental installed package graph for compatible pure-JavaScript
+  dependencies, with bundled module artifacts and `sloppy deps` inspection;
+- experimental, unsafe `sloppy/ffi` foundation for typed C ABI calls with
+  Plan-visible metadata and packaged local native libraries;
+- published Windows x64, Linux x64, and macOS npm platform packages;
+- source/archive build paths for arm64 and other platforms.
 
 ## Near-term alpha work
 
@@ -59,14 +63,21 @@ fit the Sloppy boundary, and broader conformance evidence.
 
 ## FFI and native modules
 
-Native extension work is future work. Likely stages:
+`sloppy/ffi` is now an experimental, unsafe foundation: typed C ABI calls,
+refs and buffers, pointer-based sequential structs, Plan-visible declarations,
+and packaged local native libraries. Wrong signatures or invalid pointers can
+crash the process. See [Native FFI](reference/ffi.md).
 
-- Sloppy-owned native module ABI;
-- controlled C ABI FFI;
-- native dependency metadata in the Plan;
-- possible N-API compatibility later if it fits the runtime boundary.
+Future native interop work includes:
 
-No current docs should imply arbitrary native modules work today.
+- callbacks from native code into JavaScript;
+- variadic calls;
+- struct-by-value parameter and return shapes;
+- async or off-thread FFI invocation;
+- a Sloppy-owned native module ABI separate from the FFI foundation;
+- possible N-API compatibility if it fits the runtime boundary.
+
+No current docs should imply Node native addons or N-API work today.
 
 ## Dependency story
 
@@ -77,6 +88,12 @@ compiler-supported source, bundled package modules, and explicit partial
 compatibility remain separate roadmap work. See
 [Node compatibility roadmap](roadmap/node-compatibility.md).
 
+## Platform and package distribution
+
+- Windows x64, Linux x64, and macOS are the published npm platform packages.
+- arm64 packaging is being validated through the alpha release flow.
+- Source/archive builds remain the path for unsupported platforms.
+
 ## Production hardening
 
 Production hardening needs more work:
@@ -84,6 +101,14 @@ Production hardening needs more work:
 - graceful shutdown and connection drain;
 - broader TLS policy;
 - observability surface;
-- platform coverage;
+- broader platform coverage;
 - conformance suites;
 - reproducible performance reports.
+
+## Tests, fuzzing, and benchmarks
+
+- More fuzzing across compiler input, Plan parsing, HTTP transport, and
+  package resolution.
+- Repeatable benchmark methodology before any competitive numbers ship; the
+  current realistic suite is local engineering evidence only. See
+  [Performance](about/performance.md).

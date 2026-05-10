@@ -6,14 +6,23 @@ The public alpha package is `@rtlzeromemory/sloppy`.
 npm install -g @rtlzeromemory/sloppy@alpha
 ```
 
-Check the install:
+The root package installs a small launcher plus the matching platform package
+through npm optional dependencies. It does not build native code during
+install.
+
+## Verify the install
 
 ```sh
 sloppy --version
 sloppy doctor
 ```
 
-Create and run a minimal app:
+`sloppy --version` prints the runtime CLI version. `sloppy doctor` reports
+what the local install can do, including whether the runtime can execute
+JavaScript handlers (V8) and which native libraries (`libpq`, ODBC, OpenSSL)
+are present.
+
+A first end-to-end smoke test:
 
 ```sh
 sloppy create my-api --template minimal-api
@@ -30,21 +39,42 @@ ok
 
 ## Platforms
 
-| Platform | Alpha package status |
-| --- | --- |
-| Windows x64 | npm platform package with V8-backed handler execution |
-| Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS | source/archive builds only in this alpha |
-| arm64 | source/archive builds only in this alpha |
+| Platform | Architecture | Alpha package status |
+| --- | --- | --- |
+| Windows | x64 | published npm platform package with V8-backed handler execution |
+| Linux (glibc) | x64 | published npm platform package with V8-backed handler execution |
+| macOS | x64, arm64 | published npm platform package with V8-backed handler execution |
+| Linux | arm64 | source/archive builds |
+| Windows | arm64 | source/archive builds |
 
-The root package installs a small launcher plus the matching platform package
-through npm optional dependencies. It does not build native code during
-install.
+For the live status of each platform's coverage, see
+[Platform status](reference/platform-status.md).
+
+## Troubleshoot
+
+- **`sloppy: command not found`.** Add the npm global prefix to `PATH`. On
+  Linux/macOS, `npm config get prefix` shows the bin directory; on Windows
+  the launcher is under `%AppData%\npm`.
+- **No matching platform binary.** If `npm install -g @rtlzeromemory/sloppy@alpha`
+  reports no matching optional dependency for your platform, install on a
+  supported platform from the table above or use a source build. The launcher
+  prints a clear diagnostic when the platform package is missing.
+- **Confirm the binary path.** `command -v sloppy` (POSIX) or `where sloppy`
+  (Windows) shows which launcher is on `PATH`.
+- **Windows `.cmd` launcher issues.** Run
+  `node <install>/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js --version`
+  to separate npm shim problems from Sloppy problems.
+- **`sloppy run` reports a V8 requirement.** The launcher is present but the
+  installed runtime cannot execute handlers. Reinstall the alpha platform
+  package, or use a V8-enabled source build.
+- **`node_modules` imports fail.** Install the package with your package
+  manager first, then check whether the package is compatible with Sloppy's
+  bundled dependency graph. See [Using installed packages](guide/using-packages.md).
 
 ## Build from source
 
-Use a source build when you are working on Sloppy itself, testing an unpublished
-change, or using a platform without an npm package.
+Use a source build when you are working on Sloppy itself, testing an
+unpublished change, or using a platform without an npm package.
 
 Windows x64:
 
@@ -56,7 +86,7 @@ Windows x64:
 .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
 ```
 
-Linux x64:
+Linux x64 and macOS:
 
 ```sh
 ./tools/unix/bootstrap.sh
@@ -71,8 +101,8 @@ Full toolchain notes live in
 
 ## Build a local archive
 
-Archives are useful for release testing and for installing a local build without
-publishing to npm.
+Archives are useful for release testing and for installing a local build
+without publishing to npm.
 
 Windows x64:
 
@@ -82,7 +112,7 @@ Windows x64:
 .\tools\windows\dev.ps1 test-install -Preset windows-relwithdebinfo -EnableV8
 ```
 
-Linux x64:
+Linux x64 and macOS:
 
 ```sh
 ./tools/unix/dev.sh package --enable-v8
@@ -91,8 +121,8 @@ Linux x64:
 ```
 
 Extracted packages include `bin/`, `stdlib/`, `templates/`, selected docs and
-examples, and `manifest.json`. SDK headers and import libraries are not part of
-the runtime package.
+examples, and `manifest.json`. SDK headers and import libraries are not part
+of the runtime package.
 
 ## V8 and handler execution
 
@@ -100,15 +130,7 @@ the runtime package.
 `package` read metadata and artifacts. `sloppy run` executes handlers, so it
 needs a V8-enabled runtime package or source build.
 
-If `sloppy run` reports that a V8-enabled build is required, the CLI is present
-but that runtime cannot execute handlers.
-
-## Common fixes
-
-- `sloppy: command not found`: add the npm global prefix to `PATH`.
-- Windows `.cmd` launcher issues: run `node <install>/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js --version` to separate npm shim problems from Sloppy problems.
-- `node_modules` imports fail: install the package with your package manager
-  first, then check whether the package is compatible with Sloppy's bundled
-  dependency graph. See [Using installed packages](guide/using-packages.md).
+If `sloppy run` reports that a V8-enabled build is required, the CLI is
+present but that runtime cannot execute handlers.
 
 Next: [Quickstart](quickstart.md).

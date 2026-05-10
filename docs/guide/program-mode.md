@@ -126,11 +126,13 @@ Program Mode can also bundle compatible installed pure-JavaScript packages from
 and computed dynamic imports that resolve inside `moduleInclude` graphs. See
 [Using installed packages](using-packages.md).
 
-Program Mode does not install packages, provide full Node globals, load native
-addons, implement FFI, or expose raw terminal APIs. Node builtin compatibility
-exists only through explicit `node:*` shim modules such as `node:path` and
-partial shims such as `node:fs`. Use the Sloppy stdlib surface when it fits:
-`File`/`Directory` from `sloppy/fs`, `Process` and `Environment` from
+Program Mode does not install packages, provide full Node globals, load Node
+native addons, or expose raw terminal APIs. Node builtin compatibility exists
+only through explicit `node:*` shim modules such as `node:path` and partial
+shims such as `node:fs`. Native FFI is available through `sloppy/ffi` for
+typed C ABI calls — see [Native FFI](native-ffi.md) — but it is an
+experimental, unsafe interop surface. Use the Sloppy stdlib surface when it
+fits: `File`/`Directory` from `sloppy/fs`, `Process` and `Environment` from
 `sloppy/os`, and so on.
 
 ## Examples

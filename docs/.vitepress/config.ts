@@ -14,7 +14,7 @@ export default defineConfig({
     },
     nav: [
       { text: "Quickstart", link: "/quickstart" },
-      { text: "Tutorials", link: "/tutorials/" },
+      { text: "Templates", link: "/guide/templates" },
       { text: "API", link: "/api/" },
       { text: "CLI", link: "/cli/" },
       { text: "Roadmap", link: "/roadmap" },
@@ -27,6 +27,7 @@ export default defineConfig({
           { text: "What is Sloppy?", link: "/about/what-is-sloppy" },
           { text: "Install", link: "/install" },
           { text: "Quickstart", link: "/quickstart" },
+          { text: "Templates", link: "/guide/templates" },
           { text: "Create your first API", link: "/tutorials/first-api" },
           { text: "Current status", link: "/reference/stability" }
         ]
@@ -45,14 +46,21 @@ export default defineConfig({
       {
         text: "Guides",
         items: [
+          { text: "Templates", link: "/guide/templates" },
           { text: "Project layout", link: "/guide/project-layout" },
+          { text: "Program Mode", link: "/guide/program-mode" },
+          { text: "Using installed packages", link: "/guide/using-packages" },
+          { text: "Native FFI", link: "/guide/native-ffi" },
+          { text: "SQLite walkthrough", link: "/guide/sqlite" },
+          { text: "Request logging", link: "/guide/request-logging" },
           { text: "TypeScript source input", link: "/guide/typescript" },
-          { text: "Examples and demo app", link: "/guide/examples" },
+          { text: "Plan model", link: "/guide/plan-model" },
+          { text: "Examples", link: "/guide/examples" },
           { text: "Testing apps", link: "/api/testing" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
           { text: "Sloppy vs Node/Bun/Deno", link: "/about/sloppy-vs-node-bun-deno" },
-          { text: "Compiler performance", link: "/about/performance" },
-          { text: "Why no node_modules?", link: "/about/why-no-node-modules" }
+          { text: "Performance", link: "/about/performance" },
+          { text: "Why node_modules is build input", link: "/about/why-no-node-modules" }
         ]
       },
       {
@@ -91,9 +99,10 @@ export default defineConfig({
           { text: "build", link: "/cli/build" },
           { text: "run", link: "/cli/run" },
           { text: "package", link: "/cli/package" },
-          { text: "doctor", link: "/cli/doctor" },
           { text: "routes", link: "/cli/routes" },
+          { text: "deps", link: "/cli/deps" },
           { text: "capabilities", link: "/cli/capabilities" },
+          { text: "doctor", link: "/cli/doctor" },
           { text: "audit", link: "/cli/audit" },
           { text: "openapi", link: "/cli/openapi" },
           { text: "sloppyc", link: "/cli/sloppyc" }
@@ -103,9 +112,15 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "Stability matrix", link: "/reference/stability" },
+          { text: "Platform status", link: "/reference/platform-status" },
           { text: "Supported syntax", link: "/reference/supported-syntax" },
           { text: "Plan format", link: "/reference/plan-format" },
+          { text: "sloppy.json", link: "/reference/sloppy-json" },
           { text: "Configuration keys", link: "/reference/configuration" },
+          { text: "Dependency graph", link: "/reference/dependency-graph" },
+          { text: "Node compatibility", link: "/reference/node-compatibility" },
+          { text: "Native FFI", link: "/reference/ffi" },
+          { text: "Native dependencies", link: "/reference/dependencies" },
           { text: "Diagnostics", link: "/reference/diagnostics" },
           { text: "Release artifact contract", link: "/release/artifact-contract" }
         ]

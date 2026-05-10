@@ -1,23 +1,34 @@
 # Platform Status Reference
 
-Sloppy is designed to be cross-platform, but current runtime/Plan enforcement is still bounded.
+Sloppy is cross-platform on the alpha runtime targets, but current
+runtime/Plan target enforcement is still bounded.
 
 ## Current Emitted Target
 
-Compiler-emitted plans currently target:
+Compiler-emitted plans currently set:
 
-- `platform: windows-x64`
+- `platform: <host platform target>`
 - `engine: v8`
 
 `sloppy run` checks these target fields and rejects unsupported targets.
+
+## Published npm platform packages
+
+| Platform | Architecture | Status |
+| --- | --- | --- |
+| Windows | x64 | published alpha npm platform package |
+| Linux (glibc) | x64 | published alpha npm platform package |
+| macOS | x64, arm64 | published alpha npm platform package |
+| Linux | arm64 | source/archive builds |
+| Windows | arm64 | source/archive builds |
 
 ## Status Table
 
 | Surface | Current state | How to check it |
 | --- | --- | --- |
 | Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
-| Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
-| macOS local development | Product target, less complete today. | Unix script checks where available. |
+| Linux x64 local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
+| macOS local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
 | Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled test run. |
 | Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Integration checks with configured services. |
 
@@ -43,5 +54,5 @@ Examples from doctor output:
 ## Current Limits
 
 - Runtime/provider/package checks are not fully validated on every OS yet.
-- Current `sloppy run` target enforcement is still centered on `windows-x64`
-  Plan targets.
+- Live PostgreSQL and SQL Server checks need explicit local services and
+  drivers and are opt-in.

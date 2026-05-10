@@ -18,7 +18,7 @@ repository.
 | [`framework-hello`](#framework-hello) | `Sloppy.create()`, typed route param, JSON response |
 | [`hello-minimal`](#hello-minimal) | The smallest runnable app |
 
-## Dogfood coverage
+## Multi-file project
 
 | Example | Shows |
 | --- | --- |
@@ -137,9 +137,9 @@ response. Useful when something else stops working and you want to bisect.
 
 A multi-file project with `sloppy.json`, `appsettings*.json`, function modules,
 route groups, JSON bodies, path and query params, SQLite provider metadata,
-health routes, diagnostics, and dogfood coverage. Its app-host test imports
-the same route modules and covers CORS, ProblemDetails, request IDs, request
-logging redaction, service-scope cleanup, negative paths, and host lifecycle.
+health routes, and diagnostics. Its app-host test imports the same route
+modules and covers CORS, ProblemDetails, request IDs, request logging
+redaction, service-scope cleanup, negative paths, and host lifecycle.
 
 ### framework-controller
 
@@ -227,7 +227,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `crypto-random-token` | Crypto API-shape fixture |
 | `crypto-secret-constant-time` | Crypto API-shape fixture |
 | `data-foundation` | Data/capability API-shape fixture |
-| `dogfood` | Machine-readable dogfood catalog |
+| `dogfood` | Internal machine-readable example catalog used by the test suite |
 | `ergonomics` | API ergonomics fixture |
 | `framework-controller` | Curated routing/controller example |
 | `framework-di-services` | Curated services example |
@@ -254,7 +254,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
-| `prealpha-control-plane` | Dogfood coverage app |
+| `prealpha-control-plane` | Multi-file project-mode app host with SQLite and app-test-host coverage |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |

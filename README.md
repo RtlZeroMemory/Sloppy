@@ -1,5 +1,9 @@
 <img width="1267" height="370" alt="SLOPPY" src="https://github.com/user-attachments/assets/5741c460-6617-4a70-92e0-0e00c4579a4d" />
 
+<p align="center">
+  <img src="docs/public/logo.svg" alt="Sloppy mascot" width="128" height="128" />
+</p>
+
 # Sloppy
 
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
@@ -8,62 +12,32 @@
 ![pre-alpha](https://img.shields.io/badge/status-pre--alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Pre-alpha compiler-first TypeScript runtime for backend apps, tools, and local programs.
+> Pre-alpha TypeScript runtime and application framework for backend APIs,
+> CLIs, and local programs.
 
-Sloppy is an experimental TypeScript runtime built around a compiler-first app
-model. You write supported TypeScript, `sloppyc` lowers the source into a
-structured Plan, and the native runtime executes that known shape through an
-isolated V8 bridge.
+Sloppy is a public alpha TypeScript runtime built around a compiler-first
+application model. You write supported TypeScript, `sloppyc` lowers the source
+into a deterministic Plan, and the native runtime executes that known app
+shape through an isolated V8 bridge. The model is inspired by ASP.NET-style
+backend ergonomics: declare what the app is and let the framework wire it up.
+
+Sloppy is compiler-first, but not compiler-restricted. Static code gives the
+strongest metadata; dynamic code can still run, with partial metadata recorded
+in the Plan.
+
+The runtime kernel is C, the compiler (`sloppyc`) is Rust, and JavaScript
+execution goes through a named V8 bridge — there is no Node-compatible host
+underneath.
 
 Sloppy has two current execution shapes:
 
-- **Web apps** — routes, middleware, Results, OpenAPI, HTTP runtime, and app
+- **Web Mode** — routes, middleware, Results, OpenAPI, HTTP runtime, and app
   metadata.
-- **Program Mode** — route-free console-style tools with `main(args, ctx)`,
-  stdlib imports, packaging, and artifact execution.
+- **Program Mode** — route-free console tools and local programs with
+  `main(args, ctx)`, stdlib imports, packaging, and artifact execution.
 
-The Plan contains the parts a backend runtime usually has to discover while the
-process is already running: routes, handlers, configuration, capabilities,
-middleware, response metadata, providers, and generated artifacts.
-
-```ts
-import { Sloppy, Results } from "sloppy";
-
-const app = Sloppy.create();
-
-app.get("/health", () => Results.text("ok"));
-
-app.get("/hello/{name}", (ctx) =>
-    Results.json({ hello: ctx.route.name })
-);
-
-export default app;
-```
-
-```sh
-sloppy build
-sloppy run .sloppy --once GET /hello/Ada
-```
-
-```json
-{"hello":"Ada"}
-```
-
-Program Mode is the route-free shape for small tools and local programs:
-
-```ts
-export async function main(args, ctx) {
-    console.log(`hello ${args[0] ?? "world"}`);
-}
-```
-
-```sh
-sloppy run src/main.ts -- Ada
-```
-
-More detail: [Program Mode](docs/guide/program-mode.md).
-
-Pre-alpha means APIs and artifact formats can change between alpha revisions.
+Pre-alpha means APIs and artifact formats can still change between alpha
+revisions.
 
 ## Start here
 
@@ -85,21 +59,51 @@ The public alpha package is:
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
+sloppy --version
 ```
 
-Create, build, and run a minimal API:
-
-```sh
-sloppy create my-api --template minimal-api
-cd my-api
-sloppy build
-sloppy run .sloppy --once GET /health
-```
-
-Windows x64 and Linux x64 are the npm runtime targets for this alpha. macOS and
-arm64 are not published as npm platform packages yet; use source builds there.
+Windows x64, Linux x64, and macOS are the published alpha npm platform
+packages. arm64 platform packages are part of the alpha release validation
+path; use source builds in the meantime. `sloppy doctor` reports what the
+local install can do.
 
 More detail: [Install](docs/install.md).
+
+## Quickstart: API
+
+Create a SQLite-backed API from the default `api` template, build, inspect the
+artifacts, run a request, and produce a runnable app package:
+
+```sh
+sloppy create my-api
+cd my-api
+sloppy build
+sloppy routes .sloppy
+sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /users
+sloppy package
+sloppy run .sloppy/package --once GET /health
+```
+
+The packaged app under `.sloppy/package/` runs from a copied artifact layout
+without returning to the source checkout.
+
+## Quickstart: Program Mode
+
+Program Mode is the route-free shape for small CLIs and local programs:
+
+```sh
+sloppy create my-tool --template cli
+cd my-tool
+sloppy run src/main.ts -- --help
+sloppy package
+sloppy run .sloppy/package -- --help
+```
+
+Program Mode entrypoints can be `export async function main(args, ctx)` or a
+default function. Numeric returns set the process exit code.
+
+More detail: [Program Mode](docs/guide/program-mode.md).
 
 ## Why Sloppy exists
 
@@ -128,75 +132,62 @@ CLI.
 For a practical comparison, see
 [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md).
 
-## What works today
+## Current features
 
-- **App and routing.** `Sloppy.create()`, route registration, route groups,
-  controller-style classes, route parameters, query/header/body bindings, and
-  generated route metadata.
-- **Middleware and request pipeline.** `app.use`, group middleware, CORS,
-  request IDs, request logging, ProblemDetails, and health checks for the
-  compiler-supported static shapes.
-- **Results and OpenAPI metadata.** `Results.text`, `json`, `status`,
-  `problem`, `bytes`, `html`, and related helpers feed response metadata into
-  the Plan.
-- **Services, config, and logging.** Singleton/scoped/transient services,
-  typed config binding, `appsettings.{Environment}.json`, secret redaction,
-  and structured logging.
-- **Data providers.** SQLite has the strongest end-to-end path. PostgreSQL and
-  SQL Server have provider metadata and opt-in live lanes that require local
-  services and platform dependencies.
-- **HTTP runtime.** HTTP/1.1, bounded keep-alive, opt-in TLS, and experimental
-  HTTP/2 over TLS ALPN plus h2c prior knowledge and Upgrade handling.
-- **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
-  h2 multiplexing, and HTTPS `auto` ALPN selection where the private outbound
-  TLS bridge is available.
-- **CLI tooling.** `sloppy create`, `build`, `run`, `routes`, `deps`,
-  `capabilities`, `doctor`, `audit`, `openapi`, and `package`.
-- **Program Mode.** Route-free source files can compile to Program Plans with
-  opaque metadata and a generated `main`/default/top-level entrypoint.
-  `main(args, ctx)` receives arguments after `--` and a Program context.
-  Console output, numeric exit codes, stdlib imports, compatible installed
-  pure-JavaScript packages, and `sloppy run .sloppy/package -- ...` are
-  supported on V8-enabled builds.
-- **Stdlib.** App host, routing, results, config, services, logging,
-  capabilities, data, schema, filesystem, network, OS, process boundary, time,
-  crypto, codec, and workers.
-- **Templates and examples.** `api`, `minimal-api`, `program`, `cli`,
-  `package-api`, and `node-compat` templates, plus source examples under
-  [`examples/`](examples/README.md).
+- **Web apps** — routing, middleware, Results, ProblemDetails, CORS, health
+  checks, request IDs, request logging, and OpenAPI metadata.
+- **Program Mode** — route-free CLIs and tools with `main(args, ctx)`,
+  console output, numeric exit codes, and packaged runs.
+- **Templates** — `api`, `minimal-api`, `program`, `cli`, `package-api`, and
+  `node-compat` starters via `sloppy create`.
+- **Packages and dependency graph** — bundle compatible installed pure-JS
+  packages from `node_modules`; `sloppy deps` inspects the sealed graph.
+- **Partial Node compatibility** — explicit `node:*` shims (`path`, `events`,
+  `url`, `querystring`, `buffer`, `util`, `timers`, `fs`, `os`, `process`,
+  `crypto`) backed by Sloppy Core APIs.
+- **SQLite and data APIs** — strongest provider path; PostgreSQL and SQL
+  Server have typed metadata and opt-in live lanes.
+- **HTTP runtime** — HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS
+  ALPN plus h2c prior knowledge and Upgrade.
+- **`HttpClient`** — outbound HTTP/1.1, explicit h2/h2c, pooled h2
+  multiplexing, and HTTPS `auto` ALPN selection.
+- **FFI foundation** — typed C ABI calls through `sloppy/ffi`, with
+  Plan-visible metadata and packaged local native libraries. Unsafe
+  boundary; experimental.
+- **CLI tooling** — `create`, `build`, `run`, `package`, `routes`, `deps`,
+  `capabilities`, `doctor`, `audit`, `openapi`, and `sloppyc`.
+- **Stdlib** — app host, routing, results, config, services, logging, data,
+  schema, filesystem, network, OS, process boundary, time, crypto, codec, and
+  workers.
+- **Benchmarks** — local engineering harnesses under `benchmarks/`. They are
+  not a public superiority claim.
+- **Documentation site** — published from `main` via GitHub Pages.
 
-Surface-by-surface status is tracked in
-[Stability Reference](docs/reference/stability.md).
+Surface-by-surface status: [Stability Reference](docs/reference/stability.md).
 
-## What pre-alpha means
+## Current limits
 
-Sloppy is usable for experiments, demos, and feedback. It is not hardened as a
-production edge runtime.
+Sloppy is usable for experiments, demos, and feedback. It is not a production
+edge runtime, and it is not a drop-in replacement for Node, Bun, or Deno.
 
-Current limits:
-
-- API and artifact formats can change between alpha revisions.
-- Package/dependency support is experimental. Sloppy consumes existing
-  installed pure-JavaScript packages when they can be resolved, transformed,
-  bundled, and executed inside Sloppy's runtime boundary. It does not install
-  from a registry or solve semver ranges.
-- Package resolution supports a documented subset of package.json `exports`,
-  `imports`, `main`, and `type`; unsupported export shapes fail clearly.
-- Sloppy does not support Node native addons or N-API yet. Obvious native
-  addon package shapes are rejected with pattern-based diagnostics, but that is
-  not a complete native-package classifier.
-- Sloppy is not a full Node runtime. Node compatibility is partial and grows
-  through explicit shims backed by Sloppy Core APIs.
-- The compiler supports a focused source subset. Dynamic web shapes can run
-  with partial metadata; unsupported imports/runtime features still fail
-  clearly.
-- macOS and arm64 package-manager distribution are not part of this alpha.
+- Pre-alpha. APIs and artifact formats can change between alpha revisions.
+- Not full Node compatibility. Node API support is partial and grows through
+  explicit shims backed by Sloppy Core APIs.
+- Not full npm compatibility. Package support is experimental: Sloppy bundles
+  compatible installed pure-JavaScript packages, but it does not install from
+  a registry, solve semver ranges, or read lockfiles.
+- Native Node addons and N-API are unsupported.
+- FFI is experimental and unsafe. Wrong signatures or invalid pointers can
+  crash the process.
+- Benchmarks are local engineering measurements, not a superiority claim.
+- arm64 npm platform packages are part of the alpha release validation path;
+  use source builds in the meantime.
 - Live PostgreSQL and SQL Server checks need explicit local services and
   drivers.
 
 See [Roadmap](docs/roadmap.md) and the
 [Node compatibility roadmap](docs/roadmap/node-compatibility.md) for the
-dependency story, native interop, and production-hardening direction.
+dependency story and production-hardening direction.
 
 ## Repository layout
 
@@ -213,16 +204,27 @@ dependency story, native interop, and production-hardening direction.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) - create, build, run, and package a first API
-- [Install](docs/install.md) - npm, source builds, and platform notes
-- [Tutorials](docs/tutorials/index.md) - guided app-building path
-- [API](docs/api/index.md) - first-party stdlib and app APIs
-- [CLI](docs/cli/index.md) - `sloppy` and `sloppyc` commands
-- [Guides](docs/guide/index.md) - project layout, examples, troubleshooting
-- [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md) - runtime model, code examples, CLI tradeoffs
-- [Reference](docs/reference/index.md) - Plan, syntax, stability, config
-- [Internals](docs/internals/index.md) - runtime/compiler design notes
-- [Roadmap](docs/roadmap.md) - what exists now and what comes later
+- [Install](docs/install.md) — npm, source builds, and platform notes
+- [Quickstart](docs/quickstart.md) — three flows: API, Program, and packaged app
+- [Templates](docs/guide/templates.md) — `api`, `minimal-api`, `program`,
+  `cli`, `package-api`, `node-compat`
+- [Using installed packages](docs/guide/using-packages.md) — bundle
+  pure-JavaScript dependencies
+- [Node compatibility](docs/reference/node-compatibility.md) — supported
+  shims and unsupported builtins
+- [Native FFI](docs/reference/ffi.md) — typed C ABI calls (unsafe)
+- [Performance](docs/about/performance.md) — what's measured and why no
+  competitive numbers are published
+- [Roadmap](docs/roadmap.md) — what exists now and what comes later
+- [API](docs/api/index.md) — first-party stdlib and app APIs
+- [CLI](docs/cli/index.md) — `sloppy` and `sloppyc` commands
+- [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md) —
+  runtime model and tradeoffs
+- [Reference](docs/reference/index.md) — Plan format, syntax, stability,
+  config
+- [Internals](docs/internals/index.md) — runtime/compiler design notes
+- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) ·
+  [License](LICENSE)
 
 ## Contributing and feedback
 

@@ -1,13 +1,15 @@
 # Sloppy API Starter
 
-This is the recommended public alpha starter for building a backend with
-Sloppy. It shows routes, route modules, a small service/repository split,
-configuration, SQLite provider metadata, health endpoints, and the app package
-flow.
+The recommended public alpha starter for building a backend with Sloppy.
+SQLite-backed, with routes, route modules, a small service/repository split,
+configuration, health endpoints, and the app package flow.
+
+Pre-alpha note: APIs and artifact formats may change between alpha revisions.
 
 ## Layout
 
-- `src/main.ts` wires the app, SQLite provider, middleware, services, and routes.
+- `src/main.ts` wires the app, SQLite provider, middleware, services, and
+  routes.
 - `src/routes/` contains route registration modules.
 - `src/services/` contains business logic.
 - `src/db/` contains the SQLite migration and repository helpers.
@@ -15,7 +17,7 @@ flow.
 - `appsettings*.json` contains runtime configuration.
 - `data/` is where the development SQLite file is created.
 
-## Build And Inspect
+## Build, inspect, run
 
 ```sh
 sloppy build
@@ -23,21 +25,18 @@ sloppy routes .sloppy
 sloppy capabilities .sloppy
 sloppy doctor .sloppy
 sloppy audit .sloppy
-```
-
-## Run
-
-```sh
 sloppy run .sloppy --once GET /health
 sloppy run .sloppy --once GET /users
 ```
 
-To exercise `POST /users`, run the development server and send a request with
-your HTTP client:
+To exercise `POST /users`, run the development server and send a request
+with your HTTP client:
 
 ```sh
 sloppy run .sloppy
-curl -X POST http://127.0.0.1:5173/users -H "content-type: application/json" -d "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
+curl -X POST http://127.0.0.1:5173/users \
+  -H "content-type: application/json" \
+  -d "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
 ```
 
 ## Package
@@ -48,15 +47,26 @@ sloppy run .sloppy/package --once GET /health
 sloppy run .sloppy/package --once GET /users
 ```
 
-The alpha package format contains the compiled Sloppy artifacts. The SQLite
-database path is configured as `data/app.db`; create that directory when you run
-the package from a directory that does not already have it. `/health/ready`
-performs a SQLite query after running the template migration.
+The packaged app contains the compiled Sloppy artifacts. The SQLite database
+path is `data/app.db`; create that directory when you run the package from a
+location that does not already have it. `/health/ready` performs a SQLite
+query after running the template migration.
 
-## Alpha Limits
+## Where to edit next
 
-Sloppy is pre-production alpha software. SQLite is available through Sloppy's
-current provider bridge, and migrations here are intentionally just
-`create table if not exists` plus deterministic seed rows. Sloppy is not full
-Node, and this template does not require internet packages, Docker, or external
-services.
+- Add a route module under `src/routes/` and register it in `src/main.ts`.
+- Add a service under `src/services/` when handlers need shared state.
+- Add a config key in `appsettings.Development.json` and read it through the
+  typed config API.
+- Add a migration step in `src/db/` if you change the schema.
+
+## Current limitations
+
+- Pre-alpha. Both Sloppy itself and this template can change before a stable
+  release.
+- SQLite is the strongest provider path. PostgreSQL and SQL Server need their
+  own configuration, drivers, and live services; this template does not
+  include those.
+- No internet packages, Docker, or external services are required.
+- Sloppy is not a full Node runtime. Avoid bringing in packages that depend on
+  Node native addons, full Node globals, or unsupported `node:*` builtins.

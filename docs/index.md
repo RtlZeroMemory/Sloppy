@@ -73,10 +73,13 @@ metadata, and writes an app package.
 - CLI: `create`, `build`, `run`, `package`, `routes`, `deps`,
   `capabilities`, `doctor`, `audit`, and `openapi`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
-  execution on Windows x64 and Linux x64 alpha packages.
+  execution on Windows x64, Linux x64, and macOS alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
+- FFI foundation (experimental, unsafe): typed C ABI calls through
+  `sloppy/ffi`, with Plan-visible metadata and packaged local native
+  libraries.
 
 ## Why Sloppy?
 
@@ -94,8 +97,9 @@ change between alpha revisions. Package support is limited to compatible
 installed JavaScript that Sloppy can bundle, and Sloppy is not a full Node
 runtime.
 
-Platform packages are currently Windows x64 and Linux x64. macOS and arm64 are
-source-build paths until matching alpha packages are available.
+Published platform packages are Windows x64, Linux x64, and macOS for this
+alpha. arm64 packages are part of the alpha release validation path; use
+source builds in the meantime.
 
 ## Examples
 
