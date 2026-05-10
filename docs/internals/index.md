@@ -2,7 +2,7 @@
 
 Implementation-level documentation for contributors working on the Sloppy
 codebase itself. If you're using Sloppy to build an application, you want
-[api/](../api/README.md) and [guide/](../guide/README.md) instead.
+[api/](../api/index.md) and [guide/](../guide/index.md) instead.
 
 - [Architecture](architecture.md) — top-level layering: compiler, app host, runtime, bridge
 - [Runtime](runtime.md) — startup, dispatch, shutdown

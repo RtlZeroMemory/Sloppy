@@ -1336,6 +1336,9 @@ static SlStatus sl_http_transport_http2_close_if_peer_goaway(SlHttpTransportConn
         return sl_status_ok();
     }
     connection->close_after_write = true;
+    if (connection->platform != NULL && !connection->platform->tls_enabled) {
+        connection->platform->graceful_shutdown = true;
+    }
     if (connection->platform != NULL && connection->platform->writing) {
         return sl_status_ok();
     }
@@ -1944,6 +1947,9 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
         if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING ||
             connection->close_after_write)
         {
+            if (connection->platform != NULL && !connection->platform->tls_enabled) {
+                connection->platform->graceful_shutdown = true;
+            }
             (void)sl_http_transport_connection_close(connection, NULL);
             return;
         }
@@ -3561,6 +3567,9 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
             !connection->platform->closing && !connection->platform->writing)
         {
             connection->close_after_write = true;
+            if (!connection->platform->tls_enabled) {
+                connection->platform->graceful_shutdown = true;
+            }
             if (sl_status_is_ok(sl_http2_session_submit_goaway(
                     &connection->http2_dispatcher->session, 0, SL_HTTP2_ERROR_PROTOCOL_ERROR)) &&
                 sl_status_is_ok(sl_http_transport_http2_flush_output(connection, &write_diag)) &&

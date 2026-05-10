@@ -113,7 +113,7 @@ import { usersModule } from "./users";
 ```
 
 Subpath imports under `"sloppy/..."` are reserved for the runtime
-stdlib; see [API](../api/README.md) for what each subpath exports.
+stdlib; see [API](../api/index.md) for what each subpath exports.
 
 `Results` imports are not inherited across files. A thin `main.ts` that only
 creates the app and registers function modules can import `Sloppy` alone; each
