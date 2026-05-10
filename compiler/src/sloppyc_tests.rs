@@ -703,6 +703,150 @@ fn program_mode_resolves_node_compat_shim_and_plan_features() {
 }
 
 #[test]
+fn program_mode_dedupes_node_compat_required_features() {
+    let root = fixture_temp_dir("program-node-compat-dedupe");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import path from "node:path";
+import fs from "node:fs";
+import fsAgain from "node:fs";
+import fsPromises from "node:fs/promises";
+export function main() {
+  return `${path.join("a", "b")}:${typeof fs}:${typeof fsAgain}:${typeof fsPromises}`;
+}"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let required = plan["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array");
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.fs"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.fs.promises"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.path"))
+            .count(),
+        1
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_json_modules_preserve_default_export_binding() {
+    let root = fixture_temp_dir("program-json-default");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(root.join("data.json"), r#"{"message":"json-default"}"#)
+        .expect("JSON fixture should write");
+    fs::write(
+        &input,
+        r#"import data from "./data.json"; export function main() { return data.message; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    assert!(app_js.contains("module.exports.default = __sloppy_json_module;"));
+    assert!(app_js.contains("__sloppy_program_require(\"data.json\").default"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_commonjs_modules_receive_wrapper_bindings() {
+    let root = fixture_temp_dir("program-commonjs-wrapper");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        root.join("helper.cjs"),
+        r#"const suffix = require("./suffix.cjs"); module.exports = `${__dirname}/${__filename}/${suffix}`;"#,
+    )
+    .expect("CommonJS helper should write");
+    fs::write(root.join("suffix.cjs"), r#"module.exports = "ok";"#)
+        .expect("CommonJS suffix should write");
+    fs::write(
+        &input,
+        r#"import helper from "./helper.cjs"; export function main() { return helper; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    assert!(app_js.contains("function(exports, module, require, __filename, __dirname)"));
+    assert!(app_js.contains(
+        "factory(module.exports, module, function(specifier) { return __sloppy_program_require_from(id, specifier); }, id, __sloppy_program_dirname(id));"
+    ));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_commonjs_requires_use_require_export_condition() {
+    let root = fixture_temp_dir("program-commonjs-require-condition");
+    let package_dir = root.join("node_modules").join("dual-pkg");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&package_dir).expect("package directory should be created");
+    fs::write(
+        package_dir.join("package.json"),
+        r#"{"name":"dual-pkg","version":"1.0.0","exports":{"import":"./esm.js","require":"./cjs.cjs"}}"#,
+    )
+    .expect("package.json should write");
+    fs::write(package_dir.join("esm.js"), r#"export default "esm";"#)
+        .expect("ESM entry should write");
+    fs::write(package_dir.join("cjs.cjs"), r#"module.exports = "cjs";"#)
+        .expect("CJS entry should write");
+    fs::write(
+        root.join("helper.cjs"),
+        r#"module.exports = require("dual-pkg");"#,
+    )
+    .expect("CommonJS helper should write");
+    fs::write(
+        &input,
+        r#"import helper from "./helper.cjs"; export function main() { return helper; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "node_modules/dual-pkg/cjs.cjs"));
+    assert!(!graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "node_modules/dual-pkg/esm.js"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn program_mode_module_and_asset_include_records_sealed_graph_entries() {
     let root = fixture_temp_dir("program-module-asset-include");
     let plugin_dir = root.join("plugins");

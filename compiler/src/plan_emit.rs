@@ -770,6 +770,8 @@ pub(crate) fn emit_plan(
         value["features"]["health"] = json!(true);
     }
     if !required_features.is_empty() {
+        required_features.sort();
+        required_features.dedup();
         value["requiredFeatures"] = json!(required_features);
     }
     if !doctor_checks.is_empty() {
@@ -813,6 +815,8 @@ pub(crate) fn emit_plan(
         }
     }
     if !required_features.is_empty() {
+        required_features.sort();
+        required_features.dedup();
         value["requiredFeatures"] = json!(required_features);
     }
     if !doctor_checks.is_empty() {

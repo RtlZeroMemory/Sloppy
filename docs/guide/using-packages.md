@@ -1,8 +1,8 @@
 # Using Installed Packages
 
-Sloppy can bundle installed pure-JavaScript package dependencies when the
-compiler can resolve, transform, package, and execute them inside Sloppy's
-runtime boundary.
+Installed package graph support is experimental. Sloppy can bundle installed
+pure-JavaScript package dependencies when the compiler can resolve, transform,
+package, and execute them inside Sloppy's runtime boundary.
 
 This is not a package manager. Use npm, pnpm, Yarn, or another package manager
 to install packages first. Sloppy reads the already installed files from
@@ -15,8 +15,13 @@ to install packages first. Sloppy reads the already installed files from
 - Package code that uses JavaScript Sloppy can transform and runtime APIs that
   Sloppy supports or shims.
 
-Native Node addons, unrestricted Node builtins, and packages that rely on
-implicit Node globals may fail with clear diagnostics.
+Obvious native Node addon package shapes are rejected with clear diagnostics.
+Sloppy does not support Node native addons or N-API yet. Detection is based on
+known package and native-entry patterns, not a formal guarantee that every
+native package shape is recognized.
+
+Unrestricted Node builtins and packages that rely on implicit Node globals may
+also fail with clear diagnostics.
 
 ## Install With Your Package Manager
 
@@ -51,7 +56,7 @@ when they resolve through the supported package rules.
 
 ## Supported Package Rules
 
-Sloppy supports a practical package.json subset:
+Sloppy supports a practical package.json subset for installed packages:
 
 - `exports` string entries
 - `exports` object entries with `sloppy`, `import`, `require`, and `default`
@@ -133,7 +138,8 @@ shims, and compatibility findings.
 ## Current Limits
 
 - No registry install or package manager integration.
-- No native Node addons or N-API.
+- No native Node addons or N-API. Obvious native addon shapes are rejected, but
+  detection is not a complete native-package classifier.
 - No full Node builtins, streams, workers, VM, child process, inspector, or
   REPL compatibility.
 - No implicit global Node runtime identity.

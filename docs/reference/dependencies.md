@@ -29,10 +29,11 @@ ones you need installed for which features, and where they show up.
 
 ## Package Dependencies
 
-Sloppy can read already installed `node_modules` packages at build time when a
-package is pure JavaScript and fits Sloppy's supported package resolver,
-module loader, and runtime API boundary. The compiler bundles compatible
-modules into the generated artifacts and records them in the dependency graph.
+Installed package graph support is experimental. Sloppy can read already
+installed `node_modules` packages at build time when a package is pure
+JavaScript and fits Sloppy's supported package resolver, module loader, and
+runtime API boundary. The compiler bundles compatible modules into the
+generated artifacts and records them in the dependency graph.
 
 The runtime does not bundle a JavaScript package manager, an ORM, a migration
 tool, a registry installer, or native Node addon support. See

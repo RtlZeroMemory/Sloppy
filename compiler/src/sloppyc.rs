@@ -1789,7 +1789,7 @@ fn transform_program_source(
             .with_path(path)
         })?;
         return Ok(format!(
-            "module.exports = {}; exports.default = module.exports;\n",
+            "const __sloppy_json_module = {}; module.exports = Object(__sloppy_json_module) === __sloppy_json_module ? __sloppy_json_module : {{ default: __sloppy_json_module }}; module.exports.default = __sloppy_json_module;\n",
             serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
         ));
     }
@@ -1981,13 +1981,16 @@ fn analyze_expression_dynamic_imports(
             let from_id = program_module_id(graph, path, package.as_deref());
             if let Some(specifier) = expression_string_literal(&import.source) {
                 let resolved_id = resolve_program_dependency(
-                    path,
-                    specifier,
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package,
+                        import_mode: true,
+                        span: import.span,
+                    },
                     graph,
                     visiting,
                     modules,
-                    package,
-                    import.span,
                 )?;
                 graph.add_dynamic_import(
                     &from_id,
@@ -2065,13 +2068,16 @@ fn analyze_argument_dynamic_imports(
             let from_id = program_module_id(graph, path, package.as_deref());
             if let Some(specifier) = expression_string_literal(&import.source) {
                 let resolved_id = resolve_program_dependency(
-                    path,
-                    specifier,
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package,
+                        import_mode: true,
+                        span: import.span,
+                    },
                     graph,
                     visiting,
                     modules,
-                    package,
-                    import.span,
                 )?;
                 graph.add_dynamic_import(
                     &from_id,
@@ -2375,13 +2381,16 @@ fn analyze_commonjs_expression_requires(
         Expression::CallExpression(call) => {
             if let Some(specifier) = call_static_require_specifier(call) {
                 resolve_program_dependency(
-                    path,
-                    specifier,
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package: package.clone(),
+                        import_mode: false,
+                        span: call.span,
+                    },
                     graph,
                     visiting,
                     modules,
-                    package.clone(),
-                    call.span,
                 )?;
             }
             for argument in &call.arguments {
@@ -2431,6 +2440,14 @@ fn analyze_commonjs_expression_requires(
                 }
             }
         }
+        Expression::AssignmentExpression(assignment) => analyze_commonjs_expression_requires(
+            path,
+            &assignment.right,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
         _ => {}
     }
     Ok(())
@@ -2448,13 +2465,16 @@ fn analyze_commonjs_argument_requires(
         Argument::CallExpression(call) => {
             if let Some(specifier) = call_static_require_specifier(call) {
                 resolve_program_dependency(
-                    path,
-                    specifier,
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package: package.clone(),
+                        import_mode: false,
+                        span: call.span,
+                    },
                     graph,
                     visiting,
                     modules,
-                    package.clone(),
-                    call.span,
                 )?;
             }
             for nested in &call.arguments {
@@ -2575,17 +2595,26 @@ const NODE_PROCESS_SHIM: &str = r#"const process={env:Object.freeze({}),argv:[],
 
 const NODE_CRYPTO_SHIM: &str = r#"function unsupported(name){return function(){throw new Error(`node:crypto.${name} is not implemented by Sloppy's node:crypto compatibility shim. Use sloppy/crypto when available, or avoid this package path.`);};}module.exports={randomUUID:unsupported("randomUUID"),createHash:unsupported("createHash"),createHmac:unsupported("createHmac"),default:null};module.exports.default=module.exports;"#;
 
+struct ProgramDependencyRequest<'a> {
+    path: &'a Path,
+    specifier: &'a str,
+    package: Option<String>,
+    import_mode: bool,
+    span: Span,
+}
+
 fn resolve_program_dependency(
-    path: &Path,
-    specifier: &str,
+    request: ProgramDependencyRequest<'_>,
     graph: &mut ModuleGraph,
     visiting: &mut BTreeSet<PathBuf>,
     modules: &mut Vec<ProgramModule>,
-    package: Option<String>,
-    span: Span,
 ) -> Result<Option<String>, Diagnostic> {
+    let path = request.path;
+    let specifier = request.specifier;
+    let package = request.package;
+    let span = request.span;
     let from_id = program_module_id(graph, path, package.as_deref());
-    match resolver::classify_import(path, specifier) {
+    match resolver::classify_import_with_mode(path, specifier, request.import_mode) {
         resolver::ImportKind::Relative(resolved) => {
             let source = fs::read_to_string(&resolved).map_err(|error| {
                 Diagnostic::new(
@@ -14212,7 +14241,7 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
     for module in &app.program_modules {
         output.push_str("  __sloppy_program_modules[");
         output.push_str(&json_string(&module.id));
-        output.push_str("] = function(exports, module) {\n");
+        output.push_str("] = function(exports, module, require, __filename, __dirname) {\n");
         for line in module.emitted_source.lines() {
             output.push_str("    ");
             output.push_str(line);

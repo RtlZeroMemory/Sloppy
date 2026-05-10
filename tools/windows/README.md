@@ -112,9 +112,10 @@ from an already-built archive. macOS npm packages are not staged in this alpha:
 .\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip
 ```
 
-The npm package path is an installer/launcher for Sloppy itself. It does not add npm app
-dependency support, `node_modules` resolution, `node-gyp`, native postinstall builds, or V8
-downloads during install.
+The npm package path is an installer/launcher for Sloppy itself. It does not install app
+dependencies, solve package ranges, discover `node_modules` at Sloppy package run time, run
+`node-gyp`, perform native postinstall builds, or download V8 during install. Compatible app
+dependencies are project build inputs that `sloppyc` bundles into Sloppy artifacts.
 
 Install smoke checks the end-user CLI path from an extracted archive:
 

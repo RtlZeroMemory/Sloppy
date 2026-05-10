@@ -10,7 +10,7 @@ compatibility shims backed by Sloppy Core APIs or pure JavaScript behavior.
 
 The current foundation includes:
 
-- installed package resolution from existing `node_modules`;
+- experimental installed package resolution from existing `node_modules`;
 - package.json `exports`, `imports`, `main`, and `type` support for common
   pure-JavaScript packages;
 - ESM, CommonJS, and JSON module bundling in generated artifacts;
@@ -42,6 +42,10 @@ Deferred work includes:
 Unsupported surfaces should fail clearly during build or through a shim error.
 They should not look like supported behavior.
 
+Obvious native addon package shapes are rejected in the current compiler, but
+the detection is pattern-based. It looks for known native entry/package signals
+and is not a guarantee that every native package shape is recognized.
+
 ## Compatibility Strategy
 
 Compatibility grows one builtin or package family at a time:
@@ -68,4 +72,3 @@ Use this wording in product docs:
 
 Do not claim full npm compatibility, full Node compatibility, or drop-in
 compatibility for existing Node applications.
-

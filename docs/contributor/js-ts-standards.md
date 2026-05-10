@@ -140,7 +140,7 @@ Rules:
 - Static tests are acceptable only when the execution harness does not support modules yet;
   the docs must say why the test is static.
 - Optional Node-based ESM tests may exist as bootstrap test infrastructure only. They must
-  not be presented as application-level runtime or npm dependency support.
+  not be presented as proof of Sloppy's package resolver or runtime execution support.
 - Generated artifact golden tests must be deterministic.
 
 Static scanners are lint gates. They are not substitutes for behavior tests.

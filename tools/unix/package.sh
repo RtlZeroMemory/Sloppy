@@ -225,7 +225,8 @@ This package is an experimental pre-alpha development artifact.
 
 - Publishing uses a separate release step.
 - Production readiness is tracked separately.
-- Node, Bun, Deno, npm, and package-manager compatibility are separate tracks.
+- Full Node, Bun, and Deno compatibility, package-manager installs, and runtime
+  node_modules discovery are separate tracks.
 - V8 execution, live provider readiness, TLS hardening, and release readiness use their own
   lanes.
 - V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
@@ -369,7 +370,7 @@ cat > "$stage_root/manifest.json" <<JSON
   },
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
-  "notes": ["experimental", "dry-run artifact", "production readiness tracked separately", "dry-run only", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not add npm app dependency support"]
+  "notes": ["experimental", "dry-run artifact", "production readiness tracked separately", "dry-run only", "no installer", "no package manager", "npm launcher packages may reuse this archive but do not install app dependencies or add runtime node_modules discovery"]
 }
 JSON
 

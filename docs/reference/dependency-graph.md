@@ -47,7 +47,7 @@ absolute machine paths.
       "installed-packages",
       "node-compat-shims"
     ],
-    "conditions": ["sloppy", "import", "default"]
+    "conditions": ["sloppy", "import", "require", "default"]
   },
   "packages": [],
   "modules": [],
@@ -59,6 +59,17 @@ absolute machine paths.
 
 IDs and paths are repo-relative, use forward slashes, and must not include
 absolute local machine paths in committed goldens.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | number | Dependency graph schema version. Current value is `1`. |
+| `resolver.profiles` | string[] | Resolver profiles that were active for the build. |
+| `resolver.conditions` | string[] | Package export/import conditions considered during resolution. |
+| `packages` | object[] | Installed package roots included in the graph. |
+| `modules` | object[] | Bundled source, package, JSON, CommonJS, and shim modules. |
+| `assets` | object[] | Non-executable files included by `assetInclude`. |
+| `nodeBuiltins` | object[] | Node compatibility registry entries used by the graph. |
+| `compatibilityFindings` | object[] | Package and compatibility warnings or errors surfaced by tooling. |
 
 ## Packages
 
@@ -77,9 +88,14 @@ absolute local machine paths in committed goldens.
 }
 ```
 
-Supported package resolution starts from what is already installed. Sloppy does
-not call a registry, install dependencies, solve semver ranges, or read a
-lockfile to choose versions.
+Installed package graph support is experimental. Supported package resolution
+starts from what is already installed. Sloppy does not call a registry, install
+dependencies, solve semver ranges, or read a lockfile to choose versions.
+
+The supported package subset covers package.json `exports`, `imports`, `main`,
+and `type` for common pure-JavaScript packages. Unsupported export shapes fail
+with `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED` instead of silently choosing a
+different entry.
 
 ## Modules
 
@@ -141,7 +157,7 @@ runtime package discovery.
 ```json
 {
   "path": "public/logo.svg",
-  "source": "assetInclude:public/**/*"
+  "includedBy": "assetInclude:public/**/*"
 }
 ```
 
@@ -176,6 +192,11 @@ compatibility analysis:
   "source": "node_modules/sharp/package.json"
 }
 ```
+
+Obvious native addon package shapes are rejected because Sloppy does not
+support Node native addons or N-API yet. Detection is based on known package
+and native-entry patterns such as `.node`, `node-gyp-build`, and `bindings`.
+It is not a formal guarantee that every native package shape is recognized.
 
 `sloppy audit` reports dependency graph findings. `sloppy doctor` reports the
 dependency graph summary. `sloppy deps` prints the graph directly.

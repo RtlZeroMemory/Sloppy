@@ -53,6 +53,14 @@ pub(crate) struct PackageResolution {
 }
 
 pub(crate) fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
+    classify_import_with_mode(from_path, specifier, true)
+}
+
+pub(crate) fn classify_import_with_mode(
+    from_path: &Path,
+    specifier: &str,
+    import_mode: bool,
+) -> ImportKind {
     if specifier.starts_with("./") || specifier.starts_with("../") {
         return resolve_relative_import(from_path, specifier).map_or_else(
             || ImportKind::UnresolvedRelative(specifier.to_string()),
@@ -101,12 +109,12 @@ pub(crate) fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
         });
     }
     if specifier.starts_with('#') {
-        if let Some(package) = resolve_package_imports(from_path, specifier) {
+        if let Some(package) = resolve_package_imports(from_path, specifier, import_mode) {
             return package;
         }
         return ImportKind::PackageExportUnsupported(specifier.to_string());
     }
-    if let Some(package) = resolve_package_import(from_path, specifier) {
+    if let Some(package) = resolve_package_import(from_path, specifier, import_mode) {
         return package;
     }
     ImportKind::UnsupportedBare(specifier.to_string())
@@ -187,7 +195,11 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
     })
 }
 
-fn resolve_package_import(from_path: &Path, specifier: &str) -> Option<ImportKind> {
+fn resolve_package_import(
+    from_path: &Path,
+    specifier: &str,
+    import_mode: bool,
+) -> Option<ImportKind> {
     let (package_name, subpath) = split_package_specifier(specifier)?;
     let (package_root, source) = find_self_package_root(from_path, &package_name)
         .map(|root| (root, "self"))
@@ -209,7 +221,7 @@ fn resolve_package_import(from_path: &Path, specifier: &str) -> Option<ImportKin
 
     let entry = match package_json_value
         .as_ref()
-        .and_then(|json| resolve_package_entry(&package_root, json, subpath, true))
+        .and_then(|json| resolve_package_entry(&package_root, json, subpath, import_mode))
     {
         Some(Ok(path)) => path,
         Some(Err(())) => return Some(ImportKind::PackageExportUnsupported(package_name)),
@@ -256,14 +268,18 @@ fn resolve_package_import(from_path: &Path, specifier: &str) -> Option<ImportKin
     Some(ImportKind::Package(package))
 }
 
-fn resolve_package_imports(from_path: &Path, specifier: &str) -> Option<ImportKind> {
+fn resolve_package_imports(
+    from_path: &Path,
+    specifier: &str,
+    import_mode: bool,
+) -> Option<ImportKind> {
     let package_root = find_nearest_package_scope(from_path)?;
     let package_json = package_root.join("package.json");
     let package_json_value = fs::read_to_string(&package_json)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())?;
     let imports = package_json_value.get("imports")?;
-    let entry = resolve_imports_entry(&package_root, imports, specifier, true)?;
+    let entry = resolve_imports_entry(&package_root, imports, specifier, import_mode)?;
     let entry = match entry {
         Ok(path) => path,
         Err(()) => return Some(ImportKind::PackageExportUnsupported(specifier.to_string())),

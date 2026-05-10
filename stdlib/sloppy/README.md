@@ -95,17 +95,19 @@ lib/sloppy/bootstrap/sloppy/
   provider-specific lane separately documents and tests active native interruption.
 - Native handles and raw pointers are not exposed to JavaScript. Resource-backed bridge
   facades use opaque Sloppy-owned objects, not public slot/generation fields.
-- Node, Bun, Deno, Web API, and npm support are planned separately.
+- Node compatibility is limited to explicit `sloppy/node/*` shim modules staged by
+  the dependency-loader path. Bun, Deno, browser Web API compatibility, full npm
+  ecosystem parity, and runtime package-manager behavior remain separate work.
 - Benchmark, operations, and release readiness are covered by dedicated docs and gates.
 
 ## Future Work
 
 - `app.run`, `app.listen`, and `app.build` belong to later app lifecycle work.
 - Public handler registration APIs will be documented when the runtime support lands.
-- Full compiler extraction and arbitrary import rewriting are compiler/runtime work.
+- Full compiler extraction and arbitrary import rewriting beyond the supported
+  Sloppy/package resolver subset are compiler/runtime work.
 - ORM, migrations, and schema-management behavior belong to future database provider work.
-- Module packages, native plugins, and full app lifecycle integration are
-  planned separately.
+- Native plugins and full app lifecycle integration are planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers,
   tracing, metrics, async service factories, typed DI tokens, and native service graph
   validation belong to later framework/runtime slices. Native console and JSONL file

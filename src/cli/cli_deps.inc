@@ -71,125 +71,17 @@ static int sl_cli_deps_load_graph(const SlCliOptions* options, yyjson_doc** out_
     return 1;
 }
 
-static void sl_cli_deps_emit_json_array(yyjson_val* graph, const char* name, bool comma)
-{
-    yyjson_val* array = yyjson_obj_get(graph, name);
-    yyjson_arr_iter iter;
-    yyjson_val* entry = NULL;
-    size_t index = 0U;
-
-    printf("%s\n  \"%s\": [", comma ? "," : "", name);
-    if (array != NULL && yyjson_is_arr(array)) {
-        yyjson_arr_iter_init(array, &iter);
-        while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
-            SlCliSpan id = sl_cli_json_span(entry, "id");
-            SlCliSpan name_value = sl_cli_json_span(entry, "name");
-            SlCliSpan path = sl_cli_json_span(entry, "path");
-            SlCliSpan specifier = sl_cli_json_span(entry, "specifier");
-            SlCliSpan code = sl_cli_json_span(entry, "code");
-            SlCliSpan version = sl_cli_json_span(entry, "version");
-            SlCliSpan root = sl_cli_json_span(entry, "root");
-            SlCliSpan entry_path = sl_cli_json_span(entry, "entry");
-            SlCliSpan package_name = sl_cli_json_span(entry, "package");
-            SlCliSpan format = sl_cli_json_span(entry, "format");
-            SlCliSpan status = sl_cli_json_span(entry, "status");
-            SlCliSpan severity = sl_cli_json_span(entry, "severity");
-            SlCliSpan backing = sl_cli_json_span(entry, "backing");
-            SlCliSpan message = sl_cli_json_span(entry, "message");
-            SlCliSpan source = sl_cli_json_span(entry, "source");
-            bool emitted_field = false;
-
-            printf("%s\n    {", index == 0U ? "" : ",");
-            if (!sl_cli_span_empty(id)) {
-                printf(" \"id\": ");
-                sl_cli_json_escape(stdout, id);
-                emitted_field = true;
-            }
-            else if (!sl_cli_span_empty(name_value)) {
-                printf(" \"name\": ");
-                sl_cli_json_escape(stdout, name_value);
-                emitted_field = true;
-            }
-            else if (!sl_cli_span_empty(path)) {
-                printf(" \"path\": ");
-                sl_cli_json_escape(stdout, path);
-                emitted_field = true;
-            }
-            else if (!sl_cli_span_empty(specifier)) {
-                printf(" \"specifier\": ");
-                sl_cli_json_escape(stdout, specifier);
-                emitted_field = true;
-            }
-            else if (!sl_cli_span_empty(code)) {
-                printf(" \"code\": ");
-                sl_cli_json_escape(stdout, code);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(version)) {
-                printf("%s \"version\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, version);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(root)) {
-                printf("%s \"root\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, root);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(entry_path)) {
-                printf("%s \"entry\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, entry_path);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(package_name)) {
-                printf("%s \"package\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, package_name);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(format)) {
-                printf("%s \"format\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, format);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(status)) {
-                printf("%s \"status\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, status);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(severity)) {
-                printf("%s \"severity\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, severity);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(backing)) {
-                printf("%s \"backing\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, backing);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(message)) {
-                printf("%s \"message\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, message);
-                emitted_field = true;
-            }
-            if (!sl_cli_span_empty(source)) {
-                printf("%s \"source\": ", emitted_field ? "," : "");
-                sl_cli_json_escape(stdout, source);
-            }
-            printf(" }");
-            index += 1U;
-        }
-    }
-    printf("\n  ]");
-}
-
 static void sl_cli_deps_emit_json(yyjson_val* graph)
 {
-    printf("{");
-    sl_cli_deps_emit_json_array(graph, "packages", false);
-    sl_cli_deps_emit_json_array(graph, "modules", true);
-    sl_cli_deps_emit_json_array(graph, "assets", true);
-    sl_cli_deps_emit_json_array(graph, "nodeBuiltins", true);
-    sl_cli_deps_emit_json_array(graph, "compatibilityFindings", true);
-    printf("\n}\n");
+    size_t length = 0U;
+    char* json = yyjson_val_write(graph, YYJSON_WRITE_PRETTY, &length);
+    if (json == NULL) {
+        sl_cli_write_cstr(stderr, "sloppy deps: failed to serialize dependency graph JSON\n");
+        return;
+    }
+    fwrite(json, 1U, length, stdout);
+    fputc('\n', stdout);
+    sl_heap_release(json);
 }
 
 static void sl_cli_deps_emit_text_array(yyjson_val* graph, const char* label, const char* name,
