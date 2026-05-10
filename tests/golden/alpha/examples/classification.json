@@ -465,6 +465,13 @@
     },
     {
       "entry": "app.js",
+      "kind": "web",
+      "name": "web-dynamic-routes",
+      "reason": "covered by static example API-shape tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
       "kind": "program-js",
       "name": "workers-background-service",
       "reason": "worker runtime smoke is V8-gated",

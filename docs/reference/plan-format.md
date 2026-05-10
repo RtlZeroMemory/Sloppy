@@ -12,6 +12,7 @@ The Plan lets Sloppy validate application shape before runtime execution:
 - required runtime features;
 - provider and capability metadata;
 - dependency graph and Node compatibility metadata where dependencies are bundled;
+- typed native FFI metadata;
 - compiler/source metadata for diagnostics;
 - configuration metadata where the compiler emits it.
 
@@ -24,7 +25,7 @@ Plan v1 alpha remains the current runtime contract. Supported artifacts contain
 `app.plan.json`, generated `app.js`, and source-map metadata where available. Builds with
 dependency graph content also emit `deps.graph.json`. The runtime validates
 schema version, route/handler/provider/capability structure, artifact hashes,
-runtime target support, and required features before entering V8.
+runtime target support, FFI metadata, and required features before entering V8.
 
 Handler IDs are compiler-owned numeric IDs. Current executable V8 dispatch uses generated
 artifact registration and registered handler dispatch; direct numeric handler-call ABI
@@ -168,7 +169,61 @@ Program Mode emits simple stdlib capability entries from runtime stdlib imports
 and may also preserve simple `sloppy.json` stdlib capability declarations as
 Plan capability entries. The current simple declarations map to
 `filesystem/readwrite`, `network/connect-listen`, `os/info`, and `use` access
-for `time`, `crypto`, `codec`, and `workers`.
+for `time`, `crypto`, `codec`, `workers`, and `ffi`.
+
+## Native FFI Metadata
+
+`native.ffi[]` records compiler-extracted native library declarations from
+`sloppy/ffi`. Each function entry carries its Plan-visible ID, JavaScript name,
+native symbol, calling convention, return type, parameter types, and source
+location.
+
+```json
+{
+  "requiredFeatures": ["stdlib.ffi"],
+  "capabilities": [
+    { "token": "ffi", "kind": "ffi", "access": "use" }
+  ],
+  "native": {
+    "ffi": [
+      {
+        "name": "sloppy_ffi_test",
+        "convention": "system",
+        "functions": [
+          {
+            "id": "ffi:sloppy_ffi_test:addI32",
+            "name": "addI32",
+            "symbol": "sloppy_ffi_add_i32",
+            "convention": "system",
+            "return": "i32",
+            "parameters": ["i32", "i32"]
+          }
+        ]
+      }
+    ],
+    "ffiStructs": [
+      {
+        "name": "Point",
+        "layout": "sequential",
+        "pack": 4,
+        "fields": [
+          { "name": "x", "type": "i32" },
+          { "name": "y", "type": "i32" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The native Plan parser validates known FFI type names, non-empty library and
+symbol names, supported calling conventions, unsupported return buffer types,
+and sequential struct layout metadata. `stdcall` is accepted as metadata but is
+runtime-supported only on Windows builds with libffi stdcall support.
+
+Plan FFI metadata is not a memory-safety proof. It is the typed contract the
+runtime uses to resolve libraries, cache symbols, prepare libffi call
+interfaces, and expose audit/doctor/capabilities rows.
 
 Typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
 `SqlServer<"main">` are represented as route injections and inferred Plan

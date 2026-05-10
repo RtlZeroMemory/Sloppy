@@ -1,0 +1,3 @@
+SCOPE  TOKEN/ROUTE  KIND  ACCESS  REASON  SOURCE
+PLAN  ffi  ffi  use  declared
+PLAN  ffi:__sloppy_missing_ffi_library__:addI32  ffi  use  native-ffi  __sloppy_missing_ffi_library__:sloppy_ffi_add_i32

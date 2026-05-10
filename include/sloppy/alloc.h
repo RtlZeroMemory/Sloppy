@@ -19,6 +19,15 @@ extern "C" {
 SlStatus sl_alloc_bytes(size_t size, unsigned char** out);
 void sl_alloc_release(void* ptr);
 
+typedef struct SlHeapBuffer
+{
+    unsigned char* ptr;
+    size_t length;
+} SlHeapBuffer;
+
+SlStatus sl_heap_buffer_alloc(SlHeapBuffer* out, size_t length);
+void sl_heap_buffer_dispose(SlHeapBuffer* buffer);
+
 #ifdef __cplusplus
 }
 #endif

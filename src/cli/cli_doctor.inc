@@ -276,6 +276,58 @@ static void sl_cli_doctor_emit_workers(const SlCliOptions* options, SlArena* are
         sl_cli_span_cstr("worker doctor metadata omits payload and secret values"), emitted);
 }
 
+static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
+                                   const SlCliMetadata* metadata, bool* emitted)
+{
+    if (!sl_cli_metadata_requires_feature(metadata, "stdlib.ffi") &&
+        metadata->ffi_library_count == 0U && metadata->ffi_struct_count == 0U)
+    {
+        return;
+    }
+
+    if (sl_cli_metadata_requires_feature(metadata, "stdlib.ffi")) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.required"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI runtime feature metadata is Plan-visible"), emitted);
+    }
+    if (metadata->ffi_library_count > 0U || metadata->ffi_struct_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.metadata"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI library and struct metadata is Plan-visible"), emitted);
+    }
+    for (size_t library_index = 0U; library_index < metadata->ffi_library_count;
+         library_index += 1U)
+    {
+        const SlCliFfiLibrary* library = &metadata->ffi_libraries[library_index];
+        SlPlatformDynlib handle = {0};
+        SlStatus status = sl_platform_dynlib_open(sl_cli_span_str(library->name), &handle, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.library"),
+                               sl_cli_span_cstr("error"),
+                               sl_cli_span_cstr("native FFI library could not be loaded"), emitted);
+            continue;
+        }
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.library"),
+                           sl_cli_span_cstr("ok"), sl_cli_span_cstr("native FFI library loads"),
+                           emitted);
+        for (size_t index = 0U; index < library->function_count; index += 1U) {
+            const SlCliFfiFunction* function =
+                &metadata->ffi_functions[library->first_function + index];
+            void* symbol = NULL;
+            status = sl_platform_dynlib_symbol(&handle, sl_cli_span_str(function->symbol), &symbol,
+                                               NULL);
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.symbol"),
+                               sl_status_is_ok(status) ? sl_cli_span_cstr("ok")
+                                                       : sl_cli_span_cstr("error"),
+                               sl_status_is_ok(status)
+                                   ? sl_cli_span_cstr("native FFI symbol resolves")
+                                   : sl_cli_span_cstr("native FFI symbol could not be resolved"),
+                               emitted);
+        }
+        sl_platform_dynlib_close(&handle);
+    }
+}
+
 static void sl_cli_doctor_emit_config_requirements(const SlCliOptions* options, SlArena* arena,
                                                    const SlCliMetadata* metadata, bool* emitted)
 {
@@ -392,17 +444,17 @@ static void sl_cli_doctor_emit_config_requirements(const SlCliOptions* options, 
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
-    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.routes"),
-                       (metadata->route_count > 0U ||
-                        sl_cli_span_equal_cstr(metadata->kind, "program"))
-                           ? sl_cli_span_cstr("ok")
-                           : sl_cli_span_cstr("warn"),
-                       metadata->route_count > 0U
-                           ? sl_cli_span_cstr("route metadata present")
-                           : (sl_cli_span_equal_cstr(metadata->kind, "program")
-                                  ? sl_cli_span_cstr("program Plan has no route metadata by design")
-                                  : sl_cli_span_cstr("no route metadata present")),
-                       emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("app.plan.routes"),
+        (metadata->route_count > 0U || sl_cli_span_equal_cstr(metadata->kind, "program"))
+            ? sl_cli_span_cstr("ok")
+            : sl_cli_span_cstr("warn"),
+        metadata->route_count > 0U
+            ? sl_cli_span_cstr("route metadata present")
+            : (sl_cli_span_equal_cstr(metadata->kind, "program")
+                   ? sl_cli_span_cstr("program Plan has no route metadata by design")
+                   : sl_cli_span_cstr("no route metadata present")),
+        emitted);
     sl_cli_doctor_emit(
         options, arena, sl_cli_span_cstr("app.plan.providers"),
         metadata->provider_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
@@ -420,6 +472,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
     sl_cli_doctor_emit_workers(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_ffi(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
@@ -516,9 +569,9 @@ static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena*
         sl_cli_span_cstr(
             "live provider checks are not configured by default and no live DB was contacted"),
         emitted);
-    sl_cli_doctor_emit(
-        options, arena, sl_cli_span_cstr("package.runtime"), sl_cli_span_cstr("warn"),
-        sl_cli_span_cstr("package release status requires package smoke"), emitted);
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("package.runtime"),
+                       sl_cli_span_cstr("warn"),
+                       sl_cli_span_cstr("package release status requires package smoke"), emitted);
 }
 
 static int sl_cli_command_doctor(const SlCliOptions* options)
@@ -533,8 +586,7 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
     size_t index = 0U;
     bool emitted = false;
 
-    if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)) ||
+    if (!sl_status_is_ok(sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)) ||
         !sl_status_is_ok(
             sl_arena_init(&diag_arena, diag_arena_storage, sizeof(diag_arena_storage))))
     {

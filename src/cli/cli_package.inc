@@ -66,8 +66,189 @@ static bool sl_package_append_artifact_manifest_path(SlStringBuilder* builder,
     return sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(path));
 }
 
+static SlCliSpan sl_package_path_leaf(const char* path)
+{
+    const char* start = path;
+    const char* cursor = path;
+
+    if (path == NULL) {
+        return (SlCliSpan){0};
+    }
+    while (*cursor != '\0') {
+        if (*cursor == '/' || *cursor == '\\') {
+            start = cursor + 1;
+        }
+        cursor += 1;
+    }
+    return (SlCliSpan){start, (size_t)(cursor - start)};
+}
+
+static const SlSloppyFfiLibraryConfig*
+sl_package_find_ffi_library_config(const SlSloppyRunConfig* config, SlStr name)
+{
+    if (config == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < config->ffi_library_count; index += 1U) {
+        if (sl_str_equal(name, sl_str_from_cstr(config->ffi_libraries[index].name))) {
+            return &config->ffi_libraries[index];
+        }
+    }
+    return NULL;
+}
+
+static bool sl_package_native_library_source_path(char* buffer, size_t capacity,
+                                                  const char* config_dir,
+                                                  const SlSloppyFfiLibraryConfig* library)
+{
+    if (buffer == NULL || capacity == 0U || library == NULL || library->path[0] == '\0') {
+        return false;
+    }
+    if (config_dir == NULL || config_dir[0] == '\0') {
+        return sl_cli_copy_cstr(buffer, capacity, library->path);
+    }
+    return sl_run_join_path(buffer, capacity, config_dir, sl_cli_span_cstr(library->path));
+}
+
+static int sl_package_copy_native_libraries(const char* package_dir, const char* config_dir,
+                                            const SlRunApp* app,
+                                            const SlSloppyRunConfig* project_config)
+{
+    char native_dir[SL_RUN_PATH_MAX_BYTES];
+    SlStatus status;
+
+    if (app == NULL || app->plan.ffi_library_count == 0U) {
+        return 0;
+    }
+    if (!sl_run_artifact_file_path(native_dir, sizeof(native_dir), package_dir, "artifacts/native"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy package: native library path is too long\n");
+        return 1;
+    }
+    status = sl_fs_create_directory(sl_str_from_cstr(native_dir), true, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value(
+            "sloppy package: failed to create native directory: ", native_dir, "\n");
+        return 1;
+    }
+    for (size_t index = 0U; index < app->plan.ffi_library_count; index += 1U) {
+        const SlPlanFfiLibrary* plan_library = &app->plan.ffi_libraries[index];
+        const SlSloppyFfiLibraryConfig* config =
+            sl_package_find_ffi_library_config(project_config, plan_library->name);
+        char source_path[SL_RUN_PATH_MAX_BYTES];
+        char target_path[SL_RUN_PATH_MAX_BYTES];
+        SlCliSpan leaf = {0};
+
+        if (config == NULL) {
+            continue;
+        }
+        if (!sl_package_native_library_source_path(source_path, sizeof(source_path), config_dir,
+                                                   config))
+        {
+            sl_cli_write_cstr(stderr, "sloppy package: native library source path is too long\n");
+            return 1;
+        }
+        leaf = sl_package_path_leaf(config->path);
+        if (sl_cli_span_empty(leaf) ||
+            !sl_run_join_path(target_path, sizeof(target_path), native_dir, leaf))
+        {
+            sl_cli_write_cstr(stderr, "sloppy package: native library target path is too long\n");
+            return 1;
+        }
+        status = sl_fs_copy_file(sl_str_from_cstr(source_path), sl_str_from_cstr(target_path), true,
+                                 NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_error_with_value(
+                "sloppy package: failed to copy native library: ", source_path, "\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder,
+                                                        const char* artifact_dir_name,
+                                                        const char* config_dir, const SlRunApp* app,
+                                                        const SlSloppyRunConfig* project_config)
+{
+    if (builder == NULL || app == NULL || app->plan.ffi_library_count == 0U) {
+        return true;
+    }
+    size_t mapped_count = 0U;
+    size_t emitted_count = 0U;
+    for (size_t index = 0U; index < app->plan.ffi_library_count; index += 1U) {
+        if (sl_package_find_ffi_library_config(project_config,
+                                               app->plan.ffi_libraries[index].name) != NULL)
+        {
+            mapped_count += 1U;
+        }
+    }
+    if (mapped_count == 0U) {
+        return true;
+    }
+    if (!sl_status_is_ok(
+            sl_string_builder_append_cstr(builder, ",\n  \"native\": {\n    \"libraries\": [")))
+    {
+        return false;
+    }
+    for (size_t index = 0U; index < app->plan.ffi_library_count; index += 1U) {
+        const SlPlanFfiLibrary* plan_library = &app->plan.ffi_libraries[index];
+        const SlSloppyFfiLibraryConfig* config =
+            sl_package_find_ffi_library_config(project_config, plan_library->name);
+        SlCliSpan leaf = config == NULL ? (SlCliSpan){0} : sl_package_path_leaf(config->path);
+        char native_path_storage[SL_RUN_PATH_MAX_BYTES];
+        SlStringBuilder native_path_builder = {0};
+        SlStr native_path = {0};
+        char source_path[SL_RUN_PATH_MAX_BYTES];
+        char sha256[sizeof("sha256:") + 64U];
+        if (config == NULL) {
+            continue;
+        }
+        if (sl_cli_span_empty(leaf) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(
+                builder, emitted_count == 0U ? "\n      { \"id\": " : ",\n      { \"id\": ")) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(plan_library->name)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"platform\": ")) ||
+            !sl_cli_json_builder_append_string(builder,
+                                               sl_cli_span_from_str(app->plan.target.platform)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"path\": ")) ||
+            !sl_status_is_ok(sl_string_builder_init_fixed(&native_path_builder, native_path_storage,
+                                                          sizeof(native_path_storage))) ||
+            !sl_status_is_ok(
+                sl_string_builder_append_cstr(&native_path_builder, artifact_dir_name)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&native_path_builder, "/native/")))
+        {
+            return false;
+        }
+        for (size_t leaf_index = 0U; leaf_index < leaf.length; leaf_index += 1U) {
+            char ch = leaf.ptr[leaf_index];
+            if (ch == '\\') {
+                ch = '/';
+            }
+            if (!sl_status_is_ok(sl_string_builder_append_char(&native_path_builder, ch))) {
+                return false;
+            }
+        }
+        if (!sl_package_native_library_source_path(source_path, sizeof(source_path), config_dir,
+                                                   config) ||
+            !sl_run_sha256_file_hex(source_path, sha256) ||
+            !sl_status_is_ok(sl_string_builder_view_with_nul(&native_path_builder, &native_path)) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(native_path)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"sha256\": ")) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(sha256)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, " }")))
+        {
+            return false;
+        }
+        emitted_count += 1U;
+    }
+    return sl_status_is_ok(sl_string_builder_append_cstr(builder, "\n    ]\n  }"));
+}
+
 static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
-                                     const SlRunApp* app, bool has_dependency_graph)
+                                     const char* config_dir, const SlRunApp* app,
+                                     const SlSloppyRunConfig* project_config,
+                                     bool has_dependency_graph)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
     unsigned char manifest_storage[SL_PACKAGE_MANIFEST_BYTES];
@@ -116,9 +297,12 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
               sl_string_builder_append_cstr(&builder, ",\n    \"dependencyGraph\": ")) ||
           !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
                                                     sl_cli_span_cstr("deps.graph.json")))) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, "\n"
+                                                                 "  }")) ||
+        !sl_package_append_native_libraries_manifest(&builder, artifact_dir_name, config_dir, app,
+                                                     project_config) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder,
-                                                       "\n"
-                                                       "  },\n"
+                                                       ",\n"
                                                        "  \"createdBy\": \"sloppy package\"\n"
                                                        "}\n")))
     {
@@ -186,7 +370,8 @@ static int sl_package_prepare_clean_directory(const char* package_dir)
 }
 
 static int sl_package_copy_artifacts(const char* out_dir, const char* package_dir,
-                                     const SlRunApp* app)
+                                     const SlRunApp* app, const char* config_dir,
+                                     const SlSloppyRunConfig* project_config)
 {
     char artifacts_dir[SL_RUN_PATH_MAX_BYTES];
     char dependency_graph_path[SL_RUN_PATH_MAX_BYTES];
@@ -236,7 +421,14 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         has_dependency_graph = true;
     }
 
-    if (sl_package_write_manifest(package_dir, "artifacts", app, has_dependency_graph) != 0) {
+    if (sl_package_copy_native_libraries(package_dir, config_dir, app, project_config) != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+
+    if (sl_package_write_manifest(package_dir, "artifacts", config_dir, app, project_config,
+                                  has_dependency_graph) != 0)
+    {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }
@@ -304,7 +496,8 @@ static int sl_cli_command_package(const SlCliOptions* options)
             result = 1;
         }
         else {
-            result = sl_package_copy_artifacts(out_dir, package_dir, app);
+            result =
+                sl_package_copy_artifacts(out_dir, package_dir, app, config_dir, project_config);
         }
     }
     if (sl_run_shutdown_app(app) != 0 && result == 0) {

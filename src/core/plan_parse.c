@@ -467,6 +467,493 @@ static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_ffi_type_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                             const char* field_name, SlPlanFfiType* out)
+{
+    SlStr type_name = {0};
+    SlStatus status;
+
+    status = sl_plan_parse_require_string(ctx, object, field_name, true, &type_name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_ffi_type_from_str(type_name, out);
+    if (!sl_status_is_ok(status)) {
+        return sl_plan_parse_field_diag(
+            ctx, sl_plan_parse_literal("unsupported FFI type", sizeof("unsupported FFI type") - 1U),
+            sl_plan_parse_literal("FFI types must use the sloppy/ffi t namespace aliases",
+                                  sizeof("FFI types must use the sloppy/ffi t namespace aliases") -
+                                      1U));
+    }
+    return sl_status_ok();
+}
+
+static bool sl_plan_parse_ffi_struct_field_type_supported(SlPlanFfiType type)
+{
+    switch (type) {
+    case SL_PLAN_FFI_TYPE_BOOL:
+    case SL_PLAN_FFI_TYPE_I8:
+    case SL_PLAN_FFI_TYPE_U8:
+    case SL_PLAN_FFI_TYPE_I16:
+    case SL_PLAN_FFI_TYPE_U16:
+    case SL_PLAN_FFI_TYPE_I32:
+    case SL_PLAN_FFI_TYPE_U32:
+    case SL_PLAN_FFI_TYPE_I64:
+    case SL_PLAN_FFI_TYPE_U64:
+    case SL_PLAN_FFI_TYPE_ISIZE:
+    case SL_PLAN_FFI_TYPE_USIZE:
+    case SL_PLAN_FFI_TYPE_F32:
+    case SL_PLAN_FFI_TYPE_F64:
+    case SL_PLAN_FFI_TYPE_PTR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static SlStatus sl_plan_parse_ffi_convention_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                                   const char* field_name,
+                                                   SlPlanFfiCallingConvention* out)
+{
+    SlStr convention = {0};
+    SlStatus status;
+
+    status = sl_plan_parse_require_string(ctx, object, field_name, true, &convention);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_ffi_calling_convention_from_str(convention, out);
+    if (!sl_status_is_ok(status)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported FFI calling convention",
+                                  sizeof("unsupported FFI calling convention") - 1U),
+            sl_plan_parse_literal("supported FFI conventions are system, cdecl, and stdcall",
+                                  sizeof("supported FFI conventions are system, cdecl, and "
+                                         "stdcall") -
+                                      1U));
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_ffi_parameters(SlPlanParseContext* ctx, yyjson_val* object,
+                                             SlPlanFfiFunction* out)
+{
+    yyjson_val* parameters = yyjson_obj_get(object, "parameters");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanFfiType* parsed = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (parameters == NULL) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("missing FFI function parameters",
+                                  sizeof("missing FFI function parameters") - 1U),
+            sl_plan_parse_literal("native.ffi[].functions[].parameters must be an array",
+                                  sizeof("native.ffi[].functions[].parameters must be an array") -
+                                      1U));
+    }
+    if (!yyjson_is_arr(parameters)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("FFI function parameters must be a JSON array",
+                                  sizeof("FFI function parameters must be a JSON array") - 1U));
+    }
+    count = yyjson_arr_size(parameters);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanFfiType), _Alignof(SlPlanFfiType),
+                                       (void**)&parsed);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    yyjson_arr_iter_init(parameters, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlStr type_name = {0};
+        if (!yyjson_is_str(value)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("FFI parameter entries must be JSON strings",
+                                      sizeof("FFI parameter entries must be JSON strings") - 1U));
+        }
+        type_name = sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value));
+        status = sl_plan_ffi_type_from_str(type_name, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("unsupported FFI parameter type",
+                                      sizeof("unsupported FFI parameter type") - 1U),
+                sl_plan_parse_literal("FFI parameter types must use known sloppy/ffi aliases",
+                                      sizeof("FFI parameter types must use known sloppy/ffi "
+                                             "aliases") -
+                                          1U));
+        }
+        if (parsed[index] == SL_PLAN_FFI_TYPE_VOID) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("unsupported FFI parameter type",
+                                      sizeof("unsupported FFI parameter type") - 1U),
+                sl_plan_parse_literal("FFI parameter types cannot be void",
+                                      sizeof("FFI parameter types cannot be void") - 1U));
+        }
+        index += 1U;
+    }
+    out->parameters = parsed;
+    out->parameter_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_one_ffi_function(SlPlanParseContext* ctx, SlStr library_name,
+                                               yyjson_val* value, SlPlanFfiFunction* out)
+{
+    SlStatus status;
+
+    if (!yyjson_is_obj(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("each native.ffi[].functions entry must be a JSON object",
+                                  sizeof("each native.ffi[].functions entry must be a JSON "
+                                         "object") -
+                                      1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, value, "id", true, &out->id);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_copy_str(ctx->arena, library_name, &out->library);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_require_string(ctx, value, "name", true, &out->name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_require_string(ctx, value, "symbol", true, &out->symbol);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_ffi_convention_field(ctx, value, "convention", &out->convention);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_ffi_type_field(ctx, value, "return", &out->return_type);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_plan_ffi_return_type_supported(out->return_type)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported FFI return type",
+                                  sizeof("unsupported FFI return type") - 1U),
+            sl_plan_parse_literal("return cstring, utf16, bytes, and mutBytes through buffers",
+                                  sizeof("return cstring, utf16, bytes, and mutBytes through "
+                                         "buffers") -
+                                      1U));
+    }
+    return sl_plan_parse_ffi_parameters(ctx, value, out);
+}
+
+static SlStatus sl_plan_parse_ffi_functions(SlPlanParseContext* ctx, yyjson_val* object,
+                                            SlPlanFfiLibrary* out)
+{
+    yyjson_val* functions = yyjson_obj_get(object, "functions");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanFfiFunction* parsed = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (functions == NULL || !yyjson_is_arr(functions)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("native.ffi[].functions must be a JSON array",
+                                  sizeof("native.ffi[].functions must be a JSON array") - 1U));
+    }
+    count = yyjson_arr_size(functions);
+    if (count == 0U) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("missing FFI functions", sizeof("missing FFI functions") - 1U),
+            sl_plan_parse_literal("native.ffi[] entries must declare at least one function",
+                                  sizeof("native.ffi[] entries must declare at least one "
+                                         "function") -
+                                      1U));
+    }
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanFfiFunction),
+                                       _Alignof(SlPlanFfiFunction), (void**)&parsed);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    yyjson_arr_iter_init(functions, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        parsed[index] = (SlPlanFfiFunction){0};
+        status = sl_plan_parse_one_ffi_function(ctx, out->name, value, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+    out->functions = parsed;
+    out->function_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_native_ffi(SlPlanParseContext* ctx, yyjson_val* root, SlPlan* out)
+{
+    yyjson_val* native = yyjson_obj_get(root, "native");
+    yyjson_val* ffi = NULL;
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanFfiLibrary* parsed = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (native == NULL) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(native)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("native must be a JSON object",
+                                  sizeof("native must be a JSON object") - 1U));
+    }
+    ffi = yyjson_obj_get(native, "ffi");
+    if (ffi == NULL) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(ffi)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("native.ffi must be a JSON array",
+                                  sizeof("native.ffi must be a JSON array") - 1U));
+    }
+    count = yyjson_arr_size(ffi);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanFfiLibrary),
+                                       _Alignof(SlPlanFfiLibrary), (void**)&parsed);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    yyjson_arr_iter_init(ffi, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_obj(value)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("each native.ffi entry must be a JSON object",
+                                      sizeof("each native.ffi entry must be a JSON object") - 1U));
+        }
+        parsed[index] = (SlPlanFfiLibrary){0};
+        status = sl_plan_parse_require_string(ctx, value, "name", true, &parsed[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_plan_parse_ffi_convention_field(ctx, value, "convention", &parsed[index].convention);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_parse_ffi_functions(ctx, value, &parsed[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+    out->ffi_libraries = parsed;
+    out->ffi_library_count = count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_native_ffi_structs(SlPlanParseContext* ctx, yyjson_val* root,
+                                                 SlPlan* out)
+{
+    yyjson_val* native = yyjson_obj_get(root, "native");
+    yyjson_val* structs = NULL;
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanFfiStruct* parsed = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (native == NULL || !yyjson_is_obj(native)) {
+        return sl_status_ok();
+    }
+    structs = yyjson_obj_get(native, "ffiStructs");
+    if (structs == NULL) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(structs)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("native.ffiStructs must be a JSON array",
+                                  sizeof("native.ffiStructs must be a JSON array") - 1U));
+    }
+    count = yyjson_arr_size(structs);
+    if (count == 0U) {
+        return sl_status_ok();
+    }
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlPlanFfiStruct),
+                                       _Alignof(SlPlanFfiStruct), (void**)&parsed);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    yyjson_arr_iter_init(structs, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* fields = NULL;
+        yyjson_val* field = NULL;
+        yyjson_arr_iter field_iter;
+        SlPlanFfiStructField* parsed_fields = NULL;
+        size_t field_count = 0U;
+        size_t field_index = 0U;
+
+        if (!yyjson_is_obj(value)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("each native.ffiStructs entry must be a JSON object",
+                                      sizeof("each native.ffiStructs entry must be a JSON "
+                                             "object") -
+                                          1U));
+        }
+        parsed[index] = (SlPlanFfiStruct){0};
+        status = sl_plan_parse_require_string(ctx, value, "name", true, &parsed[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_parse_optional_string(ctx, value, "layout", true, &parsed[index].layout);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (parsed[index].layout.length == 0U) {
+            parsed[index].layout = sl_str_from_cstr("sequential");
+        }
+        if (!sl_str_equal(parsed[index].layout, sl_str_from_cstr("sequential"))) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("unsupported FFI struct layout",
+                                      sizeof("unsupported FFI struct layout") - 1U),
+                sl_plan_parse_literal("native.ffiStructs only supports sequential layout",
+                                      sizeof("native.ffiStructs only supports sequential "
+                                             "layout") -
+                                          1U));
+        }
+        {
+            yyjson_val* pack = yyjson_obj_get(value, "pack");
+            uint64_t parsed_pack = 0U;
+            if (pack != NULL) {
+                if (!yyjson_is_uint(pack)) {
+                    return sl_plan_parse_field_diag(
+                        ctx,
+                        sl_plan_parse_literal("invalid app plan field type",
+                                              sizeof("invalid app plan field type") - 1U),
+                        sl_plan_parse_literal("native.ffiStructs[].pack must be an integer",
+                                              sizeof("native.ffiStructs[].pack must be an "
+                                                     "integer") -
+                                                  1U));
+                }
+                parsed_pack = yyjson_get_uint(pack);
+                if (!(parsed_pack == 1U || parsed_pack == 2U || parsed_pack == 4U ||
+                      parsed_pack == 8U || parsed_pack == 16U))
+                {
+                    return sl_plan_parse_field_diag(
+                        ctx,
+                        sl_plan_parse_literal("unsupported FFI struct packing",
+                                              sizeof("unsupported FFI struct packing") - 1U),
+                        sl_plan_parse_literal("native.ffiStructs[].pack must be 1, 2, 4, 8, or 16",
+                                              sizeof("native.ffiStructs[].pack must be 1, 2, 4, "
+                                                     "8, or 16") -
+                                                  1U));
+                }
+                parsed[index].pack = (uint32_t)parsed_pack;
+                parsed[index].has_pack = true;
+            }
+        }
+        fields = yyjson_obj_get(value, "fields");
+        if (fields == NULL || !yyjson_is_arr(fields) || yyjson_arr_size(fields) == 0U) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("native.ffiStructs[].fields must be a non-empty array",
+                                      sizeof("native.ffiStructs[].fields must be a non-empty "
+                                             "array") -
+                                          1U));
+        }
+        field_count = yyjson_arr_size(fields);
+        status = sl_plan_parse_alloc_array(ctx, field_count, sizeof(SlPlanFfiStructField),
+                                           _Alignof(SlPlanFfiStructField), (void**)&parsed_fields);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        yyjson_arr_iter_init(fields, &field_iter);
+        while ((field = yyjson_arr_iter_next(&field_iter)) != NULL) {
+            if (!yyjson_is_obj(field)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("invalid app plan field type",
+                                          sizeof("invalid app plan field type") - 1U),
+                    sl_plan_parse_literal("FFI struct fields must be JSON objects",
+                                          sizeof("FFI struct fields must be JSON objects") - 1U));
+            }
+            status = sl_plan_parse_require_string(ctx, field, "name", true,
+                                                  &parsed_fields[field_index].name);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status =
+                sl_plan_parse_ffi_type_field(ctx, field, "type", &parsed_fields[field_index].type);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            if (!sl_plan_parse_ffi_struct_field_type_supported(parsed_fields[field_index].type)) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("unsupported FFI struct field type",
+                                          sizeof("unsupported FFI struct field type") - 1U),
+                    sl_plan_parse_literal(
+                        "FFI struct fields must be fixed-size primitive or pointer types",
+                        sizeof("FFI struct fields must be fixed-size primitive or pointer "
+                               "types") -
+                            1U));
+            }
+            field_index += 1U;
+        }
+        parsed[index].fields = parsed_fields;
+        parsed[index].field_count = field_count;
+        index += 1U;
+    }
+    out->ffi_structs = parsed;
+    out->ffi_struct_count = count;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_target(SlPlanParseContext* ctx, yyjson_val* root, SlPlanTarget* out)
 {
     yyjson_val* target = NULL;
@@ -1834,9 +2321,9 @@ static SlStatus sl_plan_parse_one_capability(SlPlanParseContext* ctx, const SlPl
                                   sizeof("unsupported app plan capability kind") - 1U),
             sl_plan_parse_literal(
                 "supported capability kinds are database, filesystem, network, queue, os, env, "
-                "process, signals, time, crypto, codec, and workers",
+                "process, signals, time, crypto, codec, workers, and ffi",
                 sizeof("supported capability kinds are database, filesystem, network, queue, os, "
-                       "env, process, signals, time, crypto, codec, and workers") -
+                       "env, process, signals, time, crypto, codec, workers, and ffi") -
                     1U));
     }
 
@@ -2072,6 +2559,15 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_capabilities(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_native_ffi(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_native_ffi_structs(ctx, root, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -1,5 +1,5 @@
 {
   "exitCode": 1,
-  "stderr": "<repoRoot>/compiler/tests/fixtures/unsupported-import-specifier/input.js:2:21: SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER: unsupported import specifier \"express\"\n  --> <repoRoot>/compiler/tests/fixtures/unsupported-import-specifier/input.js:2:21\n   |\n2 | import express from \"express\";\n   |                     ^^^^^^^^^\nhint: Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", or \"sloppy/workers\"; Sloppy does not implement Node or npm resolution.\n",
+  "stderr": "<repoRoot>/compiler/tests/fixtures/unsupported-import-specifier/input.js:2:21: SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER: unsupported import specifier \"express\"\n  --> <repoRoot>/compiler/tests/fixtures/unsupported-import-specifier/input.js:2:21\n   |\n2 | import express from \"express\";\n   |                     ^^^^^^^^^\nhint: Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution.\n",
   "stdout": ""
 }

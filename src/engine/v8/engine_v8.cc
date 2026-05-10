@@ -461,10 +461,10 @@ void sl_v8_code_cache_store(const SlV8CodeCacheProbe& probe,
     output.write(reinterpret_cast<const char*>(data->data), data->length);
 }
 
-uint32_t sl_v8_runtime_feature_mask(const SlEngineOptions* options)
+uint64_t sl_v8_runtime_feature_mask(const SlEngineOptions* options)
 {
     return options == nullptr || options->runtime_features == nullptr
-               ? 0U
+               ? UINT64_C(0)
                : options->runtime_features->active_mask;
 }
 
@@ -476,7 +476,7 @@ bool sl_v8_startup_snapshot_supported(const SlEngineOptions* options)
 uint64_t sl_v8_startup_snapshot_key(const SlEngineOptions* options)
 {
     const char* v8_version = v8::V8::GetVersion();
-    uint32_t mask = sl_v8_runtime_feature_mask(options);
+    uint64_t mask = sl_v8_runtime_feature_mask(options);
     uint64_t hash = UINT64_C(1469598103934665603);
 
     hash = sl_v8_hash_bytes(hash, "sloppy-v8-startup-snapshot-v1",
@@ -535,8 +535,8 @@ bool sl_v8_write_file(const std::filesystem::path& path, const char* data, int l
     }
 
     uint64_t temp_id = temp_counter.fetch_add(1U, std::memory_order_relaxed);
-    uint64_t tick = static_cast<uint64_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    uint64_t tick =
+        static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::path temp_path = path;
     temp_path += ".";
     temp_path += std::to_string(tick);
@@ -787,8 +787,7 @@ bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* s
     return !sources->empty();
 }
 
-bool sl_v8_source_map_cache_validation_failed(SlV8SourceMapCache* cache,
-                                              SlV8SourceMapLocation* out)
+bool sl_v8_source_map_cache_validation_failed(SlV8SourceMapCache* cache, SlV8SourceMapLocation* out)
 {
     if (cache != nullptr) {
         if (cache->doc != nullptr) {
@@ -1396,6 +1395,7 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
         !sl_v8_install_os_intrinsics(backend, context, sloppy) ||
         !sl_v8_install_codec_intrinsics(backend, context, sloppy) ||
         !sl_v8_install_workers_intrinsics(backend, context, sloppy) ||
+        !sl_v8_install_ffi_intrinsics(backend, context, sloppy) ||
         !sl_v8_install_time_intrinsics(backend, context, sloppy) ||
         !context->Global()->Set(context, sloppy_key, sloppy).FromMaybe(false))
     {
@@ -1522,6 +1522,12 @@ bool sl_v8_workers_feature_enabled(const SlV8Engine* backend)
     return backend != nullptr &&
            (!backend->has_runtime_features ||
             sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_WORKERS));
+}
+
+bool sl_v8_ffi_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_FFI);
 }
 
 bool sl_v8_needs_async_loop(const SlV8Engine* backend)
@@ -1697,6 +1703,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->filesystem_policy = options == nullptr ? nullptr : options->filesystem_policy;
     backend->logging = options == nullptr ? nullptr : options->logging;
+    backend->ffi_library_overrides = options == nullptr ? nullptr : options->ffi_library_overrides;
+    backend->ffi_library_override_count =
+        options == nullptr ? 0U : options->ffi_library_override_count;
     backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
     backend->has_runtime_features = options != nullptr && options->runtime_features != nullptr;
     if (backend->has_runtime_features) {
@@ -1725,8 +1734,21 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         return sl_v8_reset_create_arena(arena, mark, status);
     }
 
+    if (sl_v8_ffi_feature_enabled(backend)) {
+        status = sl_ffi_registry_init_from_plan(&backend->ffi_registry, arena, backend->plan,
+                                                backend->ffi_library_overrides,
+                                                backend->ffi_library_override_count, nullptr);
+        if (!sl_status_is_ok(status)) {
+            sl_resource_table_dispose(&backend->resources);
+            delete backend;
+            return sl_v8_reset_create_arena(arena, mark, status);
+        }
+        backend->ffi_registry_initialized = true;
+    }
+
     status = sl_v8_init_async_features(backend, arena);
     if (!sl_status_is_ok(status)) {
+        sl_v8_ffi_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         delete backend;
         return sl_v8_reset_create_arena(arena, mark, status);
@@ -1734,6 +1756,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
 
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (backend->allocator == nullptr) {
+        sl_v8_ffi_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->sqlite_executor_initialized) {
             sl_provider_executor_dispose(&backend->sqlite_executor);
@@ -1768,6 +1791,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     }
     backend->isolate = v8::Isolate::New(create_params);
     if (backend->isolate == nullptr) {
+        sl_v8_ffi_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->sqlite_executor_initialized) {
             sl_provider_executor_dispose(&backend->sqlite_executor);
@@ -1799,6 +1823,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         if (!startup_snapshot.active && !sl_v8_install_intrinsics(backend, context)) {
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();
+            sl_v8_ffi_dispose(backend);
             sl_resource_table_dispose(&backend->resources);
             if (backend->sqlite_executor_initialized) {
                 sl_provider_executor_dispose(&backend->sqlite_executor);
@@ -1827,6 +1852,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         backend->context.Reset();
         backend->isolate->SetData(0, nullptr);
         backend->isolate->Dispose();
+        sl_v8_ffi_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->sqlite_executor_initialized) {
             sl_provider_executor_dispose(&backend->sqlite_executor);
@@ -1886,6 +1912,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
             sl_provider_executor_dispose(&backend->fs_executor);
             backend->fs_executor_initialized = false;
         }
+        sl_v8_ffi_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->async_loop != nullptr) {
             sl_v8_workers_dispose(backend);

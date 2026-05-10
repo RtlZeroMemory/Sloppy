@@ -611,8 +611,8 @@ bool sl_v8_db_uint8_array_from_bytes(v8::Isolate* isolate, SlBytes bytes, v8::Lo
         return false;
     }
     if (bytes.length != 0U) {
-        std::copy(bytes.ptr, bytes.ptr + bytes.length,
-                  static_cast<unsigned char*>(backing->Data()));
+        auto* target = static_cast<unsigned char*>(backing->Data());
+        std::copy_n(bytes.ptr, bytes.length, target);
     }
 
     v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));

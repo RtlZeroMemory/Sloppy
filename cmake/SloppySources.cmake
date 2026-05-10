@@ -45,6 +45,8 @@ set(
     src/core/runtime_contract.c
     src/core/diagnostics.c)
 
+set(SLOPPY_FFI_SOURCES src/runtime/ffi/ffi_registry.c)
+
 set(
     SLOPPY_DATA_SOURCES
     src/data/common.c
@@ -68,6 +70,7 @@ set(
     ${SLOPPY_CORE_KERNEL_SOURCES}
     ${SLOPPY_DATA_SOURCES}
     ${SLOPPY_ENGINE_SOURCES}
+    ${SLOPPY_FFI_SOURCES}
     ${SLOPPY_PLATFORM_COMMON_SOURCES})
 
 if(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
@@ -84,7 +87,8 @@ if(WIN32)
         src/platform/win32/fs_win32.c
         src/platform/win32/net_local_win32.c
         src/platform/win32/crypto_win32.c
-        src/platform/win32/os_win32.c)
+        src/platform/win32/os_win32.c
+        src/platform/win32/dynlib_win32.c)
 else()
     set(
         SLOPPY_PLATFORM_SYSTEM_SOURCES
@@ -92,7 +96,8 @@ else()
         src/platform/posix/fs_posix.c
         src/platform/posix/net_local_posix.c
         src/platform/posix/crypto_posix.c
-        src/platform/posix/os_posix.c)
+        src/platform/posix/os_posix.c
+        src/platform/posix/dynlib_posix.c)
 endif()
 list(APPEND SLOPPY_CORE_SOURCES ${SLOPPY_PLATFORM_SYSTEM_SOURCES})
 
@@ -111,6 +116,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_workers.cc
+        src/engine/v8/intrinsics_ffi.cc
         src/engine/v8/intrinsics_db_bridge.cc
         src/engine/v8/intrinsics_sqlite.cc
         src/engine/v8/intrinsics_postgres.cc
@@ -132,6 +138,7 @@ set(
     tests/unit/core/test_checked_math.c
     tests/unit/core/test_alloc.c
     tests/unit/core/test_arena.c
+    tests/unit/core/test_alloc.c
     tests/unit/core/test_builder.c
     tests/unit/core/test_intern.c
     tests/unit/core/test_scope.c
@@ -139,6 +146,8 @@ set(
     tests/unit/core/test_capability.c
     tests/unit/core/test_execution_domain.c
     tests/unit/core/test_features.c
+    tests/unit/runtime/test_ffi_registry.c
+    tests/fixtures/ffi/sloppy_ffi_test.c
     tests/unit/core/test_crypto.c
     tests/unit/core/test_fs.c
     tests/unit/core/test_os.c
@@ -210,6 +219,7 @@ if(SLOPPY_ENABLE_V8)
         APPEND
         SLOPPY_C_LINT_SOURCES
         tests/unit/engine/test_v8_smoke.c
+        tests/unit/engine/test_v8_ffi.c
         tests/unit/engine/test_v8_owner_thread.cc
         tests/unit/engine/test_v8_async_scheduler.cc
         tests/integration/execution/test_handwritten_artifact_execution.c

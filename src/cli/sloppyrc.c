@@ -10,6 +10,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/bytes.h"
 #include "sloppy/fs.h"
+#include "sloppy/platform.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -40,6 +41,21 @@ static const char* sl_sloppyrc_command_name(const char* command_name)
 static void sl_sloppyrc_write_command_message(const char* command_name, const char* message)
 {
     fprintf(stderr, "%s: %s", sl_sloppyrc_command_name(command_name), message);
+}
+
+static const char* sl_sloppyrc_current_platform_key(void)
+{
+#if SL_PLATFORM_WINDOWS && (defined(_M_X64) || defined(__x86_64__))
+    return "windows-x64";
+#elif SL_PLATFORM_LINUX && defined(__x86_64__)
+    return "linux-x64";
+#elif SL_PLATFORM_APPLE && defined(__x86_64__)
+    return "macos-x64";
+#elif SL_PLATFORM_APPLE && defined(__aarch64__)
+    return "macos-arm64";
+#else
+    return "";
+#endif
 }
 
 static void sl_sloppyrc_write_command_error_with_value(const char* command_name,
@@ -193,7 +209,8 @@ static bool sl_sloppyrc_capability_supported(SlStr name)
            sl_str_equal(name, SL_STR_LITERAL("os")) || sl_str_equal(name, SL_STR_LITERAL("time")) ||
            sl_str_equal(name, SL_STR_LITERAL("crypto")) ||
            sl_str_equal(name, SL_STR_LITERAL("codec")) ||
-           sl_str_equal(name, SL_STR_LITERAL("workers"));
+           sl_str_equal(name, SL_STR_LITERAL("workers")) ||
+           sl_str_equal(name, SL_STR_LITERAL("ffi"));
 }
 
 static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* command_name)
@@ -209,12 +226,14 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("kind")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("capabilities")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("moduleInclude")) &&
-            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("assetInclude")))
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("assetInclude")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("ffiLibraries")))
         {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
-                "environment, kind, capabilities, moduleInclude, and assetInclude\n");
+                "environment, kind, capabilities, moduleInclude, assetInclude, and "
+                "ffiLibraries\n");
             return 1;
         }
     }
@@ -303,7 +322,7 @@ static int sl_sloppyrc_read_capabilities(yyjson_val* root, SlSloppyRunConfig* ou
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: capabilities supports fs, net, os, time, crypto, codec, "
-                "and workers\n");
+                "workers, and ffi\n");
             return 1;
         }
         if (!yyjson_is_bool(value)) {
@@ -372,6 +391,74 @@ static int sl_sloppyrc_read_include_array(yyjson_val* root, const char* field,
     return 0;
 }
 
+static int sl_sloppyrc_read_ffi_libraries(yyjson_val* root, SlSloppyRunConfig* out,
+                                          const char* command_name)
+{
+    yyjson_val* libraries = yyjson_obj_get(root, "ffiLibraries");
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+
+    if (libraries == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(libraries)) {
+        sl_sloppyrc_write_command_message(
+            command_name,
+            "invalid sloppy.json: ffiLibraries must be an object of library names to paths\n");
+        return 1;
+    }
+
+    iter = yyjson_obj_iter_with(libraries);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        yyjson_val* value = yyjson_obj_iter_get_val(key);
+        yyjson_val* path_value = value;
+        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+
+        if (value != NULL && yyjson_is_obj(value)) {
+            const char* platform_key = sl_sloppyrc_current_platform_key();
+            if (platform_key[0] == '\0') {
+                sl_sloppyrc_write_command_message(command_name,
+                                                  "invalid sloppy.json: ffiLibraries platform "
+                                                  "mapping is unsupported on this platform\n");
+                return 1;
+            }
+            path_value = yyjson_obj_get(value, platform_key);
+            if (path_value == NULL) {
+                sl_sloppyrc_write_command_message(command_name,
+                                                  "invalid sloppy.json: ffiLibraries entry is "
+                                                  "missing the current platform path\n");
+                return 1;
+            }
+        }
+        if (out->ffi_library_count >= SL_SLOPPYRC_MAX_FFI_LIBRARIES || name.length == 0U ||
+            name.length >= SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES ||
+            !sl_status_is_ok(sl_str_validate_no_nul(name)) || path_value == NULL ||
+            !yyjson_is_str(path_value) || yyjson_get_len(path_value) == 0U)
+        {
+            sl_sloppyrc_write_command_message(command_name,
+                                              "invalid sloppy.json: invalid ffiLibraries entry\n");
+            return 1;
+        }
+        for (size_t index = 0U; index < name.length; index += 1U) {
+            out->ffi_libraries[out->ffi_library_count].name[index] = name.ptr[index];
+        }
+        out->ffi_libraries[out->ffi_library_count].name[name.length] = '\0';
+        if (!sl_sloppyrc_copy_json_string(out->ffi_libraries[out->ffi_library_count].path,
+                                          sizeof(out->ffi_libraries[out->ffi_library_count].path),
+                                          path_value) ||
+            !sl_sloppyrc_entry_path_is_safe(out->ffi_libraries[out->ffi_library_count].path))
+        {
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: ffiLibraries paths must be relative project paths\n");
+            return 1;
+        }
+        out->ffi_library_count += 1U;
+    }
+
+    return 0;
+}
+
 int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
@@ -427,7 +514,8 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
                                        command_name) == 0 &&
         sl_sloppyrc_read_include_array(root, "assetInclude", out->asset_includes,
                                        &out->asset_include_count, SL_SLOPPYRC_MAX_ASSET_INCLUDES,
-                                       command_name) == 0)
+                                       command_name) == 0 &&
+        sl_sloppyrc_read_ffi_libraries(root, out, command_name) == 0)
     {
         if (strcmp(out->kind, "web") != 0 && strcmp(out->kind, "program") != 0) {
             sl_sloppyrc_write_command_message(command_name,

@@ -49,14 +49,15 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_NODE_COMPAT_OS = 29,
     SL_RUNTIME_FEATURE_NODE_COMPAT_PROCESS = 30,
     SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO = 31,
-    SL_RUNTIME_FEATURE_COUNT = 32
+    SL_RUNTIME_FEATURE_STDLIB_FFI = 32,
+    SL_RUNTIME_FEATURE_COUNT = 33
 } SlRuntimeFeatureId;
 
 #ifdef __cplusplus
-static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint32_t) * 8U),
+static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint64_t) * 8U),
               "SlRuntimeFeatureSet.active_mask must cover all runtime features");
 #else
-_Static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint32_t) * 8U),
+_Static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint64_t) * 8U),
                "SlRuntimeFeatureSet.active_mask must cover all runtime features");
 #endif
 
@@ -89,7 +90,7 @@ typedef struct SlRuntimeFeatureDescriptor
     SlStr diagnostics_name;
     SlStr stdlib_import;
     SlStr v8_intrinsic_namespace;
-    uint32_t dependencies;
+    uint64_t dependencies;
     bool available;
     bool requires_v8_intrinsics;
     bool package_include_hint;
@@ -104,7 +105,7 @@ typedef struct SlRuntimeFeatureActivation
 
 typedef struct SlRuntimeFeatureSet
 {
-    uint32_t active_mask;
+    uint64_t active_mask;
     SlRuntimeFeatureActivation activations[SL_RUNTIME_FEATURE_COUNT];
     size_t activation_count;
 } SlRuntimeFeatureSet;
@@ -123,6 +124,7 @@ typedef struct SlRuntimeFeatureAvailability
     bool stdlib_os;
     bool stdlib_http_client;
     bool stdlib_workers;
+    bool stdlib_ffi;
 } SlRuntimeFeatureAvailability;
 
 SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void);

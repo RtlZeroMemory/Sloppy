@@ -860,6 +860,22 @@ static int test_workers_code_names(void)
     return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 240);
 }
 
+static int test_ffi_code_names(void)
+{
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_FFI_RUNTIME_UNAVAILABLE, "SLOPPY_E_FFI_RUNTIME_UNAVAILABLE"},
+        {SL_DIAG_FFI_LIBRARY_NOT_FOUND, "SLOPPY_E_FFI_LIBRARY_NOT_FOUND"},
+        {SL_DIAG_FFI_SYMBOL_NOT_FOUND, "SLOPPY_E_FFI_SYMBOL_NOT_FOUND"},
+        {SL_DIAG_FFI_UNSUPPORTED_CALLING_CONVENTION, "SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION"},
+        {SL_DIAG_FFI_INVALID_ARGUMENT_COUNT, "SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT"},
+        {SL_DIAG_FFI_INVALID_ARGUMENT_TYPE, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE"},
+        {SL_DIAG_FFI_INTEGER_OUT_OF_RANGE, "SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE"},
+        {SL_DIAG_FFI_STRING_NUL, "SLOPPY_E_FFI_STRING_NUL"},
+        {SL_DIAG_FFI_CALL_FAILED, "SLOPPY_E_FFI_CALL_FAILED"}};
+
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 260);
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -1517,7 +1533,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_FFI_CALL_FAILED; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1525,9 +1541,8 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_UNSUPPORTED_MODEL_SCHEMA + 1U)),
-            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    if (expect_str_equal(sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_FFI_CALL_FAILED + 1U)),
+                         sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
     }
@@ -2293,6 +2308,10 @@ static int test_code_name_groups(void)
         return result;
     }
     result = test_workers_code_names();
+    if (result != 0) {
+        return result;
+    }
+    result = test_ffi_code_names();
     if (result != 0) {
         return result;
     }

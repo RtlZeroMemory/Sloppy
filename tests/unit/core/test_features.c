@@ -120,6 +120,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
     availability.stdlib_workers = true;
+    availability.stdlib_ffi = true;
     return availability;
 }
 
@@ -203,13 +204,16 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_PATH);
     const SlRuntimeFeatureDescriptor* node_fs_promises =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES);
+    const SlRuntimeFeatureDescriptor* ffi =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 32) {
+    if (SL_RUNTIME_FEATURE_COUNT != 33) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
-        fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL)
+        fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL ||
+        ffi == NULL)
     {
         return 61;
     }
@@ -292,6 +296,13 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_is_empty(config->v8_intrinsic_namespace))
     {
         return 64;
+    }
+    if (!sl_str_equal(ffi->stable_id, sl_str_from_cstr("stdlib.ffi")) ||
+        !sl_str_equal(ffi->stdlib_import, sl_str_from_cstr("sloppy/ffi")) ||
+        !sl_str_equal(ffi->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.ffi")) ||
+        !ffi->requires_v8_intrinsics || !ffi->available)
+    {
+        return 76;
     }
     if (!postgres->available || !postgres->requires_v8_intrinsics ||
         !sl_str_equal(postgres->stdlib_import, sl_str_from_cstr("sloppy/providers/postgres")) ||
@@ -494,6 +505,98 @@ static int test_node_compat_required_feature_fails_without_v8(void)
     if (diag.code != SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING ||
         !sl_str_equal(diag.related[0].message, sl_str_from_cstr("v8")) ||
         !sl_str_equal(diag.related[1].message, sl_str_from_cstr("node.compat.path")))
+    {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_ffi_required_feature_activates_runtime_dependencies(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.ffi")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    availability.stdlib_ffi = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_FFI) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_ffi_plan_metadata_activates_runtime_feature(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanFfiLibrary libraries[1] = {0};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    libraries[0].name = sl_str_from_cstr("ffi-test");
+    plan.ffi_libraries = libraries;
+    plan.ffi_library_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_FFI) ||
+        diag.code != SL_DIAG_NONE)
+    {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_ffi_required_feature_fails_when_runtime_unavailable(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.ffi")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.stdlib_ffi = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.ffi")))
     {
         return 2;
     }
@@ -1335,6 +1438,9 @@ int main(void)
         test_workers_feature_diagnostic_golden,
         test_node_compat_required_features_activate_v8_dependency,
         test_node_compat_required_feature_fails_without_v8,
+        test_ffi_required_feature_activates_runtime_dependencies,
+        test_ffi_plan_metadata_activates_runtime_feature,
+        test_ffi_required_feature_fails_when_runtime_unavailable,
     };
     size_t index = 0U;
 

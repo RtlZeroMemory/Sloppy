@@ -1406,6 +1406,31 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_UNSUPPORTED_MODEL_SCHEMA:
         return sl_diag_literal("SLOPPY_E_UNSUPPORTED_MODEL_SCHEMA",
                                sizeof("SLOPPY_E_UNSUPPORTED_MODEL_SCHEMA") - 1U);
+    case SL_DIAG_FFI_RUNTIME_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_FFI_RUNTIME_UNAVAILABLE",
+                               sizeof("SLOPPY_E_FFI_RUNTIME_UNAVAILABLE") - 1U);
+    case SL_DIAG_FFI_LIBRARY_NOT_FOUND:
+        return sl_diag_literal("SLOPPY_E_FFI_LIBRARY_NOT_FOUND",
+                               sizeof("SLOPPY_E_FFI_LIBRARY_NOT_FOUND") - 1U);
+    case SL_DIAG_FFI_SYMBOL_NOT_FOUND:
+        return sl_diag_literal("SLOPPY_E_FFI_SYMBOL_NOT_FOUND",
+                               sizeof("SLOPPY_E_FFI_SYMBOL_NOT_FOUND") - 1U);
+    case SL_DIAG_FFI_UNSUPPORTED_CALLING_CONVENTION:
+        return sl_diag_literal("SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION",
+                               sizeof("SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION") - 1U);
+    case SL_DIAG_FFI_INVALID_ARGUMENT_COUNT:
+        return sl_diag_literal("SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT",
+                               sizeof("SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT") - 1U);
+    case SL_DIAG_FFI_INVALID_ARGUMENT_TYPE:
+        return sl_diag_literal("SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE",
+                               sizeof("SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE") - 1U);
+    case SL_DIAG_FFI_INTEGER_OUT_OF_RANGE:
+        return sl_diag_literal("SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE",
+                               sizeof("SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE") - 1U);
+    case SL_DIAG_FFI_STRING_NUL:
+        return sl_diag_literal("SLOPPY_E_FFI_STRING_NUL", sizeof("SLOPPY_E_FFI_STRING_NUL") - 1U);
+    case SL_DIAG_FFI_CALL_FAILED:
+        return sl_diag_literal("SLOPPY_E_FFI_CALL_FAILED", sizeof("SLOPPY_E_FFI_CALL_FAILED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

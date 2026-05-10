@@ -118,14 +118,12 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         sl_cli_write_cstr(stderr, "sloppy routes: --plan <path> is required\n");
         return 1;
     }
-    if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
-    {
+    if (!sl_status_is_ok(sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES))) {
         sl_cli_write_cstr(stderr, "sloppy routes: failed to initialize plan validation arena\n");
         return 1;
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             metadata) != 0)
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc, metadata) !=
+        0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
@@ -222,12 +220,36 @@ static void sl_cli_capabilities_emit_json_declared(const SlCliCapability* capabi
 
 static void sl_cli_capabilities_emit_text_declared(const SlCliCapability* capability)
 {
-    printf("PLAN  %.*s  %.*s  %.*s  declared  ", (int)capability->token.length,
-           capability->token.ptr, (int)capability->kind.length, capability->kind.ptr,
-           (int)capability->access.length, capability->access.ptr);
+    printf("PLAN  %.*s  %.*s  %.*s  declared", (int)capability->token.length, capability->token.ptr,
+           (int)capability->kind.length, capability->kind.ptr, (int)capability->access.length,
+           capability->access.ptr);
     if (!sl_cli_span_empty(capability->provider)) {
-        printf("%.*s", (int)capability->provider.length, capability->provider.ptr);
+        printf("  %.*s", (int)capability->provider.length, capability->provider.ptr);
     }
+    printf("\n");
+}
+
+static void sl_cli_capabilities_emit_json_ffi(const SlCliFfiFunction* function,
+                                              size_t finding_count)
+{
+    printf("%s\n    { \"token\": ", finding_count == 0U ? "" : ",");
+    sl_cli_json_escape(stdout, function->id);
+    printf(
+        ", \"kind\": \"ffi\", \"access\": \"use\", \"inference\": \"native-ffi\", \"library\": ");
+    sl_cli_json_escape(stdout, function->library);
+    printf(", \"symbol\": ");
+    sl_cli_json_escape(stdout, function->symbol);
+    printf(" }");
+}
+
+static void sl_cli_capabilities_emit_text_ffi(const SlCliFfiFunction* function)
+{
+    printf("PLAN  ");
+    sl_cli_write_span(stdout, function->id);
+    printf("  ffi  use  native-ffi  ");
+    sl_cli_write_span(stdout, function->library);
+    printf(":");
+    sl_cli_write_span(stdout, function->symbol);
     printf("\n");
 }
 
@@ -256,21 +278,20 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
     SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t route_index = 0U;
     size_t capability_index = 0U;
+    size_t ffi_index = 0U;
     size_t finding_count = 0U;
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy capabilities: --plan <path> is required\n");
         return 1;
     }
-    if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES)))
-    {
+    if (!sl_status_is_ok(sl_arena_init(&plan_arena, plan_arena_storage, SL_CLI_ARENA_BYTES))) {
         sl_cli_write_cstr(stderr,
                           "sloppy capabilities: failed to initialize plan validation arena\n");
         return 1;
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
-                             metadata) != 0)
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc, metadata) !=
+        0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
@@ -294,6 +315,15 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
         }
         else {
             sl_cli_capabilities_emit_text_declared(&metadata->capabilities[capability_index]);
+        }
+        finding_count += 1U;
+    }
+    for (ffi_index = 0U; ffi_index < metadata->ffi_function_count; ffi_index += 1U) {
+        if (options->format == SL_CLI_FORMAT_JSON) {
+            sl_cli_capabilities_emit_json_ffi(&metadata->ffi_functions[ffi_index], finding_count);
+        }
+        else {
+            sl_cli_capabilities_emit_text_ffi(&metadata->ffi_functions[ffi_index]);
         }
         finding_count += 1U;
     }

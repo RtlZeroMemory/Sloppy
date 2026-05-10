@@ -21,6 +21,8 @@ remain explicit forms for scripts.
 - provider metadata shape;
 - provider/capability consistency;
 - filesystem and network capability visibility.
+- native FFI unsafe-boundary visibility, function metadata shape, and duplicate
+  FFI function IDs.
 - partial/dynamic route metadata findings emitted by the compiler.
 - dependency graph presence and dependency compatibility findings.
 

@@ -237,6 +237,91 @@ static int test_program_kind_allows_empty_handlers_and_routes(void)
     return 0;
 }
 
+static int test_native_ffi_metadata_parses_typed_libraries_and_structs(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[],"
+        "\"native\":{\"ffi\":[{\"name\":\"ffi-test\",\"convention\":\"system\","
+        "\"functions\":[{\"id\":\"ffi:ffi-test:addI32\",\"name\":\"addI32\","
+        "\"symbol\":\"sloppy_ffi_add_i32\",\"convention\":\"system\",\"return\":\"i32\","
+        "\"parameters\":[\"i32\",\"i32\"]},"
+        "{\"id\":\"ffi:ffi-test:enabled\",\"name\":\"enabled\","
+        "\"symbol\":\"sloppy_ffi_enabled\",\"convention\":\"system\",\"return\":\"bool32\","
+        "\"parameters\":[\"win.BOOL\"]}]}],"
+        "\"ffiStructs\":[{\"name\":\"Point\",\"layout\":\"sequential\",\"pack\":4,"
+        "\"fields\":[{\"name\":\"x\",\"type\":\"i32\"},"
+        "{\"name\":\"y\",\"type\":\"i32\"}]}]}}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 1;
+    }
+    if (plan.ffi_library_count != 1U || plan.ffi_libraries[0].function_count != 2U ||
+        !sl_str_equal(plan.ffi_libraries[0].name, sl_str_from_cstr("ffi-test")) ||
+        plan.ffi_libraries[0].functions[0].return_type != SL_PLAN_FFI_TYPE_I32 ||
+        plan.ffi_libraries[0].functions[0].parameter_count != 2U ||
+        plan.ffi_libraries[0].functions[0].parameters[0] != SL_PLAN_FFI_TYPE_I32 ||
+        plan.ffi_libraries[0].functions[0].parameters[1] != SL_PLAN_FFI_TYPE_I32)
+    {
+        return 2;
+    }
+    if (plan.ffi_libraries[0].functions[1].return_type != SL_PLAN_FFI_TYPE_I32 ||
+        plan.ffi_libraries[0].functions[1].parameter_count != 1U ||
+        plan.ffi_libraries[0].functions[1].parameters[0] != SL_PLAN_FFI_TYPE_I32)
+    {
+        return 4;
+    }
+    if (plan.ffi_struct_count != 1U || plan.ffi_structs[0].field_count != 2U ||
+        !sl_str_equal(plan.ffi_structs[0].name, sl_str_from_cstr("Point")) ||
+        !sl_str_equal(plan.ffi_structs[0].layout, sl_str_from_cstr("sequential")) ||
+        !plan.ffi_structs[0].has_pack || plan.ffi_structs[0].pack != 4U ||
+        plan.ffi_structs[0].fields[0].type != SL_PLAN_FFI_TYPE_I32 ||
+        plan.ffi_structs[0].fields[1].type != SL_PLAN_FFI_TYPE_I32)
+    {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_native_ffi_function_parameters_reject_void(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[],"
+        "\"native\":{\"ffi\":[{\"name\":\"ffi-test\",\"convention\":\"system\","
+        "\"functions\":[{\"id\":\"ffi:ffi-test:bad\","
+        "\"name\":\"bad\",\"symbol\":\"sloppy_bad\",\"convention\":\"system\","
+        "\"return\":\"void\",\"parameters\":[\"void\"]}]}]}}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "unsupported FFI parameter type");
+}
+
+static int test_native_ffi_struct_fields_reject_unsized_types(void)
+{
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"kind\":\"program\",\"compilerVersion\":\"sloppyc-placeholder\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
+        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
+        "\"hash\":\"test-only\"},\"handlers\":[],\"routes\":[],"
+        "\"native\":{\"ffiStructs\":[{\"name\":\"Bad\",\"fields\":[{\"name\":\"name\","
+        "\"type\":\"cstring\"}]}]}}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD,
+        "unsupported FFI struct field type");
+}
+
 static int test_program_kind_rejects_non_empty_handlers(void)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
@@ -1302,6 +1387,23 @@ int main(void)
     result = test_program_kind_allows_empty_handlers_and_routes();
     if (result != 0) {
         fprintf(stderr, "test_program_kind_allows_empty_handlers_and_routes failed: %d\n", result);
+        return result;
+    }
+
+    result = test_native_ffi_metadata_parses_typed_libraries_and_structs();
+    if (result != 0) {
+        fprintf(stderr, "test_native_ffi_metadata_parses_typed_libraries_and_structs failed: %d\n",
+                result);
+        return result;
+    }
+    result = test_native_ffi_function_parameters_reject_void();
+    if (result != 0) {
+        fprintf(stderr, "test_native_ffi_function_parameters_reject_void failed: %d\n", result);
+        return result;
+    }
+    result = test_native_ffi_struct_fields_reject_unsized_types();
+    if (result != 0) {
+        fprintf(stderr, "test_native_ffi_struct_fields_reject_unsized_types failed: %d\n", result);
         return result;
     }
 

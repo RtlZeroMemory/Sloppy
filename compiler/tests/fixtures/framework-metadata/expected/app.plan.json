@@ -660,6 +660,7 @@
       "bindings": true,
       "capabilities": true,
       "effects": false,
+      "ffi": false,
       "os": true,
       "providers": true,
       "routes": true,

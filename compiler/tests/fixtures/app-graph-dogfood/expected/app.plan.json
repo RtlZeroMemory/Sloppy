@@ -921,6 +921,7 @@
       "bindings": true,
       "capabilities": true,
       "effects": true,
+      "ffi": false,
       "health": true,
       "os": true,
       "providers": true,

@@ -22,6 +22,8 @@ discipline, tests, sanitizers, fuzzing, and review.
 - Data crossing the JS/native boundary is copied when lifetimes differ.
 - JS-visible native resources use opaque slot/generation handles, not native
   pointers.
+- JS-visible FFI resources use opaque bridge objects; `.ptr` is a passable
+  resource alias, not a numeric native address.
 - Async completions settle JS-visible state at most once on the V8 owner thread.
 - HTTP/2 stream state must be independent inside a shared connection/session.
 
@@ -58,6 +60,7 @@ discipline, tests, sanitizers, fuzzing, and review.
 | Request dispatch | Request context, request arena, request scope cleanups | One request/stream |
 | V8 bridge | Isolate, context, persistent bridge state, JS heap references | Engine lifetime |
 | Resource table | Opaque native handles visible to JS | Resource table lifetime, per handle until close |
+| FFI registry/resources | Cached library/symbol/call descriptors and owned ref/buffer/struct storage | Engine lifetime; individual resources until `dispose()` |
 | Async backend | Completion records, readiness watches, cleanup hooks | Loop/resource lifetime |
 | Logging runtime | Fixed event records, bounded queue, sinks | App run |
 | Platform layer | OS/libuv/OpenSSL/driver objects behind Sloppy APIs | Owning resource lifetime |

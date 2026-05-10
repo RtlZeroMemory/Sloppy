@@ -7,7 +7,7 @@ static int expect_true(int condition)
     return condition ? 0 : 1;
 }
 
-int main(void)
+static int test_alloc_bytes(void)
 {
     unsigned char* ptr = NULL;
     SlStatus status = sl_status_ok();
@@ -36,4 +36,56 @@ int main(void)
     sl_alloc_release(ptr);
     sl_alloc_release(NULL);
     return 0;
+}
+
+static int test_heap_buffer_invalid_arguments(void)
+{
+    SlHeapBuffer buffer = {0};
+
+    if (sl_status_code(sl_heap_buffer_alloc(NULL, 16U)) != SL_STATUS_INVALID_ARGUMENT) {
+        return 1;
+    }
+    if (sl_status_code(sl_heap_buffer_alloc(&buffer, 0U)) != SL_STATUS_INVALID_ARGUMENT) {
+        return 1;
+    }
+    if (buffer.ptr != NULL || buffer.length != 0U) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int test_heap_buffer_alloc_and_dispose(void)
+{
+    SlHeapBuffer buffer = {0};
+    size_t index = 0U;
+
+    if (!sl_status_is_ok(sl_heap_buffer_alloc(&buffer, 32U))) {
+        return 1;
+    }
+    if (buffer.ptr == NULL || buffer.length != 32U) {
+        sl_heap_buffer_dispose(&buffer);
+        return 1;
+    }
+    for (index = 0U; index < buffer.length; index += 1U) {
+        buffer.ptr[index] = (unsigned char)index;
+    }
+    sl_heap_buffer_dispose(&buffer);
+    if (buffer.ptr != NULL || buffer.length != 0U) {
+        return 1;
+    }
+    sl_heap_buffer_dispose(NULL);
+
+    return 0;
+}
+
+int main(void)
+{
+    if (test_alloc_bytes() != 0) {
+        return 1;
+    }
+    if (test_heap_buffer_invalid_arguments() != 0) {
+        return 2;
+    }
+    return test_heap_buffer_alloc_and_dispose();
 }

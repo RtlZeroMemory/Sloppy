@@ -1,0 +1,5 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_FFI_PLAN_VISIBLE sloppy/ffi is Plan-visible as stdlib.ffi (requiredFeatures)
+[warn] SLOPPY_AUDIT_FFI_UNSAFE_BOUNDARY native FFI libraries execute in-process and must be trusted local artifacts (native.ffi)
+[note] SLOPPY_AUDIT_FFI_NO_RAW_POINTERS FFI metadata exposes symbols and typed signatures, not raw pointer addresses (native.ffi)

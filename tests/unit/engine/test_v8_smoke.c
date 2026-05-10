@@ -177,8 +177,7 @@ static int make_test_cache_dir(char* buffer, size_t capacity, const char* prefix
         return 1;
     }
 
-    written = snprintf(buffer, capacity, "artifacts/%s-%lu-%u", prefix, test_process_id(),
-                       counter);
+    written = snprintf(buffer, capacity, "artifacts/%s-%lu-%u", prefix, test_process_id(), counter);
     counter += 1U;
     return expect_format_complete(written, capacity);
 }
@@ -3267,8 +3266,7 @@ cleanup:
         sl_fs_delete_directory(sl_str_from_cstr(code_cache_dir), true, NULL);
     }
     if (snapshot_env_captured &&
-        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 &&
-        return_code == 0)
+        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 && return_code == 0)
     {
         return_code = 72;
     }
@@ -3295,7 +3293,12 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
     char snapshot_dir[256] = {0};
     bool snapshot_env_captured = false;
     int return_code = 0;
-    const uint32_t all_features_mask = (UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1);
+    /*
+     * FFI needs Plan-backed registry state and is covered by
+     * conformance.v8.ffi_native, not startup snapshot caching.
+     */
+    const uint64_t all_features_mask = ((UINT64_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT64_C(1)) &
+                                       ~(UINT64_C(1) << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_FFI);
     const char* probe_source =
         "if (typeof __sloppy.time.monotonicMs !== 'function') throw new Error('missing time');"
         "if (typeof __sloppy.crypto.randomUuid !== 'function') throw new Error('missing crypto');"
@@ -3338,7 +3341,7 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
         expect_status(sl_engine_eval_source(first, sl_str_from_cstr("v8-snapshot-native-a.js"),
-                                           sl_str_from_cstr(probe_source), &diag),
+                                            sl_str_from_cstr(probe_source), &diag),
                       SL_STATUS_OK) != 0)
     {
         return_code = 69;
@@ -3353,7 +3356,7 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
         expect_status(sl_engine_eval_source(second, sl_str_from_cstr("v8-snapshot-native-b.js"),
-                                           sl_str_from_cstr(probe_source), &diag),
+                                            sl_str_from_cstr(probe_source), &diag),
                       SL_STATUS_OK) != 0)
     {
         return_code = 70;
@@ -3362,12 +3365,12 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
     sl_engine_destroy(second);
     second = NULL;
 
-    features.active_mask = all_features_mask &
-                           ~(UINT32_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
+    features.active_mask =
+        all_features_mask & ~(UINT64_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
     if (expect_status(sl_engine_create(&options, &engine_arena, &third), SL_STATUS_OK) != 0 ||
         expect_status(sl_engine_eval_source(third,
-                                           sl_str_from_cstr("v8-snapshot-native-reduced-mask.js"),
-                                           sl_str_from_cstr(reduced_mask_probe_source), &diag),
+                                            sl_str_from_cstr("v8-snapshot-native-reduced-mask.js"),
+                                            sl_str_from_cstr(reduced_mask_probe_source), &diag),
                       SL_STATUS_OK) != 0)
     {
         return_code = 76;
@@ -3389,8 +3392,7 @@ cleanup:
         sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
     }
     if (snapshot_env_captured &&
-        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 &&
-        return_code == 0)
+        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 && return_code == 0)
     {
         return_code = 75;
     }

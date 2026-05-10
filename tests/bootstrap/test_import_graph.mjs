@@ -10,6 +10,7 @@ const modules = [
     "data.js",
     "codec.js",
     "crypto.js",
+    "ffi.js",
     "fs.js",
     "net.js",
     "os.js",

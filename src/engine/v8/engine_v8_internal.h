@@ -13,6 +13,7 @@
 #include "../engine_internal.h"
 
 #include "sloppy/features.h"
+#include "sloppy/ffi.h"
 #include "sloppy/async_backend.h"
 #include "sloppy/logging.h"
 #include "sloppy/provider_executor.h"
@@ -233,6 +234,11 @@ struct SlV8Engine
     std::mutex workers_mutex;
     std::vector<std::shared_ptr<SlV8WorkerRequest>> worker_requests;
     std::vector<std::shared_ptr<SlV8JsWorker>> js_workers;
+    SlFfiRegistry ffi_registry = {};
+    const SlFfiLibraryOverride* ffi_library_overrides = nullptr;
+    size_t ffi_library_override_count = 0U;
+    bool ffi_registry_initialized = false;
+    std::vector<void*> ffi_resources;
     uint32_t next_worker_id = 1U;
     bool workers_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
@@ -281,6 +287,10 @@ bool sl_v8_install_workers_intrinsics(SlV8Engine* backend, v8::Local<v8::Context
                                       v8::Local<v8::Object> sloppy);
 void sl_v8_append_workers_external_references(std::vector<intptr_t>* refs);
 void sl_v8_workers_dispose(SlV8Engine* backend);
+
+bool sl_v8_install_ffi_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                  v8::Local<v8::Object> sloppy);
+void sl_v8_ffi_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

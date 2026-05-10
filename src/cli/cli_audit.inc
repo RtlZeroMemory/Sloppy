@@ -511,6 +511,52 @@ static void sl_cli_audit_workers(const SlCliOptions* options, const SlCliMetadat
                       "workers", findings, errors);
 }
 
+static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* metadata,
+                             size_t* findings, size_t* errors)
+{
+    bool has_ffi_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.ffi");
+
+    if (!has_ffi_feature && metadata->ffi_library_count == 0U && metadata->ffi_struct_count == 0U) {
+        return;
+    }
+
+    if (has_ffi_feature) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_PLAN_VISIBLE",
+                          "sloppy/ffi is Plan-visible as stdlib.ffi", "requiredFeatures", findings,
+                          errors);
+    }
+    if (metadata->ffi_library_count > 0U) {
+        sl_cli_audit_emit(
+            options, "warn", "SLOPPY_AUDIT_FFI_UNSAFE_BOUNDARY",
+            "native FFI libraries execute in-process and must be trusted local artifacts",
+            "native.ffi", findings, errors);
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_NO_RAW_POINTERS",
+                          "FFI metadata exposes symbols and typed signatures, not raw pointer "
+                          "addresses",
+                          "native.ffi", findings, errors);
+    }
+    for (size_t outer = 0U; outer < metadata->ffi_function_count; outer += 1U) {
+        const SlCliFfiFunction* function = &metadata->ffi_functions[outer];
+        if (sl_cli_span_empty(function->id) || sl_cli_span_empty(function->library) ||
+            sl_cli_span_empty(function->name) || sl_cli_span_empty(function->symbol) ||
+            sl_cli_span_empty(function->return_type))
+        {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_FFI_FUNCTION_INCOMPLETE",
+                              "native FFI function metadata is incomplete", "native.ffi", findings,
+                              errors);
+        }
+        for (size_t inner = outer + 1U; inner < metadata->ffi_function_count; inner += 1U) {
+            if (!sl_cli_span_empty(function->id) &&
+                sl_cli_span_equal(function->id, metadata->ffi_functions[inner].id))
+            {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_FFI_DUPLICATE_FUNCTION",
+                                  "duplicate native FFI function id", "native.ffi", findings,
+                                  errors);
+            }
+        }
+    }
+}
+
 static int sl_cli_command_audit(const SlCliOptions* options)
 {
     unsigned char* json_storage = sl_cli_scratch_json_storage();
@@ -553,6 +599,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_os_features(options, metadata, &findings, &errors);
     sl_cli_audit_http_clients(options, metadata, &findings, &errors);
     sl_cli_audit_workers(options, metadata, &findings, &errors);
+    sl_cli_audit_ffi(options, metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         printf("No findings.\n");

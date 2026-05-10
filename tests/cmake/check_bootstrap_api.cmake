@@ -2,6 +2,7 @@ set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
 set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
 set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
+set(ffi_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/ffi.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
@@ -20,7 +21,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -30,6 +31,7 @@ file(READ "${results_source}" results_js)
 file(READ "${schema_source}" schema_js)
 file(READ "${data_source}" data_js)
 file(READ "${codec_source}" codec_js)
+file(READ "${ffi_source}" ffi_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
@@ -237,6 +239,17 @@ foreach(required_pattern IN ITEMS
         "__sloppyWorkerResource"
         "serializePayload")
     require_substring("${workers_js}" "${required_pattern}" "workers.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export const t"
+        "export const unsafeFfi"
+        "unsafeFfi.fn"
+        "unsafeFfi.library"
+        "unsafeFfi.struct"
+        "SLOPPY_E_FFI_RUNTIME_UNAVAILABLE"
+        "Object.defineProperty")
+    require_substring("${ffi_js}" "${required_pattern}" "ffi.js is missing expected API contract pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS

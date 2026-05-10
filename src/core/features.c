@@ -9,7 +9,7 @@
 
 #include <stddef.h>
 
-#define SL_FEATURE_BIT(id) (UINT32_C(1) << (uint32_t)(id))
+#define SL_FEATURE_BIT(id) (UINT64_C(1) << (uint32_t)(id))
 #define SL_FEATURE_LIT(text) sl_feature_literal(text, sizeof(text) - 1U)
 #define SL_FEATURE_STR(text) {text, sizeof(text) - 1U}
 #define SL_FEATURE_EMPTY {NULL, 0U}
@@ -34,6 +34,8 @@
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
 #define SL_FEATURE_DEPS_NODE_COMPAT                                                                \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
+#define SL_FEATURE_DEPS_FFI                                                                        \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
 #define SL_FEATURE_V8_AVAILABLE true
@@ -47,6 +49,12 @@
 #define SL_FEATURE_SQLSERVER_AVAILABLE false
 #endif
 
+#ifdef SLOPPY_ENABLE_FFI
+#define SL_FEATURE_FFI_AVAILABLE true
+#else
+#define SL_FEATURE_FFI_AVAILABLE false
+#endif
+
 static SlStr sl_feature_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -55,7 +63,7 @@ static SlStr sl_feature_literal(const char* ptr, size_t length)
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_make(SlRuntimeFeatureId id, SlRuntimeFeatureKind kind, SlStr stable_id,
                            SlStr diagnostics_name, SlStr stdlib_import,
-                           SlStr v8_intrinsic_namespace, uint32_t dependencies, bool available,
+                           SlStr v8_intrinsic_namespace, uint64_t dependencies, bool available,
                            bool requires_v8_intrinsics, bool package_include_hint)
 {
     SlRuntimeFeatureDescriptor descriptor;
@@ -177,6 +185,17 @@ static SlRuntimeFeatureDescriptor sl_feature_node_compat_descriptor(SlRuntimeFea
                                       SL_FEATURE_DEPS_NODE_COMPAT, true, false, true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_ffi_descriptor(SlRuntimeFeatureId id, bool available)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.ffi", sizeof("stdlib.ffi") - 1U),
+        sl_feature_literal("native FFI stdlib", sizeof("native FFI stdlib") - 1U),
+        sl_feature_literal("sloppy/ffi", sizeof("sloppy/ffi") - 1U),
+        sl_feature_literal("__sloppy.ffi", sizeof("__sloppy.ffi") - 1U), SL_FEATURE_DEPS_FFI,
+        available, true, true);
+}
+
 static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
 {
     return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
@@ -245,6 +264,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool os = availability == NULL ? false : availability->stdlib_os;
     const bool http_client = availability == NULL ? false : availability->stdlib_http_client;
     const bool workers = availability == NULL ? false : availability->stdlib_workers;
+    const bool ffi = availability == NULL ? false : availability->stdlib_ffi;
 
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
@@ -323,6 +343,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_http_client_descriptor(id, http_client);
     case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
         return sl_feature_workers_descriptor(id, workers);
+    case SL_RUNTIME_FEATURE_STDLIB_FFI:
+        return sl_feature_ffi_descriptor(id, ffi);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_NODE_COMPAT_PATH:
@@ -404,6 +426,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
     availability.stdlib_workers = true;
+    availability.stdlib_ffi = SL_FEATURE_FFI_AVAILABLE;
     return availability;
 }
 
@@ -541,7 +564,11 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
         {SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("node.compat.crypto"), SL_FEATURE_STR("node:crypto compatibility shim"),
          SL_FEATURE_STR("sloppy/node/crypto"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
-         false, true}};
+         false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_FFI, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.ffi"), SL_FEATURE_STR("native FFI stdlib"),
+         SL_FEATURE_STR("sloppy/ffi"), SL_FEATURE_STR("__sloppy.ffi"), SL_FEATURE_DEPS_FFI,
+         SL_FEATURE_FFI_AVAILABLE, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;
@@ -846,6 +873,20 @@ static SlStatus sl_feature_require_plan_providers(const SlPlan* plan, SlRuntimeF
     return sl_status_ok();
 }
 
+static SlStatus sl_feature_require_plan_ffi(const SlPlan* plan, SlRuntimeFeatureSet* set,
+                                            const SlRuntimeFeatureAvailability* availability,
+                                            SlArena* diag_arena, SlDiag* out_diag)
+{
+    if (plan->ffi_library_count == 0U && plan->ffi_struct_count == 0U) {
+        return sl_status_ok();
+    }
+
+    return sl_feature_require_id(set, availability, diag_arena, SL_RUNTIME_FEATURE_STDLIB_FFI,
+                                 SL_RUNTIME_FEATURE_REASON_PLAN_REQUIRED_FEATURE,
+                                 sl_feature_literal("native.ffi", sizeof("native.ffi") - 1U),
+                                 out_diag);
+}
+
 static SlStatus sl_feature_require_plan_explicit(const SlPlan* plan, SlRuntimeFeatureSet* set,
                                                  const SlRuntimeFeatureAvailability* availability,
                                                  SlArena* diag_arena, SlDiag* out_diag)
@@ -908,6 +949,11 @@ SlStatus sl_runtime_feature_activate_plan(const SlPlan* plan,
 
     status =
         sl_feature_require_plan_providers(plan, &set, resolved_availability, diag_arena, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_feature_require_plan_ffi(plan, &set, resolved_availability, diag_arena, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }

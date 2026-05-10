@@ -1887,8 +1887,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     }
 
     if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
-        binding->handler != NULL &&
-        binding->handler->id == binding->handler_id &&
+        binding->handler != NULL && binding->handler->id == binding->handler_id &&
         !sl_str_is_empty(binding->handler->export_name))
     {
         handler = binding->handler;
