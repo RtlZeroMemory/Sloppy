@@ -69,6 +69,30 @@ Use the `startup` suite when the timing boundary is process start to first
 tools/windows/bench-realistic.ps1 -Suite startup -Runtime sloppy,node
 ```
 
+V8 script code caching is experimental and off by default. To measure it, set
+`SLOPPY_V8_CODE_CACHE_DIR` to a writable directory before running a startup
+suite. Cache files are keyed by generated source bytes, source label, cache
+format version, and the linked V8 version. If V8 rejects a cache entry, Sloppy
+falls back to normal compilation and rewrites the entry. Report whether the
+cache directory was empty, warmed, or reused; do not mix cold-cache and
+warm-cache rows.
+
+V8 startup snapshots are also experimental and off by default. To measure them,
+set `SLOPPY_V8_SNAPSHOT_DIR` to a writable directory before running a startup
+suite. Snapshot blobs are keyed by linked V8 version, snapshot format version,
+and Plan runtime feature mask. Snapshot creation and snapshot-backed isolate
+creation use the same native callback external-reference table for Sloppy
+provider, filesystem, time, crypto, codec, network, OS, HTTP client, and worker
+intrinsics. Current snapshot support also requires engine creation to receive a
+`SlRuntimeFeatureSet` through `SlEngineOptions.runtime_features`; an environment
+variable alone only requests snapshot mode. If no runtime feature set is present,
+snapshot build or read fails, or V8 rejects a blob, Sloppy falls back to normal
+context creation. Report whether the snapshot directory was empty, warmed, or
+reused, and label rows as requested snapshot mode unless the artifact shows a
+blob was created or reused. When a startup snapshot is active, Sloppy does not
+also consume or write the app-script code cache for that engine; keep snapshot
+and code-cache measurements labeled as separate startup modes.
+
 ## Reporting rules
 
 Every benchmark discussion should include:

@@ -380,8 +380,8 @@ static SlStatus sl_http_transport_add_arena_alloc_size(size_t size, size_t align
     return sl_checked_add_size(*in_out_bytes, padded, in_out_bytes);
 }
 
-static SlStatus sl_http_transport_add_arena_array_size(size_t count, size_t elem_size,
-                                                       size_t align, size_t* in_out_bytes)
+static SlStatus sl_http_transport_add_arena_array_size(size_t count, size_t elem_size, size_t align,
+                                                       size_t* in_out_bytes)
 {
     size_t size = 0U;
     SlStatus status;
@@ -406,8 +406,8 @@ static SlStatus sl_http_transport_add_cstr_copy_size(SlStr value, size_t* in_out
     return sl_http_transport_add_arena_alloc_size(size, _Alignof(uint64_t), in_out_bytes);
 }
 
-SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config,
-                                             size_t* out_bytes, SlDiag* out_diag)
+SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config, size_t* out_bytes,
+                                             SlDiag* out_diag)
 {
     SlHttpTransportConfig normalized = {0};
     SlStatus status;
@@ -428,8 +428,8 @@ SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config
         return status;
     }
 
-    status = sl_http_transport_add_arena_alloc_size(
-        sizeof(SlHttpPlatformListener), _Alignof(SlHttpPlatformListener), &total);
+    status = sl_http_transport_add_arena_alloc_size(sizeof(SlHttpPlatformListener),
+                                                    _Alignof(SlHttpPlatformListener), &total);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -455,20 +455,19 @@ SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config
     }
 
     status = sl_http_transport_add_arena_array_size(normalized.connection_capacity,
-                                                   sizeof(SlHttpTransportConnection),
-                                                   _Alignof(SlHttpTransportConnection), &total);
+                                                    sizeof(SlHttpTransportConnection),
+                                                    _Alignof(SlHttpTransportConnection), &total);
     if (!sl_status_is_ok(status)) {
         return status;
     }
     status = sl_http_transport_add_arena_array_size(normalized.connection_capacity,
-                                                   sizeof(SlHttpPlatformConnection),
-                                                   _Alignof(SlHttpPlatformConnection), &total);
+                                                    sizeof(SlHttpPlatformConnection),
+                                                    _Alignof(SlHttpPlatformConnection), &total);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_checked_mul_size(normalized.parse.max_body_length, 8U,
-                                 &chunked_wire_body_capacity);
+    status = sl_checked_mul_size(normalized.parse.max_body_length, 8U, &chunked_wire_body_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -476,10 +475,9 @@ SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    body_accumulation_capacity =
-        chunked_wire_body_capacity > normalized.parse.max_body_length
-            ? chunked_wire_body_capacity
-            : normalized.parse.max_body_length;
+    body_accumulation_capacity = chunked_wire_body_capacity > normalized.parse.max_body_length
+                                     ? chunked_wire_body_capacity
+                                     : normalized.parse.max_body_length;
     status = sl_checked_add_size(normalized.max_request_head_bytes, body_accumulation_capacity,
                                  &accumulation_capacity);
     if (!sl_status_is_ok(status)) {
@@ -1146,23 +1144,17 @@ static bool sl_http_transport_client_requested_close(const SlHttpRequestHead* he
     return sl_http_transport_connection_header_has_token(value, sl_str_from_cstr("close"));
 }
 
-static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnection* connection,
-                                                          const SlHttpResponse* response)
+static bool sl_http_transport_request_keep_alive_eligible(SlHttpTransportConnection* connection)
 {
     SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
 
-    if (connection == NULL || response == NULL || server == NULL ||
-        server->config.keep_alive_disabled)
+    if (connection == NULL || server == NULL || server->config.keep_alive_disabled)
     {
         return false;
     }
     if (server->state != SL_HTTP_TRANSPORT_SERVER_STATE_LISTENING ||
         server->backend.state != SL_HTTP_BACKEND_STATE_STARTED)
     {
-        server->server_forced_closes += 1U;
-        return false;
-    }
-    if (response->status >= 400U) {
         server->server_forced_closes += 1U;
         return false;
     }
@@ -2238,8 +2230,7 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
         return status;
     }
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
-    connection->keep_alive_after_write =
-        sl_http_transport_request_keep_alive_eligible(connection, response);
+    connection->keep_alive_after_write = sl_http_transport_request_keep_alive_eligible(connection);
     connection->close_after_write = !connection->keep_alive_after_write;
     write_options.connection = connection->keep_alive_after_write
                                    ? SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE

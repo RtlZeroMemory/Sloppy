@@ -3353,6 +3353,61 @@ static int test_keep_alive_close_disabled_http10_and_max_requests(void)
     return 0;
 }
 
+static int test_keep_alive_error_responses_reuse_connection(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 404 Not Found\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 10\r\n\r\nNot Found\n"
+        "HTTP/1.1 404 Not Found\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 10\r\n\r\nNot Found\n";
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    dispatch.status_code = SL_STATUS_OUT_OF_RANGE;
+    dispatch.diag_code = SL_DIAG_HTTP_ROUTE_NOT_FOUND;
+    config = keep_alive_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        write_client_bytes(&client, "GET /missing-a HTTP/1.1\r\nHost: local\r\n\r\n") != 0 ||
+        poll_until_connection_state(&server, &client,
+                                    SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE, 0U) != 0 ||
+        dispatch.count != 1U || server.backend.active_connections != 1U ||
+        server.backend.active_requests != 0U || server.server_forced_closes != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 336;
+    }
+
+    if (write_client_bytes(&client, "GET /missing-b HTTP/1.1\r\nHost: local\r\n\r\n") != 0 ||
+        poll_until_connection_state(&server, &client,
+                                    SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE,
+                                    sizeof(expected) - 1U) != 0 ||
+        dispatch.count != 2U || server.connections[0].core.request_count != 2U ||
+        server.backend.active_connections != 1U || server.backend.active_requests != 0U ||
+        expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length), expected) !=
+            0)
+    {
+        stop_one_connection(&server, &client);
+        return 337;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
 static int test_keep_alive_idle_timeout_closes_once(void)
 {
     unsigned char storage[65536];
@@ -4169,7 +4224,8 @@ static int run_named_transport_case(const char* name)
             test_dispatch_failures_map_to_safe_responses);
     }
     if (strcmp(name, "keep_alive") == 0) {
-        return test_keep_alive_two_sequential_requests_reuse_connection();
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_keep_alive_two_sequential_requests_reuse_connection,
+                                       test_keep_alive_error_responses_reuse_connection);
     }
     if (strcmp(name, "keep_alive_idle_timeout") == 0) {
         return test_keep_alive_idle_timeout_closes_once();
@@ -4335,6 +4391,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_keep_alive_two_sequential_requests_reuse_connection();
+    if (result != 0) {
+        return result;
+    }
+    result = test_keep_alive_error_responses_reuse_connection();
     if (result != 0) {
         return result;
     }

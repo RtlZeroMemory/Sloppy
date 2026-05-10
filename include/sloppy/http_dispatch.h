@@ -10,6 +10,7 @@
 #include "sloppy/route.h"
 #include "sloppy/status.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -29,6 +30,7 @@ typedef struct SlHttpRouteBinding
     SlHttpMethod method;
     const SlRoutePattern* pattern;
     SlHandlerId handler_id;
+    const SlPlanHandler* handler;
     size_t route_index;
 } SlHttpRouteBinding;
 
@@ -57,6 +59,10 @@ typedef struct SlHttpDispatchTable
     size_t param_route_count;
     const SlHttpRouteCandidateBucket* param_route_buckets;
     size_t param_route_bucket_count;
+    const SlHttpRouteCandidateBucket** param_route_bucket_slots;
+    size_t param_route_bucket_slot_count;
+    const SlPlan* plan;
+    bool handler_cache_trusted;
 } SlHttpDispatchTable;
 
 /*

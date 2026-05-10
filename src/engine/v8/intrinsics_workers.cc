@@ -1586,6 +1586,19 @@ void workers_v8_start_worker_callback(const v8::FunctionCallbackInfo<v8::Value>&
     args.GetReturnValue().Set(handle);
 }
 
+void sl_v8_append_workers_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_worker_invoke_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_worker_post_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_worker_on_message_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_worker_stop_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_run_pool_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(workers_v8_start_worker_callback));
+}
+
 bool sl_v8_install_workers_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                       v8::Local<v8::Object> sloppy)
 {

@@ -73,6 +73,22 @@ boundary scanners, and the way the public headers are declared.
    fields only, attach request ID and route metadata from the native
    request context, and submit through the Sloppy-owned logging runtime.
 
+## Startup snapshots
+
+`SLOPPY_V8_SNAPSHOT_DIR` enables an opt-in startup snapshot cache for
+Plan-backed V8 contexts. The blob is keyed by V8 version, an internal snapshot
+format string, and the runtime feature mask. Native callbacks reachable from
+snapshotted Sloppy intrinsics are recorded in one external reference table that
+is shared by snapshot creation and isolate creation. `Isolate::SetData(0,
+backend)` is reset after isolate creation, so callbacks resolve the current
+engine rather than snapshot-time state.
+
+Runtime state is not snapshotted. Handler maps stay C++-owned and are rebuilt
+from app evaluation through `__sloppy_register_handler`. Native resource tables,
+async queues, provider executors, filesystem policy, capability registries, and
+logging sinks are current-engine state; callback functions can be snapshot
+resident, but those runtime objects are reinitialized for each engine.
+
 ## Owner-thread model
 
 V8 isolates are single-threaded. Sloppy follows that constraint

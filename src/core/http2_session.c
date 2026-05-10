@@ -154,6 +154,23 @@ static SlHttp2ClosedStream* sl_http2_session_track_stream(SlHttp2Session* sessio
     return closed;
 }
 
+static bool sl_http2_session_accepts_rst_on_remote_closed_stream(SlHttp2Session* session,
+                                                                 const nghttp2_frame* frame,
+                                                                 int lib_error_code)
+{
+    SlHttp2ClosedStream* closed = NULL;
+
+    if (session == NULL || frame == NULL || frame->hd.type != NGHTTP2_RST_STREAM ||
+        lib_error_code != NGHTTP2_ERR_STREAM_CLOSED ||
+        !sl_http2_session_peer_initiated_stream_id(session, frame->hd.stream_id))
+    {
+        return false;
+    }
+
+    closed = sl_http2_session_find_closed_stream(session, frame->hd.stream_id);
+    return closed != NULL && closed->remote_closed;
+}
+
 static void sl_http2_session_record_remote_closed_stream(SlHttp2Session* session, int32_t stream_id)
 {
     SlHttp2ClosedStream* closed = sl_http2_session_track_stream(session, stream_id);
@@ -873,6 +890,15 @@ static int sl_http2_on_invalid_frame_recv(nghttp2_session* ng_session, const ngh
 {
     SlHttp2Session* session = (SlHttp2Session*)user_data;
     int rv = 0;
+
+    if (sl_http2_session_accepts_rst_on_remote_closed_stream(session, frame, lib_error_code)) {
+        sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
+        return sl_http2_session_callback_result(
+            session, sl_http2_session_push_event(
+                         session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
+                                                 .stream_id = frame->hd.stream_id,
+                                                 .error_code = frame->rst_stream.error_code}));
+    }
 
     if (session != NULL && ng_session != NULL && frame != NULL) {
         rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE, session->highest_peer_stream_id,

@@ -914,6 +914,12 @@ function workloadDefinitions(workloads) {
   }));
 }
 
+function startupWorkloadDefinitions(options) {
+  return options.suite === "startup" || options.suite === "all"
+    ? [{ name: "startup-health", description: "Process start to first successful GET /health response." }]
+    : [];
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const tools = detectTools(options);
@@ -924,7 +930,10 @@ async function main() {
     startedAt: new Date().toISOString(),
     host: hostInfo(),
     tools,
-    workloadDefinitions: workloadDefinitions(workloads),
+    workloadDefinitions: [
+      ...workloadDefinitions(workloads),
+      ...startupWorkloadDefinitions(options),
+    ],
     options: {
       durationSeconds: options.durationSeconds,
       warmupSeconds: options.warmupSeconds,

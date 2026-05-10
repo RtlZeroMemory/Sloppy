@@ -88,6 +88,22 @@ static int receive_bytes(SlHttp2Session* session, const unsigned char* bytes, si
     return expect_true(consumed == length);
 }
 
+static bool frame_bytes_contain_type(SlBytes bytes, SlHttp2FrameType type)
+{
+    size_t offset = 0U;
+
+    while (offset + 9U <= bytes.length) {
+        size_t length = ((size_t)bytes.ptr[offset] << 16U) |
+                        ((size_t)bytes.ptr[offset + 1U] << 8U) |
+                        (size_t)bytes.ptr[offset + 2U];
+        if ((SlHttp2FrameType)bytes.ptr[offset + 3U] == type) {
+            return true;
+        }
+        offset += 9U + length;
+    }
+    return false;
+}
+
 static int init_pair(SlArena* client_arena, SlArena* server_arena, SlHttp2Session* client,
                      SlHttp2Session* server)
 {
@@ -106,6 +122,63 @@ static int init_pair(SlArena* client_arena, SlArena* server_arena, SlHttp2Sessio
     }
     sl_http2_session_clear_events(client);
     sl_http2_session_clear_events(server);
+    return 0;
+}
+
+static int test_rst_stream_on_half_closed_remote_stream_is_accepted(void)
+{
+    unsigned char client_storage[65536];
+    unsigned char server_storage[65536];
+    SlArena client_arena = {0};
+    SlArena server_arena = {0};
+    SlHttp2Session client = {0};
+    SlHttp2Session server = {0};
+    SlHttp2HeaderField request_fields[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "https"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/cancel")};
+    SlHttp2HeaderList request_headers = {
+        .fields = request_fields, .count = sizeof(request_fields) / sizeof(request_fields[0])};
+    static const unsigned char rst_stream[] = {0x00U, 0x00U, 0x04U, 0x03U, 0x00U,
+                                               0x00U, 0x00U, 0x00U, 0x01U, 0x00U,
+                                               0x00U, 0x00U, 0x08U};
+    static const unsigned char ping[] = {0x00U, 0x00U, 0x08U, 0x06U, 0x00U, 0x00U,
+                                         0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+                                         0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
+    SlBytes output = {0};
+    int32_t stream_id = 0;
+
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_pair(&client_arena, &server_arena, &client, &server) != 0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_http2_session_submit_request(&client, &request_headers, sl_bytes_empty(),
+                                                      &stream_id),
+                      SL_STATUS_OK) != 0 ||
+        stream_id != 1 || pump(&client, &server) != 0 ||
+        receive_bytes(&server, rst_stream, sizeof(rst_stream)) != 0 ||
+        receive_bytes(&server, ping, sizeof(ping)) != 0 ||
+        expect_status(sl_http2_session_drain_output(&server, &output), SL_STATUS_OK) != 0)
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 2;
+    }
+
+    if (!frame_bytes_contain_type(output, SL_HTTP2_FRAME_PING) ||
+        frame_bytes_contain_type(output, SL_HTTP2_FRAME_GOAWAY))
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 3;
+    }
+
+    sl_http2_session_dispose(&client);
+    sl_http2_session_dispose(&server);
     return 0;
 }
 
@@ -670,6 +743,12 @@ int main(void)
     result = test_rst_stream_and_goaway_surface_as_events();
     if (result != 0) {
         fprintf(stderr, "test_rst_stream_and_goaway_surface_as_events failed: %d\n", result);
+        return result;
+    }
+    result = test_rst_stream_on_half_closed_remote_stream_is_accepted();
+    if (result != 0) {
+        fprintf(stderr,
+                "test_rst_stream_on_half_closed_remote_stream_is_accepted failed: %d\n", result);
         return result;
     }
     result = test_data_after_closed_stream_surfaces_invalid_frame_and_goaway();

@@ -1857,6 +1857,26 @@ bool sqlite_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context
 
 } /* namespace */
 
+void sl_v8_append_sqlite_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_open_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_close_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_exec_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_one_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_begin_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_commit_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_rollback_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_exec_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_one_callback));
+}
+
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data)
 {

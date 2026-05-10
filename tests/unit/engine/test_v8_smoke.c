@@ -4,6 +4,7 @@
 #include "sloppy/logging.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 static int expect_true(bool condition)
@@ -87,6 +90,116 @@ static int set_test_env(const char* key, const char* value)
 #else
     return setenv(key, value, 1);
 #endif
+}
+
+static int unset_test_env(const char* key)
+{
+#ifdef _WIN32
+    return _putenv_s(key, "");
+#else
+    return unsetenv(key);
+#endif
+}
+
+typedef struct TestEnvValue
+{
+    bool had_value;
+    char value[512];
+} TestEnvValue;
+
+static int capture_test_env(const char* key, TestEnvValue* out)
+{
+    size_t length;
+
+    if (key == NULL || out == NULL) {
+        return 1;
+    }
+
+    out->value[0] = '\0';
+#ifdef _WIN32
+    {
+        char* value = NULL;
+        errno_t env_status = _dupenv_s(&value, &length, key);
+        if (env_status != 0) {
+            return 1;
+        }
+        out->had_value = value != NULL;
+        if (value == NULL) {
+            return 0;
+        }
+        if (length == 0U || length > sizeof(out->value)) {
+            free(value);
+            return 1;
+        }
+        memcpy(out->value, value, length);
+        free(value);
+        return 0;
+    }
+#else
+    const char* value = getenv(key);
+    out->had_value = value != NULL;
+    if (value == NULL) {
+        return 0;
+    }
+
+    length = strlen(value);
+    if (length >= sizeof(out->value)) {
+        return 1;
+    }
+    memcpy(out->value, value, length + 1U);
+    return 0;
+#endif
+}
+
+static int restore_test_env(const char* key, const TestEnvValue* saved)
+{
+    if (key == NULL || saved == NULL) {
+        return 1;
+    }
+    return saved->had_value ? set_test_env(key, saved->value) : unset_test_env(key);
+}
+
+static unsigned long test_process_id(void)
+{
+#ifdef _WIN32
+    return (unsigned long)GetCurrentProcessId();
+#else
+    return (unsigned long)getpid();
+#endif
+}
+
+static int make_test_cache_dir(char* buffer, size_t capacity, const char* prefix)
+{
+    static unsigned int counter = 0U;
+    int written;
+
+    if (buffer == NULL || capacity == 0U || prefix == NULL) {
+        return 1;
+    }
+
+    written = snprintf(buffer, capacity, "artifacts/%s-%lu-%u", prefix, test_process_id(),
+                       counter);
+    counter += 1U;
+    return expect_format_complete(written, capacity);
+}
+
+static int test_directory_has_entries(SlArena* arena, const char* path)
+{
+    SlArenaMark mark;
+    SlFsDirectoryList list = {0};
+    SlStatus status;
+    SlStatus reset_status;
+    int result;
+
+    if (arena == NULL || path == NULL) {
+        return 1;
+    }
+
+    mark = sl_arena_mark(arena);
+    status = sl_fs_list_directory(arena, sl_str_from_cstr(path), &list, NULL);
+    result = sl_status_is_ok(status) && list.count > 0U ? 0 : 1;
+    reset_status = sl_arena_reset_to(arena, mark);
+    return result != 0 || !sl_status_is_ok(reset_status) ? 1 : 0;
 }
 
 static int os_child_main(int argc, char** argv)
@@ -3031,6 +3144,259 @@ static int test_create_destroy_create_reuses_process_platform(void)
     return 0;
 }
 
+static int test_startup_snapshot_rebuilds_runtime_handler_map(void)
+{
+    unsigned char engine_storage[32768];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* first = NULL;
+    SlEngine* second = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    TestEnvValue saved_snapshot_dir = {0};
+    TestEnvValue saved_code_cache_dir = {0};
+    char snapshot_dir[256] = {0};
+    char code_cache_dir[256] = {0};
+    bool snapshot_env_captured = false;
+    bool code_cache_env_captured = false;
+    int return_code = 0;
+
+    features.active_mask = UINT32_C(1) << SL_RUNTIME_FEATURE_STDLIB_APP;
+    options.runtime_features = &features;
+
+    if (capture_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0) {
+        return 63;
+    }
+    snapshot_env_captured = true;
+    if (capture_test_env("SLOPPY_V8_CODE_CACHE_DIR", &saved_code_cache_dir) != 0) {
+        return_code = 63;
+        goto cleanup;
+    }
+    code_cache_env_captured = true;
+    if (make_test_cache_dir(snapshot_dir, sizeof(snapshot_dir), "test-v8-startup-snapshot") != 0 ||
+        make_test_cache_dir(code_cache_dir, sizeof(code_cache_dir),
+                            "test-v8-startup-snapshot-code-cache") != 0)
+    {
+        return_code = 63;
+        goto cleanup;
+    }
+
+    if (snapshot_dir[0] != '\0') {
+        sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
+    }
+    if (code_cache_dir[0] != '\0') {
+        sl_fs_delete_directory(sl_str_from_cstr(code_cache_dir), true, NULL);
+    }
+    if (set_test_env("SLOPPY_V8_SNAPSHOT_DIR", snapshot_dir) != 0 ||
+        set_test_env("SLOPPY_V8_CODE_CACHE_DIR", code_cache_dir) != 0)
+    {
+        return_code = 63;
+        goto cleanup;
+    }
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return_code = 64;
+        goto cleanup;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(first, sl_str_from_cstr("v8-snapshot-register-a.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(7, function (ctx) { "
+                                                   "return ctx.request.rawTarget; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_call_registered_handler_with_context(first, &result_arena, 7U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("/users/123?q=abc")))
+    {
+        return_code = 65;
+        goto cleanup;
+    }
+
+    sl_engine_destroy(first);
+    first = NULL;
+    if (test_directory_has_entries(&engine_arena, snapshot_dir) != 0) {
+        return_code = 71;
+        goto cleanup;
+    }
+
+    result = (SlEngineResult){0};
+    sl_arena_reset(&result_arena);
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_call_registered_handler_with_context(second, &result_arena, 7U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_status(
+            sl_engine_eval_source(second, sl_str_from_cstr("v8-snapshot-register-b.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(8, function () { "
+                                                   "return 'snapshot-ok'; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_call_registered_handler_with_context(second, &result_arena, 8U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("snapshot-ok")))
+    {
+        return_code = 66;
+        goto cleanup;
+    }
+
+cleanup:
+    if (first != NULL) {
+        sl_engine_destroy(first);
+    }
+    if (second != NULL) {
+        sl_engine_destroy(second);
+    }
+    if (snapshot_dir[0] != '\0') {
+        sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
+    }
+    if (code_cache_dir[0] != '\0') {
+        sl_fs_delete_directory(sl_str_from_cstr(code_cache_dir), true, NULL);
+    }
+    if (snapshot_env_captured &&
+        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 &&
+        return_code == 0)
+    {
+        return_code = 72;
+    }
+    if (code_cache_env_captured &&
+        restore_test_env("SLOPPY_V8_CODE_CACHE_DIR", &saved_code_cache_dir) != 0 &&
+        return_code == 0)
+    {
+        return_code = 73;
+    }
+    return return_code;
+}
+
+static int test_startup_snapshot_supports_native_intrinsics(void)
+{
+    unsigned char engine_storage[65536];
+    SlArena engine_arena = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* first = NULL;
+    SlEngine* second = NULL;
+    SlEngine* third = NULL;
+    SlDiag diag = {0};
+    TestEnvValue saved_snapshot_dir = {0};
+    char snapshot_dir[256] = {0};
+    bool snapshot_env_captured = false;
+    int return_code = 0;
+    const uint32_t all_features_mask = (UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1);
+    const char* probe_source =
+        "if (typeof __sloppy.time.monotonicMs !== 'function') throw new Error('missing time');"
+        "if (typeof __sloppy.crypto.randomUuid !== 'function') throw new Error('missing crypto');"
+        "if (typeof __sloppy.codec.gzip !== 'function') throw new Error('missing codec');"
+        "if (typeof __sloppy.net.connect !== 'function') throw new Error('missing net');"
+        "if (typeof __sloppy.os.systemInfo !== 'function') throw new Error('missing os');"
+        "if (typeof __sloppy.workers.runPool !== 'function') throw new Error('missing workers');"
+        "if (typeof __sloppy.fs.exists !== 'function') throw new Error('missing fs');"
+        "if (typeof __sloppy.data.sqlite.open !== 'function') throw new Error('missing sqlite');"
+        "if (typeof __sloppy.data.postgres.open !== 'function') throw new Error('missing pg');"
+        "if (typeof __sloppy.data.sqlserver.open !== 'function') throw new Error('missing mssql');";
+    const char* reduced_mask_probe_source =
+        "if (globalThis.__sloppy && globalThis.__sloppy.data && "
+        "globalThis.__sloppy.data.sqlite) {"
+        "  throw new Error('sqlite intrinsic unexpectedly snapshotted');"
+        "}";
+
+    features.active_mask = all_features_mask;
+    options.runtime_features = &features;
+
+    if (capture_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0) {
+        return 67;
+    }
+    snapshot_env_captured = true;
+    if (make_test_cache_dir(snapshot_dir, sizeof(snapshot_dir),
+                            "test-v8-startup-snapshot-native") != 0)
+    {
+        return_code = 67;
+        goto cleanup;
+    }
+    sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
+    if (set_test_env("SLOPPY_V8_SNAPSHOT_DIR", snapshot_dir) != 0) {
+        return_code = 67;
+        goto cleanup;
+    }
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return_code = 68;
+        goto cleanup;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(first, sl_str_from_cstr("v8-snapshot-native-a.js"),
+                                           sl_str_from_cstr(probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return_code = 69;
+        goto cleanup;
+    }
+    sl_engine_destroy(first);
+    first = NULL;
+    if (test_directory_has_entries(&engine_arena, snapshot_dir) != 0) {
+        return_code = 74;
+        goto cleanup;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(second, sl_str_from_cstr("v8-snapshot-native-b.js"),
+                                           sl_str_from_cstr(probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return_code = 70;
+        goto cleanup;
+    }
+    sl_engine_destroy(second);
+    second = NULL;
+
+    features.active_mask = all_features_mask &
+                           ~(UINT32_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
+    if (expect_status(sl_engine_create(&options, &engine_arena, &third), SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_eval_source(third,
+                                           sl_str_from_cstr("v8-snapshot-native-reduced-mask.js"),
+                                           sl_str_from_cstr(reduced_mask_probe_source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return_code = 76;
+        goto cleanup;
+    }
+    features.active_mask = all_features_mask;
+
+cleanup:
+    if (first != NULL) {
+        sl_engine_destroy(first);
+    }
+    if (second != NULL) {
+        sl_engine_destroy(second);
+    }
+    if (third != NULL) {
+        sl_engine_destroy(third);
+    }
+    if (snapshot_dir[0] != '\0') {
+        sl_fs_delete_directory(sl_str_from_cstr(snapshot_dir), true, NULL);
+    }
+    if (snapshot_env_captured &&
+        restore_test_env("SLOPPY_V8_SNAPSHOT_DIR", &saved_snapshot_dir) != 0 &&
+        return_code == 0)
+    {
+        return_code = 75;
+    }
+    return return_code;
+}
+
 static int test_call_after_destroy_returns_lifecycle_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -5710,19 +6076,20 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body,
-                           "{\"rowName\":\"Ada\",\"rawIsBytes\":true,\"raw\":[0,65,255],"
-                           "\"rows\":[{\"name\":\"Ada\"},{\"name\":\"Grace\"}],"
-                           "\"rowsMode\":\"object\",\"rowsColumnNames\":[\"name\"],"
-                           "\"rowsColumns\":[\"name:0\"],\"rowKeys\":[\"name\"],"
-                           "\"rowsJson\":\"[{\\\"name\\\":\\\"Ada\\\"},{\\\"name\\\":\\\"Grace\\\"}]\","
-                           "\"duplicateValue\":2,\"duplicateColumnNames\":[\"same\",\"same\"],"
-                           "\"rawMode\":\"raw\",\"rawDuplicateRows\":[[1,2]],"
-                           "\"rawDuplicateColumnNames\":[\"same\",\"same\"],\"txRawCount\":2,"
-                           "\"typed\":{\"kind\":\"integer\"},\"bigType\":\"bigint\","
-                           "\"bigValue\":\"9007199254740993\",\"bigParamType\":\"bigint\","
-                           "\"bigParamValue\":\"9007199254740993\","
-                           "\"bigParamKind\":\"integer\"}") != 0)
+        expect_bytes_equal(
+            result.response.body,
+            "{\"rowName\":\"Ada\",\"rawIsBytes\":true,\"raw\":[0,65,255],"
+            "\"rows\":[{\"name\":\"Ada\"},{\"name\":\"Grace\"}],"
+            "\"rowsMode\":\"object\",\"rowsColumnNames\":[\"name\"],"
+            "\"rowsColumns\":[\"name:0\"],\"rowKeys\":[\"name\"],"
+            "\"rowsJson\":\"[{\\\"name\\\":\\\"Ada\\\"},{\\\"name\\\":\\\"Grace\\\"}]\","
+            "\"duplicateValue\":2,\"duplicateColumnNames\":[\"same\",\"same\"],"
+            "\"rawMode\":\"raw\",\"rawDuplicateRows\":[[1,2]],"
+            "\"rawDuplicateColumnNames\":[\"same\",\"same\"],\"txRawCount\":2,"
+            "\"typed\":{\"kind\":\"integer\"},\"bigType\":\"bigint\","
+            "\"bigValue\":\"9007199254740993\",\"bigParamType\":\"bigint\","
+            "\"bigParamValue\":\"9007199254740993\","
+            "\"bigParamKind\":\"integer\"}") != 0)
     {
         sl_engine_destroy(engine);
         return 135;
@@ -7081,6 +7448,16 @@ int main(int argc, char** argv)
     }
 
     result = test_create_destroy_create_reuses_process_platform();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_startup_snapshot_rebuilds_runtime_handler_map();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_startup_snapshot_supports_native_intrinsics();
     if (result != 0) {
         return result;
     }

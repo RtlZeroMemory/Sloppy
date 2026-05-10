@@ -40,3 +40,10 @@ bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Contex
     }
     return true;
 }
+
+void sl_v8_append_provider_external_references(std::vector<intptr_t>* refs)
+{
+    sl_v8_append_sqlite_external_references(refs);
+    sl_v8_append_postgres_external_references(refs);
+    sl_v8_append_sqlserver_external_references(refs);
+}

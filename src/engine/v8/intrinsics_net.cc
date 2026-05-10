@@ -2547,6 +2547,36 @@ void net_v8_abort_local(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 } // namespace
 
+void sl_v8_append_net_external_references(std::vector<intptr_t>* refs)
+{
+    if (refs == nullptr) {
+        return;
+    }
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_connect));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_connect_tls));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_listen));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_accept));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_write));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read_line));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read_until));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_close));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_abort));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_close_listener));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_abort_listener));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_connect_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_listen_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_accept_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_write_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read_line_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_read_until_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_close_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_abort_local));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_close_local_server));
+    refs->push_back(reinterpret_cast<intptr_t>(net_v8_abort_local_server));
+}
+
 bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                   v8::Local<v8::Object> sloppy)
 {

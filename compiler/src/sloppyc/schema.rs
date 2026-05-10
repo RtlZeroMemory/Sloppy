@@ -515,8 +515,11 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                 if call.arguments.len() != 1 {
                     return None;
                 }
-                let number = call.arguments.first().and_then(numeric_argument_value)?;
-                base[property] = json!(number);
+                let number = call
+                    .arguments
+                    .first()
+                    .and_then(numeric_argument_json_value)?;
+                base[property] = number;
             }
             return Some(base);
         }
@@ -681,4 +684,17 @@ pub(super) fn numeric_argument_value(argument: &Argument<'_>) -> Option<f64> {
         Argument::NumericLiteral(literal) => Some(literal.value),
         _ => None,
     }
+}
+
+pub(super) fn numeric_argument_json_value(argument: &Argument<'_>) -> Option<Value> {
+    let value = numeric_argument_value(argument)?;
+    if value.is_finite() && value.fract() == 0.0 {
+        if value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+            return Some(json!(value as i64));
+        }
+        if value >= 0.0 && value <= u64::MAX as f64 {
+            return Some(json!(value as u64));
+        }
+    }
+    Some(json!(value))
 }
