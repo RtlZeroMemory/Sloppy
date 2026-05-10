@@ -31,7 +31,9 @@ metadata available before the first request.
 ## A tiny route in each runtime
 
 These examples intentionally use each runtime's built-in surface, not a
-third-party framework.
+third-party framework. Bun includes a built-in router, so the Bun example uses
+it. Node and Deno examples use their built-in HTTP server APIs directly and
+therefore do route matching manually.
 
 ### Sloppy
 
@@ -66,7 +68,7 @@ validates, dispatches `GET /hello/Ada`, writes the response, and exits.
 ### Node.js
 
 ```js
-import http from "node:http";
+const http = require("node:http");
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
@@ -102,20 +104,17 @@ node server.js
 ```js
 Bun.serve({
   port: 5173,
-  fetch(request) {
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/health") {
-      return new Response("ok", {
+  hostname: "127.0.0.1",
+  routes: {
+    "/health": () =>
+      new Response("ok", {
         headers: { "content-type": "text/plain; charset=utf-8" },
-      });
-    }
+      }),
 
-    const match = url.pathname.match(/^\/hello\/([^/]+)$/);
-    if (request.method === "GET" && match) {
-      return Response.json({ hello: decodeURIComponent(match[1]) });
-    }
-
+    "/hello/:name": (req) =>
+      Response.json({ hello: req.params.name }),
+  },
+  fetch() {
     return new Response(null, { status: 404 });
   },
 });
@@ -130,7 +129,7 @@ bun server.js
 ### Deno
 
 ```ts
-Deno.serve({ port: 5173 }, (request) => {
+Deno.serve({ port: 5173, hostname: "127.0.0.1" }, (request) => {
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === "/health") {
