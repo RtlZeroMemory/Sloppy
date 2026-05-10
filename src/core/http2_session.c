@@ -171,6 +171,17 @@ static bool sl_http2_session_accepts_rst_on_remote_closed_stream(SlHttp2Session*
     return closed != NULL && closed->remote_closed;
 }
 
+static bool sl_http2_session_known_http2_error_code(uint32_t error_code)
+{
+    return error_code <= NGHTTP2_HTTP_1_1_REQUIRED;
+}
+
+static bool sl_http2_session_accepts_unknown_rst_error_code(const nghttp2_frame* frame)
+{
+    return frame != NULL && frame->hd.type == NGHTTP2_RST_STREAM && frame->hd.stream_id > 0 &&
+           !sl_http2_session_known_http2_error_code(frame->rst_stream.error_code);
+}
+
 static void sl_http2_session_record_remote_closed_stream(SlHttp2Session* session, int32_t stream_id)
 {
     SlHttp2ClosedStream* closed = sl_http2_session_track_stream(session, stream_id);
@@ -892,6 +903,15 @@ static int sl_http2_on_invalid_frame_recv(nghttp2_session* ng_session, const ngh
     int rv = 0;
 
     if (sl_http2_session_accepts_rst_on_remote_closed_stream(session, frame, lib_error_code)) {
+        sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
+        return sl_http2_session_callback_result(
+            session, sl_http2_session_push_event(
+                         session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
+                                                 .stream_id = frame->hd.stream_id,
+                                                 .error_code = frame->rst_stream.error_code}));
+    }
+
+    if (sl_http2_session_accepts_unknown_rst_error_code(frame)) {
         sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
         return sl_http2_session_callback_result(
             session, sl_http2_session_push_event(
