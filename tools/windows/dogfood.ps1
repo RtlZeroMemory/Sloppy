@@ -58,7 +58,7 @@ function Assert-DogfoodManifest {
         }
     }
 
-    foreach ($requiredId in @("hello-artifact", "hello-source-input", "prealpha-control-plane", "package-hello-artifact", "http-app", "https-app", "sqlite-app", "postgresql-app", "sqlserver-app", "framework-v2-app")) {
+    foreach ($requiredId in @("hello-artifact", "hello-source-input", "prealpha-control-plane", "package-hello-artifact", "http-app", "https-app", "sqlite-app", "postgresql-app", "sqlserver-app", "framework-app")) {
         Assert-True ($ids.Contains($requiredId)) "Dogfood catalog missing required scenario '$requiredId'."
     }
 }
@@ -155,7 +155,7 @@ function Invoke-SelfTest {
             [pscustomobject]@{ id = "sqlite-app"; status = "v8-gated"; reason = "requires V8 lane" },
             [pscustomobject]@{ id = "postgresql-app"; status = "live-provider-gated"; reason = "requires live service" },
             [pscustomobject]@{ id = "sqlserver-app"; status = "live-provider-gated"; reason = "requires live service" },
-            [pscustomobject]@{ id = "framework-v2-app"; status = "blocked"; reason = "owned by framework track" }
+            [pscustomobject]@{ id = "framework-app"; status = "blocked"; reason = "owned by framework track" }
         )
     }
     Assert-DogfoodManifest -Manifest $fixture

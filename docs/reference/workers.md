@@ -29,7 +29,8 @@ import {
 - `WorkerPool.create(name, options)` creates a bounded offload queue with fixed worker
   concurrency; the V8 bridge executes admitted work in worker-owned isolates.
 - `Worker.start(modulePath, options?)` starts an explicit worker module when a supported bridge
-  is available; it fails closed instead of running a same-isolate JavaScript fallback.
+  is available; without the bridge it errors rather than silently running the work in the
+  caller's isolate.
 
 All resource names must be stable non-empty strings. Public JavaScript handles expose no raw
 native pointers, OS handles, libuv handles, thread IDs, or V8 isolate pointers.

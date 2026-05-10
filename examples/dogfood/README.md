@@ -14,9 +14,9 @@ Current runnable or diagnosable targets:
 - `package-hello-artifact`: uses the package outside-checkout smoke fixture when a package
   archive is provided.
 
-Feature app targets for HTTP, HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and Framework v2
-are listed with their current blocked or gated status until the required runtime support is
-available.
+Feature app targets for HTTP, HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and the typed
+framework surface are listed with their current blocked or gated status until the required
+runtime support is available.
 
 Default non-V8 dogfood runs validate clear diagnostics for V8-required
 examples. Positive execution of the hello handlers and the pre-alpha control

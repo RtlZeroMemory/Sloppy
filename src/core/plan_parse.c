@@ -763,8 +763,8 @@ static SlStatus sl_plan_parse_one_binding(SlPlanParseContext* ctx, yyjson_val* v
             ctx,
             sl_plan_parse_literal("unsupported route binding kind",
                                   sizeof("unsupported route binding kind") - 1U),
-            sl_plan_parse_literal("route bindings must use supported Framework v2 metadata kinds",
-                                  sizeof("route bindings must use supported Framework v2 metadata "
+            sl_plan_parse_literal("route bindings must use supported framework metadata kinds",
+                                  sizeof("route bindings must use supported framework metadata "
                                          "kinds") -
                                       1U));
     }

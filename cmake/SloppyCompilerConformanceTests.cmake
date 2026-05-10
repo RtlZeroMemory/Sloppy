@@ -134,7 +134,7 @@
             examples.prealpha_control_plane.tooling prealpha-control-plane
             examples/prealpha-control-plane/src/main.js "prealpha-control-plane.db"
             "Projects.List" "data.main" "\"findings\"" "x-slop-capabilities")
-        sloppy_add_framework_v2_compile_example_tests()
+        sloppy_add_framework_compile_example_tests()
     endif()
 
     add_test(

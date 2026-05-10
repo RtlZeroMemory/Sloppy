@@ -15,7 +15,7 @@ repository.
 
 | Example | Shows |
 | --- | --- |
-| [`framework-v2-hello`](#framework-v2-hello) | `Sloppy.create()`, typed route param, JSON response |
+| [`framework-hello`](#framework-hello) | `Sloppy.create()`, typed route param, JSON response |
 | [`hello-minimal`](#hello-minimal) | The smallest runnable app |
 
 ## Dogfood coverage
@@ -28,30 +28,30 @@ repository.
 
 | Example | Shows |
 | --- | --- |
-| [`framework-v2-controller`](#framework-v2-controller) | Controller class + DI through `static inject` |
-| [`framework-v2-explicit-binding`](#framework-v2-explicit-binding) | `Route<T>`, `Query<T>`, `Body<T>`, `Header<>` typed bindings |
+| [`framework-controller`](#framework-controller) | Controller class + DI through `static inject` |
+| [`framework-explicit-binding`](#framework-explicit-binding) | `Route<T>`, `Query<T>`, `Body<T>`, `Header<>` typed bindings |
 | [`request-context`](#request-context) | `ctx.route`, `ctx.query`, `ctx.request.headers`, body parsing |
 
 ## Services and config
 
 | Example | Shows |
 | --- | --- |
-| [`framework-v2-di-services`](#framework-v2-di-services) | Singleton/scoped/transient lifetimes through a request scope |
+| [`framework-di-services`](#framework-di-services) | Singleton/scoped/transient lifetimes through a request scope |
 | [`config-basic`](#config-basic) | `addObject`, typed getters |
 
 ## Data
 
 | Example | Shows |
 | --- | --- |
-| [`framework-v2-sqlite-crud`](#framework-v2-sqlite-crud) | Typed-handler SQLite CRUD with provider injection |
-| [`framework-v2-postgres-crud`](#framework-v2-postgres-crud) | Same shape, PostgreSQL provider (live lane) |
-| [`framework-v2-sqlserver-crud`](#framework-v2-sqlserver-crud) | Same shape, SQL Server provider (live lane) |
+| [`framework-sqlite-crud`](#framework-sqlite-crud) | Typed-handler SQLite CRUD with provider injection |
+| [`framework-postgres-crud`](#framework-postgres-crud) | Same shape, PostgreSQL provider (needs a live database) |
+| [`framework-sqlserver-crud`](#framework-sqlserver-crud) | Same shape, SQL Server provider (needs a live database) |
 
 ## Validation
 
 | Example | Shows |
 | --- | --- |
-| [`framework-v2-validation-errors`](#framework-v2-validation-errors) | Schema-backed body binding, Plan-level validation diagnostics |
+| [`framework-validation-errors`](#framework-validation-errors) | Schema-backed body binding, Plan-level validation diagnostics |
 
 ## Workers
 
@@ -97,13 +97,13 @@ Most curated examples have a `README.md` and a single source file. To run one
 through the dev path:
 
 ```powershell
-sloppy run examples/framework-v2-hello/app.ts --once GET /hello/Ada
+sloppy run examples/framework-hello/app.ts --once GET /hello/Ada
 ```
 
 Or build first and run the artifacts:
 
 ```powershell
-sloppy build examples/framework-v2-hello/app.ts --out .sloppy-tmp
+sloppy build examples/framework-hello/app.ts --out .sloppy-tmp
 sloppy run --artifacts .sloppy-tmp --once GET /hello/Ada
 ```
 
@@ -121,7 +121,7 @@ handoff path, but it is not positive handler execution.
 
 ## Quick descriptions
 
-### framework-v2-hello
+### framework-hello
 
 Two routes, one typed parameter, deterministic JSON response. The example the
 [Quickstart](../quickstart.md) is built on. Good first run.
@@ -135,17 +135,17 @@ response. Useful when something else stops working and you want to bisect.
 
 A multi-file project with `sloppy.json`, `appsettings*.json`, function modules,
 route groups, JSON bodies, path and query params, SQLite provider metadata,
-health routes, diagnostics, and dogfood coverage lanes. Its app-host test imports
+health routes, diagnostics, and dogfood coverage. Its app-host test imports
 the same route modules and covers CORS, ProblemDetails, request IDs, request
 logging redaction, service-scope cleanup, negative paths, and host lifecycle.
 
-### framework-v2-controller
+### framework-controller
 
 Controller class with a `static inject` array, mapped via
 `app.controller("/users", Controller, ...)`. Demonstrates DI without typed
 handler parameters.
 
-### framework-v2-explicit-binding
+### framework-explicit-binding
 
 Shows `Route<T>`, `Query<T>`, `Body<T>`, `Header<"name">` type wrappers for
 explicit handler-parameter binding.
@@ -156,7 +156,7 @@ Exercises the source-input/native request context fields currently covered by
 the example: route params, query parsing, method, decoded path, and raw target.
 Headers and body helpers are covered by the broader runtime/test-host suites.
 
-### framework-v2-di-services
+### framework-di-services
 
 Singleton, scoped, and transient services in a single app. Verifies that each
 lifetime behaves as documented.
@@ -166,12 +166,12 @@ lifetime behaves as documented.
 Loads config from `addObject`, reads with typed getters, demonstrates the
 `SLOPPY:...` key normalization.
 
-### framework-v2-sqlite-crud
+### framework-sqlite-crud
 
 CRUD app using `Sqlite<"main">` typed injection. The typed-handler version of
 the [SQLite walkthrough](sqlite.md).
 
-### framework-v2-postgres-crud
+### framework-postgres-crud
 
 Same shape, PostgreSQL provider. Requires `libpq` and a running database. The
 example reads its connection string from
@@ -179,14 +179,14 @@ example reads its connection string from
 provider metadata/wrappers; live execution depends on the PostgreSQL bridge,
 provider config, and service setup.
 
-### framework-v2-sqlserver-crud
+### framework-sqlserver-crud
 
 Same shape, SQL Server provider. Requires an ODBC driver and a connection
 string in `Sloppy__Providers__sqlserver__main__connectionString`. The compiler
 emits typed provider metadata/wrappers; live execution depends on the SQL
 Server bridge, provider config, and driver support.
 
-### framework-v2-validation-errors
+### framework-validation-errors
 
 A handler with a schema-typed `Body<T>`. Sends back structured
 `application/problem+json` validation errors when the body is malformed.
@@ -227,19 +227,19 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `data-foundation` | Data/capability API-shape fixture |
 | `dogfood` | Machine-readable dogfood catalog |
 | `ergonomics` | API ergonomics fixture |
-| `framework-v2-controller` | Curated routing/controller example |
-| `framework-v2-di-services` | Curated services example |
-| `framework-v2-explicit-binding` | Curated typed binding example |
-| `framework-v2-hello` | Curated quickstart example |
-| `framework-v2-postgres-crud` | Live PostgreSQL example |
-| `framework-v2-sqlite-crud` | Curated SQLite CRUD example |
-| `framework-v2-sqlserver-crud` | Live SQL Server example |
-| `framework-v2-validation-errors` | Curated validation example |
+| `framework-controller` | Curated routing/controller example |
+| `framework-di-services` | Curated services example |
+| `framework-explicit-binding` | Curated typed binding example |
+| `framework-hello` | Curated quickstart example |
+| `framework-postgres-crud` | Live PostgreSQL example |
+| `framework-sqlite-crud` | Curated SQLite CRUD example |
+| `framework-sqlserver-crud` | Live SQL Server example |
+| `framework-validation-errors` | Curated validation example |
 | `fs-basic` | Filesystem API-shape fixture |
 | `fs-roots-policy` | Filesystem policy fixture |
 | `fs-streams` | Filesystem streaming API-shape fixture |
 | `fs-watch` | Filesystem watch API-shape fixture |
-| `hello` | Legacy hello example fixture |
+| `hello` | Smallest hello-app fixture used by app-host shape checks |
 | `hello-minimal` | Minimal runnable example |
 | `http-client-basic` | HTTP client API-shape fixture |
 | `modules-api` | Compiler module conformance fixture |

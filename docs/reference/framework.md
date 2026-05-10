@@ -20,8 +20,8 @@ Compiler metadata markers such as `Route<T>`, `Query<T>`, `Body<T>`, `Header<...
 represent. Literal route registration, groups, controllers, middleware, CORS,
 health checks, ProblemDetails, request IDs, request logging, services, config,
 and typed handler bindings are compiler surfaces where documented. Dynamic
-shapes fail closed with `SLOPPYC_E_*` diagnostics. `Testing` remains an app-host
-test helper and is not compiler input.
+shapes are rejected at build time with `SLOPPYC_E_*` diagnostics. `Testing`
+remains an app-host test helper and is not compiler input.
 
 ## Sloppy Object
 
@@ -257,7 +257,8 @@ headers. Authorization, cookie, API key, and proxy authorization header values s
 out of the default log entry.
 
 For source-input builds, `sloppyc` extracts static
-`RequestLogging.defaults(...)` middleware. Dynamic option values fail closed.
+`RequestLogging.defaults(...)` middleware. Dynamic option values are rejected
+at build time with a diagnostic.
 
 ## Logging
 
@@ -304,7 +305,7 @@ PostgreSQL or SQL Server execution.
 
 ## Typed Provider Injection
 
-Framework v2 typed handlers can ask for provider parameters:
+Typed handlers can ask for provider parameters:
 
 ```ts
 app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {

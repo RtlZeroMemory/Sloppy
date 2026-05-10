@@ -18,7 +18,7 @@ import { HttpClient } from "sloppy/net";
 The root export is available to JavaScript app-host code and tests. The
 compiler-recognized import path is the `sloppy/net` subpath because the emitted
 Plan records outbound HTTP client runtime feature metadata through the network
-stdlib lane. See [Network](network.md) for the full `sloppy/net` surface
+stdlib. See [Network](network.md) for the full `sloppy/net` surface
 (TCP, local IPC, `NetworkAddress`).
 
 Use method helpers for common requests:
@@ -132,11 +132,11 @@ eligible.
   to HTTP/1.1.
 - `http://` URLs are supported over the runtime TCP bridge.
 - `https://` URLs use the experimental private outbound TLS bridge when the
-  runtime exposes it. Missing bridge support fails closed with
-  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`; HTTP support alone does not
-  imply HTTPS support.
-- `protocol: "h2"` requires an ALPN-capable outbound TLS bridge and fails
-  closed if the peer does not negotiate `h2`.
+  runtime exposes it. If the bridge is missing the request errors with
+  `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE`; cleartext HTTP support alone
+  does not imply HTTPS support.
+- `protocol: "h2"` requires an ALPN-capable outbound TLS bridge and errors
+  if the peer does not negotiate `h2`.
 - `protocol: "auto"` never downgrades an explicit `h2` request; fallback to
   HTTP/1.1 applies only when the caller leaves protocol selection on `auto`.
 - `protocol: "h2c"` is prior-knowledge HTTP/2 over cleartext TCP; it does not

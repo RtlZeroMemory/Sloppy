@@ -185,10 +185,10 @@ Representative typed-binding diagnostics:
 
 ## Provider Bridge Limitation
 
-Compiler metadata recognizes sqlite/postgres/sqlserver providers. Framework v2
-typed provider parameters emit generated wrappers for all three provider kinds,
-with PostgreSQL and SQL Server execution gated on provider config, active bridge
-support, and live service dependencies.
+Compiler metadata recognizes sqlite/postgres/sqlserver providers. Typed provider
+parameters emit generated wrappers for all three provider kinds, with PostgreSQL
+and SQL Server execution gated on provider config, active bridge support, and
+live service dependencies.
 
 Generated static provider handles are narrower: `app.provider("sqlite:main")`
 is the current executable static-handle path. Static non-SQLite handles such as

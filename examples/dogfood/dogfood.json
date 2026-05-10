@@ -103,9 +103,9 @@
       "id": "sqlite-app",
       "feature": "SQLite",
       "status": "v8-gated",
-      "lane": "source-input framework-v2",
+      "lane": "source-input framework",
       "blockedBy": [],
-      "reason": "Typed SQLite provider metadata and wrappers are emitted for framework-v2 apps. Positive CRUD execution still requires the native provider bridge and a V8-enabled runtime."
+      "reason": "Typed SQLite provider metadata and wrappers are emitted for framework apps. Positive CRUD execution still requires the native provider bridge and a V8-enabled runtime."
     },
     {
       "id": "postgresql-app",
@@ -124,13 +124,13 @@
       "reason": "SQL Server dogfood requires live-provider evidence, ODBC driver availability, and service configuration outside default CI."
     },
     {
-      "id": "framework-v2-app",
-      "feature": "Framework v2",
+      "id": "framework-app",
+      "feature": "Framework",
       "status": "v8-gated",
-      "lane": "source-input framework-v2",
+      "lane": "source-input framework",
       "sourceFixture": "tests/fixtures/source-input/framework-foundation",
       "blockedBy": [],
-      "reason": "Framework v2 source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a V8-enabled runtime."
+      "reason": "Framework source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a V8-enabled runtime."
     }
   ]
 }

@@ -158,11 +158,12 @@ function Write-LicensePolicy {
     $content = @"
 # Licenses
 
-This experimental package includes Sloppy source-license text in the repository root
-`LICENSE.md` file, copied into this package as `LICENSE`, and may include runtime
-dependency DLLs restored by vcpkg for local package smoke.
+Sloppy is distributed under the Apache License, Version 2.0. The full text
+lives in the repository root `LICENSE` file and is copied into this package
+as `LICENSE`. The package may also include runtime dependency DLLs restored
+by vcpkg for local package smoke.
 
-Complete third-party license review remains required before publishing.
+A complete third-party license review remains required before publishing.
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
@@ -294,7 +295,7 @@ Copy-NativeRuntimeDependencies -BuildDirectory $BuildDir -Destination (Join-Path
 Copy-DirectoryContents -Source (Join-Path $Root "stdlib/sloppy") -Destination (Join-Path $PackageRoot "stdlib/sloppy")
 Copy-DirectoryContents -Source (Join-Path $Root "templates") -Destination (Join-Path $PackageRoot "templates")
 Copy-DirectoryContents -Source (Join-Path $Root "examples") -Destination (Join-Path $PackageRoot "examples")
-Copy-RequiredFile -Source (Join-Path $Root "LICENSE.md") -Destination (Join-Path $PackageRoot "LICENSE")
+Copy-RequiredFile -Source (Join-Path $Root "LICENSE") -Destination (Join-Path $PackageRoot "LICENSE")
 Write-PackageReadme -Path (Join-Path $PackageRoot "README.md")
 Write-KnownLimitations -Path (Join-Path $PackageRoot "docs/KNOWN_LIMITATIONS.md")
 Write-LicensePolicy -Path (Join-Path $PackageRoot "docs/LICENSES.md")

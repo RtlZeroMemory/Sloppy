@@ -245,9 +245,10 @@ Working with examples in the repo:
 
 Path acceptance is enforced by the runtime, not by `Path.classify`. Whether an
 absolute path or a named root resolves depends on the active Plan's filesystem
-capability metadata. Today there is no JS-side sandboxing — operations are
-forwarded to the bridge, which fails closed for unresolvable paths. Treat that
-as part of the platform contract rather than a client-enforced gate.
+capability metadata. There is no JS-side sandboxing today — operations are
+forwarded to the bridge, which rejects unresolvable paths with an error
+rather than guessing. Treat that as part of the platform contract rather
+than a client-enforced gate.
 
 ## Compiler source-input support
 

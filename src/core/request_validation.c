@@ -1,7 +1,7 @@
 /*
  * src/core/request_validation.c
  *
- * Consumes compiler-emitted Framework v2 Plan metadata at the native request boundary.
+ * Consumes compiler-emitted framework Plan metadata at the native request boundary.
  * The validator intentionally stays small: route/query/header primitive binding checks,
  * JSON body schema validation for the supported Plan schema subset, safe problem response
  * materialization, and deterministic diagnostics. It does not execute handlers, providers,

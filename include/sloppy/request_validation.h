@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 /*
- * Validates Plan-backed Framework v2 request binding metadata before handler execution.
+ * Validates Plan-backed framework request binding metadata before handler execution.
  *
  * This is a bounded runtime consumer for compiler-emitted route bindings and schemas. It
  * performs no TypeScript reflection, provider/DI execution, controller dispatch, OpenAPI

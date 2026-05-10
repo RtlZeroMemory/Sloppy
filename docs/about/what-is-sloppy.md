@@ -55,7 +55,7 @@ Real:
 
 - Compiles a focused TypeScript/JS subset into deterministic Plans.
 - Runs handlers through an isolated V8 bridge.
-- SQLite end-to-end, with PostgreSQL and SQL Server in opt-in lanes.
+- SQLite end-to-end, with PostgreSQL and SQL Server as opt-in providers.
 - Bounded HTTP/1.1 server, HTTP/2 server over TLS ALPN, h2c prior knowledge
   and Upgrade handling, `HttpClient` h2/h2c support with pooled multiplexing
   and HTTPS `auto` ALPN selection, OpenSSL TLS plumbing, capability declarations,
@@ -68,7 +68,8 @@ Pre-alpha:
 - The app-host feature surface and compiler subset are intentionally narrow:
   middleware, CORS, request IDs, request logging, controllers, health checks,
   ProblemDetails, services, config, and typed providers have static compiler
-  coverage where the Plan can encode them; dynamic shapes fail closed.
+  coverage where the Plan can encode them; anything more dynamic is rejected
+  at build time with a diagnostic.
 - OpenAPI is generated from Plan metadata today; security schemes, richer
   response schemas, and full runtime-pipeline modeling are not represented.
 - npm runtime packages for Windows x64 and Linux x64.

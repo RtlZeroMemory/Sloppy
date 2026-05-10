@@ -3,6 +3,7 @@ name = "sloppyc"
 version = "0.0.0"
 edition = "2021"
 description = "Compiler extraction for Sloppy runtime artifacts."
+license = "Apache-2.0"
 publish = false
 
 [dependencies]

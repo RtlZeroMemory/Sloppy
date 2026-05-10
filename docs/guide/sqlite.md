@@ -181,4 +181,4 @@ curl -s http://127.0.0.1:5173/users/1
 - [API: services](../api/services.md) — singleton/scoped/transient,
   disposal, scopes.
 - [Examples](examples.md) — typed-handler version of this same app under
-  `examples/framework-v2-sqlite-crud/`.
+  `examples/framework-sqlite-crud/`.

@@ -231,12 +231,12 @@ The compiler accepts `import ... from "sloppy/net"` and emits the
 
 `sloppy/net` requires the `__sloppy.net` V8 intrinsic namespace. The bridge
 exposes TCP connect/listen/accept/read/write, local-IPC variants, and the
-private outbound TLS lane used by `HttpClient`. Bridge absence fails closed
-with `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`. Per-feature gates produce more
-specific codes (for example
+private outbound TLS bridge used by `HttpClient`. Bridge absence reports
+`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` rather than half-running. Per-feature
+gates produce more specific codes — for example
 `SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE` when the local-IPC subset is
-disabled and `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` when the TLS
-lane is absent).
+disabled, and `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` when the TLS
+backend is absent.
 
 ## Errors
 

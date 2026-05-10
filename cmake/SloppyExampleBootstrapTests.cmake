@@ -84,7 +84,7 @@
         NAME examples.core_integration.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
-    sloppy_add_framework_v2_static_example_tests()
+    sloppy_add_framework_static_example_tests()
     set_tests_properties(
         examples.core_integration.api_shape PROPERTIES LABELS
                                                      "core-integration;examples;conformance")

@@ -24,9 +24,9 @@ look when measurements eventually run, not what numbers to expect.
 
 ## What's been measured
 
-The repo has microbenchmark harnesses (`benchmarks/`) that can run as
-opt-in lanes. The smoke variant verifies the harness executes; it
-proves nothing about throughput or latency.
+The repo has microbenchmark harnesses under `benchmarks/` that can be run on
+demand. The smoke variant verifies the harness executes; it proves nothing
+about throughput or latency.
 
 The repo also has a local runtime comparison runner for internal
 engineering feedback:

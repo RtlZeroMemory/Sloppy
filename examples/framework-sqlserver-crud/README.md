@@ -1,8 +1,8 @@
-# Framework v2 SQL Server CRUD Example
+# Framework SQL Server CRUD Example
 
-## What This Demonstrates
+## What this shows
 
-This example shows the Framework v2 shape for a users API backed by SQL Server:
+A users API backed by SQL Server:
 
 - typed `Body<T>` and `Route<T>` handler parameters;
 - `SqlServer<"main">` typed provider injection;
@@ -36,7 +36,7 @@ $env:Sloppy__Providers__sqlserver__main__connectionString = "Driver={ODBC Driver
 .\tools\windows\test-live-sqlserver.ps1
 ```
 
-## Expected Result
+## Expected result
 
 The script runs the SQL Server native and bridge tests selected by:
 
@@ -47,19 +47,19 @@ ctest --test-dir build\windows-relwithdebinfo --output-on-failure -R "data\.sqls
 With driver, database, and connection string configured, `GET /users` returns
 JSON rows from SQL Server.
 
-## What To Inspect
+## Files to look at
 
-- `app.ts`: `SqlServer<"main">` injection and SQL Server statements.
-- Generated `.sloppy/app.plan.json`: inferred `sqlserver/main` provider metadata.
-- `docs/api/data.md`: SQL Server setup and unavailable driver cases.
+- `app.ts` — `SqlServer<"main">` injection and SQL Server statements.
+- Generated `.sloppy/app.plan.json` — inferred `sqlserver/main` provider metadata.
+- `docs/api/data.md` — SQL Server setup and unavailable driver cases.
 
-## Current Limits
+## Scope
 
 Schema setup is manual for this example. It also depends on an installed ODBC
 driver and available async SQL Server support. Migrations, ORM-style modeling,
 deployment guidance, and package dependency support are future work.
 
-## Related Docs
+## Related docs
 
 - `docs/api/data.md`
 - `docs/reference/providers.md`
