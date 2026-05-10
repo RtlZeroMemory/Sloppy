@@ -12,6 +12,17 @@ function printHelp() {
     console.log("  env                Print platform information");
 }
 
+function environmentIndicators(env) {
+    const source = env || {};
+    return {
+        HOME: source.HOME ? "set" : "unset",
+        USERPROFILE: source.USERPROFILE ? "set" : "unset",
+        SHELL: source.SHELL ? "set" : "unset",
+        COMSPEC: source.COMSPEC ? "set" : "unset",
+        CI: source.CI ? "set" : "unset",
+    };
+}
+
 export async function main(args, ctx) {
     const command = args[0] || "--help";
     if (command === "--help" || command === "help") {
@@ -27,7 +38,7 @@ export async function main(args, ctx) {
     if (command === "env") {
         console.log(JSON.stringify({
             cwd: ctx.cwd,
-            environment: ctx.environment,
+            environment: environmentIndicators(ctx.environment),
             platform: System.platform,
             homeSet: Boolean(Environment.get("HOME") || Environment.get("USERPROFILE")),
         }, null, 2));

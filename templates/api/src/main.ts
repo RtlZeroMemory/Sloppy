@@ -7,7 +7,7 @@ const app = Sloppy.create();
 
 app.use(sqlite("main"));
 app.use(ProblemDetails.defaults({ detail: "never" }));
-app.useModule(healthModule);
 app.useModule(usersModule);
+app.useModule(healthModule);
 
 export default app;

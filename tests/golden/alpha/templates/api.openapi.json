@@ -45,31 +45,51 @@
           "responses": {
             "200": {
               "content": {
-                "application/json": {
+                "text/plain": {
                   "schema": {
-                    "x-slop-partial": "response schema shape not declared"
+                    "type": "string"
                   }
                 }
               },
-              "description": "ok"
+              "description": "text"
+            },
+            "500": {
+              "content": {
+                "application/problem+json": {
+                  "schema": {
+                    "properties": {
+                      "detail": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "problem"
             }
           },
           "x-slop-capabilities": [],
           "x-slop-completeness": "complete",
           "x-slop-optimization-candidates": [
-            "native-json-serialization",
             "static-route-dispatch"
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 2,
+            "line": 7,
             "path": "health.ts"
           }
         }
       },
       "/health/live": {
         "get": {
-          "operationId": "Health.Liveness",
+          "operationId": "Health.Live",
           "parameters": [],
           "responses": {
             "200": {
@@ -81,6 +101,27 @@
                 }
               },
               "description": "ok"
+            },
+            "500": {
+              "content": {
+                "application/problem+json": {
+                  "schema": {
+                    "properties": {
+                      "detail": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "problem"
             }
           },
           "x-slop-capabilities": [],
@@ -91,14 +132,14 @@
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 2,
+            "line": 10,
             "path": "health.ts"
           }
         }
       },
       "/health/ready": {
         "get": {
-          "operationId": "Health.Readiness",
+          "operationId": "Health.Ready",
           "parameters": [],
           "responses": {
             "200": {
@@ -110,17 +151,62 @@
                 }
               },
               "description": "ok"
+            },
+            "500": {
+              "content": {
+                "application/problem+json": {
+                  "schema": {
+                    "properties": {
+                      "detail": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "problem"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "x-slop-partial": "response schema shape not declared"
+                  }
+                }
+              },
+              "description": "status"
             }
           },
-          "x-slop-capabilities": [],
+          "x-slop-capabilities": [
+            {
+              "access": "readwrite",
+              "operation": "transaction",
+              "provider": "data.main",
+              "providerKind": "sqlite"
+            },
+            {
+              "access": "read",
+              "operation": "queryOne",
+              "provider": "data.main",
+              "providerKind": "sqlite"
+            }
+          ],
           "x-slop-completeness": "complete",
           "x-slop-optimization-candidates": [
             "native-json-serialization",
+            "provider-aware-route",
             "static-route-dispatch"
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 2,
+            "line": 13,
             "path": "health.ts"
           }
         }
@@ -139,12 +225,33 @@
                 }
               },
               "description": "ok"
+            },
+            "500": {
+              "content": {
+                "application/problem+json": {
+                  "schema": {
+                    "properties": {
+                      "detail": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "problem"
             }
           },
           "x-slop-capabilities": [
             {
-              "access": "write",
-              "operation": "exec",
+              "access": "readwrite",
+              "operation": "transaction",
               "provider": "data.main",
               "providerKind": "sqlite"
             },
@@ -163,7 +270,7 @@
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 12,
+            "line": 15,
             "path": "users.ts"
           }
         },
@@ -192,51 +299,14 @@
               "description": "created"
             },
             "400": {
-              "$ref": "#/components/responses/SlopValidationProblem"
-            }
-          },
-          "x-slop-capabilities": [
-            {
-              "access": "write",
-              "operation": "exec",
-              "provider": "data.main",
-              "providerKind": "sqlite"
-            },
-            {
-              "access": "read",
-              "operation": "queryOne",
-              "provider": "data.main",
-              "providerKind": "sqlite"
-            }
-          ],
-          "x-slop-completeness": "partial",
-          "x-slop-optimization-candidates": [
-            "native-json-serialization",
-            "provider-aware-route"
-          ],
-          "x-slop-source": {
-            "column": 5,
-            "line": 21,
-            "path": "users.ts"
-          }
-        }
-      },
-      "/users/{id}": {
-        "get": {
-          "operationId": "Users.Get",
-          "parameters": [
-            {
-              "in": "path",
-              "name": "id",
-              "required": true,
-              "schema": {
-                "type": "integer"
-              }
-            }
-          ],
-          "responses": {
-            "400": {
-              "$ref": "#/components/responses/SlopValidationProblem"
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "x-slop-partial": "response schema shape not declared"
+                  }
+                }
+              },
+              "description": "badRequest"
             },
             "500": {
               "content": {
@@ -262,6 +332,12 @@
           },
           "x-slop-capabilities": [
             {
+              "access": "readwrite",
+              "operation": "transaction",
+              "provider": "data.main",
+              "providerKind": "sqlite"
+            },
+            {
               "access": "write",
               "operation": "exec",
               "provider": "data.main",
@@ -274,14 +350,100 @@
               "providerKind": "sqlite"
             }
           ],
+          "x-slop-completeness": "partial",
+          "x-slop-optimization-candidates": [
+            "native-json-serialization",
+            "provider-aware-route"
+          ],
+          "x-slop-source": {
+            "column": 5,
+            "line": 27,
+            "path": "users.ts"
+          }
+        }
+      },
+      "/users/{id}": {
+        "get": {
+          "operationId": "Users.Get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "x-slop-partial": "response schema shape not declared"
+                  }
+                }
+              },
+              "description": "ok"
+            },
+            "400": {
+              "$ref": "#/components/responses/SlopValidationProblem"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "x-slop-partial": "response schema shape not declared"
+                  }
+                }
+              },
+              "description": "notFound"
+            },
+            "500": {
+              "content": {
+                "application/problem+json": {
+                  "schema": {
+                    "properties": {
+                      "detail": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "problem"
+            }
+          },
+          "x-slop-capabilities": [
+            {
+              "access": "readwrite",
+              "operation": "transaction",
+              "provider": "data.main",
+              "providerKind": "sqlite"
+            },
+            {
+              "access": "read",
+              "operation": "queryOne",
+              "provider": "data.main",
+              "providerKind": "sqlite"
+            }
+          ],
           "x-slop-completeness": "complete",
           "x-slop-optimization-candidates": [
+            "native-json-serialization",
             "provider-aware-route",
             "static-route-dispatch"
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 15,
+            "line": 18,
             "path": "users.ts"
           }
         }

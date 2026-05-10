@@ -7,67 +7,108 @@
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 1,
+        "handlerId": 4,
         "method": "GET",
         "module": "healthModule",
         "name": "Health",
         "pattern": "/health",
         "response": {
-          "helper": "ok",
-          "kind": "json",
+          "helper": "text",
+          "kind": "text",
           "status": 200
         },
+        "responses": [
+          {
+            "helper": "text",
+            "kind": "text",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 2,
+          "line": 7,
           "path": "health.ts"
         },
-        "sourceOrder": 0
+        "sourceOrder": 3
       },
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 2,
+        "handlerId": 5,
         "method": "GET",
         "module": "healthModule",
-        "name": "Health.Liveness",
+        "name": "Health.Live",
         "pattern": "/health/live",
         "response": {
           "helper": "ok",
           "kind": "json",
           "status": 200
         },
+        "responses": [
+          {
+            "helper": "ok",
+            "kind": "json",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 2,
+          "line": 10,
           "path": "health.ts"
         },
-        "sourceOrder": 1
+        "sourceOrder": 4
       },
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 3,
+        "handlerId": 6,
         "method": "GET",
         "module": "healthModule",
-        "name": "Health.Readiness",
+        "name": "Health.Ready",
         "pattern": "/health/ready",
         "response": {
-          "helper": "ok",
+          "helper": "status",
           "kind": "json",
-          "status": 200
+          "status": 503
         },
+        "responses": [
+          {
+            "helper": "status",
+            "kind": "json",
+            "status": 503
+          },
+          {
+            "helper": "ok",
+            "kind": "json",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 2,
+          "line": 13,
           "path": "health.ts"
         },
-        "sourceOrder": 2
+        "sourceOrder": 5
       },
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 4,
+        "handlerId": 1,
         "method": "GET",
         "module": "usersModule",
         "name": "Users.List",
@@ -77,12 +118,24 @@
           "kind": "json",
           "status": 200
         },
+        "responses": [
+          {
+            "helper": "ok",
+            "kind": "json",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 12,
+          "line": 15,
           "path": "users.ts"
         },
-        "sourceOrder": 3
+        "sourceOrder": 0
       },
       {
         "bindings": [
@@ -93,22 +146,39 @@
           }
         ],
         "completeness": "complete",
-        "handlerId": 5,
+        "handlerId": 2,
         "method": "GET",
         "module": "usersModule",
         "name": "Users.Get",
         "pattern": "/users/{id:int}",
         "response": {
-          "helper": "problem",
-          "kind": "problem",
-          "status": 500
+          "helper": "notFound",
+          "kind": "json",
+          "status": 404
         },
+        "responses": [
+          {
+            "helper": "notFound",
+            "kind": "json",
+            "status": 404
+          },
+          {
+            "helper": "ok",
+            "kind": "json",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 15,
+          "line": 18,
           "path": "users.ts"
         },
-        "sourceOrder": 4
+        "sourceOrder": 1
       },
       {
         "bindings": [
@@ -119,22 +189,39 @@
           }
         ],
         "completeness": "partial",
-        "handlerId": 6,
+        "handlerId": 3,
         "method": "POST",
         "module": "usersModule",
         "name": "Users.Create",
         "pattern": "/users",
         "response": {
-          "helper": "created",
+          "helper": "badRequest",
           "kind": "json",
-          "status": 201
+          "status": 400
         },
+        "responses": [
+          {
+            "helper": "badRequest",
+            "kind": "json",
+            "status": 400
+          },
+          {
+            "helper": "created",
+            "kind": "json",
+            "status": 201
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
         "source": {
           "column": 5,
-          "line": 21,
+          "line": 27,
           "path": "users.ts"
         },
-        "sourceOrder": 5
+        "sourceOrder": 2
       }
     ]
   }

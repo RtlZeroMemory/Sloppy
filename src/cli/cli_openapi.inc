@@ -366,27 +366,75 @@ static void sl_cli_openapi_emit_response_content(FILE* out, SlCliSpan kind)
     sl_cli_write_cstr(out, " } }");
 }
 
-static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
+static bool sl_cli_openapi_response_status_seen(const SlCliRoute* route, size_t limit,
+                                                uint64_t status)
 {
-    uint64_t status = route->response_status == 0U ? 200U : route->response_status;
+    size_t index = 0U;
 
-    sl_cli_write_cstr(out, ",\n        \"responses\": {\n          \"");
-    sl_cli_write_u64(out, status);
+    for (index = 0U; index < limit && index < route->response_count; index += 1U) {
+        uint64_t existing_status =
+            route->response_statuses[index] == 0U ? 200U : route->response_statuses[index];
+        if (existing_status == status) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, uint64_t status)
+{
+    return sl_cli_openapi_response_status_seen(route, route->response_count, status);
+}
+
+static void sl_cli_openapi_emit_response(FILE* out, uint64_t status, SlCliSpan kind,
+                                         SlCliSpan helper)
+{
+    sl_cli_write_cstr(out, "          \"");
+    sl_cli_write_u64(out, status == 0U ? 200U : status);
     sl_cli_write_cstr(out, "\": { \"description\": ");
-    if (sl_cli_span_empty(route->response_kind)) {
+    if (sl_cli_span_empty(kind)) {
         sl_cli_json_escape(out, sl_cli_span_cstr("response metadata unknown"));
         sl_cli_write_cstr(out, ", \"x-slop-partial\": \"response metadata unknown\" }");
+        return;
+    }
+
+    sl_cli_json_escape(out, helper);
+    if (!sl_cli_span_equal_cstr(kind, "empty")) {
+        sl_cli_openapi_emit_response_content(out, kind);
+    }
+    sl_cli_write_cstr(out, " }");
+}
+
+static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
+{
+    size_t response = 0U;
+    bool first = true;
+
+    sl_cli_write_cstr(out, ",\n        \"responses\": {\n");
+    if (route->response_count == 0U) {
+        sl_cli_openapi_emit_response(out, route->response_status, route->response_kind,
+                                     route->response_helper);
+        first = false;
     }
     else {
-        sl_cli_json_escape(out, route->response_helper);
-        if (!sl_cli_span_equal_cstr(route->response_kind, "empty")) {
-            sl_cli_openapi_emit_response_content(out, route->response_kind);
+        for (response = 0U; response < route->response_count; response += 1U) {
+            uint64_t status = route->response_statuses[response] == 0U
+                                  ? 200U
+                                  : route->response_statuses[response];
+            if (sl_cli_openapi_response_status_seen(route, response, status)) {
+                continue;
+            }
+            sl_cli_write_cstr(out, first ? "" : ",\n");
+            sl_cli_openapi_emit_response(out, status, route->response_kinds[response],
+                                         route->response_helpers[response]);
+            first = false;
         }
-        sl_cli_write_cstr(out, " }");
     }
-    if (sl_cli_openapi_route_has_validation(route)) {
-        sl_cli_write_cstr(out, ",\n"
-                               "          \"400\": { \"$ref\": "
+    if (sl_cli_openapi_route_has_validation(route) &&
+        !sl_cli_openapi_route_has_response_status(route, 400U))
+    {
+        sl_cli_write_cstr(out, first ? "" : ",\n");
+        sl_cli_write_cstr(out, "          \"400\": { \"$ref\": "
                                "\"#/components/responses/SlopValidationProblem\" }\n");
     }
     else {

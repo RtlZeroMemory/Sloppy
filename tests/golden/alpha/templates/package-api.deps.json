@@ -8,9 +8,57 @@
       {
         "dynamicImports": [],
         "format": "esm",
+        "id": "main.ts",
+        "imports": [
+          "./routes/health.ts",
+          "./routes/users.ts"
+        ],
+        "resolvedImports": [
+          {
+            "kind": "relative",
+            "resolvedId": "routes/health.ts",
+            "specifier": "./routes/health.ts"
+          },
+          {
+            "kind": "relative",
+            "resolvedId": "routes/users.ts",
+            "specifier": "./routes/users.ts"
+          }
+        ],
+        "source": "main.ts"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "routes/health.ts",
+        "imports": [],
+        "includedBy": "main.ts",
+        "resolvedImports": [],
+        "source": "routes/health.ts"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "routes/users.ts",
+        "imports": [
+          "validator-lite"
+        ],
+        "includedBy": "main.ts",
+        "resolvedImports": [
+          {
+            "kind": "package",
+            "resolvedId": "//?/<repoRoot>/artifacts/alpha-proof/work/templates/alpha-package-api/fixtures/validator-lite/index.js",
+            "specifier": "validator-lite"
+          }
+        ],
+        "source": "routes/users.ts"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
         "id": "//?/<repoRoot>/artifacts/alpha-proof/work/templates/alpha-package-api/fixtures/validator-lite/index.js",
         "imports": [],
-        "includedBy": "users.ts",
+        "includedBy": "routes/users.ts",
         "package": "validator-lite",
         "resolvedImports": [],
         "source": "//?/<repoRoot>/artifacts/alpha-proof/work/templates/alpha-package-api/fixtures/validator-lite/index.js"

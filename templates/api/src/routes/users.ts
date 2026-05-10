@@ -1,5 +1,8 @@
 import { Results } from "sloppy";
-import { normalizeCreateUserRequest } from "../models/createUserRequest.ts";
+import {
+    createUserValidationErrors,
+    normalizeCreateUserRequest,
+} from "../models/createUserRequest.ts";
 import {
     createUser,
     getUser,
@@ -14,12 +17,24 @@ export function usersModule(app) {
 
     app.get("/users/{id:int}", async (ctx) => {
         const user = await getUser(db, ctx.route.id);
-        return user === null ? Results.notFound() : Results.ok(user);
+        if (user === null) {
+            return Results.notFound();
+        }
+        return Results.ok(user);
     })
         .withName("Users.Get");
 
-    app.post("/users", async (ctx) => Results.created(
-        "/users/3",
-        await createUser(db, normalizeCreateUserRequest(ctx.body.json())),
-    )).withName("Users.Create");
+    app.post("/users", async (ctx) => {
+        const input = normalizeCreateUserRequest(ctx.body.json());
+        const errors = createUserValidationErrors(input);
+        if (Object.keys(errors).length > 0) {
+            return Results.badRequest({
+                title: "Validation failed",
+                status: 400,
+                errors,
+            });
+        }
+        const user = await createUser(db, input);
+        return Results.created(`/users/${user.id}`, user);
+    }).withName("Users.Create");
 }

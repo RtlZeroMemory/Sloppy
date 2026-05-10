@@ -1,7 +1,7 @@
 # Minimal API Template
 
-This is the smallest public API starter. Use it for a quick first run or a
-smoke test; use `api` when you want a fuller backend layout.
+This is the smallest public alpha API starter. Use it for a quick first run or
+a smoke test; use `api` when you want a fuller backend layout.
 
 ```sh
 sloppy build

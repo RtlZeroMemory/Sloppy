@@ -18,8 +18,26 @@ find_program(SLOPPY_TEST_NODE NAMES node.exe node)
 if(NOT SLOPPY_TEST_NODE AND EXISTS "C:/Program Files/nodejs/node.exe")
     set(SLOPPY_TEST_NODE "C:/Program Files/nodejs/node.exe")
 endif()
-if(DEFINED ENV{APPDATA})
-    set(SLOPPY_TEST_NPM_CLI "$ENV{APPDATA}/npm/node_modules/npm/bin/npm-cli.js")
+if(NOT DEFINED SLOPPY_TEST_NPM_CLI AND DEFINED ENV{APPDATA})
+    set(SLOPPY_TEST_NPM_CLI_CANDIDATE "$ENV{APPDATA}/npm/node_modules/npm/bin/npm-cli.js")
+    if(EXISTS "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+        set(SLOPPY_TEST_NPM_CLI "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+    endif()
+endif()
+if(NOT DEFINED SLOPPY_TEST_NPM_CLI AND SLOPPY_TEST_NPM)
+    execute_process(
+        COMMAND "${SLOPPY_TEST_NPM}" root -g
+        TIMEOUT 30
+        RESULT_VARIABLE SLOPPY_TEST_NPM_ROOT_RESULT
+        OUTPUT_VARIABLE SLOPPY_TEST_NPM_ROOT
+        ERROR_QUIET)
+    if(SLOPPY_TEST_NPM_ROOT_RESULT EQUAL 0)
+        string(STRIP "${SLOPPY_TEST_NPM_ROOT}" SLOPPY_TEST_NPM_ROOT)
+        set(SLOPPY_TEST_NPM_CLI_CANDIDATE "${SLOPPY_TEST_NPM_ROOT}/npm/bin/npm-cli.js")
+        if(EXISTS "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+            set(SLOPPY_TEST_NPM_CLI "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+        endif()
+    endif()
 endif()
 
 function(assert_sloppy_command_success label working_dir expected_stdout)
@@ -105,6 +123,22 @@ if(NOT missing_template_create_stderr MATCHES "unsupported template|template not
     message(FATAL_ERROR "sloppy create missing-template failure did not explain template lookup\nstdout:\n${missing_template_create_stdout}\nstderr:\n${missing_template_create_stderr}")
 endif()
 
+foreach(removed_template IN ITEMS dogfood full-api)
+    execute_process(
+        COMMAND "${SLOPPY_CLI}" create "removed-${removed_template}" --template "${removed_template}"
+        WORKING_DIRECTORY "${work_dir}"
+        TIMEOUT 60
+        RESULT_VARIABLE removed_template_create_result
+        OUTPUT_VARIABLE removed_template_create_stdout
+        ERROR_VARIABLE removed_template_create_stderr)
+    if(removed_template_create_result EQUAL 0)
+        message(FATAL_ERROR "sloppy create unexpectedly accepted removed template ${removed_template}")
+    endif()
+    if(NOT removed_template_create_stderr MATCHES "unsupported template")
+        message(FATAL_ERROR "sloppy create removed-template failure did not explain unsupported template ${removed_template}\nstdout:\n${removed_template_create_stdout}\nstderr:\n${removed_template_create_stderr}")
+    endif()
+endforeach()
+
 execute_process(
     COMMAND "${SLOPPY_CLI}" create "${default_project_name}" --format json
     WORKING_DIRECTORY "${work_dir}"
@@ -150,16 +184,25 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
     endforeach()
     if(public_template STREQUAL "package-api")
-        if(NOT SLOPPY_TEST_NODE OR NOT EXISTS "${SLOPPY_TEST_NODE}" OR NOT EXISTS "${SLOPPY_TEST_NPM_CLI}")
+        if(SLOPPY_TEST_NPM)
+            execute_process(
+                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
+                WORKING_DIRECTORY "${public_project_dir}"
+                TIMEOUT 120
+                RESULT_VARIABLE public_npm_result
+                OUTPUT_VARIABLE public_npm_stdout
+                ERROR_VARIABLE public_npm_stderr)
+        elseif(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
+            execute_process(
+                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
+                WORKING_DIRECTORY "${public_project_dir}"
+                TIMEOUT 120
+                RESULT_VARIABLE public_npm_result
+                OUTPUT_VARIABLE public_npm_stdout
+                ERROR_VARIABLE public_npm_stderr)
+        else()
             message(FATAL_ERROR "package-api template test requires node and npm to install the local file dependency")
         endif()
-        execute_process(
-            COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
-            WORKING_DIRECTORY "${public_project_dir}"
-            TIMEOUT 120
-            RESULT_VARIABLE public_npm_result
-            OUTPUT_VARIABLE public_npm_stdout
-            ERROR_VARIABLE public_npm_stderr)
         if(NOT public_npm_result EQUAL 0)
             message(FATAL_ERROR "package-api npm install failed\nstdout:\n${public_npm_stdout}\nstderr:\n${public_npm_stderr}")
         endif()
@@ -192,6 +235,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
     if(SLOPPY_ENABLE_V8)
         if(public_template STREQUAL "api")
             assert_sloppy_command_success("api template source /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health)
+            assert_sloppy_command_success("api template source /health/ready" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health/ready)
             assert_sloppy_command_success("api template source /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /users)
         elseif(public_template STREQUAL "minimal-api")
             assert_sloppy_command_success("minimal-api template source /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /health)
@@ -208,6 +252,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
             assert_sloppy_command_success("package-api template source /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy --once GET /users/Ada)
         elseif(public_template STREQUAL "node-compat")
             assert_sloppy_command_success("node-compat template artifact run" "${public_project_dir}" "\"event\":\"ok\"|\"event\": \"ok\"" run .sloppy)
+            assert_sloppy_command_success("node-compat template artifact UTF-8 buffer" "${public_project_dir}" "\"euroCodePoint\":8364|\"euroCodePoint\": 8364" run .sloppy)
         endif()
     endif()
     if(public_template STREQUAL "api")
@@ -259,6 +304,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
     if(SLOPPY_ENABLE_V8)
         if(public_template STREQUAL "api")
             assert_sloppy_command_success("api template packaged /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health)
+            assert_sloppy_command_success("api template packaged /health/ready" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health/ready)
             assert_sloppy_command_success("api template packaged /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /users)
         elseif(public_template STREQUAL "minimal-api")
             assert_sloppy_command_success("minimal-api template packaged /health" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /health)
@@ -271,6 +317,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
             assert_sloppy_command_success("package-api template packaged /users" "${public_project_dir}" "HTTP/1.1 200" run .sloppy/package --once GET /users/Ada)
         elseif(public_template STREQUAL "node-compat")
             assert_sloppy_command_success("node-compat template packaged run" "${public_project_dir}" "\"event\":\"ok\"|\"event\": \"ok\"" run .sloppy/package)
+            assert_sloppy_command_success("node-compat template packaged UTF-8 buffer" "${public_project_dir}" "\"euroCodePoint\":8364|\"euroCodePoint\": 8364" run .sloppy/package)
         endif()
     endif()
 endforeach()

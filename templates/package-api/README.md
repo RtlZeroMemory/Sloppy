@@ -1,7 +1,7 @@
 # Package API Starter
 
-This backend starter uses a compatible local pure-JS package through an npm
-`file:` dependency. It does not require internet access.
+This public alpha backend starter uses a compatible local pure-JS package
+through an npm `file:` dependency. It does not require internet access.
 
 Package support is experimental. Sloppy consumes packages that are already
 installed in `node_modules`, bundles compatible pure-JS modules into the

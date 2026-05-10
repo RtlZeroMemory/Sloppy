@@ -443,6 +443,7 @@ static void sl_cli_print_command_help(const char* command)
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
+        printf("Default template: api.\n");
         printf("\n");
         printf("Templates:\n");
         printf("  api          SQLite-backed backend starter with routes, services, config, and packaging flow\n");

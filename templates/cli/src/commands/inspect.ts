@@ -14,7 +14,7 @@ export async function inspect(args) {
         console.error(`not found: ${path}`);
         return 1;
     }
-    const text = await File.readText(path);
-    console.log(JSON.stringify({ path, bytes: text.length }, null, 2));
+    const bytes = await File.readBytes(path);
+    console.log(JSON.stringify({ path, bytes: bytes.length }, null, 2));
     return 0;
 }

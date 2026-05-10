@@ -59,6 +59,16 @@ const diagnosticCases = [
         expect: "project name",
     },
     {
+        name: "create-removed-dogfood",
+        sloppyArgs: ["create", "removed-dogfood", "--template", "dogfood"],
+        expect: "unsupported template",
+    },
+    {
+        name: "create-removed-full-api",
+        sloppyArgs: ["create", "removed-full-api", "--template", "full-api"],
+        expect: "unsupported template",
+    },
+    {
         name: "run-missing-artifacts",
         sloppyArgs: ["run", "--artifacts", "tests/fixtures/run/missing", "--once", "GET", "/"],
         expect: "artifact path not found",
@@ -505,6 +515,10 @@ async function installTemplateDependencies(projectDir, template) {
     requireSuccess(result, `npm install for ${template}`);
 }
 
+function withPassthroughArgs(runArgs) {
+    return runArgs.length > 0 ? ["--", ...runArgs] : [];
+}
+
 async function runCliArea() {
     if (!selectedCliSection || selectedCliSection === "help") {
         const commands = [
@@ -627,7 +641,7 @@ async function runTemplateArea() {
 
         if (template === "program" || template === "cli" || template === "node-compat") {
             const runArgs = template === "program" ? ["--name", "Ada"] : template === "cli" ? ["--help"] : [];
-            const runResult = await run(sloppy, ["run", ".sloppy", "--", ...runArgs], { cwd: projectDir });
+            const runResult = await run(sloppy, ["run", ".sloppy", ...withPassthroughArgs(runArgs)], { cwd: projectDir });
             if (requireV8) {
                 requireSuccess(runResult, `${template} run`);
             } else {
@@ -694,7 +708,7 @@ async function runAlphaFlowsArea() {
         await snapshotJson("alpha-flows", `${template}.plan-summary`, planSummary(await readJson(joinPath(artifactDir, "app.plan.json"))));
         if (template === "program" || template === "cli" || template === "node-compat") {
             const runArgs = template === "program" ? ["--name", "Ada"] : template === "cli" ? ["--help"] : [];
-            const runSource = await run(sloppy, ["run", "src/main.ts", "--", ...runArgs], { cwd: projectDir });
+            const runSource = await run(sloppy, ["run", "src/main.ts", ...withPassthroughArgs(runArgs)], { cwd: projectDir });
             if (requireV8) {
                 requireSuccess(runSource, `${template} source flow`);
             } else {

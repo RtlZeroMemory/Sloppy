@@ -1186,6 +1186,13 @@ fn program_mode_resolves_node_compat_shim_and_plan_features() {
 }
 
 #[test]
+fn node_buffer_shim_uses_multibyte_utf8_decode_fallback() {
+    assert!(super::NODE_BUFFER_SHIM.contains("String.fromCodePoint"));
+    assert!(super::NODE_BUFFER_SHIM.contains("0xf4"));
+    assert!(!super::NODE_BUFFER_SHIM.contains("fromCharCode(value[i])"));
+}
+
+#[test]
 fn program_mode_dedupes_node_compat_required_features() {
     let root = fixture_temp_dir("program-node-compat-dedupe");
     let input = root.join("main.ts");
@@ -3730,6 +3737,33 @@ export default app;
 }
 
 #[test]
+fn ordinary_handlers_collect_multiple_return_response_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/{id:int}", async (ctx) => {
+  const user = await loadUser(ctx.route.id);
+  if (user === null) {
+    return Results.notFound();
+  }
+  return Results.ok(user);
+});
+function loadUser(id) {
+  return id === 1 ? { id } : null;
+}
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("runnable branched handler should extract response metadata");
+    let statuses = app.routes[0]
+        .handler
+        .responses
+        .iter()
+        .map(|response| response.status)
+        .collect::<Vec<_>>();
+    assert_eq!(statuses, vec![404, 200]);
+}
+
+#[test]
 fn dynamic_status_result_does_not_emit_response_metadata() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
@@ -4183,6 +4217,51 @@ export default app;
 }
 
 #[test]
+fn helper_identifier_scanner_ignores_strings_comments_and_object_keys() {
+    assert!(super::source_contains_identifier(
+        "return Results.json(auth());",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.json({ auth: true });",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.text('auth'); // auth\n",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "/* auth */ return Results.text(`auth`);",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.json({ auth  : true });",
+        "auth"
+    ));
+}
+
+#[test]
+fn same_file_helper_selection_ignores_non_code_identifier_matches() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function auth() {
+  throw new Error("auth helper should not be emitted");
+}
+app.get("/users", () => {
+  // auth is mentioned in a comment only.
+  return Results.json({ auth: true, label: "auth", note: `auth` });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("unreferenced helper names in metadata text should not poison extraction");
+    assert!(!app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function auth"));
+}
+
+#[test]
 fn infers_provider_effects_inside_control_flow() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";
@@ -4375,6 +4454,16 @@ export default app;
         .packages
         .iter()
         .any(|package| package.name == "validator-lite"));
+    let users_module = app
+        .dependency_graph
+        .modules
+        .iter()
+        .find(|module| module.id.replace('\\', "/").ends_with("routes/users.ts"))
+        .expect("route module should be recorded in dependency graph");
+    assert!(users_module
+        .resolved_imports
+        .iter()
+        .any(|import| { import.specifier == "validator-lite" && import.kind == "package" }));
     assert!(app.routes[0]
         .handler
         .emitted_source
@@ -4383,6 +4472,126 @@ export default app;
         .handler
         .emitted_source
         .contains("function isUserName(value)"));
+}
+
+#[test]
+fn function_module_records_cross_file_helper_dependency_graph() {
+    let root = fixture_temp_dir("function-module-cross-file-helper-graph");
+    fs::create_dir_all(root.join("src").join("routes")).expect("routes directory should exist");
+    fs::create_dir_all(root.join("src").join("services")).expect("services directory should exist");
+    fs::create_dir_all(root.join("src").join("db")).expect("db directory should exist");
+    fs::create_dir_all(root.join("src").join("models")).expect("models directory should exist");
+    fs::create_dir_all(root.join("src").join("utils")).expect("utils directory should exist");
+    fs::write(
+        root.join("src").join("routes").join("users.ts"),
+        r#"import { Results } from "sloppy";
+import { listUsers } from "../services/usersService";
+
+function describeCount(count) {
+  return `users:${count}`;
+}
+
+export function usersModule(app) {
+  app.get("/users", () => {
+    const users = listUsers();
+    return Results.ok({ summary: describeCount(users.length), users });
+  });
+}
+"#,
+    )
+    .expect("route module should be writable");
+    fs::write(
+        root.join("src").join("services").join("usersService.ts"),
+        r#"import { repoListUsers } from "../db/usersRepository";
+import { label } from "../utils/text";
+
+export function listUsers() {
+  return repoListUsers().map((user) => ({ ...user, label: label(user.name) }));
+}
+"#,
+    )
+    .expect("service helper should be writable");
+    fs::write(
+        root.join("src").join("db").join("usersRepository.ts"),
+        r#"import { toUser } from "../models/user";
+
+export function repoListUsers() {
+  return [toUser({ id: 1, name: "ada" })];
+}
+"#,
+    )
+    .expect("repository helper should be writable");
+    fs::write(
+        root.join("src").join("models").join("user.ts"),
+        r#"import { title } from "../utils/text";
+
+export function toUser(row) {
+  return { id: row.id, name: title(row.name) };
+}
+"#,
+    )
+    .expect("model helper should be writable");
+    fs::write(
+        root.join("src").join("utils").join("text.ts"),
+        r#"export function title(value) {
+  return String(value || "").toUpperCase();
+}
+
+export function label(value) {
+  return `user:${title(value)}`;
+}
+"#,
+    )
+    .expect("utility helper should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./routes/users";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let input = root.join("src").join("main.ts");
+    fs::write(&input, source).expect("input should be writable");
+    let app = extract(&input, source)
+        .expect("resolved cross-file web app should emit runnable partial metadata");
+
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function describeCount(count)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function repoListUsers()"));
+    let modules = &app.dependency_graph.modules;
+    let has_edge = |from_suffix: &str, specifier: &str, to_suffix: &str| {
+        modules.iter().any(|module| {
+            module.id.replace('\\', "/").ends_with(from_suffix)
+                && module.resolved_imports.iter().any(|import| {
+                    import.specifier == specifier
+                        && import.kind == "relative"
+                        && import.resolved_id.replace('\\', "/").ends_with(to_suffix)
+                })
+        })
+    };
+    assert!(has_edge("main.ts", "./routes/users", "routes/users.ts"));
+    assert!(has_edge(
+        "routes/users.ts",
+        "../services/usersService",
+        "services/usersService.ts"
+    ));
+    assert!(has_edge(
+        "services/usersService.ts",
+        "../db/usersRepository",
+        "db/usersRepository.ts"
+    ));
+    assert!(has_edge(
+        "db/usersRepository.ts",
+        "../models/user",
+        "models/user.ts"
+    ));
+    assert!(has_edge("models/user.ts", "../utils/text", "utils/text.ts"));
 }
 
 #[test]

@@ -2,6 +2,7 @@ Usage: sloppy create <name> [--template api|minimal-api|program|cli|package-api|
                      [--force] [--no-git] [--format text|json]
 
 Copies a built-in project template into a new local app directory.
+Default template: api.
 
 Templates:
   api          SQLite-backed backend starter with routes, services, config, and packaging flow

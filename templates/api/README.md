@@ -50,7 +50,8 @@ sloppy run .sloppy/package --once GET /users
 
 The alpha package format contains the compiled Sloppy artifacts. The SQLite
 database path is configured as `data/app.db`; create that directory when you run
-the package from a directory that does not already have it.
+the package from a directory that does not already have it. `/health/ready`
+performs a SQLite query after running the template migration.
 
 ## Alpha Limits
 

@@ -10,32 +10,32 @@
   "completeness": null,
   "handlers": [
     {
-      "displayName": "Health",
+      "displayName": "Users.List",
       "exportName": "__sloppy_handler_1",
       "id": 1
     },
     {
-      "displayName": "Health.Liveness",
+      "displayName": "Users.Get",
       "exportName": "__sloppy_handler_2",
       "id": 2
     },
     {
-      "displayName": "Health.Readiness",
+      "displayName": "Users.Create",
       "exportName": "__sloppy_handler_3",
       "id": 3
     },
     {
-      "displayName": "Users.List",
+      "displayName": "Health",
       "exportName": "__sloppy_handler_4",
       "id": 4
     },
     {
-      "displayName": "Users.Get",
+      "displayName": "Health.Live",
       "exportName": "__sloppy_handler_5",
       "id": 5
     },
     {
-      "displayName": "Users.Create",
+      "displayName": "Health.Ready",
       "exportName": "__sloppy_handler_6",
       "id": 6
     }
@@ -46,43 +46,43 @@
     {
       "handlerId": 1,
       "method": "GET",
-      "name": "Health",
-      "pattern": "/health",
-      "tags": []
-    },
-    {
-      "handlerId": 2,
-      "method": "GET",
-      "name": "Health.Liveness",
-      "pattern": "/health/live",
-      "tags": []
-    },
-    {
-      "handlerId": 3,
-      "method": "GET",
-      "name": "Health.Readiness",
-      "pattern": "/health/ready",
-      "tags": []
-    },
-    {
-      "handlerId": 4,
-      "method": "GET",
       "name": "Users.List",
       "pattern": "/users",
       "tags": []
     },
     {
-      "handlerId": 5,
+      "handlerId": 2,
       "method": "GET",
       "name": "Users.Get",
       "pattern": "/users/{id:int}",
       "tags": []
     },
     {
-      "handlerId": 6,
+      "handlerId": 3,
       "method": "POST",
       "name": "Users.Create",
       "pattern": "/users",
+      "tags": []
+    },
+    {
+      "handlerId": 4,
+      "method": "GET",
+      "name": "Health",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 5,
+      "method": "GET",
+      "name": "Health.Live",
+      "pattern": "/health/live",
+      "tags": []
+    },
+    {
+      "handlerId": 6,
+      "method": "GET",
+      "name": "Health.Ready",
+      "pattern": "/health/ready",
       "tags": []
     }
   ]

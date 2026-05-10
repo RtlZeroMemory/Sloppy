@@ -52,6 +52,11 @@
         "id": "optimization.native-json-candidate",
         "message": "route has response metadata for future native JSON analysis",
         "status": "ok"
+      },
+      {
+        "id": "dependency.graph",
+        "message": "Dependency graph emitted with 0 package(s), 2 module(s), and 0 Node compatibility binding(s).",
+        "status": "info"
       }
     ]
   }

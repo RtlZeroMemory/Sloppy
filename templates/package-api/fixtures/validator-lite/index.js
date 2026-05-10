@@ -3,5 +3,5 @@ export function isUserName(value) {
 }
 
 export function normalizeName(value) {
-    return String(value || "").trim();
+    return typeof value === "string" ? value.trim() : "";
 }

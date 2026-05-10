@@ -81,13 +81,22 @@
           ],
           "responses": {
             "200": {
-              "description": "response metadata unknown",
-              "x-slop-partial": "response metadata unknown"
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "x-slop-partial": "response schema shape not declared"
+                  }
+                }
+              },
+              "description": "ok"
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "partial",
-          "x-slop-optimization-candidates": [],
+          "x-slop-completeness": "complete",
+          "x-slop-optimization-candidates": [
+            "native-json-serialization",
+            "static-route-dispatch"
+          ],
           "x-slop-source": {
             "column": 5,
             "line": 5,

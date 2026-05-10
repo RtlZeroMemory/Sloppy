@@ -516,14 +516,10 @@ fn collect_callee_object_effects(
 ) {
     match callee {
         Expression::StaticMemberExpression(member) => {
-            if !matches!(member.object, Expression::Identifier(_)) {
-                collect_expression_effects(&member.object, helper_effects, summary);
-            }
+            collect_non_identifier_member_object_effects(&member.object, helper_effects, summary);
         }
         Expression::ComputedMemberExpression(member) => {
-            if !matches!(member.object, Expression::Identifier(_)) {
-                collect_expression_effects(&member.object, helper_effects, summary);
-            }
+            collect_non_identifier_member_object_effects(&member.object, helper_effects, summary);
             collect_expression_effects(&member.expression, helper_effects, summary);
         }
         Expression::ChainExpression(chain) => {
@@ -534,6 +530,17 @@ fn collect_callee_object_effects(
         }
         _ => {}
     }
+}
+
+fn collect_non_identifier_member_object_effects(
+    object: &Expression<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    if matches!(object, Expression::Identifier(_)) {
+        return;
+    }
+    collect_expression_effects(object, helper_effects, summary);
 }
 
 fn apply_helper_effects(

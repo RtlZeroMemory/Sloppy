@@ -19,6 +19,22 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
             set(SLOPPY_ALPHA_PROOF_NPM_CLI "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
         endif()
     endif()
+    if(NOT SLOPPY_ALPHA_PROOF_NPM_CLI AND SLOPPY_ALPHA_PROOF_NPM)
+        execute_process(
+            COMMAND "${SLOPPY_ALPHA_PROOF_NPM}" root -g
+            TIMEOUT 30
+            RESULT_VARIABLE SLOPPY_ALPHA_PROOF_NPM_ROOT_RESULT
+            OUTPUT_VARIABLE SLOPPY_ALPHA_PROOF_NPM_ROOT
+            ERROR_QUIET)
+        if(SLOPPY_ALPHA_PROOF_NPM_ROOT_RESULT EQUAL 0)
+            string(STRIP "${SLOPPY_ALPHA_PROOF_NPM_ROOT}" SLOPPY_ALPHA_PROOF_NPM_ROOT)
+            set(SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE
+                "${SLOPPY_ALPHA_PROOF_NPM_ROOT}/npm/bin/npm-cli.js")
+            if(EXISTS "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+                set(SLOPPY_ALPHA_PROOF_NPM_CLI "${SLOPPY_ALPHA_PROOF_NPM_CLI_CANDIDATE}")
+            endif()
+        endif()
+    endif()
 
     function(sloppy_add_alpha_proof_test test_name area)
         set(alpha_proof_args

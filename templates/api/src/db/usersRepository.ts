@@ -12,8 +12,12 @@ export async function repoGetUserById(db, id) {
 
 export async function repoCreateUser(db, input) {
     await db.exec("insert into users (name, email) values (?, ?)", [input.name, input.email]);
-    return toUser(await db.queryOne(
+    const row = await db.queryOne(
         "select id, name, email from users where id = last_insert_rowid()",
         [],
-    ));
+    );
+    if (row === null) {
+        throw new Error("inserted user could not be loaded");
+    }
+    return toUser(row);
 }

@@ -71,10 +71,71 @@
     "providers": []
   },
   "dataProviders": [],
+  "dependencyGraph": {
+    "assets": [],
+    "compatibilityFindings": [],
+    "modules": [
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "input.js",
+        "imports": [
+          "./modules/empty.js"
+        ],
+        "resolvedImports": [
+          {
+            "kind": "relative",
+            "resolvedId": "modules/empty.js",
+            "specifier": "./modules/empty.js"
+          }
+        ],
+        "source": "input.js"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "modules/empty.js",
+        "imports": [],
+        "includedBy": "input.js",
+        "resolvedImports": [],
+        "source": "modules/empty.js"
+      }
+    ],
+    "nodeBuiltins": [],
+    "packages": [],
+    "resolver": {
+      "conditions": [
+        "sloppy",
+        "import",
+        "require",
+        "default"
+      ],
+      "profiles": [
+        "sloppy-stdlib",
+        "relative-source",
+        "installed-packages",
+        "node-compat-shims"
+      ]
+    },
+    "schemaVersion": 1
+  },
+  "dependencyGraphArtifact": {
+    "hash": "sha256:78a2a47dbcf552c4e75c6231e66478ebc8027d41b34ee5e13d6ba0894ed1de18",
+    "id": "sloppyc-deps-graph",
+    "path": "deps.graph.json"
+  },
+  "doctorChecks": [
+    {
+      "id": "dependency.graph",
+      "message": "Dependency graph emitted with 0 package(s), 2 module(s), and 0 Node compatibility binding(s).",
+      "status": "info"
+    }
+  ],
   "features": {
     "asyncHandlers": false,
     "capabilities": false,
     "dataProviders": false,
+    "dependencyGraph": true,
     "metadataInference": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -151,6 +212,7 @@
     "evidence": {
       "bindings": false,
       "capabilities": false,
+      "dependencyGraph": true,
       "effects": false,
       "ffi": false,
       "providers": false,

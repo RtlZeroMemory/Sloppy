@@ -1,8 +1,8 @@
 # CLI Starter
 
-This Program Mode starter is shaped like a practical local tool. It has a
-command dispatcher, subcommands, filesystem inspection, platform information,
-clear exit codes, and the packaged CLI flow.
+This public alpha CLI starter is shaped like a practical local tool. It has a
+command dispatcher, subcommands, filesystem inspection, safe platform
+indicators, clear exit codes, and the packaged CLI flow.
 
 ```sh
 sloppy run src/main.ts -- --help

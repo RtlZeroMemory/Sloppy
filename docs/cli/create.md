@@ -7,6 +7,8 @@ sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-co
                      [--force] [--no-git] [--format text|json]
 ```
 
+Default template: `api`.
+
 ## Templates
 
 | Template | Purpose |
@@ -18,11 +20,13 @@ sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-co
 | `package-api` | Backend starter using a compatible local pure-JS package. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
 
-`sloppy create <name>` defaults to `api`. The `package-api` template includes a
-local `file:` dependency and needs `npm install --ignore-scripts --no-audit`
-before `sloppy build`. Sloppy can bundle supported package modules from
-`node_modules`, but it does not install packages, solve versions, or provide
-full Node compatibility.
+`sloppy create <name>` defaults to `api`. These starters are public alpha
+templates: they are intended for real experiments and early apps, but their
+structure and supported runtime surface can still change before a stable
+release. The `package-api` template includes a local `file:` dependency and
+needs `npm install --ignore-scripts --no-audit` before `sloppy build`. Sloppy
+can bundle supported package modules from `node_modules`, but it does not
+install packages, solve versions, or provide full Node compatibility.
 
 ## Examples
 
