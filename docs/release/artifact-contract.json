@@ -119,7 +119,7 @@
     "publishTag": "alpha",
     "publishWorkflow": ".github/workflows/npm-publish.yml",
     "publishTrigger": "manual workflow_dispatch",
-    "publishAuth": "npm Trusted Publishing/OIDC preferred; granular NPM_TOKEN secret is fallback only",
+    "publishAuth": "npm Trusted Publishing/OIDC",
     "publishOrder": [
       "platform packages",
       "root launcher package"

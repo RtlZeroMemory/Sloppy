@@ -3,6 +3,10 @@
   "version": "0.1.0-alpha.1",
   "description": "Linux x64 GNU Sloppy runtime package generated from a tested release archive.",
   "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RtlZeroMemory/Slop.git"
+  },
   "os": ["linux"],
   "cpu": ["x64"],
   "libc": ["glibc"],

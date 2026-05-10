@@ -4,6 +4,10 @@
   "description": "Unpublished macOS arm64 Sloppy runtime package template for a future alpha package.",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RtlZeroMemory/Slop.git"
+  },
   "os": ["darwin"],
   "cpu": ["arm64"],
   "files": ["bin/", "stdlib/", "templates/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"]

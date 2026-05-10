@@ -86,9 +86,11 @@ function Test-ReleaseTemplates {
     Assert-True ($contract.npmPackages.publishWorkflow -eq ".github/workflows/npm-publish.yml") "Artifact contract must name the npm publish workflow."
 
     $npmPublishWorkflow = Read-RequiredText -Relative ".github/workflows/npm-publish.yml"
-    foreach ($needle in @("id-token: write", "publish-alpha", "npm publish", "--provenance", "Trusted Publishing")) {
+    foreach ($needle in @("id-token: write", "publish-alpha", "registry-url: `"https://registry.npmjs.org`"", "npm publish", "Trusted Publishing")) {
         Assert-TextContains -Text $npmPublishWorkflow -Needle $needle -Message "npm publish workflow missing required publishing guard: $needle"
     }
+    Assert-True (-not $npmPublishWorkflow.Contains("NODE_AUTH_TOKEN")) "npm publish workflow must not use token auth."
+    Assert-True (-not $npmPublishWorkflow.Contains("--provenance")) "npm Trusted Publishing workflow must not force --provenance for private-repo publishes."
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
     Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."

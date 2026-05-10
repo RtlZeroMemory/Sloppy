@@ -70,11 +70,10 @@ install must not compile native code, run `node-gyp`, build V8, or download V8 i
 
 Publishing is manual and alpha-gated through the npm publish workflow. It uses
 Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and
-`npm publish --provenance` so npm Trusted Publishing can issue the publish
+`npm publish` so npm Trusted Publishing can issue a short-lived OIDC publish
 credential. If Trusted Publishing is not configured on npmjs.com for these
 packages, the publish step must fail; do not add committed `.npmrc` auth or
-long-lived tokens. The documented fallback is a granular `NPM_TOKEN` GitHub
-Actions secret, restricted to the package/scope and expiration-bound.
+long-lived publish tokens.
 
 User-facing wording:
 

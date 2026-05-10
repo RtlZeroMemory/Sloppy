@@ -3,6 +3,10 @@
   "version": "0.1.0-alpha.1",
   "description": "Windows x64 Sloppy runtime package generated from a tested release archive.",
   "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RtlZeroMemory/Slop.git"
+  },
   "os": ["win32"],
   "cpu": ["x64"],
   "files": ["bin/", "stdlib/", "templates/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"],

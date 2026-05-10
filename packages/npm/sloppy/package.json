@@ -3,6 +3,10 @@
   "version": "0.1.0-alpha.1",
   "description": "Sloppy runtime launcher. npm installs Sloppy itself; it does not add npm package support to Sloppy apps.",
   "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RtlZeroMemory/Slop.git"
+  },
   "bin": {
     "sloppy": "bin/sloppy.js"
   },

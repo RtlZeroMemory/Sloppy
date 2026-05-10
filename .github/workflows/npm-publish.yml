@@ -48,7 +48,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22.14.0"
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Setup npm
         shell: bash
@@ -143,7 +144,7 @@ jobs:
           set -euo pipefail
           publish_one() {
             local tarball="$1"
-            if ! npm publish "$tarball" --access public --tag alpha --provenance; then
+            if ! npm publish "$tarball" --access public --tag alpha; then
               echo "npm publish failed. Confirm npm Trusted Publishing is configured for this GitHub workflow and package on npmjs.com." >&2
               echo "Do not commit .npmrc auth files or print npm tokens." >&2
               exit 1
@@ -157,7 +158,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! npm publish "${{ steps.tarballs.outputs.root }}" --access public --tag alpha --provenance; then
+          if ! npm publish "${{ steps.tarballs.outputs.root }}" --access public --tag alpha; then
             echo "npm root package publish failed. Platform packages publish first; reruns must account for already-published versions." >&2
             echo "Confirm npm Trusted Publishing is configured before retrying." >&2
             exit 1
