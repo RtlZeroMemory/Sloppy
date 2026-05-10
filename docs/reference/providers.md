@@ -128,6 +128,18 @@ All three providers expose callback transactions with these enforced rules:
 - using transaction object after callback settles is rejected
 - closing a connection during an active transaction is rejected
 
+## Result Modes
+
+All three providers expose object-row and raw positional result modes through
+the runtime data API:
+
+- `query(...)` returns object rows by default.
+- `query(..., { mode: "raw" })` and `queryRaw(...)` return `{ mode, columns, columnNames, rows }`.
+- `queryOne(...)` returns a single object row or `null`.
+
+Raw mode preserves duplicate column names and positional values. Object mode
+uses normal JS object property semantics, so the last duplicate column name wins.
+
 ## Redaction Helpers
 
 Redaction behavior includes:

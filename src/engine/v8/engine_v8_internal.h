@@ -135,6 +135,31 @@ typedef enum SlV8HttpPrototypeKey
     SL_V8_HTTP_PROTOTYPE_COUNT
 } SlV8HttpPrototypeKey;
 
+typedef enum SlV8DbStringKey
+{
+    SL_V8_DB_STRING_RESOURCE_SLOT = 0,
+    SL_V8_DB_STRING_RESOURCE_GENERATION,
+    SL_V8_DB_STRING_KIND,
+    SL_V8_DB_STRING_VALUE,
+    SL_V8_DB_STRING_SLOPPY_DB_VALUE,
+    SL_V8_DB_STRING_COLUMNS,
+    SL_V8_DB_STRING_COLUMN_NAMES,
+    SL_V8_DB_STRING_ROWS,
+    SL_V8_DB_STRING_MODE,
+    SL_V8_DB_STRING_OBJECT,
+    SL_V8_DB_STRING_RAW,
+    SL_V8_DB_STRING_NAME,
+    SL_V8_DB_STRING_INDEX,
+    SL_V8_DB_STRING_COUNT
+} SlV8DbStringKey;
+
+typedef enum SlV8DbPrivateKey
+{
+    SL_V8_DB_PRIVATE_RESOURCE_SLOT = 0,
+    SL_V8_DB_PRIVATE_RESOURCE_GENERATION,
+    SL_V8_DB_PRIVATE_COUNT
+} SlV8DbPrivateKey;
+
 struct SlV8Engine
 {
     v8::ArrayBuffer::Allocator* allocator = nullptr;
@@ -146,6 +171,8 @@ struct SlV8Engine
     std::array<v8::Global<v8::Function>, SL_V8_HTTP_FUNCTION_COUNT> http_functions = {};
     v8::Global<v8::Function> http_log_noop_function;
     std::array<v8::Global<v8::Object>, SL_V8_HTTP_PROTOTYPE_COUNT> http_prototypes = {};
+    std::array<v8::Global<v8::String>, SL_V8_DB_STRING_COUNT> db_strings = {};
+    std::array<v8::Global<v8::Private>, SL_V8_DB_PRIVATE_COUNT> db_private_keys = {};
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
     std::thread::id owner_thread;

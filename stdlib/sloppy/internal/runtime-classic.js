@@ -33,6 +33,10 @@
 
     const DB_VALUE_MARKER = Symbol("sloppyDbValue");
     const DB_BRIDGE_VALUE_MARKER = "__sloppyDbValue";
+    const DB_RESULT_MODES = Object.freeze({
+        object: true,
+        raw: true,
+    });
     const DB_VALUE_KINDS = Object.freeze({
         decimal: true,
         uuid: true,
@@ -427,13 +431,27 @@ Operation:
         };
     }
 
-    function validateProviderOperationOptions(options, operation) {
+    function normalizeResultMode(value, operation) {
+        if (value === undefined) {
+            return "object";
+        }
+        if (!Object.prototype.hasOwnProperty.call(DB_RESULT_MODES, value)) {
+            throw new TypeError(`Sloppy ${operation} mode must be object or raw.`);
+        }
+        return value;
+    }
+
+    function validateProviderOperationOptions(options, operation, allowResultMode = false) {
         if (options === undefined) {
-            return;
+            return allowResultMode ? "object" : undefined;
         }
         if (!isPlainObject(options)) {
             throw new TypeError(`Sloppy ${operation} options must be a plain object.`);
         }
+        if (!allowResultMode && Object.prototype.hasOwnProperty.call(options, "mode")) {
+            throw new TypeError(`Sloppy ${operation} option 'mode' is not supported by the current runtime bridge.`);
+        }
+        return allowResultMode ? normalizeResultMode(options.mode, operation) : undefined;
     }
 
     function createSqliteConnection(bridge, handle) {
@@ -470,9 +488,16 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    validateProviderOperationOptions(options, "sqlite.transaction.query");
+                    const mode = validateProviderOperationOptions(options, "sqlite.transaction.query", true);
                     const query = normalizeSqliteQuery("query", sql, params);
-                    return bridge.transactionQuery(state.handle, query.text, query.parameters);
+                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return method(state.handle, query.text, query.parameters);
+                },
+                queryRaw(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRaw");
+                    validateProviderOperationOptions(options, "sqlite.transaction.queryRaw");
+                    const query = normalizeSqliteQuery("queryRaw", sql, params);
+                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -538,9 +563,16 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                validateProviderOperationOptions(options, "sqlite.query");
+                const mode = validateProviderOperationOptions(options, "sqlite.query", true);
                 const query = normalizeSqliteQuery("query", sql, params);
-                return bridge.query(state.handle, query.text, query.parameters);
+                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
+                return method(state.handle, query.text, query.parameters);
+            },
+            queryRaw(sql, params, options) {
+                assertOpen("queryRaw");
+                validateProviderOperationOptions(options, "sqlite.queryRaw");
+                const query = normalizeSqliteQuery("queryRaw", sql, params);
+                return bridge.queryRaw(state.handle, query.text, query.parameters);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");
@@ -863,9 +895,16 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    validateProviderOperationOptions(options, "postgres.transaction.query");
+                    const mode = validateProviderOperationOptions(options, "postgres.transaction.query", true);
                     const query = normalizePostgresQuery("query", sql, params);
-                    return bridge.transactionQuery(state.handle, query.text, query.parameters);
+                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return method(state.handle, query.text, query.parameters);
+                },
+                queryRaw(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRaw");
+                    validateProviderOperationOptions(options, "postgres.transaction.queryRaw");
+                    const query = normalizePostgresQuery("queryRaw", sql, params);
+                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -930,9 +969,16 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                validateProviderOperationOptions(options, "postgres.query");
+                const mode = validateProviderOperationOptions(options, "postgres.query", true);
                 const query = normalizePostgresQuery("query", sql, params);
-                return bridge.query(state.handle, query.text, query.parameters);
+                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
+                return method(state.handle, query.text, query.parameters);
+            },
+            queryRaw(sql, params, options) {
+                assertOpen("queryRaw");
+                validateProviderOperationOptions(options, "postgres.queryRaw");
+                const query = normalizePostgresQuery("queryRaw", sql, params);
+                return bridge.queryRaw(state.handle, query.text, query.parameters);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");
@@ -1095,9 +1141,16 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    validateProviderOperationOptions(options, "sqlserver.transaction.query");
+                    const mode = validateProviderOperationOptions(options, "sqlserver.transaction.query", true);
                     const query = normalizeSqlServerQuery("query", sql, params);
-                    return bridge.transactionQuery(state.handle, query.text, query.parameters);
+                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return method(state.handle, query.text, query.parameters);
+                },
+                queryRaw(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRaw");
+                    validateProviderOperationOptions(options, "sqlserver.transaction.queryRaw");
+                    const query = normalizeSqlServerQuery("queryRaw", sql, params);
+                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -1162,9 +1215,16 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                validateProviderOperationOptions(options, "sqlserver.query");
+                const mode = validateProviderOperationOptions(options, "sqlserver.query", true);
                 const query = normalizeSqlServerQuery("query", sql, params);
-                return bridge.query(state.handle, query.text, query.parameters);
+                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
+                return method(state.handle, query.text, query.parameters);
+            },
+            queryRaw(sql, params, options) {
+                assertOpen("queryRaw");
+                validateProviderOperationOptions(options, "sqlserver.queryRaw");
+                const query = normalizeSqlServerQuery("queryRaw", sql, params);
+                return bridge.queryRaw(state.handle, query.text, query.parameters);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");

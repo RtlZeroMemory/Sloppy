@@ -85,6 +85,20 @@ void sl_v8_reset_http_bridge_caches(SlV8Engine* backend)
     }
 }
 
+void sl_v8_reset_db_bridge_caches(SlV8Engine* backend)
+{
+    if (backend == nullptr) {
+        return;
+    }
+
+    for (v8::Global<v8::String>& value : backend->db_strings) {
+        value.Reset();
+    }
+    for (v8::Global<v8::Private>& value : backend->db_private_keys) {
+        value.Reset();
+    }
+}
+
 SlStr sl_v8_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -784,10 +798,8 @@ SlStatus sl_v8_drain_microtasks(SlEngine* engine, v8::Isolate* isolate,
     SlV8MicrotaskDrainGuard* previous_guard = g_sl_v8_microtask_guard;
 
     g_sl_v8_microtask_guard = &guard;
-    isolate->SetPromiseHook(sl_v8_microtask_drain_promise_hook);
 
     isolate->PerformMicrotaskCheckpoint();
-    isolate->SetPromiseHook(nullptr);
     g_sl_v8_microtask_guard = previous_guard;
 
     if (guard.exceeded) {
@@ -1270,6 +1282,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         v8::HandleScope handle_scope(backend->isolate);
         backend->isolate->SetData(0, backend);
         backend->isolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
+        backend->isolate->SetPromiseHook(sl_v8_microtask_drain_promise_hook);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
         v8::Context::Scope context_scope(context);
         if (!sl_v8_install_intrinsics(backend, context)) {
@@ -1376,6 +1389,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
         if (backend->isolate != nullptr) {
             backend->handlers.clear();
             sl_v8_reset_http_bridge_caches(backend);
+            sl_v8_reset_db_bridge_caches(backend);
             backend->context.Reset();
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();

@@ -53,6 +53,7 @@ Wrapper objects are frozen and carry DB-value markers used by provider bridges.
 Common operation methods:
 
 - `query(...)`
+- `queryRaw(...)`
 - `queryOne(...)`
 - `exec(...)`
 - `transaction(async (tx) => ...)`
@@ -72,8 +73,30 @@ Operation options currently support:
 - `deadline`
 - `signal`
 - `timeoutMs`
+- `mode` on `query(...)` only: `object` (default) or `raw`
 
 Unsupported option keys are rejected.
+
+## Query Results
+
+`query(...)` returns object rows by default. Each row is a plain object keyed by
+column name. The returned row array carries non-enumerable, read-only metadata:
+
+- `mode`: `object`
+- `columnNames`: frozen array of column names in result order
+- `columns`: frozen array of `{ name, index }`
+
+`queryOne(...)` returns the same object-row shape for a single row, or `null`.
+
+`query(..., { mode: "raw" })` and `queryRaw(...)` return:
+
+- `mode`: `raw`
+- `columnNames`: frozen array of column names in result order
+- `columns`: frozen array of `{ name, index }`
+- `rows`: array of positional value arrays
+
+Duplicate column names are preserved in raw mode. In object-row mode, ordinary
+JS property semantics apply and the last duplicate column value wins.
 
 ## sqlite.open Options
 
@@ -109,7 +132,7 @@ Without active V8 provider bridges, provider `open(...)` calls fail with unavail
 
 Definition methods:
 
-- `query`, `queryOne`, `exec`
+- `query`, `queryRaw`, `queryOne`, `exec`
 - optional transaction hooks or transaction handler
 
 Fake-provider tests validate runtime shape only. Live database behavior uses

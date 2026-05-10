@@ -23,6 +23,46 @@ bool sl_v8_native_view_valid(SlStr str)
     return str.length == 0U || str.ptr != nullptr;
 }
 
+bool sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value,
+                           v8::Local<v8::String>* out)
+{
+    if (isolate == nullptr || out == nullptr || value.IsEmpty()) {
+        return false;
+    }
+    if (value->IsString()) {
+        *out = value.As<v8::String>();
+        return true;
+    }
+    return value->ToString(isolate->GetCurrentContext()).ToLocal(out);
+}
+
+SlStatus sl_v8_string_write_to_arena(v8::Isolate* isolate, SlArena* arena,
+                                     v8::Local<v8::String> value, SlStr* out)
+{
+    void* copied = nullptr;
+
+    if (isolate == nullptr || arena == nullptr || out == nullptr || value.IsEmpty()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    const size_t length = value->Utf8LengthV2(isolate);
+    if (length == 0U) {
+        *out = sl_str_empty();
+        return sl_status_ok();
+    }
+
+    SlStatus status = sl_arena_alloc(arena, length, alignof(char), &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    const size_t written =
+        value->WriteUtf8V2(isolate, static_cast<char*>(copied), length,
+                           v8::String::WriteFlags::kReplaceInvalidUtf8);
+    *out = sl_str_from_parts(static_cast<const char*>(copied), written);
+    return sl_status_ok();
+}
+
 } // namespace
 
 SlStatus sl_v8_string_from_native_view(SlV8Engine* backend, SlStr str, v8::Local<v8::String>* out)
@@ -67,44 +107,35 @@ bool sl_v8_std_string_from_value(v8::Isolate* isolate, v8::Local<v8::Value> valu
 SlStatus sl_v8_string_from_value_copy_to_arena(v8::Isolate* isolate, SlArena* arena,
                                                v8::Local<v8::Value> value, SlStr* out)
 {
+    v8::Local<v8::String> string_value;
+
     if (isolate == nullptr || arena == nullptr || out == nullptr || value.IsEmpty()) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    v8::String::Utf8Value utf8(isolate, value);
-    if (*utf8 == nullptr) {
+    if (!sl_v8_value_to_string(isolate, value, &string_value)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return sl_str_copy_view_to_arena(
-        arena, sl_str_from_parts(*utf8, static_cast<size_t>(utf8.length())), out);
+    return sl_v8_string_write_to_arena(isolate, arena, string_value, out);
 }
 
 SlStatus sl_v8_string_value_copy_bytes_to_arena(v8::Isolate* isolate, SlArena* arena,
                                                 v8::Local<v8::Value> value, SlBytes* out)
 {
-    SlOwnedBytes copied = {};
+    SlStr copied = {};
     SlStatus status;
 
     if (isolate == nullptr || arena == nullptr || out == nullptr || value.IsEmpty()) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    v8::String::Utf8Value utf8(isolate, value);
-    if (*utf8 == nullptr) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    status =
-        sl_bytes_copy_to_arena(arena,
-                               sl_bytes_from_parts(reinterpret_cast<const unsigned char*>(*utf8),
-                                                   static_cast<size_t>(utf8.length())),
-                               &copied);
+    status = sl_v8_string_from_value_copy_to_arena(isolate, arena, value, &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    *out = sl_owned_bytes_as_view(copied);
+    *out = sl_bytes_from_parts(reinterpret_cast<const unsigned char*>(copied.ptr), copied.length);
     return sl_status_ok();
 }
 

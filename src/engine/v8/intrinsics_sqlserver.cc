@@ -64,12 +64,14 @@ enum class SqlSrvV8Operation
 {
     Exec,
     Query,
+    QueryRaw,
     QueryOne,
     Begin,
     Commit,
     Rollback,
     TransactionExec,
     TransactionQuery,
+    TransactionQueryRaw,
     TransactionQueryOne,
 };
 
@@ -287,8 +289,10 @@ SlCapabilityOperation sqlsrv_v8_request_capability(SqlSrvV8Operation operation)
 {
     switch (operation) {
     case SqlSrvV8Operation::Query:
+    case SqlSrvV8Operation::QueryRaw:
     case SqlSrvV8Operation::QueryOne:
     case SqlSrvV8Operation::TransactionQuery:
+    case SqlSrvV8Operation::TransactionQueryRaw:
     case SqlSrvV8Operation::TransactionQueryOne:
         return SL_CAPABILITY_OPERATION_READ;
     default:
@@ -428,8 +432,10 @@ void sqlsrv_v8_connection_cleanup(void* ptr, void* user)
 
 bool sqlsrv_v8_result_is_query(SqlSrvV8Operation operation)
 {
-    return operation == SqlSrvV8Operation::Query || operation == SqlSrvV8Operation::QueryOne ||
+    return operation == SqlSrvV8Operation::Query || operation == SqlSrvV8Operation::QueryRaw ||
+           operation == SqlSrvV8Operation::QueryOne ||
            operation == SqlSrvV8Operation::TransactionQuery ||
+           operation == SqlSrvV8Operation::TransactionQueryRaw ||
            operation == SqlSrvV8Operation::TransactionQueryOne;
 }
 
@@ -483,20 +489,6 @@ bool sqlsrv_v8_make_typed_string_value(v8::Isolate* isolate, v8::Local<v8::Conte
                                             sl_str_from_parts(value.data(), value.size()), out);
 }
 
-bool sqlsrv_v8_get_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                   v8::Local<v8::Object> object, const char* key,
-                                   v8::Local<v8::Value>* out)
-{
-    return sl_v8_db_get_object_property(isolate, context, object, key, out);
-}
-
-bool sqlsrv_v8_get_object_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                          v8::Local<v8::Object> object, const char* key,
-                                          std::string* out)
-{
-    return sl_v8_db_get_object_string_property(isolate, context, object, key, out);
-}
-
 bool sqlsrv_v8_is_db_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            v8::Local<v8::Value> value)
 {
@@ -527,18 +519,10 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         *out = v8::Number::New(isolate, cell.float_value);
         return true;
     case SqlSrvV8CellKind::Bytes: {
-        std::unique_ptr<v8::BackingStore> backing =
-            v8::ArrayBuffer::NewBackingStore(isolate, cell.bytes.size());
-        if (backing == nullptr) {
-            return false;
-        }
-        if (!cell.bytes.empty()) {
-            std::copy(cell.bytes.begin(), cell.bytes.end(),
-                      static_cast<unsigned char*>(backing->Data()));
-        }
-        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
-        *out = v8::Uint8Array::New(buffer, 0, cell.bytes.size());
-        return true;
+        return sl_v8_db_uint8_array_from_bytes(
+            isolate, sl_bytes_from_parts(cell.bytes.empty() ? nullptr : cell.bytes.data(),
+                                         cell.bytes.size()),
+            out);
     }
     case SqlSrvV8CellKind::Text:
         if (!sqlsrv_v8_local_string(isolate, cell.text, &text)) {
@@ -563,31 +547,59 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
     return false;
 }
 
+bool sqlsrv_v8_prepare_columns(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               const SqlSrvV8Request& request, SlV8DbColumnSet* out)
+{
+    std::vector<SlStr> names;
+    if (out == nullptr) {
+        return false;
+    }
+    names.reserve(request.columns.size());
+    for (const SqlSrvV8Column& column : request.columns) {
+        names.emplace_back(sl_str_from_parts(column.name.data(), column.name.size()));
+    }
+    return sl_v8_db_prepare_column_set(isolate, context, names.empty() ? nullptr : names.data(),
+                                       names.size(), out);
+}
+
 bool sqlsrv_v8_rows_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
                              const SqlSrvV8Request& request, v8::Local<v8::Array>* out)
 {
     v8::Local<v8::Array> rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values(request.columns.size());
     if (out == nullptr) {
         return false;
     }
+    if (!sqlsrv_v8_prepare_columns(isolate, context, request, &columns)) {
+        return false;
+    }
     for (size_t row_index = 0U; row_index < request.rows.size(); row_index += 1U) {
-        v8::Local<v8::Object> object = v8::Object::New(isolate);
+        v8::Local<v8::Object> object;
         const std::vector<SqlSrvV8Cell>& row = request.rows[row_index];
+        if (row.size() < request.columns.size()) {
+            return false;
+        }
         for (size_t column = 0U; column < request.columns.size() && column < row.size();
              column += 1U)
         {
-            v8::Local<v8::String> key;
-            v8::Local<v8::Value> value;
-            if (!sqlsrv_v8_local_string(isolate, request.columns[column].name, &key) ||
-                !sqlsrv_v8_cell_to_value(isolate, context, row[column], &value) ||
-                !object->Set(context, key, value).FromMaybe(false))
-            {
+            if (!sqlsrv_v8_cell_to_value(isolate, context, row[column], &values[column])) {
                 return false;
             }
+        }
+        if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(),
+                                      &object))
+        {
+            return false;
         }
         if (!rows->Set(context, static_cast<uint32_t>(row_index), object).FromMaybe(false)) {
             return false;
         }
+    }
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
     }
     *out = rows;
     return true;
@@ -597,22 +609,66 @@ bool sqlsrv_v8_row_to_object(v8::Isolate* isolate, v8::Local<v8::Context> contex
                              const SqlSrvV8Request& request, const std::vector<SqlSrvV8Cell>& row,
                              v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Object> object = v8::Object::New(isolate);
+    v8::Local<v8::Object> object;
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values(request.columns.size());
     if (out == nullptr) {
         return false;
     }
+    if (!sqlsrv_v8_prepare_columns(isolate, context, request, &columns)) {
+        return false;
+    }
+    if (row.size() < request.columns.size()) {
+        return false;
+    }
     for (size_t column = 0U; column < request.columns.size() && column < row.size(); column += 1U) {
-        v8::Local<v8::String> key;
-        v8::Local<v8::Value> value;
-        if (!sqlsrv_v8_local_string(isolate, request.columns[column].name, &key) ||
-            !sqlsrv_v8_cell_to_value(isolate, context, row[column], &value) ||
-            !object->Set(context, key, value).FromMaybe(false))
+        if (!sqlsrv_v8_cell_to_value(isolate, context, row[column], &values[column])) {
+            return false;
+        }
+    }
+    if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(),
+                                  &object) ||
+        !sl_v8_db_attach_result_metadata(isolate, context, object, &columns,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
+    }
+    *out = object;
+    return true;
+}
+
+bool sqlsrv_v8_rows_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                           const SqlSrvV8Request& request, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Array> rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values(request.columns.size());
+    if (out == nullptr) {
+        return false;
+    }
+    if (!sqlsrv_v8_prepare_columns(isolate, context, request, &columns)) {
+        return false;
+    }
+    for (size_t row_index = 0U; row_index < request.rows.size(); row_index += 1U) {
+        v8::Local<v8::Array> row_array;
+        const std::vector<SqlSrvV8Cell>& row = request.rows[row_index];
+        if (row.size() < request.columns.size()) {
+            return false;
+        }
+        for (size_t column = 0U; column < request.columns.size() && column < row.size();
+             column += 1U)
+        {
+            if (!sqlsrv_v8_cell_to_value(isolate, context, row[column], &values[column])) {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row_array) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row_array).FromMaybe(false))
         {
             return false;
         }
     }
-    *out = object;
-    return true;
+    return sl_v8_db_make_raw_result(isolate, context, &columns, rows, out);
 }
 
 bool sqlsrv_v8_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -676,6 +732,13 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
                     sqlsrv_v8_row_to_object(isolate, context, *request, request->rows[0], &object);
                 value = object;
             }
+        }
+        else if (request->operation == SqlSrvV8Operation::QueryRaw ||
+                 request->operation == SqlSrvV8Operation::TransactionQueryRaw)
+        {
+            v8::Local<v8::Object> result;
+            converted = sqlsrv_v8_rows_to_raw(isolate, context, *request, &result);
+            value = result;
         }
         else {
             v8::Local<v8::Array> rows;
@@ -1424,6 +1487,7 @@ SqlSrvV8Connection* sqlsrv_v8_acquire_connection(SqlSrvV8ConnectionResource* res
     }
     if (request->operation == SqlSrvV8Operation::TransactionExec ||
         request->operation == SqlSrvV8Operation::TransactionQuery ||
+        request->operation == SqlSrvV8Operation::TransactionQueryRaw ||
         request->operation == SqlSrvV8Operation::TransactionQueryOne ||
         request->operation == SqlSrvV8Operation::Commit ||
         request->operation == SqlSrvV8Operation::Rollback)
@@ -1490,6 +1554,7 @@ bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Contex
                                       v8::Local<v8::Value> item, SqlSrvV8Param* param)
 {
     std::string kind;
+    v8::Local<v8::Value> kind_value;
     v8::Local<v8::Value> raw_value;
     v8::Local<v8::String> json_text;
 
@@ -1497,8 +1562,11 @@ bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Contex
         return false;
     }
     v8::Local<v8::Object> object = item.As<v8::Object>();
-    if (!sqlsrv_v8_get_object_string_property(isolate, context, object, "kind", &kind) ||
-        !sqlsrv_v8_get_object_property(isolate, context, object, "value", &raw_value))
+    if (!sl_v8_db_get_object_property_key(isolate, context, object, SL_V8_DB_STRING_KIND,
+                                          &kind_value) ||
+        !kind_value->IsString() || !sl_v8_std_string_from_value(isolate, kind_value, &kind) ||
+        !sl_v8_db_get_object_property_key(isolate, context, object, SL_V8_DB_STRING_VALUE,
+                                          &raw_value))
     {
         return false;
     }
@@ -1926,6 +1994,13 @@ void sqlsrv_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         "__sloppy.data.sqlserver.query requires a handle, SQL string, and optional params");
 }
 
+void sqlsrv_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(
+        args, SqlSrvV8Operation::QueryRaw,
+        "__sloppy.data.sqlserver.queryRaw requires a handle, SQL string, and optional params");
+}
+
 void sqlsrv_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_operation_callback(
@@ -1965,6 +2040,13 @@ void sqlsrv_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Val
                                  "string, and optional params");
 }
 
+void sqlsrv_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::TransactionQueryRaw,
+                                 "__sloppy.data.sqlserver.transactionQueryRaw requires a handle, "
+                                 "SQL string, and optional params");
+}
+
 void sqlsrv_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::TransactionQueryOne,
@@ -1996,6 +2078,11 @@ void sqlsrv_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     sqlsrv_v8_open_callback(args);
 }
 
+void sqlsrv_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
 void sqlsrv_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_open_callback(args);
@@ -2022,6 +2109,11 @@ void sqlsrv_v8_transaction_exec_callback(const v8::FunctionCallbackInfo<v8::Valu
 }
 
 void sqlsrv_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_open_callback(args);
 }
@@ -2064,6 +2156,8 @@ bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Cont
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "close", sqlsrv_v8_close_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "exec", sqlsrv_v8_exec_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "query", sqlsrv_v8_query_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryRaw",
+                                sqlsrv_v8_query_raw_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryOne",
                                 sqlsrv_v8_query_one_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionBegin",
@@ -2076,6 +2170,8 @@ bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Cont
                                 sqlsrv_v8_transaction_exec_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQuery",
                                 sqlsrv_v8_transaction_query_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryRaw",
+                                sqlsrv_v8_transaction_query_raw_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryOne",
                                 sqlsrv_v8_transaction_query_one_callback) ||
         !data->Set(context, sqlserver_key, sqlserver).FromMaybe(false))

@@ -1984,14 +1984,14 @@ bool http_v8_header_name_char_safe(char ch)
            ch == '`' || ch == '|' || ch == '~';
 }
 
-bool http_v8_header_name_safe(const std::string& name)
+bool http_v8_header_name_view_safe(SlStr name)
 {
-    if (name.empty()) {
+    if ((name.ptr == nullptr && name.length != 0U) || name.length == 0U) {
         return false;
     }
 
-    for (size_t index = 0U; index < name.size(); index += 1U) {
-        if (!http_v8_header_name_char_safe(name[index])) {
+    for (size_t index = 0U; index < name.length; index += 1U) {
+        if (!http_v8_header_name_char_safe(name.ptr[index])) {
             return false;
         }
     }
@@ -1999,19 +1999,35 @@ bool http_v8_header_name_safe(const std::string& name)
     return true;
 }
 
-bool http_v8_response_header_managed(const std::string& name)
+bool http_v8_response_header_view_managed(SlStr name)
 {
-    std::string lowered = name;
+    char lowered[32];
+    constexpr size_t connection_length = sizeof("connection") - 1U;
+    constexpr size_t content_type_length = sizeof("content-type") - 1U;
+    constexpr size_t content_length_length = sizeof("content-length") - 1U;
+    constexpr size_t transfer_encoding_length = sizeof("transfer-encoding") - 1U;
+    constexpr size_t keep_alive_length = sizeof("keep-alive") - 1U;
 
-    for (size_t index = 0U; index < lowered.size(); index += 1U) {
-        char ch = lowered[index];
-        if (ch >= 'A' && ch <= 'Z') {
-            lowered[index] = static_cast<char>(ch - 'A' + 'a');
-        }
+    if (name.length >= sizeof(lowered) || (name.ptr == nullptr && name.length != 0U)) {
+        return false;
+    }
+    for (size_t index = 0U; index < name.length; index += 1U) {
+        char ch = name.ptr[index];
+        lowered[index] = (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : ch;
     }
 
-    return lowered == "connection" || lowered == "content-type" || lowered == "content-length" ||
-           lowered == "transfer-encoding" || lowered == "keep-alive";
+    return (name.length == connection_length &&
+            std::char_traits<char>::compare(lowered, "connection", connection_length) == 0) ||
+           (name.length == content_type_length &&
+            std::char_traits<char>::compare(lowered, "content-type", content_type_length) == 0) ||
+           (name.length == content_length_length &&
+            std::char_traits<char>::compare(lowered, "content-length", content_length_length) ==
+                0) ||
+           (name.length == transfer_encoding_length &&
+            std::char_traits<char>::compare(lowered, "transfer-encoding",
+                                            transfer_encoding_length) == 0) ||
+           (name.length == keep_alive_length &&
+            std::char_traits<char>::compare(lowered, "keep-alive", keep_alive_length) == 0);
 }
 
 SlStatus http_v8_write_invalid_headers_diag(SlEngine* engine, SlDiag* out_diag)
@@ -2042,6 +2058,19 @@ SlStatus http_v8_copy_response_header(SlArena* arena, const std::string& name,
     }
 
     return http_v8_copy_string(arena, value, &out->value);
+}
+
+SlStatus http_v8_copy_response_header_view(SlStr name, SlStr value, SlHttpHeader* out)
+{
+    if (out == nullptr || (name.ptr == nullptr && name.length != 0U) ||
+        (value.ptr == nullptr && value.length != 0U))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = {};
+    out->name = name;
+    out->value = value;
+    return sl_status_ok();
 }
 
 SlStatus http_v8_get_optional_own_string_property(v8::Isolate* isolate,
@@ -2171,8 +2200,8 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
         for (uint32_t property_index = 0U; property_index < names->Length(); property_index += 1U) {
             v8::Local<v8::Value> name_value;
             v8::Local<v8::Value> value;
-            std::string name;
-            std::string header_value;
+            SlStr name = sl_str_empty();
+            SlStr header_value = sl_str_empty();
 
             if (!names->Get(context, property_index).ToLocal(&name_value) ||
                 !name_value->IsString() ||
@@ -2181,15 +2210,22 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
                 return http_v8_write_invalid_headers_diag(engine, out_diag);
             }
 
-            name = http_v8_value_to_string(isolate, name_value);
-            header_value = http_v8_value_to_string(isolate, value);
-            if (!http_v8_header_name_safe(name) || http_v8_response_header_managed(name) ||
-                !http_v8_header_value_safe(header_value))
+            status = sl_v8_string_from_value_copy_to_arena(isolate, arena, name_value, &name);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_v8_string_from_value_copy_to_arena(isolate, arena, value, &header_value);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            if (!http_v8_header_name_view_safe(name) ||
+                http_v8_response_header_view_managed(name) ||
+                !http_v8_header_value_view_safe(header_value))
             {
                 return http_v8_write_invalid_headers_diag(engine, out_diag);
             }
 
-            status = http_v8_copy_response_header(arena, name, header_value, &headers[index]);
+            status = http_v8_copy_response_header_view(name, header_value, &headers[index]);
             if (!sl_status_is_ok(status)) {
                 return status;
             }

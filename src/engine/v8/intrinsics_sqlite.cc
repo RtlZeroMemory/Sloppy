@@ -51,12 +51,14 @@ enum class SqliteV8Operation
 {
     Exec,
     Query,
+    QueryRaw,
     QueryOne,
     TransactionBegin,
     TransactionCommit,
     TransactionRollback,
     TransactionExec,
     TransactionQuery,
+    TransactionQueryRaw,
     TransactionQueryOne,
 };
 
@@ -653,14 +655,14 @@ bool sqlite_v8_make_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> con
     return true;
 }
 
-bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                        v8::Local<v8::Object> row, SlStr column_name, const SlSqliteValue* value)
+bool sqlite_v8_value_to_local(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              const SlSqliteValue* value, v8::Local<v8::Value>* out)
 {
-    v8::Local<v8::String> key;
+    (void)context;
+
     v8::Local<v8::Value> js_value;
 
-    if (value == nullptr || !sl_status_is_ok(sqlite_v8_to_local_string(isolate, column_name, &key)))
-    {
+    if (value == nullptr || out == nullptr) {
         return false;
     }
 
@@ -690,41 +692,25 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
         js_value = v8::Number::New(isolate, value->value.number);
         break;
     case SL_SQLITE_VALUE_BLOB: {
-        if (value->value.blob.length > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        if (!sl_v8_db_uint8_array_from_bytes(isolate, value->value.blob, &js_value)) {
             return false;
         }
-        std::unique_ptr<v8::BackingStore> backing =
-            v8::ArrayBuffer::NewBackingStore(isolate, value->value.blob.length);
-        if (!backing) {
-            return false;
-        }
-        if (value->value.blob.length != 0U) {
-            unsigned char* destination = static_cast<unsigned char*>(backing->Data());
-            size_t index = 0U;
-            if (value->value.blob.ptr == nullptr) {
-                return false;
-            }
-            // Keep this byte-wise copy at the V8 boundary so backing->Data(), destination,
-            // and value->value.blob.ptr never rely on raw memory primitives here.
-            for (index = 0U; index < value->value.blob.length; index += 1U) {
-                destination[index] = value->value.blob.ptr[index];
-            }
-        }
-        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
-        js_value = v8::Uint8Array::New(buffer, 0U, value->value.blob.length);
         break;
     }
     default:
         return false;
     }
 
-    return row->Set(context, key, js_value).FromMaybe(false);
+    *out = js_value;
+    return true;
 }
 
 bool sqlite_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                const SlSqliteResult* result, v8::Local<v8::Array>* out)
 {
     v8::Local<v8::Array> rows;
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values;
 
     if (result == nullptr || out == nullptr ||
         result->row_count > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
@@ -732,23 +718,80 @@ bool sqlite_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> cont
         return false;
     }
 
+    if (!sl_v8_db_prepare_column_set(isolate, context, result->column_names, result->column_count,
+                                     &columns))
+    {
+        return false;
+    }
+    values.resize(result->column_count);
     rows = v8::Array::New(isolate, static_cast<int>(result->row_count));
     for (size_t row_index = 0U; row_index < result->row_count; row_index += 1U) {
-        v8::Local<v8::Object> row = v8::Object::New(isolate);
+        v8::Local<v8::Object> row;
         for (size_t column_index = 0U; column_index < result->column_count; column_index += 1U) {
-            if (!sqlite_v8_set_cell(isolate, context, row, result->column_names[column_index],
-                                    &result->rows[row_index].values[column_index]))
+            if (!sqlite_v8_value_to_local(isolate, context,
+                                          &result->rows[row_index].values[column_index],
+                                          &values[column_index]))
             {
                 return false;
             }
+        }
+        if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(),
+                                      &row))
+        {
+            return false;
         }
         if (!rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false)) {
             return false;
         }
     }
 
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
+    }
     *out = rows;
     return true;
+}
+
+bool sqlite_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             const SlSqliteResult* result, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Array> rows;
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (result == nullptr || out == nullptr ||
+        result->row_count > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+    {
+        return false;
+    }
+
+    if (!sl_v8_db_prepare_column_set(isolate, context, result->column_names, result->column_count,
+                                     &columns))
+    {
+        return false;
+    }
+    values.resize(result->column_count);
+    rows = v8::Array::New(isolate, static_cast<int>(result->row_count));
+    for (size_t row_index = 0U; row_index < result->row_count; row_index += 1U) {
+        v8::Local<v8::Array> row;
+        for (size_t column_index = 0U; column_index < result->column_count; column_index += 1U) {
+            if (!sqlite_v8_value_to_local(isolate, context,
+                                          &result->rows[row_index].values[column_index],
+                                          &values[column_index]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+
+    return sl_v8_db_make_raw_result(isolate, context, &columns, rows, out);
 }
 
 bool sqlite_v8_one_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -765,13 +808,23 @@ bool sqlite_v8_one_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context
         return true;
     }
 
-    row = v8::Object::New(isolate);
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values(result->column_count);
+    if (!sl_v8_db_prepare_column_set(isolate, context, result->column_names, result->column_count,
+                                     &columns))
+    {
+        return false;
+    }
     for (size_t column_index = 0U; column_index < result->column_count; column_index += 1U) {
-        if (!sqlite_v8_set_cell(isolate, context, row, result->column_names[column_index],
-                                &result->values[column_index]))
-        {
+        if (!sqlite_v8_value_to_local(isolate, context, &result->values[column_index],
+                                      &values[column_index])) {
             return false;
         }
+    }
+    if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(), &row) ||
+        !sl_v8_db_attach_result_metadata(isolate, context, row, &columns, SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
     }
 
     *out = row;
@@ -808,6 +861,7 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
         return sl_sqlite_exec(&request->arena, &request->resource->connection, sql, params,
                               param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::Query:
+    case SqliteV8Operation::QueryRaw:
         return sl_sqlite_query(&request->arena, &request->resource->connection, sql, params,
                                param_count, nullptr, &request->query_result, out_diag);
     case SqliteV8Operation::QueryOne:
@@ -832,6 +886,7 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
         return sl_sqlite_transaction_exec(&request->arena, &request->resource->transaction, sql,
                                           params, param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::TransactionQuery:
+    case SqliteV8Operation::TransactionQueryRaw:
         return sl_sqlite_transaction_query(&request->arena, &request->resource->transaction, sql,
                                            params, param_count, nullptr, &request->query_result,
                                            out_diag);
@@ -846,8 +901,10 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
 
 bool sqlite_v8_operation_returns_rows(SqliteV8Operation operation)
 {
-    return operation == SqliteV8Operation::Query || operation == SqliteV8Operation::QueryOne ||
+    return operation == SqliteV8Operation::Query || operation == SqliteV8Operation::QueryRaw ||
+           operation == SqliteV8Operation::QueryOne ||
            operation == SqliteV8Operation::TransactionQuery ||
+           operation == SqliteV8Operation::TransactionQueryRaw ||
            operation == SqliteV8Operation::TransactionQueryOne;
 }
 
@@ -919,6 +976,16 @@ bool sqlite_v8_request_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         *out = rows;
         return true;
     }
+    case SqliteV8Operation::QueryRaw:
+    case SqliteV8Operation::TransactionQueryRaw: {
+        v8::Local<v8::Object> result;
+        if (!sqlite_v8_result_to_raw(isolate, context, &request->query_result, &result)) {
+            *out_error = "sqlite bridge could not materialize raw query rows";
+            return false;
+        }
+        *out = result;
+        return true;
+    }
     case SqliteV8Operation::QueryOne:
     case SqliteV8Operation::TransactionQueryOne:
         return sqlite_v8_one_to_value(isolate, context, &request->one_result, out);
@@ -937,8 +1004,10 @@ SlCapabilityOperation sqlite_v8_operation_capability(SqliteV8Operation operation
 {
     switch (operation) {
     case SqliteV8Operation::Query:
+    case SqliteV8Operation::QueryRaw:
     case SqliteV8Operation::QueryOne:
     case SqliteV8Operation::TransactionQuery:
+    case SqliteV8Operation::TransactionQueryRaw:
     case SqliteV8Operation::TransactionQueryOne:
         return SL_CAPABILITY_OPERATION_READ;
     case SqliteV8Operation::Exec:
@@ -1311,6 +1380,60 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     args.GetReturnValue().Set(promise);
 }
 
+void sqlite_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    SqliteV8ConnectionResource* resource = nullptr;
+    std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
+    v8::Local<v8::Promise> promise;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(
+            isolate,
+            "__sloppy.data.sqlite.queryRaw requires a handle, SQL string, and optional params");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    request->operation = SqliteV8Operation::QueryRaw;
+    request->sql = std::move(sql);
+    if (!sqlite_v8_submit_request(isolate, context, backend, resource, std::move(request),
+                                  "sqlite raw query could not be submitted", &promise))
+    {
+        return;
+    }
+
+    args.GetReturnValue().Set(promise);
+}
+
 void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     constexpr size_t scratch_size = 65536U;
@@ -1606,6 +1729,59 @@ void sqlite_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Val
     args.GetReturnValue().Set(promise);
 }
 
+void sqlite_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    SqliteV8ConnectionResource* resource = nullptr;
+    std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
+    v8::Local<v8::Promise> promise;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionQueryRaw requires a "
+                                            "handle, SQL string, and optional params");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    request->operation = SqliteV8Operation::TransactionQueryRaw;
+    request->sql = std::move(sql);
+    if (!sqlite_v8_submit_request(isolate, context, backend, resource, std::move(request),
+                                  "sqlite transaction raw query could not be submitted", &promise))
+    {
+        return;
+    }
+
+    args.GetReturnValue().Set(promise);
+}
+
 void sqlite_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     constexpr size_t scratch_size = 65536U;
@@ -1697,6 +1873,8 @@ bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context
         !sqlite_v8_set_function(isolate, context, sqlite, "close", sqlite_v8_close_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "exec", sqlite_v8_exec_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "query", sqlite_v8_query_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "queryRaw",
+                                sqlite_v8_query_raw_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "queryOne",
                                 sqlite_v8_query_one_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionBegin",
@@ -1709,6 +1887,8 @@ bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context
                                 sqlite_v8_transaction_exec_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionQuery",
                                 sqlite_v8_transaction_query_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryRaw",
+                                sqlite_v8_transaction_query_raw_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryOne",
                                 sqlite_v8_transaction_query_one_callback) ||
         !data->Set(context, sqlite_key, sqlite).FromMaybe(false))

@@ -284,6 +284,10 @@ function createForgedLoweredQuery() {
                     calls.push(["query", handle.generation, text, params]);
                     return [{ name: "Ada" }];
                 },
+                queryRaw(handle, text, params) {
+                    calls.push(["queryRaw", handle.generation, text, params]);
+                    return { mode: "raw", columnNames: ["name"], rows: [["Ada"]] };
+                },
                 queryOne(handle, text, params) {
                     calls.push(["queryOne", handle.kind, text, params]);
                     return { name: "Ada" };
@@ -308,6 +312,10 @@ function createForgedLoweredQuery() {
                     calls.push(["txQuery", handle.slot, text, params]);
                     return [{ tx: true, text }];
                 },
+                transactionQueryRaw(handle, text, params) {
+                    calls.push(["txQueryRaw", handle.slot, text, params]);
+                    return { mode: "raw", columnNames: ["tx"], rows: [[true]] };
+                },
                 transactionQueryOne(handle, text, params) {
                     calls.push(["txQueryOne", handle.slot, text, params]);
                     return { tx: true, text };
@@ -322,6 +330,10 @@ function createForgedLoweredQuery() {
                     calls.push(["pgQuery", handle.slot, text, params]);
                     return [{ pg: true }];
                 },
+                queryRaw(handle, text, params) {
+                    calls.push(["pgQueryRaw", handle.slot, text, params]);
+                    return { mode: "raw", rows: [[true]] };
+                },
                 close(handle) {
                     calls.push(["pgClose", handle.slot]);
                 },
@@ -334,6 +346,10 @@ function createForgedLoweredQuery() {
                 query(handle, text, params) {
                     calls.push(["mssqlQuery", handle.slot, text, params]);
                     return [{ mssql: true }];
+                },
+                queryRaw(handle, text, params) {
+                    calls.push(["mssqlQueryRaw", handle.slot, text, params]);
+                    return { mode: "raw", rows: [[true]] };
                 },
                 close(handle) {
                     calls.push(["mssqlClose", handle.slot]);
@@ -366,6 +382,24 @@ function createForgedLoweredQuery() {
         );
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.query("select name from users", { timeoutMs: 500 }), [{ name: "Ada" }]);
+        assert.deepEqual(db.query("select name from users", { mode: "raw" }), {
+            mode: "raw",
+            columnNames: ["name"],
+            rows: [["Ada"]],
+        });
+        assert.deepEqual(db.queryRaw("select name from users", []), {
+            mode: "raw",
+            columnNames: ["name"],
+            rows: [["Ada"]],
+        });
+        assertThrowsMessage(
+            () => db.query("select name from users", { mode: "facade" }),
+            /mode must be object or raw/,
+        );
+        assertThrowsMessage(
+            () => db.exec("select 1", [], { mode: "raw" }),
+            /option 'mode' is not supported/,
+        );
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
         assert.deepEqual(
             db.query(sql`select name from users`, {
@@ -397,9 +431,17 @@ function createForgedLoweredQuery() {
         );
         const pgDb = data.postgres.open({ connectionString: "postgres://localhost/sloppy" });
         assert.deepEqual(pgDb.query("select id from users", { timeoutMs: 250 }), [{ pg: true }]);
+        assert.deepEqual(pgDb.query("select id from users", { mode: "raw" }), {
+            mode: "raw",
+            rows: [[true]],
+        });
         pgDb.close();
         const sqlServerDb = data.sqlserver.open({ connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;" });
         assert.deepEqual(sqlServerDb.query("select id from users", { timeoutMs: 250 }), [{ mssql: true }]);
+        assert.deepEqual(sqlServerDb.queryRaw("select id from users", []), {
+            mode: "raw",
+            rows: [[true]],
+        });
         sqlServerDb.close();
         let capturedTx;
         const txResult = await db.transaction(async (tx) => {
@@ -411,6 +453,11 @@ function createForgedLoweredQuery() {
                 tx: true,
                 text: "select name from users",
             }]);
+            assert.deepEqual(tx.query("select name from users", [], { mode: "raw" }), {
+                mode: "raw",
+                columnNames: ["tx"],
+                rows: [[true]],
+            });
             assert.deepEqual(tx.queryOne(sql`select name from users where id = ${2}`), {
                 tx: true,
                 text: "select name from users where id = ?",
@@ -442,17 +489,22 @@ function createForgedLoweredQuery() {
             ["exec", 1, "insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]],
             ["query", 1, "select name from users", []],
             ["query", 1, "select name from users", []],
+            ["queryRaw", 1, "select name from users", []],
+            ["queryRaw", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
             ["query", 1, "select name from users", []],
             ["pgOpen", "postgres://localhost/sloppy"],
             ["pgQuery", 2, "select id from users", []],
+            ["pgQueryRaw", 2, "select id from users", []],
             ["pgClose", 2],
             ["mssqlOpen", "Driver={ODBC Driver 18 for SQL Server};Server=localhost;"],
             ["mssqlQuery", 3, "select id from users", []],
+            ["mssqlQueryRaw", 3, "select id from users", []],
             ["mssqlClose", 3],
             ["begin", 1],
             ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
             ["txQuery", 1, "select name from users", []],
+            ["txQueryRaw", 1, "select name from users", []],
             ["txQueryOne", 1, "select name from users where id = ?", [2]],
             ["commit", 1],
             ["begin", 1],

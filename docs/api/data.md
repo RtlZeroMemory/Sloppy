@@ -121,11 +121,34 @@ const ada  = await db.queryOne(sql`SELECT id FROM users WHERE name = ${"Ada"}`);
 | Method              | Returns                          |
 | ------------------- | -------------------------------- |
 | `db.query(sql)`     | array of rows                    |
+| `db.queryRaw(sql)`  | raw result object                |
 | `db.queryOne(sql)`  | single row, or `null`            |
 | `db.exec(sql)`      | `{ affectedRows, lastInsertId? }`|
 | `db.transaction(fn)`| runs `fn(tx)` in a transaction   |
 
-A row is a plain object keyed by column name.
+A row is a plain object keyed by column name. Result arrays and `queryOne`
+rows also expose non-enumerable metadata:
+
+- `mode`: `"object"`
+- `columnNames`: frozen array of column names in result order
+- `columns`: frozen array of `{ name, index }`
+
+If a query returns duplicate column names, object rows keep the same behavior
+as ordinary JS objects: the last duplicate name wins. Use raw mode when column
+position matters:
+
+```ts
+const result = await db.query(sql`SELECT 1 AS value, 2 AS value`, {
+    mode: "raw",
+});
+// result.mode === "raw"
+// result.columnNames === ["value", "value"]
+// result.rows === [[1, 2]]
+```
+
+`db.queryRaw(sql)` is the same raw result shape. Transactions expose matching
+`tx.query(...)`, `tx.queryRaw(...)`, `tx.queryOne(...)`, and `tx.exec(...)`
+methods.
 
 ### Transactions
 
@@ -155,6 +178,10 @@ await db.query(sql`SELECT * FROM big_table`, {
 | `timeoutMs`  | Abort after this many milliseconds                           |
 | `deadline`   | Abort at this absolute deadline                              |
 | `signal`     | Abort when the supplied cancellation signal fires            |
+| `mode`       | `query` only: `"object"` (default) or `"raw"`                 |
+
+`mode` is rejected on `queryRaw`, `queryOne`, and `exec`; those methods have
+fixed result shapes.
 
 ## PostgreSQL
 
@@ -194,7 +221,7 @@ const PostgresModule = Sloppy.module("data.postgres")
 const app = Sloppy.createBuilder().addModule(PostgresModule).build();
 ```
 
-The query API is identical (`query`, `queryOne`, `exec`, `transaction`),
+The query API is identical (`query`, `queryRaw`, `queryOne`, `exec`, `transaction`),
 including the `sql\`...\`` template - the provider switches parameter
 style under the hood.
 
