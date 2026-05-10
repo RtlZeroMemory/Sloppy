@@ -1059,6 +1059,93 @@ static int test_coalesced_headers_rst_and_ping_does_not_send_goaway(void)
     return 0;
 }
 
+static int test_coalesced_data_after_rst_sends_stream_closed_goaway(void)
+{
+    unsigned char client_storage[131072];
+    unsigned char server_storage[131072];
+    unsigned char encode_storage[8192];
+    unsigned char header_frame_storage[8192];
+    unsigned char combined_storage[8192];
+    SlArena client_arena = {0};
+    SlArena server_arena = {0};
+    SlArena encode_arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttp2Session client = {0};
+    SlHttp2ServerDispatcher server = {0};
+    SlHttp2HpackEncoder encoder = {0};
+    DispatchHook hook = {0};
+    SlHttp2HeaderField fields[] = {h2_header(":method", "GET"), h2_header(":scheme", "https"),
+                                   h2_header(":authority", "localhost"),
+                                   h2_header(":path", "/cancel")};
+    SlHttp2HeaderList headers = {.fields = fields, .count = sizeof(fields) / sizeof(fields[0])};
+    SlBytes header_block = {0};
+    SlHttp2Frame header_frame = {0};
+    SlBytes header_bytes = {0};
+    SlBytes output = {0};
+    static const unsigned char rst_stream[] = {0x00U, 0x00U, 0x04U, 0x03U, 0x00U, 0x00U, 0x00U,
+                                               0x00U, 0x01U, 0x00U, 0x00U, 0x00U, 0x08U};
+    static const unsigned char data_frame[] = {
+        0x00U, 0x00U, 0x04U,        0x00U,        0x01U,        0x00U,       0x00U,
+        0x00U, 0x01U, (uint8_t)'t', (uint8_t)'e', (uint8_t)'s', (uint8_t)'t'};
+    size_t combined_length = 0U;
+
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&encode_arena, encode_storage, sizeof(encode_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_h2_pair(&client_arena, &server_arena, &backend, &connection, &client, &server,
+                     &hook) != 0 ||
+        expect_status(sl_http2_hpack_encoder_init(&encoder, 0U, sizeof(header_frame_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http2_hpack_encode(&encoder, &encode_arena, &headers, &header_block),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_http2_hpack_encoder_dispose(&encoder);
+        return 1;
+    }
+
+    header_frame.header.length = (uint32_t)header_block.length;
+    header_frame.header.type = SL_HTTP2_FRAME_HEADERS;
+    header_frame.header.flags = SL_HTTP2_FLAG_END_HEADERS;
+    header_frame.header.stream_id = 1U;
+    header_frame.payload = header_block;
+    if (expect_status(sl_http2_frame_write(&header_frame, header_frame_storage,
+                                           sizeof(header_frame_storage), &header_bytes),
+                      SL_STATUS_OK) != 0 ||
+        header_bytes.length + sizeof(rst_stream) + sizeof(data_frame) > sizeof(combined_storage))
+    {
+        sl_http2_hpack_encoder_dispose(&encoder);
+        return 2;
+    }
+
+    memcpy(combined_storage, header_bytes.ptr, header_bytes.length);
+    combined_length += header_bytes.length;
+    memcpy(combined_storage + combined_length, rst_stream, sizeof(rst_stream));
+    combined_length += sizeof(rst_stream);
+    memcpy(combined_storage + combined_length, data_frame, sizeof(data_frame));
+    combined_length += sizeof(data_frame);
+
+    if (receive_server_bytes(&server, sl_bytes_from_parts(combined_storage, combined_length)) !=
+            0 ||
+        expect_status(sl_http2_server_dispatcher_drain_output(&server, &output), SL_STATUS_OK) !=
+            0 ||
+        !frame_bytes_contain_type(output, SL_HTTP2_FRAME_GOAWAY))
+    {
+        sl_http2_hpack_encoder_dispose(&encoder);
+        sl_http2_server_dispatcher_dispose(&server);
+        sl_http2_session_dispose(&client);
+        return 3;
+    }
+
+    sl_http2_hpack_encoder_dispose(&encoder);
+    sl_http2_server_dispatcher_dispose(&server);
+    sl_http2_session_dispose(&client);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -1104,6 +1191,10 @@ int main(void)
         return result;
     }
     result = test_coalesced_headers_rst_and_ping_does_not_send_goaway();
+    if (result != 0) {
+        return result;
+    }
+    result = test_coalesced_data_after_rst_sends_stream_closed_goaway();
     if (result != 0) {
         return result;
     }

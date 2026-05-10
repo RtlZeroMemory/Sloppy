@@ -436,6 +436,34 @@ static uint32_t sl_http2_session_read_u32(const unsigned char* ptr)
            (uint32_t)ptr[3];
 }
 
+static bool sl_http2_session_stream_id_seen(const int32_t* stream_ids, size_t count,
+                                            int32_t stream_id)
+{
+    if (stream_ids == NULL || stream_id <= 0) {
+        return false;
+    }
+    for (size_t index = 0U; index < count; index += 1U) {
+        if (stream_ids[index] == stream_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_http2_session_note_stream_id_seen(int32_t* stream_ids, size_t* count,
+                                                 size_t capacity, int32_t stream_id)
+{
+    if (stream_ids == NULL || count == NULL || stream_id <= 0 ||
+        sl_http2_session_stream_id_seen(stream_ids, *count, stream_id))
+    {
+        return;
+    }
+    if (*count < capacity) {
+        stream_ids[*count] = stream_id;
+        *count += 1U;
+    }
+}
+
 static SlStatus sl_http2_session_submit_prescan_rst_stream(SlHttp2Session* session,
                                                            int32_t stream_id, uint32_t error_code)
 {
@@ -579,6 +607,8 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
                                                 SlHttp2PrescanAction* action)
 {
     size_t offset = 0U;
+    int32_t reset_streams[SL_HTTP2_SESSION_CLOSED_STREAM_TRACK] = {0};
+    size_t reset_stream_count = 0U;
 
     if (action != NULL) {
         *action = (SlHttp2PrescanAction){.receive_length = bytes.length};
@@ -663,8 +693,10 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
             }
         }
         if (sl_http2_session_peer_initiated_stream_id(session, stream_id)) {
+            bool reset_seen_in_input =
+                sl_http2_session_stream_id_seen(reset_streams, reset_stream_count, stream_id);
             closed = sl_http2_session_find_closed_stream(session, stream_id);
-            if (closed != NULL && closed->remote_closed &&
+            if (((closed != NULL && closed->remote_closed) || reset_seen_in_input) &&
                 (type == NGHTTP2_DATA || type == NGHTTP2_HEADERS))
             {
                 SlStatus status =
@@ -677,6 +709,11 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
                 if (!sl_status_is_ok(status)) {
                     return status;
                 }
+            }
+            if (type == NGHTTP2_RST_STREAM) {
+                sl_http2_session_note_stream_id_seen(reset_streams, &reset_stream_count,
+                                                     SL_HTTP2_SESSION_CLOSED_STREAM_TRACK,
+                                                     stream_id);
             }
             if (type == NGHTTP2_HEADERS && nghttp2_session_get_stream_remote_close(
                                                (nghttp2_session*)session->session, stream_id) == -1)
