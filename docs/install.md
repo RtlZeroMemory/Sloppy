@@ -34,8 +34,9 @@ ok
 | --- | --- |
 | Windows x64 | npm platform package with V8-backed handler execution |
 | Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS | source/archive builds only in this alpha |
-| arm64 | source/archive builds only in this alpha |
+| macOS arm64 | npm platform package when the alpha macOS arm64 lane is published |
+| macOS x64 | npm platform package when the alpha macOS x64 lane is published |
+| Other arm64 | source/archive builds only in this alpha |
 
 The root package installs a small launcher plus the matching platform package
 through npm optional dependencies. It does not build native code during

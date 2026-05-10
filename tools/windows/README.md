@@ -105,8 +105,8 @@ package/test-package path:
 The dry-run writes ignored output under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or publish a GitHub release.
 
-npm package dry-runs generate `@rtlzeromemory/sloppy` and the matching Windows platform package
-from an already-built archive. macOS npm packages are not staged in this alpha:
+npm package dry-runs generate `@rtlzeromemory/sloppy` and the matching platform package
+from an already-built archive:
 
 ```powershell
 .\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip

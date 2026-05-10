@@ -10,9 +10,10 @@ own status.
   gates pass.
 - Linux x64: experimental hosted/source-build lane; package dry-run evidence is
   separate.
-- macOS arm64: experimental hosted/source-build lane; package dry-run evidence
-  is separate.
-- macOS x64: optional hosted dry-run lane when the Intel runner is requested.
+- macOS arm64: experimental hosted/source-build lane; package and npm dry-run
+  evidence are separate.
+- macOS x64: experimental hosted dry-run lane when the Intel runner is
+  requested; package and npm dry-run evidence are separate.
 - Windows arm64: package and V8 package status are not established yet.
 
 ## V8 SDK and Runtime

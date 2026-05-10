@@ -18,6 +18,13 @@ find_program(SLOPPY_TEST_NODE NAMES node.exe node)
 if(NOT SLOPPY_TEST_NODE AND EXISTS "C:/Program Files/nodejs/node.exe")
     set(SLOPPY_TEST_NODE "C:/Program Files/nodejs/node.exe")
 endif()
+if(NOT DEFINED SLOPPY_TEST_NPM_CLI AND SLOPPY_TEST_NODE)
+    get_filename_component(SLOPPY_TEST_NODE_DIR "${SLOPPY_TEST_NODE}" DIRECTORY)
+    set(SLOPPY_TEST_NPM_CLI_CANDIDATE "${SLOPPY_TEST_NODE_DIR}/node_modules/npm/bin/npm-cli.js")
+    if(EXISTS "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+        set(SLOPPY_TEST_NPM_CLI "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
+    endif()
+endif()
 if(NOT DEFINED SLOPPY_TEST_NPM_CLI AND DEFINED ENV{APPDATA})
     set(SLOPPY_TEST_NPM_CLI_CANDIDATE "$ENV{APPDATA}/npm/node_modules/npm/bin/npm-cli.js")
     if(EXISTS "${SLOPPY_TEST_NPM_CLI_CANDIDATE}")
@@ -184,17 +191,17 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
     endforeach()
     if(public_template STREQUAL "package-api")
-        if(SLOPPY_TEST_NPM)
+        if(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
             execute_process(
-                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result
                 OUTPUT_VARIABLE public_npm_stdout
                 ERROR_VARIABLE public_npm_stderr)
-        elseif(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
+        elseif(SLOPPY_TEST_NPM)
             execute_process(
-                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result

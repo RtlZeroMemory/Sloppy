@@ -14,8 +14,8 @@ imply that Sloppy apps can import arbitrary npm packages.
 
 The npm publish workflow consumes tarballs produced by the release artifact
 lane. Platform packages are published before the root
-`@rtlzeromemory/sloppy` launcher package. macOS npm publication waits until
-macOS archives have the same install and runtime verification as Windows and Linux.
+`@rtlzeromemory/sloppy` launcher package. macOS npm packages require hosted
+archive staging and npm dry-run evidence before publishing.
 
 ## Required Evidence
 
