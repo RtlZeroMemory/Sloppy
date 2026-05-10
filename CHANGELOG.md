@@ -11,6 +11,14 @@ evidence and a completed readiness gate.
 
 ## Unreleased
 
+- Prepare `0.1.0-alpha.2` release metadata for the public alpha package train,
+  including Windows x64, Linux x64 GNU, macOS arm64, and macOS x64 npm
+  platform package staging under the `alpha` dist-tag.
+- Add the public alpha template set: `api`, `minimal-api`, `program`, `cli`,
+  `package-api`, and `node-compat`.
+- Document alpha limits for Web Mode, Program Mode, package/dependency loading,
+  partial Node compatibility shims, FFI, benchmark evidence, and npm install
+  flow without claiming production readiness or full npm/Node compatibility.
 - Prepare public alpha docs, GitHub Pages site scaffolding, issue templates,
   and V8-required npm/package proof for the next alpha package.
 - Added alpha infrastructure release dry-run and no-statements guardrail skeletons.

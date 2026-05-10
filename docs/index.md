@@ -54,7 +54,7 @@ If you are comparing Sloppy with other JavaScript runtimes, read
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
-sloppy create my-api --template minimal-api
+sloppy create my-api --template api
 cd my-api
 sloppy build
 sloppy run .sloppy --once GET /health
@@ -94,8 +94,9 @@ change between alpha revisions. Package support is limited to compatible
 installed JavaScript that Sloppy can bundle, and Sloppy is not a full Node
 runtime.
 
-Platform packages are currently Windows x64 and Linux x64. macOS and arm64 are
-source-build paths until matching alpha packages are available.
+Platform packages are currently Windows x64, Linux x64 GNU, macOS arm64, and
+macOS x64. Other platforms remain source-build paths until matching alpha
+packages are available.
 
 ## Examples
 

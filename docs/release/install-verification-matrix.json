@@ -23,9 +23,9 @@
     },
     {
       "id": "macos-x64-archive",
-      "status": "SKIPPED",
-      "requiredEvidence": ["optional hosted x64 package dry-run"],
-      "notes": "Optional/source-build-only unless requested."
+      "status": "NOT RUN",
+      "requiredEvidence": ["hosted x64 package dry-run", "npm pack dry-run"],
+      "notes": "Required when publishing the macOS x64 npm platform package."
     },
     {
       "id": "npm-root-launcher",
@@ -37,7 +37,7 @@
       "id": "npm-platform-packages",
       "status": "NOT RUN",
       "requiredEvidence": ["platform package generated from archive contents", "npm pack dry-run", "no native install scripts", "alpha dist-tag policy"],
-      "notes": "Windows x64 and Linux x64 GNU are the current npm platform package set. Platform packages must not independently build Sloppy. macOS npm packages are deferred until hosted package verification exists."
+      "notes": "Windows x64, Linux x64 GNU, macOS arm64, and macOS x64 are the current npm platform package set for this alpha. Platform packages must not independently build Sloppy."
     },
     {
       "id": "v8-package-lane",
