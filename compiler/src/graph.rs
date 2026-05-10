@@ -149,6 +149,9 @@ pub(crate) struct AppGraph {
     pub(crate) uses_os_runtime: bool,
     pub(crate) uses_http_client_runtime: bool,
     pub(crate) uses_workers_runtime: bool,
+    pub(crate) uses_ffi_runtime: bool,
+    pub(crate) ffi: Vec<FfiLibraryMetadata>,
+    pub(crate) ffi_structs: Vec<FfiStructMetadata>,
     pub(crate) uses_health: bool,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
 }
@@ -274,6 +277,46 @@ pub(crate) struct ConfigReadMetadata {
     pub(crate) source_name: String,
     pub(crate) source: String,
     pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiLibraryMetadata {
+    pub(crate) name: String,
+    pub(crate) convention: String,
+    pub(crate) functions: Vec<FfiFunctionMetadata>,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiFunctionMetadata {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) symbol: String,
+    pub(crate) convention: String,
+    pub(crate) return_type: String,
+    pub(crate) parameters: Vec<String>,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiStructMetadata {
+    pub(crate) name: String,
+    pub(crate) layout: String,
+    pub(crate) pack: Option<u32>,
+    pub(crate) fields: Vec<FfiStructFieldMetadata>,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiStructFieldMetadata {
+    pub(crate) name: String,
+    pub(crate) type_name: String,
 }
 
 #[derive(Debug, Clone)]

@@ -204,6 +204,74 @@ typedef struct SlPlanRequiredFeature
     SlStr id;
 } SlPlanRequiredFeature;
 
+typedef enum SlPlanFfiType
+{
+    SL_PLAN_FFI_TYPE_UNKNOWN = 0,
+    SL_PLAN_FFI_TYPE_VOID = 1,
+    SL_PLAN_FFI_TYPE_BOOL = 2,
+    SL_PLAN_FFI_TYPE_I8 = 3,
+    SL_PLAN_FFI_TYPE_U8 = 4,
+    SL_PLAN_FFI_TYPE_I16 = 5,
+    SL_PLAN_FFI_TYPE_U16 = 6,
+    SL_PLAN_FFI_TYPE_I32 = 7,
+    SL_PLAN_FFI_TYPE_U32 = 8,
+    SL_PLAN_FFI_TYPE_I64 = 9,
+    SL_PLAN_FFI_TYPE_U64 = 10,
+    SL_PLAN_FFI_TYPE_ISIZE = 11,
+    SL_PLAN_FFI_TYPE_USIZE = 12,
+    SL_PLAN_FFI_TYPE_F32 = 13,
+    SL_PLAN_FFI_TYPE_F64 = 14,
+    SL_PLAN_FFI_TYPE_PTR = 15,
+    SL_PLAN_FFI_TYPE_CSTRING = 16,
+    SL_PLAN_FFI_TYPE_UTF16 = 17,
+    SL_PLAN_FFI_TYPE_BYTES = 18,
+    SL_PLAN_FFI_TYPE_MUT_BYTES = 19
+} SlPlanFfiType;
+
+typedef enum SlPlanFfiCallingConvention
+{
+    SL_PLAN_FFI_CALLING_CONVENTION_UNKNOWN = 0,
+    SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM = 1,
+    SL_PLAN_FFI_CALLING_CONVENTION_CDECL = 2,
+    SL_PLAN_FFI_CALLING_CONVENTION_STDCALL = 3
+} SlPlanFfiCallingConvention;
+
+typedef struct SlPlanFfiFunction
+{
+    SlStr id;
+    SlStr library;
+    SlStr name;
+    SlStr symbol;
+    SlPlanFfiCallingConvention convention;
+    SlPlanFfiType return_type;
+    const SlPlanFfiType* parameters;
+    size_t parameter_count;
+} SlPlanFfiFunction;
+
+typedef struct SlPlanFfiLibrary
+{
+    SlStr name;
+    SlPlanFfiCallingConvention convention;
+    const SlPlanFfiFunction* functions;
+    size_t function_count;
+} SlPlanFfiLibrary;
+
+typedef struct SlPlanFfiStructField
+{
+    SlStr name;
+    SlPlanFfiType type;
+} SlPlanFfiStructField;
+
+typedef struct SlPlanFfiStruct
+{
+    SlStr name;
+    SlStr layout;
+    uint32_t pack;
+    bool has_pack;
+    const SlPlanFfiStructField* fields;
+    size_t field_count;
+} SlPlanFfiStruct;
+
 typedef struct SlPlan
 {
     uint32_t version;
@@ -226,6 +294,10 @@ typedef struct SlPlan
     size_t capability_count;
     const SlPlanRequiredFeature* required_features;
     size_t required_feature_count;
+    const SlPlanFfiLibrary* ffi_libraries;
+    size_t ffi_library_count;
+    const SlPlanFfiStruct* ffi_structs;
+    size_t ffi_struct_count;
 } SlPlan;
 
 /*
@@ -246,6 +318,11 @@ bool sl_plan_route_method_runnable(SlStr method);
 bool sl_plan_provider_supported(SlStr provider);
 bool sl_plan_capability_kind_supported(SlStr kind);
 bool sl_plan_capability_access_supported(SlStr kind, SlStr access);
+SlStatus sl_plan_ffi_type_from_str(SlStr text, SlPlanFfiType* out);
+SlStr sl_plan_ffi_type_name(SlPlanFfiType type);
+SlStatus sl_plan_ffi_calling_convention_from_str(SlStr text, SlPlanFfiCallingConvention* out);
+SlStr sl_plan_ffi_calling_convention_name(SlPlanFfiCallingConvention convention);
+bool sl_plan_ffi_return_type_supported(SlPlanFfiType type);
 
 /*
  * Finds a handler by numeric runtime dispatch ID.

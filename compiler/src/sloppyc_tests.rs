@@ -270,6 +270,296 @@ fn program_mode_preserves_declared_capabilities() {
 }
 
 #[test]
+fn program_ffi_import_emits_plan_visible_native_metadata() {
+    let root = fixture_temp_dir("program-ffi-metadata");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  addI32: ffi.fn(t.i32, [t.i32, t.i32], { symbol: "sloppy_ffi_add_i32", convention: "cdecl" }),
+  defaulted: ffi.fn(t.ntstatus, [t.handle], { symbol: "sloppy_ffi_defaulted", callback: false })
+}, { convention: "stdcall" });
+const Point = ffi.struct("Point", { x: t.i32, y: t.i32 }, { layout: "sequential", pack: 4 });
+
+export default function main() {
+  void Point;
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("FFI program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["kind"], "program");
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .iter()
+        .any(|feature| feature == "stdlib.ffi"));
+    assert_eq!(plan["capabilities"][0]["token"], "ffi");
+    assert_eq!(plan["capabilities"][0]["kind"], "ffi");
+    assert_eq!(plan["native"]["ffi"][0]["name"], "ffi-test");
+    assert_eq!(plan["native"]["ffi"][0]["convention"], "stdcall");
+    assert_eq!(plan["native"]["ffi"][0]["source"]["path"], "main.ts");
+    assert!(
+        plan["native"]["ffi"][0]["source"]["line"]
+            .as_u64()
+            .expect("FFI source line should be numeric")
+            > 0
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][0]["id"],
+        "ffi:ffi-test:addI32"
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][0]["convention"],
+        "cdecl"
+    );
+    assert_eq!(plan["native"]["ffi"][0]["functions"][0]["return"], "i32");
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][0]["parameters"],
+        serde_json::json!(["i32", "i32"])
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][0]["marshaling"]["arguments"],
+        "direct"
+    );
+    assert_eq!(plan["native"]["ffi"][0]["functions"][0]["safety"], "unsafe");
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][1]["convention"],
+        "stdcall"
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][1]["return"],
+        "ntstatus"
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][1]["parameters"],
+        serde_json::json!(["handle"])
+    );
+    assert_eq!(
+        plan["native"]["ffi"][0]["functions"][0]["source"]["path"],
+        "main.ts"
+    );
+    assert_eq!(plan["native"]["ffiStructs"][0]["name"], "Point");
+    assert_eq!(plan["native"]["ffiStructs"][0]["layout"], "sequential");
+    assert_eq!(plan["native"]["ffiStructs"][0]["pack"], 4);
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_function_specs_must_be_static() {
+    let root = fixture_temp_dir("program-ffi-dynamic-spec");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const spec = {
+  addI32: ffi.fn(t.i32, [t.i32, t.i32])
+};
+const native = ffi.library("ffi-test", spec);
+
+export default function main() {
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("dynamic FFI specs should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_types_must_use_static_t_namespace() {
+    let root = fixture_temp_dir("program-ffi-invalid-type");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const int32 = t.i32;
+const native = ffi.library("ffi-test", {
+  addI32: ffi.fn(int32, [t.i32, t.i32])
+});
+
+export default function main() {
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("non-static FFI type aliases should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_INVALID_TYPE");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_unknown_calling_conventions() {
+    let root = fixture_temp_dir("program-ffi-invalid-convention");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  addI32: ffi.fn(t.i32, [t.i32, t.i32])
+}, { convention: "fastcall" });
+
+export default function main() {
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("unsupported FFI calling conventions should fail");
+    assert_eq!(
+        error.diagnostic.code,
+        "SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION"
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_library_declarations_must_be_static() {
+    let root = fixture_temp_dir("program-ffi-dynamic-library");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const name = "ffi-test";
+const native = ffi.library(name, {
+  addI32: ffi.fn(t.i32, [t.i32, t.i32])
+});
+
+export default function main() {
+  return native.addI32(1, 2);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("dynamic FFI declarations should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_unsupported_return_buffers() {
+    let root = fixture_temp_dir("program-ffi-unsupported-return");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  getText: ffi.fn(t.cstring, [])
+});
+
+export default function main() {
+  return native.getText();
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("unsupported FFI return buffers should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_callbacks() {
+    let root = fixture_temp_dir("program-ffi-callback");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const native = ffi.library("ffi-test", {
+  register: ffi.fn(t.void, [t.ptr], { callback: true })
+});
+
+export default function main() {
+  return native.register(null);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error =
+        super::build(&input, &out_dir, &CompileOptions::new()).expect_err("callbacks should fail");
+    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_unsized_struct_fields() {
+    let root = fixture_temp_dir("program-ffi-unsized-struct-field");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const Bad = ffi.struct("Bad", { name: t.cstring });
+
+export default function main() {
+  void Bad;
+  return "ok";
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    let error = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("unsized struct fields should fail");
+    assert_eq!(
+        error.diagnostic.code,
+        "SLOPPYC_E_FFI_UNSUPPORTED_STRUCT_BY_VALUE"
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn sloppy_json_declared_program_capabilities_keep_sloppy_json_provenance() {
     let root = std::env::temp_dir().join(format!(
         "sloppyc-program-sloppy-json-capabilities-{}",
@@ -796,6 +1086,9 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_os_runtime: false,
         uses_http_client_runtime: false,
         uses_workers_runtime: false,
+        uses_ffi_runtime: false,
+        ffi: Vec::new(),
+        ffi_structs: Vec::new(),
         uses_health: false,
         problem_details: None,
     };

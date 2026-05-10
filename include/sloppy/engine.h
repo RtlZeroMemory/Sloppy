@@ -6,6 +6,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/features.h"
+#include "sloppy/ffi.h"
 #include "sloppy/fs.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
@@ -70,6 +71,13 @@ typedef struct SlEngineOptions
      * the bridge without Plan-driven startup validation.
      */
     const SlRuntimeFeatureSet* runtime_features;
+    /*
+     * Optional borrowed native-library path overrides for Plan FFI library IDs. Package runs
+     * use this to resolve copied local native libraries by Plan-visible ID while preserving
+     * normal platform loader behavior for libraries without an override.
+     */
+    const SlFfiLibraryOverride* ffi_library_overrides;
+    size_t ffi_library_override_count;
     /*
      * Optional borrowed structured logging runtime. When supplied, V8 request-context
      * loggers submit bounded SlLogEvent records into this runtime. The caller owns startup,

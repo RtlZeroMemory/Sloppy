@@ -393,7 +393,7 @@
           },
           "name": {
             "kind": "string",
-            "min": 1
+            "min": 1.0
           },
           "tags": {
             "items": {
@@ -434,6 +434,7 @@
       "bindings": true,
       "capabilities": true,
       "effects": true,
+      "ffi": false,
       "providers": true,
       "routes": true,
       "sourceGraph": true

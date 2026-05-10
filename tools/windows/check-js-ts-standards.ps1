@@ -159,6 +159,23 @@ function Test-AllowedStdlibDynamicImport {
     return $false
 }
 
+function Test-AllowedStdlibFfiBufferApi {
+    param(
+        [string]$RelativePath,
+        [string]$Line
+    )
+
+    if (($RelativePath -eq "stdlib/sloppy/ffi.js" -or
+            $RelativePath -eq "stdlib/sloppy/internal/runtime-classic.js") -and
+        ($Line -match '^\s*(?:function\s+)?(?:buffer|cstringBuffer|utf16Buffer)\s*\(' -or
+            $Line -match '^\s*(?:buffer|cstringBuffer|utf16Buffer),\s*$' -or
+            $Line -match 'unsafeFfi\.(?:buffer|cstringBuffer|utf16Buffer)')) {
+        return $true
+    }
+
+    return $false
+}
+
 $files = Get-TrackedSourceFiles
 if ($files.Count -eq 0) {
     $files = Get-RecursiveSourceFiles
@@ -213,6 +230,11 @@ foreach ($file in $files) {
                 if ($line -match $rule.Pattern) {
                     if ($rule.Rule -eq "JS010" -and
                         (Test-AllowedStdlibDynamicImport -RelativePath $relativePath -Line $line))
+                    {
+                        continue
+                    }
+                    if ($rule.Rule -eq "JS003" -and
+                        (Test-AllowedStdlibFfiBufferApi -RelativePath $relativePath -Line $line))
                     {
                         continue
                     }

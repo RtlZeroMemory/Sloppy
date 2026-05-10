@@ -860,6 +860,23 @@ static int test_workers_code_names(void)
     return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 240);
 }
 
+static int test_ffi_code_names(void)
+{
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_FFI_RUNTIME_UNAVAILABLE, "SLOPPY_E_FFI_RUNTIME_UNAVAILABLE"},
+        {SL_DIAG_FFI_LIBRARY_NOT_FOUND, "SLOPPYC_E_FFI_LIBRARY_NOT_FOUND"},
+        {SL_DIAG_FFI_SYMBOL_NOT_FOUND, "SLOPPYC_E_FFI_SYMBOL_NOT_FOUND"},
+        {SL_DIAG_FFI_UNSUPPORTED_CALLING_CONVENTION,
+         "SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION"},
+        {SL_DIAG_FFI_INVALID_ARGUMENT_COUNT, "SLOPPY_E_FFI_INVALID_ARGUMENT_COUNT"},
+        {SL_DIAG_FFI_INVALID_ARGUMENT_TYPE, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE"},
+        {SL_DIAG_FFI_INTEGER_OUT_OF_RANGE, "SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE"},
+        {SL_DIAG_FFI_STRING_NUL, "SLOPPY_E_FFI_STRING_NUL"},
+        {SL_DIAG_FFI_CALL_FAILED, "SLOPPY_E_FFI_CALL_FAILED"}};
+
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 260);
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -2293,6 +2310,10 @@ static int test_code_name_groups(void)
         return result;
     }
     result = test_workers_code_names();
+    if (result != 0) {
+        return result;
+    }
+    result = test_ffi_code_names();
     if (result != 0) {
         return result;
     }

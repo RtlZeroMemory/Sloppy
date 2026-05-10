@@ -232,6 +232,7 @@
       "bindings": false,
       "capabilities": true,
       "effects": false,
+      "ffi": false,
       "providers": true,
       "routes": true,
       "sourceGraph": true

@@ -72,6 +72,9 @@ boundary scanners, and the way the public headers are declared.
 8. **Logging stays bounded.** `ctx.log` methods support shallow scalar
    fields only, attach request ID and route metadata from the native
    request context, and submit through the Sloppy-owned logging runtime.
+9. **FFI resources stay opaque.** `sloppy/ffi` refs, buffers, string buffers,
+   and struct instances are stored behind V8 private `External` values. JS gets
+   resource objects and `.ptr` aliases, never raw native addresses.
 
 ## Startup snapshots
 
@@ -128,6 +131,18 @@ A handler returns a result descriptor (`Results.*`). The bridge:
 If the descriptor is malformed (missing `kind`, bad status code, body
 type that doesn't match `kind`), the bridge returns a diagnostic and the
 HTTP layer responds 500 with a redacted body.
+
+## FFI Intrinsics
+
+`src/engine/v8/intrinsics_ffi.cc` installs `__sloppy.ffi` only when
+`stdlib.ffi` is active. The generated/stdlib JS layer calls it to bind
+Plan-visible libraries and to allocate FFI resources. Function wrappers point
+at cached native descriptors from `SlFfiRegistry`; symbols and type descriptors
+are not resolved on every call.
+
+The bridge validates argument counts and value ranges, marshals call-duration
+strings/bytes, calls libffi on the owner thread, and converts supported return
+types. It does not expose a raw pointer-call API or callbacks into JS.
 
 ## Tests
 

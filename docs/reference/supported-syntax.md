@@ -30,7 +30,7 @@ Compiler-recognized modules:
 - `"sloppy/providers/sqlite"` (`sqlite`, `Sqlite`)
 - `"sloppy/providers/postgres"` (`Postgres`)
 - `"sloppy/providers/sqlserver"` (`SqlServer`)
-- `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`
+- `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`, `"sloppy/ffi"`
 - relative imports constrained to source root
 
 Unsupported specifiers/import names fail with:
@@ -115,6 +115,7 @@ Plan when imported. Default imports and import aliases are rejected with
 | `sloppy/crypto` | `Random`, `Hash`, `Hmac`, `Password`, `ConstantTime`, `Secret`, `NonCryptoHash` | `stdlib.crypto` |
 | `sloppy/codec` | `Base64`, `Base64Url`, `Hex`, `Text`, `Binary`, `Compression`, `Checksums` | `stdlib.codec` |
 | `sloppy/workers` | `BackgroundService`, `WorkQueue`, `WorkerPool`, `Worker`, `WorkerCancellationController`, `WorkerCancellationSignal`, `SloppyWorkerError` | `stdlib.workers` |
+| `sloppy/ffi` | `unsafeFfi`, `t` | `stdlib.ffi` |
 
 Examples:
 
@@ -126,7 +127,21 @@ import { Time, Deadline, CancellationController } from "sloppy/time";
 import { Random, Hash, Hmac, Secret } from "sloppy/crypto";
 import { Base64, Hex, Text, Binary } from "sloppy/codec";
 import { BackgroundService, WorkQueue } from "sloppy/workers";
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
 ```
+
+### FFI declarations
+
+`sloppy/ffi` declarations must be static so the compiler can emit Plan-visible
+ABI metadata. Supported shapes are top-level `ffi.library(...)`,
+`ffi.fn(...)`, and `ffi.struct(...)` calls with literal library names, symbols,
+calling conventions, object specs, and `t.*` type descriptors.
+
+Dynamic library names, generated descriptor objects, computed function names,
+non-`t` type descriptors, callbacks, unsupported return buffer types, and
+non-sequential struct layouts fail with FFI diagnostics such as
+`SLOPPYC_E_FFI_DYNAMIC_DECLARATION`, `SLOPPYC_E_FFI_INVALID_TYPE`, and
+`SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK`.
 
 ## Route Extraction Rules
 

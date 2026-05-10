@@ -24,6 +24,7 @@
 #include "sloppy/http_transport.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
+#include "sloppy/platform_dynlib.h"
 #include "sloppy/platform_process.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
@@ -54,6 +55,11 @@
 #define SL_CLI_MAX_REQUIRED_FEATURES 32U
 #define SL_CLI_MAX_HTTP_CLIENTS 32U
 #define SL_CLI_MAX_CONFIG_REQUIREMENTS 64U
+#define SL_CLI_MAX_FFI_LIBRARIES 32U
+#define SL_CLI_MAX_FFI_FUNCTIONS 128U
+#define SL_CLI_MAX_FFI_PARAMETERS 16U
+#define SL_CLI_MAX_FFI_STRUCTS 32U
+#define SL_CLI_MAX_FFI_STRUCT_FIELDS 32U
 #define SL_CLI_MAX_PROGRAM_ARGS 64U
 #define SL_CLI_FILE_MAX_BYTES 1048576U
 #define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
@@ -78,7 +84,7 @@
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_PATH_MAX_BYTES 1024U
 #define SL_CREATE_ARENA_BYTES 65536U
-#define SL_PACKAGE_MANIFEST_BYTES 2048U
+#define SL_PACKAGE_MANIFEST_BYTES 8192U
 #define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U

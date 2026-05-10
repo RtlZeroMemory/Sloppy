@@ -106,6 +106,39 @@ typedef struct SlCliConfigRequirement
     bool secret;
 } SlCliConfigRequirement;
 
+typedef struct SlCliFfiFunction
+{
+    SlCliSpan library;
+    SlCliSpan id;
+    SlCliSpan name;
+    SlCliSpan symbol;
+    SlCliSpan convention;
+    SlCliSpan return_type;
+    SlCliSpan parameters[SL_CLI_MAX_FFI_PARAMETERS];
+    size_t parameter_count;
+} SlCliFfiFunction;
+
+typedef struct SlCliFfiLibrary
+{
+    SlCliSpan name;
+    SlCliSpan convention;
+    size_t first_function;
+    size_t function_count;
+} SlCliFfiLibrary;
+
+typedef struct SlCliFfiStructField
+{
+    SlCliSpan name;
+    SlCliSpan type;
+} SlCliFfiStructField;
+
+typedef struct SlCliFfiStruct
+{
+    SlCliSpan name;
+    SlCliFfiStructField fields[SL_CLI_MAX_FFI_STRUCT_FIELDS];
+    size_t field_count;
+} SlCliFfiStruct;
+
 typedef struct SlCliSchemaProperty
 {
     SlCliSpan name;
@@ -149,6 +182,12 @@ typedef struct SlCliMetadata
     size_t http_client_count;
     SlCliConfigRequirement config_requirements[SL_CLI_MAX_CONFIG_REQUIREMENTS];
     size_t config_requirement_count;
+    SlCliFfiLibrary ffi_libraries[SL_CLI_MAX_FFI_LIBRARIES];
+    size_t ffi_library_count;
+    SlCliFfiFunction ffi_functions[SL_CLI_MAX_FFI_FUNCTIONS];
+    size_t ffi_function_count;
+    SlCliFfiStruct ffi_structs[SL_CLI_MAX_FFI_STRUCTS];
+    size_t ffi_struct_count;
     SlCliSpan kind;
     SlCliSpan completeness;
 } SlCliMetadata;

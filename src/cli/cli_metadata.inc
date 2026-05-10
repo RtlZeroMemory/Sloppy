@@ -109,8 +109,7 @@ static int sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
             sl_cli_write_cstr(stderr, "\n");
             return 1;
         }
-        route->tags[route->tag_count] =
-            (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        route->tags[route->tag_count] = (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
         route->tag_count += 1U;
     }
     return 0;
@@ -214,8 +213,8 @@ static int sl_cli_parse_dynamic_routes(yyjson_val* root, SlCliMetadata* metadata
         SlCliRoute route = {0};
 
         if (!yyjson_is_obj(value)) {
-            sl_cli_write_cstr(stderr,
-                              "sloppy: malformed metadata: dynamic route entries must be objects\n");
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: dynamic route entries must be objects\n");
             return 1;
         }
         if (metadata->route_count >= SL_CLI_MAX_ROUTES) {
@@ -644,6 +643,191 @@ static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* met
     return 0;
 }
 
+static int sl_cli_parse_ffi_parameters(yyjson_val* function_value, SlCliFfiFunction* function)
+{
+    yyjson_val* parameters = yyjson_obj_get(function_value, "parameters");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (parameters == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(parameters)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffi parameters must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(parameters, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(value)) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy: malformed metadata: native.ffi parameter entries must be strings\n");
+            return 1;
+        }
+        if (function->parameter_count >= SL_CLI_MAX_FFI_PARAMETERS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI parameters in metadata\n");
+            return 1;
+        }
+        function->parameters[function->parameter_count] =
+            (SlCliSpan){yyjson_get_str(value), yyjson_get_len(value)};
+        function->parameter_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_functions(yyjson_val* library_value, SlCliMetadata* metadata,
+                                      SlCliFfiLibrary* library)
+{
+    yyjson_val* functions = yyjson_obj_get(library_value, "functions");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (functions == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(functions)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffi functions must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(functions, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliFfiFunction function = {0};
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: native.ffi function must be an object\n");
+            return 1;
+        }
+        if (metadata->ffi_function_count >= SL_CLI_MAX_FFI_FUNCTIONS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI functions in metadata\n");
+            return 1;
+        }
+        function.library = library->name;
+        function.id = sl_cli_json_span(value, "id");
+        function.name = sl_cli_json_span(value, "name");
+        function.symbol = sl_cli_json_span(value, "symbol");
+        function.convention = sl_cli_json_span(value, "convention");
+        function.return_type = sl_cli_json_span(value, "return");
+        if (sl_cli_parse_ffi_parameters(value, &function) != 0) {
+            return 1;
+        }
+        metadata->ffi_functions[metadata->ffi_function_count] = function;
+        metadata->ffi_function_count += 1U;
+        library->function_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_structs(yyjson_val* native, SlCliMetadata* metadata)
+{
+    yyjson_val* structs = yyjson_obj_get(native, "ffiStructs");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (structs == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(structs)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffiStructs must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(structs, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliFfiStruct layout = {0};
+        yyjson_val* fields = NULL;
+        yyjson_val* field = NULL;
+        yyjson_arr_iter field_iter;
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: native.ffiStructs entry must be an object\n");
+            return 1;
+        }
+        if (metadata->ffi_struct_count >= SL_CLI_MAX_FFI_STRUCTS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI structs in metadata\n");
+            return 1;
+        }
+        layout.name = sl_cli_json_span(value, "name");
+        fields = yyjson_obj_get(value, "fields");
+        if (fields == NULL || !yyjson_is_arr(fields)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: native.ffiStructs fields must be an array\n");
+            return 1;
+        }
+        yyjson_arr_iter_init(fields, &field_iter);
+        while ((field = yyjson_arr_iter_next(&field_iter)) != NULL) {
+            if (!yyjson_is_obj(field)) {
+                sl_cli_write_cstr(
+                    stderr, "sloppy: malformed metadata: native FFI field must be an object\n");
+                return 1;
+            }
+            if (layout.field_count >= SL_CLI_MAX_FFI_STRUCT_FIELDS) {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy: too many native FFI struct fields in metadata\n");
+                return 1;
+            }
+            layout.fields[layout.field_count].name = sl_cli_json_span(field, "name");
+            layout.fields[layout.field_count].type = sl_cli_json_span(field, "type");
+            layout.field_count += 1U;
+        }
+        metadata->ffi_structs[metadata->ffi_struct_count] = layout;
+        metadata->ffi_struct_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* native = yyjson_obj_get(root, "native");
+    yyjson_val* ffi = NULL;
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (native == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(native)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: native must be an object\n");
+        return 1;
+    }
+
+    ffi = yyjson_obj_get(native, "ffi");
+    if (ffi != NULL) {
+        if (!yyjson_is_arr(ffi)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed metadata: native.ffi must be an array\n");
+            return 1;
+        }
+        yyjson_arr_iter_init(ffi, &iter);
+        while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+            SlCliFfiLibrary library = {0};
+
+            if (!yyjson_is_obj(value)) {
+                sl_cli_write_cstr(
+                    stderr, "sloppy: malformed metadata: native.ffi entry must be an object\n");
+                return 1;
+            }
+            if (metadata->ffi_library_count >= SL_CLI_MAX_FFI_LIBRARIES) {
+                sl_cli_write_cstr(stderr, "sloppy: too many native FFI libraries in metadata\n");
+                return 1;
+            }
+            library.name = sl_cli_json_span(value, "name");
+            library.convention = sl_cli_json_span(value, "convention");
+            library.first_function = metadata->ffi_function_count;
+            if (sl_cli_parse_ffi_functions(value, metadata, &library) != 0) {
+                return 1;
+            }
+            metadata->ffi_libraries[metadata->ffi_library_count] = library;
+            metadata->ffi_library_count += 1U;
+        }
+    }
+
+    return sl_cli_parse_ffi_structs(native, metadata);
+}
+
 static int sl_cli_parse_plan_kind(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* kind = yyjson_obj_get(root, "kind");
@@ -738,7 +922,8 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_doctor_checks(root, out_metadata) != 0 ||
         sl_cli_parse_required_features(root, out_metadata) != 0 ||
         sl_cli_parse_http_clients(root, out_metadata) != 0 ||
-        sl_cli_parse_config_requirements(root, out_metadata) != 0)
+        sl_cli_parse_config_requirements(root, out_metadata) != 0 ||
+        sl_cli_parse_ffi_metadata(root, out_metadata) != 0)
     {
         return 1;
     }

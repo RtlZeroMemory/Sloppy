@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_FFI_PLAN_VISIBLE", "message": "sloppy/ffi is Plan-visible as stdlib.ffi", "path": "requiredFeatures" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_FFI_UNSAFE_BOUNDARY", "message": "native FFI libraries execute in-process and must be trusted local artifacts", "path": "native.ffi" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_FFI_NO_RAW_POINTERS", "message": "FFI metadata exposes symbols and typed signatures, not raw pointer addresses", "path": "native.ffi" }
+  ]
+}

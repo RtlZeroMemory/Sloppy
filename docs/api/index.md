@@ -36,6 +36,7 @@ configuration, services, validation, or data access.
 - [Time](time.md) — `sloppy/time` delays, deadlines, intervals, cancellation, fake clock
 - [Crypto](crypto.md) — `sloppy/crypto` random, hashing, HMAC, password, secrets
 - [Codec](codec.md) — `sloppy/codec` Base64, hex, UTF-8, binary I/O, gzip, CRC-32
+- [FFI](ffi.md) — `sloppy/ffi` typed native interop
 
 ## Stability
 

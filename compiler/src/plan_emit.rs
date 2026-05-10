@@ -566,6 +566,68 @@ pub(crate) fn emit_plan(
         })
         .collect::<Vec<_>>();
 
+    let ffi_libraries = app
+        .ffi
+        .iter()
+        .map(|library| {
+            json!({
+                "name": library.name,
+                "convention": library.convention,
+                "source": source_location_json(&library.source_name, &library.source, library.span),
+                "functions": library
+                    .functions
+                    .iter()
+                    .map(|function| {
+                        json!({
+                            "id": function.id,
+                            "name": function.name,
+                            "symbol": function.symbol,
+                            "convention": function.convention,
+                            "return": function.return_type,
+                            "parameters": function.parameters,
+                            "marshaling": {
+                                "arguments": ffi_argument_marshaling(&function.parameters),
+                                "return": "direct"
+                            },
+                            "safety": "unsafe",
+                            "source": source_location_json(
+                                &function.source_name,
+                                &function.source,
+                                function.span
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let ffi_structs = app
+        .ffi_structs
+        .iter()
+        .map(|layout| {
+            let mut value = json!({
+                "name": layout.name,
+                "layout": layout.layout,
+                "fields": layout
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        json!({
+                            "name": field.name,
+                            "type": field.type_name
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "source": source_location_json(&layout.source_name, &layout.source, layout.span)
+            });
+            if let Some(pack) = layout.pack {
+                value["pack"] = json!(pack);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+
     let config_reads = app
         .config_reads
         .iter()
@@ -626,10 +688,11 @@ pub(crate) fn emit_plan(
                 "routes": true,
                 "providers": !data_providers.is_empty(),
                 "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
-                "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
-                "capabilities": !app.capabilities.is_empty()
-            }
-        },
+            "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
+            "capabilities": !app.capabilities.is_empty(),
+            "ffi": !ffi_libraries.is_empty() || !ffi_structs.is_empty()
+        }
+    },
         "features": {
             "asyncHandlers": has_async_handlers,
             "dataProviders": !data_providers.is_empty(),
@@ -743,6 +806,20 @@ pub(crate) fn emit_plan(
         value["strongPlan"]["evidence"]["workers"] = json!(true);
         value["features"]["workers"] = json!(true);
     }
+    if app.uses_ffi_runtime || !ffi_libraries.is_empty() || !ffi_structs.is_empty() {
+        required_features.push("stdlib.ffi");
+        value["strongPlan"]["evidence"]["ffi"] = json!(true);
+        value["features"]["ffi"] = json!(true);
+        value["native"] = json!({
+            "ffi": ffi_libraries,
+            "ffiStructs": ffi_structs
+        });
+        doctor_checks.push(json!({
+            "id": "stdlib.ffi.unsafe_boundary",
+            "status": "warn",
+            "message": "unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted"
+        }));
+    }
     if app.uses_health {
         value["strongPlan"]["evidence"]["health"] = json!(true);
         value["features"]["health"] = json!(true);
@@ -783,6 +860,19 @@ fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
         "line": line,
         "column": column
     })
+}
+
+fn ffi_argument_marshaling(parameters: &[String]) -> &'static str {
+    if parameters.iter().any(|parameter| {
+        matches!(
+            parameter.as_str(),
+            "cstring" | "lpcstr" | "utf16" | "lpcwstr" | "bytes" | "mutBytes"
+        )
+    }) {
+        "call-duration"
+    } else {
+        "direct"
+    }
 }
 
 fn package_manifest_entry_json(entry: &ConfigurationPackageEntry) -> Value {

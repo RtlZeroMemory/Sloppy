@@ -67,7 +67,8 @@ bool sl_plan_capability_kind_supported(SlStr kind)
            sl_str_equal(kind, sl_str_from_cstr("time")) ||
            sl_str_equal(kind, sl_str_from_cstr("crypto")) ||
            sl_str_equal(kind, sl_str_from_cstr("codec")) ||
-           sl_str_equal(kind, sl_str_from_cstr("workers"));
+           sl_str_equal(kind, sl_str_from_cstr("workers")) ||
+           sl_str_equal(kind, sl_str_from_cstr("ffi"));
 }
 
 bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
@@ -117,11 +118,180 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
     if (sl_str_equal(kind, sl_str_from_cstr("time")) ||
         sl_str_equal(kind, sl_str_from_cstr("crypto")) ||
         sl_str_equal(kind, sl_str_from_cstr("codec")) ||
-        sl_str_equal(kind, sl_str_from_cstr("workers")))
+        sl_str_equal(kind, sl_str_from_cstr("workers")) ||
+        sl_str_equal(kind, sl_str_from_cstr("ffi")))
     {
         return sl_str_equal(access, sl_str_from_cstr("use"));
     }
     return false;
+}
+
+SlStatus sl_plan_ffi_type_from_str(SlStr text, SlPlanFfiType* out)
+{
+    if (out == NULL || (text.length > 0U && text.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = SL_PLAN_FFI_TYPE_UNKNOWN;
+    if (sl_str_equal(text, sl_str_from_cstr("void"))) {
+        *out = SL_PLAN_FFI_TYPE_VOID;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("bool"))) {
+        *out = SL_PLAN_FFI_TYPE_BOOL;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("i8"))) {
+        *out = SL_PLAN_FFI_TYPE_I8;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("u8"))) {
+        *out = SL_PLAN_FFI_TYPE_U8;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("i16"))) {
+        *out = SL_PLAN_FFI_TYPE_I16;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("u16"))) {
+        *out = SL_PLAN_FFI_TYPE_U16;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("i32"))) {
+        *out = SL_PLAN_FFI_TYPE_I32;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("ntstatus"))) {
+        *out = SL_PLAN_FFI_TYPE_I32;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("u32"))) {
+        *out = SL_PLAN_FFI_TYPE_U32;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("i64"))) {
+        *out = SL_PLAN_FFI_TYPE_I64;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("u64"))) {
+        *out = SL_PLAN_FFI_TYPE_U64;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("isize"))) {
+        *out = SL_PLAN_FFI_TYPE_ISIZE;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("usize"))) {
+        *out = SL_PLAN_FFI_TYPE_USIZE;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("f32"))) {
+        *out = SL_PLAN_FFI_TYPE_F32;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("f64"))) {
+        *out = SL_PLAN_FFI_TYPE_F64;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("ptr")) ||
+             sl_str_equal(text, sl_str_from_cstr("handle")) ||
+             sl_str_equal(text, sl_str_from_cstr("hwnd")) ||
+             sl_str_equal(text, sl_str_from_cstr("hmodule")))
+    {
+        *out = SL_PLAN_FFI_TYPE_PTR;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("cstring")) ||
+             sl_str_equal(text, sl_str_from_cstr("lpcstr")))
+    {
+        *out = SL_PLAN_FFI_TYPE_CSTRING;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("utf16")) ||
+             sl_str_equal(text, sl_str_from_cstr("lpcwstr")))
+    {
+        *out = SL_PLAN_FFI_TYPE_UTF16;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("bytes"))) {
+        *out = SL_PLAN_FFI_TYPE_BYTES;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("mutBytes"))) {
+        *out = SL_PLAN_FFI_TYPE_MUT_BYTES;
+    }
+    else {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+    return sl_status_ok();
+}
+
+SlStr sl_plan_ffi_type_name(SlPlanFfiType type)
+{
+    switch (type) {
+    case SL_PLAN_FFI_TYPE_VOID:
+        return sl_str_from_cstr("void");
+    case SL_PLAN_FFI_TYPE_BOOL:
+        return sl_str_from_cstr("bool");
+    case SL_PLAN_FFI_TYPE_I8:
+        return sl_str_from_cstr("i8");
+    case SL_PLAN_FFI_TYPE_U8:
+        return sl_str_from_cstr("u8");
+    case SL_PLAN_FFI_TYPE_I16:
+        return sl_str_from_cstr("i16");
+    case SL_PLAN_FFI_TYPE_U16:
+        return sl_str_from_cstr("u16");
+    case SL_PLAN_FFI_TYPE_I32:
+        return sl_str_from_cstr("i32");
+    case SL_PLAN_FFI_TYPE_U32:
+        return sl_str_from_cstr("u32");
+    case SL_PLAN_FFI_TYPE_I64:
+        return sl_str_from_cstr("i64");
+    case SL_PLAN_FFI_TYPE_U64:
+        return sl_str_from_cstr("u64");
+    case SL_PLAN_FFI_TYPE_ISIZE:
+        return sl_str_from_cstr("isize");
+    case SL_PLAN_FFI_TYPE_USIZE:
+        return sl_str_from_cstr("usize");
+    case SL_PLAN_FFI_TYPE_F32:
+        return sl_str_from_cstr("f32");
+    case SL_PLAN_FFI_TYPE_F64:
+        return sl_str_from_cstr("f64");
+    case SL_PLAN_FFI_TYPE_PTR:
+        return sl_str_from_cstr("ptr");
+    case SL_PLAN_FFI_TYPE_CSTRING:
+        return sl_str_from_cstr("cstring");
+    case SL_PLAN_FFI_TYPE_UTF16:
+        return sl_str_from_cstr("utf16");
+    case SL_PLAN_FFI_TYPE_BYTES:
+        return sl_str_from_cstr("bytes");
+    case SL_PLAN_FFI_TYPE_MUT_BYTES:
+        return sl_str_from_cstr("mutBytes");
+    default:
+        return sl_str_empty();
+    }
+}
+
+SlStatus sl_plan_ffi_calling_convention_from_str(SlStr text, SlPlanFfiCallingConvention* out)
+{
+    if (out == NULL || (text.length > 0U && text.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = SL_PLAN_FFI_CALLING_CONVENTION_UNKNOWN;
+    if (sl_str_equal(text, sl_str_from_cstr("system"))) {
+        *out = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("cdecl"))) {
+        *out = SL_PLAN_FFI_CALLING_CONVENTION_CDECL;
+    }
+    else if (sl_str_equal(text, sl_str_from_cstr("stdcall"))) {
+        *out = SL_PLAN_FFI_CALLING_CONVENTION_STDCALL;
+    }
+    else {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+    return sl_status_ok();
+}
+
+SlStr sl_plan_ffi_calling_convention_name(SlPlanFfiCallingConvention convention)
+{
+    switch (convention) {
+    case SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM:
+        return sl_str_from_cstr("system");
+    case SL_PLAN_FFI_CALLING_CONVENTION_CDECL:
+        return sl_str_from_cstr("cdecl");
+    case SL_PLAN_FFI_CALLING_CONVENTION_STDCALL:
+        return sl_str_from_cstr("stdcall");
+    default:
+        return sl_str_empty();
+    }
+}
+
+bool sl_plan_ffi_return_type_supported(SlPlanFfiType type)
+{
+    return type != SL_PLAN_FFI_TYPE_UNKNOWN && type != SL_PLAN_FFI_TYPE_CSTRING &&
+           type != SL_PLAN_FFI_TYPE_UTF16 && type != SL_PLAN_FFI_TYPE_BYTES &&
+           type != SL_PLAN_FFI_TYPE_MUT_BYTES;
 }
 
 SlStatus sl_plan_find_handler_by_id(const SlPlan* plan, SlHandlerId id, const SlPlanHandler** out)
@@ -865,6 +1035,166 @@ static SlStatus sl_plan_intern_required_features(SlArena* arena, SlInternTable* 
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_intern_ffi_libraries(SlArena* arena, SlInternTable* table, SlPlan* staged)
+{
+    SlPlanFfiLibrary* libraries = NULL;
+    size_t library_index = 0U;
+    SlStatus status;
+
+    if (staged->ffi_library_count == 0U) {
+        staged->ffi_libraries = NULL;
+        return sl_status_ok();
+    }
+    if (staged->ffi_libraries == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_plan_alloc_copy(arena, staged->ffi_libraries, staged->ffi_library_count,
+                                sizeof(SlPlanFfiLibrary), _Alignof(SlPlanFfiLibrary),
+                                (void**)&libraries);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (libraries == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    for (library_index = 0U; library_index < staged->ffi_library_count; library_index += 1U) {
+        SlPlanFfiFunction* functions = NULL;
+        SlPlanFfiLibrary* library = &libraries[library_index];
+        size_t function_index = 0U;
+
+        status = sl_plan_intern_required(table, library->name, &library->name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (library->function_count == 0U) {
+            library->functions = NULL;
+            continue;
+        }
+        if (library->functions == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_plan_alloc_copy(arena, library->functions, library->function_count,
+                                    sizeof(SlPlanFfiFunction), _Alignof(SlPlanFfiFunction),
+                                    (void**)&functions);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (functions == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        for (function_index = 0U; function_index < library->function_count; function_index += 1U) {
+            SlPlanFfiType* parameters = NULL;
+            SlPlanFfiFunction* function = &functions[function_index];
+
+            status = sl_plan_intern_required(table, function->id, &function->id);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_plan_intern_required(table, function->library, &function->library);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_plan_intern_required(table, function->name, &function->name);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_plan_intern_required(table, function->symbol, &function->symbol);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            if (function->parameter_count == 0U) {
+                function->parameters = NULL;
+                continue;
+            }
+            if (function->parameters == NULL) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
+            status = sl_plan_alloc_copy(arena, function->parameters, function->parameter_count,
+                                        sizeof(SlPlanFfiType), _Alignof(SlPlanFfiType),
+                                        (void**)&parameters);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            function->parameters = parameters;
+        }
+        library->functions = functions;
+    }
+
+    staged->ffi_libraries = libraries;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_ffi_structs(SlArena* arena, SlInternTable* table, SlPlan* staged)
+{
+    SlPlanFfiStruct* layouts = NULL;
+    size_t layout_index = 0U;
+    SlStatus status;
+
+    if (staged->ffi_struct_count == 0U) {
+        staged->ffi_structs = NULL;
+        return sl_status_ok();
+    }
+    if (staged->ffi_structs == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status =
+        sl_plan_alloc_copy(arena, staged->ffi_structs, staged->ffi_struct_count,
+                           sizeof(SlPlanFfiStruct), _Alignof(SlPlanFfiStruct), (void**)&layouts);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (layouts == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    for (layout_index = 0U; layout_index < staged->ffi_struct_count; layout_index += 1U) {
+        SlPlanFfiStructField* fields = NULL;
+        SlPlanFfiStruct* layout = &layouts[layout_index];
+        size_t field_index = 0U;
+
+        status = sl_plan_intern_required(table, layout->name, &layout->name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (layout->layout.length == 0U) {
+            layout->layout = sl_str_from_cstr("sequential");
+        }
+        status = sl_plan_intern_required(table, layout->layout, &layout->layout);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (layout->field_count == 0U) {
+            layout->fields = NULL;
+            continue;
+        }
+        if (layout->fields == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_plan_alloc_copy(arena, layout->fields, layout->field_count,
+                                    sizeof(SlPlanFfiStructField), _Alignof(SlPlanFfiStructField),
+                                    (void**)&fields);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (fields == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        for (field_index = 0U; field_index < layout->field_count; field_index += 1U) {
+            status =
+                sl_plan_intern_required(table, fields[field_index].name, &fields[field_index].name);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        layout->fields = fields;
+    }
+
+    staged->ffi_structs = layouts;
+    return sl_status_ok();
+}
+
 SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capacity,
                                  size_t bucket_count, SlPlan* out_plan, SlInternTable* out_table)
 {
@@ -884,7 +1214,9 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
         (plan->schema_count > 0U && plan->schemas == NULL) ||
         (plan->data_provider_count > 0U && plan->data_providers == NULL) ||
         (plan->capability_count > 0U && plan->capabilities == NULL) ||
-        (plan->required_feature_count > 0U && plan->required_features == NULL))
+        (plan->required_feature_count > 0U && plan->required_features == NULL) ||
+        (plan->ffi_library_count > 0U && plan->ffi_libraries == NULL) ||
+        (plan->ffi_struct_count > 0U && plan->ffi_structs == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -923,6 +1255,14 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
         goto failure;
     }
     status = sl_plan_intern_required_features(arena, &table, &staged);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_plan_intern_ffi_libraries(arena, &table, &staged);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_plan_intern_ffi_structs(arena, &table, &staged);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }

@@ -42,6 +42,8 @@ when you need a separate artifact root.
     app.plan.json
     app.js
     app.js.map
+    native/
+      <copied ffi library>
 ```
 
 `manifest.json` currently uses `schema: "sloppy.app-package.v1"`. The package
@@ -57,9 +59,24 @@ records the app kind (`"web"` or `"program"`) and copied artifact paths:
     "bundle": "artifacts/app.js",
     "sourceMap": "artifacts/app.js.map"
   },
+  "native": {
+    "libraries": [
+      {
+        "id": "myhash",
+        "platform": "windows-x64",
+        "path": "artifacts/native/myhash.dll",
+        "sha256": "sha256:..."
+      }
+    ]
+  },
   "createdBy": "sloppy package"
 }
 ```
+
+The `native` section appears only when the Plan contains FFI libraries that are
+mapped in `sloppy.json` `ffiLibraries`. Mapped local libraries are copied into
+`artifacts/native/`; system libraries without a mapping keep normal platform
+loader resolution.
 
 The package is a directory shape for local tooling and smoke tests; archive,
 signing, and runtime release packaging are handled by the release scripts under

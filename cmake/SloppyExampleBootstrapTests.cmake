@@ -137,6 +137,9 @@
             NAME bootstrap.stdlib.workers
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
         add_test(
+            NAME bootstrap.stdlib.ffi
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_ffi.mjs")
+        add_test(
             NAME bootstrap.stdlib.core_integration
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
@@ -146,7 +149,7 @@
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.property
             bootstrap.stdlib.os
-            bootstrap.stdlib.http_client bootstrap.stdlib.workers
+            bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

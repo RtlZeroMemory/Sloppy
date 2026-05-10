@@ -45,6 +45,7 @@ static bool sl_engine_options_valid(const SlEngineOptions* options)
            sl_engine_str_valid(options->runtime_version) &&
            sl_engine_str_valid(options->target_platform) &&
            sl_engine_str_valid(options->target_engine) &&
+           (options->ffi_library_override_count == 0U || options->ffi_library_overrides != NULL) &&
            sl_engine_bytes_valid(options->source_map) &&
            sl_engine_str_valid(options->source_map_source_name) &&
            has_source_map == has_source_map_source_name;

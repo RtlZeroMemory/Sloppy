@@ -490,6 +490,20 @@ async function runCliArea() {
         }
     }
 
+    if (!selectedCliSection || selectedCliSection === "ffi") {
+        const ffiPlan = "tests/fixtures/cli/ffi-policy.plan.json";
+        const ffiCommands = [
+            ["ffi-capabilities-json", ["capabilities", "--plan", ffiPlan, "--format", "json"], true],
+            [v8VariantName("ffi-doctor-json"), ["doctor", "--plan", ffiPlan, "--format", "json"], true],
+            ["ffi-audit-json", ["audit", "--plan", ffiPlan, "--format", "json"], true],
+        ];
+        for (const [name, commandArgs, json] of ffiCommands) {
+            const result = await run(sloppy, commandArgs);
+            requireSuccess(result, name);
+            await commandSnapshot("cli", name, result, { jsonStdout: json });
+        }
+    }
+
     if (selectedCliSection && selectedCliSection !== "program") {
         return;
     }
