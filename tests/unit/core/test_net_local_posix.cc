@@ -2,6 +2,7 @@
 #include "sloppy/net.h"
 
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <condition_variable>
 #include <mutex>
@@ -612,20 +613,25 @@ int test_read_until_binary_delimiter_and_limits()
 
 int main()
 {
-    if (test_unix_socket_loopback_preserves_binary() != 0) {
-        return 1;
-    }
-    if (test_stale_socket_cleanup_and_permissions() != 0) {
-        return 1;
-    }
-    if (test_accept_timeout_and_unsupported_backend() != 0) {
-        return 1;
-    }
-    if (test_io_timeout_and_precancel() != 0) {
-        return 1;
-    }
-    if (test_read_until_binary_delimiter_and_limits() != 0) {
-        return 1;
+    struct TestCase
+    {
+        const char* name;
+        int (*fn)();
+    };
+    const TestCase tests[] = {
+        {"test_unix_socket_loopback_preserves_binary", test_unix_socket_loopback_preserves_binary},
+        {"test_stale_socket_cleanup_and_permissions", test_stale_socket_cleanup_and_permissions},
+        {"test_accept_timeout_and_unsupported_backend", test_accept_timeout_and_unsupported_backend},
+        {"test_io_timeout_and_precancel", test_io_timeout_and_precancel},
+        {"test_read_until_binary_delimiter_and_limits", test_read_until_binary_delimiter_and_limits},
+    };
+
+    for (const TestCase& test : tests) {
+        int result = test.fn();
+        if (result != 0) {
+            fprintf(stderr, "%s failed with code %d\n", test.name, result);
+            return result;
+        }
     }
     return 0;
 }
