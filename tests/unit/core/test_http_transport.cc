@@ -820,9 +820,9 @@ static int test_config_validation_and_lifecycle(void)
         if (expect_status(sl_http_transport_server_arena_size(&default_wire_config,
                                                               &default_wire_bytes, &diag),
                           SL_STATUS_OK) != 0 ||
-            expect_status(sl_http_transport_server_arena_size(&tuned_wire_config, &tuned_wire_bytes,
-                                                              &diag),
-                          SL_STATUS_OK) != 0 ||
+            expect_status(
+                sl_http_transport_server_arena_size(&tuned_wire_config, &tuned_wire_bytes, &diag),
+                SL_STATUS_OK) != 0 ||
             tuned_wire_bytes >= default_wire_bytes)
         {
             return 19;
@@ -2857,8 +2857,8 @@ static int test_event_loop_dispatch_writes_response_and_closes(void)
     config.dispatch = dispatch_hook;
     config.dispatch_user = &dispatch;
 
-    if (run_localhost_request(&config, "GET /queued HTTP/1.1\r\nHost: local\r\n\r\n",
-                              &response, &server, &dispatch) != 0 ||
+    if (run_localhost_request(&config, "GET /queued HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
         dispatch.count != 1U || expect_bytes_equal(response, expected) != 0)
     {
         return 82;

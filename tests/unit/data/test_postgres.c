@@ -208,8 +208,7 @@ static int test_invalid_options_and_use_after_close(void)
     if (!sl_status_is_ok(status)) {
         return 20;
     }
-    if (SL_POSTGRES_MAX_POOL_CONNECTIONS != 16U ||
-        SL_POSTGRES_MAX_RUNTIME_POOL_CONNECTIONS != 256U)
+    if (SL_POSTGRES_MAX_POOL_CONNECTIONS != 16U || SL_POSTGRES_MAX_RUNTIME_POOL_CONNECTIONS != 256U)
     {
         return 27;
     }

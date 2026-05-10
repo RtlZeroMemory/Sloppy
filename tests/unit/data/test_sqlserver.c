@@ -321,12 +321,10 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 23;
     }
-    pool_options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr("Driver={x};Server=x"),
-                                                              SL_SQLSERVER_MAX_POOL_CONNECTIONS);
+    pool_options = sl_sqlserver_pool_options_connection_string(
+        sl_str_from_cstr("Driver={x};Server=x"), SL_SQLSERVER_MAX_POOL_CONNECTIONS);
     status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
-    if (sl_status_code(status) != SL_STATUS_OK &&
-        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
-    {
+    if (sl_status_code(status) != SL_STATUS_OK && sl_status_code(status) != SL_STATUS_UNSUPPORTED) {
         return 31;
     }
     if (sl_status_is_ok(status) &&
@@ -335,8 +333,8 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 32;
     }
-    pool_options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr("Driver={x};Server=x"),
-                                                              SL_SQLSERVER_MAX_POOL_CONNECTIONS + 1U);
+    pool_options = sl_sqlserver_pool_options_connection_string(
+        sl_str_from_cstr("Driver={x};Server=x"), SL_SQLSERVER_MAX_POOL_CONNECTIONS + 1U);
     {
         SlStatus max_capacity_status = status;
 

@@ -205,7 +205,7 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
 }
 
 static SlStatus sl_http_transport_default_wire_body_capacity(size_t max_body_length,
-                                                            size_t* out_capacity)
+                                                             size_t* out_capacity)
 {
     SlStatus status;
     size_t capacity = 0U;
@@ -213,14 +213,13 @@ static SlStatus sl_http_transport_default_wire_body_capacity(size_t max_body_len
     if (out_capacity == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_checked_mul_size(max_body_length, SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR,
-                                 &capacity);
+    status = sl_checked_mul_size(max_body_length,
+                                 SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_add_size(capacity,
-                                 SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES,
-                                 &capacity);
+    status = sl_checked_add_size(
+        capacity, SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -297,9 +296,9 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         if (input->dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_DEFAULT) {
             config.dispatch_mode = input->dispatch_mode;
         }
-        config.max_dispatches_per_tick =
-            input->max_dispatches_per_tick == 0U ? config.max_dispatches_per_tick
-                                                 : input->max_dispatches_per_tick;
+        config.max_dispatches_per_tick = input->max_dispatches_per_tick == 0U
+                                             ? config.max_dispatches_per_tick
+                                             : input->max_dispatches_per_tick;
         config.tls = input->tls;
         if (config.tls.enabled && config.tls.backend == SL_HTTP_TRANSPORT_TLS_BACKEND_NONE) {
             config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
@@ -314,13 +313,12 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
 
     if (config.max_request_wire_body_bytes == 0U) {
         status = sl_http_transport_default_wire_body_capacity(config.parse.max_body_length,
-                                                             &config.max_request_wire_body_bytes);
+                                                              &config.max_request_wire_body_bytes);
         if (!sl_status_is_ok(status)) {
             return sl_http_transport_invalid_config(
-                out_diag,
-                sl_http_transport_literal("HTTP transport wire body capacity overflows",
-                                          sizeof("HTTP transport wire body capacity overflows") -
-                                              1U));
+                out_diag, sl_http_transport_literal(
+                              "HTTP transport wire body capacity overflows",
+                              sizeof("HTTP transport wire body capacity overflows") - 1U));
         }
     }
 
@@ -349,9 +347,8 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
     }
     if (config.max_request_head_bytes == 0U || config.max_request_wire_body_bytes == 0U ||
         config.request_arena_bytes == 0U || config.read_chunk_bytes == 0U ||
-        config.max_response_bytes == 0U ||
-        config.max_pending_write_bytes == 0U || config.max_dispatches_per_tick == 0U ||
-        config.keep_alive_idle_timeout_ms == 0U)
+        config.max_response_bytes == 0U || config.max_pending_write_bytes == 0U ||
+        config.max_dispatches_per_tick == 0U || config.keep_alive_idle_timeout_ms == 0U)
     {
         return sl_http_transport_invalid_config(
             out_diag, sl_http_transport_literal(
@@ -362,9 +359,9 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE)
     {
         return sl_http_transport_invalid_config(
-            out_diag, sl_http_transport_literal("HTTP transport dispatch mode is invalid",
-                                                sizeof("HTTP transport dispatch mode is invalid") -
-                                                    1U));
+            out_diag,
+            sl_http_transport_literal("HTTP transport dispatch mode is invalid",
+                                      sizeof("HTTP transport dispatch mode is invalid") - 1U));
     }
     if (config.parse.max_body_length > config.request_arena_bytes) {
         return sl_http_transport_invalid_config(
@@ -3318,8 +3315,8 @@ static SlStatus sl_http_transport_dispatch_ready(SlHttpTransportConnection* conn
     return sl_status_ok();
 }
 
-static bool sl_http_transport_connection_ready_for_dispatch(
-    const SlHttpTransportConnection* connection)
+static bool
+sl_http_transport_connection_ready_for_dispatch(const SlHttpTransportConnection* connection)
 {
     return connection != NULL &&
            connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY &&
@@ -3343,8 +3340,7 @@ static void sl_http_transport_stop_dispatch_pump(SlHttpTransportServer* server)
 {
     SlHttpPlatformListener* platform = server == NULL ? NULL : server->platform;
 
-    if (platform != NULL && platform->dispatch_check_initialized &&
-        platform->dispatch_check_active)
+    if (platform != NULL && platform->dispatch_check_initialized && platform->dispatch_check_active)
     {
         uv_check_stop(&platform->dispatch_check);
         platform->dispatch_check_active = false;
@@ -3361,8 +3357,8 @@ static SlStatus sl_http_transport_dispatch_ready_connections(SlHttpTransportServ
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    for (size_t index = 0U; index < server->connection_capacity &&
-                            dispatched < server->config.max_dispatches_per_tick;
+    for (size_t index = 0U;
+         index < server->connection_capacity && dispatched < server->config.max_dispatches_per_tick;
          index += 1U)
     {
         SlHttpTransportConnection* connection = &server->connections[index];
@@ -3405,8 +3401,7 @@ static SlStatus sl_http_transport_start_dispatch_pump(SlHttpTransportServer* ser
     if (server->config.dispatch_mode == SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE) {
         return sl_http_transport_dispatch_ready(connection, server, out_diag);
     }
-    if (platform == NULL || !platform->loop_initialized || !platform->dispatch_check_initialized)
-    {
+    if (platform == NULL || !platform->loop_initialized || !platform->dispatch_check_initialized) {
         return sl_http_transport_dispatch_ready(connection, server, out_diag);
     }
     if (platform->dispatch_check_active) {
@@ -3425,8 +3420,7 @@ static SlStatus sl_http_transport_start_dispatch_pump(SlHttpTransportServer* ser
 
 static void sl_http_transport_dispatch_check_cb(uv_check_t* check)
 {
-    SlHttpPlatformListener* platform =
-        check == NULL ? NULL : (SlHttpPlatformListener*)check->data;
+    SlHttpPlatformListener* platform = check == NULL ? NULL : (SlHttpPlatformListener*)check->data;
     SlHttpTransportServer* server = platform == NULL ? NULL : platform->server;
     SlDiag diag = {0};
 

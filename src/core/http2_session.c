@@ -678,9 +678,6 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
                     return status;
                 }
             }
-            if (type == NGHTTP2_RST_STREAM) {
-                sl_http2_session_record_closed_stream(session, stream_id, true);
-            }
             if (type == NGHTTP2_HEADERS && nghttp2_session_get_stream_remote_close(
                                                (nghttp2_session*)session->session, stream_id) == -1)
             {
