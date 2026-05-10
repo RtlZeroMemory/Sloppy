@@ -47,6 +47,9 @@ New to Sloppy? Read these in order:
 4. [Generate OpenAPI and package the app](tutorials/openapi-and-package.md)
 5. [Check the stability matrix](reference/stability.md)
 
+If you are comparing Sloppy with other JavaScript runtimes, read
+[Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md).
+
 ## The app loop
 
 ```sh
@@ -73,6 +76,15 @@ metadata, and writes an app package.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
+
+## Why Sloppy?
+
+- [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md) explains
+  the compiler-first runtime model with side-by-side route examples.
+- [Why no `node_modules`?](about/why-no-node-modules.md) explains the current
+  dependency boundary.
+- [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
+  Plan exists.
 
 ## Pre-alpha limits
 

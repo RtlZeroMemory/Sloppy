@@ -50,6 +50,7 @@ export default defineConfig({
           { text: "Examples and demo app", link: "/guide/examples" },
           { text: "Testing apps", link: "/api/testing" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
+          { text: "Sloppy vs Node/Bun/Deno", link: "/about/sloppy-vs-node-bun-deno" },
           { text: "Compiler performance", link: "/about/performance" },
           { text: "Why no node_modules?", link: "/about/why-no-node-modules" }
         ]

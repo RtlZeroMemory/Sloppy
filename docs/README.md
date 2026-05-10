@@ -26,6 +26,7 @@ planned or future work.
 ## Background
 
 - [About](about/index.md) - design notes and concepts
+- [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md) - practical runtime comparison
 - [Glossary](glossary.md)
 
 ## Contributors

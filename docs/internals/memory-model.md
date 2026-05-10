@@ -1,176 +1,512 @@
-# Memory model
+# Memory model, ownership, and safety
 
-Sloppy's C runtime treats ownership as part of every API. Every value
-that crosses a function boundary has a documented owner and lifetime —
-borrowed views, arena-owned data, scope-bound cleanups, or
-generation-counted resource handles.
+Sloppy's runtime uses explicit ownership rules, bounded native data structures,
+and narrow JS/native transfer points. This page explains what owns each major
+piece of memory, how long it lives, and what contributors must preserve.
 
-This page is the contract.
+This is a practical engineering model, not a formal proof. Sloppy contains a C
+runtime, a Rust compiler, a C++ V8 bridge, JavaScript stdlib code, platform
+backends, and third-party native libraries. The C and C++ parts still need
+discipline, tests, sanitizers, fuzzing, and review.
 
-## Primitives
+## Short version
+
+- The Rust compiler owns source analysis and emits artifacts.
+- The Plan is loaded into app-lifetime native memory and treated as read-only
+  after startup validation.
+- Route tables and app metadata live for the app lifetime.
+- Each request gets request-lifetime memory and cleanup scope.
+- Pointers into request memory must not escape the request.
+- V8 owns the JS heap. Native code must not store raw `v8::Local` handles in
+  long-lived C structs.
+- Data crossing the JS/native boundary is copied when lifetimes differ.
+- JS-visible native resources use opaque slot/generation handles, not native
+  pointers.
+- Async completions settle JS-visible state at most once on the V8 owner thread.
+- HTTP/2 stream state must be independent inside a shared connection/session.
+
+## Layers
 
 ```text
-include/sloppy/string.h           SlStr, SlBytes (borrowed views)
-include/sloppy/owned_str.h        SlOwnedStr (inline-or-arena owned)
-include/sloppy/arena.h            SlArena (bump allocator)
-include/sloppy/builder.h          SlBuilder (bounded growable buffer)
-include/sloppy/scope.h            SlScope (cleanup registry)
-include/sloppy/resource.h         SlResource (generation-counted handles)
-include/sloppy/checked_math.h     overflow-checked size/offset arithmetic
++-------------------+      artifacts       +-------------------+
+| Rust sloppyc      | -------------------> | app.plan.json     |
+| parser/extractor  |                      | app.js            |
++-------------------+                      | app.js.map        |
+                                           +---------+---------+
+                                                     |
+                                                     v
++-------------------+      loads/validates +-------------------+
+| C runtime         | -------------------> | Plan arena        |
+| app host / HTTP   |                      | route table       |
+| logging / bridges |                      | capabilities     |
++---------+---------+                      +---------+---------+
+          |
+          v
++-------------------+        bridge        +-------------------+
+| V8 isolate        | <------------------> | Platform/native   |
+| JS heap / stdlib  |                      | sockets/files/proc|
+| handlers/programs |                      | provider handles  |
++-------------------+                      +-------------------+
 ```
 
-## Ownership shapes
+| Layer | Owns | Lifetime |
+| --- | --- | --- |
+| `sloppyc` compiler | Parser data, compiler graph, emitted artifacts | Build command |
+| Plan parser/runtime | Validated `SlPlan`, strings, route/provider/capability metadata | App run |
+| App host | Feature activation, app scope, route table, logging runtime, engine handle | App run |
+| HTTP transport | Connection state, parser buffers, protocol state machines | Connection/session |
+| Request dispatch | Request context, request arena, request scope cleanups | One request/stream |
+| V8 bridge | Isolate, context, persistent bridge state, JS heap references | Engine lifetime |
+| Resource table | Opaque native handles visible to JS | Resource table lifetime, per handle until close |
+| Async backend | Completion records, readiness watches, cleanup hooks | Loop/resource lifetime |
+| Logging runtime | Fixed event records, bounded queue, sinks | App run |
+| Platform layer | OS/libuv/OpenSSL/driver objects behind Sloppy APIs | Owning resource lifetime |
 
-| Shape                 | Storage             | Valid until                      | Typical use                                        |
-| --------------------- | ------------------- | -------------------------------- | -------------------------------------------------- |
-| `SlStr`, `SlBytes`    | the documented owner| owner-defined lifetime           | parser/render inputs that the caller must out-live |
-| Arena copy            | caller-provided arena| arena reset/end                  | Plan metadata, diagnostics, per-request data       |
-| `SlOwnedStr` (inline) | the struct itself   | struct lifetime                  | short owned strings; small-string optimization     |
-| `SlOwnedStr` (arena)  | the backing arena   | arena lifetime                   | medium-size owned strings                          |
-| Scope cleanup entry   | scope (request/app/resource) | scope ends, runs callback once | native resources, file/socket handles            |
-| Resource ID           | resource table      | generation matches               | JS-visible native handles                          |
-| Provider result copy  | request scope       | request scope ends               | rows, blobs, decoded values                        |
-| V8 conversion copy    | the side that needs it | documented boundary             | JS strings/buffers crossing the bridge             |
+## Ownership rules
 
-The rule across all of these is: **the API tells you which one you're
-getting**. A function that returns `SlStr` returns a borrowed view; a
-function that takes `SlArena*` and returns `SlStr` returns an arena
-copy with the lifetime of that arena.
+The runtime uses a few common ownership shapes:
 
-## Borrowed views
+| Shape | Storage | Valid until | Typical use |
+| --- | --- | --- | --- |
+| `SlStr`, `SlBytes` | Borrowed view | Owner-defined lifetime | Parser inputs, temporary views |
+| Arena copy | `SlArena` | Arena reset/dispose | Plan data, diagnostics, request data |
+| Builder output | Arena-backed growable buffer | Owning arena lifetime | JSON, diagnostics, responses |
+| Scope cleanup | `SlScope` registration | Scope close | Request/app/resource cleanup |
+| Resource ID | Resource table slot/generation | Close/dispose or generation mismatch | JS-visible file/socket/process/provider handles |
+| V8 local handle | V8 handle scope | Current handle scope | Temporary JS values |
+| V8 persistent/global handle | V8 bridge-owned storage | Bridge-defined reset/shutdown | Long-lived bridge functions/keys |
+| Platform handle | Platform/resource object | Close/dispose callback | Files, sockets, processes, TLS state |
 
-`SlStr` and `SlBytes` are pointer + length pairs. They:
+General rules:
 
-- are not NUL-terminated;
-- do not own their storage;
-- have no stable lifetime beyond the documented owner.
+- A borrowed view must not outlive its documented owner.
+- Arena memory is scoped memory, not independently closable resource ownership.
+- Any data crossing an async boundary must point into memory that outlives that
+  operation, or it must be copied into operation-owned storage.
+- Cleanup callbacks run once. Request/app scopes use LIFO cleanup ordering.
+- JavaScript never receives raw native pointers.
+- External inputs are validated before they become trusted runtime state.
+- Size arithmetic and buffer writes should use checked helpers and bounded
+  builders.
 
-If you need to pass an `SlStr` to a NUL-terminated API (OS, libuv,
-libpq, ODBC), use `sl_str_to_cstr_arena` or the equivalent C-string
-boundary helper. That helper validates "no embedded NUL" before
-allocating a terminated copy in an arena.
+## Plan and artifact lifetime
 
-## Arenas
+The compiler writes the Plan and bundle before runtime execution. `sloppy run`
+then loads and validates the artifacts before entering V8.
 
-`SlArena` is a bump allocator. It's the workhorse:
-
-- Per-app arena: born at app startup, dies at app shutdown.
-- Per-request arena: born at request dispatch, dies at scope end.
-- Per-operation scratch: short-lived, child of one of the above.
-
-Arenas don't free individual allocations. They reset or end. Code that
-returns data from an arena documents the arena it lives in.
-
-`sl_arena_array_alloc` and friends use checked arithmetic
-(`include/sloppy/checked_math.h`) for `count * sizeof(T)` and
-`length + 1` patterns — overflow returns a status, never wraps.
-
-## Builders
-
-`SlBuilder` is a bounded growable buffer for serialization (JSON,
-diagnostics, response bodies). It's append-only and self-validating:
-appends fail with a status when the bound is exceeded.
-
-Numeric appends and self-overlap checks live in `src/core/builder.c`.
-The bound prevents accidental unbounded growth from untrusted inputs.
-
-## Scopes and cleanup
-
-`SlScope` is a cleanup registry. You register a callback + opaque
-pointer; the scope guarantees the callback runs **exactly once**, in
-reverse-registration order, when the scope ends.
-
-```c
-sl_scope_register_cleanup(scope, my_cleanup, user_data);
-// ... later ...
-sl_scope_dispose(scope);   // calls my_cleanup(user_data)
+```text
+source files
+   |
+   v
+sloppyc build
+   |
+   +--> app.plan.json
+   +--> app.js
+   +--> app.js.map
+          |
+          v
+runtime startup
+   |
+   +--> parse JSON into Plan arena
+   +--> validate schema, hashes, target, routes, handlers, features
+   +--> build app-lifetime route table
+   +--> initialize engine bridge
 ```
 
-There are three relevant scopes:
+Plan data is app-lifetime data. After startup validation:
 
-- **App scope** — startup → shutdown. Owns singleton services and the
-  app arena.
-- **Request scope** — per request. Owns request arena, transient
-  services, provider operation lifetimes for that request.
-- **Resource scope** — per long-lived resource (background services,
-  worker pools, provider connections). Disposed at app shutdown.
+- the Plan is read-only runtime input;
+- route table entries reference Plan data or app-owned copies;
+- metadata commands can read the Plan without entering V8;
+- request code must not mutate Plan-owned strings, arrays, or route metadata.
 
-Late completions (e.g. driver returns after request cancellation)
-register their cleanup against the *resource* scope, not the request
-scope — the request scope is already dead. They never settle JS state.
+If a request, async operation, or bridge call needs to hold Plan-derived data
+past an immediate call, it either references app-lifetime Plan memory or copies
+the value into a longer-lived owner.
 
-## Resource table
+## Request lifetime
 
-Native resources surfaced to JS go through a resource table:
+For HTTP/1.1, a connection processes one request at a time. For HTTP/2, each
+stream maps to an independent request lifecycle after the HTTP/2 dispatcher has
+assembled validated headers and DATA bytes.
 
-```c
-SlResourceId id = sl_resource_register(table, kind, ptr, dispose_fn);
-// JS sees `id`, not `ptr`.
-sl_resource_with(table, id, kind, fn, ctx);  // generation-checked
+```text
+socket bytes / HTTP2 stream events
+   |
+   v
+parse request head and body
+   |
+   v
+request arena + request scope
+   |
+   +--> method, target, headers, query, body views/copies
+   +--> route match and typed binding metadata
+   +--> request services/provider operation cleanup
+   |
+   v
+V8 context materialization
+   |
+   v
+handler returns Results descriptor
+   |
+   v
+copy response body/headers into native-owned response storage
+   |
+   v
+write response
+   |
+   v
+close request scope, release request memory
 ```
 
-The ID encodes a slot index plus a generation counter. Reusing a slot
-bumps the generation; a stale ID looks up to a generation mismatch
-and fails cleanly. JS never sees a pointer.
+Request-specific memory dies after the request. Contributors must not:
 
-This is the mechanism that gives the "JS never receives raw native
-pointers" invariant teeth.
+- store a pointer into the request arena on an app-lifetime object;
+- pass request-owned views to off-thread work unless the operation owns a safe
+  copy or retains a scope designed for that lifetime;
+- let a JS value outlive the request unless the bridge policy gives it a safe
+  owner;
+- allow cleanup to run twice on timeout, cancellation, handler failure, and
+  normal response completion races.
 
-## Failure modes
+JS values that outlive request dispatch must be copied or represented by an
+owned resource handle. A borrowed request body view is not a durable cache.
 
-- **Allocation failure** — returns a status, never aborts. Builders and
-  arenas surface the failure.
-- **Overflow in size arithmetic** — checked helpers return a status.
-- **Stale resource ID** — generation mismatch, returns a status.
-- **Bad UTF-8 / embedded NUL** — string-boundary helpers reject up
-  front.
-- **Late completion after scope end** — cleanup-only path runs against
-  the still-alive resource scope.
+## V8 bridge lifetime
 
-The recurring pattern: validate-or-fail at the boundary, never partial
-success.
+The V8 bridge owns the isolate, context, bridge private keys, persistent
+functions, and JS heap participation. C code outside `src/engine/v8/` sees only
+engine-neutral Sloppy types.
 
-## V8 boundary
+```text
+engine init
+   |
+   +--> create V8 isolate/context on owner thread
+   +--> install Sloppy intrinsics
+   +--> evaluate app.js
+   +--> register handlers/program entrypoint
+   |
+   v
+dispatch/program call
+   |
+   +--> open handle scope
+   +--> create JS context objects from native data
+   +--> call handler/main
+   +--> bounded microtask drain
+   +--> validate result shape
+   +--> copy result out to native memory
+   |
+   v
+engine shutdown
+   |
+   +--> reset persistent bridge handles
+   +--> dispose isolate-owned state
+```
 
-The bridge copies native data into V8-owned storage before returning to
-JS, and copies JS data into Sloppy storage on the way in:
+V8 invariants:
 
-- Strings → V8 string allocator.
-- Byte buffers → V8 `ArrayBuffer` with copied contents.
-- Plan-derived metadata used by JS → static intrinsics that copy on
-  read.
+- one owner thread per isolate;
+- wrong-thread entry fails before touching V8;
+- temporary `v8::Local` handles stay inside handle scopes;
+- long-lived V8 references require bridge-owned persistent/global handles and a
+  documented reset path;
+- C++ exceptions are caught at the bridge and mapped to diagnostics;
+- Promise settlement is bounded and owner-thread only.
 
-Zero-copy buffer ownership across the bridge is intentionally not
-exposed. The trade is per-call cost vs. lifetime safety; we pick safety
-until a measurement says otherwise.
+V8's heap and Sloppy's native arenas are different memory systems. Native code
+must not assume V8 GC can manage native allocations, and JS code must not see
+native addresses.
 
-## Common pitfalls
+## JS/native data transfer
 
-- Returning an `SlStr` whose backing memory will be freed before the
-  caller reads it. Don't. Either copy into the caller's arena or
-  document the owning scope clearly.
-- Using `strlen`/`strcmp` on an `SlStr`. They aren't NUL-terminated.
-  Use the `sl_str_*` helpers.
-- Ignoring `sl_arena_array_alloc` failures. Arena allocation can fail;
-  status returns mean "stop and propagate", not "warn".
-- Registering a cleanup against the wrong scope. A per-request handle
-  registered against the app scope leaks; a resource handle registered
-  against a request scope dies too early.
+The bridge copies when ownership or lifetime changes.
 
-## Tests
+```text
+native -> JS
 
-- **Arena unit tests** under `tests/unit/core/test_arena*.c` cover
-  bounded allocation, reset, overflow.
-- **Builder unit tests** verify append, self-overlap policy, bounds.
-- **Scope tests** assert cleanup ordering and once-only invocation.
-- **Resource table tests** cover generation mismatch and disposal.
-- **Sanitizer lanes** (ASan/UBSan/LSan, opt-in) catch leaks and
-  misuse.
-- **Memory bounds fuzz seeds** under `tests/fuzz/` exercise checked
-  arithmetic paths.
+native bytes/string
+   |
+   v
+validate and normalize
+   |
+   v
+create V8 value or ArrayBuffer with copied contents
+   |
+   v
+JS handler/program
+```
+
+```text
+JS -> native
+
+JS result object
+   |
+   v
+validate descriptor shape
+   |
+   v
+copy status, headers, body into native-owned memory
+   |
+   v
+write HTTP response or program event output
+```
+
+Rules:
+
+- Validate JS object shape before trusting fields.
+- Copy strings and bytes out of V8 before the handle scope ends.
+- Copy native strings and bytes into V8-owned values before JS reads them.
+- Do not store raw V8 handles in long-lived C structs.
+- Do not expose zero-copy shared buffers across the bridge unless a future
+  policy defines exact ownership, pinning, and cleanup rules.
+
+## Native resources and handles
+
+Native resources surfaced to JavaScript use a resource table. JS holds an
+opaque ID; native code owns the actual resource pointer and cleanup callback.
+
+```text
+JS FileHandle { slot: 42, generation: 7 }
+          |
+          v
+Native resource table
+  slot 42:
+    generation 7
+    kind file
+    state open
+    owner runtime
+
+After close:
+
+Native resource table
+  slot 42:
+    generation 8
+    state empty
+
+Old JS handle { slot: 42, generation: 7 } is rejected.
+```
+
+The table validates slot, generation, kind, and liveness on every lookup.
+Closing a handle advances the generation so stale handles cannot become valid
+when a slot is reused. Diagnostics expose IDs and kinds, not native pointer
+values.
+
+This pattern is used for filesystem handles, watchers, TCP connections,
+listeners, local IPC resources, processes, provider connections, background
+services, queues, worker pools, and worker isolates where those resources are
+bridged to JS.
+
+## Async operations
+
+Native work can outlive the JS call stack that submitted it. The async backend
+therefore owns completion records and cleanup paths explicitly.
+
+```text
+JS starts async operation
+   |
+   v
+bridge validates args and creates operation record
+   |
+   v
+native/platform work owns stable buffers and resource refs
+   |
+   v
+completion posted to owner-thread async loop
+   |
+   +--> if request/operation is still live:
+   |      resolve/reject Promise on V8 owner thread
+   |
+   +--> if request/operation is terminal:
+          run late-completion cleanup only
+```
+
+The invariant is single settlement. Cancellation, timeout, request cleanup, and
+driver completion may race, but only one path may update JS-visible state. Late
+completions free native resources and release retained scopes; they do not
+resurrect request state or settle a Promise again.
+
+Queued completion payloads must point to owned/stable native memory. They must
+not point to borrowed request views that can disappear before owner-thread
+dispatch.
+
+## HTTP/1.1 and HTTP/2 session memory
+
+HTTP/1.1 keeps connection parser state and response buffers on the connection.
+Requests are sequential on a keep-alive connection. Request memory is released
+after each request before the connection waits for the next one.
+
+HTTP/2 has a shared connection/session plus independent stream lifetimes:
+
+```text
+HTTP/2 connection/session arena
+   |
+   +--> SETTINGS / HPACK / flow-control state
+   +--> outbound frame buffer
+   +--> event batch storage
+   |
+   +--> stream 1 state
+   |      headers, DATA buffers, request lifecycle
+   |
+   +--> stream 3 state
+   |      headers, DATA buffers, request lifecycle
+   |
+   +--> stream 5 state
+          headers, DATA buffers, request lifecycle
+```
+
+Important rules:
+
+- Stream reset must not corrupt sibling stream state.
+- Per-stream request cleanup must release only that stream's request resources.
+- GOAWAY retires the session and prevents new work beyond the accepted stream
+  boundary.
+- Flow-control and HPACK state belong to the session; request contexts must not
+  keep pointers into cleared HTTP/2 event batches.
+- DATA frame buffers used by handlers must be copied or owned by the request
+  lifecycle, not borrowed from an event list that may be cleared.
+
+HTTP/2 event lists are borrowed session-owned views. They are valid only until
+the session clears events, is disposed, or its owning arena is reset.
+
+## Logging memory
+
+The logging runtime is native app-lifetime infrastructure. It receives events
+from JS and native request contexts, applies redaction, and sends bounded event
+records to sinks.
+
+```text
+JS ctx.log / native logger
+   |
+   v
+validate shallow scalar fields
+   |
+   v
+copy into fixed-size SlLogEvent
+   |
+   v
+apply redaction
+   |
+   v
+bounded runtime queue
+   |
+   v
+dispatcher thread
+   |
+   +--> memory sink
+   +--> console sink
+   +--> JSONL file sink
+```
+
+Events are copied before queue admission. The request path does not hand sink
+threads borrowed JS objects or request-arena field objects. Sinks own their
+internal buffers and flush/close during runtime shutdown. Disabled log levels
+return before expensive field conversion and queue work.
+
+## Program Mode lifecycle
+
+Program Mode uses the same artifact and V8 boundary as web apps, but it runs a
+route-free entrypoint instead of building a web route table.
+
+```text
+load app.plan.json
+   |
+   v
+validate kind: "program" and artifacts
+   |
+   v
+load app.js into V8
+   |
+   v
+stage args/context
+   |
+   v
+install temporary Sloppy console
+   |
+   v
+run top-level code, named main, or default function
+   |
+   v
+collect stdout/stderr events and exit code
+   |
+   v
+restore console
+   |
+   v
+cleanup engine/program resources
+```
+
+Program Mode is V8-gated for execution. Current console output is collected
+while the entrypoint runs and written after completion; it is not a streaming
+terminal interface. Program stdlib imports still use the same runtime feature
+metadata and bridge/resource rules as web apps.
+
+## Safety guarantees
+
+Sloppy is written with explicit ownership rules and guardrails:
+
+- Plan data is parsed and validated before runtime dispatch.
+- Runtime feature requirements are checked against Plan metadata before
+  execution.
+- Route tables and app metadata are app-lifetime and treated as read-only after
+  startup.
+- Request-specific native memory is scoped to the request lifecycle.
+- Native code should not store borrowed request memory beyond request lifetime.
+- Public JS/native bridge entrypoints validate shapes before use.
+- JS/native data is copied when lifetimes differ.
+- Native resources exposed to JS use opaque IDs and generation checks where
+  implemented.
+- Arenas make app/request/session allocation boundaries explicit.
+- Checked arithmetic and bounded builders are used for size-sensitive paths.
+- The V8 bridge is isolated behind a named boundary.
+- Tests, sanitizer lanes, fuzz seeds, stress lanes, and goldens exist to catch
+  regressions.
+
+These are engineering guarantees about intended runtime behavior and review
+rules. They are not a claim that leaks, use-after-free bugs, races, or
+native-library defects are impossible.
+
+## Non-guarantees
+
+Sloppy does not currently promise:
+
+- stable pre-alpha internals or artifact formats;
+- Rust-style ownership checking for the C/C++ runtime;
+- formal verification;
+- absence of leaks, use-after-free bugs, data races, or logic bugs;
+- that third-party native libraries share Sloppy's ownership model;
+- that V8 heap behavior is the same as Sloppy native arena behavior;
+- sandboxing of arbitrary code in this alpha;
+- an OS sandbox from capability metadata unless a specific enforcement surface
+  implements it;
+- safe execution of untrusted Program Mode code.
+
+Program Mode process, filesystem, and network APIs are powerful. Treat apps
+that use them as trusted code unless they run under an external OS/container
+policy that provides isolation.
+
+## Contributor checklist
+
+Before merging native/runtime code, check:
+
+- What owns this memory?
+- What lifetime does it have?
+- Can it outlive the request, stream, operation, or scope?
+- Is every size calculation checked?
+- Is every external input validated?
+- Are JS values copied before leaving V8 scope?
+- Are native resources closed on all error paths?
+- Is cancellation/shutdown safe?
+- Can stale handles be reused?
+- Do sibling HTTP/2 streams remain independent?
+- Does ASAN, fuzz, stress, or targeted unit coverage exercise this path?
 
 ## See also
 
-- [Async runtime](async-runtime.md) — owner threads, late completion
-- [V8 bridge](v8-bridge.md) — what crosses the bridge
-- [Provider runtime](provider-runtime.md) — provider value/result copying
+- [Architecture](architecture.md)
+- [Runtime](runtime.md)
+- [V8 bridge](v8-bridge.md)
+- [Async runtime](async-runtime.md)
+- [HTTP runtime](http-runtime.md)
+- [Logging runtime](logging.md)
+- [Platform boundaries](platform-boundaries.md)
+- [Security model](security-model.md)

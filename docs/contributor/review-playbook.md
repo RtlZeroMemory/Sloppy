@@ -104,7 +104,7 @@ Comments that restate obvious code are removed.
 Block on:
 
 - correctness bug;
-- memory safety risk;
+- native lifetime or ownership risk;
 - platform/V8 boundary violation;
 - missing required tests;
 - broken build or failed gate;

@@ -138,3 +138,5 @@ The bridge does not:
   structured events; sinks and flushing belong to `src/core/logging.c`.
 
 For the public-facing model see [about/v8-bridge.md](../about/v8-bridge.md).
+For the broader lifetime model across app, request, async, and native resource
+ownership, see [Memory model, ownership, and safety](memory-model.md).

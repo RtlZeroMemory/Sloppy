@@ -56,6 +56,7 @@ available under [`docs/`](docs/README.md).
 - Install: <https://rtlzeromemory.github.io/Slop/install>
 - Tutorials: <https://rtlzeromemory.github.io/Slop/tutorials/>
 - API reference: <https://rtlzeromemory.github.io/Slop/api/>
+- Sloppy vs Node/Bun/Deno: <https://rtlzeromemory.github.io/Slop/about/sloppy-vs-node-bun-deno>
 - Roadmap: <https://rtlzeromemory.github.io/Slop/roadmap>
 
 ## Install
@@ -102,6 +103,9 @@ Rust compiler, and V8 isolated behind an explicit bridge.
 Sloppy is not Node compatibility, Bun compatibility, or a drop-in framework
 for an existing app. A Sloppy app imports the Sloppy stdlib and runs with the
 `sloppy` CLI.
+
+For a practical comparison, see
+[Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md).
 
 ## What works today
 
@@ -182,6 +186,7 @@ interop, and production-hardening direction.
 - [API](docs/api/index.md) - first-party stdlib and app APIs
 - [CLI](docs/cli/index.md) - `sloppy` and `sloppyc` commands
 - [Guides](docs/guide/index.md) - project layout, examples, troubleshooting
+- [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md) - runtime model, code examples, CLI tradeoffs
 - [Reference](docs/reference/index.md) - Plan, syntax, stability, config
 - [Internals](docs/internals/index.md) - runtime/compiler design notes
 - [Roadmap](docs/roadmap.md) - what exists now and what comes later
