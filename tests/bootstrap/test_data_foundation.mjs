@@ -528,9 +528,11 @@ function createForgedLoweredQuery() {
     assert.equal(data.postgres.supports.connectionString, true);
     assert.equal(data.postgres.supports.transactions, true);
     assert.equal(data.postgres.supports.pooling, true);
+    assert.equal(data.postgres.supports.maxPoolConnections, 256);
     assert.equal(data.postgres.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.postgres.supports.nativeStdlibBridge, false);
     assert.equal(data.postgres.__debug().nativeStdlibBridge, false);
+    assert.equal(data.postgres.__debug().maxPoolConnections, 256);
     assert.deepEqual(data.postgres.supports.parameters, [
         "null",
         "string",
@@ -574,7 +576,20 @@ function createForgedLoweredQuery() {
         access: "admin",
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy",
+        maxConnections: 0,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy",
+        maxConnections: 1.5,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy",
+        maxConnections: 257,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.postgres.open({
         connectionString: "postgres://ada:secret@localhost/sloppy",
+        maxConnections: 256,
     }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.postgres[\s\S]*postgres:\/\/ada:<redacted>@localhost/);
 }
 
@@ -585,9 +600,11 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlserver.supports.odbc, true);
     assert.equal(data.sqlserver.supports.transactions, true);
     assert.equal(data.sqlserver.supports.pooling, true);
+    assert.equal(data.sqlserver.supports.maxPoolConnections, 256);
     assert.equal(data.sqlserver.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.sqlserver.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlserver.__debug().nativeStdlibBridge, false);
+    assert.equal(data.sqlserver.__debug().maxPoolConnections, 256);
     assert.deepEqual(data.sqlserver.supports.parameters, [
         "null",
         "string",
@@ -629,7 +646,20 @@ function createForgedLoweredQuery() {
         access: "admin",
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
+        maxConnections: 0,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
+        maxConnections: 1.5,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
+        maxConnections: 257,
+    }), /maxConnections must be an integer from 1 to 256/);
+    assertThrowsMessage(() => data.sqlserver.open({
         connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=secret",
+        maxConnections: 256,
     }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlserver[\s\S]*PWD=<redacted>/);
 }
 

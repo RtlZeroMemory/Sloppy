@@ -18,7 +18,10 @@ extern "C" {
 #define SL_SQLSERVER_DEFAULT_MAX_ROWS 128U
 #define SL_SQLSERVER_DEFAULT_MAX_CONNECTIONS 4U
 #define SL_SQLSERVER_MAX_PARAMS 64U
+/* Public caller-owned C pool ABI remains a fixed 16-slot struct. */
 #define SL_SQLSERVER_MAX_POOL_CONNECTIONS 16U
+/* Runtime/JS provider pools are out-of-line and may use the higher production cap. */
+#define SL_SQLSERVER_MAX_RUNTIME_POOL_CONNECTIONS 256U
 #define SL_SQLSERVER_MAX_DOCTOR_HINTS 4U
 
 typedef enum SlSqlServerAccess

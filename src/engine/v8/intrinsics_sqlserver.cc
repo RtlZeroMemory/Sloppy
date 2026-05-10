@@ -1822,7 +1822,9 @@ bool sqlsrv_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> c
         }
         out->max_connections = max_value.As<v8::Uint32>()->Value();
     }
-    if (out->max_connections == 0U || out->max_connections > SL_SQLSERVER_MAX_POOL_CONNECTIONS) {
+    if (out->max_connections == 0U ||
+        out->max_connections > SL_SQLSERVER_MAX_RUNTIME_POOL_CONNECTIONS)
+    {
         return false;
     }
     return true;
