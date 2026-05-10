@@ -1,9 +1,9 @@
 # Sloppy Docs
 
-Sloppy is a compiler-first TypeScript backend runtime and app framework. The
-compiler reads supported source, extracts routes, configuration, capabilities,
-and provider usage into an application Plan, then the runtime validates and
-executes those artifacts.
+Sloppy is a compiler-first TypeScript runtime for backend apps, tools, and
+local programs. The compiler reads supported source, extracts web app or
+Program Mode metadata into a Plan, then the runtime validates and executes
+those artifacts.
 
 These docs describe current pre-alpha behavior. Planned surfaces are marked as
 planned or future work.
@@ -26,6 +26,7 @@ planned or future work.
 ## Background
 
 - [About](about/index.md) - design notes and concepts
+- [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md) - practical runtime comparison
 - [Glossary](glossary.md)
 
 ## Contributors

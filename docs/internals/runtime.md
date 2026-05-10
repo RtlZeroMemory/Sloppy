@@ -172,4 +172,4 @@ artifact path.
 - [V8 bridge](v8-bridge.md) — engine boundaries
 - [HTTP runtime](http-runtime.md) — parser through transport
 - [Async runtime](async-runtime.md) — cancellation, deadlines, late completion
-- [Memory model](memory-model.md) — arenas and ownership
+- [Memory model](memory-model.md) — ownership, request lifetimes, resources, and bridge copies

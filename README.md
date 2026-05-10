@@ -8,12 +8,19 @@
 ![pre-alpha](https://img.shields.io/badge/status-pre--alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Pre-alpha compiler-first TypeScript backend runtime and app framework.
+> Pre-alpha compiler-first TypeScript runtime for backend apps, tools, and local programs.
 
-Sloppy is an experimental backend runtime built around a compiler-first app
-model. You write supported TypeScript, `sloppyc` lowers the app into a
-structured application Plan, and the native runtime executes that known shape
-through an isolated V8 bridge.
+Sloppy is an experimental TypeScript runtime built around a compiler-first app
+model. You write supported TypeScript, `sloppyc` lowers the source into a
+structured Plan, and the native runtime executes that known shape through an
+isolated V8 bridge.
+
+Sloppy has two current execution shapes:
+
+- **Web apps** — routes, middleware, Results, OpenAPI, HTTP runtime, and app
+  metadata.
+- **Program Mode** — route-free console-style tools with `main(args, ctx)`,
+  stdlib imports, packaging, and artifact execution.
 
 The Plan contains the parts a backend runtime usually has to discover while the
 process is already running: routes, handlers, configuration, capabilities,
@@ -42,6 +49,20 @@ sloppy run .sloppy --once GET /hello/Ada
 {"hello":"Ada"}
 ```
 
+Program Mode is the route-free shape for small tools and local programs:
+
+```ts
+export async function main(args, ctx) {
+    console.log(`hello ${args[0] ?? "world"}`);
+}
+```
+
+```sh
+sloppy run src/main.ts -- Ada
+```
+
+More detail: [Program Mode](docs/guide/program-mode.md).
+
 Funny name. Serious engineering. Pre-alpha means APIs and artifact formats can
 change between alpha revisions.
 
@@ -56,6 +77,7 @@ available under [`docs/`](docs/README.md).
 - Install: <https://rtlzeromemory.github.io/Slop/install>
 - Tutorials: <https://rtlzeromemory.github.io/Slop/tutorials/>
 - API reference: <https://rtlzeromemory.github.io/Slop/api/>
+- Sloppy vs Node/Bun/Deno: <https://rtlzeromemory.github.io/Slop/about/sloppy-vs-node-bun-deno>
 - Roadmap: <https://rtlzeromemory.github.io/Slop/roadmap>
 
 ## Install
@@ -102,6 +124,9 @@ Rust compiler, and V8 isolated behind an explicit bridge.
 Sloppy is not Node compatibility, Bun compatibility, or a drop-in framework
 for an existing app. A Sloppy app imports the Sloppy stdlib and runs with the
 `sloppy` CLI.
+
+For a practical comparison, see
+[Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md).
 
 ## What works today
 
@@ -182,6 +207,7 @@ interop, and production-hardening direction.
 - [API](docs/api/index.md) - first-party stdlib and app APIs
 - [CLI](docs/cli/index.md) - `sloppy` and `sloppyc` commands
 - [Guides](docs/guide/index.md) - project layout, examples, troubleshooting
+- [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md) - runtime model, code examples, CLI tradeoffs
 - [Reference](docs/reference/index.md) - Plan, syntax, stability, config
 - [Internals](docs/internals/index.md) - runtime/compiler design notes
 - [Roadmap](docs/roadmap.md) - what exists now and what comes later
