@@ -175,7 +175,7 @@ app.post("/send", (request) => {
 | `maxQueued` | `1024` | bound on queued work |
 | `concurrency` | `1` | active jobs at once |
 | `overflow` | `"reject"` | `"reject" \| "backpressure"` when full |
-| `maxBackpressureWaiters` | unbounded | cap on `backpressure` waiters |
+| `maxBackpressureWaiters` | `maxQueued` | cap on `backpressure` waiters |
 | `retry` | none | `{ attempts?, backoff? }` per-job retry policy |
 
 `enqueue(data, options?)` accepts `{ signal, deadline, timeoutMs }`. The

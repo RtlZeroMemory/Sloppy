@@ -224,6 +224,11 @@ static int test_invalid_options_and_use_after_close(void)
     if (!sl_status_is_ok(status)) {
         return 20;
     }
+    if (SL_SQLSERVER_MAX_POOL_CONNECTIONS != 16U ||
+        SL_SQLSERVER_MAX_RUNTIME_POOL_CONNECTIONS != 256U)
+    {
+        return 30;
+    }
 #ifndef SLOPPY_ENABLE_SQLSERVER_PROVIDER
     status = sl_sqlserver_open(&arena, &options, &connection, &diag);
     if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
@@ -316,6 +321,39 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 23;
     }
+    pool_options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr("Driver={x};Server=x"),
+                                                              SL_SQLSERVER_MAX_POOL_CONNECTIONS);
+    status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
+    if (sl_status_code(status) != SL_STATUS_OK &&
+        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
+    {
+        return 31;
+    }
+    if (sl_status_is_ok(status) &&
+        (pool.max_connections != SL_SQLSERVER_MAX_POOL_CONNECTIONS ||
+         expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) != 0))
+    {
+        return 32;
+    }
+    pool_options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr("Driver={x};Server=x"),
+                                                              SL_SQLSERVER_MAX_POOL_CONNECTIONS + 1U);
+    {
+        SlStatus max_capacity_status = status;
+
+        status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
+        if (sl_status_is_ok(max_capacity_status) &&
+            sl_status_code(status) != SL_STATUS_INVALID_ARGUMENT)
+        {
+            return 33;
+        }
+    }
+    if (sl_status_code(status) != SL_STATUS_INVALID_ARGUMENT &&
+        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
+    {
+        return 33;
+    }
+    pool_options =
+        sl_sqlserver_pool_options_connection_string(sl_str_from_cstr("Driver={x};Server=x"), 1U);
     pool_options.access = (SlSqlServerAccess)99;
     status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
     if (sl_status_code(status) != SL_STATUS_INVALID_ARGUMENT &&

@@ -5,6 +5,8 @@ const DB_RESULT_MODES = Object.freeze({
     object: true,
     raw: true,
 });
+const POSTGRES_MAX_POOL_CONNECTIONS = 256;
+const SQLSERVER_MAX_POOL_CONNECTIONS = 256;
 const DB_VALUE_KINDS = Object.freeze({
     decimal: true,
     uuid: true,
@@ -959,8 +961,12 @@ function validatePostgresOpenOptions(options) {
     }
 
     const maxConnections = options.maxConnections ?? 1;
-    if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
-        throw new TypeError("Sloppy postgres.open maxConnections must be an integer from 1 to 16.");
+    if (!Number.isInteger(maxConnections) || maxConnections < 1 ||
+        maxConnections > POSTGRES_MAX_POOL_CONNECTIONS)
+    {
+        throw new TypeError(
+            `Sloppy postgres.open maxConnections must be an integer from 1 to ${POSTGRES_MAX_POOL_CONNECTIONS}.`,
+        );
     }
 
     return Object.freeze({
@@ -1018,8 +1024,12 @@ function validateSqlServerOpenOptions(options) {
     }
 
     const maxConnections = options.maxConnections ?? 1;
-    if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
-        throw new TypeError("Sloppy sqlserver.open maxConnections must be an integer from 1 to 16.");
+    if (!Number.isInteger(maxConnections) || maxConnections < 1 ||
+        maxConnections > SQLSERVER_MAX_POOL_CONNECTIONS)
+    {
+        throw new TypeError(
+            `Sloppy sqlserver.open maxConnections must be an integer from 1 to ${SQLSERVER_MAX_POOL_CONNECTIONS}.`,
+        );
     }
 
     return Object.freeze({
@@ -1760,6 +1770,7 @@ const postgresSupports = {
     ]),
     transactions: true,
     pooling: true,
+    maxPoolConnections: POSTGRES_MAX_POOL_CONNECTIONS,
     executionMode: "TRUE_ASYNC",
     migrations: false,
     orm: false,
@@ -1794,6 +1805,7 @@ const sqlserverSupports = {
     ]),
     transactions: true,
     pooling: true,
+    maxPoolConnections: SQLSERVER_MAX_POOL_CONNECTIONS,
     executionMode: "TRUE_ASYNC",
     migrations: false,
     orm: false,
@@ -1852,6 +1864,7 @@ const postgres = Object.freeze({
             provider: "postgres",
             placeholderStyle: "postgres",
             nativeStdlibBridge: postgresNativeBridge() !== null,
+            maxPoolConnections: POSTGRES_MAX_POOL_CONNECTIONS,
             executionMode: "TRUE_ASYNC",
         });
     },
@@ -1869,6 +1882,7 @@ const sqlserver = Object.freeze({
             provider: "sqlserver",
             placeholderStyle: "question",
             nativeStdlibBridge: sqlserverNativeBridge() !== null,
+            maxPoolConnections: SQLSERVER_MAX_POOL_CONNECTIONS,
             executionMode: "TRUE_ASYNC",
         });
     },

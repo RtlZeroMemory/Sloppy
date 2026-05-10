@@ -134,8 +134,23 @@ waiting for the request body or entering handler dispatch.
 
 Server-wide limits are read from Plan-emitted server config:
 
-- `max-connections` — admission limit for in-flight connections
-- `max-request-body-bytes` — hard ceiling per request body
+- `max-connections` — admission limit for accepted connections
+- `max-active-requests` — backend request slots
+- `connection-capacity` — accepted-connection table allocation; must be at
+  least `max-connections`
+- `max-request-head-bytes` — HTTP/1 request head bytes
+- `max-request-body-bytes` — hard ceiling per decoded request body
+- `max-request-wire-body-bytes` — raw body bytes retained while waiting for a
+  complete HTTP/1 request
+- `request-arena-bytes` — per-connection request arena storage
+- `max-response-bytes` — fixed HTTP response serialization buffer
+- `max-pending-write-bytes` — transport write/backpressure guard
+- `http2-max-streams` — HTTP/2 stream concurrency; omitted derives from active
+  request slots
+- `dispatch-on-event-loop` — HTTP/1 request dispatch is queued to the platform
+  loop dispatch phase instead of running inline from the read/parser callback
+- `max-dispatches-per-tick` — maximum queued HTTP/1 dispatches drained in one
+  loop tick
 - `max-target-length` — request target string limit
 - `max-query-params` — bounded query parameter count
 - `request-timeout-ms` — per-request deadline
@@ -145,6 +160,10 @@ Server-wide limits are read from Plan-emitted server config:
 
 These are baked into the Plan from `appsettings.{Environment}.json` /
 the env layer. Per-route limits are not surfaced today.
+
+Queued HTTP/1 dispatch still runs on the runtime owner thread. It is a loop
+fairness boundary, not a worker-thread or isolate-pool boundary; V8 entry keeps
+the owner-thread rules from the V8 bridge.
 
 ## Connection Models
 

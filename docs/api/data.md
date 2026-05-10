@@ -188,7 +188,9 @@ fixed result shapes.
 > Experimental. Requires a V8-enabled runtime and `libpq` available at
 > runtime. Live evidence is opt-in.
 
-`data.postgres.open(...)` requires an explicit `connectionString`. The
+`data.postgres.open(...)` requires an explicit `connectionString`. Set
+`maxConnections` from 1 to 256 to size the native pool for the deployment; the
+default is 1. The
 recommended pattern is to read it from an environment variable using
 `Environment` from `sloppy/os` and pass it to `open`:
 
@@ -236,7 +238,8 @@ PostgreSQL-specific value wrappers worth knowing:
 > of async connection/statement work.
 
 Same shape — `data.sqlserver.open({ connectionString })` requires an
-explicit ODBC connection string:
+explicit ODBC connection string. Set `maxConnections` from 1 to 256 to size the
+native ODBC pool for the deployment; the default is 1:
 
 ```ts
 import { Sloppy, data } from "sloppy";

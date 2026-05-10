@@ -77,6 +77,7 @@ struct SlHttpPlatformListener
     uv_loop_t loop;
     uv_tcp_t listener;
     uv_tcp_t overflow;
+    uv_check_t dispatch_check;
     SlHttpTransportServer* server;
     SSL_CTX* tls_context;
     SlOwnedStr tls_certificate_path;
@@ -85,9 +86,13 @@ struct SlHttpPlatformListener
     bool loop_initialized;
     bool listener_initialized;
     bool overflow_initialized;
+    bool dispatch_check_initialized;
+    bool dispatch_check_active;
     bool closing;
     uint32_t bound_port;
 };
+
+static void sl_http_transport_dispatch_check_cb(uv_check_t* check);
 
 static SlStr sl_http_transport_literal(const char* ptr, size_t length)
 {
@@ -186,6 +191,8 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
     config.max_response_bytes = SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES;
     config.max_pending_write_bytes = SL_HTTP_TRANSPORT_DEFAULT_MAX_PENDING_WRITE_BYTES;
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP;
+    config.max_dispatches_per_tick = SL_HTTP_TRANSPORT_DEFAULT_MAX_DISPATCHES_PER_TICK;
     config.header_read_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_HEADER_READ_TIMEOUT_MS;
     config.body_read_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_BODY_READ_TIMEOUT_MS;
     config.request_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_REQUEST_TIMEOUT_MS;
@@ -197,10 +204,35 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
     return config;
 }
 
+static SlStatus sl_http_transport_default_wire_body_capacity(size_t max_body_length,
+                                                            size_t* out_capacity)
+{
+    SlStatus status;
+    size_t capacity = 0U;
+
+    if (out_capacity == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_checked_mul_size(max_body_length, SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR,
+                                 &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity,
+                                 SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES,
+                                 &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out_capacity = capacity;
+    return sl_status_ok();
+}
+
 static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* input,
                                                    SlHttpTransportConfig* out, SlDiag* out_diag)
 {
     SlHttpTransportConfig config = sl_http_transport_config_defaults();
+    SlStatus status;
 
     if (out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -235,6 +267,7 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.max_request_head_bytes = input->max_request_head_bytes == 0U
                                             ? config.max_request_head_bytes
                                             : input->max_request_head_bytes;
+        config.max_request_wire_body_bytes = input->max_request_wire_body_bytes;
         config.request_arena_bytes = input->request_arena_bytes == 0U ? config.request_arena_bytes
                                                                       : input->request_arena_bytes;
         config.read_chunk_bytes =
@@ -260,6 +293,13 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.max_requests_per_connection = input->max_requests_per_connection;
         config.keep_alive_disabled = input->keep_alive_disabled;
         config.http2_prior_knowledge_only = input->http2_prior_knowledge_only;
+        config.http2_max_streams = input->http2_max_streams;
+        if (input->dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_DEFAULT) {
+            config.dispatch_mode = input->dispatch_mode;
+        }
+        config.max_dispatches_per_tick =
+            input->max_dispatches_per_tick == 0U ? config.max_dispatches_per_tick
+                                                 : input->max_dispatches_per_tick;
         config.tls = input->tls;
         if (config.tls.enabled && config.tls.backend == SL_HTTP_TRANSPORT_TLS_BACKEND_NONE) {
             config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
@@ -270,6 +310,18 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.on_request_ready_user = input->on_request_ready_user;
         config.dispatch = input->dispatch;
         config.dispatch_user = input->dispatch_user;
+    }
+
+    if (config.max_request_wire_body_bytes == 0U) {
+        status = sl_http_transport_default_wire_body_capacity(config.parse.max_body_length,
+                                                             &config.max_request_wire_body_bytes);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_invalid_config(
+                out_diag,
+                sl_http_transport_literal("HTTP transport wire body capacity overflows",
+                                          sizeof("HTTP transport wire body capacity overflows") -
+                                              1U));
+        }
     }
 
     if (!sl_http_transport_str_valid(config.host) || sl_str_is_empty(config.host)) {
@@ -295,20 +347,37 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
             out_diag, sl_http_transport_literal("HTTP transport backlog is invalid",
                                                 sizeof("HTTP transport backlog is invalid") - 1U));
     }
-    if (config.max_request_head_bytes == 0U || config.request_arena_bytes == 0U ||
-        config.read_chunk_bytes == 0U || config.max_response_bytes == 0U ||
-        config.max_pending_write_bytes == 0U || config.keep_alive_idle_timeout_ms == 0U)
+    if (config.max_request_head_bytes == 0U || config.max_request_wire_body_bytes == 0U ||
+        config.request_arena_bytes == 0U || config.read_chunk_bytes == 0U ||
+        config.max_response_bytes == 0U ||
+        config.max_pending_write_bytes == 0U || config.max_dispatches_per_tick == 0U ||
+        config.keep_alive_idle_timeout_ms == 0U)
     {
         return sl_http_transport_invalid_config(
             out_diag, sl_http_transport_literal(
                           "HTTP transport request buffer capacity is invalid",
                           sizeof("HTTP transport request buffer capacity is invalid") - 1U));
     }
+    if (config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP &&
+        config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE)
+    {
+        return sl_http_transport_invalid_config(
+            out_diag, sl_http_transport_literal("HTTP transport dispatch mode is invalid",
+                                                sizeof("HTTP transport dispatch mode is invalid") -
+                                                    1U));
+    }
     if (config.parse.max_body_length > config.request_arena_bytes) {
         return sl_http_transport_invalid_config(
             out_diag, sl_http_transport_literal(
                           "HTTP transport request body limit exceeds request arena",
                           sizeof("HTTP transport request body limit exceeds request arena") - 1U));
+    }
+    if (config.parse.max_body_length > config.max_request_wire_body_bytes) {
+        return sl_http_transport_invalid_config(
+            out_diag,
+            sl_http_transport_literal(
+                "HTTP transport request body limit exceeds request wire buffer",
+                sizeof("HTTP transport request body limit exceeds request wire buffer") - 1U));
     }
     if (config.tls.enabled) {
         if (config.tls.backend != SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL) {
@@ -412,7 +481,6 @@ SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config
     SlHttpTransportConfig normalized = {0};
     SlStatus status;
     size_t total = 0U;
-    size_t chunked_wire_body_capacity = 0U;
     size_t body_accumulation_capacity = 0U;
     size_t accumulation_capacity = 0U;
     size_t tls_write_buffer_size = 0U;
@@ -467,17 +535,10 @@ SlStatus sl_http_transport_server_arena_size(const SlHttpTransportConfig* config
         return status;
     }
 
-    status = sl_checked_mul_size(normalized.parse.max_body_length, 8U, &chunked_wire_body_capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_checked_add_size(chunked_wire_body_capacity, 5U, &chunked_wire_body_capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    body_accumulation_capacity = chunked_wire_body_capacity > normalized.parse.max_body_length
-                                     ? chunked_wire_body_capacity
-                                     : normalized.parse.max_body_length;
+    body_accumulation_capacity =
+        normalized.max_request_wire_body_bytes > normalized.parse.max_body_length
+            ? normalized.max_request_wire_body_bytes
+            : normalized.parse.max_body_length;
     status = sl_checked_add_size(normalized.max_request_head_bytes, body_accumulation_capacity,
                                  &accumulation_capacity);
     if (!sl_status_is_ok(status)) {
@@ -1559,9 +1620,8 @@ static SlStatus sl_http_transport_http2_init(SlHttpTransportConnection* connecti
 
     config.dispatch = sl_http_transport_http2_dispatch_adapter;
     config.dispatch_user = connection;
-    config.max_streams = server->config.max_active_requests == 0U
-                             ? SL_HTTP2_DISPATCH_DEFAULT_MAX_STREAMS
-                             : server->config.max_active_requests;
+    config.max_streams = server->config.http2_max_streams == 0U ? server->config.max_active_requests
+                                                                : server->config.http2_max_streams;
     config.max_body_bytes = server->backend.options.parse.max_body_length;
     config.max_response_body_bytes = server->config.max_response_bytes;
     config.session.max_concurrent_streams =
@@ -3258,6 +3318,124 @@ static SlStatus sl_http_transport_dispatch_ready(SlHttpTransportConnection* conn
     return sl_status_ok();
 }
 
+static bool sl_http_transport_connection_ready_for_dispatch(
+    const SlHttpTransportConnection* connection)
+{
+    return connection != NULL &&
+           connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY &&
+           connection->request.state == SL_HTTP_REQUEST_STATE_READING;
+}
+
+static bool sl_http_transport_server_has_ready_dispatch(const SlHttpTransportServer* server)
+{
+    if (server == NULL || server->connections == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
+        if (sl_http_transport_connection_ready_for_dispatch(&server->connections[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_http_transport_stop_dispatch_pump(SlHttpTransportServer* server)
+{
+    SlHttpPlatformListener* platform = server == NULL ? NULL : server->platform;
+
+    if (platform != NULL && platform->dispatch_check_initialized &&
+        platform->dispatch_check_active)
+    {
+        uv_check_stop(&platform->dispatch_check);
+        platform->dispatch_check_active = false;
+    }
+}
+
+static SlStatus sl_http_transport_dispatch_ready_connections(SlHttpTransportServer* server,
+                                                             SlDiag* out_diag,
+                                                             bool surface_first_error)
+{
+    size_t dispatched = 0U;
+
+    if (server == NULL || server->connections == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (size_t index = 0U; index < server->connection_capacity &&
+                            dispatched < server->config.max_dispatches_per_tick;
+         index += 1U)
+    {
+        SlHttpTransportConnection* connection = &server->connections[index];
+        SlDiag dispatch_diag = {0};
+        SlStatus status;
+
+        if (!sl_http_transport_connection_ready_for_dispatch(connection)) {
+            continue;
+        }
+        status = sl_http_transport_dispatch_ready(connection, server, &dispatch_diag);
+        dispatched += 1U;
+        if (!sl_status_is_ok(status)) {
+            sl_http_transport_store_diag(connection, &dispatch_diag);
+            sl_http_transport_fail_and_close(connection, &dispatch_diag);
+            if (out_diag != NULL && out_diag->code == SL_DIAG_NONE) {
+                *out_diag = dispatch_diag;
+            }
+            if (surface_first_error) {
+                return status;
+            }
+        }
+    }
+
+    if (!sl_http_transport_server_has_ready_dispatch(server)) {
+        sl_http_transport_stop_dispatch_pump(server);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_start_dispatch_pump(SlHttpTransportServer* server,
+                                                      SlHttpTransportConnection* connection,
+                                                      SlDiag* out_diag)
+{
+    SlHttpPlatformListener* platform = server == NULL ? NULL : server->platform;
+    int rc = 0;
+
+    if (server == NULL || connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (server->config.dispatch_mode == SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE) {
+        return sl_http_transport_dispatch_ready(connection, server, out_diag);
+    }
+    if (platform == NULL || !platform->loop_initialized || !platform->dispatch_check_initialized)
+    {
+        return sl_http_transport_dispatch_ready(connection, server, out_diag);
+    }
+    if (platform->dispatch_check_active) {
+        return sl_status_ok();
+    }
+    rc = uv_check_start(&platform->dispatch_check, sl_http_transport_dispatch_check_cb);
+    if (rc != 0) {
+        return sl_http_transport_uv_status(
+            rc, out_diag, SL_DIAG_HTTP_DISPATCH_FAILED,
+            sl_http_transport_literal("HTTP transport dispatch pump failed to start",
+                                      sizeof("HTTP transport dispatch pump failed to start") - 1U));
+    }
+    platform->dispatch_check_active = true;
+    return sl_status_ok();
+}
+
+static void sl_http_transport_dispatch_check_cb(uv_check_t* check)
+{
+    SlHttpPlatformListener* platform =
+        check == NULL ? NULL : (SlHttpPlatformListener*)check->data;
+    SlHttpTransportServer* server = platform == NULL ? NULL : platform->server;
+    SlDiag diag = {0};
+
+    if (server == NULL) {
+        return;
+    }
+    (void)sl_http_transport_dispatch_ready_connections(server, &diag, false);
+}
+
 static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* connection,
                                                     SlDiag* out_diag)
 {
@@ -3368,7 +3546,7 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
                                                 server->config.on_request_ready_user);
             }
             if (server->config.dispatch != NULL) {
-                return sl_http_transport_dispatch_ready(connection, server, out_diag);
+                return sl_http_transport_start_dispatch_pump(server, connection, out_diag);
             }
             if (server->config.on_request_ready == NULL) {
                 (void)sl_http_transport_connection_close(connection, NULL);
@@ -4212,11 +4390,21 @@ static void sl_http_transport_close_listener(SlHttpPlatformListener* platform)
     if (platform->overflow_initialized && !uv_is_closing((uv_handle_t*)&platform->overflow)) {
         uv_close((uv_handle_t*)&platform->overflow, sl_http_transport_overflow_close_cb);
     }
+    if (platform->dispatch_check_initialized &&
+        !uv_is_closing((uv_handle_t*)&platform->dispatch_check))
+    {
+        if (platform->dispatch_check_active) {
+            uv_check_stop(&platform->dispatch_check);
+            platform->dispatch_check_active = false;
+        }
+        uv_close((uv_handle_t*)&platform->dispatch_check, NULL);
+    }
     if (platform->loop_initialized) {
         while (uv_run(&platform->loop, UV_RUN_DEFAULT) != 0) {
         }
     }
     platform->listener_initialized = false;
+    platform->dispatch_check_initialized = false;
 }
 
 SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* arena,
@@ -4228,7 +4416,6 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     SlStatus status;
     void* memory = NULL;
     size_t accumulation_capacity = 0U;
-    size_t chunked_wire_body_capacity = 0U;
     size_t body_accumulation_capacity = 0U;
     size_t accumulation_bytes = 0U;
     size_t request_storage_bytes = 0U;
@@ -4329,18 +4516,9 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     server->platform_connections = (SlHttpPlatformConnection*)platform_connection_storage.ptr;
     server->connection_capacity = server->config.connection_capacity;
 
-    status = sl_checked_mul_size(server->backend.options.parse.max_body_length, 8U,
-                                 &chunked_wire_body_capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_checked_add_size(chunked_wire_body_capacity, 5U, &chunked_wire_body_capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
     body_accumulation_capacity =
-        chunked_wire_body_capacity > server->backend.options.parse.max_body_length
-            ? chunked_wire_body_capacity
+        server->config.max_request_wire_body_bytes > server->backend.options.parse.max_body_length
+            ? server->config.max_request_wire_body_bytes
             : server->backend.options.parse.max_body_length;
     status = sl_checked_add_size(server->config.max_request_head_bytes, body_accumulation_capacity,
                                  &accumulation_capacity);
@@ -4485,6 +4663,21 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     }
     server->platform->listener_initialized = true;
     server->platform->listener.data = server->platform;
+
+    rc = uv_check_init(&server->platform->loop, &server->platform->dispatch_check);
+    if (rc != 0) {
+        server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
+        sl_http_transport_close_listener(server->platform);
+        (void)uv_loop_close(&server->platform->loop);
+        server->platform->loop_initialized = false;
+        return sl_http_transport_uv_status(
+            rc, out_diag, SL_DIAG_HTTP_LISTEN_FAILED,
+            sl_http_transport_literal("HTTP transport dispatch pump initialization failed",
+                                      sizeof("HTTP transport dispatch pump initialization failed") -
+                                          1U));
+    }
+    server->platform->dispatch_check_initialized = true;
+    server->platform->dispatch_check.data = server->platform;
 
     rc = uv_tcp_bind(&server->platform->listener, (const struct sockaddr*)&address, 0U);
     if (rc != 0) {

@@ -208,6 +208,11 @@ static int test_invalid_options_and_use_after_close(void)
     if (!sl_status_is_ok(status)) {
         return 20;
     }
+    if (SL_POSTGRES_MAX_POOL_CONNECTIONS != 16U ||
+        SL_POSTGRES_MAX_RUNTIME_POOL_CONNECTIONS != 256U)
+    {
+        return 27;
+    }
 
     status = sl_postgres_open(&arena, &options, &connection, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
@@ -251,6 +256,41 @@ static int test_invalid_options_and_use_after_close(void)
     }
 
     diag = (SlDiag){0};
+    pool_options = sl_postgres_pool_options_connection_string(
+        sl_str_from_cstr("postgres://localhost/db"), SL_POSTGRES_MAX_POOL_CONNECTIONS);
+    status = sl_postgres_pool_open(&arena, &pool_options, &pool, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        pool.max_connections != SL_POSTGRES_MAX_POOL_CONNECTIONS ||
+        expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) != 0)
+    {
+        return 28;
+    }
+
+    diag = (SlDiag){0};
+    pool_options = sl_postgres_pool_options_connection_string(
+        sl_str_from_cstr("postgres://localhost/db"), SL_POSTGRES_MAX_POOL_CONNECTIONS + 1U);
+    status = sl_postgres_pool_open(&arena, &pool_options, &pool, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_POSTGRES_PROVIDER_ERROR ||
+        !diag_has_hint(&diag, "operation: pool.open"))
+    {
+        return 29;
+    }
+
+    diag = (SlDiag){0};
+    pool_options =
+        sl_postgres_pool_options_connection_string(sl_str_from_cstr("postgres://localhost/db"), 0U);
+    status = sl_postgres_pool_open(&arena, &pool_options, &pool, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_POSTGRES_PROVIDER_ERROR ||
+        !diag_has_hint(&diag, "operation: pool.open"))
+    {
+        return 30;
+    }
+
+    diag = (SlDiag){0};
+    pool_options =
+        sl_postgres_pool_options_connection_string(sl_str_from_cstr("postgres://localhost/db"), 1U);
     pool_options.access = (SlPostgresAccess)99;
     status = sl_postgres_pool_open(&arena, &pool_options, &pool, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||

@@ -235,7 +235,22 @@ async function buildSloppy(runtime, category, workload, options, cache) {
   await Directory.create(workDir, { recursive: true });
   const sourcePath = joinPath(workDir, "app.ts");
   await File.writeText(sourcePath, generateSloppySource(category, workload.routeProfile ? workload.routeCount : 0));
-  await File.writeJson(joinPath(workDir, "appsettings.json"), { Sloppy: { Server: { MaxConnections: Math.max(128, ...options.connections), MaxRequestsPerConnection: 0, KeepAliveIdleTimeoutMs: 60000, RequestTimeoutMs: 60000 } } }, { indent: 2 });
+  const maxConnections = Math.max(128, ...options.connections);
+  await File.writeJson(joinPath(workDir, "appsettings.json"), {
+    Sloppy: {
+      Server: {
+        MaxConnections: maxConnections,
+        MaxActiveRequests: maxConnections,
+        ConnectionCapacity: maxConnections,
+        Http2MaxStreams: maxConnections,
+        DispatchOnEventLoop: true,
+        MaxDispatchesPerTick: maxConnections,
+        MaxRequestsPerConnection: 0,
+        KeepAliveIdleTimeoutMs: 60000,
+        RequestTimeoutMs: 60000,
+      },
+    },
+  }, { indent: 2 });
   const started = Time.systemClock().monotonicNowMs();
   const build = await Process.run(runtime.path, ["build", sourcePath, "--out", artifactDir, "--host", host, "--port", "5173", "--kind", "web"], { cwd: options.repoRoot, capture: "text", timeoutMs: 120000, maxStdoutBytes: 262144, maxStderrBytes: 262144 });
   const prepared = { ok: build.exitCode === 0, artifactDir, sourcePath, buildDurationMs: Time.systemClock().monotonicNowMs() - started, stdout: String(build.stdout ?? ""), stderr: String(build.stderr ?? ""), routeCount: workload.routeProfile ? workload.routeCount : 0 };

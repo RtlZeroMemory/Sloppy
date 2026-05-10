@@ -534,6 +534,11 @@ function sloppyBenchmarkAppsettings(options) {
     Sloppy: {
       Server: {
         MaxConnections: maxConnections,
+        MaxActiveRequests: maxConnections,
+        ConnectionCapacity: maxConnections,
+        Http2MaxStreams: maxConnections,
+        DispatchOnEventLoop: true,
+        MaxDispatchesPerTick: maxConnections,
         MaxRequestsPerConnection: 0,
         KeepAliveIdleTimeoutMs: 60000,
         RequestTimeoutMs: 60000,

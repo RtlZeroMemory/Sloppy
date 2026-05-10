@@ -11,6 +11,8 @@
     const FAST_JSON = 3;
     const FAST_CREATED = 4;
     const FAST_JSON_MAX_LENGTH = 256;
+    const POSTGRES_MAX_POOL_CONNECTIONS = 256;
+    const SQLSERVER_MAX_POOL_CONNECTIONS = 256;
 
     function resolveStatus(options, defaultStatus) {
         const status = options?.status ?? defaultStatus;
@@ -819,8 +821,12 @@ Reason:
         if (access !== "read" && access !== "readwrite") {
             throw new TypeError("Sloppy postgres.open access must be read or readwrite.");
         }
-        if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
-            throw new TypeError("Sloppy postgres.open maxConnections must be an integer from 1 to 16.");
+        if (!Number.isInteger(maxConnections) || maxConnections < 1 ||
+            maxConnections > POSTGRES_MAX_POOL_CONNECTIONS)
+        {
+            throw new TypeError(
+                `Sloppy postgres.open maxConnections must be an integer from 1 to ${POSTGRES_MAX_POOL_CONNECTIONS}.`,
+            );
         }
         return Object.freeze({
             provider: "postgres",
@@ -1065,8 +1071,12 @@ Reason:
         if (access !== "read" && access !== "readwrite") {
             throw new TypeError("Sloppy sqlserver.open access must be read or readwrite.");
         }
-        if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
-            throw new TypeError("Sloppy sqlserver.open maxConnections must be an integer from 1 to 16.");
+        if (!Number.isInteger(maxConnections) || maxConnections < 1 ||
+            maxConnections > SQLSERVER_MAX_POOL_CONNECTIONS)
+        {
+            throw new TypeError(
+                `Sloppy sqlserver.open maxConnections must be an integer from 1 to ${SQLSERVER_MAX_POOL_CONNECTIONS}.`,
+            );
         }
         return Object.freeze({
             provider: "sqlserver",

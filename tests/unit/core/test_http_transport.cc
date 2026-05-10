@@ -531,6 +531,7 @@ static SlHttpTransportConfig small_config(ReadyHook* hook)
     config.parse.max_total_header_bytes = 256U;
     config.parse.max_body_length = 32U;
     config.keep_alive_disabled = true;
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE;
     config.on_request_ready = hook == nullptr ? nullptr : ready_hook;
     config.on_request_ready_user = hook;
     return config;
@@ -723,7 +724,12 @@ static int test_config_validation_and_lifecycle(void)
         expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
                       SL_STATUS_OK) != 0 ||
         sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_CREATED ||
-        server.config.max_connections != 1U)
+        server.config.max_connections != 1U ||
+        server.config.max_request_wire_body_bytes !=
+            (SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR * 32U +
+             SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES) ||
+        server.config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE ||
+        server.config.max_dispatches_per_tick != SL_HTTP_TRANSPORT_DEFAULT_MAX_DISPATCHES_PER_TICK)
     {
         return 1;
     }
@@ -733,6 +739,22 @@ static int test_config_validation_and_lifecycle(void)
         sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_DISPOSED)
     {
         return 2;
+    }
+
+    sl_arena_reset(&arena);
+    server = {};
+    config = small_config(nullptr);
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_DEFAULT;
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        server.config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP)
+    {
+        return 18;
+    }
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        return 19;
     }
 
     sl_arena_reset(&arena);
@@ -752,6 +774,72 @@ static int test_config_validation_and_lifecycle(void)
     }
     if (expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0) {
         return 6;
+    }
+
+    sl_arena_reset(&arena);
+    server = {};
+    config = small_config(nullptr);
+    config.max_connections = 4U;
+    config.max_active_requests = 2U;
+    config.connection_capacity = 4U;
+    config.http2_max_streams = 3U;
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP;
+    config.max_dispatches_per_tick = 5U;
+    config.max_request_wire_body_bytes = 64U;
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        server.config.max_connections != 4U || server.config.max_active_requests != 2U ||
+        server.config.connection_capacity != 4U || server.config.http2_max_streams != 3U ||
+        server.config.dispatch_mode != SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP ||
+        server.config.max_dispatches_per_tick != 5U ||
+        server.config.max_request_wire_body_bytes != 64U)
+    {
+        return 16;
+    }
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        return 17;
+    }
+
+    {
+        SlHttpTransportConfig default_wire_config = small_config(nullptr);
+        SlHttpTransportConfig tuned_wire_config = small_config(nullptr);
+        size_t default_wire_bytes = 0U;
+        size_t tuned_wire_bytes = 0U;
+
+        default_wire_config.max_connections = 2U;
+        default_wire_config.max_active_requests = 2U;
+        default_wire_config.connection_capacity = 2U;
+        default_wire_config.parse.max_body_length = 1024U;
+        default_wire_config.request_arena_bytes = 2048U;
+        default_wire_config.max_request_wire_body_bytes = 0U;
+        tuned_wire_config = default_wire_config;
+        tuned_wire_config.max_request_wire_body_bytes = 1536U;
+
+        if (expect_status(sl_http_transport_server_arena_size(&default_wire_config,
+                                                              &default_wire_bytes, &diag),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_arena_size(&tuned_wire_config, &tuned_wire_bytes,
+                                                              &diag),
+                          SL_STATUS_OK) != 0 ||
+            tuned_wire_bytes >= default_wire_bytes)
+        {
+            return 19;
+        }
+    }
+
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
+    config.max_request_wire_body_bytes = 16U;
+    config.parse.max_body_length = 32U;
+    server = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TRANSPORT_CONFIG)
+    {
+        return 18;
     }
 
     sl_arena_reset(&arena);
@@ -2752,6 +2840,32 @@ static int test_dispatch_success_writes_response_and_closes(void)
     return 0;
 }
 
+static int test_event_loop_dispatch_writes_response_and_closes(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 6\r\n\r\nqueued";
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    config = small_config(nullptr);
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP;
+    config.max_dispatches_per_tick = 1U;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("queued"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "GET /queued HTTP/1.1\r\nHost: local\r\n\r\n",
+                              &response, &server, &dispatch) != 0 ||
+        dispatch.count != 1U || expect_bytes_equal(response, expected) != 0)
+    {
+        return 82;
+    }
+    return 0;
+}
+
 static int test_head_response_suppresses_body_and_preserves_content_length(void)
 {
     static const char expected[] =
@@ -4359,6 +4473,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_event_loop_dispatch_writes_response_and_closes();
     if (result != 0) {
         return result;
     }

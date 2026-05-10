@@ -29,6 +29,9 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_KEEP_ALIVE_IDLE_TIMEOUT_MS 5000U
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUESTS_PER_CONNECTION 0U
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_PENDING_WRITE_BYTES 65536U
+#define SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR 8U
+#define SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES 5U
+#define SL_HTTP_TRANSPORT_DEFAULT_MAX_DISPATCHES_PER_TICK 32U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
 typedef struct SlHttp2ServerDispatcher SlHttp2ServerDispatcher;
@@ -72,6 +75,13 @@ typedef enum SlHttpTransportTlsBackend
     SL_HTTP_TRANSPORT_TLS_BACKEND_NONE = 0,
     SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL = 1
 } SlHttpTransportTlsBackend;
+
+typedef enum SlHttpTransportDispatchMode
+{
+    SL_HTTP_TRANSPORT_DISPATCH_MODE_DEFAULT = 0,
+    SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP = 1,
+    SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE = 2
+} SlHttpTransportDispatchMode;
 
 typedef struct SlHttpTransportTlsConfig
 {
@@ -127,6 +137,21 @@ typedef struct SlHttpTransportConfig
     void* on_request_ready_user;
     SlHttpTransportDispatchFn dispatch;
     void* dispatch_user;
+    /*
+     * Appended capacity fields preserve the existing public config prefix layout.
+     * Raw body bytes retained after the request head while waiting for a complete request.
+     * Zero uses the transport compatibility default for chunked wire overhead.
+     */
+    size_t max_request_wire_body_bytes;
+    /* 0 derives HTTP/2 stream concurrency from max_active_requests for compatibility. */
+    size_t http2_max_streams;
+    /*
+     * DEFAULT queues HTTP/1 request dispatch to the platform event loop dispatch phase.
+     * INLINE preserves synchronous dispatch for narrow tests/embedders that require it.
+     */
+    SlHttpTransportDispatchMode dispatch_mode;
+    /* 0 uses the bounded dispatch-phase default. */
+    size_t max_dispatches_per_tick;
 } SlHttpTransportConfig;
 
 struct SlHttpTransportConnection
