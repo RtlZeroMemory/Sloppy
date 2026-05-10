@@ -14,4 +14,3 @@ export function main(args) {
     console.log(`validated ${user.name} score=${user.score}`);
     return 0;
 }
-
