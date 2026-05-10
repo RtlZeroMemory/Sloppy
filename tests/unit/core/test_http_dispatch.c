@@ -2199,6 +2199,8 @@ int main(void)
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
+        fprintf(stderr, "running %s\n", tests[index].name);
+        fflush(stderr);
         int result = tests[index].fn();
         if (result != 0) {
             fprintf(stderr, "%s failed with code %d\n", tests[index].name, result);

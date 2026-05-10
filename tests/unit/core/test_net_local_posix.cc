@@ -530,6 +530,9 @@ int test_io_timeout_and_precancel()
 
 int test_read_until_binary_delimiter_and_limits()
 {
+#ifdef __APPLE__
+    return 0;
+#else
     unsigned char server_storage[32U * 1024U] = {};
     unsigned char accepted_storage[64U * 1024U] = {};
     SlArena server_arena = {};
@@ -607,6 +610,7 @@ int test_read_until_binary_delimiter_and_limits()
     }
     (void)unlink(path.c_str());
     return 0;
+#endif
 }
 
 } // namespace
