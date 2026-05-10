@@ -23,6 +23,15 @@ static int expect_status(SlStatus status, SlStatusCode code)
     return expect_true(sl_status_code(status) == code);
 }
 
+static int expect_format_complete(int written, size_t capacity)
+{
+    if (written < 0) {
+        return 1;
+    }
+
+    return expect_true((size_t)written < capacity);
+}
+
 static int expect_str_contains(SlStr haystack, SlStr needle)
 {
     size_t index = 0U;
@@ -1012,13 +1021,16 @@ static int expect_malformed_source_map_case(const char* mappings, const char* fu
     const char* throw_token = NULL;
     size_t expected_column = 0U;
 
-    if (snprintf(source, sizeof(source),
-                 "globalThis.%s = function () { throw new Error(\"%s\"); };", function_name,
-                 message) < 0 ||
-        snprintf(source_map, sizeof(source_map),
-                 "{\"version\":3,\"sources\":[\"src/malformed.js\"],\"names\":[],"
-                 "\"mappings\":\"%s\"}",
-                 mappings) < 0)
+    if (expect_format_complete(snprintf(source, sizeof(source),
+                                        "globalThis.%s = function () { throw new Error(\"%s\"); };",
+                                        function_name, message),
+                               sizeof(source)) != 0 ||
+        expect_format_complete(
+            snprintf(source_map, sizeof(source_map),
+                     "{\"version\":3,\"sources\":[\"src/malformed.js\"],\"names\":[],"
+                     "\"mappings\":\"%s\"}",
+                     mappings),
+            sizeof(source_map)) != 0)
     {
         return failure_base;
     }
@@ -1815,6 +1827,14 @@ static int test_net_local_endpoint_intrinsic_rejects_invalid_runtime_path(void)
                     "globalThis.sloppy_net_local_invalid = async function () {"
                     "  const invalidPaths = ['runtime:/../bad.sock', 'runtime://bad.sock',"
                     "    'runtime:/bad//sock', 'runtime:/bad name.sock'];"
+                    "  try { await globalThis.__sloppy.net.closeLocal({ slot: 0, generation: 1 });"
+                    "    return 'accepted-forged-handle';"
+                    "  } catch (err) {"
+                    "    const message = String(err && err.message ? err.message : err);"
+                    "    if (!message.includes('handle is stale or closed')) {"
+                    "      return 'wrong-forged-error:' + message;"
+                    "    }"
+                    "  }"
                     "  for (const path of invalidPaths) {"
                     "    try { await globalThis.__sloppy.net.connectLocal({ path });"
                     "      return 'accepted:' + path;"
@@ -2186,8 +2206,12 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                "export function onMessage(payload) { return 'msg:' + payload.kind; }\n") -
             1U);
 
-    snprintf(worker_path_buffer, sizeof(worker_path_buffer), "./sloppy-v8-worker-test-%p.js",
-             (void*)&engine_storage[0]);
+    if (expect_format_complete(snprintf(worker_path_buffer, sizeof(worker_path_buffer),
+                                        "./sloppy-v8-worker-test-%p.js", (void*)&engine_storage[0]),
+                               sizeof(worker_path_buffer)) != 0)
+    {
+        return 515;
+    }
     worker_path = sl_str_from_cstr(worker_path_buffer);
     (void)sl_fs_delete_file(worker_path, NULL);
     if (expect_status(sl_fs_write_file(worker_path, worker_source, false, &diag), SL_STATUS_OK) !=
@@ -2206,37 +2230,45 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         return 516;
     }
 
-    snprintf(
-        script_buffer, sizeof(script_buffer),
-        "globalThis.sloppy_workers_js_worker = async function () {"
-        "  const worker = globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 128 });"
-        "  const parsed = await worker.invoke('parse', { text: 'one two three' });"
-        "  const firstCount = await worker.invoke('countCalls');"
-        "  const secondCount = await worker.invoke('countCalls');"
-        "  const bytes = await worker.invoke('bytes', {"
-        "    raw: new Uint8Array([11, 12]).buffer,"
-        "    view: new Uint8Array([13, 14])"
-        "  });"
-        "  const posted = await worker.post({ kind: 'ping' });"
-        "  await worker.stop();"
-        "  try {"
-        "    await worker.invoke('parse', { text: 'late' });"
-        "    return 'missing-stale-error';"
-        "  } catch (err) {"
-        "    return parsed + ':' + (bytes instanceof Uint8Array) + ':' +"
-        "      Array.from(bytes).join(',') + ':' + firstCount + ',' + secondCount + ':' +"
-        "      posted + ':' + err.code;"
-        "  }"
-        "};"
-        "globalThis.sloppy_workers_resource_limit = function () {"
-        "  try {"
-        "    globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 1 });"
-        "    return 'missing-resource-error';"
-        "  } catch (err) {"
-        "    return err.code;"
-        "  }"
-        "};",
-        worker_path_buffer, worker_path_buffer);
+    if (expect_format_complete(
+            snprintf(script_buffer, sizeof(script_buffer),
+                     "globalThis.sloppy_workers_js_worker = async function () {"
+                     "  const worker = globalThis.__sloppy.workers.startWorker('%s', { "
+                     "memoryLimitMb: 128 });"
+                     "  const parsed = await worker.invoke('parse', { text: 'one two three' });"
+                     "  const firstCount = await worker.invoke('countCalls');"
+                     "  const secondCount = await worker.invoke('countCalls');"
+                     "  const bytes = await worker.invoke('bytes', {"
+                     "    raw: new Uint8Array([11, 12]).buffer,"
+                     "    view: new Uint8Array([13, 14])"
+                     "  });"
+                     "  const posted = await worker.post({ kind: 'ping' });"
+                     "  await worker.stop();"
+                     "  try {"
+                     "    await worker.invoke('parse', { text: 'late' });"
+                     "    return 'missing-stale-error';"
+                     "  } catch (err) {"
+                     "    return parsed + ':' + (bytes instanceof Uint8Array) + ':' +"
+                     "      Array.from(bytes).join(',') + ':' + firstCount + ',' + secondCount + "
+                     "':' +"
+                     "      posted + ':' + err.code;"
+                     "  }"
+                     "};"
+                     "globalThis.sloppy_workers_resource_limit = function () {"
+                     "  try {"
+                     "    globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 1 });"
+                     "    return 'missing-resource-error';"
+                     "  } catch (err) {"
+                     "    return err.code;"
+                     "  }"
+                     "};",
+                     worker_path_buffer, worker_path_buffer),
+            sizeof(script_buffer)) != 0)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 517;
+    }
     if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-workers-js-worker.js"),
                                             sl_str_from_parts(script_buffer, strlen(script_buffer)),
                                             &diag),
@@ -2487,7 +2519,6 @@ static int test_os_intrinsic_process_run_start_and_signals(const char* self_path
     SlDiag diag = {0};
     SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
     size_t index = 0U;
-    int written = 0;
 
     if (self.length == 0U || self.length >= sizeof(self_js)) {
         return 455;
@@ -2496,37 +2527,54 @@ static int test_os_intrinsic_process_run_start_and_signals(const char* self_path
         self_js[index] = self.ptr[index] == '\\' ? '/' : self.ptr[index];
     }
     self_js[self.length] = '\0';
-    written = snprintf(
-        source, sizeof(source),
-        "globalThis.sloppy_os_process = async function () {"
-        "  const os = globalThis.__sloppy.os;"
-        "  const command = \"%s\";"
-        "  const run = await os.processRun(command, ['--sloppy-os-child', 'echo'], {"
-        "    capture: 'text', maxStdoutBytes: 2097152, maxStderrBytes: 2097152, timeoutMs: 5000"
-        "  });"
-        "  const pressure = [];"
-        "  for (let index = 0; index < 70; index++) {"
-        "    pressure.push(os.processRun(command, ['--sloppy-os-child', 'echo'], {"
-        "      capture: 'text', maxStdoutBytes: 1024, maxStderrBytes: 1024, timeoutMs: 5000"
-        "    }));"
-        "  }"
-        "  const pressureResults = await Promise.all(pressure);"
-        "  const proc = await os.processStart(command, ['--sloppy-os-child', 'stdin'], {"
-        "    stdin: 'pipe', stdout: 'pipe', stderr: 'ignore'"
-        "  });"
-        "  await os.processWriteStdin(proc, 'hello\\n');"
-        "  await os.processCloseStdin(proc);"
-        "  const exit = await os.processWait(proc, { timeoutMs: 5000 });"
-        "  const stdout = await os.processReadStdout(proc, 256);"
-        "  const registration = os.signalsOnShutdown(function () {});"
-        "  registration.dispose();"
-        "  await os.processDispose(proc);"
-        "  return run.exitCode + ':' + run.stdout.trim() + ':' +"
-        "    exit.exitCode + ':' + stdout.trim() + ':' + pressureResults.length + ':' +"
-        "    pressureResults.every((item) => item.exitCode === 5);"
-        "};",
-        self_js);
-    if (written < 0 || (size_t)written >= sizeof(source)) {
+    if (expect_format_complete(
+            snprintf(source, sizeof(source),
+                     "globalThis.sloppy_os_process = async function () {"
+                     "  const os = globalThis.__sloppy.os;"
+                     "  const command = \"%s\";"
+                     "  const run = await os.processRun(command, ['--sloppy-os-child', 'echo'], {"
+                     "    capture: 'text', maxStdoutBytes: 2097152, maxStderrBytes: 2097152, "
+                     "timeoutMs: 5000"
+                     "  });"
+                     "  const pressure = [];"
+                     "  for (let index = 0; index < 70; index++) {"
+                     "    pressure.push(os.processRun(command, ['--sloppy-os-child', 'echo'], {"
+                     "      capture: 'text', maxStdoutBytes: 1024, maxStderrBytes: 1024, "
+                     "timeoutMs: 5000"
+                     "    }));"
+                     "  }"
+                     "  const pressureResults = await Promise.all(pressure);"
+                     "  const proc = await os.processStart(command, ['--sloppy-os-child', "
+                     "'stdin'], {"
+                     "    stdin: 'pipe', stdout: 'pipe', stderr: 'ignore'"
+                     "  });"
+                     "  if ('slot' in proc || 'generation' in proc || !Object.isFrozen(proc)) {"
+                     "    return 'leaked-process-handle';"
+                     "  }"
+                     "  try {"
+                     "    await os.processWait({ slot: 0, generation: 1 }, { timeoutMs: 1 });"
+                     "    return 'accepted-forged-process';"
+                     "  } catch (err) {"
+                     "    const message = String(err && err.message ? err.message : err);"
+                     "    if (!message.includes('process handle invalid')) {"
+                     "      return 'wrong-forged-process-error:' + message;"
+                     "    }"
+                     "  }"
+                     "  await os.processWriteStdin(proc, 'hello\\n');"
+                     "  await os.processCloseStdin(proc);"
+                     "  const exit = await os.processWait(proc, { timeoutMs: 5000 });"
+                     "  const stdout = await os.processReadStdout(proc, 256);"
+                     "  const registration = os.signalsOnShutdown(function () {});"
+                     "  registration.dispose();"
+                     "  await os.processDispose(proc);"
+                     "  return run.exitCode + ':' + run.stdout.trim() + ':' +"
+                     "    exit.exitCode + ':' + stdout.trim() + ':' + pressureResults.length + "
+                     "':' +"
+                     "    pressureResults.every((item) => item.exitCode === 5);"
+                     "};",
+                     self_js),
+            sizeof(source)) != 0)
+    {
         return 456;
     }
 

@@ -332,7 +332,7 @@ static SlStatus sl_http2_dispatch_complete_stream(SlHttp2ServerDispatcher* dispa
     request_body = sl_byte_builder_view(&stream->body);
     status =
         sl_http2_request_from_headers(dispatcher->arena, dispatcher->connection, &stream->headers,
-                                       request_body, &request, &dispatcher->last_diag);
+                                      request_body, &request, &dispatcher->last_diag);
     if (!sl_status_is_ok(status)) {
         (void)sl_http2_dispatch_reset_stream(dispatcher, stream->stream_id,
                                              SL_HTTP2_ERROR_PROTOCOL_ERROR);

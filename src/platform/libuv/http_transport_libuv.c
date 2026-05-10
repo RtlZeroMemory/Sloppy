@@ -1568,8 +1568,7 @@ static SlStatus sl_http_transport_maybe_start_http2(SlHttpTransportConnection* c
             (void)sl_http_transport_connection_diag(
                 connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INVALID_ARGUMENT,
                 sl_http_transport_literal("HTTP/2 prior-knowledge preface is invalid",
-                                          sizeof("HTTP/2 prior-knowledge preface is invalid") -
-                                              1U),
+                                          sizeof("HTTP/2 prior-knowledge preface is invalid") - 1U),
                 sl_http_transport_literal("invalid h2 prefaces close without HTTP/1 fallback",
                                           sizeof("invalid h2 prefaces close without HTTP/1 "
                                                  "fallback") -

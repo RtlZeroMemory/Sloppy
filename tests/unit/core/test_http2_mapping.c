@@ -1,6 +1,7 @@
 #include "sloppy/http2_mapping.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 static int expect_true(bool condition)
 {
@@ -230,6 +231,34 @@ static int test_response_mapping_suppresses_body_but_keeps_length_for_head(void)
     return 0;
 }
 
+static int test_response_mapping_rejects_header_count_overflow(void)
+{
+    unsigned char arena_storage[1024];
+    SlArena arena = {0};
+    SlHttpHeader custom = {.name = sl_str_from_cstr("x-test"), .value = sl_str_from_cstr("ok")};
+    SlHttpResponse response = sl_http_response_text(200U, sl_str_from_cstr("hello"));
+    SlHttp2HeaderList headers = {0};
+    SlBytes body = {0};
+
+    response.headers = &custom;
+    response.header_count = SIZE_MAX;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 1;
+    }
+
+    if (expect_status(
+            sl_http2_response_to_headers(&arena, &response, false, 1024U, &headers, &body),
+            SL_STATUS_OVERFLOW) != 0)
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -251,6 +280,10 @@ int main(void)
         return result;
     }
     result = test_response_mapping_suppresses_body_but_keeps_length_for_head();
+    if (result != 0) {
+        return result;
+    }
+    result = test_response_mapping_rejects_header_count_overflow();
     if (result != 0) {
         return result;
     }
