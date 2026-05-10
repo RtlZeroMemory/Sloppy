@@ -114,13 +114,13 @@ Postgres:
 
 - `connectionString` (required, non-empty)
 - `access`: `read` or `readwrite`
-- `maxConnections`: integer `1..16` (default `1`)
+- `maxConnections`: integer `1..256` (default `1`)
 
 SQL Server:
 
 - `connectionString` (required, non-empty ODBC string)
 - `access`: `read` or `readwrite`
-- `maxConnections`: integer `1..16` (default `1`)
+- `maxConnections`: integer `1..256` (default `1`)
 
 ## Runtime Feature Gate
 

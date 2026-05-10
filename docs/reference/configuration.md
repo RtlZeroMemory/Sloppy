@@ -39,8 +39,43 @@ Default environment is `Development`.
 
 TLS `CertificatePath` and `PrivateKeyPath` values are absolutized against config directory before Plan emission. Diagnostic messages redact TLS certificate, private-key, client-certificate, CA-bundle, and trust-store path values.
 
-`Sloppy:Server:MaxRequestsPerConnection = 0` disables the keep-alive request count cap. Connection
-admission still respects `Sloppy:Server:MaxConnections` and available process memory.
+`Sloppy:Server:MaxRequestsPerConnection = 0` disables the keep-alive request count cap.
+
+`sloppy run` also accepts these capacity keys when Plan config metadata emits
+them. If they are absent, the development listener applies these runtime
+defaults:
+
+| Key | Runtime default |
+| --- | --- |
+| `Sloppy:Server:MaxActiveRequests` | `128` |
+| `Sloppy:Server:ConnectionCapacity` | `128` |
+| `Sloppy:Server:Backlog` | `128` |
+| `Sloppy:Server:MaxRequestHeadBytes` | `8192` |
+| `Sloppy:Server:MaxRequestWireBodyBytes` | `MaxRequestBodyBytes * 8 + 5` by default, from `SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_FACTOR` and `SL_HTTP_TRANSPORT_DEFAULT_CHUNKED_WIRE_BODY_TRAILER_BYTES` |
+| `Sloppy:Server:RequestArenaBytes` | `262144`, raised to `MaxRequestBodyBytes` if needed |
+| `Sloppy:Server:MaxResponseBytes` | `131072` |
+| `Sloppy:Server:MaxPendingWriteBytes` | `65536` |
+| `Sloppy:Server:Http2MaxStreams` | derived from `MaxActiveRequests` |
+| `Sloppy:Server:DispatchOnEventLoop` | `true` |
+| `Sloppy:Server:MaxDispatchesPerTick` | `32` |
+
+Connection admission, request concurrency, and allocation capacity are separate
+limits. `MaxConnections` controls accepted connection admission.
+`MaxActiveRequests` controls backend request slots. `ConnectionCapacity`
+controls the preallocated accepted-connection table and must be at least
+`MaxConnections`. If `MaxConnections` is set and `ConnectionCapacity` is not,
+`sloppy run` raises `ConnectionCapacity` to match `MaxConnections`.
+`DispatchOnEventLoop` queues HTTP/1 handler dispatch into the platform loop's
+dispatch phase instead of running it inline from the read/parser callback.
+`MaxDispatchesPerTick` bounds how much queued HTTP/1 handler work one loop tick
+drains before returning to other loop activity.
+
+Request storage is still bounded and mostly in memory. `MaxRequestHeadBytes`
+caps the HTTP/1 request head. `MaxRequestBodyBytes` caps decoded request body
+bytes. `MaxRequestWireBodyBytes` caps the raw body bytes retained while waiting
+for a complete request; keep it at least as large as `MaxRequestBodyBytes`.
+`RequestArenaBytes` must also be at least `MaxRequestBodyBytes` because the
+current request lifecycle stores the decoded body in the request arena.
 
 When inbound TLS is enabled, the development HTTP listener can negotiate
 `h2` or `http/1.1` with ALPN. There is no separate appsettings key for HTTP/2

@@ -1018,6 +1018,11 @@ function New-SloppyBenchApp {
             Sloppy = @{
                 Server = @{
                     MaxConnections = 64
+                    MaxActiveRequests = 64
+                    ConnectionCapacity = 64
+                    Http2MaxStreams = 64
+                    DispatchOnEventLoop = $true
+                    MaxDispatchesPerTick = 64
                 }
             }
         } | ConvertTo-Json -Depth 4 | ForEach-Object {

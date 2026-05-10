@@ -96,7 +96,7 @@ If both `database` and `path` are provided, they must match.
 
 - `connectionString` (non-empty string)
 - optional `access`: `read` or `readwrite` (default `readwrite`)
-- optional `maxConnections`: integer `1..16` (default `1`)
+- optional `maxConnections`: integer `1..256` (default `1`)
 
 ### SQL Server
 
@@ -104,7 +104,7 @@ If both `database` and `path` are provided, they must match.
 
 - `connectionString` (non-empty string)
 - optional `access`: `read` or `readwrite` (default `readwrite`)
-- optional `maxConnections`: integer `1..16` (default `1`)
+- optional `maxConnections`: integer `1..256` (default `1`)
 
 ## Bridge Availability
 

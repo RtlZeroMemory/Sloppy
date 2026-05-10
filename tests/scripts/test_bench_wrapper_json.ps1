@@ -95,8 +95,16 @@ try {
     }
     $appsettings = Get-Content -LiteralPath $appsettingsPath -Raw | ConvertFrom-Json
     $maxConnections = [int]$appsettings.Sloppy.Server.MaxConnections
-    if ($maxConnections -lt 32) {
-        throw "generated Sloppy benchmark app MaxConnections must cover the concurrency suite"
+    $maxActiveRequests = [int]$appsettings.Sloppy.Server.MaxActiveRequests
+    $connectionCapacity = [int]$appsettings.Sloppy.Server.ConnectionCapacity
+    $http2MaxStreams = [int]$appsettings.Sloppy.Server.Http2MaxStreams
+    $dispatchOnEventLoop = [bool]$appsettings.Sloppy.Server.DispatchOnEventLoop
+    $maxDispatchesPerTick = [int]$appsettings.Sloppy.Server.MaxDispatchesPerTick
+    if ($maxConnections -lt 32 -or $maxActiveRequests -lt 32 -or
+        $connectionCapacity -lt $maxConnections -or $http2MaxStreams -lt 32 -or
+        -not $dispatchOnEventLoop -or $maxDispatchesPerTick -lt 32)
+    {
+        throw "generated Sloppy benchmark app server caps must cover the concurrency suite"
     }
 }
 finally {

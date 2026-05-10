@@ -154,6 +154,36 @@ Console logging is enabled by default. Configure it in `appsettings.json`:
 Supported console formats are `pretty` and `jsonl`. The file sink writes JSONL
 only, opens in append mode, and expects the parent directory to exist.
 
+## Server Capacity Config
+
+`sloppy run` reads Plan config metadata emitted from `appsettings*.json` and
+environment overlays. The development listener keeps request storage bounded,
+but the main admission and buffer limits are separately configurable:
+
+| Key | Purpose |
+| --- | --- |
+| `Sloppy:Server:MaxConnections` | accepted connection admission |
+| `Sloppy:Server:MaxActiveRequests` | backend request slots |
+| `Sloppy:Server:ConnectionCapacity` | accepted-connection table allocation; must be at least `MaxConnections` |
+| `Sloppy:Server:Backlog` | platform listen backlog |
+| `Sloppy:Server:MaxRequestHeadBytes` | HTTP/1 request head bytes |
+| `Sloppy:Server:MaxRequestBodyBytes` | decoded request body bytes |
+| `Sloppy:Server:MaxRequestWireBodyBytes` | raw body bytes retained before parsing completes |
+| `Sloppy:Server:RequestArenaBytes` | per-connection request arena bytes |
+| `Sloppy:Server:MaxResponseBytes` | fixed response serialization buffer bytes |
+| `Sloppy:Server:MaxPendingWriteBytes` | single write/backpressure guard |
+| `Sloppy:Server:Http2MaxStreams` | HTTP/2 stream concurrency |
+| `Sloppy:Server:DispatchOnEventLoop` | queue HTTP/1 handler dispatch onto the event loop dispatch phase |
+| `Sloppy:Server:MaxDispatchesPerTick` | maximum queued HTTP/1 dispatches drained in one loop tick |
+
+If `MaxConnections` is raised without `ConnectionCapacity`, `sloppy run` raises
+the connection table capacity to match. It no longer raises
+`MaxActiveRequests` or HTTP/2 stream concurrency implicitly. If
+`MaxRequestBodyBytes` is raised without `RequestArenaBytes`, the request arena
+is raised only as far as needed to hold the decoded body. HTTP/1 handler
+dispatch is queued out of the read/parser callback by default so one socket
+read does not monopolize the loop before other loop work can run.
+
 ## Examples
 
 ```sh

@@ -48,7 +48,17 @@ typedef struct SlRunApp
     uint16_t config_port;
     uint64_t config_logging_queue_capacity;
     uint64_t config_max_connections;
+    uint64_t config_max_active_requests;
+    uint64_t config_connection_capacity;
+    uint64_t config_backlog;
+    uint64_t config_max_request_head_bytes;
     uint64_t config_max_request_body_bytes;
+    uint64_t config_max_request_wire_body_bytes;
+    uint64_t config_request_arena_bytes;
+    uint64_t config_max_response_bytes;
+    uint64_t config_max_pending_write_bytes;
+    uint64_t config_http2_max_streams;
+    uint64_t config_max_dispatches_per_tick;
     uint64_t config_keep_alive_idle_timeout_ms;
     uint64_t config_max_requests_per_connection;
     uint64_t config_request_timeout_ms;
@@ -59,7 +69,19 @@ typedef struct SlRunApp
     bool config_has_host;
     bool config_has_port;
     bool config_has_max_connections;
+    bool config_has_max_active_requests;
+    bool config_has_connection_capacity;
+    bool config_has_backlog;
+    bool config_has_max_request_head_bytes;
     bool config_has_max_request_body_bytes;
+    bool config_has_max_request_wire_body_bytes;
+    bool config_has_request_arena_bytes;
+    bool config_has_max_response_bytes;
+    bool config_has_max_pending_write_bytes;
+    bool config_has_http2_max_streams;
+    bool config_has_dispatch_on_event_loop;
+    bool config_dispatch_on_event_loop;
+    bool config_has_max_dispatches_per_tick;
     bool config_has_keep_alive_enabled;
     bool config_has_keep_alive_idle_timeout_ms;
     bool config_has_max_requests_per_connection;
@@ -420,6 +442,11 @@ static bool sl_run_plan_config_u64_fits_size_t(uint64_t value)
     return value <= (uint64_t)SIZE_MAX;
 }
 
+static bool sl_run_plan_config_parse_positive_size(yyjson_val* value, uint64_t* out)
+{
+    return sl_run_plan_config_parse_u64(value, out) && sl_run_plan_config_u64_fits_size_t(*out);
+}
+
 static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
 {
     if (value == NULL || out == NULL || !yyjson_is_bool(value)) {
@@ -616,25 +643,125 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_port = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxConnections")) {
-        if (!sl_run_plan_config_parse_u64(value, &app->config_max_connections) ||
-            !sl_run_plan_config_u64_fits_size_t(app->config_max_connections))
-        {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_connections)) {
             sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
                                       "Sloppy:Server:MaxConnections must be a positive integer\n");
             return 1;
         }
         app->config_has_max_connections = true;
     }
-    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestBodyBytes")) {
-        if (!sl_run_plan_config_parse_u64(value, &app->config_max_request_body_bytes) ||
-            !sl_run_plan_config_u64_fits_size_t(app->config_max_request_body_bytes))
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxActiveRequests")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_active_requests)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxActiveRequests must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_active_requests = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:ConnectionCapacity")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_connection_capacity)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:ConnectionCapacity must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_connection_capacity = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Backlog")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_backlog) ||
+            app->config_backlog == 0U || app->config_backlog > (uint64_t)INT_MAX)
         {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Backlog must be a positive integer that "
+                                      "fits int\n");
+            return 1;
+        }
+        app->config_has_backlog = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestHeadBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_request_head_bytes)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxRequestHeadBytes must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_request_head_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestBodyBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_request_body_bytes)) {
             sl_cli_write_cstr(stderr,
                               "sloppy run: app.plan.json "
                               "Sloppy:Server:MaxRequestBodyBytes must be a positive integer\n");
             return 1;
         }
         app->config_has_max_request_body_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestWireBodyBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value,
+                                                    &app->config_max_request_wire_body_bytes))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxRequestWireBodyBytes must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_request_wire_body_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:RequestArenaBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_request_arena_bytes)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:RequestArenaBytes must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_request_arena_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxResponseBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_response_bytes)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxResponseBytes must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_response_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxPendingWriteBytes")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_max_pending_write_bytes)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxPendingWriteBytes must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_pending_write_bytes = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Http2MaxStreams")) {
+        if (!sl_run_plan_config_parse_positive_size(value, &app->config_http2_max_streams)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Http2MaxStreams must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_http2_max_streams = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:DispatchOnEventLoop")) {
+        if (!sl_run_plan_config_parse_bool(value, &app->config_dispatch_on_event_loop)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:DispatchOnEventLoop must be boolean\n");
+            return 1;
+        }
+        app->config_has_dispatch_on_event_loop = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxDispatchesPerTick")) {
+        if (!sl_run_plan_config_parse_positive_size(value,
+                                                    &app->config_max_dispatches_per_tick))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxDispatchesPerTick must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_dispatches_per_tick = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:KeepAliveEnabled")) {
         if (!sl_run_plan_config_parse_bool(value, &app->config_keep_alive_enabled)) {
@@ -2157,6 +2284,7 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
 static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t port, SlRunApp* app)
 {
     SlHttpTransportConfig config = {0};
+    size_t configured_body_bytes = SL_RUN_REQUEST_MAX_BYTES;
 
     config.host = sl_str_from_cstr(host);
     config.port = port;
@@ -2168,6 +2296,8 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     config.request_arena_bytes = SL_RUN_ARENA_BYTES;
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
     config.max_response_bytes = SL_RUN_RESPONSE_MAX_BYTES;
+    config.dispatch_mode = SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP;
+    config.max_dispatches_per_tick = SL_HTTP_TRANSPORT_DEFAULT_MAX_DISPATCHES_PER_TICK;
     config.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     config.parse.max_request_line_length = SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH;
     config.parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
@@ -2177,17 +2307,65 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     config.parse.max_body_length = SL_RUN_REQUEST_MAX_BYTES;
     if (app != NULL && app->config_has_max_connections) {
         config.max_connections = (size_t)app->config_max_connections;
-        config.max_active_requests = (size_t)app->config_max_connections;
-        config.connection_capacity = (size_t)app->config_max_connections;
-        config.backlog = app->config_max_connections > (uint64_t)INT_MAX
-                             ? INT_MAX
-                             : (int)app->config_max_connections;
+        if (!app->config_has_connection_capacity) {
+            config.connection_capacity = (size_t)app->config_max_connections;
+        }
+        if (!app->config_has_backlog) {
+            config.backlog = app->config_max_connections > (uint64_t)INT_MAX
+                                 ? INT_MAX
+                                 : (int)app->config_max_connections;
+        }
         if (config.backlog < SL_HTTP_TRANSPORT_DEFAULT_BACKLOG) {
             config.backlog = SL_HTTP_TRANSPORT_DEFAULT_BACKLOG;
         }
     }
+    if (app != NULL && app->config_has_max_active_requests) {
+        config.max_active_requests = (size_t)app->config_max_active_requests;
+    }
+    if (app != NULL && app->config_has_connection_capacity) {
+        config.connection_capacity = (size_t)app->config_connection_capacity;
+    }
+    if (app != NULL && app->config_has_backlog) {
+        config.backlog = (int)app->config_backlog;
+    }
+    if (app != NULL && app->config_has_max_request_head_bytes) {
+        config.max_request_head_bytes = (size_t)app->config_max_request_head_bytes;
+    }
     if (app != NULL && app->config_has_max_request_body_bytes) {
         config.parse.max_body_length = (size_t)app->config_max_request_body_bytes;
+    }
+    configured_body_bytes = config.parse.max_body_length;
+    if (app != NULL && app->config_has_request_arena_bytes) {
+        config.request_arena_bytes = (size_t)app->config_request_arena_bytes;
+    }
+    else if (config.request_arena_bytes < configured_body_bytes) {
+        config.request_arena_bytes = configured_body_bytes;
+    }
+    if (app != NULL && app->config_has_max_request_wire_body_bytes) {
+        config.max_request_wire_body_bytes = (size_t)app->config_max_request_wire_body_bytes;
+    }
+    else {
+        config.max_request_wire_body_bytes =
+            configured_body_bytes > SIZE_MAX - SL_RUN_REQUEST_WIRE_BODY_OVERHEAD_BYTES
+                ? configured_body_bytes
+                : configured_body_bytes + SL_RUN_REQUEST_WIRE_BODY_OVERHEAD_BYTES;
+    }
+    if (app != NULL && app->config_has_max_response_bytes) {
+        config.max_response_bytes = (size_t)app->config_max_response_bytes;
+    }
+    if (app != NULL && app->config_has_max_pending_write_bytes) {
+        config.max_pending_write_bytes = (size_t)app->config_max_pending_write_bytes;
+    }
+    if (app != NULL && app->config_has_http2_max_streams) {
+        config.http2_max_streams = (size_t)app->config_http2_max_streams;
+    }
+    if (app != NULL && app->config_has_dispatch_on_event_loop) {
+        config.dispatch_mode = app->config_dispatch_on_event_loop
+                                   ? SL_HTTP_TRANSPORT_DISPATCH_MODE_EVENT_LOOP
+                                   : SL_HTTP_TRANSPORT_DISPATCH_MODE_INLINE;
+    }
+    if (app != NULL && app->config_has_max_dispatches_per_tick) {
+        config.max_dispatches_per_tick = (size_t)app->config_max_dispatches_per_tick;
     }
     if (app != NULL && app->config_has_keep_alive_enabled) {
         config.keep_alive_disabled = !app->config_keep_alive_enabled;
