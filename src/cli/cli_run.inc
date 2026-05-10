@@ -2021,8 +2021,8 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         sl_run_print_diag("sloppy run: failed to size dev server storage: ", NULL, &diag);
         return 1;
     }
-    transport_storage = (unsigned char*)malloc(transport_storage_bytes);
-    if (transport_storage == NULL) {
+    status = sl_alloc_bytes(transport_storage_bytes, &transport_storage);
+    if (!sl_status_is_ok(status)) {
         sl_cli_write_cstr(stderr, "sloppy run: failed to allocate dev server storage\n");
         return 1;
     }
@@ -2031,14 +2031,14 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
             sl_arena_init(&transport_arena, transport_storage, transport_storage_bytes)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server storage\n");
-        free(transport_storage);
+        sl_alloc_release(transport_storage);
         return 1;
     }
 
     status = sl_http_transport_server_init(&server, &transport_arena, &config, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: failed to initialize dev server: ", &transport_arena, &diag);
-        free(transport_storage);
+        sl_alloc_release(transport_storage);
         return 1;
     }
     status = sl_http_transport_server_listen(&server, &diag);
@@ -2050,7 +2050,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
             sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
         }
         (void)sl_http_transport_server_dispose(&server, NULL);
-        free(transport_storage);
+        sl_alloc_release(transport_storage);
         return 1;
     }
 
@@ -2063,7 +2063,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         result = 1;
     }
     (void)sl_http_transport_server_dispose(&server, NULL);
-    free(transport_storage);
+    sl_alloc_release(transport_storage);
     return result;
 }
 

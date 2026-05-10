@@ -7,7 +7,7 @@
 #include "intrinsics_db_bridge.h"
 #include "string_interop.h"
 
-#include <cstring>
+#include <algorithm>
 #include <limits>
 #include <memory>
 
@@ -614,7 +614,8 @@ bool sl_v8_db_uint8_array_from_bytes(v8::Isolate* isolate, SlBytes bytes,
         return false;
     }
     if (bytes.length != 0U) {
-        std::memcpy(backing->Data(), bytes.ptr, bytes.length);
+        std::copy(bytes.ptr, bytes.ptr + bytes.length,
+                  static_cast<unsigned char*>(backing->Data()));
     }
 
     v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));

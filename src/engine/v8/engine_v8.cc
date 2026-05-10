@@ -33,7 +33,6 @@
 #include <cstdint>
 #include <chrono>
 #include <cstdlib>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -371,7 +370,8 @@ uint64_t sl_v8_script_cache_key(SlStr source_name, SlStr source)
                             sizeof("sloppy-v8-script-cache-v1") - 1U);
     hash = sl_v8_hash_step(hash, 0U);
     if (v8_version != nullptr) {
-        hash = sl_v8_hash_bytes(hash, v8_version, strlen(v8_version));
+        SlStr version = sl_str_from_cstr(v8_version);
+        hash = sl_v8_hash_bytes(hash, version.ptr, version.length);
     }
     hash = sl_v8_hash_step(hash, 0U);
     hash = sl_v8_hash_bytes(hash, source_name.ptr, source_name.length);
@@ -399,19 +399,10 @@ std::string sl_v8_env_string(const char* name)
     if (name == nullptr) {
         return dir;
     }
-#ifdef _WIN32
-    char* value = nullptr;
-    size_t value_length = 0U;
-    if (_dupenv_s(&value, &value_length, name) == 0 && value != nullptr) {
-        dir.assign(value, value_length == 0U ? 0U : value_length - 1U);
-        free(value);
-    }
-#else
     const char* value = std::getenv(name);
     if (value != nullptr) {
         dir = value;
     }
-#endif
     return dir;
 }
 
@@ -492,7 +483,8 @@ uint64_t sl_v8_startup_snapshot_key(const SlEngineOptions* options)
                             sizeof("sloppy-v8-startup-snapshot-v1") - 1U);
     hash = sl_v8_hash_step(hash, 0U);
     if (v8_version != nullptr) {
-        hash = sl_v8_hash_bytes(hash, v8_version, strlen(v8_version));
+        SlStr version = sl_str_from_cstr(v8_version);
+        hash = sl_v8_hash_bytes(hash, version.ptr, version.length);
     }
     hash = sl_v8_hash_step(hash, 0U);
     for (size_t index = 0U; index < sizeof(mask); index += 1U) {

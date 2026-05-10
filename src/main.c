@@ -7,6 +7,7 @@
  * reload behavior.
  */
 #include "sloppy/arena.h"
+#include "sloppy/alloc.h"
 #include "sloppy/builder.h"
 #include "sloppy/capability.h"
 #include "sloppy/checked_math.h"

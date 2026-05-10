@@ -2,6 +2,7 @@ set(
     SLOPPY_CORE_KERNEL_SOURCES
     src/core/status.c
     src/core/source_loc.c
+    src/core/alloc.c
     src/core/string.c
     src/core/bytes.c
     src/core/cancellation.c
