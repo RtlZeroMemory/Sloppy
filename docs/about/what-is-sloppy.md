@@ -36,8 +36,9 @@ which provider implementations to wire up.
 
 ## What it isn't
 
-- **Not Node, Bun, or Deno.** Sloppy doesn't aim to run arbitrary npm
-  packages. It runs Sloppy applications.
+- **Not Node, Bun, or Deno.** Sloppy can bundle compatible installed
+  JavaScript packages, but it does not aim to run arbitrary npm packages or
+  existing Node apps unchanged. It runs Sloppy applications.
 - **Not a library you bolt onto an existing app.** It's a runtime; you
   invoke `sloppy run`, not `node`.
 - **Pre-alpha.** APIs and artifact formats can change between alpha revisions.

@@ -4,7 +4,9 @@ use oxc_span::Span;
 use serde_json::{json, Value};
 
 use crate::diagnostic::Diagnostic;
-use crate::graph::{route_parameter_names, ConfigurationPackageEntry, ExtractedApp, ProjectKind};
+use crate::graph::{
+    route_parameter_names, ConfigurationPackageEntry, DependencyGraph, ExtractedApp, ProjectKind,
+};
 use crate::hash::sha256_hex;
 use crate::source::line_column;
 use crate::validation::{
@@ -648,6 +650,15 @@ pub(crate) fn emit_plan(
         })
         .collect::<Vec<_>>();
 
+    let dependency_graph = if app.dependency_graph.has_entries() {
+        Some((
+            dependency_graph_json(&app.dependency_graph),
+            emit_dependency_graph(&app.dependency_graph)?,
+        ))
+    } else {
+        None
+    };
+
     let mut value = json!({
         "schemaVersion": 1,
         "kind": app.kind.as_str(),
@@ -736,6 +747,17 @@ pub(crate) fn emit_plan(
         value["strongPlan"]["evidence"]["program"] = json!(true);
         value["features"]["program"] = json!(true);
     }
+    if let Some((graph_json, graph_text)) = &dependency_graph {
+        value["dependencyGraph"] = graph_json.clone();
+        value["dependencyGraphArtifact"] = json!({
+            "path": "deps.graph.json",
+            "id": "sloppyc-deps-graph",
+            "hash": sha256_hex(graph_text)
+        });
+        value["features"]["dependencyGraph"] = json!(true);
+        value["strongPlan"]["evidence"]["dependencyGraph"] = json!(true);
+    }
+
     let mut required_features = Vec::new();
     let mut doctor_checks = Vec::new();
     if app.kind == ProjectKind::Program {
@@ -746,22 +768,22 @@ pub(crate) fn emit_plan(
         }));
     }
     if app.uses_time_runtime {
-        required_features.push("stdlib.time");
+        required_features.push("stdlib.time".to_string());
         value["strongPlan"]["evidence"]["time"] = json!(true);
         value["features"]["time"] = json!(true);
     }
     if app.uses_fs_runtime {
-        required_features.push("stdlib.fs");
+        required_features.push("stdlib.fs".to_string());
         value["strongPlan"]["evidence"]["filesystem"] = json!(true);
         value["features"]["fileSystem"] = json!(true);
     }
     if app.uses_crypto_runtime {
-        required_features.push("stdlib.crypto");
+        required_features.push("stdlib.crypto".to_string());
         value["strongPlan"]["evidence"]["crypto"] = json!(true);
         value["features"]["crypto"] = json!(true);
     }
     if app.uses_codec_runtime {
-        required_features.push("stdlib.codec");
+        required_features.push("stdlib.codec".to_string());
         value["strongPlan"]["evidence"]["codec"] = json!(true);
         value["features"]["codec"] = json!(true);
     }
@@ -782,17 +804,17 @@ pub(crate) fn emit_plan(
         }));
     }
     if app.uses_net_runtime {
-        required_features.push("stdlib.net");
+        required_features.push("stdlib.net".to_string());
         value["strongPlan"]["evidence"]["network"] = json!(true);
         value["features"]["network"] = json!(true);
     }
     if app.uses_os_runtime {
-        required_features.push("stdlib.os");
+        required_features.push("stdlib.os".to_string());
         value["strongPlan"]["evidence"]["os"] = json!(true);
         value["features"]["os"] = json!(true);
     }
     if app.uses_http_client_runtime {
-        required_features.push("stdlib.httpclient");
+        required_features.push("stdlib.httpclient".to_string());
         value["strongPlan"]["evidence"]["httpClient"] = json!(true);
         value["features"]["httpClient"] = json!(true);
         doctor_checks.push(json!({
@@ -802,12 +824,12 @@ pub(crate) fn emit_plan(
         }));
     }
     if app.uses_workers_runtime {
-        required_features.push("stdlib.workers");
+        required_features.push("stdlib.workers".to_string());
         value["strongPlan"]["evidence"]["workers"] = json!(true);
         value["features"]["workers"] = json!(true);
     }
     if app.uses_ffi_runtime || !ffi_libraries.is_empty() || !ffi_structs.is_empty() {
-        required_features.push("stdlib.ffi");
+        required_features.push("stdlib.ffi".to_string());
         value["strongPlan"]["evidence"]["ffi"] = json!(true);
         value["features"]["ffi"] = json!(true);
         value["native"] = json!({
@@ -825,6 +847,53 @@ pub(crate) fn emit_plan(
         value["features"]["health"] = json!(true);
     }
     if !required_features.is_empty() {
+        required_features.sort();
+        required_features.dedup();
+        value["requiredFeatures"] = json!(required_features);
+    }
+    if !doctor_checks.is_empty() {
+        value["doctorChecks"] = json!(doctor_checks);
+    }
+    if app.dependency_graph.has_entries() {
+        for builtin in &app.dependency_graph.node_builtins {
+            if builtin.status != "unsupported" {
+                required_features.push(format!(
+                    "node.compat.{}",
+                    builtin
+                        .specifier
+                        .strip_prefix("node:")
+                        .unwrap_or(&builtin.specifier)
+                        .replace('/', ".")
+                ));
+            }
+        }
+        doctor_checks.push(json!({
+            "id": "dependency.graph",
+            "status": "info",
+            "message": format!(
+                "Dependency graph emitted with {} package(s), {} module(s), and {} Node compatibility binding(s).",
+                app.dependency_graph.packages.len(),
+                app.dependency_graph.modules.len(),
+                app.dependency_graph.node_builtins.len()
+            )
+        }));
+        for finding in &app.dependency_graph.compatibility_findings {
+            doctor_checks.push(json!({
+                "id": finding.code,
+                "status": if finding.severity == "error" { "error" } else { "warn" },
+                "message": finding.message,
+                "package": finding.package,
+                "specifier": finding.specifier,
+                "hint": finding.hint
+            }));
+        }
+        if !doctor_checks.is_empty() {
+            value["doctorChecks"] = json!(doctor_checks);
+        }
+    }
+    if !required_features.is_empty() {
+        required_features.sort();
+        required_features.dedup();
         value["requiredFeatures"] = json!(required_features);
     }
     if !doctor_checks.is_empty() {
@@ -851,6 +920,154 @@ pub(crate) fn emit_plan(
                 format!("failed to emit app.plan.json: {error}"),
             )
         })
+}
+
+pub(crate) fn emit_dependency_graph(graph: &DependencyGraph) -> Result<String, Diagnostic> {
+    serde_json::to_string_pretty(&dependency_graph_json(graph))
+        .map(|json| format!("{json}\n"))
+        .map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_EMIT",
+                format!("failed to emit deps.graph.json: {error}"),
+            )
+        })
+}
+
+pub(crate) fn dependency_graph_json(graph: &DependencyGraph) -> Value {
+    let packages = graph
+        .packages
+        .iter()
+        .map(|package| {
+            let mut value = json!({
+                "name": package.name,
+                "root": package.root,
+                "entry": package.entry,
+                "format": package.format.as_str(),
+                "source": package.source
+            });
+            if let Some(version) = &package.version {
+                value["version"] = json!(version);
+            }
+            if let Some(package_json) = &package.package_json {
+                value["packageJson"] = json!(package_json);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+
+    let modules = graph
+        .modules
+        .iter()
+        .map(|module| {
+            let mut value = json!({
+                "id": module.id,
+                "source": module.source,
+                "format": module.format.as_str(),
+                "imports": module.imports,
+                "resolvedImports": module
+                    .resolved_imports
+                    .iter()
+                    .map(|import| {
+                        json!({
+                            "specifier": import.specifier,
+                            "resolvedId": import.resolved_id,
+                            "kind": import.kind
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "dynamicImports": module
+                    .dynamic_imports
+                    .iter()
+                    .map(|import| {
+                        let mut value = json!({
+                            "kind": import.kind
+                        });
+                        if let Some(specifier) = &import.specifier {
+                            value["specifier"] = json!(specifier);
+                        }
+                        if let Some(resolved_id) = &import.resolved_id {
+                            value["resolvedId"] = json!(resolved_id);
+                        }
+                        value
+                    })
+                    .collect::<Vec<_>>()
+            });
+            if let Some(package) = &module.package {
+                value["package"] = json!(package);
+            }
+            if let Some(included_by) = &module.included_by {
+                value["includedBy"] = json!(included_by);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+
+    let assets = graph
+        .assets
+        .iter()
+        .map(|asset| {
+            json!({
+                "path": asset.path,
+                "includedBy": asset.included_by
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let node_builtins = graph
+        .node_builtins
+        .iter()
+        .map(|builtin| {
+            let mut value = json!({
+                "specifier": builtin.specifier,
+                "status": builtin.status
+            });
+            if let Some(backing) = &builtin.backing {
+                value["backing"] = json!(backing);
+            }
+            if let Some(capability) = &builtin.capability {
+                value["capability"] = json!(capability);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+
+    let compatibility_findings = graph
+        .compatibility_findings
+        .iter()
+        .map(|finding| {
+            let mut value = json!({
+                "code": finding.code,
+                "severity": finding.severity,
+                "message": finding.message
+            });
+            if let Some(source) = &finding.source {
+                value["source"] = json!(source);
+            }
+            if let Some(package) = &finding.package {
+                value["package"] = json!(package);
+            }
+            if let Some(specifier) = &finding.specifier {
+                value["specifier"] = json!(specifier);
+            }
+            if let Some(hint) = &finding.hint {
+                value["hint"] = json!(hint);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "schemaVersion": 1,
+        "resolver": {
+            "profiles": graph.resolver_profiles,
+            "conditions": graph.resolver_conditions
+        },
+        "packages": packages,
+        "modules": modules,
+        "assets": assets,
+        "nodeBuiltins": node_builtins,
+        "compatibilityFindings": compatibility_findings
+    })
 }
 
 fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {

@@ -114,15 +114,22 @@ artifact paths: `artifacts/app.plan.json`, `artifacts/app.js`, and
 `artifacts/app.js.map`. The current package runner validates that the manifest
 exists and then loads that canonical `artifacts/` layout.
 
-## Stdlib Boundary
+## Dependencies And Stdlib Boundary
 
 Program Mode can import the documented Sloppy stdlib subpaths such as
 `sloppy/fs`, `sloppy/os`, `sloppy/time`, `sloppy/codec`, `sloppy/crypto`,
 `sloppy/net`, and `sloppy/workers`. Importing a stdlib subpath records the
 matching runtime feature in the Plan.
 
-Program Mode does not provide Node globals, npm dependency resolution, Node
-built-ins, FFI, or raw terminal APIs. Use the Sloppy stdlib surface instead:
+Program Mode can also bundle compatible installed pure-JavaScript packages from
+`node_modules`, CommonJS modules, JSON modules, string-literal dynamic imports,
+and computed dynamic imports that resolve inside `moduleInclude` graphs. See
+[Using installed packages](using-packages.md).
+
+Program Mode does not install packages, provide full Node globals, load native
+addons, implement FFI, or expose raw terminal APIs. Node builtin compatibility
+exists only through explicit `node:*` shim modules such as `node:path` and
+partial shims such as `node:fs`. Use the Sloppy stdlib surface when it fits:
 `File`/`Directory` from `sloppy/fs`, `Process` and `Environment` from
 `sloppy/os`, and so on.
 
@@ -130,3 +137,5 @@ built-ins, FFI, or raw terminal APIs. Use the Sloppy stdlib surface instead:
 
 - `examples/program-hello`
 - `examples/program-fs-process`
+- `examples/package-zod-like`
+- `examples/dynamic-module-include`

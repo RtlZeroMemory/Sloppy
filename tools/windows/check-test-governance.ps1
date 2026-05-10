@@ -288,6 +288,13 @@ function Test-NegatedStatementContext {
     return $Context -match '(?i)(\b(not|no|never|without|unsupported|avoid|against|deferred|blocked|before|unless|required|requires)\b|\b(does|do|must|is|are)\s+not\b|\bdoesn''t\b|\bdon''t\b|\bnon[- ]?(goal|goals|claim|claims)\b)'
 }
 
+function Test-ScopedNodeCompatibilityContext {
+    param([string]$Context)
+
+    return $Context -match '(?i)\bNode\b.*\b(compatible|compatibility|supported)\b' -and
+        $Context -match '(?i)\b(shim|shims|registry|roadmap|reference|partial|explicit|builtin|builtins|node:\*)\b'
+}
+
 function Get-UnsupportedStatementViolations {
     param([object[]]$Files)
 
@@ -320,7 +327,8 @@ function Get-UnsupportedStatementViolations {
             }
 
             if ($line -match '(?i)\b(Node|Bun|Deno|npm)\b.*\b(compatible|compatibility|drop-in|supported)\b' -and
-                -not (Test-NegatedStatementContext -Context $context)) {
+                -not (Test-NegatedStatementContext -Context $context) -and
+                -not (Test-ScopedNodeCompatibilityContext -Context $context)) {
                 $found.Add([pscustomobject]@{ Path = $file; Line = $lineNumber; Message = "current/public docs contain unsupported compatibility wording" }) | Out-Null
             }
 

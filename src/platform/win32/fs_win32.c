@@ -570,36 +570,44 @@ SlStatus sl_fs_platform_create_directory(SlStr path, bool recursive, SlDiag* out
 
 static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlDiag* out_diag)
 {
+    SlArenaMark tree_mark;
     wchar_t* pattern = NULL;
     WIN32_FIND_DATAW data;
     HANDLE find = INVALID_HANDLE_VALUE;
     SlStatus status;
 
+    tree_mark = sl_arena_mark(arena);
     status = sl_fs_win32_join_wide(arena, wide, L"*", &pattern);
     if (!sl_status_is_ok(status)) {
+        (void)sl_arena_reset_to(arena, tree_mark);
         return status;
     }
     find = FindFirstFileW(pattern, &data);
     if (find != INVALID_HANDLE_VALUE) {
         do {
+            SlArenaMark child_mark;
             wchar_t* child = NULL;
             if (wcscmp(data.cFileName, L".") == 0 || wcscmp(data.cFileName, L"..") == 0) {
                 continue;
             }
+            child_mark = sl_arena_mark(arena);
             status = sl_fs_win32_join_wide(arena, wide, data.cFileName, &child);
             if (!sl_status_is_ok(status)) {
                 FindClose(find);
+                (void)sl_arena_reset_to(arena, tree_mark);
                 return status;
             }
             if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
                 status = sl_fs_win32_delete_tree(arena, child, out_diag);
                 if (!sl_status_is_ok(status)) {
                     FindClose(find);
+                    (void)sl_arena_reset_to(arena, tree_mark);
                     return status;
                 }
                 if (!RemoveDirectoryW(child)) {
                     DWORD error = GetLastError();
                     FindClose(find);
+                    (void)sl_arena_reset_to(arena, tree_mark);
                     return sl_fs_win32_status(
                         error, out_diag, sl_str_from_cstr("filesystem directory delete failed"));
                 }
@@ -607,18 +615,22 @@ static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlD
             else if (!DeleteFileW(child)) {
                 DWORD error = GetLastError();
                 FindClose(find);
+                (void)sl_arena_reset_to(arena, tree_mark);
                 return sl_fs_win32_status(error, out_diag,
                                           sl_str_from_cstr("filesystem file delete failed"));
             }
+            (void)sl_arena_reset_to(arena, child_mark);
         } while (FindNextFileW(find, &data));
         if (GetLastError() != ERROR_NO_MORE_FILES) {
             DWORD error = GetLastError();
             FindClose(find);
+            (void)sl_arena_reset_to(arena, tree_mark);
             return sl_fs_win32_status(error, out_diag,
                                       sl_str_from_cstr("filesystem directory enumerate failed"));
         }
         FindClose(find);
     }
+    (void)sl_arena_reset_to(arena, tree_mark);
     return sl_status_ok();
 }
 

@@ -139,8 +139,8 @@
     "no signing",
     "no notarization",
     "Sloppy-managed app artifacts only",
-    "no npm app dependency support",
-    "no node_modules resolution for Sloppy apps",
+    "no package-manager install or semver solving",
+    "no runtime node_modules discovery for bundled Sloppy apps",
     "production readiness tracked separately",
     "performance comparisons require benchmark reports"
   ]

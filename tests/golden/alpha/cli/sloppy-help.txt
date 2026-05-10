@@ -16,6 +16,7 @@ Usage:
              [--once METHOD TARGET] [-- <program-args...>]
   sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
   sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
   sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
   sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
   sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output <path>]

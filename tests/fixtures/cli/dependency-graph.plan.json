@@ -1,0 +1,93 @@
+{
+  "dependencyGraph": {
+    "schemaVersion": 1,
+    "resolver": {
+      "profiles": ["program", "node-compat"],
+      "conditions": ["sloppy", "import", "require", "default"]
+    },
+    "packages": [
+      {
+        "name": "fixture-lib",
+        "version": "1.0.0",
+        "root": "node_modules/fixture-lib",
+        "entry": "node_modules/fixture-lib/index.js",
+        "format": "esm",
+        "source": "installed"
+      }
+    ],
+    "modules": [
+      {
+        "id": "src/main.ts",
+        "source": "app",
+        "format": "esm",
+        "imports": ["fixture-lib", "node:path"],
+        "resolvedImports": [
+          {
+            "specifier": "fixture-lib",
+            "resolvedId": "node_modules/fixture-lib/index.js",
+            "kind": "package"
+          },
+          {
+            "specifier": "node:path",
+            "resolvedId": "sloppy/node/path",
+            "kind": "node-compat-shim"
+          }
+        ],
+        "dynamicImports": []
+      },
+      {
+        "id": "node_modules/fixture-lib/index.js",
+        "package": "fixture-lib",
+        "source": "installed",
+        "format": "esm",
+        "imports": ["node:fs"],
+        "resolvedImports": [
+          {
+            "specifier": "node:fs",
+            "resolvedId": "sloppy/node/fs",
+            "kind": "node-compat-shim"
+          }
+        ],
+        "dynamicImports": [
+          {
+            "specifier": "./optional.js",
+            "resolvedId": "node_modules/fixture-lib/optional.js",
+            "kind": "string-literal"
+          }
+        ],
+        "includedBy": "fixture-lib"
+      }
+    ],
+    "assets": [
+      {
+        "path": "public/message.txt",
+        "includedBy": "assetInclude:public/message.txt"
+      }
+    ],
+    "nodeBuiltins": [
+      {
+        "specifier": "node:path",
+        "status": "supported",
+        "backing": "sloppy/node/path",
+        "capability": null
+      },
+      {
+        "specifier": "node:fs",
+        "status": "partial",
+        "backing": "sloppy/node/fs",
+        "capability": "fs"
+      }
+    ],
+    "compatibilityFindings": [
+      {
+        "code": "SLOPPYC_W_NODE_BUILTIN_PARTIAL",
+        "severity": "warn",
+        "message": "node:fs compatibility shim is partial",
+        "source": "node_modules/fixture-lib/index.js",
+        "package": "fixture-lib",
+        "specifier": "node:fs",
+        "hint": "Use sloppy/fs for Sloppy-owned filesystem behavior when possible."
+      }
+    ]
+  }
+}

@@ -26,7 +26,7 @@ use crate::diagnostic::Diagnostic;
 pub(crate) use crate::graph::*;
 use crate::hash::sha256_hex;
 use crate::parser::{source_type_for_path, ParseContext};
-use crate::plan_emit::emit_plan;
+use crate::plan_emit::{dependency_graph_json, emit_dependency_graph, emit_plan};
 use crate::resolver;
 use crate::source::{line_column, source_map_source_name};
 use crate::static_eval::{eval_string_argument, eval_string_expression, StaticStringEnv};
@@ -92,6 +92,8 @@ pub struct CompileOptions {
     pub config_overrides: Vec<(String, String)>,
     pub declared_capabilities: Vec<String>,
     pub declared_capabilities_from_sloppy_json: bool,
+    pub module_include: Vec<String>,
+    pub asset_include: Vec<String>,
     pub timings_json: Option<PathBuf>,
 }
 
@@ -106,6 +108,8 @@ impl CompileOptions {
             config_overrides: Vec::new(),
             declared_capabilities: Vec::new(),
             declared_capabilities_from_sloppy_json: false,
+            module_include: Vec::new(),
+            asset_include: Vec::new(),
             timings_json: None,
         }
     }
@@ -632,6 +636,44 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
                     );
                 }
             }
+        } else if arg == "--module-include" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires a project-relative glob after --module-include".to_string(),
+                );
+            }
+            let Some(pattern) = values[index].to_str() else {
+                return CliCommand::Invalid(
+                    "build module include pattern must be valid UTF-8".to_string(),
+                );
+            };
+            if !include_pattern_is_safe(pattern) {
+                return CliCommand::Invalid(
+                    "build --module-include expects a non-empty project-relative glob without '..'"
+                        .to_string(),
+                );
+            }
+            options.module_include.push(pattern.to_string());
+        } else if arg == "--asset-include" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires a project-relative glob after --asset-include".to_string(),
+                );
+            }
+            let Some(pattern) = values[index].to_str() else {
+                return CliCommand::Invalid(
+                    "build asset include pattern must be valid UTF-8".to_string(),
+                );
+            };
+            if !include_pattern_is_safe(pattern) {
+                return CliCommand::Invalid(
+                    "build --asset-include expects a non-empty project-relative glob without '..'"
+                        .to_string(),
+                );
+            }
+            options.asset_include.push(pattern.to_string());
         } else if arg == "--timings-json" || arg == "--diagnostics-timing-json" {
             index += 1;
             if index >= values.len() {
@@ -673,7 +715,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json|--diagnostics-timing-json <file>]\n",
+        "  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--module-include <glob>] [--asset-include <glob>] [--timings-json|--diagnostics-timing-json <file>]\n",
     );
     text
 }
@@ -920,6 +962,7 @@ struct ModuleGraph {
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
     uses_workers_runtime: bool,
+    dependency_graph: DependencyGraph,
     uses_ffi_runtime: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
     ffi_structs: Vec<FfiStructMetadata>,
@@ -932,11 +975,13 @@ struct CachedModule {
 }
 
 impl ModuleGraph {
-    fn new(entry_path: &Path) -> Self {
-        let mut entry_dir = entry_path
-            .parent()
-            .unwrap_or_else(|| Path::new(""))
-            .to_path_buf();
+    fn new(entry_path: &Path, source_root: Option<&Path>) -> Self {
+        let mut entry_dir = source_root.map(Path::to_path_buf).unwrap_or_else(|| {
+            entry_path
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .to_path_buf()
+        });
         if entry_dir.as_os_str().is_empty() {
             entry_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         }
@@ -956,6 +1001,7 @@ impl ModuleGraph {
             uses_os_runtime: false,
             uses_http_client_runtime: false,
             uses_workers_runtime: false,
+            dependency_graph: DependencyGraph::default(),
             uses_ffi_runtime: false,
             ffi_libraries: Vec::new(),
             ffi_structs: Vec::new(),
@@ -971,6 +1017,203 @@ impl ModuleGraph {
             });
         }
         name
+    }
+
+    fn add_package_record(&mut self, package: &resolver::PackageResolution) {
+        self.dependency_graph.ensure_defaults();
+        let root = resolver::normalized_artifact_id(&package.root, &self.entry_dir);
+        let package_json = package
+            .package_json
+            .as_ref()
+            .map(|path| resolver::normalized_artifact_id(path, &self.entry_dir));
+        let entry = resolver::normalized_artifact_id(&package.entry, &self.entry_dir);
+        if self
+            .dependency_graph
+            .packages
+            .iter()
+            .any(|record| record.name == package.name && record.root == root)
+        {
+            return;
+        }
+        self.dependency_graph.packages.push(PackageRecord {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            root,
+            package_json,
+            entry,
+            format: package.format,
+            source: package.source.to_string(),
+        });
+    }
+
+    fn add_node_builtin(&mut self, builtin: &resolver::NodeBuiltinResolution, source: &Path) {
+        self.dependency_graph.ensure_defaults();
+        if !self
+            .dependency_graph
+            .node_builtins
+            .iter()
+            .any(|record| record.specifier == builtin.specifier)
+        {
+            self.dependency_graph.node_builtins.push(NodeBuiltinRecord {
+                specifier: builtin.specifier.clone(),
+                status: builtin.status.to_string(),
+                backing: builtin.backing.map(ToOwned::to_owned),
+                capability: builtin.capability.map(ToOwned::to_owned),
+            });
+        }
+        if let Some(capability) = builtin.capability {
+            match capability {
+                "fs" => self.uses_fs_runtime = true,
+                "time" => self.uses_time_runtime = true,
+                "os" => self.uses_os_runtime = true,
+                "crypto" => self.uses_crypto_runtime = true,
+                _ => {}
+            }
+        }
+        if builtin.status == "unsupported" {
+            self.dependency_graph
+                .compatibility_findings
+                .push(CompatibilityFinding {
+                code: "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN".to_string(),
+                severity: "error".to_string(),
+                message: format!(
+                    "{} is not supported by Sloppy's Node compatibility registry yet.",
+                    builtin.specifier
+                ),
+                source: Some(source_map_source_name(source)),
+                package: None,
+                specifier: Some(builtin.specifier.clone()),
+                hint: Some(
+                    "Use a Sloppy stdlib API or a dependency path that avoids this Node builtin."
+                        .to_string(),
+                ),
+            });
+        }
+    }
+
+    fn add_dependency_module(
+        &mut self,
+        id: String,
+        source: String,
+        format: ModuleFormat,
+        package: Option<String>,
+        included_by: Option<String>,
+    ) {
+        self.dependency_graph.ensure_defaults();
+        if let Some(record) = self
+            .dependency_graph
+            .modules
+            .iter()
+            .position(|record| record.id == id)
+        {
+            let record = &mut self.dependency_graph.modules[record];
+            record.source = source;
+            record.format = format;
+            record.package = package;
+            if record.included_by.is_none() {
+                record.included_by = included_by;
+            }
+            return;
+        }
+        self.dependency_graph.modules.push(DependencyModuleRecord {
+            id,
+            source,
+            format,
+            package,
+            imports: Vec::new(),
+            resolved_imports: Vec::new(),
+            dynamic_imports: Vec::new(),
+            included_by,
+        });
+    }
+
+    fn add_dependency_import(
+        &mut self,
+        from_id: &str,
+        specifier: &str,
+        resolved_id: &str,
+        kind: &str,
+    ) {
+        if !self
+            .dependency_graph
+            .modules
+            .iter()
+            .any(|record| record.id == from_id)
+        {
+            self.add_dependency_module(
+                from_id.to_string(),
+                from_id.to_string(),
+                ModuleFormat::Esm,
+                None,
+                None,
+            );
+        }
+        let Some(module) = self
+            .dependency_graph
+            .modules
+            .iter_mut()
+            .find(|record| record.id == from_id)
+        else {
+            return;
+        };
+        module.imports.push(specifier.to_string());
+        module.resolved_imports.push(ResolvedImportRecord {
+            specifier: specifier.to_string(),
+            resolved_id: resolved_id.to_string(),
+            kind: kind.to_string(),
+        });
+    }
+
+    fn add_dynamic_import(
+        &mut self,
+        from_id: &str,
+        specifier: Option<String>,
+        resolved_id: Option<String>,
+        kind: &str,
+    ) {
+        if !self
+            .dependency_graph
+            .modules
+            .iter()
+            .any(|record| record.id == from_id)
+        {
+            self.add_dependency_module(
+                from_id.to_string(),
+                from_id.to_string(),
+                ModuleFormat::Esm,
+                None,
+                None,
+            );
+        }
+        let Some(module) = self
+            .dependency_graph
+            .modules
+            .iter_mut()
+            .find(|record| record.id == from_id)
+        else {
+            return;
+        };
+        module.dynamic_imports.push(DynamicImportRecord {
+            specifier,
+            resolved_id,
+            kind: kind.to_string(),
+        });
+    }
+
+    fn add_dependency_asset(&mut self, path: &Path, included_by: String) {
+        self.dependency_graph.ensure_defaults();
+        let path = resolver::normalized_artifact_id(path, &self.entry_dir);
+        if self
+            .dependency_graph
+            .assets
+            .iter()
+            .any(|asset| asset.path == path && asset.included_by == included_by)
+        {
+            return;
+        }
+        self.dependency_graph
+            .assets
+            .push(AssetRecord { path, included_by });
     }
 }
 
@@ -1062,7 +1305,7 @@ fn extract_for_options_with_metrics(
 ) -> Result<ExtractedApp, Diagnostic> {
     match options.kind {
         Some(ProjectKind::Web) => extract_with_metrics(path, source, metrics),
-        Some(ProjectKind::Program) => extract_program_with_metrics(path, source, metrics),
+        Some(ProjectKind::Program) => extract_program_with_metrics(path, source, options, metrics),
         None => {
             match extract_with_metrics(path, source, metrics.as_deref_mut()) {
                 Ok(app) => Ok(app),
@@ -1080,7 +1323,7 @@ fn extract_for_options_with_metrics(
                     if source_has_sloppy_web_import(path, source)? {
                         return Err(web_error);
                     }
-                    extract_program_with_metrics(path, source, metrics)
+                    extract_program_with_metrics(path, source, options, metrics)
                 }
             }
         }
@@ -1102,7 +1345,7 @@ fn extract_with_metrics(
     source: &str,
     metrics: Option<&mut CompileMetrics>,
 ) -> Result<ExtractedApp, Diagnostic> {
-    let mut graph = ModuleGraph::new(path);
+    let mut graph = ModuleGraph::new(path, None);
     extract_entry(path, source, &mut graph, metrics)
 }
 
@@ -1127,6 +1370,7 @@ fn source_has_sloppy_web_import(path: &Path, source: &str) -> Result<bool, Diagn
 fn extract_program_with_metrics(
     path: &Path,
     source: &str,
+    options: &CompileOptions,
     mut metrics: Option<&mut CompileMetrics>,
 ) -> Result<ExtractedApp, Diagnostic> {
     let parse_start = Instant::now();
@@ -1142,28 +1386,18 @@ fn extract_program_with_metrics(
                 .with_path(path),
         );
     }
-    for statement in &parsed.program.body {
-        if let Some(span) = statement_dynamic_import_span(statement) {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT",
-                "dynamic import is not supported by program mode",
-            )
-            .with_path(path)
-            .with_span(span)
-            .with_hint("Use static relative imports or documented Sloppy stdlib imports."));
-        }
-    }
-
     let extract_start = Instant::now();
-    let mut graph = ModuleGraph::new(path);
+    let mut graph = ModuleGraph::new(path, options.config_dir.as_deref());
     let mut modules = Vec::new();
     let mut visiting = BTreeSet::new();
     extract_program_module(path, source, &mut graph, &mut visiting, &mut modules)?;
+    apply_dependency_includes(path, &mut graph, &mut visiting, &mut modules, options)?;
     if let Some(metrics) = metrics.as_mut() {
         metrics.add_phase("extractMs", extract_start.elapsed());
     }
     let source_files = graph.source_files.clone();
     let capabilities = program_inferred_capabilities(&graph);
+    let dependency_graph = graph.dependency_graph.clone();
     Ok(ExtractedApp {
         kind: ProjectKind::Program,
         program_entry: Some(source_map_source_name(path)),
@@ -1196,6 +1430,7 @@ fn extract_program_with_metrics(
         ffi_structs: graph.ffi_structs,
         uses_health: false,
         problem_details: None,
+        dependency_graph,
     })
 }
 
@@ -1248,6 +1483,216 @@ fn push_program_inferred_capability(capabilities: &mut Vec<DatabaseCapability>, 
     });
 }
 
+fn include_pattern_is_safe(pattern: &str) -> bool {
+    let pattern = pattern.trim();
+    if pattern.is_empty() || pattern.as_bytes().contains(&0) {
+        return false;
+    }
+    let normalized = pattern.replace('\\', "/");
+    if normalized.starts_with('/') || normalized.starts_with("//") {
+        return false;
+    }
+    if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
+        return false;
+    }
+    !normalized
+        .split('/')
+        .any(|segment| segment == ".." || segment.is_empty())
+}
+
+fn apply_dependency_includes(
+    entry_path: &Path,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    options: &CompileOptions,
+) -> Result<(), Diagnostic> {
+    for pattern in &options.module_include {
+        let matches = collect_include_matches(&graph.entry_dir, pattern, IncludeKind::Module)
+            .map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INCLUDE",
+                    format!("failed to evaluate moduleInclude pattern '{pattern}': {error}"),
+                )
+                .with_path(entry_path)
+            })?;
+        if matches.is_empty() {
+            graph
+                .dependency_graph
+                .compatibility_findings
+                .push(CompatibilityFinding {
+                    code: "SLOPPYC_W_MODULE_INCLUDE_EMPTY".to_string(),
+                    severity: "warning".to_string(),
+                    message: format!("moduleInclude pattern '{pattern}' matched no modules."),
+                    source: Some("sloppy.json".to_string()),
+                    package: None,
+                    specifier: Some(pattern.clone()),
+                    hint: Some(
+                        "Check the project-relative glob or remove the include.".to_string(),
+                    ),
+                });
+            continue;
+        }
+        for module_path in matches {
+            let source = fs::read_to_string(&module_path).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INPUT",
+                    format!("failed to read moduleInclude file: {error}"),
+                )
+                .with_path(&module_path)
+            })?;
+            extract_program_module_with_context(
+                &module_path,
+                &source,
+                graph,
+                visiting,
+                modules,
+                None,
+                Some(format!("moduleInclude:{pattern}")),
+            )?;
+        }
+    }
+
+    for pattern in &options.asset_include {
+        let matches = collect_include_matches(&graph.entry_dir, pattern, IncludeKind::Asset)
+            .map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INCLUDE",
+                    format!("failed to evaluate assetInclude pattern '{pattern}': {error}"),
+                )
+                .with_path(entry_path)
+            })?;
+        if matches.is_empty() {
+            graph
+                .dependency_graph
+                .compatibility_findings
+                .push(CompatibilityFinding {
+                    code: "SLOPPYC_W_ASSET_INCLUDE_EMPTY".to_string(),
+                    severity: "warning".to_string(),
+                    message: format!("assetInclude pattern '{pattern}' matched no assets."),
+                    source: Some("sloppy.json".to_string()),
+                    package: None,
+                    specifier: Some(pattern.clone()),
+                    hint: Some(
+                        "Check the project-relative glob or remove the include.".to_string(),
+                    ),
+                });
+            continue;
+        }
+        for asset_path in matches {
+            graph.add_dependency_asset(&asset_path, format!("assetInclude:{pattern}"));
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum IncludeKind {
+    Module,
+    Asset,
+}
+
+fn collect_include_matches(
+    root: &Path,
+    pattern: &str,
+    kind: IncludeKind,
+) -> Result<Vec<PathBuf>, std::io::Error> {
+    let normalized_pattern = pattern.replace('\\', "/");
+    let include_node_modules =
+        normalized_pattern == "node_modules" || normalized_pattern.starts_with("node_modules/");
+    let mut files = Vec::new();
+    collect_include_files(root, root, include_node_modules, &mut files)?;
+    let mut matches = files
+        .into_iter()
+        .filter(|path| {
+            if kind == IncludeKind::Module && !module_include_extension_supported(path) {
+                return false;
+            }
+            let relative = resolver::normalized_artifact_id(path, root);
+            glob_match(&normalized_pattern, &relative)
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|path| resolver::normalized_artifact_id(path, root));
+    Ok(matches)
+}
+
+fn collect_include_files(
+    root: &Path,
+    dir: &Path,
+    include_node_modules: bool,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), std::io::Error> {
+    let mut entries = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if matches!(name.as_ref(), ".git" | ".sloppy" | "target")
+                || (name == "node_modules" && !include_node_modules)
+            {
+                continue;
+            }
+            if resolver::stays_within_source_root(&path, root) {
+                collect_include_files(root, &path, include_node_modules, files)?;
+            }
+        } else if file_type.is_file() && resolver::stays_within_source_root(&path, root) {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn module_include_extension_supported(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or(""),
+        "js" | "mjs" | "cjs" | "ts" | "tsx" | "json"
+    )
+}
+
+fn glob_match(pattern: &str, value: &str) -> bool {
+    let pattern = pattern.trim_matches('/');
+    let value = value.trim_matches('/');
+    let pattern_segments = pattern.split('/').collect::<Vec<_>>();
+    let value_segments = value.split('/').collect::<Vec<_>>();
+    glob_segments_match(&pattern_segments, &value_segments)
+}
+
+fn glob_segments_match(pattern: &[&str], value: &[&str]) -> bool {
+    if pattern.is_empty() {
+        return value.is_empty();
+    }
+    if pattern[0] == "**" {
+        return glob_segments_match(&pattern[1..], value)
+            || (!value.is_empty() && glob_segments_match(pattern, &value[1..]));
+    }
+    !value.is_empty()
+        && glob_segment_match(pattern[0], value[0])
+        && glob_segments_match(&pattern[1..], &value[1..])
+}
+
+fn glob_segment_match(pattern: &str, value: &str) -> bool {
+    fn inner(pattern: &[u8], value: &[u8]) -> bool {
+        match pattern.split_first() {
+            None => value.is_empty(),
+            Some((&b'*', rest)) => {
+                inner(rest, value) || (!value.is_empty() && inner(pattern, &value[1..]))
+            }
+            Some((&b'?', rest)) => !value.is_empty() && inner(rest, &value[1..]),
+            Some((&literal, rest)) => {
+                value.first().is_some_and(|candidate| *candidate == literal)
+                    && inner(rest, &value[1..])
+            }
+        }
+    }
+    inner(pattern.as_bytes(), value.as_bytes())
+}
+
 fn extract_program_module(
     path: &Path,
     source: &str,
@@ -1255,30 +1700,95 @@ fn extract_program_module(
     visiting: &mut BTreeSet<PathBuf>,
     modules: &mut Vec<ProgramModule>,
 ) -> Result<(), Diagnostic> {
+    extract_program_module_with_context(path, source, graph, visiting, modules, None, None)
+}
+
+fn extract_program_module_with_context(
+    path: &Path,
+    source: &str,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+    included_by: Option<String>,
+) -> Result<(), Diagnostic> {
     let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    if modules
-        .iter()
-        .any(|module| module.id == source_map_source_name(&canonical))
-    {
+    let package_type = if package.is_some() {
+        resolver::package_type_for_path(&canonical)
+    } else {
+        "module".to_string()
+    };
+    let format = resolver::module_format_for_path(&canonical, &package_type);
+    let id = if included_by.is_some() && package.is_none() {
+        resolver::normalized_artifact_id(&canonical, &graph.entry_dir)
+    } else {
+        program_module_id(graph, &canonical, package.as_deref())
+    };
+    if modules.iter().any(|module| module.id == id) {
         return Ok(());
     }
     if !visiting.insert(canonical.clone()) {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_MODULE_CYCLE",
-            "program mode does not support cyclic relative imports",
-        )
-        .with_path(path));
+        graph.dependency_graph.ensure_defaults();
+        graph
+            .dependency_graph
+            .compatibility_findings
+            .push(CompatibilityFinding {
+                code: "SLOPPYC_W_MODULE_CYCLE_BASIC".to_string(),
+                severity: "warning".to_string(),
+                message:
+                    "module cycle uses Sloppy's basic module-cache semantics; exact ESM temporal-dead-zone behavior is not guaranteed yet"
+                        .to_string(),
+                source: Some(id),
+                package: package.clone(),
+                specifier: None,
+                hint: Some("Avoid depending on uninitialized ESM bindings across cycles.".to_string()),
+            });
+        return Ok(());
     }
     let source_name = graph.record_source(&canonical, source);
-    let transformed = transform_program_source(&canonical, source, graph, visiting, modules)?;
+    let transformed = transform_program_source(
+        &canonical,
+        source,
+        graph,
+        visiting,
+        modules,
+        package.clone(),
+        format,
+    )?;
     visiting.remove(&canonical);
+    if graph.dependency_graph.has_entries()
+        || package.is_some()
+        || included_by.is_some()
+        || format != ModuleFormat::Esm
+    {
+        graph.add_dependency_module(
+            id.clone(),
+            resolver::normalized_artifact_id(&canonical, &graph.entry_dir),
+            format,
+            package.clone(),
+            included_by,
+        );
+    }
     modules.push(ProgramModule {
-        id: source_name.clone(),
+        id,
         source_name,
         source: source.to_string(),
         emitted_source: transformed,
+        format,
     });
     Ok(())
+}
+
+fn program_module_id(graph: &ModuleGraph, path: &Path, package: Option<&str>) -> String {
+    if package.is_some()
+        || path
+            .components()
+            .any(|component| component.as_os_str() == "node_modules")
+    {
+        resolver::normalized_artifact_id(path, &graph.entry_dir)
+    } else {
+        source_map_source_name(path)
+    }
 }
 
 fn transform_program_source(
@@ -1287,7 +1797,26 @@ fn transform_program_source(
     graph: &mut ModuleGraph,
     visiting: &mut BTreeSet<PathBuf>,
     modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+    format: ModuleFormat,
 ) -> Result<String, Diagnostic> {
+    if format == ModuleFormat::Json {
+        let value: Value = serde_json::from_str(source).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_PARSE",
+                format!("failed to parse JSON module: {error}"),
+            )
+            .with_path(path)
+        })?;
+        return Ok(format!(
+            "const __sloppy_json_module = {}; module.exports = Object(__sloppy_json_module) === __sloppy_json_module ? __sloppy_json_module : {{ default: __sloppy_json_module }}; module.exports.default = __sloppy_json_module;\n",
+            serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
+        ));
+    }
+    if format == ModuleFormat::CommonJs {
+        analyze_commonjs_requires(path, source, graph, visiting, modules, package.clone())?;
+        return Ok(source.to_string());
+    }
     let source_type = source_type_for_path(path, ParseContext::Module)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
@@ -1309,9 +1838,16 @@ fn transform_program_source(
         &mut graph.ffi_libraries,
         &mut graph.ffi_structs,
     )?;
-    analyze_program_imports(path, &program.body, graph, visiting, modules)?;
+    analyze_program_imports(
+        path,
+        &program.body,
+        graph,
+        visiting,
+        modules,
+        package.clone(),
+    )?;
     let transformed = transpile_program_typescript(path, &allocator, &mut program)?;
-    rewrite_program_module_exports(path, &transformed)
+    rewrite_program_module_exports(path, &transformed, graph, package)
 }
 
 fn analyze_program_imports(
@@ -1320,20 +1856,289 @@ fn analyze_program_imports(
     graph: &mut ModuleGraph,
     visiting: &mut BTreeSet<PathBuf>,
     modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
 ) -> Result<(), Diagnostic> {
     for statement in statements {
-        if let Some(span) = statement_dynamic_import_span(statement) {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT",
-                "dynamic import is not supported by program mode",
-            )
-            .with_path(path)
-            .with_span(span)
-            .with_hint("Use static relative imports or documented Sloppy stdlib imports."));
-        }
+        analyze_statement_dynamic_imports(
+            path,
+            statement,
+            graph,
+            visiting,
+            modules,
+            package.clone(),
+        )?;
         if let Statement::ImportDeclaration(import) = statement {
-            analyze_program_import(path, import, graph, visiting, modules)?;
+            analyze_program_import(path, import, graph, visiting, modules, package.clone())?;
         }
+    }
+    Ok(())
+}
+
+fn analyze_statement_dynamic_imports(
+    path: &Path,
+    statement: &Statement<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    analyze_expression_dynamic_imports(
+                        path,
+                        init,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Statement::ExpressionStatement(statement) => analyze_expression_dynamic_imports(
+            path,
+            &statement.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                analyze_expression_dynamic_imports(
+                    path, argument, graph, visiting, modules, package,
+                )?;
+            }
+        }
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                analyze_statement_dynamic_imports(
+                    path,
+                    statement,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Statement::FunctionDeclaration(function) => {
+            if let Some(body) = &function.body {
+                for statement in &body.statements {
+                    analyze_statement_dynamic_imports(
+                        path,
+                        statement,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Statement::ExportNamedDeclaration(export) => {
+            if let Some(declaration) = &export.declaration {
+                analyze_declaration_dynamic_imports(
+                    path,
+                    declaration,
+                    graph,
+                    visiting,
+                    modules,
+                    package,
+                )?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn analyze_declaration_dynamic_imports(
+    path: &Path,
+    declaration: &Declaration<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match declaration {
+        Declaration::FunctionDeclaration(function) => {
+            if let Some(body) = &function.body {
+                for statement in &body.statements {
+                    analyze_statement_dynamic_imports(
+                        path,
+                        statement,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Declaration::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    analyze_expression_dynamic_imports(
+                        path,
+                        init,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn analyze_expression_dynamic_imports(
+    path: &Path,
+    expression: &Expression<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match expression {
+        Expression::ImportExpression(import) => {
+            let from_id = program_module_id(graph, path, package.as_deref());
+            if let Some(specifier) = expression_string_literal(&import.source) {
+                let resolved_id = resolve_program_dependency(
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package,
+                        import_mode: true,
+                        span: import.span,
+                    },
+                    graph,
+                    visiting,
+                    modules,
+                )?;
+                graph.add_dynamic_import(
+                    &from_id,
+                    Some(specifier.to_string()),
+                    resolved_id,
+                    "string-literal",
+                );
+            } else {
+                graph.add_dynamic_import(&from_id, None, None, "computed");
+            }
+        }
+        Expression::AwaitExpression(await_expression) => analyze_expression_dynamic_imports(
+            path,
+            &await_expression.argument,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        Expression::CallExpression(call) => {
+            analyze_expression_dynamic_imports(
+                path,
+                &call.callee,
+                graph,
+                visiting,
+                modules,
+                package.clone(),
+            )?;
+            for argument in &call.arguments {
+                analyze_argument_dynamic_imports(
+                    path,
+                    argument,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => analyze_expression_dynamic_imports(
+            path,
+            &parenthesized.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        Expression::ArrowFunctionExpression(function) => {
+            for statement in &function.body.statements {
+                analyze_statement_dynamic_imports(
+                    path,
+                    statement,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn analyze_argument_dynamic_imports(
+    path: &Path,
+    argument: &Argument<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match argument {
+        Argument::ImportExpression(import) => {
+            let from_id = program_module_id(graph, path, package.as_deref());
+            if let Some(specifier) = expression_string_literal(&import.source) {
+                let resolved_id = resolve_program_dependency(
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package,
+                        import_mode: true,
+                        span: import.span,
+                    },
+                    graph,
+                    visiting,
+                    modules,
+                )?;
+                graph.add_dynamic_import(
+                    &from_id,
+                    Some(specifier.to_string()),
+                    resolved_id,
+                    "string-literal",
+                );
+            } else {
+                graph.add_dynamic_import(&from_id, None, None, "computed");
+            }
+        }
+        Argument::CallExpression(call) => {
+            for argument in &call.arguments {
+                analyze_argument_dynamic_imports(
+                    path,
+                    argument,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Argument::ParenthesizedExpression(parenthesized) => analyze_expression_dynamic_imports(
+            path,
+            &parenthesized.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        _ => {}
     }
     Ok(())
 }
@@ -1344,12 +2149,14 @@ fn analyze_program_import(
     graph: &mut ModuleGraph,
     visiting: &mut BTreeSet<PathBuf>,
     modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
 ) -> Result<(), Diagnostic> {
     let specifier = import.source.value.as_str();
     if !program_import_has_runtime_value(import) {
         return Ok(());
     }
     let import_kind = resolver::classify_import(path, specifier);
+    let from_id = program_module_id(graph, path, package.as_deref());
     match import_kind {
         resolver::ImportKind::Relative(resolved) => {
             let source = fs::read_to_string(&resolved).map_err(|error| {
@@ -1359,7 +2166,18 @@ fn analyze_program_import(
                 )
                 .with_path(&resolved)
             })?;
-            extract_program_module(&resolved, &source, graph, visiting, modules)?;
+            let resolved_package = package.clone();
+            let resolved_id = program_module_id(graph, &resolved, resolved_package.as_deref());
+            graph.add_dependency_import(&from_id, specifier, &resolved_id, "relative");
+            extract_program_module_with_context(
+                &resolved,
+                &source,
+                graph,
+                visiting,
+                modules,
+                resolved_package,
+                Some(from_id),
+            )?;
             Ok(())
         }
         resolver::ImportKind::SlopStdlib
@@ -1375,6 +2193,74 @@ fn analyze_program_import(
             mark_program_import(graph, &import_kind, import);
             Ok(())
         }
+        resolver::ImportKind::NodeBuiltin(builtin) => {
+            if builtin.status == "unsupported" {
+                graph.add_node_builtin(&builtin, path);
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
+                    format!(
+                        "{} is not supported by Sloppy's Node compatibility registry yet.",
+                        builtin.specifier
+                    ),
+                )
+                .with_path(path)
+                .with_span(import.source.span)
+                .with_hint(
+                    "Use a Sloppy stdlib API or a package path that avoids this Node builtin.",
+                ));
+            }
+            graph.add_node_builtin(&builtin, path);
+            if let Some(backing) = builtin.backing {
+                ensure_node_compat_module(backing, graph, modules);
+                graph.add_dependency_import(&from_id, specifier, backing, "node-compat-shim");
+            }
+            Ok(())
+        }
+        resolver::ImportKind::Package(package_resolution) => {
+            graph.add_package_record(&package_resolution);
+            let source = fs::read_to_string(&package_resolution.entry).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INPUT",
+                    format!("failed to read package module: {error}"),
+                )
+                .with_path(&package_resolution.entry)
+            })?;
+            let resolved_id = program_module_id(
+                graph,
+                &package_resolution.entry,
+                Some(&package_resolution.name),
+            );
+            graph.add_dependency_import(&from_id, specifier, &resolved_id, "package");
+            extract_program_module_with_context(
+                &package_resolution.entry,
+                &source,
+                graph,
+                visiting,
+                modules,
+                Some(package_resolution.name),
+                Some(from_id),
+            )
+        }
+        resolver::ImportKind::NativeAddonUnsupported(package_resolution) => {
+            graph.add_package_record(&package_resolution);
+            Err(Diagnostic::new(
+                "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+                format!(
+                    "Package \"{}\" requires a native Node addon. Sloppy does not support Node native addons yet.",
+                    package_resolution.name
+                ),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency."))
+        }
+        resolver::ImportKind::PackageExportUnsupported(package_name) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
+            format!("Package \"{package_name}\" has an exports shape Sloppy does not support yet."),
+        )
+        .with_path(path)
+        .with_span(import.source.span)
+        .with_hint("Use a supported exports condition or a package main/subpath entry.")),
         resolver::ImportKind::SqliteProvider => Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT",
             "program mode does not support provider imports yet",
@@ -1382,17 +2268,487 @@ fn analyze_program_import(
         .with_path(path)
         .with_span(import.source.span)
         .with_hint("Use documented Sloppy stdlib imports or relative source imports.")),
-        resolver::ImportKind::UnresolvedRelative(specifier)
-        | resolver::ImportKind::UnsupportedBare(specifier)
-        | resolver::ImportKind::Remote(specifier) => Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+        resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!(
-                "Program Mode does not support npm or Node built-in imports yet: \"{specifier}\""
+                "Package \"{specifier}\" was not found from {}.",
+                source_map_source_name(path)
             ),
         )
         .with_path(path)
         .with_span(import.source.span)
-        .with_hint("Use Sloppy stdlib imports or relative modules.")),
+        .with_hint(format!(
+            "Install it with your package manager, for example:\n  npm install {specifier}"
+        ))),
+        resolver::ImportKind::UnresolvedRelative(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+            format!("relative import \"{specifier}\" could not be resolved"),
+        )
+        .with_path(path)
+        .with_span(import.source.span)
+        .with_hint("Use a relative .js/.mjs/.cjs/.ts/.tsx/.json module inside the source root.")),
+        resolver::ImportKind::Remote(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            format!("remote import \"{specifier}\" is outside the sealed Sloppy artifact graph"),
+        )
+        .with_path(path)
+        .with_span(import.source.span)
+        .with_hint("Use installed packages, Sloppy stdlib imports, or relative modules.")),
+    }
+}
+
+fn analyze_commonjs_requires(
+    path: &Path,
+    source: &str,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::mjs());
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(error) = parsed.errors.into_iter().next() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_PARSE",
+            format!("failed to parse CommonJS module: {error}"),
+        )
+        .with_path(path));
+    }
+    for statement in &parsed.program.body {
+        analyze_commonjs_statement_requires(
+            path,
+            statement,
+            graph,
+            visiting,
+            modules,
+            package.clone(),
+        )?;
+    }
+    Ok(())
+}
+
+fn analyze_commonjs_statement_requires(
+    path: &Path,
+    statement: &Statement<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    analyze_commonjs_expression_requires(
+                        path,
+                        init,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Statement::ExpressionStatement(statement) => analyze_commonjs_expression_requires(
+            path,
+            &statement.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                analyze_commonjs_statement_requires(
+                    path,
+                    statement,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Statement::IfStatement(statement) => {
+            analyze_commonjs_expression_requires(
+                path,
+                &statement.test,
+                graph,
+                visiting,
+                modules,
+                package.clone(),
+            )?;
+            analyze_commonjs_statement_requires(
+                path,
+                &statement.consequent,
+                graph,
+                visiting,
+                modules,
+                package.clone(),
+            )?;
+            if let Some(alternate) = &statement.alternate {
+                analyze_commonjs_statement_requires(
+                    path, alternate, graph, visiting, modules, package,
+                )?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn analyze_commonjs_expression_requires(
+    path: &Path,
+    expression: &Expression<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match expression {
+        Expression::CallExpression(call) => {
+            if let Some(specifier) = call_static_require_specifier(call) {
+                resolve_program_dependency(
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package: package.clone(),
+                        import_mode: false,
+                        span: call.span,
+                    },
+                    graph,
+                    visiting,
+                    modules,
+                )?;
+            }
+            for argument in &call.arguments {
+                analyze_commonjs_argument_requires(
+                    path,
+                    argument,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => analyze_commonjs_expression_requires(
+            path,
+            &parenthesized.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                if let Some(expression) = element.as_expression() {
+                    analyze_commonjs_expression_requires(
+                        path,
+                        expression,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    analyze_commonjs_expression_requires(
+                        path,
+                        &property.value,
+                        graph,
+                        visiting,
+                        modules,
+                        package.clone(),
+                    )?;
+                }
+            }
+        }
+        Expression::AssignmentExpression(assignment) => analyze_commonjs_expression_requires(
+            path,
+            &assignment.right,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        _ => {}
+    }
+    Ok(())
+}
+
+fn analyze_commonjs_argument_requires(
+    path: &Path,
+    argument: &Argument<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+    package: Option<String>,
+) -> Result<(), Diagnostic> {
+    match argument {
+        Argument::CallExpression(call) => {
+            if let Some(specifier) = call_static_require_specifier(call) {
+                resolve_program_dependency(
+                    ProgramDependencyRequest {
+                        path,
+                        specifier,
+                        package: package.clone(),
+                        import_mode: false,
+                        span: call.span,
+                    },
+                    graph,
+                    visiting,
+                    modules,
+                )?;
+            }
+            for nested in &call.arguments {
+                analyze_commonjs_argument_requires(
+                    path,
+                    nested,
+                    graph,
+                    visiting,
+                    modules,
+                    package.clone(),
+                )?;
+            }
+        }
+        Argument::ParenthesizedExpression(parenthesized) => analyze_commonjs_expression_requires(
+            path,
+            &parenthesized.expression,
+            graph,
+            visiting,
+            modules,
+            package,
+        )?,
+        _ => {}
+    }
+    Ok(())
+}
+
+fn call_static_require_specifier<'a>(call: &'a CallExpression<'a>) -> Option<&'a str> {
+    let Expression::Identifier(callee) = &call.callee else {
+        return None;
+    };
+    if callee.name.as_str() != "require" || call.arguments.len() != 1 {
+        return None;
+    }
+    call.arguments.first().and_then(string_argument)
+}
+
+fn ensure_node_compat_module(
+    backing: &str,
+    graph: &mut ModuleGraph,
+    modules: &mut Vec<ProgramModule>,
+) {
+    if backing == "sloppy/node/fs" {
+        ensure_node_compat_module("sloppy/node/fs/promises", graph, modules);
+    }
+    if modules.iter().any(|module| module.id == backing) {
+        return;
+    }
+    let Some(source) = node_compat_module_source(backing) else {
+        return;
+    };
+    graph.dependency_graph.ensure_defaults();
+    graph.add_dependency_module(
+        backing.to_string(),
+        backing.to_string(),
+        ModuleFormat::CommonJs,
+        None,
+        Some("node-compat-registry".to_string()),
+    );
+    modules.push(ProgramModule {
+        id: backing.to_string(),
+        source_name: backing.to_string(),
+        source: source.to_string(),
+        emitted_source: source.to_string(),
+        format: ModuleFormat::CommonJs,
+    });
+}
+
+fn node_compat_module_source(backing: &str) -> Option<&'static str> {
+    match backing {
+        "sloppy/node/path" => Some(NODE_PATH_SHIM),
+        "sloppy/node/events" => Some(NODE_EVENTS_SHIM),
+        "sloppy/node/url" => Some(NODE_URL_SHIM),
+        "sloppy/node/querystring" => Some(NODE_QUERYSTRING_SHIM),
+        "sloppy/node/buffer" => Some(NODE_BUFFER_SHIM),
+        "sloppy/node/util" => Some(NODE_UTIL_SHIM),
+        "sloppy/node/timers" => Some(NODE_TIMERS_SHIM),
+        "sloppy/node/fs" => Some(NODE_FS_SHIM),
+        "sloppy/node/fs/promises" => Some(NODE_FS_PROMISES_SHIM),
+        "sloppy/node/os" => Some(NODE_OS_SHIM),
+        "sloppy/node/process" => Some(NODE_PROCESS_SHIM),
+        "sloppy/node/crypto" => Some(NODE_CRYPTO_SHIM),
+        _ => None,
+    }
+}
+
+const NODE_PATH_SHIM: &str = r#"function parts(values){return values.filter((value)=>value!==undefined&&value!==null).map(String).filter(Boolean);}
+function normalize(path){const input=String(path||"");const absolute=input.startsWith("/");const out=[];for(const part of input.replace(/\\/g,"/").split("/")){if(!part||part===".")continue;if(part===".."){if(out.length&&out[out.length-1]!==".."){out.pop();}else if(!absolute){out.push("..");}}else{out.push(part);}}return `${absolute?"/":""}${out.join("/")}`||".";}
+function join(){return normalize(parts(Array.prototype.slice.call(arguments)).join("/"));}
+function resolve(){let output="";for(const part of parts(Array.prototype.slice.call(arguments))){output=part.startsWith("/")?part:`${output}/${part}`;}return normalize(output||".");}
+function basename(path,ext){let base=String(path).replace(/\\/g,"/").split("/").filter(Boolean).pop()||"";if(ext&&base.endsWith(ext)){base=base.slice(0,-String(ext).length);}return base;}
+function dirname(path){const text=normalize(path);const index=text.lastIndexOf("/");if(index<=0)return text.startsWith("/")?"/":".";return text.slice(0,index);}
+function extname(path){const base=basename(path);const index=base.lastIndexOf(".");return index>0?base.slice(index):"";}
+function isAbsolute(path){return String(path).startsWith("/")||/^[A-Za-z]:[\\/]/.test(String(path));}
+const posix=Object.freeze({join,resolve,basename,dirname,extname,normalize,isAbsolute,sep:"/",delimiter:":"});
+const win32=Object.freeze({...posix,sep:"\\",delimiter:";"});
+module.exports={join,resolve,basename,dirname,extname,normalize,isAbsolute,posix,win32,sep:"/",delimiter:":",default:null};module.exports.default=module.exports;"#;
+
+const NODE_EVENTS_SHIM: &str = r#"class EventEmitter{constructor(){this._events=Object.create(null);}on(name,fn){if(typeof fn!=="function")throw new TypeError("listener must be a function");(this._events[name]??=[]).push(fn);return this;}addListener(name,fn){return this.on(name,fn);}off(name,fn){return this.removeListener(name,fn);}removeListener(name,fn){const list=this._events[name];if(!list)return this;this._events[name]=list.filter((item)=>item!==fn&&item._once!==fn);return this;}once(name,fn){const wrapped=(...args)=>{this.removeListener(name,wrapped);return fn.apply(this,args);};wrapped._once=fn;return this.on(name,wrapped);}emit(name,...args){const list=(this._events[name]||[]).slice();for(const fn of list){fn.apply(this,args);}return list.length>0;}listenerCount(name){return (this._events[name]||[]).length;}removeAllListeners(name){if(name===undefined){this._events=Object.create(null);}else{delete this._events[name];}return this;}}
+module.exports={EventEmitter,default:EventEmitter};"#;
+
+const NODE_URL_SHIM: &str = r#"module.exports={URL:globalThis.URL,URLSearchParams:globalThis.URLSearchParams,pathToFileURL(path){return new URL(`file://${String(path).replace(/\\/g,"/")}`);},fileURLToPath(value){return new URL(value).pathname;},default:null};module.exports.default=module.exports;"#;
+
+const NODE_QUERYSTRING_SHIM: &str = r#"function parse(text){const out=Object.create(null);for(const part of String(text||"").split("&")){if(!part)continue;const [k,v=""]=part.split("=");out[decodeURIComponent(k.replace(/\+/g," "))]=decodeURIComponent(v.replace(/\+/g," "));}return out;}function stringify(value){return Object.entries(value||{}).map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");}module.exports={parse,stringify,escape:encodeURIComponent,unescape:decodeURIComponent,default:null};module.exports.default=module.exports;"#;
+
+const NODE_BUFFER_SHIM: &str = r#"const textEncoder=new TextEncoder();const textDecoder=new TextDecoder();class Buffer extends Uint8Array{static from(value,encoding){if(typeof value==="string")return new Buffer(textEncoder.encode(value));if(value instanceof ArrayBuffer)return new Buffer(value);if(value instanceof Uint8Array)return new Buffer(value);if(Array.isArray(value))return new Buffer(value);throw new TypeError("Buffer.from only supports string, ArrayBuffer, Uint8Array, or byte arrays in Sloppy.");}static isBuffer(value){return value instanceof Buffer;}toString(encoding="utf8"){if(encoding!=="utf8"&&encoding!=="utf-8")throw new Error("node:buffer shim only implements utf8 toString.");return textDecoder.decode(this);}}module.exports={Buffer,default:Buffer};"#;
+
+const NODE_UTIL_SHIM: &str = r#"function inspect(value){try{return typeof value==="string"?value:JSON.stringify(value,null,2);}catch(_){return String(value);}}function promisify(fn){if(typeof fn!=="function")throw new TypeError("promisify expects a function");return function(){const args=Array.prototype.slice.call(arguments);return new Promise((resolve,reject)=>fn.call(this,...args,(error,value)=>error?reject(error):resolve(value)));};}module.exports={inspect,promisify,types:{isUint8Array(value){return value instanceof Uint8Array;}},default:null};module.exports.default=module.exports;"#;
+
+const NODE_TIMERS_SHIM: &str = r#"function unsupported(name){return function(){throw new Error(`node:timers.${name} is not implemented by Sloppy's node:timers compatibility shim.`);};}module.exports={setTimeout:globalThis.setTimeout||unsupported("setTimeout"),clearTimeout:globalThis.clearTimeout||unsupported("clearTimeout"),setInterval:globalThis.setInterval||unsupported("setInterval"),clearInterval:globalThis.clearInterval||unsupported("clearInterval"),setImmediate:unsupported("setImmediate"),clearImmediate:unsupported("clearImmediate"),default:null};module.exports.default=module.exports;"#;
+
+const NODE_FS_SHIM: &str = r#"function unsupported(name){return function(){throw new Error(`node:fs.${name} is not implemented by Sloppy's node:fs compatibility shim. Use sloppy/fs when available, or avoid this package path.`);};}module.exports={readFile:unsupported("readFile"),writeFile:unsupported("writeFile"),watch:unsupported("watch"),promises:require("sloppy/node/fs/promises"),default:null};module.exports.default=module.exports;"#;
+
+const NODE_FS_PROMISES_SHIM: &str = r#"function unsupported(name){return async function(){throw new Error(`node:fs/promises.${name} is not implemented by Sloppy's node:fs/promises compatibility shim. Use sloppy/fs when available, or avoid this package path.`);};}module.exports={readFile:unsupported("readFile"),writeFile:unsupported("writeFile"),mkdir:unsupported("mkdir"),default:null};module.exports.default=module.exports;"#;
+
+const NODE_OS_SHIM: &str = r#"function runtime(){return globalThis.__sloppy_runtime||{};}function platform(){return runtime().System?.platform||"sloppy";}function tmpdir(){return ".";}function homedir(){return ".";}module.exports={platform,tmpdir,homedir,EOL:"\n",default:null};module.exports.default=module.exports;"#;
+
+const NODE_PROCESS_SHIM: &str = r#"const process={env:Object.freeze({}),argv:[],cwd(){return "";},platform:"sloppy",versions:Object.freeze({sloppy:"0.1.0"}),nextTick(fn,...args){queueMicrotask(()=>fn(...args));}};module.exports=process;module.exports.default=process;"#;
+
+const NODE_CRYPTO_SHIM: &str = r#"function unsupported(name){return function(){throw new Error(`node:crypto.${name} is not implemented by Sloppy's node:crypto compatibility shim. Use sloppy/crypto when available, or avoid this package path.`);};}module.exports={randomUUID:unsupported("randomUUID"),createHash:unsupported("createHash"),createHmac:unsupported("createHmac"),default:null};module.exports.default=module.exports;"#;
+
+struct ProgramDependencyRequest<'a> {
+    path: &'a Path,
+    specifier: &'a str,
+    package: Option<String>,
+    import_mode: bool,
+    span: Span,
+}
+
+fn resolve_program_dependency(
+    request: ProgramDependencyRequest<'_>,
+    graph: &mut ModuleGraph,
+    visiting: &mut BTreeSet<PathBuf>,
+    modules: &mut Vec<ProgramModule>,
+) -> Result<Option<String>, Diagnostic> {
+    let path = request.path;
+    let specifier = request.specifier;
+    let package = request.package;
+    let span = request.span;
+    let from_id = program_module_id(graph, path, package.as_deref());
+    match resolver::classify_import_with_mode(path, specifier, request.import_mode) {
+        resolver::ImportKind::Relative(resolved) => {
+            let source = fs::read_to_string(&resolved).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INPUT",
+                    format!("failed to read module: {error}"),
+                )
+                .with_path(&resolved)
+            })?;
+            let resolved_id = program_module_id(graph, &resolved, package.as_deref());
+            graph.add_dependency_import(&from_id, specifier, &resolved_id, "relative");
+            extract_program_module_with_context(
+                &resolved,
+                &source,
+                graph,
+                visiting,
+                modules,
+                package,
+                Some(from_id),
+            )?;
+            Ok(Some(resolved_id))
+        }
+        resolver::ImportKind::Package(package_resolution) => {
+            graph.add_package_record(&package_resolution);
+            let source = fs::read_to_string(&package_resolution.entry).map_err(|error| {
+                Diagnostic::new(
+                    "SLOPPYC_E_INPUT",
+                    format!("failed to read package module: {error}"),
+                )
+                .with_path(&package_resolution.entry)
+            })?;
+            let resolved_id =
+                program_module_id(graph, &package_resolution.entry, Some(&package_resolution.name));
+            graph.add_dependency_import(&from_id, specifier, &resolved_id, "package");
+            extract_program_module_with_context(
+                &package_resolution.entry,
+                &source,
+                graph,
+                visiting,
+                modules,
+                Some(package_resolution.name),
+                Some(from_id),
+            )?;
+            Ok(Some(resolved_id))
+        }
+        resolver::ImportKind::NodeBuiltin(builtin) if builtin.status != "unsupported" => {
+            graph.add_node_builtin(&builtin, path);
+            if let Some(backing) = builtin.backing {
+                ensure_node_compat_module(backing, graph, modules);
+                graph.add_dependency_import(&from_id, specifier, backing, "node-compat-shim");
+                Ok(Some(backing.to_string()))
+            } else {
+                Ok(None)
+            }
+        }
+        resolver::ImportKind::NodeBuiltin(builtin) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
+            format!(
+                "{} is not supported by Sloppy's Node compatibility registry yet.",
+                builtin.specifier
+            ),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a Sloppy stdlib API or a package path that avoids this Node builtin.")),
+        resolver::ImportKind::NativeAddonUnsupported(package_resolution) => Err(Diagnostic::new(
+            "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+            format!(
+                "Package \"{}\" requires a native Node addon. Sloppy does not support Node native addons yet.",
+                package_resolution.name
+            ),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency.")),
+        resolver::ImportKind::PackageExportUnsupported(package_name) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
+            format!("Package \"{package_name}\" has an exports shape Sloppy does not support yet."),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a supported exports condition or a package main/subpath entry.")),
+        resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_NOT_FOUND",
+            format!("Package \"{specifier}\" was not found from {}.", source_map_source_name(path)),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint(format!(
+            "Install it with your package manager, for example:\n  npm install {specifier}"
+        ))),
+        resolver::ImportKind::UnresolvedRelative(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+            format!("relative import \"{specifier}\" could not be resolved"),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a relative .js/.mjs/.cjs/.ts/.tsx/.json module inside the source root.")),
+        resolver::ImportKind::Remote(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            format!("remote import \"{specifier}\" is outside the sealed Sloppy artifact graph"),
+        )
+        .with_path(path)
+        .with_span(span)),
+        _ => Ok(None),
     }
 }
 
@@ -1466,7 +2822,12 @@ fn transpile_program_typescript<'a>(
     Ok(Codegen::new().build(program).code)
 }
 
-fn rewrite_program_module_exports(path: &Path, source: &str) -> Result<String, Diagnostic> {
+fn rewrite_program_module_exports(
+    path: &Path,
+    source: &str,
+    graph: &ModuleGraph,
+    package: Option<String>,
+) -> Result<String, Diagnostic> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::mjs()).parse();
     if let Some(error) = parsed.errors.into_iter().next() {
@@ -1483,13 +2844,19 @@ fn rewrite_program_module_exports(path: &Path, source: &str) -> Result<String, D
             Statement::ImportDeclaration(import) => {
                 replacements.push(ProgramReplacement {
                     span: import.span,
-                    text: program_import_replacement(path, import)?,
+                    text: program_import_replacement(path, import, graph, package.as_deref())?,
                 });
             }
             Statement::ExportNamedDeclaration(export) => {
                 replacements.push(ProgramReplacement {
                     span: export.span,
-                    text: program_named_export_replacement(path, source, export)?,
+                    text: program_named_export_replacement(
+                        path,
+                        source,
+                        export,
+                        graph,
+                        package.as_deref(),
+                    )?,
                 });
             }
             Statement::ExportDefaultDeclaration(export) => {
@@ -1509,8 +2876,268 @@ fn rewrite_program_module_exports(path: &Path, source: &str) -> Result<String, D
             }
             _ => {}
         }
+        if !matches!(statement, Statement::ExportNamedDeclaration(_)) {
+            collect_dynamic_import_replacements(
+                path,
+                source,
+                statement,
+                graph,
+                package.as_deref(),
+                &mut replacements,
+            );
+        }
     }
     Ok(apply_program_replacements(source, &replacements))
+}
+
+fn collect_dynamic_import_replacements(
+    path: &Path,
+    source: &str,
+    statement: &Statement<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+    replacements: &mut Vec<ProgramReplacement>,
+) {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_dynamic_import_expression_replacements(
+                        path,
+                        source,
+                        init,
+                        graph,
+                        package,
+                        replacements,
+                    );
+                }
+            }
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_dynamic_import_expression_replacements(
+                path,
+                source,
+                &statement.expression,
+                graph,
+                package,
+                replacements,
+            )
+        }
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_dynamic_import_expression_replacements(
+                    path,
+                    source,
+                    argument,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_dynamic_import_replacements(
+                    path,
+                    source,
+                    statement,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        Statement::FunctionDeclaration(function) => {
+            if let Some(body) = &function.body {
+                for statement in &body.statements {
+                    collect_dynamic_import_replacements(
+                        path,
+                        source,
+                        statement,
+                        graph,
+                        package,
+                        replacements,
+                    );
+                }
+            }
+        }
+        Statement::ExportNamedDeclaration(export) => {
+            if let Some(declaration) = &export.declaration {
+                collect_dynamic_import_declaration_replacements(
+                    path,
+                    source,
+                    declaration,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_dynamic_import_declaration_replacements(
+    path: &Path,
+    source: &str,
+    declaration: &Declaration<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+    replacements: &mut Vec<ProgramReplacement>,
+) {
+    match declaration {
+        Declaration::FunctionDeclaration(function) => {
+            if let Some(body) = &function.body {
+                for statement in &body.statements {
+                    collect_dynamic_import_replacements(
+                        path,
+                        source,
+                        statement,
+                        graph,
+                        package,
+                        replacements,
+                    );
+                }
+            }
+        }
+        Declaration::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_dynamic_import_expression_replacements(
+                        path,
+                        source,
+                        init,
+                        graph,
+                        package,
+                        replacements,
+                    );
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_dynamic_import_expression_replacements(
+    path: &Path,
+    source: &str,
+    expression: &Expression<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+    replacements: &mut Vec<ProgramReplacement>,
+) {
+    match expression {
+        Expression::ImportExpression(import) => {
+            let argument =
+                source_slice(source, import.source.span()).unwrap_or_else(|| "\"\"".to_string());
+            replacements.push(ProgramReplacement {
+                span: import.span,
+                text: format!(
+                    "__sloppy_program_import_from({}, {argument})",
+                    json_string(&program_module_id(graph, path, package))
+                ),
+            });
+        }
+        Expression::AwaitExpression(await_expression) => {
+            collect_dynamic_import_expression_replacements(
+                path,
+                source,
+                &await_expression.argument,
+                graph,
+                package,
+                replacements,
+            )
+        }
+        Expression::CallExpression(call) => {
+            collect_dynamic_import_expression_replacements(
+                path,
+                source,
+                &call.callee,
+                graph,
+                package,
+                replacements,
+            );
+            for argument in &call.arguments {
+                collect_dynamic_import_argument_replacements(
+                    path,
+                    source,
+                    argument,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_dynamic_import_expression_replacements(
+                path,
+                source,
+                &parenthesized.expression,
+                graph,
+                package,
+                replacements,
+            )
+        }
+        Expression::ArrowFunctionExpression(function) => {
+            for statement in &function.body.statements {
+                collect_dynamic_import_replacements(
+                    path,
+                    source,
+                    statement,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_dynamic_import_argument_replacements(
+    path: &Path,
+    source: &str,
+    argument: &Argument<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+    replacements: &mut Vec<ProgramReplacement>,
+) {
+    match argument {
+        Argument::ImportExpression(import) => {
+            let argument =
+                source_slice(source, import.source.span()).unwrap_or_else(|| "\"\"".to_string());
+            replacements.push(ProgramReplacement {
+                span: import.span,
+                text: format!(
+                    "__sloppy_program_import_from({}, {argument})",
+                    json_string(&program_module_id(graph, path, package))
+                ),
+            });
+        }
+        Argument::CallExpression(call) => {
+            for argument in &call.arguments {
+                collect_dynamic_import_argument_replacements(
+                    path,
+                    source,
+                    argument,
+                    graph,
+                    package,
+                    replacements,
+                );
+            }
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            collect_dynamic_import_expression_replacements(
+                path,
+                source,
+                &parenthesized.expression,
+                graph,
+                package,
+                replacements,
+            )
+        }
+        _ => {}
+    }
 }
 
 struct ProgramReplacement {
@@ -1521,9 +3148,14 @@ struct ProgramReplacement {
 fn apply_program_replacements(source: &str, replacements: &[ProgramReplacement]) -> String {
     let mut output = String::with_capacity(source.len() + replacements.len() * 32);
     let mut cursor = 0usize;
-    for replacement in replacements {
+    let mut sorted = replacements.iter().collect::<Vec<_>>();
+    sorted.sort_by_key(|replacement| (replacement.span.start, replacement.span.end));
+    for replacement in sorted {
         let start = replacement.span.start as usize;
         let end = replacement.span.end as usize;
+        if start < cursor {
+            continue;
+        }
         output.push_str(&source[cursor..start]);
         output.push_str(&replacement.text);
         cursor = end;
@@ -1532,6 +3164,30 @@ fn apply_program_replacements(source: &str, replacements: &[ProgramReplacement])
     if !output.ends_with('\n') {
         output.push('\n');
     }
+    output
+}
+
+fn apply_program_replacements_in_span(
+    source: &str,
+    span: Span,
+    replacements: &[ProgramReplacement],
+) -> String {
+    let mut output = String::new();
+    let mut cursor = span.start as usize;
+    let end = span.end as usize;
+    let mut sorted = replacements.iter().collect::<Vec<_>>();
+    sorted.sort_by_key(|replacement| (replacement.span.start, replacement.span.end));
+    for replacement in sorted {
+        let start = replacement.span.start as usize;
+        let replacement_end = replacement.span.end as usize;
+        if start < cursor || replacement_end > end {
+            continue;
+        }
+        output.push_str(&source[cursor..start]);
+        output.push_str(&replacement.text);
+        cursor = replacement_end;
+    }
+    output.push_str(&source[cursor..end]);
     output
 }
 
@@ -1588,6 +3244,8 @@ fn rewrite_dynamic_web_entry(path: &Path, source: &str) -> Result<String, Diagno
 fn program_import_replacement(
     path: &Path,
     import: &ImportDeclaration<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
 ) -> Result<String, Diagnostic> {
     if import.import_kind == ImportOrExportKind::Type {
         return Ok(String::new());
@@ -1597,7 +3255,7 @@ fn program_import_replacement(
         resolver::ImportKind::Relative(resolved) => {
             format!(
                 "__sloppy_program_require({})",
-                json_string(&source_map_source_name(&resolved))
+                json_string(&program_module_id(graph, &resolved, package))
             )
         }
         resolver::ImportKind::SlopStdlib
@@ -1609,14 +3267,75 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
-        _ => {
+        resolver::ImportKind::NodeBuiltin(builtin) if builtin.status != "unsupported" => {
+            let backing = builtin.backing.unwrap_or("sloppy/node/unsupported");
+            format!("__sloppy_program_require({})", json_string(backing))
+        }
+        resolver::ImportKind::Package(package) => {
+            let entry_id = program_module_id(graph, &package.entry, Some(&package.name));
+            format!("__sloppy_program_require({})", json_string(&entry_id))
+        }
+        resolver::ImportKind::NativeAddonUnsupported(package) => {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT",
-                format!("Program Mode does not support npm or Node built-in imports yet: \"{specifier}\""),
+                "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+                format!(
+                    "Package \"{}\" requires a native Node addon. Sloppy does not support Node native addons yet.",
+                    package.name
+                ),
             )
             .with_path(path)
             .with_span(import.source.span)
-            .with_hint("Use Sloppy stdlib imports or relative modules."));
+            .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency."));
+        }
+        resolver::ImportKind::PackageExportUnsupported(package_name) => {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
+                format!(
+                    "Package \"{package_name}\" has an exports shape Sloppy does not support yet."
+                ),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint("Use a supported exports condition or a package main/subpath entry."));
+        }
+        resolver::ImportKind::UnsupportedBare(specifier) => {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_PACKAGE_NOT_FOUND",
+                format!(
+                    "Package \"{specifier}\" was not found from {}.",
+                    source_map_source_name(path)
+                ),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint(format!(
+                "Install it with your package manager, for example:\n  npm install {specifier}"
+            )));
+        }
+        resolver::ImportKind::NodeBuiltin(builtin) => {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
+                format!(
+                    "{} is not supported by Sloppy's Node compatibility registry yet.",
+                    builtin.specifier
+                ),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint(
+                "Use a Sloppy stdlib API or a package path that avoids this Node builtin.",
+            ));
+        }
+        _ => {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("Program Mode cannot resolve import \"{specifier}\""),
+            )
+            .with_path(path)
+            .with_span(import.source.span)
+            .with_hint(
+                "Use Sloppy stdlib imports, relative modules, or installed compatible packages.",
+            ));
         }
     };
     let Some(specifiers) = &import.specifiers else {
@@ -1685,6 +3404,8 @@ fn program_named_export_replacement(
     path: &Path,
     source: &str,
     export: &ExportNamedDeclaration<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
 ) -> Result<String, Diagnostic> {
     if export.export_kind == ImportOrExportKind::Type {
         return Ok(String::new());
@@ -1700,7 +3421,20 @@ fn program_named_export_replacement(
     }
     let mut output = String::new();
     if let Some(declaration) = &export.declaration {
-        output.push_str(span_source(source, declaration.span()));
+        let mut dynamic_replacements = Vec::new();
+        collect_dynamic_import_declaration_replacements(
+            path,
+            source,
+            declaration,
+            graph,
+            package,
+            &mut dynamic_replacements,
+        );
+        output.push_str(&apply_program_replacements_in_span(
+            source,
+            declaration.span(),
+            &dynamic_replacements,
+        ));
         for name in declaration_export_names(declaration) {
             output.push('\n');
             output.push_str(&export_assignment(&name, &name));
@@ -2212,6 +3946,7 @@ fn extract_entry(
         },
         uses_health: state.uses_health,
         problem_details: state.problem_details.clone(),
+        dependency_graph: DependencyGraph::default(),
     })
 }
 
@@ -12373,11 +14108,23 @@ fn write_artifacts(
         metrics.add_phase("planEmitMs", plan_start.elapsed());
         metrics.set_artifact_bytes("planBytes", plan.len());
     }
+    let dependency_graph = if app.dependency_graph.has_entries() {
+        let dependency_graph = emit_dependency_graph(&app.dependency_graph)?;
+        if let Some(metrics) = metrics.as_mut() {
+            metrics.set_artifact_bytes("dependencyGraphBytes", dependency_graph.len());
+        }
+        Some(dependency_graph)
+    } else {
+        None
+    };
 
     let write_start = Instant::now();
     write_artifact(out_dir, "app.js", &app_js.source)?;
     write_artifact(out_dir, "app.js.map", &source_map)?;
     write_artifact(out_dir, "app.plan.json", &plan)?;
+    if let Some(dependency_graph) = &dependency_graph {
+        write_artifact(out_dir, "deps.graph.json", dependency_graph)?;
+    }
     if let Some(metrics) = metrics.as_mut() {
         metrics.add_phase("writeMs", write_start.elapsed());
     }
@@ -13295,6 +15042,40 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
     output.push_str("  }\n");
     output.push_str("  const __sloppy_program_modules = Object.create(null);\n");
     output.push_str("  const __sloppy_program_cache = Object.create(null);\n");
+    output.push_str("  const __sloppy_program_resolutions = Object.create(null);\n");
+    for module in &app.dependency_graph.modules {
+        for resolved in &module.resolved_imports {
+            output.push_str("  __sloppy_program_resolutions[");
+            output.push_str(&json_string(&format!(
+                "{}\0{}",
+                module.id, resolved.specifier
+            )));
+            output.push_str("] = ");
+            output.push_str(&json_string(&resolved.resolved_id));
+            output.push_str(";\n");
+        }
+    }
+    output.push_str("  function __sloppy_program_dirname(id) { const index = String(id).lastIndexOf('/'); return index < 0 ? '.' : String(id).slice(0, index); }\n");
+    output.push_str("  function __sloppy_program_resolve(fromId, specifier) {\n");
+    output.push_str("    if (__sloppy_program_modules[specifier]) { return specifier; }\n");
+    output.push_str(
+        "    const mapped = __sloppy_program_resolutions[`${fromId}\\u0000${specifier}`];\n",
+    );
+    output.push_str("    if (mapped) { return mapped; }\n");
+    output.push_str(
+        "    if (String(specifier).startsWith('./') || String(specifier).startsWith('../')) {\n",
+    );
+    output.push_str(
+        "      const base = __sloppy_program_dirname(fromId).split('/').filter(Boolean);\n",
+    );
+    output.push_str("      for (const part of String(specifier).split('/')) { if (!part || part === '.') { continue; } if (part === '..') { base.pop(); } else { base.push(part); } }\n");
+    output.push_str("      const raw = base.join('/');\n");
+    output.push_str("      for (const candidate of [raw, `${raw}.js`, `${raw}.mjs`, `${raw}.cjs`, `${raw}.ts`, `${raw}.json`, `${raw}/index.js`, `${raw}/index.mjs`, `${raw}/index.cjs`, `${raw}/index.ts`]) { if (__sloppy_program_modules[candidate]) { return candidate; } }\n");
+    output.push_str("    }\n");
+    output.push_str("    throw new Error(`SLOPPY_E_MODULE_NOT_FOUND: Dynamic import or require resolved to '${specifier}', but that module was not included in the Sloppy artifact graph. Add a moduleInclude pattern for computed imports.`);\n");
+    output.push_str("  }\n");
+    output.push_str("  function __sloppy_program_require_from(fromId, specifier) { return __sloppy_program_require(__sloppy_program_resolve(fromId, specifier)); }\n");
+    output.push_str("  function __sloppy_program_import_from(fromId, specifier) { return Promise.resolve(__sloppy_program_require_from(fromId, specifier)); }\n");
     output.push_str("  function __sloppy_program_require(id) {\n");
     output.push_str(
         "    if (__sloppy_program_cache[id]) { return __sloppy_program_cache[id].exports; }\n",
@@ -13303,13 +15084,13 @@ fn emit_program_app_js(app: &ExtractedApp) -> EmittedAppJs {
     output.push_str("    if (typeof factory !== \"function\") { throw new Error(`Sloppy program module '${id}' was not found`); }\n");
     output.push_str("    const module = { exports: {} };\n");
     output.push_str("    __sloppy_program_cache[id] = module;\n");
-    output.push_str("    factory(module.exports, module);\n");
+    output.push_str("    factory(module.exports, module, function(specifier) { return __sloppy_program_require_from(id, specifier); }, id, __sloppy_program_dirname(id));\n");
     output.push_str("    return module.exports;\n");
     output.push_str("  }\n");
     for module in &app.program_modules {
         output.push_str("  __sloppy_program_modules[");
         output.push_str(&json_string(&module.id));
-        output.push_str("] = function(exports, module) {\n");
+        output.push_str("] = function(exports, module, require, __filename, __dirname) {\n");
         for line in module.emitted_source.lines() {
             output.push_str("    ");
             output.push_str(line);
@@ -13646,12 +15427,16 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
                     "source": {
                         "path": module.source_name
                     },
+                    "format": module.format.as_str(),
                     "hash": sha256_hex(&module.source)
                 })
             })
             .collect::<Vec<_>>();
         x_sloppy["kind"] = json!(app.kind.as_str());
         x_sloppy["programModules"] = json!(program_modules);
+        if app.dependency_graph.has_entries() {
+            x_sloppy["dependencyGraph"] = dependency_graph_json(&app.dependency_graph);
+        }
     }
     let value = json!({
         "version": 3,

@@ -104,6 +104,8 @@ fn build_args_accept_environment_and_runtime_overrides() {
                 config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
                 declared_capabilities: Vec::new(),
                 declared_capabilities_from_sloppy_json: false,
+                module_include: Vec::new(),
+                asset_include: Vec::new(),
                 timings_json: None,
             }),
         }
@@ -195,6 +197,31 @@ fn build_args_accept_sloppy_json_capability_origin_handoff() {
             options: Box::new(CompileOptions {
                 declared_capabilities: vec!["fs".to_string()],
                 declared_capabilities_from_sloppy_json: true,
+                ..CompileOptions::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn build_args_accept_module_and_asset_includes() {
+    assert_eq!(
+        command_from_args([
+            OsString::from("build"),
+            OsString::from("main.ts"),
+            OsString::from("--out"),
+            OsString::from(".sloppy"),
+            OsString::from("--module-include"),
+            OsString::from("plugins/**/*.js"),
+            OsString::from("--asset-include"),
+            OsString::from("assets/**/*"),
+        ]),
+        CliCommand::Build {
+            input: std::path::PathBuf::from("main.ts"),
+            out_dir: std::path::PathBuf::from(".sloppy"),
+            options: Box::new(CompileOptions {
+                module_include: vec!["plugins/**/*.js".to_string()],
+                asset_include: vec!["assets/**/*".to_string()],
                 ..CompileOptions::default()
             }),
         }
@@ -1032,29 +1059,357 @@ export default value;
 }
 
 #[test]
-fn program_mode_rejects_node_and_npm_imports_with_clear_diagnostic() {
-    for (index, specifier) in ["node:fs", "express"].iter().enumerate() {
-        let root = fixture_temp_dir(&format!("program-unsupported-imports-{index}"));
-        let input = root.join("main.ts");
-        let out_dir = root.join(".sloppy");
-        fs::write(
-            &input,
-            format!(
-                "import dependency from \"{specifier}\";\nexport function main() {{ return dependency; }}\n"
-            ),
-        )
-        .expect("entry should write");
+fn program_mode_reports_missing_package_with_install_hint() {
+    let root = fixture_temp_dir("program-missing-package");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        "import dependency from \"__sloppy_missing_pkg_for_test__\";\nexport function main() { return dependency; }\n",
+    )
+    .expect("entry should write");
 
-        let failure = super::build(&input, &out_dir, &CompileOptions::new())
-            .expect_err("unsupported import should fail");
-        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
-        assert!(failure
-            .diagnostic
-            .message
-            .contains("Program Mode does not support npm or Node built-in imports yet"));
+    let failure =
+        super::build(&input, &out_dir, &CompileOptions::new()).expect_err("missing package fails");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_PACKAGE_NOT_FOUND");
+    assert!(failure
+        .diagnostic
+        .hint
+        .as_deref()
+        .unwrap_or_default()
+        .contains("npm install __sloppy_missing_pkg_for_test__"));
 
-        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
-    }
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_resolves_installed_package_and_emits_dependency_graph() {
+    let root = fixture_temp_dir("program-installed-package");
+    let package_dir = root.join("node_modules").join("tiny-pkg");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&package_dir).expect("package directory should be created");
+    fs::write(
+        package_dir.join("package.json"),
+        r#"{"name":"tiny-pkg","version":"1.2.3","type":"module","exports":"./index.js"}"#,
+    )
+    .expect("package.json should write");
+    fs::write(
+        package_dir.join("index.js"),
+        r#"export const value = "from-package"; export default value;"#,
+    )
+    .expect("package entry should write");
+    fs::write(
+        &input,
+        r#"import value from "tiny-pkg"; export function main() { return value; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    assert!(graph["packages"]
+        .as_array()
+        .expect("packages should be an array")
+        .iter()
+        .any(|package| package["name"] == "tiny-pkg" && package["version"] == "1.2.3"));
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "node_modules/tiny-pkg/index.js"));
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    assert!(app_js.contains("exports.value = value;"));
+    assert!(app_js.contains("exports.default = value;"));
+    assert!(!app_js.contains("export const value"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_resolves_node_compat_shim_and_plan_features() {
+    let root = fixture_temp_dir("program-node-compat-path");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import path from "node:path"; export function main() { return path.join("a", "b"); }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array")
+        .contains(&serde_json::json!("node.compat.path")));
+    assert!(plan["dependencyGraph"]["nodeBuiltins"]
+        .as_array()
+        .expect("node builtins should be an array")
+        .iter()
+        .any(|builtin| builtin["specifier"] == "node:path"
+            && builtin["backing"] == "sloppy/node/path"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_dedupes_node_compat_required_features() {
+    let root = fixture_temp_dir("program-node-compat-dedupe");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import path from "node:path";
+import fs from "node:fs";
+import fsAgain from "node:fs";
+import fsPromises from "node:fs/promises";
+export function main() {
+  return `${path.join("a", "b")}:${typeof fs}:${typeof fsAgain}:${typeof fsPromises}`;
+}"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let required = plan["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array");
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.fs"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.fs.promises"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        required
+            .iter()
+            .filter(|feature| **feature == serde_json::json!("node.compat.path"))
+            .count(),
+        1
+    );
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_json_modules_preserve_default_export_binding() {
+    let root = fixture_temp_dir("program-json-default");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(root.join("data.json"), r#"{"message":"json-default"}"#)
+        .expect("JSON fixture should write");
+    fs::write(
+        &input,
+        r#"import data from "./data.json"; export function main() { return data.message; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    assert!(app_js.contains("module.exports.default = __sloppy_json_module;"));
+    assert!(app_js.contains("__sloppy_program_require(\"data.json\").default"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_commonjs_modules_receive_wrapper_bindings() {
+    let root = fixture_temp_dir("program-commonjs-wrapper");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        root.join("helper.cjs"),
+        r#"const suffix = require("./suffix.cjs"); module.exports = `${__dirname}/${__filename}/${suffix}`;"#,
+    )
+    .expect("CommonJS helper should write");
+    fs::write(root.join("suffix.cjs"), r#"module.exports = "ok";"#)
+        .expect("CommonJS suffix should write");
+    fs::write(
+        &input,
+        r#"import helper from "./helper.cjs"; export function main() { return helper; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
+    assert!(app_js.contains("function(exports, module, require, __filename, __dirname)"));
+    assert!(app_js.contains(
+        "factory(module.exports, module, function(specifier) { return __sloppy_program_require_from(id, specifier); }, id, __sloppy_program_dirname(id));"
+    ));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_commonjs_requires_use_require_export_condition() {
+    let root = fixture_temp_dir("program-commonjs-require-condition");
+    let package_dir = root.join("node_modules").join("dual-pkg");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&package_dir).expect("package directory should be created");
+    fs::write(
+        package_dir.join("package.json"),
+        r#"{"name":"dual-pkg","version":"1.0.0","exports":{"import":"./esm.js","require":"./cjs.cjs"}}"#,
+    )
+    .expect("package.json should write");
+    fs::write(package_dir.join("esm.js"), r#"export default "esm";"#)
+        .expect("ESM entry should write");
+    fs::write(package_dir.join("cjs.cjs"), r#"module.exports = "cjs";"#)
+        .expect("CJS entry should write");
+    fs::write(
+        root.join("helper.cjs"),
+        r#"module.exports = require("dual-pkg");"#,
+    )
+    .expect("CommonJS helper should write");
+    fs::write(
+        &input,
+        r#"import helper from "./helper.cjs"; export function main() { return helper; }"#,
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "node_modules/dual-pkg/cjs.cjs"));
+    assert!(!graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "node_modules/dual-pkg/esm.js"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_module_and_asset_include_records_sealed_graph_entries() {
+    let root = fixture_temp_dir("program-module-asset-include");
+    let plugin_dir = root.join("plugins");
+    let asset_dir = root.join("assets");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&plugin_dir).expect("plugin directory should be created");
+    fs::create_dir_all(&asset_dir).expect("asset directory should be created");
+    fs::write(
+        plugin_dir.join("alpha.js"),
+        r#"export const value = "alpha";"#,
+    )
+    .expect("plugin should write");
+    fs::write(asset_dir.join("copy.txt"), "asset").expect("asset should write");
+    fs::write(
+        &input,
+        r#"export async function main(name) {
+  const module = await import("./plugins/" + name + ".js");
+  return module.value;
+}"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Program),
+        module_include: vec!["plugins/*.js".to_string()],
+        asset_include: vec!["assets/**/*".to_string()],
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("program should build");
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "plugins/alpha.js"
+            && module["includedBy"] == "moduleInclude:plugins/*.js"));
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .flat_map(|module| module["dynamicImports"].as_array().into_iter().flatten())
+        .any(|import| import["kind"] == "computed"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "assets/copy.txt"
+            && asset["includedBy"] == "assetInclude:assets/**/*"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_project_includes_are_config_root_relative() {
+    let root = fixture_temp_dir("program-project-module-asset-include");
+    let src_dir = root.join("src");
+    let plugin_dir = src_dir.join("plugins");
+    let asset_dir = root.join("public");
+    let input = src_dir.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&plugin_dir).expect("plugin directory should be created");
+    fs::create_dir_all(&asset_dir).expect("asset directory should be created");
+    fs::write(
+        plugin_dir.join("alpha.js"),
+        r#"export const value = "alpha";"#,
+    )
+    .expect("plugin should write");
+    fs::write(asset_dir.join("copy.txt"), "asset").expect("asset should write");
+    fs::write(
+        &input,
+        r#"export async function main(name) {
+  const module = await import("./plugins/" + name + ".js");
+  return module.value;
+}"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Program),
+        config_dir: Some(root.clone()),
+        module_include: vec!["src/plugins/*.js".to_string()],
+        asset_include: vec!["public/**/*".to_string()],
+        ..CompileOptions::default()
+    };
+    super::build(&input, &out_dir, &options).expect("program should build");
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+
+    assert!(graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .any(|module| module["id"] == "src/plugins/alpha.js"
+            && module["includedBy"] == "moduleInclude:src/plugins/*.js"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/copy.txt"
+            && asset["includedBy"] == "assetInclude:public/**/*"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
 
 #[test]
@@ -1101,7 +1456,7 @@ fn help_text_lists_diagnostics_timing_json_alias() {
 
 #[test]
 fn module_graph_root_level_entry_uses_current_directory_as_source_root() {
-    let graph = super::ModuleGraph::new(Path::new("app.js"));
+    let graph = super::ModuleGraph::new(Path::new("app.js"), None);
     let current_dir =
         fs::canonicalize(std::env::current_dir().expect("current directory should exist"))
             .expect("current directory should canonicalize");
@@ -1186,6 +1541,8 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         config_overrides: Vec::new(),
         declared_capabilities: Vec::new(),
         declared_capabilities_from_sloppy_json: false,
+        module_include: Vec::new(),
+        asset_include: Vec::new(),
         timings_json: None,
     };
     let config =
@@ -1256,6 +1613,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         ffi_structs: Vec::new(),
         uses_health: false,
         problem_details: None,
+        dependency_graph: super::DependencyGraph::default(),
     };
     config
         .apply_to_app(&mut app)
@@ -1323,6 +1681,8 @@ export default app;
         config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
         declared_capabilities: Vec::new(),
         declared_capabilities_from_sloppy_json: false,
+        module_include: Vec::new(),
+        asset_include: Vec::new(),
         timings_json: None,
     };
     let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)

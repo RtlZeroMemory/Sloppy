@@ -2713,10 +2713,11 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
                                  const char* project_kind, const SlSloppyRunConfig* project_config)
 {
     const char* compiler_path = NULL;
-    char* compiler_argv[40];
+    char* compiler_argv[160];
     char port_text[6];
     size_t arg_count = 0U;
     size_t capability_index = 0U;
+    size_t include_index = 0U;
     SlPlatformProcessArgs process_args = {0};
     SlStatus status;
     int exit_code = 1;
@@ -2770,6 +2771,18 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
         {
             compiler_argv[arg_count++] = "--capability";
             compiler_argv[arg_count++] = (char*)project_config->capabilities[capability_index];
+        }
+        for (include_index = 0U; include_index < project_config->module_include_count;
+             include_index += 1U)
+        {
+            compiler_argv[arg_count++] = "--module-include";
+            compiler_argv[arg_count++] = (char*)project_config->module_includes[include_index];
+        }
+        for (include_index = 0U; include_index < project_config->asset_include_count;
+             include_index += 1U)
+        {
+            compiler_argv[arg_count++] = "--asset-include";
+            compiler_argv[arg_count++] = (char*)project_config->asset_includes[include_index];
         }
     }
     if (options != NULL && options->host_explicit) {

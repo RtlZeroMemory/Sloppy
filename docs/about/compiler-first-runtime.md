@@ -49,9 +49,10 @@ at the source location.
 `sloppyc` before the runtime sees them. `sloppy run src/main.ts` does this
 in one step, but there's still a compile pass.
 
-**Less ecosystem reuse.** Sloppy doesn't load `node_modules`. The first-
-party stdlib aims to cover what a backend usually needs; everything
-beyond that is yours to write or vendor.
+**Less ecosystem reuse.** Sloppy can bundle compatible installed JavaScript
+packages, but it does not run directly from `node_modules` at runtime. The
+first-party stdlib aims to cover what a backend usually needs; everything
+beyond that must fit the sealed artifact graph or run outside Sloppy.
 
 ## What it isn't
 

@@ -4,4 +4,4 @@ Supported app compiler: parses the documented Sloppy app shape and emits determi
 Usage:
   sloppyc --help
   sloppyc --version
-  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--timings-json|--diagnostics-timing-json <file>]
+  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--module-include <glob>] [--asset-include <glob>] [--timings-json|--diagnostics-timing-json <file>]

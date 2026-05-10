@@ -24,6 +24,8 @@ set(exit_dir "${work_dir}/exit")
 set(invalid_exit_dir "${work_dir}/invalid-exit")
 set(throw_dir "${work_dir}/throw")
 set(outside_dir "${work_dir}/outside")
+set(dependency_dir "${work_dir}/dependency")
+set(outside_dependency_dir "${work_dir}/outside-dependency")
 set(capability_dir "${work_dir}/capability")
 set(bytes_dir "${work_dir}/bytes")
 set(web_dir "${work_dir}/web")
@@ -37,6 +39,10 @@ file(MAKE_DIRECTORY "${exit_dir}/src")
 file(MAKE_DIRECTORY "${invalid_exit_dir}/src")
 file(MAKE_DIRECTORY "${throw_dir}/src")
 file(MAKE_DIRECTORY "${outside_dir}")
+file(MAKE_DIRECTORY "${dependency_dir}/src")
+file(MAKE_DIRECTORY "${dependency_dir}/public")
+file(MAKE_DIRECTORY "${dependency_dir}/node_modules/graph-helper")
+file(MAKE_DIRECTORY "${outside_dependency_dir}")
 file(MAKE_DIRECTORY "${capability_dir}/src")
 file(MAKE_DIRECTORY "${bytes_dir}/src")
 file(MAKE_DIRECTORY "${web_dir}/src")
@@ -112,6 +118,34 @@ file(WRITE "${throw_dir}/src/main.ts" [=[
 export async function main() {
   console.log("before boom");
   throw new Error("program boom");
+}
+]=])
+
+file(WRITE "${dependency_dir}/sloppy.json" [=[{
+  "kind": "program",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy",
+  "assetInclude": ["public/message.txt"]
+}
+]=])
+file(WRITE "${dependency_dir}/node_modules/graph-helper/package.json" [=[{
+  "name": "graph-helper",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./index.js"
+}
+]=])
+file(WRITE "${dependency_dir}/node_modules/graph-helper/index.js" [=[
+export function message(assetPath) {
+  return `graph-helper saw ${assetPath}`;
+}
+]=])
+file(WRITE "${dependency_dir}/public/message.txt" "hello from dependency package\n")
+file(WRITE "${dependency_dir}/src/main.ts" [=[
+import { message } from "graph-helper";
+
+export function main() {
+  console.log(message("public/message.txt"));
 }
 ]=])
 
@@ -286,6 +320,20 @@ if(SLOPPY_EXPECT_RUN_SUCCESS)
     run_cli_expect_exit("sloppy run thrown program" "${throw_dir}" 1 "before boom" "program boom" run src/main.ts)
     run_cli_expect_success("sloppy package console program" "${console_dir}" "Created Sloppy app package" package)
     run_cli_expect_success("sloppy run package directory outside checkout" "${outside_dir}" "args=packaged\\|run" run "${console_dir}/.sloppy/package" -- packaged run)
+    run_cli_expect_success("sloppy build dependency graph package" "${dependency_dir}" "" build)
+    run_cli_expect_success("sloppy deps .sloppy text" "${dependency_dir}" "Dependency graph: 1 package\\(s\\), 2 module\\(s\\), 1 asset\\(s\\)" deps .sloppy)
+    run_cli_expect_success("sloppy deps .sloppy json" "${dependency_dir}" "\"resolvedImports\"" deps .sloppy --format json)
+    if(NOT RUN_CLI_STDOUT MATCHES "\"resolver\"" OR NOT RUN_CLI_STDOUT MATCHES "\"includedBy\"")
+        message(FATAL_ERROR "sloppy deps .sloppy json did not include full graph fields\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
+    endif()
+    run_cli_expect_success("sloppy deps --plan app.plan.json" "${dependency_dir}" "\"schemaVersion\"" deps --plan .sloppy/app.plan.json --format json)
+    run_cli_expect_success("sloppy package dependency graph package" "${dependency_dir}" "Created Sloppy app package" package)
+    file(COPY "${dependency_dir}/.sloppy/package" DESTINATION "${outside_dependency_dir}")
+    file(REMOVE_RECURSE "${dependency_dir}")
+    if(EXISTS "${outside_dependency_dir}/package/node_modules")
+        message(FATAL_ERROR "packaged dependency graph artifact unexpectedly contains node_modules")
+    endif()
+    run_cli_expect_success("sloppy run dependency package outside checkout" "${outside_dependency_dir}" "graph-helper saw public/message.txt" run "${outside_dependency_dir}/package")
     run_cli_expect_success("sloppy run bytes src/main.ts" "${bytes_dir}" "" run src/main.ts)
     if(NOT RUN_CLI_STDOUT STREQUAL "AB")
         message(FATAL_ERROR "sloppy run Program bytes output was not exact\nstdout:\n${RUN_CLI_STDOUT}")

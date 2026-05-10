@@ -259,6 +259,52 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
     }
 }
 
+static bool sl_cli_audit_span_starts_with(SlCliSpan span, const char* prefix)
+{
+    size_t index = 0U;
+
+    if (prefix == NULL) {
+        return false;
+    }
+    while (prefix[index] != '\0') {
+        if (index >= span.length || span.ptr[index] != prefix[index]) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
+static void sl_cli_audit_dependency_checks(const SlCliOptions* options,
+                                           const SlCliMetadata* metadata, size_t* findings,
+                                           size_t* errors)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->doctor_check_count; index += 1U) {
+        const SlCliDoctorCheck* check = &metadata->doctor_checks[index];
+        if (sl_cli_span_equal_cstr(check->id, "dependency.graph")) {
+            sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_DEPENDENCY_GRAPH_VISIBLE",
+                              "dependency graph metadata is Plan-visible", "dependencyGraph",
+                              findings, errors);
+            continue;
+        }
+        if (!sl_cli_audit_span_starts_with(check->id, "SLOPPYC_")) {
+            continue;
+        }
+        if (sl_cli_span_equal_cstr(check->status, "error")) {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_DEPENDENCY_COMPAT_ERROR",
+                              "dependency compatibility finding is an error", "dependencyGraph",
+                              findings, errors);
+        }
+        else if (sl_cli_span_equal_cstr(check->status, "warn")) {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_DEPENDENCY_COMPAT_WARNING",
+                              "dependency compatibility finding is a warning", "dependencyGraph",
+                              findings, errors);
+        }
+    }
+}
+
 static void sl_cli_audit_config_requirements(const SlCliOptions* options,
                                              const SlCliMetadata* metadata, size_t* findings,
                                              size_t* errors)
@@ -547,6 +593,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_modules(options, metadata, &findings, &errors);
     sl_cli_audit_providers(options, metadata, &findings, &errors);
     sl_cli_audit_capabilities(options, metadata, &findings, &errors);
+    sl_cli_audit_dependency_checks(options, metadata, &findings, &errors);
     sl_cli_audit_config_requirements(options, metadata, &findings, &errors);
     sl_cli_audit_os_capabilities(options, metadata, &findings, &errors);
     sl_cli_audit_os_features(options, metadata, &findings, &errors);

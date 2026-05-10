@@ -3297,8 +3297,8 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
      * FFI needs Plan-backed registry state and is covered by
      * conformance.v8.ffi_native, not startup snapshot caching.
      */
-    const uint32_t all_features_mask = ((UINT32_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT32_C(1)) &
-                                       ~(UINT32_C(1) << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_FFI);
+    const uint64_t all_features_mask = ((UINT64_C(1) << SL_RUNTIME_FEATURE_COUNT) - UINT64_C(1)) &
+                                       ~(UINT64_C(1) << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_FFI);
     const char* probe_source =
         "if (typeof __sloppy.time.monotonicMs !== 'function') throw new Error('missing time');"
         "if (typeof __sloppy.crypto.randomUuid !== 'function') throw new Error('missing crypto');"
@@ -3366,7 +3366,7 @@ static int test_startup_snapshot_supports_native_intrinsics(void)
     second = NULL;
 
     features.active_mask =
-        all_features_mask & ~(UINT32_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
+        all_features_mask & ~(UINT64_C(1) << (uint32_t)SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
     if (expect_status(sl_engine_create(&options, &engine_arena, &third), SL_STATUS_OK) != 0 ||
         expect_status(sl_engine_eval_source(third,
                                             sl_str_from_cstr("v8-snapshot-native-reduced-mask.js"),

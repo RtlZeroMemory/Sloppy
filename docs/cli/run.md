@@ -49,7 +49,9 @@ Loads `.sloppy/package/manifest.json`, then runs the copied artifacts from
 `.sloppy/package/artifacts`. The current runner expects the canonical
 `artifacts/app.plan.json`, `artifacts/app.js`, and `artifacts/app.js.map`
 layout recorded by `sloppy package`; it does not resolve arbitrary manifest
-artifact paths. Package runs do not need the original source checkout.
+artifact paths. Package runs do not need the original source checkout or
+`node_modules` for dependency modules that were bundled into the artifact
+graph.
 
 ## One-shot requests
 
@@ -176,7 +178,7 @@ sloppy run --environment Staging
 1. Parse CLI flags and resolve project config.
 2. If source input, invoke `sloppyc build` and write artifacts.
 3. Read `app.plan.json`, validate schema, hashes, target metadata, and required features.
-4. Prepare capabilities, server config, logging config, and the Plan-backed route table for web Plans.
+4. Prepare capabilities, dependency metadata, server config, logging config, and the Plan-backed route table for web Plans.
 5. Stage the bootstrap stdlib.
 6. Initialize the native logging runtime.
 7. Initialize the V8 isolate and engine bridge.

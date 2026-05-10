@@ -1,0 +1,12 @@
+{
+  "kind": "program",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy",
+  "environment": "Development",
+  "moduleInclude": [
+    "src/plugins/*.js"
+  ],
+  "assetInclude": [
+    "public/**/*"
+  ]
+}

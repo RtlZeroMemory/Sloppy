@@ -1,0 +1,13 @@
+Dependency graph: 1 package(s), 2 module(s), 1 asset(s), 2 Node binding(s), 1 finding(s)
+Packages (1)
+  fixture-lib@1.0.0  esm  root=node_modules/fixture-lib  entry=node_modules/fixture-lib/index.js  installed
+Modules (2)
+  src/main.ts  esm  app
+  node_modules/fixture-lib/index.js  esm  package=fixture-lib  installed
+Assets (1)
+  public/message.txt
+Node compatibility (2)
+  node:path  supported -> sloppy/node/path
+  node:fs  partial -> sloppy/node/fs
+Findings (1)
+  SLOPPYC_W_NODE_BUILTIN_PARTIAL  package=fixture-lib  warn  node:fs compatibility shim is partial  node_modules/fixture-lib/index.js

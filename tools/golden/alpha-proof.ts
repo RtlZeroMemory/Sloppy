@@ -186,17 +186,38 @@ async function pathExists(path) {
     return (await File.exists(fsPath(path))) || (await Directory.exists(fsPath(path)));
 }
 
+function errorMessage(error) {
+    return error && error.message ? error.message : String(error);
+}
+
+async function withFsContext(description, action) {
+    try {
+        return await action();
+    } catch (error) {
+        throw new Error(`${description}: ${errorMessage(error)}`);
+    }
+}
+
 async function ensureParent(file) {
-    await Directory.create(fsPath(dirname(file)), { recursive: true });
+    const parent = dirname(file);
+    await withFsContext(`create parent directory ${parent}`, async () => {
+        await Directory.create(fsPath(parent), { recursive: true });
+    });
 }
 
 async function mkdirClean(dir) {
     if (await Directory.exists(fsPath(dir))) {
-        await Directory.delete(fsPath(dir), { recursive: true });
+        await withFsContext(`delete directory ${dir}`, async () => {
+            await Directory.delete(fsPath(dir), { recursive: true });
+        });
     } else if (await File.exists(fsPath(dir))) {
-        await File.delete(fsPath(dir));
+        await withFsContext(`delete file ${dir}`, async () => {
+            await File.delete(fsPath(dir));
+        });
     }
-    await Directory.create(fsPath(dir), { recursive: true });
+    await withFsContext(`create directory ${dir}`, async () => {
+        await Directory.create(fsPath(dir), { recursive: true });
+    });
 }
 
 async function run(executable, runArgs, options = {}) {
@@ -359,15 +380,21 @@ async function stableFileList(root, options = {}) {
 }
 
 async function copyTree(from, to) {
-    await Directory.create(fsPath(to), { recursive: true });
+    await withFsContext(`create copy destination ${to}`, async () => {
+        await Directory.create(fsPath(to), { recursive: true });
+    });
     for await (const entry of Directory.walk(fsPath(from))) {
         const source = joinPath(from, entry.name);
         const target = joinPath(to, entry.name);
         if (entry.kind === "directory") {
-            await Directory.create(fsPath(target), { recursive: true });
+            await withFsContext(`copy directory ${source} to ${target}`, async () => {
+                await Directory.create(fsPath(target), { recursive: true });
+            });
         } else if (entry.kind === "file") {
             await ensureParent(target);
-            await File.copy(fsPath(source), fsPath(target), { overwrite: true });
+            await withFsContext(`copy file ${source} to ${target}`, async () => {
+                await File.copy(fsPath(source), fsPath(target), { overwrite: true });
+            });
         }
     }
 }
@@ -745,7 +772,9 @@ export async function main(args, ctx) {
     if (!(await File.exists(fsPath(sloppyc)))) {
         throw new Error(`sloppyc executable not found: ${sloppyc}`);
     }
-    await Directory.create(fsPath(workRoot), { recursive: true });
+    await withFsContext(`create work root ${workRoot}`, async () => {
+        await Directory.create(fsPath(workRoot), { recursive: true });
+    });
 
     if (shouldRun("cli")) await runCliArea();
     if (shouldRun("compiler")) await runCompilerArea();

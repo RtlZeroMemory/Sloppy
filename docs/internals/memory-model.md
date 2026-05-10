@@ -94,8 +94,9 @@ General rules:
 
 ## Plan and artifact lifetime
 
-The compiler writes the Plan and bundle before runtime execution. `sloppy run`
-then loads and validates the artifacts before entering V8.
+The compiler writes the Plan, bundle, source map, and optional dependency graph
+before runtime execution. `sloppy run` then loads and validates the artifacts
+before entering V8.
 
 ```text
 source files
@@ -106,6 +107,7 @@ sloppyc build
    +--> app.plan.json
    +--> app.js
    +--> app.js.map
+   +--> deps.graph.json when dependency metadata exists
           |
           v
 runtime startup
@@ -120,6 +122,7 @@ Plan data is app-lifetime data. After startup validation:
 
 - the Plan is read-only runtime input;
 - route table entries reference Plan data or app-owned copies;
+- dependency graph metadata is read-only metadata for CLI/runtime decisions;
 - metadata commands can read the Plan without entering V8;
 - request code must not mutate Plan-owned strings, arrays, or route metadata.
 

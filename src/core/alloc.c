@@ -1,8 +1,9 @@
 /*
  * src/core/alloc.c
  *
- * Centralizes rare process-heap allocations for callers that cannot use fixed
- * caller-backed arenas because the required capacity is runtime-configured.
+ * Centralizes Sloppy's narrow heap allocation boundary for independently owned
+ * byte buffers that cannot use fixed caller-backed arena storage because the
+ * required capacity is runtime-configured.
  */
 #include "sloppy/alloc.h"
 

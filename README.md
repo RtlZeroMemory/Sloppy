@@ -120,9 +120,10 @@ The developer experience is closer to ASP.NET Core Minimal APIs than to an
 Express-style middleware stack. The runtime model is its own: a C kernel,
 Rust compiler, and V8 isolated behind an explicit bridge.
 
-Sloppy is not Node compatibility, Bun compatibility, or a drop-in framework
-for an existing app. A Sloppy app imports the Sloppy stdlib and runs with the
-`sloppy` CLI.
+Sloppy is not full Node compatibility, Bun compatibility, or a drop-in
+framework for an existing app. A Sloppy app imports the Sloppy stdlib, may
+bundle compatible installed JavaScript packages, and runs with the `sloppy`
+CLI.
 
 For a practical comparison, see
 [Sloppy vs Node, Bun, and Deno](docs/about/sloppy-vs-node-bun-deno.md).
@@ -149,13 +150,14 @@ For a practical comparison, see
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
   h2 multiplexing, and HTTPS `auto` ALPN selection where the private outbound
   TLS bridge is available.
-- **CLI tooling.** `sloppy create`, `build`, `run`, `routes`, `capabilities`,
-  `doctor`, `audit`, `openapi`, and `package`.
+- **CLI tooling.** `sloppy create`, `build`, `run`, `routes`, `deps`,
+  `capabilities`, `doctor`, `audit`, `openapi`, and `package`.
 - **Program Mode.** Route-free source files can compile to Program Plans with
   opaque metadata and a generated `main`/default/top-level entrypoint.
   `main(args, ctx)` receives arguments after `--` and a Program context.
-  Console output, numeric exit codes, stdlib imports, packages, and
-  `sloppy run .sloppy/package -- ...` are supported on V8-enabled builds.
+  Console output, numeric exit codes, stdlib imports, compatible installed
+  pure-JavaScript packages, and `sloppy run .sloppy/package -- ...` are
+  supported on V8-enabled builds.
 - **Stdlib.** App host, routing, results, config, services, logging,
   capabilities, data, schema, filesystem, network, OS, process boundary, time,
   crypto, codec, and workers.
@@ -173,9 +175,17 @@ production edge runtime.
 Current limits:
 
 - API and artifact formats can change between alpha revisions.
-- Sloppy apps do not resolve arbitrary `node_modules` packages.
-- Sloppy is not a full Node runtime. Node globals and built-ins exist only when
-  Sloppy implements an explicit API for that behavior.
+- Package/dependency support is experimental. Sloppy consumes existing
+  installed pure-JavaScript packages when they can be resolved, transformed,
+  bundled, and executed inside Sloppy's runtime boundary. It does not install
+  from a registry or solve semver ranges.
+- Package resolution supports a documented subset of package.json `exports`,
+  `imports`, `main`, and `type`; unsupported export shapes fail clearly.
+- Sloppy does not support Node native addons or N-API yet. Obvious native
+  addon package shapes are rejected with pattern-based diagnostics, but that is
+  not a complete native-package classifier.
+- Sloppy is not a full Node runtime. Node compatibility is partial and grows
+  through explicit shims backed by Sloppy Core APIs.
 - The compiler supports a focused source subset. Dynamic web shapes can run
   with partial metadata; unsupported imports/runtime features still fail
   clearly.
@@ -183,8 +193,9 @@ Current limits:
 - Live PostgreSQL and SQL Server checks need explicit local services and
   drivers.
 
-See [Roadmap](docs/roadmap.md) for the dependency story, native
-interop, and production-hardening direction.
+See [Roadmap](docs/roadmap.md) and the
+[Node compatibility roadmap](docs/roadmap/node-compatibility.md) for the
+dependency story, native interop, and production-hardening direction.
 
 ## Repository layout
 

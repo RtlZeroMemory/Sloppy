@@ -172,12 +172,15 @@ Add `.sloppy/` to `.gitignore`. It's reproducible from source.
 
 ## What about `node_modules`?
 
-Sloppy apps don't import npm packages. The compiler resolves `"sloppy"`,
-the `sloppy/*` stdlib subpaths, and relative paths within the source root.
-If you need a third-party utility, vendor it into your repo or split the
-work into a service the Sloppy app calls. See
-[about/why-no-node-modules.md](../about/why-no-node-modules.md) for the
-reasoning.
+Sloppy can consume installed pure-JavaScript packages from `node_modules` when
+the compiler can resolve, transform, bundle, and execute them inside Sloppy's
+runtime boundary. It does not install packages, solve versions, load native
+addons, or provide full Node compatibility.
+
+Package files are build input. Packaged apps run from the sealed Sloppy
+artifact graph and do not read the original `node_modules` directory for
+bundled modules at run time. See [Using installed packages](using-packages.md)
+and [Dependency graph](../reference/dependency-graph.md).
 
 Beyond `"sloppy"` itself, the stdlib subpaths cover filesystem, network,
 operating system, time, crypto, codec, and worker work:

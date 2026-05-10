@@ -1,64 +1,71 @@
-# Why no `node_modules`?
+# Why `node_modules` Is Build Input
 
-Sloppy apps don't import packages from `node_modules`. The compiler
-resolves only `"sloppy"`, `"sloppy/<subpath>"`, and relative paths.
+Sloppy can consume installed pure-JavaScript packages, but it does not run as
+Node and does not treat `node_modules` as a runtime dependency directory.
 
-This is a design decision, not an oversight, and it follows directly from
-the [compiler-first runtime](compiler-first-runtime.md) model.
+During build, `sloppyc` may resolve packages from `node_modules`, transform the
+supported JavaScript/TypeScript/CommonJS/JSON modules, and emit a sealed Sloppy
+artifact graph. At run time, the generated artifact runs without returning to
+the original source checkout or package directory for bundled modules.
 
-## The reasoning
+## The Reasoning
 
-The compiler needs to read every module in the app graph and reason about
-it. That means the import surface has to be analyzable. Sloppy supports a
-focused subset of TypeScript and bans things like dynamic imports because
-they make the graph non-deterministic.
+Sloppy's runtime contract starts from the Plan and generated artifacts. That
+contract is strongest when the compiler knows what will run before the runtime
+starts:
 
-Loading arbitrary npm dependencies opens the same problem space at a much
-larger scale:
+- module IDs are deterministic and repo-relative;
+- package entries and export conditions are recorded;
+- Node compatibility shims are explicit;
+- unsupported native addons and Node builtins fail before packaging;
+- packaged apps can run from copied artifacts.
 
-- Most npm packages assume Node or browser globals (`process`, `Buffer`,
-  `fs`, `setImmediate`, …) that Sloppy doesn't provide.
-- Many use dynamic `require`/`import` to choose backends, which the
-  compiler can't follow.
-- Some bundle native addons that wouldn't load in Sloppy's V8 isolate.
-- Versioning, peer dependencies, and resolution semantics are themselves
-  a design space.
+This is different from Node's runtime package model. Node can discover files,
+conditional branches, and package internals while the process is already
+running. Sloppy intentionally avoids that for packaged artifacts.
 
-Quietly running every npm package would mean Sloppy is "Node, but worse"
-for those packages. We'd rather not pretend.
+## What Works
 
-## What to do instead
+Use your normal package manager to install dependencies:
 
-For the cases where you'd reach for an npm package today:
+```sh
+npm install some-package
+```
 
-| You'd use…              | In Sloppy do…                                     |
-| ----------------------- | ------------------------------------------------- |
-| `express`, `fastify`    | The first-party app/router/results surface        |
-| `pg`, `mysql2`, `mssql` | `data.postgres`, `data.sqlserver`                 |
-| `better-sqlite3`        | `data.sqlite`                                     |
-| `zod`, `yup`            | `schema` for simple cases; vendor a small library if needed |
-| `dotenv`, `config`      | `appsettings.json` + the config sources           |
-| `winston`, `pino`       | The first-party `Logger`                          |
-| `bcrypt`, `argon2`      | `Password` from `sloppy/crypto`                   |
-| `ulid`, `uuid`          | `crypto.randomUUID()` in V8                       |
-| `node-fetch`, `axios`   | `HttpClient` from `sloppy/net`                    |
+Then import compatible package code from Sloppy source. The supported subset
+includes practical package.json `exports`, `imports`, `main`, `type`, extension
+resolution, ESM, CommonJS, JSON modules, string-literal dynamic imports, and
+computed dynamic imports over `moduleInclude` graphs.
 
-For things genuinely outside Sloppy's stdlib (a specific message broker
-SDK, a vendor-specific protocol), the practical options are:
+Inspect the result with:
 
-- Vendor a small dependency-free implementation into your repo.
-- Run the third-party logic in a separate process and call it over HTTP
-  from Sloppy.
-- Wait for first-party support, or contribute it.
+```sh
+sloppy deps .sloppy
+```
 
-## Will this change?
+## What Still Does Not Work
 
-Maybe, eventually. Adding npm import support means designing how the
-compiler handles the resolution algorithm, how Plan determinism survives
-lockfile churn, how diagnostics work for opaque dependencies, and how
-audit/security checks extend across the boundary. None of that is shallow
-work, and pre-alpha effort is going into the parts of Sloppy that are
-load-bearing today.
+Sloppy does not provide:
 
-If your project depends on a specific npm package, treat it as a vote for
-that area to be designed when the runtime is more stable.
+- registry install or semver solving;
+- full Node module resolution parity;
+- native Node addons or N-API;
+- full Node globals such as process-wide `process` and `Buffer`;
+- full Node builtin compatibility;
+- runtime discovery outside the sealed artifact graph.
+
+Packages that depend on those surfaces fail with specific diagnostics or shim
+errors instead of pretending to work.
+
+## What To Do Instead
+
+| Need | Sloppy option |
+| --- | --- |
+| A compatible pure-JavaScript utility | Install it with your package manager and let Sloppy bundle it. |
+| A small dependency-free helper | Vendor the code into your source tree. |
+| A Node native addon | Run that logic in a separate service or wait for a first-party Sloppy feature. |
+| Node `fs`, `path`, `crypto`, or similar APIs | Prefer `sloppy/*` APIs, or use the explicit `node:*` compatibility shim when supported. |
+| Runtime plugin discovery | Use `moduleInclude` to seal known modules into the artifact graph. |
+
+The long-term direction is selective compatibility, not drop-in Node parity.
+See [Node compatibility roadmap](../roadmap/node-compatibility.md).

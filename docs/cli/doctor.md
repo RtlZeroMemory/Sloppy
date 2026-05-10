@@ -15,6 +15,7 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - native Plan parsing;
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
+- dependency graph metadata and compatibility findings;
 - native FFI metadata, dynamic library load checks, and symbol resolution;
 - SQLite metadata;
 - PostgreSQL live-test environment;
@@ -35,6 +36,8 @@ Sloppy Doctor
 [warn] app.plan.routes: no route metadata present
 [warn] app.plan.providers: provider metadata not present
 [warn] app.plan.capabilities: capability metadata not present
+[ok] dependency.graph: dependency graph available: 1 package(s), 4 module(s), 1 Node binding(s)
+[ok] ffi.native: native FFI metadata available: 1 library, 4 function(s)
 [ok] sqlite.provider: sqlite provider metadata available
 [warn] postgres.live: live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set
 [error] sqlserver.driver: connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found

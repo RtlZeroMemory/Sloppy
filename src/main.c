@@ -107,6 +107,7 @@
 #include "cli/cli_package.inc"
 #include "cli/cli_lookup.inc"
 #include "cli/cli_routes.inc"
+#include "cli/cli_deps.inc"
 #include "cli/cli_doctor.inc"
 #include "cli/cli_audit.inc"
 #include "cli/cli_openapi.inc"
@@ -139,6 +140,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "capabilities") == 0) {
         return sl_cli_command_capabilities(&options);
+    }
+    if (strcmp(options.command, "deps") == 0) {
+        return sl_cli_command_deps(&options);
     }
     if (strcmp(options.command, "run") == 0) {
         return sl_cli_command_run(&options);

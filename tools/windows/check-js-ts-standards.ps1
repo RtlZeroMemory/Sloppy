@@ -159,6 +159,23 @@ function Test-AllowedStdlibDynamicImport {
     return $false
 }
 
+function Test-AllowedNodeCompatStdlibRule {
+    param(
+        [string]$RelativePath,
+        [string]$Rule
+    )
+
+    if (-not $RelativePath.StartsWith("stdlib/sloppy/node/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    if ($Rule -in @("JS001", "JS002", "JS003", "JS008", "JS009")) {
+        return $true
+    }
+
+    return $false
+}
+
 function Test-AllowedStdlibFfiBufferApi {
     param(
         [string]$RelativePath,
@@ -174,6 +191,23 @@ function Test-AllowedStdlibFfiBufferApi {
     }
 
     return $false
+}
+
+function Test-AllowedExamplePackageManagerFile {
+    param([string]$RelativePath)
+
+    return $RelativePath -in @(
+        "examples/dependency-graph/package.json",
+        "examples/dependency-graph/fixtures/graph-helper/package.json",
+        "examples/package-zod-like/package.json",
+        "examples/package-zod-like/fixtures/zod-like/package.json"
+    )
+}
+
+function Test-AllowedGeneralDynamicImport {
+    param([string]$RelativePath)
+
+    return $RelativePath.StartsWith("examples/dynamic-module-include/", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 $files = Get-TrackedSourceFiles
@@ -213,7 +247,8 @@ foreach ($file in $files) {
     $fileName = [System.IO.Path]::GetFileName($relativePath)
 
     if ($relativePath.StartsWith("examples/", [System.StringComparison]::OrdinalIgnoreCase) -and
-        $fileName -in $packageManagerFiles) {
+        $fileName -in $packageManagerFiles -and
+        -not (Test-AllowedExamplePackageManagerFile -RelativePath $relativePath)) {
         $violations += New-Finding `
             -File $relativePath `
             -Line 1 `
@@ -225,6 +260,10 @@ foreach ($file in $files) {
     foreach ($line in Get-Content -LiteralPath $file) {
         $lineNumber += 1
 
+        if ($relativePath -eq "stdlib/sloppy/bootstrap.manifest.json") {
+            continue
+        }
+
         if ($relativePath.StartsWith("stdlib/sloppy/", [System.StringComparison]::OrdinalIgnoreCase)) {
             foreach ($rule in $stdlibRules) {
                 $ruleMatched = if ($rule.ContainsKey("CaseSensitive") -and $rule.CaseSensitive) {
@@ -233,6 +272,9 @@ foreach ($file in $files) {
                     $line -match $rule.Pattern
                 }
                 if ($ruleMatched) {
+                    if (Test-AllowedNodeCompatStdlibRule -RelativePath $relativePath -Rule $rule.Rule) {
+                        continue
+                    }
                     if ($rule.Rule -eq "JS010" -and
                         (Test-AllowedStdlibDynamicImport -RelativePath $relativePath -Line $line))
                     {
@@ -259,6 +301,11 @@ foreach ($file in $files) {
         } else {
             foreach ($rule in $generalRules) {
                 if ($line -match $rule.Pattern) {
+                    if ($rule.Rule -eq "JS020" -and
+                        (Test-AllowedGeneralDynamicImport -RelativePath $relativePath))
+                    {
+                        continue
+                    }
                     $violations += New-Finding -File $relativePath -Line $lineNumber -Rule $rule.Rule -Message $rule.Message
                 }
             }

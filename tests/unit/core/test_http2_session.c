@@ -315,6 +315,72 @@ static int test_rst_stream_and_goaway_surface_as_events(void)
     return 0;
 }
 
+static int test_unknown_rst_stream_error_code_does_not_send_goaway(void)
+{
+    unsigned char client_storage[65536];
+    unsigned char server_storage[65536];
+    SlArena client_arena = {0};
+    SlArena server_arena = {0};
+    SlHttp2Session client = {0};
+    SlHttp2Session server = {0};
+    static const unsigned char unknown_rst_stream[] = {
+        0x00U, 0x00U, 0x04U, 0x03U, 0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0xffU, 0xffU, 0xffU, 0xffU};
+    static const unsigned char ping_frame[] = {0x00U, 0x00U, 0x08U, 0x06U, 0x00U, 0x00U,
+                                               0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+                                               0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
+    SlHttp2HeaderField request_fields[] = {
+        h2_header(":method", "GET"), h2_header(":scheme", "https"),
+        h2_header(":authority", "localhost"), h2_header(":path", "/cancel")};
+    SlHttp2HeaderList request_headers = {
+        .fields = request_fields, .count = sizeof(request_fields) / sizeof(request_fields[0])};
+    SlHttp2EventList events = {0};
+    const SlHttp2Event* rst_event = NULL;
+    SlBytes output = {0};
+    int32_t stream_id = 0;
+
+    if (expect_status(sl_arena_init(&client_arena, client_storage, sizeof(client_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&server_arena, server_storage, sizeof(server_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_pair(&client_arena, &server_arena, &client, &server) != 0)
+    {
+        return 91;
+    }
+
+    if (expect_status(sl_http2_session_submit_request(&client, &request_headers, sl_bytes_empty(),
+                                                      &stream_id),
+                      SL_STATUS_OK) != 0 ||
+        stream_id != 1 || pump(&client, &server) != 0 ||
+        receive_bytes(&server, unknown_rst_stream, sizeof(unknown_rst_stream)) != 0)
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 92;
+    }
+
+    events = sl_http2_session_events(&server);
+    rst_event = find_event(&events, SL_HTTP2_EVENT_RST_STREAM, stream_id);
+    if (rst_event == NULL || rst_event->error_code != UINT32_MAX) {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 93;
+    }
+
+    if (receive_bytes(&server, ping_frame, sizeof(ping_frame)) != 0 ||
+        expect_status(sl_http2_session_drain_output(&server, &output), SL_STATUS_OK) != 0 ||
+        frame_bytes_contain_type(output, SL_HTTP2_FRAME_GOAWAY) ||
+        !frame_bytes_contain_type(output, SL_HTTP2_FRAME_PING))
+    {
+        sl_http2_session_dispose(&client);
+        sl_http2_session_dispose(&server);
+        return 94;
+    }
+
+    sl_http2_session_dispose(&client);
+    sl_http2_session_dispose(&server);
+    return 0;
+}
+
 static int test_data_after_closed_stream_surfaces_invalid_frame_and_goaway(void)
 {
     unsigned char client_storage[65536];
@@ -741,6 +807,12 @@ int main(void)
     result = test_rst_stream_and_goaway_surface_as_events();
     if (result != 0) {
         fprintf(stderr, "test_rst_stream_and_goaway_surface_as_events failed: %d\n", result);
+        return result;
+    }
+    result = test_unknown_rst_stream_error_code_does_not_send_goaway();
+    if (result != 0) {
+        fprintf(stderr, "test_unknown_rst_stream_error_code_does_not_send_goaway failed: %d\n",
+                result);
         return result;
     }
     result = test_rst_stream_on_half_closed_remote_stream_is_accepted();

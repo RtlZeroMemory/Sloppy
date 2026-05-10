@@ -33,8 +33,9 @@ own status.
 - Packages are experimental development artifacts.
 - No installer, signing, notarization, auto-update, Homebrew, winget, or public
   GitHub release is included in the dry-run.
-- npm dry-run packages install Sloppy itself; they do not add app-level npm
-  dependency support or `node_modules` resolution.
+- npm dry-run packages install Sloppy itself; app dependencies are still
+  project build inputs that must be bundled into Sloppy artifacts. The runtime
+  does not discover `node_modules` at package run time.
 - Package smoke validates outside-checkout layout and basic CLI behavior only.
 - Live provider behavior needs separate opt-in validation.
 

@@ -44,6 +44,8 @@ $ sloppy capabilities .sloppy --format json
   `Sqlite<"main">` typed handlers) match what you intended.
 - Confirm that Program Mode stdlib imports or `sloppy.json` declarations such
   as `fs` and `time` are visible in the Plan.
+- Confirm dependency or Node compatibility shim imports that require Sloppy
+  stdlib capabilities, such as filesystem or crypto.
 - Confirm that `sloppy/ffi` declarations emitted `ffi/use` capability metadata
   and native FFI function rows.
 - Review what providers a build will activate at runtime.

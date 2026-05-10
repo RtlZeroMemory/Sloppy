@@ -12,6 +12,8 @@ extern "C" {
 #define SL_SLOPPYRC_KIND_MAX_BYTES 16U
 #define SL_SLOPPYRC_MAX_CAPABILITIES 9U
 #define SL_SLOPPYRC_CAPABILITY_MAX_BYTES 16U
+#define SL_SLOPPYRC_MAX_MODULE_INCLUDES 32U
+#define SL_SLOPPYRC_MAX_ASSET_INCLUDES 32U
 #define SL_SLOPPYRC_MAX_FFI_LIBRARIES 32U
 #define SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES 256U
 #define SL_SLOPPYRC_FFI_LIBRARY_PATH_MAX_BYTES SL_SLOPPYRC_PATH_MAX_BYTES
@@ -30,6 +32,10 @@ typedef struct SlSloppyRunConfig
     char kind[SL_SLOPPYRC_KIND_MAX_BYTES];
     char capabilities[SL_SLOPPYRC_MAX_CAPABILITIES][SL_SLOPPYRC_CAPABILITY_MAX_BYTES];
     size_t capability_count;
+    char module_includes[SL_SLOPPYRC_MAX_MODULE_INCLUDES][SL_SLOPPYRC_PATH_MAX_BYTES];
+    size_t module_include_count;
+    char asset_includes[SL_SLOPPYRC_MAX_ASSET_INCLUDES][SL_SLOPPYRC_PATH_MAX_BYTES];
+    size_t asset_include_count;
     SlSloppyFfiLibraryConfig ffi_libraries[SL_SLOPPYRC_MAX_FFI_LIBRARIES];
     size_t ffi_library_count;
 } SlSloppyRunConfig;

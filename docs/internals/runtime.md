@@ -151,7 +151,7 @@ JavaScript handle that has already been disposed.
 ## CLI mode selection
 
 `src/main.c` parses the top-level command and dispatches to a per-command
-function in `src/cli/cli_*.inc`. The metadata commands (`routes`,
+function in `src/cli/cli_*.inc`. The metadata commands (`routes`, `deps`,
 `capabilities`, `doctor`, `audit`, `openapi`) reuse the Plan parser but
 skip the engine init steps; they don't enter V8 at all.
 
@@ -160,6 +160,7 @@ src/main.c::main
   ├─ "build"          → cli_run.inc / sloppyc handoff
   ├─ "run"            → cli_run.inc::sl_cli_command_run
   ├─ "routes"         → cli_routes.inc
+  ├─ "deps"           → cli_deps.inc
   ├─ "capabilities"   → cli_metadata.inc / cli_lookup.inc
   ├─ "doctor"         → cli_doctor.inc
   ├─ "audit"          → cli_audit.inc
@@ -170,6 +171,11 @@ Source-input `sloppy run src/main.ts` invokes `sloppyc build` first,
 writes artifacts to `.sloppy` by default (see
 `SL_RUN_DEFAULT_SOURCE_OUT_DIR` in `src/main.c`), then executes the same
 artifact path.
+
+Dependency packages are build-time inputs. If `sloppyc` emits a dependency
+graph, the runtime sees bundled modules through `app.js` and metadata through
+the Plan and optional `deps.graph.json`; it does not resolve `node_modules`
+during startup.
 
 ## What you can rely on
 

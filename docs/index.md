@@ -69,8 +69,8 @@ metadata, and writes an app package.
 ## What works today
 
 - Templates: `minimal-api`, `full-api`, `dogfood`, and `program`.
-- CLI: `create`, `build`, `run`, `package`, `routes`, `capabilities`,
-  `doctor`, `audit`, and `openapi`.
+- CLI: `create`, `build`, `run`, `package`, `routes`, `deps`,
+  `capabilities`, `doctor`, `audit`, and `openapi`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
   execution on Windows x64 and Linux x64 alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
@@ -81,16 +81,17 @@ metadata, and writes an app package.
 
 - [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md) explains
   the compiler-first runtime model with side-by-side route examples.
-- [Why no `node_modules`?](about/why-no-node-modules.md) explains the current
-  dependency boundary.
+- [Why `node_modules` is build input](about/why-no-node-modules.md) explains
+  the dependency boundary.
 - [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
   Plan exists.
 
 ## Pre-alpha limits
 
 Sloppy is for experiments, demos, and feedback right now. APIs and artifacts can
-change between alpha revisions. Sloppy apps do not resolve arbitrary npm
-dependencies, and Sloppy is not a full Node runtime.
+change between alpha revisions. Package support is limited to compatible
+installed JavaScript that Sloppy can bundle, and Sloppy is not a full Node
+runtime.
 
 Platform packages are currently Windows x64 and Linux x64. macOS and arm64 are
 source-build paths until matching alpha packages are available.

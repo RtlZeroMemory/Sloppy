@@ -65,7 +65,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Static provider handles | sqlite supported | sqlite supported | sqlite supported | sqlite supported | Static non-SQLite handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. |
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
-| Program Mode | n/a | supported route-free subset | emits `kind: "program"` Plan and generated entrypoint | supported with V8 | `main(args, ctx)`, default function entrypoints, top-level-only modules, console stdout/stderr, numeric exit codes, stdlib imports, and packaged runs are covered. No Node globals, npm resolution, or raw terminal API. |
+| Program Mode | n/a | supported route-free subset | emits `kind: "program"` Plan and generated entrypoint | supported with V8 | `main(args, ctx)`, default function entrypoints, top-level-only modules, console stdout/stderr, numeric exit codes, stdlib imports, compatible bundled packages, and packaged runs are covered. No full Node globals, native addons, or raw terminal API. |
 | OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
@@ -73,6 +73,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `minimal-api`, `full-api`, `dogfood`, and `program`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes. Not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
+| CLI `deps` | n/a | Plan-derived | metadata-only | no V8 required | Reads dependency graph metadata from Plan or `deps.graph.json`. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
 | CLI `audit` | n/a | Plan-derived | metadata-only | no V8 required | Reports static Plan issues and policy notes. |
 | CLI `doctor` | n/a | Plan-derived | metadata-only | no V8 required | Reports artifact and feature readiness. |
@@ -83,15 +84,16 @@ compiler refuses the input rather than emitting a partial Plan.
 | HTTP server | n/a | Plan/server config metadata | supported | experimental dev server | HTTP/1.1 plus server HTTP/2 over TLS ALPN, h2c prior knowledge, and h2c Upgrade. Not a production edge. |
 | Inbound TLS | n/a | config metadata | supported paths | experimental | Certificate/key paths are Plan-visible today; diagnostics redact TLS material. |
 | HttpClient | supported API | supported from `sloppy/net` | Plan-visible as required feature | experimental bridge | HTTP/1.1 by default; explicit h2/h2c, pooled h2 multiplexing, and HTTPS `auto` ALPN h2 selection are supported. `https://` needs the private outbound TLS bridge. |
-| Filesystem stdlib | supported | supported from `sloppy/fs` | `stdlib.fs` feature emitted | V8 bridge required | No Node `fs` compatibility. |
+| Filesystem stdlib | supported | supported from `sloppy/fs` | `stdlib.fs` feature emitted | V8 bridge required | Node `fs` compatibility is a partial shim over supported Sloppy filesystem behavior, not full Node `fs`. |
 | Network stdlib (TCP, local IPC) | supported | supported from `sloppy/net` | `stdlib.net` feature emitted | V8 bridge required | `HttpClient` supports explicit h2/h2c, pooled h2 multiplexing, and HTTPS `auto` ALPN h2 selection; no standalone DNS, UDP, or WebSocket API. |
-| OS stdlib (System, Environment, Process, ProcessHandle, Signals, OsError) | supported | supported from `sloppy/os` | `stdlib.os` feature emitted | V8 bridge required | No Node `process`/`child_process` compatibility; no process identity helpers. |
-| Time stdlib | supported | supported from `sloppy/time` | `stdlib.time` feature emitted | V8 bridge for scheduling; pure JS for `Deadline`, `CancellationController`, `Time.fakeClock` | No global `setTimeout`/`setInterval`. |
+| OS stdlib (System, Environment, Process, ProcessHandle, Signals, OsError) | supported | supported from `sloppy/os` | `stdlib.os` feature emitted | V8 bridge required | `node:process` is partial module compatibility only; no global process identity or `child_process` compatibility. |
+| Time stdlib | supported | supported from `sloppy/time` | `stdlib.time` feature emitted | V8 bridge for scheduling; pure JS for `Deadline`, `CancellationController`, `Time.fakeClock` | `node:timers` is partial and maps only where timer globals are available. |
 | Crypto stdlib | supported | supported from `sloppy/crypto` | `stdlib.crypto` feature emitted | V8 bridge required (platform-delegated) | SHA-256/384/512, HMAC-SHA-256, Argon2id, OS CSPRNG, xxHash64. |
-| Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | No Node `Buffer`. |
+| Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | `node:buffer` is partial compatibility and does not claim full Node Buffer identity. |
 | Workers stdlib | supported app-host | supported from `sloppy/workers` | `stdlib.workers` feature emitted | pure JS for `BackgroundService`/`WorkQueue`; V8 bridge for `WorkerPool.run` and `Worker.start` | App shutdown does not yet auto-stop background services. |
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
 | Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
+| Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, or unrestricted runtime discovery. |
 | Package/install path | n/a | n/a | package layout | experimental | Windows x64 and Linux x64 npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
 
 ## Current Limits

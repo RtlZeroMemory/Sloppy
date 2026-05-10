@@ -36,7 +36,8 @@ These standards govern:
   - `__filename`.
 - Do not use browser DOM APIs in the bootstrap stdlib.
 - Do not depend on npm packages in the bootstrap stdlib.
-- Do not use dynamic imports unless a future scoped task documents the boundary and tests.
+- Do not use dynamic imports in the bootstrap stdlib except behind a documented
+  and tested Sloppy-owned loading boundary.
 - The worker bridge allows the single bridge-gated dynamic `import(modulePath)` in
   `stdlib/sloppy/workers.js` for `Worker.start()` bootstrap module execution. It must stay
   behind that API and must not become general package, Node, or npm resolution.
@@ -139,7 +140,7 @@ Rules:
 - Static tests are acceptable only when the execution harness does not support modules yet;
   the docs must say why the test is static.
 - Optional Node-based ESM tests may exist as bootstrap test infrastructure only. They must
-  not be presented as application-level runtime or npm dependency support.
+  not be presented as proof of Sloppy's package resolver or runtime execution support.
 - Generated artifact golden tests must be deterministic.
 
 Static scanners are lint gates. They are not substitutes for behavior tests.

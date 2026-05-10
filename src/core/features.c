@@ -9,7 +9,8 @@
 
 #include <stddef.h>
 
-#define SL_FEATURE_BIT(id) (UINT32_C(1) << (uint32_t)(id))
+#define SL_FEATURE_BIT(id) (UINT64_C(1) << (uint32_t)(id))
+#define SL_FEATURE_LIT(text) sl_feature_literal(text, sizeof(text) - 1U)
 #define SL_FEATURE_STR(text) {text, sizeof(text) - 1U}
 #define SL_FEATURE_EMPTY {NULL, 0U}
 #define SL_FEATURE_DEPS_TIME                                                                       \
@@ -31,6 +32,8 @@
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
+#define SL_FEATURE_DEPS_NODE_COMPAT                                                                \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 #define SL_FEATURE_DEPS_FFI                                                                        \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 
@@ -60,7 +63,7 @@ static SlStr sl_feature_literal(const char* ptr, size_t length)
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_make(SlRuntimeFeatureId id, SlRuntimeFeatureKind kind, SlStr stable_id,
                            SlStr diagnostics_name, SlStr stdlib_import,
-                           SlStr v8_intrinsic_namespace, uint32_t dependencies, bool available,
+                           SlStr v8_intrinsic_namespace, uint64_t dependencies, bool available,
                            bool requires_v8_intrinsics, bool package_include_hint)
 {
     SlRuntimeFeatureDescriptor descriptor;
@@ -170,6 +173,16 @@ static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeature
         sl_feature_literal("sloppy/workers", sizeof("sloppy/workers") - 1U),
         sl_feature_literal("__sloppy.workers", sizeof("__sloppy.workers") - 1U),
         SL_FEATURE_DEPS_WORKERS, available, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_node_compat_descriptor(SlRuntimeFeatureId id,
+                                                                    SlStr stable_id,
+                                                                    SlStr diagnostics_name,
+                                                                    SlStr stdlib_import)
+{
+    return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_STDLIB, stable_id,
+                                      diagnostics_name, stdlib_import, sl_str_empty(),
+                                      SL_FEATURE_DEPS_NODE_COMPAT, true, false, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_ffi_descriptor(SlRuntimeFeatureId id, bool available)
@@ -334,6 +347,56 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_ffi_descriptor(id, ffi);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_PATH:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.path"),
+                                                 SL_FEATURE_LIT("node:path compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/path"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_EVENTS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.events"),
+                                                 SL_FEATURE_LIT("node:events compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/events"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_URL:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.url"),
+                                                 SL_FEATURE_LIT("node:url compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/url"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_QUERYSTRING:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.querystring"),
+            SL_FEATURE_LIT("node:querystring compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/querystring"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_BUFFER:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.buffer"),
+                                                 SL_FEATURE_LIT("node:buffer compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/buffer"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_UTIL:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.util"),
+                                                 SL_FEATURE_LIT("node:util compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/util"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_TIMERS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.timers"),
+                                                 SL_FEATURE_LIT("node:timers compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/timers"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_FS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.fs"),
+                                                 SL_FEATURE_LIT("node:fs compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/fs"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.fs.promises"),
+            SL_FEATURE_LIT("node:fs/promises compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/fs/promises"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_OS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.os"),
+                                                 SL_FEATURE_LIT("node:os compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/os"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_PROCESS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.process"),
+                                                 SL_FEATURE_LIT("node:process compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/process"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.crypto"),
+                                                 SL_FEATURE_LIT("node:crypto compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/crypto"));
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
@@ -452,6 +515,56 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.workers"), SL_FEATURE_STR("workers stdlib"),
          SL_FEATURE_STR("sloppy/workers"), SL_FEATURE_STR("__sloppy.workers"),
          SL_FEATURE_DEPS_WORKERS, true, true, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_PATH, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.path"), SL_FEATURE_STR("node:path compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/path"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_EVENTS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.events"), SL_FEATURE_STR("node:events compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/events"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_URL, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.url"), SL_FEATURE_STR("node:url compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/url"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_QUERYSTRING, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.querystring"),
+         SL_FEATURE_STR("node:querystring compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/querystring"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT,
+         true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_BUFFER, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.buffer"), SL_FEATURE_STR("node:buffer compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/buffer"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_UTIL, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.util"), SL_FEATURE_STR("node:util compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/util"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_TIMERS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.timers"), SL_FEATURE_STR("node:timers compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/timers"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_FS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.fs"), SL_FEATURE_STR("node:fs compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/fs"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.fs.promises"),
+         SL_FEATURE_STR("node:fs/promises compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/fs/promises"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT,
+         true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_OS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.os"), SL_FEATURE_STR("node:os compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/os"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_PROCESS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.process"), SL_FEATURE_STR("node:process compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/process"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.crypto"), SL_FEATURE_STR("node:crypto compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/crypto"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
         {SL_RUNTIME_FEATURE_STDLIB_FFI, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.ffi"), SL_FEATURE_STR("native FFI stdlib"),
          SL_FEATURE_STR("sloppy/ffi"), SL_FEATURE_STR("__sloppy.ffi"), SL_FEATURE_DEPS_FFI,

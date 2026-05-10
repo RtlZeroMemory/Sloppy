@@ -31,9 +31,15 @@ ones you need installed for which features, and where they show up.
 - OpenSSL is invoked through the inbound transport and the private outbound
   TLS bridge that `HttpClient` uses for HTTPS.
 
-## What Sloppy does not bring in
+## Package Dependencies
 
-Sloppy does not load `node_modules`, and the runtime does not bundle a
-JavaScript package manager, an ORM, or a migration tool. See
-[Why no `node_modules`?](../about/why-no-node-modules.md) for the reasoning
-and the alternatives Sloppy ships in the stdlib.
+Installed package graph support is experimental. Sloppy can read already
+installed `node_modules` packages at build time when a package is pure
+JavaScript and fits Sloppy's supported package resolver, module loader, and
+runtime API boundary. The compiler bundles compatible modules into the
+generated artifacts and records them in the dependency graph.
+
+The runtime does not bundle a JavaScript package manager, an ORM, a migration
+tool, a registry installer, or native Node addon support. See
+[Using installed packages](../guide/using-packages.md) and
+[Dependency graph](dependency-graph.md).

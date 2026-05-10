@@ -50,6 +50,7 @@ an already-built Plan.
   app.plan.json   the application Plan (deterministic JSON)
   app.js          the generated runtime bundle
   app.js.map      the source map
+  deps.graph.json optional dependency graph artifact
 ```
 
 `app.plan.json` is what every other command (`routes`, `audit`,
@@ -61,6 +62,14 @@ for cache keys.
 Don't check generated artifacts (`.sloppy/`) into source control by
 default; they regenerate from source. Intentional fixtures and test
 goldens are the only normal place to commit Plan output.
+
+When source imports installed packages, Node compatibility shims, or
+`moduleInclude`/`assetInclude` entries, the Plan also carries dependency graph
+metadata. Inspect it with:
+
+```sh
+sloppy deps .sloppy
+```
 
 ## Examples
 

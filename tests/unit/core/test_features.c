@@ -200,15 +200,20 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
+    const SlRuntimeFeatureDescriptor* node_path =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_PATH);
+    const SlRuntimeFeatureDescriptor* node_fs_promises =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES);
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 21) {
+    if (SL_RUNTIME_FEATURE_COUNT != 33) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
-        fs == NULL || config == NULL || ffi == NULL)
+        fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL ||
+        ffi == NULL)
     {
         return 61;
     }
@@ -324,6 +329,25 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         return 75;
     }
 #endif
+    if (!sl_str_equal(node_path->stable_id, sl_str_from_cstr("node.compat.path")) ||
+        !sl_str_equal(node_path->diagnostics_name,
+                      sl_str_from_cstr("node:path compatibility shim")) ||
+        !sl_str_equal(node_path->stdlib_import, sl_str_from_cstr("sloppy/node/path")) ||
+        !sl_str_is_empty(node_path->v8_intrinsic_namespace) || node_path->requires_v8_intrinsics ||
+        !node_path->available ||
+        (node_path->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U)
+    {
+        return 76;
+    }
+    if (!sl_str_equal(node_fs_promises->stable_id, sl_str_from_cstr("node.compat.fs.promises")) ||
+        !sl_str_equal(node_fs_promises->stdlib_import,
+                      sl_str_from_cstr("sloppy/node/fs/promises")) ||
+        !sl_str_is_empty(node_fs_promises->v8_intrinsic_namespace) ||
+        node_fs_promises->requires_v8_intrinsics ||
+        (node_fs_promises->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U)
+    {
+        return 77;
+    }
     return 0;
 }
 
@@ -399,6 +423,91 @@ static int test_workers_feature_diagnostic_golden(void)
         return 82;
     }
 
+    return 0;
+}
+
+static int test_node_compat_required_features_activate_v8_dependency(void)
+{
+    static const struct
+    {
+        const char* required_feature;
+        SlRuntimeFeatureId feature_id;
+    } cases[] = {
+        {"node.compat.path", SL_RUNTIME_FEATURE_NODE_COMPAT_PATH},
+        {"node.compat.events", SL_RUNTIME_FEATURE_NODE_COMPAT_EVENTS},
+        {"node.compat.url", SL_RUNTIME_FEATURE_NODE_COMPAT_URL},
+        {"node.compat.querystring", SL_RUNTIME_FEATURE_NODE_COMPAT_QUERYSTRING},
+        {"node.compat.buffer", SL_RUNTIME_FEATURE_NODE_COMPAT_BUFFER},
+        {"node.compat.util", SL_RUNTIME_FEATURE_NODE_COMPAT_UTIL},
+        {"node.compat.timers", SL_RUNTIME_FEATURE_NODE_COMPAT_TIMERS},
+        {"node.compat.fs", SL_RUNTIME_FEATURE_NODE_COMPAT_FS},
+        {"node.compat.fs.promises", SL_RUNTIME_FEATURE_NODE_COMPAT_FS_PROMISES},
+        {"node.compat.os", SL_RUNTIME_FEATURE_NODE_COMPAT_OS},
+        {"node.compat.process", SL_RUNTIME_FEATURE_NODE_COMPAT_PROCESS},
+        {"node.compat.crypto", SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO},
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char diag_storage[2048];
+        SlArena diag_arena = {0};
+        SlPlanRequiredFeature required[1] = {{sl_str_from_cstr(cases[index].required_feature)}};
+        SlPlan plan = target_only_plan();
+        SlRuntimeFeatureAvailability availability = all_available();
+        SlRuntimeFeatureSet set = {0};
+        SlDiag diag = {0};
+
+        plan.target.engine = sl_str_empty();
+        plan.required_features = required;
+        plan.required_feature_count = 1U;
+        (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+        if (expect_status(
+                sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+                SL_STATUS_OK) != 0)
+        {
+            return (int)(1U + index);
+        }
+        if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+            !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+            !sl_runtime_feature_set_contains(&set, cases[index].feature_id) ||
+            set.activation_count != 3U || diag.code != SL_DIAG_NONE)
+        {
+            return (int)(20U + index);
+        }
+    }
+
+    return 0;
+}
+
+static int test_node_compat_required_feature_fails_without_v8(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("node.compat.path")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = false;
+    plan.target.engine = sl_str_empty();
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("v8")) ||
+        !sl_str_equal(diag.related[1].message, sl_str_from_cstr("node.compat.path")))
+    {
+        return 2;
+    }
     return 0;
 }
 
@@ -1327,6 +1436,8 @@ int main(void)
         test_http_client_required_feature_activates_tcp_dependency,
         test_workers_required_feature_activates_runtime_dependencies,
         test_workers_feature_diagnostic_golden,
+        test_node_compat_required_features_activate_v8_dependency,
+        test_node_compat_required_feature_fails_without_v8,
         test_ffi_required_feature_activates_runtime_dependencies,
         test_ffi_plan_metadata_activates_runtime_feature,
         test_ffi_required_feature_fails_when_runtime_unavailable,

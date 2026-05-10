@@ -140,7 +140,8 @@ This package is an experimental pre-alpha development artifact.
 
 - Publishing uses a separate release step.
 - Production readiness is tracked separately.
-- Node, Bun, Deno, npm, and package-manager compatibility are separate tracks.
+- Full Node, Bun, and Deno compatibility, package-manager installs, and runtime
+  node_modules discovery are separate tracks.
 - V8 execution, live provider readiness, TLS hardening, and release readiness use their own
   lanes.
 - V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
@@ -427,7 +428,7 @@ $manifest = [ordered]@{
         "dry-run only",
         "no installer",
         "no package manager",
-        "npm launcher packages may reuse this archive but do not add npm app dependency support",
+        "npm launcher packages may reuse this archive but do not install app dependencies or add runtime node_modules discovery",
         "no auto update",
         "no signed or notarized artifacts"
     )

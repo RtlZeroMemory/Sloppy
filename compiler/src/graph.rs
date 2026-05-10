@@ -154,6 +154,7 @@ pub(crate) struct AppGraph {
     pub(crate) ffi_structs: Vec<FfiStructMetadata>,
     pub(crate) uses_health: bool,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
+    pub(crate) dependency_graph: DependencyGraph,
 }
 
 pub(crate) type ExtractedApp = AppGraph;
@@ -164,6 +165,126 @@ pub(crate) struct ProgramModule {
     pub(crate) source_name: String,
     pub(crate) source: String,
     pub(crate) emitted_source: String,
+    pub(crate) format: ModuleFormat,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ModuleFormat {
+    Esm,
+    CommonJs,
+    Json,
+}
+
+impl ModuleFormat {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Esm => "esm",
+            Self::CommonJs => "commonjs",
+            Self::Json => "json",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DependencyGraph {
+    pub(crate) resolver_profiles: Vec<String>,
+    pub(crate) resolver_conditions: Vec<String>,
+    pub(crate) packages: Vec<PackageRecord>,
+    pub(crate) modules: Vec<DependencyModuleRecord>,
+    pub(crate) assets: Vec<AssetRecord>,
+    pub(crate) node_builtins: Vec<NodeBuiltinRecord>,
+    pub(crate) compatibility_findings: Vec<CompatibilityFinding>,
+}
+
+impl DependencyGraph {
+    pub(crate) fn has_entries(&self) -> bool {
+        !self.packages.is_empty()
+            || !self.modules.is_empty()
+            || !self.assets.is_empty()
+            || !self.node_builtins.is_empty()
+            || !self.compatibility_findings.is_empty()
+    }
+
+    pub(crate) fn ensure_defaults(&mut self) {
+        if self.resolver_profiles.is_empty() {
+            self.resolver_profiles = vec![
+                "sloppy-stdlib".to_string(),
+                "relative-source".to_string(),
+                "installed-packages".to_string(),
+                "node-compat-shims".to_string(),
+            ];
+        }
+        if self.resolver_conditions.is_empty() {
+            self.resolver_conditions = vec![
+                "sloppy".to_string(),
+                "import".to_string(),
+                "require".to_string(),
+                "default".to_string(),
+            ];
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct PackageRecord {
+    pub(crate) name: String,
+    pub(crate) version: Option<String>,
+    pub(crate) root: String,
+    pub(crate) package_json: Option<String>,
+    pub(crate) entry: String,
+    pub(crate) format: ModuleFormat,
+    pub(crate) source: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct DependencyModuleRecord {
+    pub(crate) id: String,
+    pub(crate) source: String,
+    pub(crate) format: ModuleFormat,
+    pub(crate) package: Option<String>,
+    pub(crate) imports: Vec<String>,
+    pub(crate) resolved_imports: Vec<ResolvedImportRecord>,
+    pub(crate) dynamic_imports: Vec<DynamicImportRecord>,
+    pub(crate) included_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct ResolvedImportRecord {
+    pub(crate) specifier: String,
+    pub(crate) resolved_id: String,
+    pub(crate) kind: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct DynamicImportRecord {
+    pub(crate) specifier: Option<String>,
+    pub(crate) resolved_id: Option<String>,
+    pub(crate) kind: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct AssetRecord {
+    pub(crate) path: String,
+    pub(crate) included_by: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct NodeBuiltinRecord {
+    pub(crate) specifier: String,
+    pub(crate) status: String,
+    pub(crate) backing: Option<String>,
+    pub(crate) capability: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct CompatibilityFinding {
+    pub(crate) code: String,
+    pub(crate) severity: String,
+    pub(crate) message: String,
+    pub(crate) source: Option<String>,
+    pub(crate) package: Option<String>,
+    pub(crate) specifier: Option<String>,
+    pub(crate) hint: Option<String>,
 }
 
 #[derive(Debug, Clone)]

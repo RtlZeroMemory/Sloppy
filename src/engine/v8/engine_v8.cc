@@ -461,10 +461,10 @@ void sl_v8_code_cache_store(const SlV8CodeCacheProbe& probe,
     output.write(reinterpret_cast<const char*>(data->data), data->length);
 }
 
-uint32_t sl_v8_runtime_feature_mask(const SlEngineOptions* options)
+uint64_t sl_v8_runtime_feature_mask(const SlEngineOptions* options)
 {
     return options == nullptr || options->runtime_features == nullptr
-               ? 0U
+               ? UINT64_C(0)
                : options->runtime_features->active_mask;
 }
 
@@ -476,7 +476,7 @@ bool sl_v8_startup_snapshot_supported(const SlEngineOptions* options)
 uint64_t sl_v8_startup_snapshot_key(const SlEngineOptions* options)
 {
     const char* v8_version = v8::V8::GetVersion();
-    uint32_t mask = sl_v8_runtime_feature_mask(options);
+    uint64_t mask = sl_v8_runtime_feature_mask(options);
     uint64_t hash = UINT64_C(1469598103934665603);
 
     hash = sl_v8_hash_bytes(hash, "sloppy-v8-startup-snapshot-v1",
