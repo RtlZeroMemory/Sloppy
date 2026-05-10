@@ -12,6 +12,21 @@ use std::{
 use oxc_span::Span;
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ProjectKind {
+    Web,
+    Program,
+}
+
+impl ProjectKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Program => "program",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Route {
     pub(crate) method: &'static str,
@@ -96,6 +111,9 @@ pub(crate) struct EmittedAppJs {
 
 #[derive(Debug)]
 pub(crate) struct AppGraph {
+    pub(crate) kind: ProjectKind,
+    pub(crate) program_entry: Option<String>,
+    pub(crate) program_modules: Vec<ProgramModule>,
     pub(crate) uses_data_runtime: bool,
     pub(crate) uses_sql_runtime: bool,
     pub(crate) source_files: Vec<SourceFile>,
@@ -122,6 +140,14 @@ pub(crate) struct AppGraph {
 }
 
 pub(crate) type ExtractedApp = AppGraph;
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProgramModule {
+    pub(crate) id: String,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) emitted_source: String,
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProblemDetailsDescriptor {

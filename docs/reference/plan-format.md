@@ -28,6 +28,9 @@ Handler IDs are compiler-owned numeric IDs. Current executable V8 dispatch uses 
 artifact registration and registered handler dispatch; direct numeric handler-call ABI
 entry remains unsupported for the noop engine.
 
+`kind` records the source kind. Missing `kind` is treated as `web` for older
+Plans. `kind: "program"` records a route-free Program Mode artifact.
+
 ## Routes And Handlers
 
 The compiler can emit route metadata for the supported source subset:
@@ -106,6 +109,38 @@ OS/process, workers, HTTP transport, and provider-related features where impleme
 Feature descriptors are validation boundaries. A Plan feature entry declares
 the feature required by the compiled artifact and validated by the runtime.
 
+## Program Plans
+
+Program Plans set top-level `"kind": "program"`, emit empty `handlers` and
+`routes` arrays, and include metadata like:
+
+```json
+{
+  "metadata": {
+    "completeness": {
+      "status": "opaque",
+      "reasons": [
+        {
+          "code": "program-mode",
+          "message": "program mode does not require static web route metadata"
+        }
+      ]
+    },
+    "program": {
+      "entry": "src/main.ts"
+    }
+  }
+}
+```
+
+The runtime skips web route-table startup validation for Program Plans. CLI
+inspection commands report the absence of routes as intentional. OpenAPI is
+web-only and fails clearly for Program Plans.
+
+Program runtime execution currently calls a named `main` export first, then a
+default function export, then relies on top-level module execution. CLI
+arguments and a Program context object are not passed yet.
+
 ## Providers And Capabilities
 
 Plan provider and capability metadata supports policy checks and doctor/audit visibility.
@@ -113,6 +148,12 @@ SQLite, PostgreSQL, and SQL Server provider/capability metadata is consumed by s
 provider bridges when their runtime features are active. Filesystem and network capability
 metadata currently represents Sloppy policy/metadata. OS sandbox enforcement is
 future scoped work.
+
+Program Mode emits simple stdlib capability entries from runtime stdlib imports
+and may also preserve simple `sloppy.json` stdlib capability declarations as
+Plan capability entries. The current simple declarations map to
+`filesystem/readwrite`, `network/connect-listen`, `os/info`, and `use` access
+for `time`, `crypto`, `codec`, and `workers`.
 
 Typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
 `SqlServer<"main">` are represented as route injections and inferred Plan
@@ -137,10 +178,11 @@ JavaScript or Plan/package metadata.
 
 ## Source Input
 
-`sloppy run <source.js>` invokes `sloppyc build`, writes generated artifacts, validates
-them through the same Plan/artifact path, and then runs artifacts. It is a development
-shortcut over the artifact path, not a watch mode, cache policy, package manager, or full
-TypeScript build system.
+`sloppy run <source.js>` invokes `sloppyc build`, writes generated artifacts to
+`.sloppy` unless `sloppy.json` or `--out` selects another output directory,
+validates them through the same Plan/artifact path, and then runs artifacts. It
+is a development shortcut over the artifact path, not a watch mode, cache
+policy, package manager, or full TypeScript build system.
 
 ## Current Limits
 

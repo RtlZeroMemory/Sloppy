@@ -3,9 +3,10 @@
 Run a Sloppy app — either as a long-lived HTTP server or as a single
 synthetic request. `run` enters V8, so it requires a V8-enabled build.
 
-```
-sloppy run [source | --artifacts <dir>] [--stdlib <dir>]
+```text
+sloppy run [source | artifacts-dir | --artifacts <dir>] [--stdlib <dir>]
            [--environment <name>] [--host <ip>] [--port <n>]
+           [--kind web|program]
            [--once METHOD TARGET]
 ```
 
@@ -13,7 +14,7 @@ sloppy run [source | --artifacts <dir>] [--stdlib <dir>]
 
 **Project mode** (no positional, no `--artifacts`):
 
-```
+```sh
 sloppy run
 ```
 
@@ -21,29 +22,30 @@ Reads `sloppy.json`, compiles, then runs the artifacts.
 
 **Source input**:
 
-```
+```sh
 sloppy run src/main.ts
 ```
 
-Compiles the supplied source through `sloppyc` into the source-input cache,
-validates artifacts, then runs.
+Compiles the supplied source through `sloppyc` into `.sloppy`, validates
+artifacts, then runs.
 
 **Pre-built artifacts**:
 
-```
-sloppy run --artifacts .sloppy
+```sh
+sloppy run .sloppy
 ```
 
 Loads `app.plan.json`, `app.js`, and `app.js.map` from the directory and
-runs them directly.
+runs them directly. `sloppy run --artifacts .sloppy` is the explicit form for
+scripts that prefer named flags.
 
 ## One-shot requests
 
 `--once METHOD TARGET` runs a single synthetic request through the
 runtime and exits. Use it for smoke tests:
 
-```
-sloppy run --artifacts .sloppy --once GET /health
+```sh
+sloppy run .sloppy --once GET /health
 sloppy run src/main.ts --once POST /users
 ```
 
@@ -52,8 +54,8 @@ headers, blank line, and body — using the same serializer the real
 HTTP transport uses. Pipe through `head` if you only want the status
 line.
 
-```
-$ sloppy run --artifacts .sloppy --once GET /health
+```http
+$ sloppy run .sloppy --once GET /health
 HTTP/1.1 200 OK
 content-type: text/plain; charset=utf-8
 content-length: 2
@@ -75,15 +77,27 @@ preflight detail, or request-scope cleanup without entering V8.
 
 | Flag                   | Default         | Purpose                                              |
 | ---------------------- | --------------- | ---------------------------------------------------- |
-| `--artifacts <dir>`    | —               | Load already-built artifacts                         |
+| `--artifacts <dir>`    | —               | Explicitly load already-built artifacts              |
 | `--stdlib <dir>`       | bundled         | Override the bootstrap stdlib path                   |
 | `--environment <name>` | `Development`   | Environment name + overlay selection                 |
 | `--host <ip>`          | `127.0.0.1`     | Server bind host                                     |
 | `--port <n>`           | `5173`          | Server bind port (1–65535)                           |
+| `--kind web\|program`  | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 | `--once METHOD TARGET` | —               | Run one synthetic request and exit                   |
 
-`--artifacts` and a positional source path are mutually exclusive — pick
-one.
+`--artifacts` and a positional source or artifact path are mutually exclusive.
+
+## Program Mode
+
+Program Plans run a route-free `main`/default export instead of preparing a web
+route table. `--once` is web-only and is rejected for Program Plans. A non-V8
+build can compile and inspect Program Mode artifacts, but `sloppy run` still
+fails before execution with the same V8 required-feature diagnostic used by web
+artifacts.
+
+The current Program runtime calls a named `main` export first, then a default
+function export, then relies on top-level module execution. It does not pass
+CLI arguments or a runtime context object yet.
 
 ## Logging Config
 
@@ -112,15 +126,15 @@ only, opens in append mode, and expects the parent directory to exist.
 
 ## Examples
 
-```
+```sh
 # Build and run on the default host/port.
 sloppy run
 
 # Run already-built artifacts.
-sloppy run --artifacts .sloppy
+sloppy run .sloppy
 
 # Bind to all interfaces, custom port.
-sloppy run --artifacts .sloppy --host 0.0.0.0 --port 8080
+sloppy run .sloppy --host 0.0.0.0 --port 8080
 
 # Smoke a single request.
 sloppy run src/main.ts --once GET /health

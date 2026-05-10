@@ -13,7 +13,7 @@ Expected result: `.sloppy/app.plan.json` exists.
 ## Generate OpenAPI
 
 ```sh
-sloppy openapi --artifacts .sloppy --output openapi.json
+sloppy openapi .sloppy --output openapi.json
 ```
 
 Expected result: `openapi.json` contains the Plan-derived route document.
@@ -42,9 +42,9 @@ new package contents.
 ## Smoke The Packaged Artifacts
 
 ```sh
-sloppy doctor --artifacts .sloppy
-sloppy audit --artifacts .sloppy
-sloppy routes --artifacts .sloppy
+sloppy doctor .sloppy
+sloppy audit .sloppy
+sloppy routes .sloppy
 ```
 
 Expected result: each command reads the generated Plan without entering V8.

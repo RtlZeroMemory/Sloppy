@@ -52,7 +52,7 @@ export default app;
 
 ```sh
 sloppy build
-sloppy run --once GET /health
+sloppy run .sloppy --once GET /health
 ```
 
 Expected result: a V8-enabled runtime returns `ok`. If the source shape is

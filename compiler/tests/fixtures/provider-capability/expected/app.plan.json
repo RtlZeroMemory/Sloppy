@@ -142,6 +142,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [],
   "routes": [
     {

@@ -4,7 +4,7 @@ Check the local runtime, packaged assets, optional provider dependencies, and
 optionally a compiled Plan.
 
 ```sh
-sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]
+sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
 ```
 
 ## What it checks
@@ -13,7 +13,8 @@ sloppy doctor [--plan <path>|--artifacts <dir>] [--format text|json]
 - V8 bridge status for the current build/package;
 - live provider configuration;
 - native Plan parsing;
-- route, provider, and capability metadata;
+- route, provider, and capability metadata, including Program Plans with no
+  route metadata by design;
 - SQLite metadata;
 - PostgreSQL live-test environment;
 - SQL Server ODBC driver availability.

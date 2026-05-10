@@ -6,6 +6,7 @@ it produces files and exits.
 ```
 sloppy build [source] [--out <dir>]
              [--environment <name>] [--host <ip>] [--port <n>]
+             [--kind web|program]
 ```
 
 ## Modes
@@ -27,16 +28,17 @@ sloppy build src/main.ts --out dist
 ```
 
 Compiles the supplied file. Without `--out`, output lands in the
-deterministic source-input cache directory inside the project's `.sloppy`.
+`.sloppy` artifact directory.
 
 ## Flags
 
 | Flag                  | Default          | Purpose                                                  |
 | --------------------- | ---------------- | -------------------------------------------------------- |
-| `--out <dir>`         | `outDir` from `sloppy.json`, or a cache subdir | Artifact output directory |
+| `--out <dir>`         | `outDir` from `sloppy.json`, or `.sloppy` for explicit source | Artifact output directory |
 | `--environment <name>`| `Development`    | Selects `appsettings.{Environment}.json` overlay          |
 | `--host <ip>`         | `127.0.0.1`      | Server host baked into the Plan                          |
 | `--port <n>`          | `5173`           | Server port baked into the Plan                          |
+| `--kind web\|program` | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 
 `--artifacts` is **not** accepted for `build`. Use `run --artifacts` to load
 an already-built Plan.
@@ -66,8 +68,11 @@ goldens are the only normal place to commit Plan output.
 # Standard project build.
 sloppy build
 
-# Build a one-off example into ./dist.
-sloppy build examples/compiler-hello/app.js --out dist
+# Build a one-off source file into ./.sloppy.
+sloppy build examples/compiler-hello/app.js
+
+# Build a route-free program.
+sloppy build examples/program-hello/main.ts
 
 # Build with a different environment overlay.
 sloppy build --environment Production

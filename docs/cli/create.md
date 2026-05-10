@@ -33,7 +33,7 @@ Then:
 ```sh
 cd my-api
 sloppy build
-sloppy run --once GET /health
+sloppy run .sloppy --once GET /health
 sloppy package
 ```
 
@@ -57,7 +57,7 @@ copied either way.
   "created": true,
   "path": "my-api",
   "template": "minimal-api",
-  "next": ["cd my-api", "sloppy build", "sloppy run --once GET /health"]
+  "next": ["cd my-api", "sloppy build", "sloppy run .sloppy --once GET /health"]
 }
 ```
 

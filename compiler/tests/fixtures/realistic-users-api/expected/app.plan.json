@@ -215,6 +215,7 @@
       }
     }
   ],
+  "kind": "web",
   "modules": [],
   "routes": [
     {

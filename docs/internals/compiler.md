@@ -82,7 +82,12 @@ that default instead of throwing for a missing environment value.
 
 `sloppyc build <input> --out <dir>` loads the entry source, resolves supported
 relative imports, extracts the AppGraph, applies configuration metadata, and
-writes artifacts into the requested output directory.
+writes artifacts into the requested output directory. `--kind web` forces the
+web app extractor. `--kind program` emits a route-free Program Mode Plan and a
+generated `__sloppy_program_main` entrypoint. Without `--kind`, direct source
+input tries the web app extractor first, reports an ambiguous-source diagnostic
+for Sloppy web imports that do not form a web app, and otherwise falls back to
+Program Mode.
 
 `sloppyc build <input> --out <dir> --timings-json <file>` writes a structured
 timing report for compiler-performance work. The alias
@@ -95,6 +100,13 @@ Import validation is file-local. The entry file must import `Sloppy` from
 `"sloppy"`. A file imports `Results` only when handlers in that same file call
 `Results.*`; registering a child function module does not require the entry file
 to import `Results`.
+
+Program Mode still parses the entry and supported relative modules with Oxc and
+rejects dynamic imports, bare npm/Node imports, remote imports, and unsupported
+Sloppy provider imports. It preserves opaque metadata instead of claiming route
+or OpenAPI structure. It uses Oxc transform support to strip supported
+TypeScript syntax, then rewrites supported static ESM imports/exports into the
+generated artifact bundle.
 
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
@@ -165,6 +177,10 @@ For compiler performance work, also run the benchmark workflow documented in
 - npm and `node_modules` resolution are outside the current source graph.
 - Arbitrary TypeScript type checking is outside `sloppyc`; TypeScript tooling
   remains responsible for that.
+- Program Mode is not Node compatibility. It supports the current static import
+  subset, Sloppy stdlib imports that the runtime exposes, and generated
+  `main`/default entrypoint execution when V8 is enabled. Program CLI
+  arguments and a context object are deferred.
 - Middleware, CORS, RequestId, RequestLogging, and controller mapping execute in
   the bootstrap app-host path today. The compiler recognizes those source
   surfaces and rejects them with specific diagnostics instead of silently

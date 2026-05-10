@@ -628,12 +628,28 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
 
     handler_count = yyjson_arr_size(handlers);
     if (handler_count == 0U) {
+        if (out->kind == SL_PLAN_KIND_PROGRAM) {
+            out->handlers = NULL;
+            out->handler_count = 0U;
+            return sl_status_ok();
+        }
         return sl_plan_parse_field_diag(
             ctx,
             sl_plan_parse_literal("missing required app plan field",
                                   sizeof("missing required app plan field") - 1U),
             sl_plan_parse_literal("minimal Plan v1 requires at least one handler",
                                   sizeof("minimal Plan v1 requires at least one handler") - 1U));
+    }
+    if (out->kind == SL_PLAN_KIND_PROGRAM) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("program plans must not contain web routes or handlers",
+                                  sizeof("program plans must not contain web routes or handlers") -
+                                      1U),
+            sl_plan_parse_literal("Program Plans must emit empty handlers and routes arrays",
+                                  sizeof("Program Plans must emit empty handlers and routes "
+                                         "arrays") -
+                                      1U));
     }
 
     status = sl_plan_parse_alloc_array(ctx, handler_count, sizeof(SlPlanHandler),
@@ -660,6 +676,30 @@ static SlStatus sl_plan_parse_handlers(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_kind(SlPlanParseContext* ctx, yyjson_val* root, SlPlanKind* out)
+{
+    SlStr kind = {0};
+    SlStatus status = sl_plan_parse_optional_string(ctx, root, "kind", true, &kind);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (sl_str_is_empty(kind) || sl_str_equal(kind, sl_str_from_cstr("web"))) {
+        *out = SL_PLAN_KIND_WEB;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("program"))) {
+        *out = SL_PLAN_KIND_PROGRAM;
+        return sl_status_ok();
+    }
+    return sl_plan_parse_field_diag(
+        ctx,
+        sl_plan_parse_literal("unsupported app plan kind",
+                              sizeof("unsupported app plan kind") - 1U),
+        sl_plan_parse_literal("kind must be either web or program",
+                              sizeof("kind must be either web or program") - 1U));
 }
 
 static SlStatus sl_plan_parse_route_id(SlPlanParseContext* ctx, yyjson_val* object,
@@ -1029,6 +1069,17 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
         out->routes = NULL;
         out->route_count = 0U;
         return sl_status_ok();
+    }
+    if (out->kind == SL_PLAN_KIND_PROGRAM) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("program plans must not contain web routes or handlers",
+                                  sizeof("program plans must not contain web routes or handlers") -
+                                      1U),
+            sl_plan_parse_literal("Program Plans must emit empty handlers and routes arrays",
+                                  sizeof("Program Plans must emit empty handlers and routes "
+                                         "arrays") -
+                                      1U));
     }
 
     status = sl_plan_parse_alloc_array(ctx, route_count, sizeof(SlPlanRoute), _Alignof(SlPlanRoute),
@@ -1774,9 +1825,9 @@ static SlStatus sl_plan_parse_one_capability(SlPlanParseContext* ctx, const SlPl
                                   sizeof("unsupported app plan capability kind") - 1U),
             sl_plan_parse_literal(
                 "supported capability kinds are database, filesystem, network, queue, os, env, "
-                "process, and signals",
+                "process, signals, time, crypto, codec, and workers",
                 sizeof("supported capability kinds are database, filesystem, network, queue, os, "
-                       "env, process, and signals") -
+                       "env, process, signals, time, crypto, codec, and workers") -
                     1U));
     }
 
@@ -1937,6 +1988,11 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_schema_version(ctx, root, &out->version);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_kind(ctx, root, &out->kind);
     if (!sl_status_is_ok(status)) {
         return status;
     }

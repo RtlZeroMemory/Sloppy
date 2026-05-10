@@ -81,7 +81,7 @@
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #define SL_RUN_DEFAULT_ENVIRONMENT "Development"
-#define SL_RUN_DEFAULT_SOURCE_OUT_DIR ".sloppy/cache/dev/source-input"
+#define SL_RUN_DEFAULT_SOURCE_OUT_DIR ".sloppy"
 #ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
 #define SLOPPY_BOOTSTRAP_BUILD_DIR ""
 #endif

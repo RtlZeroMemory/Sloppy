@@ -4,11 +4,11 @@ use oxc_span::Span;
 use serde_json::{json, Value};
 
 use crate::diagnostic::Diagnostic;
-use crate::graph::{route_parameter_names, ConfigurationPackageEntry, ExtractedApp};
+use crate::graph::{route_parameter_names, ConfigurationPackageEntry, ExtractedApp, ProjectKind};
 use crate::hash::sha256_hex;
 use crate::source::line_column;
 use crate::validation::{
-    plan_completeness, route_completeness, Completeness, RouteCompletenessInput,
+    plan_completeness, route_completeness, Completeness, CompletenessReason, RouteCompletenessInput,
 };
 use crate::version::{COMPILER_VERSION, RUNTIME_MINIMUM_VERSION, STDLIB_VERSION};
 
@@ -33,6 +33,13 @@ pub(crate) fn emit_plan(
     bundle_hash: &str,
     source_map_hash: &str,
 ) -> Result<String, Diagnostic> {
+    if app.kind == ProjectKind::Program && !app.routes.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_PROGRAM_PLAN_SHAPE",
+            "program plans must not contain web routes or handlers",
+        ));
+    }
+
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
     let emits_app_metadata =
         !app.schemas.is_empty() || !app.config_reads.is_empty() || app.uses_health;
@@ -58,7 +65,14 @@ pub(crate) fn emit_plan(
             })
         })
         .collect::<Vec<_>>();
-    let app_completeness = plan_completeness(&route_completeness_values);
+    let app_completeness = if app.kind == ProjectKind::Program {
+        Completeness::opaque(vec![CompletenessReason::new(
+            "program-mode",
+            "program mode does not require static web route metadata",
+        )])
+    } else {
+        plan_completeness(&route_completeness_values)
+    };
     let emits_binding_metadata = |index: usize, route: &crate::graph::Route| {
         !route.handler.bindings.is_empty()
             || route_completeness_values[index].status.as_str() == "complete"
@@ -514,6 +528,7 @@ pub(crate) fn emit_plan(
 
     let mut value = json!({
         "schemaVersion": 1,
+        "kind": app.kind.as_str(),
         "compilerVersion": COMPILER_VERSION,
         "runtimeMinimumVersion": RUNTIME_MINIMUM_VERSION,
         "stdlibVersion": STDLIB_VERSION,
@@ -563,8 +578,26 @@ pub(crate) fn emit_plan(
             "sourceMaps": true
         }
     });
+    if app.kind == ProjectKind::Program {
+        value["metadata"] = json!({
+            "completeness": completeness_json(&app_completeness),
+            "program": {
+                "entry": app.program_entry
+            }
+        });
+        value["strongPlan"]["evidence"]["routes"] = json!(false);
+        value["strongPlan"]["evidence"]["program"] = json!(true);
+        value["features"]["program"] = json!(true);
+    }
     let mut required_features = Vec::new();
     let mut doctor_checks = Vec::new();
+    if app.kind == ProjectKind::Program {
+        doctor_checks.push(json!({
+            "id": "program.metadata",
+            "status": "info",
+            "message": "program Plan has no route metadata by design"
+        }));
+    }
     if app.uses_time_runtime {
         required_features.push("stdlib.time");
         value["strongPlan"]["evidence"]["time"] = json!(true);

@@ -16,7 +16,7 @@ Expected result: `src/main.ts` imports route modules from `src/routes/`.
 
 ```sh
 sloppy build
-sloppy routes --artifacts .sloppy --format json
+sloppy routes .sloppy --format json
 ```
 
 Expected result: JSON route metadata is printed for the health, users, and
@@ -25,7 +25,7 @@ projects routes.
 ## Run Health
 
 ```sh
-sloppy run --once GET /health
+sloppy run .sloppy --once GET /health
 ```
 
 Expected body:

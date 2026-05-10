@@ -39,7 +39,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `duplicate-route-name.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Non-empty route names must be unique. |
 | `invalid-provider-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Provider values are limited to `sqlite`, `postgres`, and `sqlserver`. |
 | `duplicate-provider-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Data provider tokens must be unique. |
-| `invalid-capability-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability kinds are limited to the documented database, filesystem, network, queue, OS, environment, process, and signal categories. |
+| `invalid-capability-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability kinds are limited to the documented database, filesystem, network, queue, OS, environment, process, signal, time, crypto, codec, and workers categories. |
 | `invalid-capability-access.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability access must match the capability kind. |
 | `missing-capability-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability entries require a token. |
 | `missing-capability-provider.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Database capabilities require a provider reference. |

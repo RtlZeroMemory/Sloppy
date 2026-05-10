@@ -98,7 +98,7 @@ if you're curious — it's deterministic JSON.
 to smoke-test handlers without leaving an HTTP server running:
 
 ```sh
-sloppy run --artifacts .sloppy --once GET /hello/Ada
+sloppy run .sloppy --once GET /hello/Ada
 ```
 
 Expected response body:
@@ -136,7 +136,7 @@ This validates the generated artifacts and writes:
 Drop `--once` to start a real HTTP server bound to `127.0.0.1:5173`:
 
 ```sh
-sloppy run --artifacts .sloppy
+sloppy run .sloppy
 ```
 
 Hit it from another shell:
@@ -149,7 +149,7 @@ curl http://127.0.0.1:5173/health
 `Ctrl+C` shuts it down. Override the bind address with `--host` and `--port`:
 
 ```sh
-sloppy run --artifacts .sloppy --host 0.0.0.0 --port 8080
+sloppy run .sloppy --host 0.0.0.0 --port 8080
 ```
 
 ## What just happened

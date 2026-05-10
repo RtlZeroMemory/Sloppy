@@ -90,7 +90,8 @@ For a new project, prefer a template:
 ```powershell
 sloppy create my-api --template minimal-api
 cd my-api
-sloppy run --once GET /health
+sloppy build
+sloppy run .sloppy --once GET /health
 ```
 
 Most curated examples have a `README.md` and a single source file. To run one
@@ -104,7 +105,7 @@ Or build first and run the artifacts:
 
 ```powershell
 sloppy build examples/framework-hello/app.ts --out .sloppy-tmp
-sloppy run --artifacts .sloppy-tmp --once GET /hello/Ada
+sloppy run .sloppy-tmp --once GET /hello/Ada
 ```
 
 Project-mode examples, such as `prealpha-control-plane`, run from their own
@@ -112,7 +113,8 @@ directory:
 
 ```powershell
 cd examples/prealpha-control-plane
-sloppy run --once GET /projects?owner=runtime
+sloppy build
+sloppy run .sloppy --once GET /projects?owner=runtime
 ```
 
 `sloppy run` enters V8. Default non-V8 builds report the V8 requirement after

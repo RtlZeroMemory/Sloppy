@@ -10,7 +10,7 @@ lower-level tool around emitted artifacts.
 ```sh
 sloppyc --help
 sloppyc --version
-sloppyc build <input.js|input.ts> --out <directory>
+sloppyc build <input.js|input.ts> --out <directory> [--kind web|program]
 ```
 
 ## Build
@@ -33,6 +33,7 @@ Output:
 | Flag | Purpose |
 | --- | --- |
 | `--out <directory>` | Required artifact output directory |
+| `--kind web\|program` | Override source kind. Without it, web app source is tried first and route-free non-web source falls back to Program Mode. |
 | `--environment <name>` | Select environment-specific config |
 | `--host <host>` | Emit server host metadata into the Plan |
 | `--port <port>` | Emit server port metadata into the Plan |
@@ -43,6 +44,16 @@ Output:
 
 `--timings-json` is contributor measurement output. It is useful for comparing
 compiler changes; it is not a public performance guarantee.
+
+`--capability <name>` is an internal CLI handoff used by `sloppy.json`
+project mode. Supported values are the documented `sloppy.json` capability
+names.
+
+Program Mode uses Oxc parsing and TypeScript transform support before the
+compiler rewrites supported static ESM imports/exports into the generated
+artifact bundle. It supports static relative imports and documented Sloppy
+stdlib imports. It rejects dynamic imports, Node built-ins, arbitrary npm
+imports, and provider imports with source diagnostics.
 
 ## Exit codes
 

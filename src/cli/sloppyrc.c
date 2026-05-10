@@ -14,6 +14,7 @@
 #include "sloppy/string.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <yyjson.h>
 
 #define SL_SLOPPYRC_FILE "sloppy.json"
@@ -186,6 +187,15 @@ static bool sl_sloppyrc_json_string_equals_literal(yyjson_val* value, SlStr expe
     return sl_str_equal(sl_str_from_parts(text, text_length), expected);
 }
 
+static bool sl_sloppyrc_capability_supported(SlStr name)
+{
+    return sl_str_equal(name, SL_STR_LITERAL("fs")) || sl_str_equal(name, SL_STR_LITERAL("net")) ||
+           sl_str_equal(name, SL_STR_LITERAL("os")) || sl_str_equal(name, SL_STR_LITERAL("time")) ||
+           sl_str_equal(name, SL_STR_LITERAL("crypto")) ||
+           sl_str_equal(name, SL_STR_LITERAL("codec")) ||
+           sl_str_equal(name, SL_STR_LITERAL("workers"));
+}
+
 static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* command_name)
 {
     yyjson_obj_iter iter;
@@ -195,12 +205,14 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
     while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
         if (!sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("entry")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("outDir")) &&
-            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("environment")))
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("environment")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("kind")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("capabilities")))
         {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
-                "and environment\n");
+                "environment, kind, and capabilities\n");
             return 1;
         }
     }
@@ -264,6 +276,59 @@ static int sl_sloppyrc_read_optional_string(yyjson_val* root, const char* field,
     return 0;
 }
 
+static int sl_sloppyrc_read_capabilities(yyjson_val* root, SlSloppyRunConfig* out,
+                                         const char* command_name)
+{
+    yyjson_val* capabilities = yyjson_obj_get(root, "capabilities");
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+
+    if (capabilities == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(capabilities)) {
+        sl_sloppyrc_write_command_message(
+            command_name,
+            "invalid sloppy.json: capabilities must be an object of boolean stdlib names\n");
+        return 1;
+    }
+
+    iter = yyjson_obj_iter_with(capabilities);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        yyjson_val* value = yyjson_obj_iter_get_val(key);
+        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+        if (!sl_sloppyrc_capability_supported(name)) {
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: capabilities supports fs, net, os, time, crypto, codec, "
+                "and workers\n");
+            return 1;
+        }
+        if (!yyjson_is_bool(value)) {
+            sl_sloppyrc_write_command_message(
+                command_name, "invalid sloppy.json: capability values must be true or false\n");
+            return 1;
+        }
+        if (!yyjson_get_bool(value)) {
+            continue;
+        }
+        if (out->capability_count >= SL_SLOPPYRC_MAX_CAPABILITIES ||
+            name.length >= SL_SLOPPYRC_CAPABILITY_MAX_BYTES)
+        {
+            sl_sloppyrc_write_command_message(command_name,
+                                              "invalid sloppy.json: too many capabilities\n");
+            return 1;
+        }
+        for (size_t index = 0U; index < name.length; index += 1U) {
+            out->capabilities[out->capability_count][index] = name.ptr[index];
+        }
+        out->capabilities[out->capability_count][name.length] = '\0';
+        out->capability_count += 1U;
+    }
+
+    return 0;
+}
+
 int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
@@ -309,9 +374,17 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
         sl_sloppyrc_read_optional_string(
             root, "environment", out->environment, sizeof(out->environment),
             SL_SLOPPYRC_DEFAULT_ENVIRONMENT, command_name,
-            "invalid sloppy.json: environment must be a string\n") == 0)
+            "invalid sloppy.json: environment must be a string\n") == 0 &&
+        sl_sloppyrc_read_optional_string(
+            root, "kind", out->kind, sizeof(out->kind), "web", command_name,
+            "invalid sloppy.json: kind must be web or program\n") == 0 &&
+        sl_sloppyrc_read_capabilities(root, out, command_name) == 0)
     {
-        if (!sl_sloppyrc_entry_path_is_safe(out->entry)) {
+        if (strcmp(out->kind, "web") != 0 && strcmp(out->kind, "program") != 0) {
+            sl_sloppyrc_write_command_message(command_name,
+                                              "invalid sloppy.json: kind must be web or program\n");
+        }
+        else if (!sl_sloppyrc_entry_path_is_safe(out->entry)) {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: entry must be a relative path inside the project root\n");

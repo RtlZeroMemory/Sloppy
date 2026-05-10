@@ -1198,7 +1198,7 @@ static int sl_run_validate_startup(SlRunApp* app)
     }
 
     validation.diag_arena = &app->plan_arena;
-    validation.require_runnable_route = true;
+    validation.require_runnable_route = app->plan.kind == SL_PLAN_KIND_WEB;
     validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
 
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
@@ -1221,8 +1221,19 @@ static int sl_run_validate_runtime_features(SlRunApp* app)
         return 1;
     }
 
+    if (app->plan.kind == SL_PLAN_KIND_PROGRAM) {
+        status = sl_runtime_feature_activate_plan(&app->plan, NULL, &app->plan_arena,
+                                                  &app->runtime_features, &diag);
+        if (!sl_status_is_ok(status)) {
+            sl_run_print_diag("sloppy run: runtime feature activation failed: ",
+                              &app->engine_arena, &diag);
+            return 1;
+        }
+        return 0;
+    }
+
     validation.diag_arena = &app->plan_arena;
-    validation.require_runnable_route = true;
+    validation.require_runnable_route = app->plan.kind == SL_PLAN_KIND_WEB;
     validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
     validation.validate_runtime_features = true;
     validation.out_runtime_features = &app->runtime_features;
@@ -1382,11 +1393,13 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
-    status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
-    if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: registered handler validation failed: ", &app->engine_arena,
-                          &diag);
-        return 1;
+    if (app->plan.kind == SL_PLAN_KIND_WEB) {
+        status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
+        if (!sl_status_is_ok(status)) {
+            sl_run_print_diag("sloppy run: registered handler validation failed: ",
+                              &app->engine_arena, &diag);
+            return 1;
+        }
     }
 
     return 0;
@@ -1441,10 +1454,13 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         return 1;
     }
 
-    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_validate_startup(app) != 0 ||
-        sl_run_intern_plan_metadata(app) != 0 || sl_run_init_capability_registry(app) != 0 ||
-        sl_run_prepare_routes(app) != 0)
+    if (sl_run_load_plan(app, plan_path) != 0 ||
+        (app->plan.kind == SL_PLAN_KIND_WEB && sl_run_validate_startup(app) != 0) ||
+        sl_run_intern_plan_metadata(app) != 0 || sl_run_init_capability_registry(app) != 0)
     {
+        return 1;
+    }
+    if (app->plan.kind == SL_PLAN_KIND_WEB && sl_run_prepare_routes(app) != 0) {
         return 1;
     }
 
@@ -2253,12 +2269,15 @@ static const char* sl_run_resolve_compiler_path(const char* command_name)
 
 static int sl_run_compile_source(const char* source_path, const char* out_dir,
                                  const SlCliOptions* options, const char* environment,
-                                 const char* command_name, const char* config_dir)
+                                 const char* command_name, const char* config_dir,
+                                 const char* project_kind,
+                                 const SlSloppyRunConfig* project_config)
 {
     const char* compiler_path = NULL;
-    char* compiler_argv[16];
+    char* compiler_argv[40];
     char port_text[6];
     size_t arg_count = 0U;
+    size_t capability_index = 0U;
     SlPlatformProcessArgs process_args = {0};
     SlStatus status;
     int exit_code = 1;
@@ -2286,6 +2305,14 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
     compiler_argv[arg_count++] = (char*)source_path;
     compiler_argv[arg_count++] = "--out";
     compiler_argv[arg_count++] = (char*)out_dir;
+    if (options != NULL && options->kind_explicit) {
+        compiler_argv[arg_count++] = "--kind";
+        compiler_argv[arg_count++] = (char*)options->kind;
+    }
+    else if (project_kind != NULL && project_kind[0] != '\0') {
+        compiler_argv[arg_count++] = "--kind";
+        compiler_argv[arg_count++] = (char*)project_kind;
+    }
     if (environment != NULL && environment[0] != '\0') {
         compiler_argv[arg_count++] = "--environment";
         compiler_argv[arg_count++] = (char*)environment;
@@ -2293,6 +2320,18 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir,
     if (config_dir != NULL && config_dir[0] != '\0') {
         compiler_argv[arg_count++] = "--config-dir";
         compiler_argv[arg_count++] = (char*)config_dir;
+    }
+    if (project_config != NULL) {
+        if (project_config->capability_count > 0U) {
+            compiler_argv[arg_count++] = "--capability-origin";
+            compiler_argv[arg_count++] = "sloppy.json";
+        }
+        for (capability_index = 0U; capability_index < project_config->capability_count;
+             capability_index += 1U)
+        {
+            compiler_argv[arg_count++] = "--capability";
+            compiler_argv[arg_count++] = (char*)project_config->capabilities[capability_index];
+        }
     }
     if (options != NULL && options->host_explicit) {
         compiler_argv[arg_count++] = "--host";
@@ -2342,6 +2381,8 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
     const char* out_dir = NULL;
     const char* environment = NULL;
     const char* config_dir = NULL;
+    const char* project_kind = NULL;
+    const SlSloppyRunConfig* project_config = NULL;
 
     if (options == NULL || artifacts_path == NULL || artifacts_path_capacity == 0U) {
         return 1;
@@ -2361,6 +2402,8 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
         out_dir = config.out_dir;
         environment = options->environment_explicit ? options->environment : config.environment;
         config_dir = ".";
+        project_kind = config.kind;
+        project_config = &config;
     }
 
     if (!sl_run_source_input_extension_supported(source_path)) {
@@ -2369,7 +2412,7 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
     }
 
     if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy run",
-                              config_dir) != 0)
+                              config_dir, project_kind, project_config) != 0)
     {
         return 1;
     }
@@ -2399,6 +2442,8 @@ static int sl_cli_command_build(const SlCliOptions* options)
     const char* out_dir = NULL;
     const char* environment = NULL;
     const char* config_dir = NULL;
+    const char* project_kind = NULL;
+    const SlSloppyRunConfig* project_config = NULL;
     int result = 0;
 
     if (options == NULL) {
@@ -2420,6 +2465,8 @@ static int sl_cli_command_build(const SlCliOptions* options)
         out_dir = config.out_dir;
         environment = options->environment_explicit ? options->environment : config.environment;
         config_dir = ".";
+        project_kind = config.kind;
+        project_config = &config;
     }
     else {
         source_path = options->input_path;
@@ -2435,7 +2482,7 @@ static int sl_cli_command_build(const SlCliOptions* options)
     }
 
     if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy build",
-                              config_dir) != 0)
+                              config_dir, project_kind, project_config) != 0)
     {
         return 1;
     }
@@ -2445,6 +2492,50 @@ static int sl_cli_command_build(const SlCliOptions* options)
         result = 1;
     }
     return result;
+}
+
+static int sl_run_program_main(SlRunApp* app)
+{
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL || app->engine == NULL) {
+        return 1;
+    }
+
+    status = sl_engine_call_function0(app->engine, &app->engine_arena,
+                                      sl_str_from_cstr("__sloppy_program_main"), &result, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: program execution failed: ", &app->engine_arena, &diag);
+        return 1;
+    }
+
+    if (result.kind == SL_ENGINE_RESULT_TEXT) {
+        if (!sl_cli_write_str(stdout, result.text)) {
+            return 1;
+        }
+        sl_cli_write_cstr(stdout, "\n");
+    }
+    else if (result.kind == SL_ENGINE_RESULT_JSON) {
+        if (result.response.body.length != 0U &&
+            fwrite(result.response.body.ptr, 1U, result.response.body.length, stdout) !=
+                result.response.body.length)
+        {
+            return 1;
+        }
+        sl_cli_write_cstr(stdout, "\n");
+    }
+    else if (result.kind == SL_ENGINE_RESULT_BYTES) {
+        if (result.response.body.length != 0U &&
+            fwrite(result.response.body.ptr, 1U, result.response.body.length, stdout) !=
+                result.response.body.length)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 static int sl_cli_command_run(const SlCliOptions* options)
@@ -2478,6 +2569,14 @@ static int sl_cli_command_run(const SlCliOptions* options)
         sl_cli_write_cstr(
             stderr, "sloppy run: --environment only applies to source input or sloppy.json\n");
         return 1;
+    }
+
+    if (artifacts_path == NULL) {
+        if (options->input_path == NULL && !sl_run_file_exists("sloppy.json") &&
+            sl_cli_directory_has_plan(".sloppy"))
+        {
+            artifacts_path = ".sloppy";
+        }
     }
 
     if (artifacts_path == NULL) {
@@ -2520,7 +2619,16 @@ static int sl_cli_command_run(const SlCliOptions* options)
         return 1;
     }
 
-    if (options->once_method != NULL) {
+    if (app->plan.kind == SL_PLAN_KIND_PROGRAM) {
+        if (options->once_method != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy run: --once is only valid for web Plans\n");
+            result = 1;
+        }
+        else {
+            result = sl_run_program_main(app);
+        }
+    }
+    else if (options->once_method != NULL) {
         result = sl_run_once(app, options->once_method, options->once_target);
     }
     else {

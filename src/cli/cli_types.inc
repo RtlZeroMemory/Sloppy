@@ -147,6 +147,7 @@ typedef struct SlCliMetadata
     size_t http_client_count;
     SlCliConfigRequirement config_requirements[SL_CLI_MAX_CONFIG_REQUIREMENTS];
     size_t config_requirement_count;
+    SlCliSpan kind;
     SlCliSpan completeness;
 } SlCliMetadata;
 
@@ -165,6 +166,7 @@ typedef struct SlCliOptions
     const char* stdlib_path;
     const char* host;
     const char* environment;
+    const char* kind;
     const char* once_method;
     const char* once_target;
     uint16_t port;
@@ -172,6 +174,7 @@ typedef struct SlCliOptions
     bool host_explicit;
     bool port_explicit;
     bool environment_explicit;
+    bool kind_explicit;
     bool out_explicit;
     bool create_force;
     bool create_no_git;

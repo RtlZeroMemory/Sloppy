@@ -41,11 +41,11 @@ sloppy run
 sloppy package
 
 # explicit
-sloppy build src/main.ts --out dist
-sloppy run --artifacts dist
+sloppy build src/main.ts
 sloppy run src/main.ts
-sloppy package src/main.ts --out dist
-sloppy openapi --artifacts dist
+sloppy run .sloppy
+sloppy package src/main.ts
+sloppy openapi .sloppy
 ```
 
 See [reference/sloppy-json.md](../reference/sloppy-json.md) for the project

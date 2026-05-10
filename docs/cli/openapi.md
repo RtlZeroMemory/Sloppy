@@ -3,6 +3,7 @@
 Generate an OpenAPI document from a Plan.
 
 ```
+sloppy openapi <artifacts-dir|plan.json> [--output <path>]
 sloppy openapi --plan <path> [--output <path>]
 sloppy openapi --artifacts <dir> [--output <path>]
 ```
@@ -15,7 +16,11 @@ The output is **JSON**, not YAML. The filename is up to you, but the
 content is always JSON.
 
 `<path>` is an `app.plan.json` file or a directory containing one.
-`--artifacts <dir>` is equivalent to `--plan <dir>/app.plan.json`.
+`--artifacts <dir>` is the explicit artifact-directory form.
+
+OpenAPI is only available for web Plans with route metadata. Program Plans fail
+with a clear diagnostic because they intentionally do not claim a static route
+graph.
 
 ## What it produces
 
@@ -111,8 +116,8 @@ if you need richer output.
 ## Examples
 
 ```
-sloppy openapi --plan .sloppy/app.plan.json
-sloppy openapi --plan .sloppy --output openapi.json
+sloppy openapi .sloppy
+sloppy openapi .sloppy --output openapi.json
 sloppy openapi --artifacts .sloppy --output openapi.json
 ```
 

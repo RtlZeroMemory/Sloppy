@@ -15,7 +15,7 @@
     "stderrContains": [
       "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
     ],
-    "artifactDir": ".sloppy/cache/dev/source-input",
+    "artifactDir": ".sloppy",
     "planContains": [],
     "diagnosticCodes": [
       "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"

@@ -44,6 +44,40 @@ Dynamic import fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT`.
 `Testing` is a framework test helper; compiler input rejects it with
 `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`.
 
+## Program Mode Source
+
+Program Mode supports route-free source files that use static ESM imports and
+exports. Oxc parses the source and strips supported TypeScript syntax before
+Sloppy rewrites supported module syntax into the generated artifact bundle.
+
+Supported entrypoint shapes are:
+
+```ts
+console.log("hello");
+
+export async function main() {
+  console.log("hello");
+}
+
+export default async function main() {
+  console.log("hello");
+}
+```
+
+If both named `main` and default function exports exist, named `main` wins.
+Non-function default exports are ignored as entrypoints after their module
+top-level code has executed. The current runtime does not pass CLI arguments or
+a context object to Program Mode `main`.
+
+Program Mode accepts static relative imports and the documented Sloppy stdlib
+subpaths. Type-only imports do not emit runtime stdlib features. Dynamic
+imports, Node built-ins such as `node:fs`, arbitrary npm imports, remote
+imports, and Sloppy provider imports are rejected with diagnostics.
+
+Program Mode does not support re-export declarations yet. Use an import plus a
+local export instead of `export { value } from "./dep"` or `export * from
+"./dep"`.
+
 ### Stdlib subpath imports
 
 The compiler accepts named, unaliased imports from each stdlib subpath listed

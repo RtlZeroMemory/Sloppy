@@ -60,8 +60,8 @@ Sloppy logging is structured and avoids request bodies by default.
 
 ```sh
 sloppy build
-sloppy doctor --artifacts .sloppy
-sloppy run --once GET /message/Ada
+sloppy doctor .sloppy
+sloppy run .sloppy --once GET /message/Ada
 ```
 
 Expected result: `doctor` reports Plan health, and a V8-enabled runtime returns

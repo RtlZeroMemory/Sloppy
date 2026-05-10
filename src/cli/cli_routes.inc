@@ -127,7 +127,9 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     sl_cli_sort_routes(metadata);
 
     if (options->format == SL_CLI_FORMAT_JSON) {
-        printf("{\n  \"routes\": [");
+        printf("{\n  \"kind\": ");
+        sl_cli_json_escape(stdout, metadata->kind);
+        printf(",\n  \"routes\": [");
         for (index = 0U; index < metadata->route_count; index += 1U) {
             sl_cli_routes_emit_json_route(&metadata->routes[index], index);
         }
@@ -137,7 +139,9 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
                "BINDINGS  RESPONSE  NAME\n");
         if (metadata->route_count == 0U) {
-            printf("No routes.\n");
+            printf(sl_cli_span_equal_cstr(metadata->kind, "program")
+                       ? "Program Plan: no route metadata expected.\n"
+                       : "No routes.\n");
         }
         for (index = 0U; index < metadata->route_count; index += 1U) {
             sl_cli_routes_emit_text_route(&metadata->routes[index]);
@@ -191,6 +195,34 @@ static void sl_cli_capabilities_emit_text_effect(const SlCliRoute* route, size_t
     printf("\n");
 }
 
+static void sl_cli_capabilities_emit_json_declared(const SlCliCapability* capability,
+                                                   size_t finding_count)
+{
+    printf("%s\n    { \"token\": ", finding_count == 0U ? "" : ",");
+    sl_cli_json_escape(stdout, capability->token);
+    printf(", \"kind\": ");
+    sl_cli_json_escape(stdout, capability->kind);
+    printf(", \"access\": ");
+    sl_cli_json_escape(stdout, capability->access);
+    printf(", \"inference\": \"declared\"");
+    if (!sl_cli_span_empty(capability->provider)) {
+        printf(", \"provider\": ");
+        sl_cli_json_escape(stdout, capability->provider);
+    }
+    printf(" }");
+}
+
+static void sl_cli_capabilities_emit_text_declared(const SlCliCapability* capability)
+{
+    printf("PLAN  %.*s  %.*s  %.*s  declared  ", (int)capability->token.length,
+           capability->token.ptr, (int)capability->kind.length, capability->kind.ptr,
+           (int)capability->access.length, capability->access.ptr);
+    if (!sl_cli_span_empty(capability->provider)) {
+        printf("%.*s", (int)capability->provider.length, capability->provider.ptr);
+    }
+    printf("\n");
+}
+
 static void sl_cli_capabilities_emit_route_effects(const SlCliOptions* options,
                                                    const SlCliRoute* route, size_t* finding_count)
 {
@@ -215,6 +247,7 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
     yyjson_doc* doc = NULL;
     SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t route_index = 0U;
+    size_t capability_index = 0U;
     size_t finding_count = 0U;
 
     if (options->plan_path == NULL) {
@@ -242,7 +275,19 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
         printf("{\n  \"capabilities\": [");
     }
     else {
-        printf("ROUTE  PROVIDER  KIND  ACCESS  REASON  SOURCE\n");
+        printf("SCOPE  TOKEN/ROUTE  KIND  ACCESS  REASON  SOURCE\n");
+    }
+    for (capability_index = 0U; capability_index < metadata->capability_count;
+         capability_index += 1U)
+    {
+        if (options->format == SL_CLI_FORMAT_JSON) {
+            sl_cli_capabilities_emit_json_declared(&metadata->capabilities[capability_index],
+                                                   finding_count);
+        }
+        else {
+            sl_cli_capabilities_emit_text_declared(&metadata->capabilities[capability_index]);
+        }
+        finding_count += 1U;
     }
     for (route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
         sl_cli_capabilities_emit_route_effects(options, &metadata->routes[route_index],
