@@ -494,8 +494,7 @@ bool sl_v8_db_attach_result_metadata(v8::Isolate* isolate, v8::Local<v8::Context
     v8::Local<v8::String> column_names_key;
     v8::Local<v8::String> mode_value;
 
-    if (columns == nullptr ||
-        (mode != SL_V8_DB_STRING_OBJECT && mode != SL_V8_DB_STRING_RAW) ||
+    if (columns == nullptr || (mode != SL_V8_DB_STRING_OBJECT && mode != SL_V8_DB_STRING_RAW) ||
         !sl_status_is_ok(sl_v8_db_cached_string(isolate, SL_V8_DB_STRING_MODE, &mode_key)) ||
         !sl_status_is_ok(sl_v8_db_cached_string(isolate, SL_V8_DB_STRING_COLUMNS, &columns_key)) ||
         !sl_status_is_ok(
@@ -517,8 +516,8 @@ bool sl_v8_db_make_row_object(v8::Isolate* isolate, v8::Local<v8::Context> conte
 {
     v8::Local<v8::Object> row;
 
-    if (columns == nullptr || out == nullptr ||
-        value_count != columns->keys.size() || (value_count != 0U && values == nullptr))
+    if (columns == nullptr || out == nullptr || value_count != columns->keys.size() ||
+        (value_count != 0U && values == nullptr))
     {
         return false;
     }
@@ -598,11 +597,9 @@ bool sl_v8_db_make_raw_result(v8::Isolate* isolate, v8::Local<v8::Context> conte
     return true;
 }
 
-bool sl_v8_db_uint8_array_from_bytes(v8::Isolate* isolate, SlBytes bytes,
-                                     v8::Local<v8::Value>* out)
+bool sl_v8_db_uint8_array_from_bytes(v8::Isolate* isolate, SlBytes bytes, v8::Local<v8::Value>* out)
 {
-    if (isolate == nullptr || out == nullptr ||
-        (bytes.length != 0U && bytes.ptr == nullptr) ||
+    if (isolate == nullptr || out == nullptr || (bytes.length != 0U && bytes.ptr == nullptr) ||
         bytes.length > static_cast<size_t>(std::numeric_limits<int>::max()))
     {
         return false;
@@ -614,8 +611,8 @@ bool sl_v8_db_uint8_array_from_bytes(v8::Isolate* isolate, SlBytes bytes,
         return false;
     }
     if (bytes.length != 0U) {
-        std::copy(bytes.ptr, bytes.ptr + bytes.length,
-                  static_cast<unsigned char*>(backing->Data()));
+        auto* target = static_cast<unsigned char*>(backing->Data());
+        std::copy_n(bytes.ptr, bytes.length, target);
     }
 
     v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));

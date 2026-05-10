@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "kind": "program",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "requiredFeatures": ["stdlib.ffi"],
+  "features": {
+    "ffi": true
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-ffi-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-ffi-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [],
+  "routes": [],
+  "capabilities": [
+    {
+      "token": "ffi",
+      "kind": "ffi",
+      "access": "use",
+      "source": {
+        "path": "src/main.ts",
+        "line": 1,
+        "column": 1
+      }
+    }
+  ],
+  "native": {
+    "ffi": [
+      {
+        "name": "__sloppy_missing_ffi_library__",
+        "convention": "system",
+        "source": {
+          "path": "src/main.ts",
+          "line": 3,
+          "column": 16
+        },
+        "functions": [
+          {
+            "id": "ffi:__sloppy_missing_ffi_library__:addI32",
+            "name": "addI32",
+            "symbol": "sloppy_ffi_add_i32",
+            "convention": "system",
+            "return": "i32",
+            "parameters": ["i32", "i32"],
+            "marshaling": {
+              "arguments": "direct",
+              "return": "direct"
+            },
+            "safety": "unsafe",
+            "source": {
+              "path": "src/main.ts",
+              "line": 4,
+              "column": 11
+            }
+          }
+        ]
+      }
+    ],
+    "ffiStructs": [
+      {
+        "name": "Point",
+        "layout": "sequential",
+        "pack": 4,
+        "fields": [
+          { "name": "x", "type": "i32" },
+          { "name": "y", "type": "i32" }
+        ],
+        "source": {
+          "path": "src/main.ts",
+          "line": 8,
+          "column": 15
+        }
+      }
+    ]
+  },
+  "doctorChecks": [
+    {
+      "id": "stdlib.ffi.unsafe_boundary",
+      "status": "warn",
+      "message": "unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted"
+    }
+  ]
+}

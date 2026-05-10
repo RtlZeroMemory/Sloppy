@@ -238,8 +238,8 @@ static int test_route_table_build_orders_literal_before_params(void)
         table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 2U ||
         table.dispatch.routes[0].handler != &handlers[1] ||
         table.dispatch.routes[1].handler_id != 1U ||
-        table.dispatch.routes[1].handler != &handlers[0] ||
-        !table.dispatch.handler_cache_trusted || table.dispatch.exact_route_buckets == NULL ||
+        table.dispatch.routes[1].handler != &handlers[0] || !table.dispatch.handler_cache_trusted ||
+        table.dispatch.exact_route_buckets == NULL ||
         table.dispatch.exact_route_bucket_count == 0U || table.dispatch.param_routes == NULL ||
         table.dispatch.param_route_count != 1U || table.dispatch.param_routes[0].handler_id != 1U ||
         table.dispatch.param_routes[0].handler != &handlers[0] ||
@@ -1496,8 +1496,8 @@ static int test_stale_plan_route_table_ignores_cached_handler(void)
         return 23;
     }
 
-    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &current_plan,
-                                                    &table.dispatch, &request, &result, &diag),
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &current_plan, &table.dispatch,
+                                                    &request, &result, &diag),
                       SL_STATUS_OUT_OF_RANGE) != 0)
     {
         sl_engine_destroy(engine);

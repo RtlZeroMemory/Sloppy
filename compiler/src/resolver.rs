@@ -19,6 +19,7 @@ pub enum ImportKind {
     SlopNet,
     SlopOs,
     SlopWorkers,
+    SlopFfi,
     SqliteProvider,
     UnresolvedRelative(String),
     UnsupportedBare(String),
@@ -55,6 +56,9 @@ pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
     }
     if specifier == "sloppy/workers" {
         return ImportKind::SlopWorkers;
+    }
+    if specifier == "sloppy/ffi" {
+        return ImportKind::SlopFfi;
     }
     if specifier == "sloppy/providers/sqlite" {
         return ImportKind::SqliteProvider;
@@ -136,6 +140,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/workers"),
             ImportKind::SlopWorkers
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/ffi"),
+            ImportKind::SlopFfi
         );
     }
 

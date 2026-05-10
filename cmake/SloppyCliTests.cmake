@@ -42,8 +42,16 @@
         sloppy.cli.capabilities_users_json tests/golden/cli/capabilities-users-json.json
         capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
         --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.capabilities_ffi_text tests/golden/cli/capabilities-ffi-text.txt
+        capabilities --plan tests/fixtures/cli/ffi-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.capabilities_ffi_json tests/golden/cli/capabilities-ffi-json.json
+        capabilities --plan tests/fixtures/cli/ffi-policy.plan.json --format json)
     set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text.txt)
     set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json.json)
+    set(SLOPPY_DOCTOR_FFI_TEXT_GOLDEN tests/golden/cli/doctor-ffi-text.txt)
+    set(SLOPPY_DOCTOR_FFI_JSON_GOLDEN tests/golden/cli/doctor-ffi-json.json)
     set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text.txt)
     set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json.json)
     set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text.txt)
@@ -69,6 +77,8 @@
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
+        set(SLOPPY_DOCTOR_FFI_TEXT_GOLDEN tests/golden/cli/doctor-ffi-text-v8.txt)
+        set(SLOPPY_DOCTOR_FFI_JSON_GOLDEN tests/golden/cli/doctor-ffi-json-v8.json)
         set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text-v8.txt)
         set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json-v8.json)
         set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text-v8.txt)
@@ -100,6 +110,12 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_json ${SLOPPY_DOCTOR_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_ffi_text ${SLOPPY_DOCTOR_FFI_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/ffi-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_ffi_json ${SLOPPY_DOCTOR_FFI_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/ffi-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_partial_text ${SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN} doctor --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format text)
@@ -209,6 +225,12 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_workers_json tests/golden/cli/audit-workers-json.json audit --plan
         tests/fixtures/cli/workers-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_ffi_text tests/golden/cli/audit-ffi-text.txt audit --plan
+        tests/fixtures/cli/ffi-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_ffi_json tests/golden/cli/audit-ffi-json.json audit --plan
+        tests/fixtures/cli/ffi-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)

@@ -22,6 +22,7 @@
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
+    sloppy_add_c_unit_test(core_alloc_heap_buffer core.alloc.heap_buffer tests/unit/core/test_alloc.c)
     sloppy_add_c_unit_test(core_container_primitives core.container.primitives
                            tests/unit/core/test_container.c)
     sloppy_add_c_unit_test(core_builder_foundation core.builder.foundation
@@ -37,6 +38,18 @@
     sloppy_add_c_unit_test(core_runtime_features core.runtime_features
                            tests/unit/core/test_features.c)
     set_tests_properties(core.runtime_features PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    add_library(sloppy_ffi_test_library SHARED tests/fixtures/ffi/sloppy_ffi_test.c)
+    target_compile_features(sloppy_ffi_test_library PRIVATE c_std_17)
+    sloppy_apply_warnings(sloppy_ffi_test_library)
+    add_executable(runtime_ffi_registry tests/unit/runtime/test_ffi_registry.c)
+    target_link_libraries(runtime_ffi_registry PRIVATE sloppy_core)
+    target_include_directories(runtime_ffi_registry PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_features(runtime_ffi_registry PRIVATE c_std_17)
+    sloppy_apply_warnings(runtime_ffi_registry)
+    sloppy_apply_sanitizers(runtime_ffi_registry)
+    add_test(NAME runtime.ffi.registry
+             COMMAND runtime_ffi_registry $<TARGET_FILE:sloppy_ffi_test_library>)
+    set_tests_properties(runtime.ffi.registry PROPERTIES LABELS "runtime;ffi;native")
     sloppy_add_c_unit_test(core_crypto_foundation core.crypto.foundation
                            tests/unit/core/test_crypto.c)
     if(CMAKE_CXX_COMPILER)
@@ -185,6 +198,17 @@
         add_test(NAME conformance.v8.runtime_bridge COMMAND $<TARGET_FILE:engine_v8_smoke>)
         set_tests_properties(
             conformance.v8.runtime_bridge PROPERTIES LABELS "conformance;v8;http;async;net;local-ipc")
+        add_executable(engine_v8_ffi tests/unit/engine/test_v8_ffi.c)
+        target_link_libraries(engine_v8_ffi PRIVATE sloppy_core)
+        target_include_directories(engine_v8_ffi PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_compile_features(engine_v8_ffi PRIVATE c_std_17)
+        sloppy_apply_warnings(engine_v8_ffi)
+        sloppy_apply_sanitizers(engine_v8_ffi)
+        add_test(
+            NAME conformance.v8.ffi_native
+            COMMAND $<TARGET_FILE:engine_v8_ffi> $<TARGET_FILE:sloppy_ffi_test_library>)
+        set_tests_properties(
+            conformance.v8.ffi_native PROPERTIES LABELS "conformance;v8;ffi;native")
         sloppy_add_cxx_unit_test(
             engine_v8_owner_thread engine.v8.owner_thread
             tests/unit/engine/test_v8_owner_thread.cc)

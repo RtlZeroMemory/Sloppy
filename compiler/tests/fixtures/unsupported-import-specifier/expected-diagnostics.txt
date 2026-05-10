@@ -3,4 +3,4 @@
    |
 2 | import express from "express";
    |                     ^^^^^^^^^
-hint: Use documented named, unaliased imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", "sloppy/os", or "sloppy/workers"; Sloppy does not implement Node or npm resolution.
+hint: Use documented named imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", "sloppy/os", "sloppy/workers", or "sloppy/ffi"; Sloppy does not implement Node or npm resolution.

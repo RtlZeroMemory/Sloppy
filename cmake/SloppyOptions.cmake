@@ -144,6 +144,7 @@ set(
     bootstrap.manifest.json
     codec.js
     data.js
+    ffi.js
     fs.js
     crypto.js
     net.js

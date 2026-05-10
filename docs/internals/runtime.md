@@ -50,7 +50,7 @@ untrusted input.
 
 `requiredFeatures[]` is a list of strings — `"stdlib"`, `"http"`,
 `"sqlite"`, `"postgres"`, `"sqlserver"`, `"workers"`, `"crypto"`,
-`"codec"`, `"net"`, `"os"`, `"fs"`, `"time"`. The activation loop in
+`"codec"`, `"net"`, `"os"`, `"fs"`, `"time"`, `"stdlib.ffi"`. The activation loop in
 `src/core/features.c` checks each against the runtime feature registry
 and errors out if any is unavailable on this build.
 
@@ -71,6 +71,21 @@ operation returns an "unsupported" diagnostic, which lets metadata
 commands run without V8 present.
 
 V8 invariants are documented in [v8-bridge.md](v8-bridge.md).
+
+## Native FFI Startup
+
+When the Plan requires `stdlib.ffi`, engine startup initializes the FFI
+registry before evaluating the generated bundle. The registry consumes
+`native.ffi` metadata, opens each library once, resolves each symbol once, and
+prepares libffi call interfaces for the engine lifetime.
+
+Package runs may provide Plan-library-ID to package-path overrides from
+`manifest.json`. Those overrides are hash-checked before engine creation and
+only affect FFI libraries listed in the package manifest. Unmapped FFI
+libraries use normal platform loader behavior.
+
+FFI calls run synchronously on the V8 owner thread. Long-running native
+functions block the runtime thread in v1.
 
 ## Logging Runtime
 

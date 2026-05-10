@@ -46,7 +46,7 @@
         "key": "Sloppy:Server:MaxConnections",
         "sensitive": false,
         "source": "built-in defaults",
-        "value": 4
+        "value": 128
       },
       {
         "key": "Sloppy:Server:MaxRequestBodyBytes",
@@ -58,7 +58,7 @@
         "key": "Sloppy:Server:MaxRequestsPerConnection",
         "sensitive": false,
         "source": "built-in defaults",
-        "value": 100
+        "value": 0
       },
       {
         "key": "Sloppy:Server:Port",
@@ -157,6 +157,7 @@
       "bindings": true,
       "capabilities": false,
       "effects": false,
+      "ffi": false,
       "providers": false,
       "routes": true,
       "sourceGraph": true

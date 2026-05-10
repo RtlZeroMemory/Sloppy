@@ -8,6 +8,7 @@ typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char package_manifest_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char file_read_storage[SL_RUN_FILE_READ_ARENA_BYTES];
@@ -30,6 +31,11 @@ typedef struct SlRunApp
     SlLogRuntime* logging;
     SlLogSink* logging_console_sink;
     SlLogSink* logging_file_sink;
+    SlFfiLibraryOverride ffi_library_overrides[SL_CLI_MAX_FFI_LIBRARIES];
+    char ffi_library_override_names[SL_CLI_MAX_FFI_LIBRARIES]
+                                   [SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES];
+    char ffi_library_override_paths[SL_CLI_MAX_FFI_LIBRARIES][SL_RUN_PATH_MAX_BYTES];
+    size_t ffi_library_override_count;
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
     char artifacts_path[SL_RUN_PATH_MAX_BYTES];
@@ -71,13 +77,26 @@ typedef struct SlRunApp
 
 static SlRunApp sl_run_command_app_storage;
 
+static void sl_run_reset_app_storage(SlRunApp* app)
+{
+    unsigned char* bytes = (unsigned char*)app;
+
+    if (app == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < sizeof(*app); index += 1U) {
+        bytes[index] = 0U;
+    }
+}
+
 static SlRunApp* sl_run_command_app(void)
 {
-    sl_run_command_app_storage = (SlRunApp){0};
+    sl_run_reset_app_storage(&sl_run_command_app_storage);
     return &sl_run_command_app_storage;
 }
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
+static int sl_run_load_package_native_overrides(SlRunApp* app, const char* package_dir);
 
 static bool sl_run_bytes_contains_str(SlBytes bytes, SlStr needle)
 {
@@ -635,13 +654,14 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_keep_alive_idle_timeout_ms = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestsPerConnection")) {
-        if (!sl_run_plan_config_parse_u64_allow_zero(
-                value, &app->config_max_requests_per_connection) ||
+        if (!sl_run_plan_config_parse_u64_allow_zero(value,
+                                                     &app->config_max_requests_per_connection) ||
             !sl_run_plan_config_u64_fits_size_t(app->config_max_requests_per_connection))
         {
-            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
-                                      "Sloppy:Server:MaxRequestsPerConnection must be a non-negative "
-                                      "integer\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: app.plan.json "
+                              "Sloppy:Server:MaxRequestsPerConnection must be a non-negative "
+                              "integer\n");
             return 1;
         }
         app->config_has_max_requests_per_connection = true;
@@ -878,13 +898,77 @@ static void sl_run_sha256_finish(SlRunSha256* ctx, unsigned char out[32])
     }
 }
 
-static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
+static void sl_run_sha256_format_hex(const unsigned char digest[32],
+                                     char out[sizeof("sha256:") + 64U])
 {
     static const char hex[] = "0123456789abcdef";
-    unsigned char digest[32];
-    char actual[71];
-    SlRunSha256 ctx;
     size_t index = 0U;
+
+    out[0] = 's';
+    out[1] = 'h';
+    out[2] = 'a';
+    out[3] = '2';
+    out[4] = '5';
+    out[5] = '6';
+    out[6] = ':';
+    for (index = 0U; index < 32U; index += 1U) {
+        out[7U + (index * 2U)] = hex[(digest[index] >> 4U) & 0x0FU];
+        out[7U + (index * 2U) + 1U] = hex[digest[index] & 0x0FU];
+    }
+    out[71] = '\0';
+}
+
+static bool sl_run_sha256_file_hex(const char* path, char out[sizeof("sha256:") + 64U])
+{
+    unsigned char buffer[8192];
+    unsigned char digest[32];
+    SlRunSha256 ctx;
+    FILE* file = NULL;
+    bool ok = true;
+
+    if (path == NULL || path[0] == '\0' || out == NULL) {
+        return false;
+    }
+
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        file = NULL;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+    if (file == NULL) {
+        return false;
+    }
+    sl_run_sha256_init(&ctx);
+    for (;;) {
+        size_t read = fread(buffer, 1U, sizeof(buffer), file);
+        if (read > 0U) {
+            sl_run_sha256_update(&ctx, buffer, read);
+        }
+        if (read < sizeof(buffer)) {
+            if (ferror(file) != 0) {
+                ok = false;
+            }
+            break;
+        }
+    }
+    if (fclose(file) != 0) {
+        ok = false;
+    }
+    if (!ok) {
+        return false;
+    }
+    sl_run_sha256_finish(&ctx, digest);
+    sl_run_sha256_format_hex(digest, out);
+    return true;
+}
+
+static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
+{
+    unsigned char digest[32];
+    char actual[sizeof("sha256:") + 64U];
+    SlRunSha256 ctx;
 
     if (expected.length != 71U || !sl_str_starts_with(expected, SL_STR_LITERAL("sha256:"))) {
         return false;
@@ -893,20 +977,22 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
     sl_run_sha256_init(&ctx);
     sl_run_sha256_update(&ctx, bytes.ptr, bytes.length);
     sl_run_sha256_finish(&ctx, digest);
+    sl_run_sha256_format_hex(digest, actual);
 
-    actual[0] = 's';
-    actual[1] = 'h';
-    actual[2] = 'a';
-    actual[3] = '2';
-    actual[4] = '5';
-    actual[5] = '6';
-    actual[6] = ':';
-    for (index = 0U; index < sizeof(digest); index += 1U) {
-        actual[7U + (index * 2U)] = hex[(digest[index] >> 4U) & 0x0FU];
-        actual[7U + (index * 2U) + 1U] = hex[digest[index] & 0x0FU];
+    return sl_str_equal(expected, sl_str_from_parts(actual, 71U));
+}
+
+static bool sl_run_hash_file_matches(SlStr expected, const char* path)
+{
+    char actual[sizeof("sha256:") + 64U];
+
+    if (expected.length != 71U || !sl_str_starts_with(expected, SL_STR_LITERAL("sha256:"))) {
+        return false;
     }
-
-    return sl_str_equal(expected, sl_str_from_parts(actual, sizeof(actual)));
+    if (!sl_run_sha256_file_hex(path, actual)) {
+        return false;
+    }
+    return sl_str_equal(expected, sl_str_from_parts(actual, 71U));
 }
 
 static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* diag)
@@ -975,6 +1061,9 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
     options.runtime_features = app == NULL ? NULL : &app->runtime_features;
+    options.ffi_library_overrides =
+        app == NULL || app->ffi_library_override_count == 0U ? NULL : app->ffi_library_overrides;
+    options.ffi_library_override_count = app == NULL ? 0U : app->ffi_library_override_count;
     options.logging = app == NULL ? NULL : app->logging;
     options.source_map = app == NULL ? (SlBytes){0} : app->source_map_bytes;
     options.source_map_source_name =
@@ -1186,6 +1275,33 @@ static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capa
     status = sl_checked_add_size(capacity, plan->required_feature_count, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+
+    for (size_t library_index = 0U; library_index < plan->ffi_library_count; library_index += 1U) {
+        status = sl_checked_add_size(capacity, 1U, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_checked_mul_size(plan->ffi_libraries[library_index].function_count, 4U, &addend);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_checked_add_size(capacity, addend, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    for (size_t struct_index = 0U; struct_index < plan->ffi_struct_count; struct_index += 1U) {
+        status = sl_checked_add_size(capacity, 2U, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_checked_add_size(capacity, plan->ffi_structs[struct_index].field_count, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
     *out_capacity = capacity;
@@ -1462,7 +1578,7 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
         return 1;
     }
 
-    *app = (SlRunApp){0};
+    sl_run_reset_app_storage(app);
     app->config_logging_minimum_level = SL_LOG_LEVEL_INFO;
     app->config_logging_queue_capacity = SL_LOG_DEFAULT_QUEUE_CAPACITY;
     app->config_logging_console_enabled = true;
@@ -1549,11 +1665,19 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
     return 0;
 }
 
-static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, SlRunApp* app)
+static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path,
+                           const char* package_path, SlRunApp* app)
 {
     char app_js_path[1024];
+    bool is_package = package_path != NULL;
 
-    if (sl_run_load_artifacts(artifacts_path, "sloppy run", app, true) != 0) {
+    if (sl_run_load_artifacts(artifacts_path, "sloppy run", app, !is_package) != 0) {
+        return 1;
+    }
+    if (is_package && sl_run_load_package_native_overrides(app, package_path) != 0) {
+        return 1;
+    }
+    if (is_package && sl_run_validate_runtime_features(app) != 0) {
         return 1;
     }
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
@@ -2096,7 +2220,7 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
 
 static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 {
-    unsigned char* transport_storage = NULL;
+    SlHeapBuffer transport_storage = {0};
     size_t transport_storage_bytes = 0U;
     SlArena transport_arena = {0};
     SlHttpTransportServer server = {0};
@@ -2110,24 +2234,24 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         sl_run_print_diag("sloppy run: failed to size dev server storage: ", NULL, &diag);
         return 1;
     }
-    status = sl_alloc_bytes(transport_storage_bytes, &transport_storage);
+    status = sl_heap_buffer_alloc(&transport_storage, transport_storage_bytes);
     if (!sl_status_is_ok(status)) {
         sl_cli_write_cstr(stderr, "sloppy run: failed to allocate dev server storage\n");
         return 1;
     }
 
     if (!sl_status_is_ok(
-            sl_arena_init(&transport_arena, transport_storage, transport_storage_bytes)))
+            sl_arena_init(&transport_arena, transport_storage.ptr, transport_storage.length)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server storage\n");
-        sl_alloc_release(transport_storage);
+        sl_heap_buffer_dispose(&transport_storage);
         return 1;
     }
 
     status = sl_http_transport_server_init(&server, &transport_arena, &config, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: failed to initialize dev server: ", &transport_arena, &diag);
-        sl_alloc_release(transport_storage);
+        sl_heap_buffer_dispose(&transport_storage);
         return 1;
     }
     status = sl_http_transport_server_listen(&server, &diag);
@@ -2139,7 +2263,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
             sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
         }
         (void)sl_http_transport_server_dispose(&server, NULL);
-        sl_alloc_release(transport_storage);
+        sl_heap_buffer_dispose(&transport_storage);
         return 1;
     }
 
@@ -2152,7 +2276,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         result = 1;
     }
     (void)sl_http_transport_server_dispose(&server, NULL);
-    sl_alloc_release(transport_storage);
+    sl_heap_buffer_dispose(&transport_storage);
     return result;
 }
 
@@ -2282,15 +2406,124 @@ static int sl_run_set_program_invocation_context(SlRunApp* app, const SlCliOptio
     return 0;
 }
 
+static bool sl_run_package_native_hash_matches(const char* path, yyjson_val* sha256)
+{
+    SlStr expected = {0};
+
+    if (path == NULL || !yyjson_is_str(sha256)) {
+        return false;
+    }
+    expected = sl_str_from_parts(yyjson_get_str(sha256), yyjson_get_len(sha256));
+    return sl_run_hash_file_matches(expected, path);
+}
+
+static int sl_run_load_package_native_overrides(SlRunApp* app, const char* package_dir)
+{
+    char manifest_path[SL_RUN_PATH_MAX_BYTES];
+    SlBytes manifest = {0};
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    yyjson_val* native = NULL;
+    yyjson_val* libraries = NULL;
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+    size_t index = 0U;
+    int result = 0;
+
+    if (app == NULL || package_dir == NULL || package_dir[0] == '\0') {
+        return 0;
+    }
+    if (!sl_run_artifact_file_path(manifest_path, sizeof(manifest_path), package_dir,
+                                   "manifest.json"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: package manifest path is too long\n");
+        return 1;
+    }
+    if (sl_run_read_file(app, manifest_path, app->package_manifest_json_storage,
+                         sizeof(app->package_manifest_json_storage), &manifest) != 0)
+    {
+        return 1;
+    }
+    doc = yyjson_read_opts((char*)manifest.ptr, manifest.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        sl_cli_write_error_with_value("sloppy run: malformed package manifest: ", manifest_path,
+                                      "\n");
+        return 1;
+    }
+    root = yyjson_doc_get_root(doc);
+    native = yyjson_is_obj(root) ? yyjson_obj_get(root, "native") : NULL;
+    libraries = yyjson_is_obj(native) ? yyjson_obj_get(native, "libraries") : NULL;
+    if (libraries == NULL) {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+    if (!yyjson_is_arr(libraries) || yyjson_arr_size(libraries) > SL_CLI_MAX_FFI_LIBRARIES) {
+        sl_cli_write_cstr(stderr, "sloppy run: package manifest native.libraries is invalid\n");
+        yyjson_doc_free(doc);
+        return 1;
+    }
+    yyjson_arr_iter_init(libraries, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* id = yyjson_is_obj(entry) ? yyjson_obj_get(entry, "id") : NULL;
+        yyjson_val* path = yyjson_is_obj(entry) ? yyjson_obj_get(entry, "path") : NULL;
+        yyjson_val* sha256 = yyjson_is_obj(entry) ? yyjson_obj_get(entry, "sha256") : NULL;
+        SlCliSpan path_span = {0};
+
+        if (id == NULL || path == NULL || !yyjson_is_str(id) || !yyjson_is_str(path) ||
+            yyjson_get_len(id) == 0U ||
+            yyjson_get_len(id) >= SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES)
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: package manifest native library entry is invalid\n");
+            result = 1;
+            break;
+        }
+        if (!sl_run_copy_json_string(app->ffi_library_override_names[index],
+                                     sizeof(app->ffi_library_override_names[index]), id))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: package native library id is too long\n");
+            result = 1;
+            break;
+        }
+        path_span = (SlCliSpan){yyjson_get_str(path), yyjson_get_len(path)};
+        if (!sl_run_join_path(app->ffi_library_override_paths[index],
+                              sizeof(app->ffi_library_override_paths[index]), package_dir,
+                              path_span))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: package native library path is too long\n");
+            result = 1;
+            break;
+        }
+        if (!sl_run_package_native_hash_matches(app->ffi_library_override_paths[index], sha256)) {
+            sl_cli_write_cstr(stderr, "sloppy run: package native library hash mismatch\n");
+            result = 1;
+            break;
+        }
+        app->ffi_library_overrides[index].name =
+            sl_str_from_cstr(app->ffi_library_override_names[index]);
+        app->ffi_library_overrides[index].path =
+            sl_str_from_cstr(app->ffi_library_override_paths[index]);
+        index += 1U;
+    }
+    app->ffi_library_override_count = index;
+    yyjson_doc_free(doc);
+    return result;
+}
+
 static int sl_run_resolve_package_artifacts_path(const char* artifacts_path,
                                                  char* resolved_artifacts_path,
                                                  size_t resolved_artifacts_path_capacity,
+                                                 const char** out_package_path,
                                                  const char** out_artifacts_path)
 {
     if (out_artifacts_path == NULL) {
         return 1;
     }
     *out_artifacts_path = artifacts_path;
+    if (out_package_path != NULL) {
+        *out_package_path = NULL;
+    }
     if (artifacts_path == NULL || artifacts_path[0] == '\0') {
         return 1;
     }
@@ -2304,6 +2537,9 @@ static int sl_run_resolve_package_artifacts_path(const char* artifacts_path,
         sl_cli_write_cstr(stderr, "sloppy run: artifact or package directory must contain "
                                   "app.plan.json or manifest.json\n");
         return 1;
+    }
+    if (out_package_path != NULL) {
+        *out_package_path = artifacts_path;
     }
     if (!sl_run_artifact_file_path(resolved_artifacts_path, resolved_artifacts_path_capacity,
                                    artifacts_path, "artifacts"))
@@ -2895,6 +3131,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
     char resolved_artifacts_path[SL_RUN_PATH_MAX_BYTES];
     char package_stdlib_path[SL_RUN_PATH_MAX_BYTES];
     char program_environment[SL_RUN_CONFIG_HOST_MAX_BYTES];
+    const char* package_path = NULL;
     int result = 0;
 
     if (options == NULL) {
@@ -2960,7 +3197,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
     }
 
     if (sl_run_resolve_package_artifacts_path(artifacts_path, resolved_artifacts_path,
-                                              sizeof(resolved_artifacts_path),
+                                              sizeof(resolved_artifacts_path), &package_path,
                                               &artifacts_path) != 0)
     {
         return 1;
@@ -2977,7 +3214,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
         }
     }
 
-    if (sl_run_load_app(artifacts_path, stdlib_path, app) != 0) {
+    if (sl_run_load_app(artifacts_path, stdlib_path, package_path, app) != 0) {
         (void)sl_run_shutdown_app(app);
         return 1;
     }

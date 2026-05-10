@@ -1,0 +1,14 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: package release status requires package smoke
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[ok] app.plan.routes: program Plan has no route metadata by design
+[warn] app.plan.providers: provider metadata not present
+[ok] app.plan.capabilities: capability metadata present
+[ok] stdlib.ffi.required: native FFI runtime feature metadata is Plan-visible
+[ok] stdlib.ffi.metadata: native FFI library and struct metadata is Plan-visible
+[error] stdlib.ffi.library: native FFI library could not be loaded
+[warn] stdlib.ffi.unsafe_boundary: unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted

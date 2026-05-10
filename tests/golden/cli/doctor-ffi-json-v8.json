@@ -1,0 +1,16 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "ok", "message": "V8 bridge compiled; runtime success still requires V8 tests" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "package release status requires package smoke" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "ok", "message": "program Plan has no route metadata by design" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "ok", "message": "capability metadata present" },
+    { "id": "stdlib.ffi.required", "status": "ok", "message": "native FFI runtime feature metadata is Plan-visible" },
+    { "id": "stdlib.ffi.metadata", "status": "ok", "message": "native FFI library and struct metadata is Plan-visible" },
+    { "id": "stdlib.ffi.library", "status": "error", "message": "native FFI library could not be loaded" },
+    { "id": "stdlib.ffi.unsafe_boundary", "status": "warn", "message": "unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted" }
+  ]
+}

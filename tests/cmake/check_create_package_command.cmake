@@ -116,6 +116,65 @@ file(READ "${program_project_dir}/sloppy.json" program_sloppy_json)
 if(NOT program_sloppy_json MATCHES "\"kind\": \"program\"")
     message(FATAL_ERROR "program template sloppy.json did not pin Program Mode\n${program_sloppy_json}")
 endif()
+file(WRITE "${program_project_dir}/src/main.ts" "import { unsafeFfi as ffi, t } from \"sloppy/ffi\";\n\nconst native = ffi.library(\"sloppy_ffi_test\", {\n  addI32: ffi.fn(t.i32, [t.i32, t.i32], { symbol: \"sloppy_ffi_add_i32\" })\n});\n\nexport function main() {\n  void native;\n  return \"ok\";\n}\n")
+file(WRITE "${program_project_dir}/sloppy.json" "{\n  \"entry\": \"src/main.ts\",\n  \"kind\": \"program\",\n  \"ffiLibraries\": {\n    \"sloppy_ffi_test\": \"native/sloppy_ffi_test.dll\"\n  }\n}\n")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package
+            --format json
+    WORKING_DIRECTORY "${program_project_dir}"
+    TIMEOUT 180
+    RESULT_VARIABLE ffi_missing_package_result
+    OUTPUT_VARIABLE ffi_missing_package_stdout
+    ERROR_VARIABLE ffi_missing_package_stderr)
+if(ffi_missing_package_result EQUAL 0)
+    message(FATAL_ERROR "FFI package unexpectedly succeeded with a missing local native library")
+endif()
+if(NOT ffi_missing_package_stderr MATCHES "failed to copy native library")
+    message(FATAL_ERROR "FFI package missing-library failure did not explain the missing local artifact\nstdout:\n${ffi_missing_package_stdout}\nstderr:\n${ffi_missing_package_stderr}")
+endif()
+file(MAKE_DIRECTORY "${program_project_dir}/native")
+file(WRITE "${program_project_dir}/native/sloppy_ffi_test.dll" "package-manifest-only native fixture\n")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" package
+            --format json
+    WORKING_DIRECTORY "${program_project_dir}"
+    TIMEOUT 180
+    RESULT_VARIABLE ffi_package_result
+    OUTPUT_VARIABLE ffi_package_stdout
+    ERROR_VARIABLE ffi_package_stderr)
+if(NOT ffi_package_result EQUAL 0)
+    message(FATAL_ERROR "FFI package failed\nstdout:\n${ffi_package_stdout}\nstderr:\n${ffi_package_stderr}")
+endif()
+if(NOT EXISTS "${program_project_dir}/.sloppy/package/artifacts/native/sloppy_ffi_test.dll")
+    message(FATAL_ERROR "FFI package did not copy local native library")
+endif()
+file(READ "${program_project_dir}/.sloppy/package/manifest.json" ffi_package_manifest)
+foreach(required_ffi_manifest_entry IN ITEMS "\"native\"" "\"id\": \"sloppy_ffi_test\"" "\"path\": \"artifacts/native/sloppy_ffi_test.dll\"" "\"sha256\": \"sha256:")
+    if(NOT ffi_package_manifest MATCHES "${required_ffi_manifest_entry}")
+        message(FATAL_ERROR "FFI package manifest is missing ${required_ffi_manifest_entry}\n${ffi_package_manifest}")
+    endif()
+endforeach()
+string(REPLACE "\\" "/" program_project_dir_slash "${program_project_dir}")
+string(REPLACE "\\" "/" ffi_package_manifest_slash "${ffi_package_manifest}")
+string(FIND "${ffi_package_manifest_slash}" "${program_project_dir_slash}" ffi_manifest_absolute_path_index)
+if(NOT ffi_manifest_absolute_path_index EQUAL -1)
+    message(FATAL_ERROR "FFI package manifest leaked an absolute project path\n${ffi_package_manifest}")
+endif()
+file(APPEND "${program_project_dir}/.sloppy/package/artifacts/native/sloppy_ffi_test.dll" "corrupt packaged native library\n")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" run
+            .sloppy/package
+    WORKING_DIRECTORY "${program_project_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE ffi_corrupt_package_run_result
+    OUTPUT_VARIABLE ffi_corrupt_package_run_stdout
+    ERROR_VARIABLE ffi_corrupt_package_run_stderr)
+if(ffi_corrupt_package_run_result EQUAL 0)
+    message(FATAL_ERROR "sloppy run unexpectedly accepted a package with a corrupt native library")
+endif()
+if(NOT ffi_corrupt_package_run_stderr MATCHES "package native library hash mismatch")
+    message(FATAL_ERROR "sloppy run corrupt package failure did not report native hash mismatch\nstdout:\n${ffi_corrupt_package_run_stdout}\nstderr:\n${ffi_corrupt_package_run_stderr}")
+endif()
 
 file(MAKE_DIRECTORY "${placeholder_work_dir}")
 file(COPY "${PROJECT_SOURCE_DIR}/templates" DESTINATION "${placeholder_work_dir}")

@@ -745,8 +745,7 @@ bool sqlite_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> cont
         }
     }
 
-    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns,
-                                         SL_V8_DB_STRING_OBJECT))
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns, SL_V8_DB_STRING_OBJECT))
     {
         return false;
     }
@@ -817,7 +816,8 @@ bool sqlite_v8_one_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context
     }
     for (size_t column_index = 0U; column_index < result->column_count; column_index += 1U) {
         if (!sqlite_v8_value_to_local(isolate, context, &result->values[column_index],
-                                      &values[column_index])) {
+                                      &values[column_index]))
+        {
             return false;
         }
     }

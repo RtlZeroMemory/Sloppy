@@ -15,6 +15,7 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - native Plan parsing;
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
+- native FFI metadata, dynamic library load checks, and symbol resolution;
 - SQLite metadata;
 - PostgreSQL live-test environment;
 - SQL Server ODBC driver availability.

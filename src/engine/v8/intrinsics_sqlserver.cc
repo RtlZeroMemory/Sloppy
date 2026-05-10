@@ -520,8 +520,9 @@ bool sqlsrv_v8_cell_to_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         return true;
     case SqlSrvV8CellKind::Bytes: {
         return sl_v8_db_uint8_array_from_bytes(
-            isolate, sl_bytes_from_parts(cell.bytes.empty() ? nullptr : cell.bytes.data(),
-                                         cell.bytes.size()),
+            isolate,
+            sl_bytes_from_parts(cell.bytes.empty() ? nullptr : cell.bytes.data(),
+                                cell.bytes.size()),
             out);
     }
     case SqlSrvV8CellKind::Text:
@@ -596,8 +597,7 @@ bool sqlsrv_v8_rows_to_array(v8::Isolate* isolate, v8::Local<v8::Context> contex
             return false;
         }
     }
-    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns,
-                                         SL_V8_DB_STRING_OBJECT))
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &columns, SL_V8_DB_STRING_OBJECT))
     {
         return false;
     }

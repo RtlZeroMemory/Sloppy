@@ -1,0 +1,22 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "capabilities": [
+      {
+        "access": "use",
+        "inference": "declared",
+        "kind": "ffi",
+        "token": "ffi"
+      },
+      {
+        "access": "use",
+        "inference": "native-ffi",
+        "kind": "ffi",
+        "library": "__sloppy_missing_ffi_library__",
+        "symbol": "sloppy_ffi_add_i32",
+        "token": "ffi:__sloppy_missing_ffi_library__:addI32"
+      }
+    ]
+  }
+}

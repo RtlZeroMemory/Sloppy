@@ -59,8 +59,14 @@ import {
     WorkerPool,
 } from "../../stdlib/sloppy/workers.js";
 import {
+    t,
+    unsafeFfi,
+} from "../../stdlib/sloppy/ffi.js";
+import {
     BackgroundService as RootBackgroundService,
+    t as RootFfiTypes,
     HttpClient as RootHttpClient,
+    unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
     WorkerPool as RootWorkerPool,
@@ -92,6 +98,7 @@ const documentedSubpathExports = {
         WorkerCancellationSignal,
         SloppyWorkerError,
     ],
+    "sloppy/ffi": [t, unsafeFfi],
 };
 
 for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
@@ -102,6 +109,8 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 
 assert.equal(RootHttpClient, HttpClient);
 assert.equal(RootBackgroundService, BackgroundService);
+assert.equal(RootFfiTypes, t);
+assert.equal(RootUnsafeFfi, unsafeFfi);
 assert.equal(RootWorkQueue, WorkQueue);
 assert.equal(RootWorkerPool, WorkerPool);
 assert.equal(RootWorker, Worker);

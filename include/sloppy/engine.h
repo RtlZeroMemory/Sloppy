@@ -6,6 +6,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/features.h"
+#include "sloppy/ffi.h"
 #include "sloppy/fs.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
@@ -86,6 +87,13 @@ typedef struct SlEngineOptions
      */
     SlBytes source_map;
     SlStr source_map_source_name;
+    /*
+     * Optional borrowed native-library path overrides for Plan FFI library IDs. Package runs
+     * use this to resolve copied local native libraries by Plan-visible ID while preserving
+     * normal platform loader behavior for libraries without an override.
+     */
+    const SlFfiLibraryOverride* ffi_library_overrides;
+    size_t ffi_library_override_count;
 } SlEngineOptions;
 
 /*

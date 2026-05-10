@@ -56,9 +56,8 @@ SlStatus sl_v8_string_write_to_arena(v8::Isolate* isolate, SlArena* arena,
         return status;
     }
 
-    const size_t written =
-        value->WriteUtf8V2(isolate, static_cast<char*>(copied), length,
-                           v8::String::WriteFlags::kReplaceInvalidUtf8);
+    const size_t written = value->WriteUtf8V2(isolate, static_cast<char*>(copied), length,
+                                              v8::String::WriteFlags::kReplaceInvalidUtf8);
     *out = sl_str_from_parts(static_cast<const char*>(copied), written);
     return sl_status_ok();
 }

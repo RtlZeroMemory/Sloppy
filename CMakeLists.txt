@@ -6,6 +6,7 @@ include(cmake/SloppyOptions.cmake)
 find_package(yyjson CONFIG REQUIRED)
 find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
+find_package(unofficial-libffi CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(unofficial-sodium CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
@@ -36,6 +37,12 @@ elseif(TARGET libuv::uv)
     set(SLOPPY_LIBUV_TARGET libuv::uv)
 else()
     message(FATAL_ERROR "libuv dependency was found, but neither libuv::uv_a nor libuv::uv is available.")
+endif()
+
+if(TARGET unofficial::libffi::libffi)
+    set(SLOPPY_LIBFFI_TARGET unofficial::libffi::libffi)
+else()
+    message(FATAL_ERROR "libffi dependency was found, but unofficial::libffi::libffi is not available.")
 endif()
 
 if(TARGET nghttp2::nghttp2)
@@ -79,6 +86,12 @@ target_link_libraries(
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3
             ZLIB::ZLIB)
+target_link_libraries(sloppy_core PUBLIC ${SLOPPY_LIBFFI_TARGET})
+target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_FFI=1)
+
+if(CMAKE_DL_LIBS)
+    target_link_libraries(sloppy_core PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 if(UNIX AND NOT APPLE)
     # vcpkg's static libpq may leave libpgcommon's math symbols to the consumer.

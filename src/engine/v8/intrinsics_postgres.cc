@@ -678,8 +678,8 @@ bool pg_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
                 return false;
             }
         }
-        if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(),
-                                      values.size(), &row))
+        if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(), values.size(),
+                                      &row))
         {
             return false;
         }

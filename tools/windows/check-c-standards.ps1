@@ -132,7 +132,7 @@ function Get-TrackedSourceFiles {
 
     Push-Location $Root
     try {
-        $tracked = & $git.Source -C $Root ls-files -- include src tests benchmarks 2>$null
+        $tracked = & $git.Source -C $Root ls-files --cached --others --exclude-standard -- include src tests benchmarks 2>$null
         if ($LASTEXITCODE -ne 0) {
             return @()
         }

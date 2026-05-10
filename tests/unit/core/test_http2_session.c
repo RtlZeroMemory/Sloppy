@@ -94,8 +94,7 @@ static bool frame_bytes_contain_type(SlBytes bytes, SlHttp2FrameType type)
 
     while (offset + 9U <= bytes.length) {
         size_t length = ((size_t)bytes.ptr[offset] << 16U) |
-                        ((size_t)bytes.ptr[offset + 1U] << 8U) |
-                        (size_t)bytes.ptr[offset + 2U];
+                        ((size_t)bytes.ptr[offset + 1U] << 8U) | (size_t)bytes.ptr[offset + 2U];
         if ((SlHttp2FrameType)bytes.ptr[offset + 3U] == type) {
             return true;
         }
@@ -138,9 +137,8 @@ static int test_rst_stream_on_half_closed_remote_stream_is_accepted(void)
         h2_header(":authority", "localhost"), h2_header(":path", "/cancel")};
     SlHttp2HeaderList request_headers = {
         .fields = request_fields, .count = sizeof(request_fields) / sizeof(request_fields[0])};
-    static const unsigned char rst_stream[] = {0x00U, 0x00U, 0x04U, 0x03U, 0x00U,
-                                               0x00U, 0x00U, 0x00U, 0x01U, 0x00U,
-                                               0x00U, 0x00U, 0x08U};
+    static const unsigned char rst_stream[] = {0x00U, 0x00U, 0x04U, 0x03U, 0x00U, 0x00U, 0x00U,
+                                               0x00U, 0x01U, 0x00U, 0x00U, 0x00U, 0x08U};
     static const unsigned char ping[] = {0x00U, 0x00U, 0x08U, 0x06U, 0x00U, 0x00U,
                                          0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
                                          0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
@@ -747,8 +745,8 @@ int main(void)
     }
     result = test_rst_stream_on_half_closed_remote_stream_is_accepted();
     if (result != 0) {
-        fprintf(stderr,
-                "test_rst_stream_on_half_closed_remote_stream_is_accepted failed: %d\n", result);
+        fprintf(stderr, "test_rst_stream_on_half_closed_remote_stream_is_accepted failed: %d\n",
+                result);
         return result;
     }
     result = test_data_after_closed_stream_surfaces_invalid_frame_and_goaway();
