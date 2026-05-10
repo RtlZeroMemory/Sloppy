@@ -8,12 +8,19 @@
 ![pre-alpha](https://img.shields.io/badge/status-pre--alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Pre-alpha compiler-first TypeScript backend runtime and app framework.
+> Pre-alpha compiler-first TypeScript runtime for backend apps, tools, and local programs.
 
-Sloppy is an experimental backend runtime built around a compiler-first app
-model. You write supported TypeScript, `sloppyc` lowers the app into a
-structured application Plan, and the native runtime executes that known shape
-through an isolated V8 bridge.
+Sloppy is an experimental TypeScript runtime built around a compiler-first app
+model. You write supported TypeScript, `sloppyc` lowers the source into a
+structured Plan, and the native runtime executes that known shape through an
+isolated V8 bridge.
+
+Sloppy has two current execution shapes:
+
+- **Web apps** — routes, middleware, Results, OpenAPI, HTTP runtime, and app
+  metadata.
+- **Program Mode** — route-free console-style tools with `main(args, ctx)`,
+  stdlib imports, packaging, and artifact execution.
 
 The Plan contains the parts a backend runtime usually has to discover while the
 process is already running: routes, handlers, configuration, capabilities,
@@ -41,6 +48,20 @@ sloppy run .sloppy --once GET /hello/Ada
 ```json
 {"hello":"Ada"}
 ```
+
+Program Mode is the route-free shape for small tools and local programs:
+
+```ts
+export async function main(args, ctx) {
+    console.log(`hello ${args[0] ?? "world"}`);
+}
+```
+
+```sh
+sloppy run src/main.ts -- Ada
+```
+
+More detail: [Program Mode](docs/guide/program-mode.md).
 
 Funny name. Serious engineering. Pre-alpha means APIs and artifact formats can
 change between alpha revisions.

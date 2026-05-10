@@ -458,8 +458,8 @@ Sloppy is written with explicit ownership rules and guardrails:
 - Arenas make app/request/session allocation boundaries explicit.
 - Checked arithmetic and bounded builders are used for size-sensitive paths.
 - The V8 bridge is isolated behind a named boundary.
-- Tests, sanitizer lanes, fuzz seeds, stress lanes, and goldens exist to catch
-  regressions.
+- Targeted tests, sanitizer lanes, fuzz seeds, stress checks, and golden tests
+  help catch regressions as those lanes are added and expanded.
 
 These are engineering guarantees about intended runtime behavior and review
 rules. They are not a claim that leaks, use-after-free bugs, races, or

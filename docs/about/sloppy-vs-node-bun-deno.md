@@ -48,11 +48,20 @@ app.get("/hello/{name}", (ctx) =>
 export default app;
 ```
 
-Build and run:
+Run it as a dev server:
+
+```sh
+sloppy run src/main.ts
+```
+
+Or run one synthetic smoke request and exit:
 
 ```sh
 sloppy run src/main.ts --once GET /hello/Ada
 ```
+
+The first command starts the HTTP listener. The second command compiles,
+validates, dispatches `GET /hello/Ada`, writes the response, and exits.
 
 ### Node.js
 
