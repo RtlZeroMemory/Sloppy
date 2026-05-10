@@ -1,0 +1,5 @@
+{
+  "exitCode": 1,
+  "stderr": "sloppy run: runtime feature activation failed: error SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature is unavailable\n\n  related:\n    <unknown>: v8\n    <unknown>: target.engine\n\n  help:\n    requires V8-enabled build; configure the V8 runtime lane or remove the Plan feature\n",
+  "stdout": ""
+}

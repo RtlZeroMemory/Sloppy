@@ -1,0 +1,89 @@
+{
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Users.List",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    },
+    {
+      "displayName": "Users.Get",
+      "exportName": "__sloppy_handler_2",
+      "id": 2
+    },
+    {
+      "displayName": "Users.Create",
+      "exportName": "__sloppy_handler_3",
+      "id": 3
+    },
+    {
+      "displayName": "Health",
+      "exportName": "__sloppy_handler_4",
+      "id": 4
+    },
+    {
+      "displayName": "Health.Live",
+      "exportName": "__sloppy_handler_5",
+      "id": 5
+    },
+    {
+      "displayName": "Health.Ready",
+      "exportName": "__sloppy_handler_6",
+      "id": 6
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Users.List",
+      "pattern": "/users",
+      "tags": []
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": "Users.Get",
+      "pattern": "/users/{id:int}",
+      "tags": []
+    },
+    {
+      "handlerId": 3,
+      "method": "POST",
+      "name": "Users.Create",
+      "pattern": "/users",
+      "tags": []
+    },
+    {
+      "handlerId": 4,
+      "method": "GET",
+      "name": "Health",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 5,
+      "method": "GET",
+      "name": "Health.Live",
+      "pattern": "/health/live",
+      "tags": []
+    },
+    {
+      "handlerId": 6,
+      "method": "GET",
+      "name": "Health.Ready",
+      "pattern": "/health/ready",
+      "tags": []
+    }
+  ]
+}

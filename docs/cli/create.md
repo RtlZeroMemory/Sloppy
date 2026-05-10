@@ -3,31 +3,40 @@
 Copy a built-in project template into a new local app directory.
 
 ```sh
-sloppy create <name> [--template minimal-api|full-api|dogfood|program]
+sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat]
                      [--force] [--no-git] [--format text|json]
 ```
+
+Default template: `api`.
 
 ## Templates
 
 | Template | Purpose |
 | --- | --- |
-| `minimal-api` | Small project with `/health` and `/hello/{name}`. |
-| `full-api` | Multi-file API with route modules, config, logging settings, and grouped routes. |
-| `dogfood` | Larger multi-file control-plane shaped demo project. |
-| `program` | Route-free Program Mode project with `main(args, ctx)`. |
+| `api` | SQLite-backed backend starter with routes, services, config, and packaging flow. |
+| `minimal-api` | Tiny API for the smallest possible first run. |
+| `program` | Small Program Mode starter. |
+| `cli` | Practical CLI-style Program Mode starter. |
+| `package-api` | Backend starter using a compatible local pure-JS package. |
+| `node-compat` | Program starter using supported Node compatibility shims. |
 
-The generated app has no `package.json` and no npm dependencies. Add one only
-when you need compatible installed JavaScript packages. Sloppy can bundle
-supported package modules from `node_modules`, but it does not install
-packages, solve versions, or provide full Node compatibility.
+`sloppy create <name>` defaults to `api`. These starters are public alpha
+templates: they are intended for real experiments and early apps, but their
+structure and supported runtime surface can still change before a stable
+release. The `package-api` template includes a local `file:` dependency and
+needs `npm install --ignore-scripts --no-audit` before `sloppy build`. Sloppy
+can bundle supported package modules from `node_modules`, but it does not
+install packages, solve versions, or provide full Node compatibility.
 
 ## Examples
 
 ```sh
 sloppy create my-api
-sloppy create my-api --template full-api
-sloppy create my-api --template dogfood
+sloppy create my-api --template minimal-api
 sloppy create my-tool --template program
+sloppy create my-cli --template cli
+sloppy create my-package-api --template package-api
+sloppy create my-node-tool --template node-compat
 sloppy create my-api --format json
 ```
 
@@ -36,17 +45,37 @@ Then:
 ```sh
 cd my-api
 sloppy build
+sloppy routes .sloppy
 sloppy run .sloppy --once GET /health
 sloppy package
 ```
 
-For the Program Mode template:
+Template-specific next steps:
 
 ```sh
+cd my-api
+sloppy build
+sloppy routes .sloppy
+sloppy run .sloppy --once GET /health
+
+cd my-minimal-api
+sloppy build
+sloppy run .sloppy --once GET /health
+
 cd my-tool
-sloppy run -- --name Ada
-sloppy package
-sloppy run .sloppy/package -- --name Ada
+sloppy run src/main.ts -- --name Ada
+
+cd my-cli
+sloppy run src/main.ts -- --help
+
+cd my-package-api
+npm install --ignore-scripts --no-audit
+sloppy build
+sloppy deps .sloppy
+
+cd my-node-tool
+sloppy build
+sloppy run .sloppy
 ```
 
 ## Overwrite behavior
@@ -68,8 +97,8 @@ copied either way.
 {
   "created": true,
   "path": "my-api",
-  "template": "minimal-api",
-  "next": ["cd my-api", "sloppy build", "sloppy run --once GET /health"]
+  "template": "api",
+  "next": ["cd my-api", "sloppy build", "sloppy routes .sloppy", "sloppy run .sloppy --once GET /health"]
 }
 ```
 

@@ -1,6 +1,7 @@
 [
   ".gitignore",
   "README.md",
+  "package.json",
   "sloppy.json",
   "src/main.ts"
 ]

@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "{\n  \"joined\": \"src/main.ts\",\n  \"event\": \"ok\",\n  \"encoded\": \"sloppy\",\n  \"euroCodePoint\": 8364,\n  \"ready\": \"true\",\n  \"mode\": \"alpha\"\n}\n"
+}

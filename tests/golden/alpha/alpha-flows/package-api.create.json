@@ -1,0 +1,15 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "created": true,
+    "next": [
+      "cd flow-package-api",
+      "npm install --ignore-scripts --no-audit",
+      "sloppy build",
+      "sloppy deps .sloppy"
+    ],
+    "path": "flow-package-api",
+    "template": "package-api"
+  }
+}

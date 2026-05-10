@@ -58,3 +58,12 @@ coverage.
 
 Tests should fail on contract violations rather than mirror accidental current
 output.
+
+## Compiler Static Analysis Contract
+
+`sloppyc` should not reject runnable JavaScript only because static metadata is
+incomplete. If code can be resolved, transformed, bundled, and executed, prefer
+partial or dynamic metadata with honest findings over a fatal diagnostic. Fatal
+diagnostics are for execution impossibility, invalid artifact shape,
+unsafe static-required declarations such as FFI, unsupported runtime features,
+or source that cannot be resolved or transformed.

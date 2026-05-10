@@ -1,22 +1,12 @@
-# Sloppy Program
+# Program Mode Template
 
-This template is a route-free Program Mode project for console tools, local
-automation, and worker-style scripts.
+This is the smallest public alpha route-free Program Mode starter for console
+tools, local jobs, and scripts.
 
-## Run
-
-```powershell
-sloppy run -- --name Ada
-```
-
-`main(args, ctx)` receives arguments after `--` and a Program context with
-`kind`, `cwd`, `environment`, and Plan metadata. `console.log` and
-`console.info` write to stdout; `console.warn` and `console.error` write to
-stderr.
-
-Build and run artifacts:
-
-```powershell
+```sh
+sloppy run src/main.ts -- --name Ada
 sloppy build
 sloppy run .sloppy -- --name Ada
+sloppy package
+sloppy run .sloppy/package -- --name Ada
 ```

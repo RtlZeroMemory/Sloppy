@@ -1,0 +1,34 @@
+{
+  "capabilities": [],
+  "completeness": null,
+  "handlers": [
+    {
+      "displayName": "Health.Get",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    },
+    {
+      "displayName": "Users.Validate",
+      "exportName": "__sloppy_handler_2",
+      "id": 2
+    }
+  ],
+  "kind": "web",
+  "requiredFeatures": [],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Health.Get",
+      "pattern": "/health",
+      "tags": []
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": "Users.Validate",
+      "pattern": "/users/{name}",
+      "tags": []
+    }
+  ]
+}

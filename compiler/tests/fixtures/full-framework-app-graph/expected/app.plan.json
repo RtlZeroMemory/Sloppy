@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:e89504df24d39e532a7f3fcf4755d97f3b4a014e49df286197c7c5cf18c2ac1b",
+    "hash": "sha256:251f7d30d548b46d32cc474973ce4a067a933ecc8472a1f06d37d97d822bebe8",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -161,10 +161,71 @@
       "token": "data.main"
     }
   ],
+  "dependencyGraph": {
+    "assets": [],
+    "compatibilityFindings": [],
+    "modules": [
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "input.ts",
+        "imports": [
+          "./modules/health"
+        ],
+        "resolvedImports": [
+          {
+            "kind": "relative",
+            "resolvedId": "modules/health.ts",
+            "specifier": "./modules/health"
+          }
+        ],
+        "source": "input.ts"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "modules/health.ts",
+        "imports": [],
+        "includedBy": "input.ts",
+        "resolvedImports": [],
+        "source": "modules/health.ts"
+      }
+    ],
+    "nodeBuiltins": [],
+    "packages": [],
+    "resolver": {
+      "conditions": [
+        "sloppy",
+        "import",
+        "require",
+        "default"
+      ],
+      "profiles": [
+        "sloppy-stdlib",
+        "relative-source",
+        "installed-packages",
+        "node-compat-shims"
+      ]
+    },
+    "schemaVersion": 1
+  },
+  "dependencyGraphArtifact": {
+    "hash": "sha256:72844ae6d5bef2ea90e22b83232a66932f6b13b046a08fab4b2f49a4b690a23e",
+    "id": "sloppyc-deps-graph",
+    "path": "deps.graph.json"
+  },
+  "doctorChecks": [
+    {
+      "id": "dependency.graph",
+      "message": "Dependency graph emitted with 0 package(s), 2 module(s), and 0 Node compatibility binding(s).",
+      "status": "info"
+    }
+  ],
   "features": {
     "asyncHandlers": true,
     "capabilities": true,
     "dataProviders": true,
+    "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
     "os": true,
@@ -427,6 +488,11 @@
           "helper": "ok",
           "kind": "json",
           "partial": false,
+          "source": {
+            "column": 71,
+            "line": 84,
+            "path": "input.ts"
+          },
           "status": 200
         },
         {
@@ -1212,6 +1278,11 @@
           "helper": "text",
           "kind": "text",
           "partial": false,
+          "source": {
+            "column": 29,
+            "line": 5,
+            "path": "health.ts"
+          },
           "status": 200
         },
         {
@@ -1815,7 +1886,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:84ad443829c0a14722115ef79b2d8709c64d80e457fe7a32301fb585d1533849",
+    "hash": "sha256:862e0178f2495e76dc58ca24f5fc0343fc26aa84023b9c9ddb2df90ea5c34e8a",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -1829,6 +1900,7 @@
     "evidence": {
       "bindings": true,
       "capabilities": true,
+      "dependencyGraph": true,
       "effects": true,
       "ffi": false,
       "health": true,

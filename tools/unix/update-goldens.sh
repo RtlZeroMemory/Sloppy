@@ -57,13 +57,13 @@ if [[ "$area" == "all" || "$area" == "compiler" ]]; then
   done
 fi
 if [[ "$area" == "all" || "$area" == "templates" ]]; then
-  for template in minimal-api full-api dogfood program; do invoke_alpha_proof templates --template "$template"; done
+  for template in api minimal-api program cli package-api node-compat; do invoke_alpha_proof templates --template "$template"; done
 fi
 if [[ "$area" == "all" || "$area" == "diagnostics" ]]; then
   invoke_alpha_proof diagnostics
 fi
 if [[ "$area" == "all" || "$area" == "alpha-flows" ]]; then
-  for flow in minimal-api full-api dogfood program direct-program direct-web; do invoke_alpha_proof alpha-flows --flow "$flow"; done
+  for flow in api minimal-api program cli package-api node-compat direct-program direct-web; do invoke_alpha_proof alpha-flows --flow "$flow"; done
 fi
 if [[ "$area" == "all" || "$area" == "examples" ]]; then
   invoke_alpha_proof examples --example classification

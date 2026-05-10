@@ -6,8 +6,10 @@
  */
 static bool sl_create_template_name_supported(const char* name)
 {
-    return name != NULL && (strcmp(name, "minimal-api") == 0 || strcmp(name, "full-api") == 0 ||
-                            strcmp(name, "dogfood") == 0 || strcmp(name, "program") == 0);
+    return name != NULL &&
+           (strcmp(name, "api") == 0 || strcmp(name, "minimal-api") == 0 ||
+            strcmp(name, "program") == 0 || strcmp(name, "cli") == 0 ||
+            strcmp(name, "package-api") == 0 || strcmp(name, "node-compat") == 0);
 }
 
 static bool sl_create_project_name_is_valid(const char* name)
@@ -294,10 +296,22 @@ static void sl_create_print_json_success(const char* project_name, const char* t
     printf(",\"next\":[\"cd ");
     sl_cli_write_cstr(stdout, project_name);
     if (strcmp(template_name, "program") == 0) {
-        printf("\",\"sloppy run -- --name Ada\"]}\n");
+        printf("\",\"sloppy run src/main.ts -- --name Ada\"]}\n");
+    }
+    else if (strcmp(template_name, "cli") == 0) {
+        printf("\",\"sloppy run src/main.ts -- --help\"]}\n");
+    }
+    else if (strcmp(template_name, "package-api") == 0) {
+        printf("\",\"npm install --ignore-scripts --no-audit\",\"sloppy build\",\"sloppy deps .sloppy\"]}\n");
+    }
+    else if (strcmp(template_name, "node-compat") == 0) {
+        printf("\",\"sloppy build\",\"sloppy run .sloppy\"]}\n");
+    }
+    else if (strcmp(template_name, "minimal-api") == 0) {
+        printf("\",\"sloppy build\",\"sloppy run .sloppy --once GET /health\"]}\n");
     }
     else {
-        printf("\",\"sloppy build\",\"sloppy run --once GET /health\"]}\n");
+        printf("\",\"sloppy build\",\"sloppy routes .sloppy\",\"sloppy run .sloppy --once GET /health\"]}\n");
     }
 }
 
@@ -313,7 +327,7 @@ static int sl_cli_command_create(const SlCliOptions* options)
     }
 
     project_name = options->create_name;
-    template_name = options->create_template != NULL ? options->create_template : "minimal-api";
+    template_name = options->create_template != NULL ? options->create_template : "api";
 
     if (project_name == NULL || project_name[0] == '\0') {
         sl_cli_write_cstr(stderr, "sloppy create: missing project name\n");
@@ -366,11 +380,28 @@ static int sl_cli_command_create(const SlCliOptions* options)
     printf("Next:\n");
     printf("  cd %s\n", project_name);
     if (strcmp(template_name, "program") == 0) {
-        printf("  sloppy run -- --name Ada\n");
+        printf("  sloppy run src/main.ts -- --name Ada\n");
+    }
+    else if (strcmp(template_name, "cli") == 0) {
+        printf("  sloppy run src/main.ts -- --help\n");
+    }
+    else if (strcmp(template_name, "package-api") == 0) {
+        printf("  npm install --ignore-scripts --no-audit\n");
+        printf("  sloppy build\n");
+        printf("  sloppy deps .sloppy\n");
+    }
+    else if (strcmp(template_name, "node-compat") == 0) {
+        printf("  sloppy build\n");
+        printf("  sloppy run .sloppy\n");
+    }
+    else if (strcmp(template_name, "minimal-api") == 0) {
+        printf("  sloppy build\n");
+        printf("  sloppy run .sloppy --once GET /health\n");
     }
     else {
         printf("  sloppy build\n");
-        printf("  sloppy run --once GET /health\n");
+        printf("  sloppy routes .sloppy\n");
+        printf("  sloppy run .sloppy --once GET /health\n");
     }
     return 0;
 }

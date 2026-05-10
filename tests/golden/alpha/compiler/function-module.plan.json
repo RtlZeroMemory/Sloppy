@@ -128,10 +128,71 @@
       "token": "data.main"
     }
   ],
+  "dependencyGraph": {
+    "assets": [],
+    "compatibilityFindings": [],
+    "modules": [
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "input.js",
+        "imports": [
+          "./modules/users.js"
+        ],
+        "resolvedImports": [
+          {
+            "kind": "relative",
+            "resolvedId": "modules/users.js",
+            "specifier": "./modules/users.js"
+          }
+        ],
+        "source": "input.js"
+      },
+      {
+        "dynamicImports": [],
+        "format": "esm",
+        "id": "modules/users.js",
+        "imports": [],
+        "includedBy": "input.js",
+        "resolvedImports": [],
+        "source": "modules/users.js"
+      }
+    ],
+    "nodeBuiltins": [],
+    "packages": [],
+    "resolver": {
+      "conditions": [
+        "sloppy",
+        "import",
+        "require",
+        "default"
+      ],
+      "profiles": [
+        "sloppy-stdlib",
+        "relative-source",
+        "installed-packages",
+        "node-compat-shims"
+      ]
+    },
+    "schemaVersion": 1
+  },
+  "dependencyGraphArtifact": {
+    "hash": "sha256:0bf9d511884cb46111f2e709d512da03d4cdea3be72560918b5469a933c8302f",
+    "id": "sloppyc-deps-graph",
+    "path": "deps.graph.json"
+  },
+  "doctorChecks": [
+    {
+      "id": "dependency.graph",
+      "message": "Dependency graph emitted with 0 package(s), 2 module(s), and 0 Node compatibility binding(s).",
+      "status": "info"
+    }
+  ],
   "features": {
     "asyncHandlers": true,
     "capabilities": true,
     "dataProviders": true,
+    "dependencyGraph": true,
     "metadataInference": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -256,6 +317,7 @@
     "evidence": {
       "bindings": false,
       "capabilities": true,
+      "dependencyGraph": true,
       "effects": true,
       "ffi": false,
       "providers": true,

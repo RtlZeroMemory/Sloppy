@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "Usage: sloppy run .sloppy -- <command> [args]\n\nCommands:\n  --help             Show help\n  echo <text>        Print text\n  inspect <path>     Print basic file information\n  env                Print platform information\n"
+}

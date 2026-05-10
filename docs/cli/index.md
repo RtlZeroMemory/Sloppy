@@ -65,8 +65,8 @@ config schema.
 they can be baked into the Plan but doesn't open a socket. `--environment`
 selects which `appsettings.{Environment}.json` overlay applies.
 
-`sloppy create` defaults to `minimal-api`. The current template names are
-`minimal-api`, `full-api`, `dogfood`, and `program`.
+`sloppy create` defaults to `api`. The current public template names are
+`api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`.
 
 ## Exit codes
 

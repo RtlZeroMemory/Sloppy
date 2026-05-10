@@ -257,6 +257,34 @@ fn program_mode_builds_entry_and_relative_modules_without_routes() {
 }
 
 #[test]
+fn program_mode_preserves_nested_relative_module_ids() {
+    let root = fixture_temp_dir("program-nested-relative-module-ids");
+    let commands = root.join("commands");
+    let input = root.join("main.ts");
+    let helper = commands.join("echo.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&commands).expect("commands directory should be created");
+    fs::write(
+        &helper,
+        "export function echo(value) { return `echo:${value}`; }\n",
+    )
+    .expect("helper should write");
+    fs::write(
+        &input,
+        "import { echo } from \"./commands/echo.ts\";\nexport function main() { return echo(\"ok\"); }\n",
+    )
+    .expect("entry should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
+    assert!(app_js.contains("__sloppy_program_modules[\"commands/echo.ts\"]"));
+    assert!(app_js.contains("__sloppy_program_require(\"commands/echo.ts\")"));
+    assert!(!app_js.contains("__sloppy_program_require(\"echo.ts\")"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn program_mode_preserves_declared_capabilities() {
     let root = std::env::temp_dir().join(format!(
         "sloppyc-program-capabilities-{}",
@@ -1155,6 +1183,13 @@ fn program_mode_resolves_node_compat_shim_and_plan_features() {
             && builtin["backing"] == "sloppy/node/path"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn node_buffer_shim_uses_multibyte_utf8_decode_fallback() {
+    assert!(super::NODE_BUFFER_SHIM.contains("String.fromCodePoint"));
+    assert!(super::NODE_BUFFER_SHIM.contains("0xf4"));
+    assert!(!super::NODE_BUFFER_SHIM.contains("fromCharCode(value[i])"));
 }
 
 #[test]
@@ -2242,6 +2277,148 @@ export default app;
     .expect("plan should emit");
     assert!(plan.contains("\"module\": \"usersModule\""));
     assert!(plan.contains("\"path\": \"users.js\""));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_can_register_health_checks() {
+    let root = fixture_temp_dir("function-module-health");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("health.js"),
+        r#"export function healthModule(app) {
+    app.mapHealthChecks({
+        path: "/health",
+        livenessPath: "/health/live",
+        readinessPath: "/health/ready",
+        checks: [
+            { name: "database", readiness: true, check: () => true },
+        ],
+    });
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { healthModule } from "./modules/health.js";
+
+const app = Sloppy.create();
+app.useModule(healthModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module health routes should extract");
+    let routes = app
+        .routes
+        .iter()
+        .map(|route| {
+            (
+                route.method,
+                route.pattern.as_str(),
+                route.module.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        routes,
+        [
+            ("GET", "/health", Some("healthModule")),
+            ("GET", "/health/live", Some("healthModule")),
+            ("GET", "/health/ready", Some("healthModule")),
+        ]
+    );
+    assert!(app.uses_health);
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_provider_handlers_can_use_local_helpers() {
+    let root = fixture_temp_dir("function-module-provider-helpers");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const db = app.provider("sqlite:main");
+
+    function migrateUsers() {
+        db.exec("create table if not exists users (id integer primary key, name text not null)", []);
+    }
+
+    function listUsers() {
+        migrateUsers();
+        return db.query("select id, name from users order by id", []);
+    }
+
+    app.get("/users", () => {
+        return Results.ok(listUsers());
+    }).withName("Users.List");
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module provider helpers should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert_eq!(app.routes[0].module.as_deref(), Some("usersModule"));
+    assert_eq!(app.routes[0].handler.effects.len(), 2);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("function migrateUsers()"));
+    assert!(emitted_js.source.contains("function listUsers()"));
+    assert!(emitted_js.source.contains("__sloppy_open_data_provider"));
+    assert!(emitted_js
+        .source
+        .contains("return Results.ok(listUsers());"));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_still_rejects_multistatement_handlers_without_runtime_effects() {
+    let root = fixture_temp_dir("function-module-multistatement-no-effects");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/users", () => {
+        const users = [{ id: 1 }];
+        return Results.ok(users);
+    });
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let diagnostic = extract_temp_input(&root, source)
+        .expect_err("module handler without runtime effects should stay bounded");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER");
+    assert!(diagnostic
+        .path
+        .as_deref()
+        .is_some_and(|path| path.ends_with("modules/users.js")));
 
     fs::remove_dir_all(&root).expect("test directory should be removable");
 }
@@ -3560,6 +3737,33 @@ export default app;
 }
 
 #[test]
+fn ordinary_handlers_collect_multiple_return_response_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/{id:int}", async (ctx) => {
+  const user = await loadUser(ctx.route.id);
+  if (user === null) {
+    return Results.notFound();
+  }
+  return Results.ok(user);
+});
+function loadUser(id) {
+  return id === 1 ? { id } : null;
+}
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("runnable branched handler should extract response metadata");
+    let statuses = app.routes[0]
+        .handler
+        .responses
+        .iter()
+        .map(|response| response.status)
+        .collect::<Vec<_>>();
+    assert_eq!(statuses, vec![404, 200]);
+}
+
+#[test]
 fn dynamic_status_result_does_not_emit_response_metadata() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
@@ -4013,6 +4217,51 @@ export default app;
 }
 
 #[test]
+fn helper_identifier_scanner_ignores_strings_comments_and_object_keys() {
+    assert!(super::source_contains_identifier(
+        "return Results.json(auth());",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.json({ auth: true });",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.text('auth'); // auth\n",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "/* auth */ return Results.text(`auth`);",
+        "auth"
+    ));
+    assert!(!super::source_contains_identifier(
+        "return Results.json({ auth  : true });",
+        "auth"
+    ));
+}
+
+#[test]
+fn same_file_helper_selection_ignores_non_code_identifier_matches() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function auth() {
+  throw new Error("auth helper should not be emitted");
+}
+app.get("/users", () => {
+  // auth is mentioned in a comment only.
+  return Results.json({ auth: true, label: "auth", note: `auth` });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("unreferenced helper names in metadata text should not poison extraction");
+    assert!(!app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function auth"));
+}
+
+#[test]
 fn infers_provider_effects_inside_control_flow() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";
@@ -4065,6 +4314,323 @@ export default app;
         .handler
         .emitted_source
         .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn infers_relative_helper_effects_with_provider_arguments() {
+    let root = fixture_temp_dir("relative-helper-provider-effects");
+    fs::write(
+        root.join("usersRepository.ts"),
+        r#"export function listUsers(db) {
+  return db.query("select id, name from users", []);
+}
+"#,
+    )
+    .expect("helper should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { listUsers } from "./usersRepository";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(listUsers(db)));
+export default app;
+"#;
+    let app =
+        extract_temp_input(&root, source).expect("relative helper should infer provider effects");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert_eq!(app.routes[0].handler.effects[0].access, "read");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function listUsers(db)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn function_module_can_use_relative_provider_helpers() {
+    let root = fixture_temp_dir("function-module-relative-provider-helpers");
+    fs::create_dir_all(root.join("routes")).expect("routes directory should be writable");
+    fs::write(
+        root.join("usersRepository.ts"),
+        r#"export function listUsers(db) {
+  return db.query("select id, name from users", []);
+}
+"#,
+    )
+    .expect("repository helper should be writable");
+    fs::write(
+        root.join("routes").join("users.ts"),
+        r#"import { Results } from "sloppy";
+import { listUsers } from "../usersRepository";
+
+export function usersModule(app) {
+  const db = app.provider("sqlite:main");
+  app.get("/users", () => Results.json(listUsers(db)));
+}
+"#,
+    )
+    .expect("route module should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { usersModule } from "./routes/users";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("function modules should use relative provider helpers");
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function listUsers(db)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn function_module_can_use_installed_package_helpers() {
+    let root = fixture_temp_dir("function-module-package-helpers");
+    fs::create_dir_all(root.join("src").join("routes"))
+        .expect("routes directory should be writable");
+    fs::create_dir_all(root.join("node_modules").join("validator-lite"))
+        .expect("package directory should be writable");
+    fs::write(
+        root.join("node_modules")
+            .join("validator-lite")
+            .join("package.json"),
+        r#"{"name":"validator-lite","version":"0.0.0","type":"module","exports":"./index.js"}"#,
+    )
+    .expect("package manifest should be writable");
+    fs::write(
+        root.join("node_modules")
+            .join("validator-lite")
+            .join("index.js"),
+        r#"export function normalizeName(value) {
+  return String(value || "").trim();
+}
+
+export function isUserName(value) {
+  return typeof value === "string" && value.length >= 2;
+}
+"#,
+    )
+    .expect("package entry should be writable");
+    fs::write(
+        root.join("src").join("routes").join("users.ts"),
+        r#"import { Results } from "sloppy";
+import { isUserName, normalizeName } from "validator-lite";
+
+export function usersModule(app) {
+  app.get("/users/{name}", (ctx) => {
+    const name = normalizeName(ctx.route.name);
+    return Results.ok({ name, valid: isUserName(name) });
+  });
+}
+"#,
+    )
+    .expect("route module should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./routes/users";
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let input = root.join("src").join("main.ts");
+    fs::write(&input, source).expect("input should be writable");
+    let app = extract(&input, source).expect("function module package helpers should extract");
+    assert_eq!(app.routes[0].pattern, "/users/{name}");
+    assert!(app.dependency_graph.has_entries());
+    assert!(app
+        .dependency_graph
+        .packages
+        .iter()
+        .any(|package| package.name == "validator-lite"));
+    let users_module = app
+        .dependency_graph
+        .modules
+        .iter()
+        .find(|module| module.id.replace('\\', "/").ends_with("routes/users.ts"))
+        .expect("route module should be recorded in dependency graph");
+    assert!(users_module
+        .resolved_imports
+        .iter()
+        .any(|import| { import.specifier == "validator-lite" && import.kind == "package" }));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function normalizeName(value)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function isUserName(value)"));
+}
+
+#[test]
+fn function_module_records_cross_file_helper_dependency_graph() {
+    let root = fixture_temp_dir("function-module-cross-file-helper-graph");
+    fs::create_dir_all(root.join("src").join("routes")).expect("routes directory should exist");
+    fs::create_dir_all(root.join("src").join("services")).expect("services directory should exist");
+    fs::create_dir_all(root.join("src").join("db")).expect("db directory should exist");
+    fs::create_dir_all(root.join("src").join("models")).expect("models directory should exist");
+    fs::create_dir_all(root.join("src").join("utils")).expect("utils directory should exist");
+    fs::write(
+        root.join("src").join("routes").join("users.ts"),
+        r#"import { Results } from "sloppy";
+import { listUsers } from "../services/usersService";
+
+function describeCount(count) {
+  return `users:${count}`;
+}
+
+export function usersModule(app) {
+  app.get("/users", () => {
+    const users = listUsers();
+    return Results.ok({ summary: describeCount(users.length), users });
+  });
+}
+"#,
+    )
+    .expect("route module should be writable");
+    fs::write(
+        root.join("src").join("services").join("usersService.ts"),
+        r#"import { repoListUsers } from "../db/usersRepository";
+import { label } from "../utils/text";
+
+export function listUsers() {
+  return repoListUsers().map((user) => ({ ...user, label: label(user.name) }));
+}
+"#,
+    )
+    .expect("service helper should be writable");
+    fs::write(
+        root.join("src").join("db").join("usersRepository.ts"),
+        r#"import { toUser } from "../models/user";
+
+export function repoListUsers() {
+  return [toUser({ id: 1, name: "ada" })];
+}
+"#,
+    )
+    .expect("repository helper should be writable");
+    fs::write(
+        root.join("src").join("models").join("user.ts"),
+        r#"import { title } from "../utils/text";
+
+export function toUser(row) {
+  return { id: row.id, name: title(row.name) };
+}
+"#,
+    )
+    .expect("model helper should be writable");
+    fs::write(
+        root.join("src").join("utils").join("text.ts"),
+        r#"export function title(value) {
+  return String(value || "").toUpperCase();
+}
+
+export function label(value) {
+  return `user:${title(value)}`;
+}
+"#,
+    )
+    .expect("utility helper should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./routes/users";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let input = root.join("src").join("main.ts");
+    fs::write(&input, source).expect("input should be writable");
+    let app = extract(&input, source)
+        .expect("resolved cross-file web app should emit runnable partial metadata");
+
+    assert_eq!(app.routes[0].pattern, "/users");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function describeCount(count)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function repoListUsers()"));
+    let modules = &app.dependency_graph.modules;
+    let has_edge = |from_suffix: &str, specifier: &str, to_suffix: &str| {
+        modules.iter().any(|module| {
+            module.id.replace('\\', "/").ends_with(from_suffix)
+                && module.resolved_imports.iter().any(|import| {
+                    import.specifier == specifier
+                        && import.kind == "relative"
+                        && import.resolved_id.replace('\\', "/").ends_with(to_suffix)
+                })
+        })
+    };
+    assert!(has_edge("main.ts", "./routes/users", "routes/users.ts"));
+    assert!(has_edge(
+        "routes/users.ts",
+        "../services/usersService",
+        "services/usersService.ts"
+    ));
+    assert!(has_edge(
+        "services/usersService.ts",
+        "../db/usersRepository",
+        "db/usersRepository.ts"
+    ));
+    assert!(has_edge(
+        "db/usersRepository.ts",
+        "../models/user",
+        "models/user.ts"
+    ));
+    assert!(has_edge("models/user.ts", "../utils/text", "utils/text.ts"));
+}
+
+#[test]
+fn resolves_nested_relative_helpers_before_effect_inference() {
+    let root = fixture_temp_dir("nested-relative-helper-effects");
+    fs::write(
+        root.join("queries.ts"),
+        r#"export const selectUsers = "select id, name from users";"#,
+    )
+    .expect("query helper should be writable");
+    fs::write(
+        root.join("usersRepository.ts"),
+        r#"import { selectUsers } from "./queries";
+export function listUsers(db) {
+  return db.query(selectUsers, []);
+}
+"#,
+    )
+    .expect("repository helper should be writable");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { listUsers } from "./usersRepository";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(listUsers(db)));
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("nested relative helpers should be inlined before effect inference");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("const selectUsers = \"select id, name from users\";"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function listUsers(db)"));
 }
 
 #[test]
@@ -5536,6 +6102,35 @@ export default app;
     assert!(!emitted_js
         .source
         .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+}
+
+#[test]
+fn typed_framework_handlers_emit_same_file_helpers() {
+    let source = r#"import { Sloppy, Results, RequestContext } from "sloppy";
+import { Sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+async function seedUsers(db, ctx) {
+  await db.exec("create table users (id integer primary key, name text)", [], {
+    signal: ctx.signal,
+    deadline: ctx.deadline,
+  });
+}
+app.get("/users", async (db: Sqlite<"main">, ctx: RequestContext) => {
+  await seedUsers(db, ctx);
+  return Results.ok(await db.query("select id, name from users", []));
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed handler helper should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("async function seedUsers(db, ctx)"));
+    assert!(emitted_js.source.contains("await seedUsers(db, ctx);"));
+    assert!(emitted_js
+        .source
+        .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
 }
 
 #[test]

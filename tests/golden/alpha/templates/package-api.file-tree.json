@@ -1,0 +1,11 @@
+[
+  ".gitignore",
+  "README.md",
+  "fixtures/validator-lite/index.js",
+  "fixtures/validator-lite/package.json",
+  "package.json",
+  "sloppy.json",
+  "src/main.ts",
+  "src/routes/health.ts",
+  "src/routes/users.ts"
+]

@@ -115,6 +115,44 @@ static int sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_response_entry(yyjson_val* value, SlCliRoute* route)
+{
+    if (!yyjson_is_obj(value)) {
+        return 0;
+    }
+    if (route->response_count >= SL_CLI_MAX_ROUTE_RESPONSES) {
+        sl_cli_write_cstr(stderr, "sloppy: too many route responses in metadata\n");
+        return 1;
+    }
+    route->response_kinds[route->response_count] = sl_cli_json_span(value, "kind");
+    route->response_helpers[route->response_count] = sl_cli_json_span(value, "helper");
+    route->response_statuses[route->response_count] = sl_cli_json_uint_or_zero(value, "status");
+    route->response_count += 1U;
+    return 0;
+}
+
+static int sl_cli_parse_route_responses(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* responses = yyjson_obj_get(value, "responses");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (responses == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(responses)) {
+        return 0;
+    }
+
+    yyjson_arr_iter_init(responses, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (sl_cli_parse_route_response_entry(entry, route) != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* completeness = yyjson_obj_get(value, "completeness");
@@ -127,6 +165,20 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         route->response_kind = sl_cli_json_span(response, "kind");
         route->response_helper = sl_cli_json_span(response, "helper");
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
+    }
+    if (sl_cli_parse_route_responses(value, route) != 0) {
+        return 1;
+    }
+    if (route->response_count == 0U && !sl_cli_span_empty(route->response_kind)) {
+        route->response_kinds[0] = route->response_kind;
+        route->response_helpers[0] = route->response_helper;
+        route->response_statuses[0] = route->response_status;
+        route->response_count = 1U;
+    }
+    if (route->response_count > 0U) {
+        route->response_kind = route->response_kinds[0];
+        route->response_helper = route->response_helpers[0];
+        route->response_status = route->response_statuses[0];
     }
     if (sl_cli_parse_route_tags(value, route) != 0) {
         return 1;
