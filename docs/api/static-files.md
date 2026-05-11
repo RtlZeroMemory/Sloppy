@@ -35,6 +35,7 @@ per file. Supported extensions are:
 - `.png`
 - `.jpg`
 - `.jpeg`
+- `.wasm`
 
 Each generated response includes a content type and an `ETag` derived from the
 file bytes. Static routes are also recorded in `deps.graph.json` as assets.

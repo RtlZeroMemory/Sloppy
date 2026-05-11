@@ -8213,12 +8213,14 @@ fn static_asset_route_path(request_path: &str, relative: &Path) -> Option<String
 fn static_asset_content_type(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "txt" => Some("text/plain; charset=utf-8"),
+        "html" => Some("text/html; charset=utf-8"),
         "json" => Some("application/json; charset=utf-8"),
         "css" => Some("text/css; charset=utf-8"),
         "js" | "mjs" => Some("text/javascript; charset=utf-8"),
         "svg" => Some("image/svg+xml"),
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
+        "wasm" => Some("application/wasm"),
         _ => None,
     }
 }
