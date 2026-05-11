@@ -10,25 +10,32 @@ Validation currently has two implementation-backed surfaces:
 Import:
 
 ```ts
-import { schema } from "sloppy";
+import { Schema } from "sloppy";
 ```
+
+`schema` is the lowercase compatibility alias for `Schema`.
 
 Supported constructors:
 
 | Constructor | Behavior |
 | --- | --- |
-| `schema.string()` | string type check |
-| `schema.string().min(n)` | minimum string length (`n` must be non-negative integer) |
-| `schema.string().email()` | simple email regex check |
-| `schema.number()` | finite-number check |
-| `schema.int()` | integer check |
-| `schema.boolean()` | boolean check |
-| `schema.bool()` | alias for `schema.boolean()` |
-| `schema.array(itemSchema)` | array validation over an item schema |
-| `schema.object(shape)` | object shape validation over field schemas |
+| `Schema.string()` | string type check |
+| `Schema.string().min(n)` | minimum string length (`n` must be non-negative integer) |
+| `Schema.string().max(n)` | maximum string length (`n` must be non-negative integer) |
+| `Schema.string().minLength(n)` / `maxLength(n)` | string length aliases |
+| `Schema.string().email()` | simple email regex check |
+| `Schema.string().uuid()` | UUID format check |
+| `Schema.number().min(n).max(n)` | finite-number check with optional bounds |
+| `Schema.int()` / `Schema.integer()` | integer check |
+| `Schema.boolean()` / `Schema.bool()` | boolean check |
+| `Schema.array(itemSchema)` | array validation over an item schema |
+| `Schema.object(shape)` | object shape validation over field schemas |
+| `Schema.enum(values)` | literal value membership |
+| `Schema.literal(value)` | exact literal check |
 
 Every schema returned by these constructors also supports `.optional()`. Optional schemas
-accept `undefined`; other values are validated by the wrapped schema.
+accept `undefined`; other values are validated by the wrapped schema. Schemas also
+support `.nullable()` and `.default(value)`.
 
 Validation result shape:
 
@@ -41,7 +48,7 @@ Issue entry shape:
 - `code`: for example `type`, `string.min`, `string.email`
 - `message`: human-readable reason
 
-`schema.object(shape)` requirements:
+`Schema.object(shape)` requirements:
 
 - `shape` must be a plain object
 - each key must be non-empty
@@ -50,15 +57,37 @@ Issue entry shape:
 Optional object fields use the normal field schema:
 
 ```ts
-const User = schema.object({
-  name: schema.string().min(1),
-  tags: schema.array(schema.string()).optional(),
+const User = Schema.object({
+  name: Schema.string().min(1),
+  tags: Schema.array(Schema.string()).optional(),
 });
 ```
 
+## Request Body Validation
+
+`ctx.body.validate(schema)` parses the JSON body and returns the validated
+value. Invalid JSON and schema failures are surfaced as `400
+application/problem+json` validation problems in the app-host/test-host path.
+
+Route registrations can attach metadata:
+
+```ts
+app.post("/users", createUser)
+  .accepts(CreateUser)
+  .returns(User);
+```
+
+Static `Schema.*` declarations, `ctx.body.validate(CreateUser)`,
+`.accepts(CreateUser)`, and `.returns(User)` are compiler-visible when their
+schema arguments are local identifiers. Static `Schema.literal(...)` and
+`Schema.enum([...])` extraction supports string, number, and boolean values;
+the runtime schema API also accepts `null` literals.
+
 ## Route Metadata Validation Hints
 
-Bootstrap route options can carry metadata objects (for example `{ query: someSchema }`), and that metadata appears in route snapshots. Automatic request validation and validation-to-ProblemDetails mapping are planned as separate framework/runtime work.
+Bootstrap route options can carry metadata objects (for example `{ query:
+someSchema }`), and that metadata appears in route snapshots. Prefer
+`.accepts(...)` and `.returns(...)` for request/response schema metadata.
 
 ## Compiler Binding Validation (Framework typed handlers)
 

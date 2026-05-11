@@ -16,6 +16,27 @@
         }
       },
       "schemas": {
+        "CreateUser": {
+          "properties": {
+            "email": {
+              "format": "email",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "email",
+            "name"
+          ],
+          "type": "object",
+          "x-slop-source": {
+            "column": 24,
+            "line": 10,
+            "path": "users.ts"
+          }
+        },
         "SlopValidationProblem": {
           "properties": {
             "detail": {
@@ -29,6 +50,30 @@
             }
           },
           "type": "object"
+        },
+        "User": {
+          "properties": {
+            "email": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "email",
+            "id",
+            "name"
+          ],
+          "type": "object",
+          "x-slop-source": {
+            "column": 18,
+            "line": 14,
+            "path": "users.ts"
+          }
         }
       }
     },
@@ -270,7 +315,7 @@
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 15,
+            "line": 20,
             "path": "users.ts"
           }
         },
@@ -281,7 +326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "x-slop-partial": "request body schema unknown"
+                  "$ref": "#/components/schemas/CreateUser"
                 }
               }
             },
@@ -292,21 +337,14 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "x-slop-partial": "response schema shape not declared"
+                    "$ref": "#/components/schemas/User"
                   }
                 }
               },
               "description": "created"
             },
             "400": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "x-slop-partial": "response schema shape not declared"
-                  }
-                }
-              },
-              "description": "badRequest"
+              "$ref": "#/components/responses/SlopValidationProblem"
             },
             "500": {
               "content": {
@@ -350,14 +388,16 @@
               "providerKind": "sqlite"
             }
           ],
-          "x-slop-completeness": "partial",
+          "x-slop-completeness": "complete",
           "x-slop-optimization-candidates": [
             "native-json-serialization",
-            "provider-aware-route"
+            "native-body-validation",
+            "provider-aware-route",
+            "static-route-dispatch"
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 27,
+            "line": 32,
             "path": "users.ts"
           }
         }
@@ -443,7 +483,7 @@
           ],
           "x-slop-source": {
             "column": 5,
-            "line": 18,
+            "line": 23,
             "path": "users.ts"
           }
         }

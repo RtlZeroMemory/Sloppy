@@ -2,8 +2,8 @@
 
 This is the recommended public alpha starter for building a backend with
 Sloppy. It shows routes, route modules, a small service/repository split,
-configuration, SQLite provider metadata, health endpoints, and the app package
-flow.
+configuration, SQLite provider metadata, Schema request validation, health
+endpoints, and the app package flow.
 
 ## Layout
 
@@ -50,6 +50,9 @@ client:
 sloppy run .sloppy
 curl -X POST http://127.0.0.1:5173/users -H "content-type: application/json" -d "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
 ```
+
+Invalid JSON or invalid `name`/`email` fields return a `400
+application/problem+json` validation problem.
 
 ## Package
 

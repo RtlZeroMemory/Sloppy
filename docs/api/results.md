@@ -126,6 +126,9 @@ The default body never includes the exception message. Pass
 in every environment. Explicit `Results.problem(...)` descriptors are passed
 through untouched.
 
+Validation failures from `ctx.body.validate(schema)` are mapped separately to
+`400 application/problem+json` with code `SLOPPY_E_VALIDATION_FAILED`.
+
 ## Options
 
 Every helper takes a final options object:

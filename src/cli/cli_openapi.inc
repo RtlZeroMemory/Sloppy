@@ -360,10 +360,18 @@ static void sl_cli_openapi_emit_problem_schema(FILE* out)
                            "\"detail\": { \"type\": \"string\" } } }");
 }
 
-static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
+static void sl_cli_openapi_emit_response_schema(FILE* out, const SlCliMetadata* metadata,
+                                                SlCliSpan kind, SlCliSpan body_schema)
 {
     if (sl_cli_span_equal_cstr(kind, "json")) {
-        sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
+        if (sl_cli_openapi_find_schema(metadata, body_schema) != NULL) {
+            sl_cli_write_cstr(out, "{ \"$ref\": \"#/components/schemas/");
+            sl_cli_write_span(out, body_schema);
+            sl_cli_write_cstr(out, "\" }");
+        }
+        else {
+            sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
+        }
         return;
     }
     if (sl_cli_span_equal_cstr(kind, "problem")) {
@@ -381,7 +389,8 @@ static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
     sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
 }
 
-static void sl_cli_openapi_emit_response_content(FILE* out, SlCliSpan kind)
+static void sl_cli_openapi_emit_response_content(FILE* out, const SlCliMetadata* metadata,
+                                                 SlCliSpan kind, SlCliSpan body_schema)
 {
     SlCliSpan content_type = sl_cli_openapi_content_type_for_response_kind(kind);
 
@@ -392,7 +401,7 @@ static void sl_cli_openapi_emit_response_content(FILE* out, SlCliSpan kind)
     sl_cli_write_cstr(out, ", \"content\": { ");
     sl_cli_json_escape(out, content_type);
     sl_cli_write_cstr(out, ": { \"schema\": ");
-    sl_cli_openapi_emit_response_schema(out, kind);
+    sl_cli_openapi_emit_response_schema(out, metadata, kind, body_schema);
     sl_cli_write_cstr(out, " } }");
 }
 
@@ -416,8 +425,9 @@ static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, ui
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 
-static void sl_cli_openapi_emit_response(FILE* out, uint64_t status, SlCliSpan kind,
-                                         SlCliSpan helper)
+static void sl_cli_openapi_emit_response(FILE* out, const SlCliMetadata* metadata,
+                                         uint64_t status, SlCliSpan kind, SlCliSpan helper,
+                                         SlCliSpan body_schema)
 {
     sl_cli_write_cstr(out, "          \"");
     sl_cli_write_u64(out, status == 0U ? 200U : status);
@@ -430,20 +440,21 @@ static void sl_cli_openapi_emit_response(FILE* out, uint64_t status, SlCliSpan k
 
     sl_cli_json_escape(out, helper);
     if (!sl_cli_span_equal_cstr(kind, "empty")) {
-        sl_cli_openapi_emit_response_content(out, kind);
+        sl_cli_openapi_emit_response_content(out, metadata, kind, body_schema);
     }
     sl_cli_write_cstr(out, " }");
 }
 
-static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
+static void sl_cli_openapi_emit_responses(FILE* out, const SlCliMetadata* metadata,
+                                          const SlCliRoute* route)
 {
     size_t response = 0U;
     bool first = true;
 
     sl_cli_write_cstr(out, ",\n        \"responses\": {\n");
     if (route->response_count == 0U) {
-        sl_cli_openapi_emit_response(out, route->response_status, route->response_kind,
-                                     route->response_helper);
+        sl_cli_openapi_emit_response(out, metadata, route->response_status, route->response_kind,
+                                     route->response_helper, (SlCliSpan){0});
         first = false;
     }
     else {
@@ -455,8 +466,9 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
                 continue;
             }
             sl_cli_write_cstr(out, first ? "" : ",\n");
-            sl_cli_openapi_emit_response(out, status, route->response_kinds[response],
-                                         route->response_helpers[response]);
+            sl_cli_openapi_emit_response(out, metadata, status, route->response_kinds[response],
+                                         route->response_helpers[response],
+                                         route->response_body_schemas[response]);
             first = false;
         }
     }
@@ -572,7 +584,7 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
     sl_cli_write_cstr(out, ",\n        \"parameters\": ");
     sl_cli_openapi_parameters(out, route);
     sl_cli_openapi_emit_request_body(out, metadata, route);
-    sl_cli_openapi_emit_responses(out, route);
+    sl_cli_openapi_emit_responses(out, metadata, route);
     sl_cli_write_cstr(out, "\n      }");
 }
 

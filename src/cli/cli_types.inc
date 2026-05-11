@@ -41,6 +41,7 @@ typedef struct SlCliRoute
     uint64_t response_status;
     SlCliSpan response_kinds[SL_CLI_MAX_ROUTE_RESPONSES];
     SlCliSpan response_helpers[SL_CLI_MAX_ROUTE_RESPONSES];
+    SlCliSpan response_body_schemas[SL_CLI_MAX_ROUTE_RESPONSES];
     uint64_t response_statuses[SL_CLI_MAX_ROUTE_RESPONSES];
     size_t response_count;
     SlCliSpan binding_kinds[SL_CLI_MAX_ROUTE_BINDINGS];

@@ -23,6 +23,7 @@ import {
     RequestLogging,
     Router,
     Results,
+    Schema,
     Secret,
     Sloppy,
     Testing,
@@ -2621,10 +2622,102 @@ async function flushMicrotasks(count = 6) {
     assert.equal(User.metadata.shape.tags.kind, "array");
     assert.equal(User.metadata.shape.tags.optional, true);
     assert.equal(schema.number().optional().validate(undefined).ok, true);
+    assert.equal(Schema, schema);
+    assert.equal(Schema.integer().min(1).validate(1).ok, true);
+    assert.equal(Schema.string().max(3).validate("toolong").issues[0].code, "string.max");
+    assert.equal(Schema.string().uuid().validate("00000000-0000-4000-8000-000000000000").ok, true);
+    assert.equal(Schema.enum(["admin", "user"]).validate("admin").ok, true);
+    assert.equal(Schema.literal("ok").validate("ok").ok, true);
+    assert.equal(Schema.string().nullable().validate(null).ok, true);
+    assert.equal(Schema.string().optional().minLength(1).validate(undefined).ok, true);
+    assert.equal(Schema.string().optional().minLength(1).validate("").issues[0].code, "string.min");
+    assert.equal(Schema.number().nullable().max(5).validate(6).issues[0].code, "number.max");
+    assert.deepEqual(Schema.string().default("fallback").validate(undefined), {
+        ok: true,
+        value: "fallback",
+    });
+    assert.deepEqual(Schema.string().default("fallback").minLength(3).validate(undefined), {
+        ok: true,
+        value: "fallback",
+    });
+    assertThrowsMessage(() => Schema.string().default(123), /default value must satisfy/);
+    assertThrowsMessage(() => Schema.literal(Number.NaN), /finite number/);
+    assertThrowsMessage(() => Schema.literal(Number.POSITIVE_INFINITY), /finite number/);
+    assertThrowsMessage(() => Schema.enum(["admin", {}]), /non-empty array/);
+    const GlobalPattern = Schema.string().pattern(/a/g);
+    assert.equal(GlobalPattern.validate("a").ok, true);
+    assert.equal(GlobalPattern.validate("a").ok, true);
+    assert.deepEqual(Schema.object({
+        role: Schema.string().default("user"),
+        tags: Schema.array(Schema.string().default("tag")),
+    }).validate({ tags: [undefined] }), {
+        ok: true,
+        value: { role: "user", tags: ["tag"] },
+    });
+    const defaultProfile = Schema.object({
+        profile: Schema.object({ flags: Schema.array(Schema.string()) }).default({ flags: [] }),
+    }).validate({});
+    assert.equal(Object.isFrozen(defaultProfile.value.profile), true);
+    assert.equal(Object.isFrozen(defaultProfile.value.profile.flags), true);
     assertThrowsMessage(() => schema.array({}), /must be a schema/);
     assertThrowsMessage(() => schema.object({ bad: {} }), /must be a schema/);
     assertThrowsMessage(
         () => schema.object({ bad: { validate() { return { ok: true }; } } }),
         /must be a schema/,
     );
+}
+
+{
+    const CreateUser = Schema.object({
+        name: Schema.string().min(1).max(100),
+        email: Schema.string().email(),
+        tags: Schema.array(Schema.string()).optional(),
+    });
+    const User = Schema.object({
+        id: Schema.integer(),
+        name: Schema.string(),
+        email: Schema.string(),
+    });
+
+    const app = Sloppy.create();
+    app.post("/users", async (ctx) => {
+        const input = await ctx.body.validate(CreateUser);
+        return Results.created("/users/1", { id: 1, ...input });
+    }).accepts(CreateUser).returns(User).withName("Users.Create");
+
+    const route = app.__getRoutes()[0];
+    assert.equal(route.metadata.accepts.schema.kind, "object");
+    assert.equal(route.metadata.returns.schema.kind, "object");
+
+    const host = createTestHost(app);
+    const created = await host.post("/users", {
+        json: { name: "Ada", email: "ada@example.com" },
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.json(), {
+        id: 1,
+        name: "Ada",
+        email: "ada@example.com",
+    });
+
+    const invalid = await host.post("/users", {
+        json: { name: "", email: "not-email", tags: ["ok", 1] },
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.headers.get("content-type"), "application/problem+json; charset=utf-8");
+    assert.equal(invalid.json().code, "SLOPPY_E_VALIDATION_FAILED");
+    assert.deepEqual(invalid.json().errors.map((issue) => issue.path.join(".")), [
+        "name",
+        "email",
+        "tags.1",
+    ]);
+
+    const malformed = await host.post("/users", {
+        body: "{",
+        headers: { "content-type": "application/json" },
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal(malformed.headers.get("content-type"), "application/problem+json; charset=utf-8");
+    assert.equal(malformed.json().errors[0].code, "json.invalid");
+    await host.close();
 }

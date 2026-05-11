@@ -22,7 +22,10 @@ sloppy run .sloppy --once GET /health
 | `package-api` | API starter that uses a compatible local pure-JavaScript package and exercises package/dependency artifact output. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
 
-The `api` template is the default backend starter. Useful smoke commands:
+## API Template
+
+The `api` template is the default alpha starter for a Sloppy Web Mode backend.
+Useful smoke commands:
 
 ```sh
 sloppy run .sloppy --once GET /health
@@ -31,6 +34,16 @@ sloppy run .sloppy --once POST /users --json "{\"name\":\"Ada Lovelace\",\"email
 sloppy package
 sloppy run .sloppy/package --once GET /public/hello.txt
 ```
+
+The `api` template's `POST /users` route uses `Schema` validation:
+
+```ts
+const input = await ctx.body.validate(CreateUser);
+```
+
+The route also declares `.accepts(CreateUser)` and `.returns(User)`, so
+`sloppy routes`, `sloppy audit`, and `sloppy openapi` can report request and
+response metadata from the generated Plan.
 
 ## Authentication
 

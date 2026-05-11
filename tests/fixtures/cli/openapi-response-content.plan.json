@@ -58,7 +58,8 @@
       "response": {
         "kind": "json",
         "helper": "json",
-        "status": 200
+        "status": 200,
+        "bodySchema": "JsonResponse"
       },
       "completeness": {
         "status": "complete",
@@ -138,6 +139,19 @@
       "completeness": {
         "status": "complete",
         "reasons": []
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "name": "JsonResponse",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "message": {
+            "kind": "string"
+          }
+        }
       }
     }
   ]

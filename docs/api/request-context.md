@@ -96,6 +96,20 @@ app.post("/users", (ctx) => {
 });
 ```
 
+The app-host/test-host context also exposes `ctx.body` as a shortcut to
+`ctx.request.body`. Use `ctx.body.validate(schema)` to parse and validate JSON
+with Sloppy `Schema` values:
+
+```ts
+app.post("/users", async (ctx) => {
+    const input = await ctx.body.validate(CreateUser);
+    return Results.created("/users/1", input);
+}).accepts(CreateUser);
+```
+
+Invalid JSON and schema failures produce `400 application/problem+json`
+validation problems in the app host.
+
 JSON bodies must declare `application/json` or `application/*+json`. URL-encoded
 forms must declare `application/x-www-form-urlencoded`. Multipart bodies must
 declare `multipart/form-data` with a `boundary` parameter.
