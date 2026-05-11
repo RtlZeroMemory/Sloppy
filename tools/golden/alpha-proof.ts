@@ -306,13 +306,14 @@ function normalizeText(value) {
         }
     }
     text = text.replace(/\\+/g, "/");
+    text = text.replace(/\/+\?\/+(?=<(?:repoRoot|tempRoot)>)/g, "");
     if (workRoot.startsWith(trimTrailingSlash(repoRoot))) {
         text = text.split(`<repoRoot>/${relativePath(repoRoot, workRoot)}`).join("<repoRoot>/artifacts/alpha-proof/work");
     }
     const workLeaf = basename(workRoot);
     if (workLeaf) {
-        const tempWorkRootPattern = new RegExp(`(/+\\?+/)?/*<tempRoot>[^\\s"']*/alpha-proof/${escapeRegExp(workLeaf)}`, "g");
-        text = text.replace(tempWorkRootPattern, (match, prefix) => `${prefix || ""}<repoRoot>/artifacts/alpha-proof/work`);
+        const tempWorkRootPattern = new RegExp(`/*<tempRoot>[^\\s"']*/alpha-proof/${escapeRegExp(workLeaf)}(?=/|$)`, "g");
+        text = text.replace(tempWorkRootPattern, "<repoRoot>/artifacts/alpha-proof/work");
     }
     text = text.replace(/[A-Z]:[\\/][^\s"']+/g, (match) => {
         if (match.includes(".sloppy") || match.includes("artifacts") || match.includes("compiler")) {
