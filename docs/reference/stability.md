@@ -36,8 +36,9 @@ Parser behavior:
 - Provider metadata supports `sqlite`, `postgres`, `sqlserver`.
 - Compiler-generated static provider handles are sqlite-only.
 - Typed-handler provider injection is generated for SQLite, PostgreSQL,
-  and SQL Server; execution depends on the active bridge, provider
-  config, and live service setup.
+  and SQL Server. SQLite is embedded. PostgreSQL and SQL Server execution
+  depends on optional provider dependencies, provider config, and live service
+  setup only when those providers are used.
 - Live provider checks are opt-in and environment-dependent.
 
 ## Feature Matrix
@@ -68,8 +69,8 @@ compiler refuses the input rather than emitting a partial Plan.
 | Services | supported | supported for literal registrations and `Service<T>` | supported | supported through generated wrappers | App-host exposes `ctx.services`; native base context does not. |
 | Config/defaults/secrets | supported | supported for config metadata and `Config<"KEY">` defaults | supported | supported | Secret values are not persisted in Plan metadata. |
 | SQLite provider | supported | supported | supported | supported with V8/provider bridge | Strongest current provider path. |
-| PostgreSQL provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Requires config, active bridge, and live PostgreSQL service. |
-| SQL Server provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Requires config, ODBC driver, active bridge, and live SQL Server service. |
+| PostgreSQL provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Optional provider. Requires config, PostgreSQL client support, active bridge, and live PostgreSQL service when used. Current alpha packages do not yet ship package-local libpq. |
+| SQL Server provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Optional provider. Requires config, Microsoft ODBC Driver 17 or 18, active bridge, and live SQL Server service when used. The core package does not bundle Microsoft's ODBC driver. |
 | Static provider handles | sqlite supported | sqlite supported | sqlite supported | sqlite supported | Static non-SQLite handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. |
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
@@ -82,12 +83,12 @@ compiler refuses the input rather than emitting a partial Plan.
 | CLI `dev` | n/a | supported source/project handoff | rebuilds artifacts and optional OpenAPI | experimental V8-backed dev server | Polling watch mode rebuilds source/config/static/template/migration inputs, restarts after successful builds, and keeps the previous server running after build failures. Not a production supervisor. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; dependency graph assets and local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes/metadata. Not a runtime release archive. |
-| CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | no V8 required; PostgreSQL/SQL Server need live provider config | `status` and `migrate` work for SQLite, PostgreSQL, and SQL Server artifacts/packages. PostgreSQL and SQL Server require connection-string configuration and a reachable service. |
+| CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | no V8 required; SQLite needs no external DB driver; PostgreSQL/SQL Server need optional provider config only when selected | `status` and `migrate` work for SQLite, PostgreSQL, and SQL Server artifacts/packages. PostgreSQL and SQL Server report provider-specific diagnostics when their optional driver/service dependencies are missing. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `deps` | n/a | Plan-derived | metadata-only | no V8 required | Reads dependency graph metadata from Plan or `deps.graph.json`. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
 | CLI `audit` | n/a | Plan-derived | metadata-only | no V8 required | Reports static Plan issues and policy notes. |
-| CLI `doctor` | n/a | Plan-derived | metadata-only | no V8 required | Reports artifact and feature readiness. |
+| CLI `doctor` | n/a | Plan-derived | metadata-only | no V8 required | Reports artifact and feature readiness. Missing PostgreSQL or SQL Server dependencies are optional provider guidance unless the app uses that provider. |
 | App test host | supported | rejected import | n/a | n/a | `Testing` remains a JS test helper and is not valid compiler input. |
 | Logging | supported | supported config metadata | supported | supported | Native runtime owns console/file sinks; memory sink is deterministic app-host test surface. |
 | Request IDs | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestId.defaults(...)`; generator callbacks remain app-host test-only. Native `ctx.requestId` exists. |

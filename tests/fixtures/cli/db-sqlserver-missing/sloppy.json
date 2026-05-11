@@ -1,0 +1,9 @@
+{
+  "entry": "app.ts",
+  "migrations": {
+    "main": {
+      "provider": "sqlserver",
+      "path": "migrations/*.sql"
+    }
+  }
+}

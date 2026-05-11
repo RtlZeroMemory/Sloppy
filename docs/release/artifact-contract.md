@@ -70,6 +70,15 @@ hosted macOS package verification exists. npm package dry-runs must use `--tag a
 install must not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.
 
+The main package must stay lean. It must not require PostgreSQL or SQL Server
+native drivers for normal installs. SQLite is embedded in the runtime package.
+PostgreSQL provider-package binaries are not part of this alpha package unless
+a separately listed provider package includes verified binaries, license
+notices, and package-content evidence. SQL Server uses Microsoft's platform
+ODBC driver or an organization-managed deployment; Sloppy must not bundle
+Microsoft ODBC binaries without explicit licensing, platform registration, and
+packaging verification.
+
 Publishing is manual and alpha-gated through the npm publish workflow. It uses
 Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and
 `npm publish --provenance` so npm Trusted Publishing can issue a short-lived

@@ -79,4 +79,4 @@ Sloppy is public alpha, pre-production software. SQLite is available through
 Sloppy's current provider bridge. The template uses
 `migrations/0001_create_users.sql` for schema setup and deterministic seed rows
 in code. Sloppy is not full Node, and this template does not require internet
-packages, Docker, or external services.
+packages, Docker, external services, PostgreSQL, SQL Server, libpq, or ODBC.

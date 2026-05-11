@@ -1,4 +1,4 @@
-# Control Plane Example
+# Pre-alpha control plane
 
 This is a multi-file contributor/internal example for the current Sloppy
 app-host and source-input path. It models a small deployment control plane with
@@ -11,7 +11,7 @@ imports from the project root.
 
 ## What it covers
 
-- `sloppy build` and `sloppy run` project-mode coverage through `sloppy.json`.
+- `sloppy build` and `sloppy run` project-mode dogfood through `sloppy.json`.
 - Function modules registered through `app.useModule(...)`.
 - Route groups, named routes, path params, query params, JSON request bodies,
   `Results.created`, `Results.badRequest`, and `Results.notFound`.

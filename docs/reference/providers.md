@@ -17,8 +17,8 @@ the compiler before every runtime path is available.
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
 | Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
-| Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite, PostgreSQL, and SQL Server migration execution; PostgreSQL/SQL Server require live provider configuration |
-| Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server service checks are opt-in |
+| Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite, PostgreSQL, and SQL Server migration execution; PostgreSQL/SQL Server are optional and require live provider configuration only when used |
+| Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server dependency and service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
 ## Framework Descriptor Contract
@@ -67,8 +67,8 @@ Current behavior by provider:
 | Marker | Compiler metadata | Runtime requirements |
 | --- | --- | --- |
 | `Sqlite<"main">` | emits `sqlite/main` provider and `data.main` capability requirements | active SQLite bridge/config; V8-enabled runtime for handler execution |
-| `Postgres<"main">` | emits `postgres/main` provider and `data.main` capability requirements | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, and live PostgreSQL service setup |
-| `SqlServer<"main">` | emits `sqlserver/main` provider and `data.main` capability requirements | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, and an ODBC driver with async support |
+| `Postgres<"main">` | emits `postgres/main` provider and `data.main` capability requirements | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, PostgreSQL client support, and live PostgreSQL service setup |
+| `SqlServer<"main">` | emits `sqlserver/main` provider and `data.main` capability requirements | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, Microsoft ODBC Driver 17 or 18, and live SQL Server service setup |
 
 When documenting PostgreSQL or SQL Server, name the typed-injection/runtime API
 surface and the runtime path being used.
@@ -148,8 +148,10 @@ Migration behavior:
 PostgreSQL and SQL Server, equivalent live health checks require configured
 live providers and stay outside the default test lane.
 
-PostgreSQL and SQL Server CLI migrations require live connection strings. For
-generated provider metadata, `sloppy db` reads
+PostgreSQL and SQL Server CLI migrations are optional feature paths. They
+require live connection strings and the matching provider dependency only when
+the selected migration provider uses that database. For generated provider
+metadata, `sloppy db` reads
 `Sloppy__Providers__postgres__<name>__connectionString` or
 `Sloppy__Providers__sqlserver__<name>__connectionString` unless the Plan
 provider carries an explicit `configKey`.
@@ -181,5 +183,8 @@ Redaction behavior includes:
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - Fake provider APIs (`data.createFakeProvider`) validate shape and behavior
   contracts only. Live database behavior uses provider integration checks.
-- Missing service dependencies are reported as skipped or unavailable.
-  Service-backed providers, V8 execution, and benchmarks use separate checks.
+- Missing optional provider dependencies are reported as provider-specific
+  guidance, not as a broken Sloppy install for apps that do not use that
+  provider. Service-backed providers, V8 execution, and benchmarks use separate
+  checks. Optional live-provider checks may be skipped or unavailable on a
+  default machine.

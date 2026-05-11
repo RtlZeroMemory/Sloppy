@@ -189,7 +189,7 @@ static int test_redaction_driver_parse_and_doctor(void)
         expect_str_equal(doctor.driver, "missing") != 0 ||
         diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR ||
         !diag_has_hint_containing(&diag, "Sloppy Missing Driver For Tests") ||
-        !diag_has_hint_containing(&diag, "Microsoft ODBC Driver 18 for SQL Server") ||
+        !diag_has_hint_containing(&diag, "ODBC Driver 17 or 18") ||
         diag_has_hint_containing(&diag, "PWD=secret"))
     {
         return 14;

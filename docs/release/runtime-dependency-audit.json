@@ -30,14 +30,14 @@
     },
     {
       "id": "libpq",
-      "packagePolicy": "Windows package bundles vcpkg runtime DLLs where present; Unix packages currently declare host-linked/system-provided status",
-      "currentStatus": "live PostgreSQL lanes are opt-in and not default package evidence",
+      "packagePolicy": "main package stays lean; PostgreSQL provider-package binaries require separate verified package contents, license notices, and package evidence before they are shipped",
+      "currentStatus": "current alpha uses system or build-provided libpq; package-local PostgreSQL provider packages are planned follow-up work, not default package evidence",
       "noticeStatus": "incomplete before publishing"
     },
     {
       "id": "sql-server-odbc",
-      "packagePolicy": "ODBC driver installation is not bundled in default packages",
-      "currentStatus": "driver availability must be reported as dependency-backed or unavailable evidence",
+      "packagePolicy": "Microsoft ODBC driver installation is not bundled in default packages or Sloppy core; users install Microsoft's platform package or use organization-managed driver deployment",
+      "currentStatus": "driver availability must be reported as optional provider dependency-backed or unavailable evidence",
       "noticeStatus": "incomplete before publishing"
     },
     {
@@ -56,6 +56,7 @@
   "boundaries": [
     "This audit is not final legal review.",
     "Publishing requires a separate release approval.",
-    "This audit does not make live providers, TLS, V8, or every platform supported."
+    "This audit does not make live providers, TLS, V8, or every platform supported.",
+    "This audit does not approve bundled PostgreSQL binaries or Microsoft ODBC binaries."
   ]
 }

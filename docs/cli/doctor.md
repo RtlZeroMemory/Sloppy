@@ -17,9 +17,11 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
   route metadata by design and web Plans with partial/dynamic route metadata;
 - dependency graph metadata and compatibility findings;
 - native FFI metadata, dynamic library load checks, and symbol resolution;
-- SQLite metadata;
-- PostgreSQL live-test environment;
-- SQL Server ODBC driver availability.
+- SQLite metadata and the fact that SQLite needs no external DB driver;
+- PostgreSQL provider metadata with optional client-library guidance when the
+  app uses PostgreSQL;
+- SQL Server provider metadata with optional Microsoft ODBC Driver 17/18
+  guidance when the app uses SQL Server.
 
 ## Text output
 
@@ -38,9 +40,9 @@ Sloppy Doctor
 [warn] app.plan.capabilities: capability metadata not present
 [ok] dependency.graph: dependency graph available: 1 package(s), 4 module(s), 1 Node binding(s)
 [ok] ffi.native: native FFI metadata available: 1 library, 4 function(s)
-[ok] sqlite.provider: sqlite provider metadata available
-[warn] postgres.live: live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set
-[error] sqlserver.driver: connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found
+[ok] sqlite.provider: SQLite is embedded; this app does not need PostgreSQL, SQL Server, libpq, or ODBC
+[warn] postgres.provider: PostgreSQL is optional; apps that use it need a connection string and libpq from a bundled provider package when available or from the system
+[warn] sqlserver.provider: SQL Server is optional; apps that use it need Microsoft ODBC Driver 17 or 18 visible to the driver manager
 ```
 
 The exact rows depend on the current platform, build, package, and provider
@@ -54,4 +56,5 @@ environment.
 | `1` | One or more checks reported `error` |
 
 Warnings are informational unless the checked Plan requires the unavailable
-feature.
+feature. Missing PostgreSQL or SQL Server support is reported as an optional
+provider dependency, not as a broken Sloppy install for SQLite-only apps.

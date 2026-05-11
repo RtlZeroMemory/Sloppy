@@ -6,10 +6,10 @@
     { "id": "package.runtime", "status": "warn", "message": "package release status requires package smoke" },
     { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
     { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
-    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.providers", "status": "ok", "message": "provider metadata present" },
     { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
-    { "id": "sqlite.provider", "status": "ok", "message": "sqlite provider metadata available" },
-    { "id": "postgres.live", "status": "warn", "message": "live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set" },
-    { "id": "sqlserver.driver", "status": "error", "message": "connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found" }
+    { "id": "sqlite.provider", "status": "ok", "message": "SQLite is embedded; this app does not need PostgreSQL, SQL Server, libpq, or ODBC" },
+    { "id": "postgres.provider", "status": "warn", "message": "PostgreSQL is optional; apps that use it need a connection string and libpq from a bundled provider package when available or from the system" },
+    { "id": "sqlserver.provider", "status": "warn", "message": "SQL Server is optional; apps that use it need Microsoft ODBC Driver 17 or 18 visible to the driver manager" }
   ]
 }

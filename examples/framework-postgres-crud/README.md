@@ -14,7 +14,13 @@ A users API backed by PostgreSQL:
 
 - A V8-enabled `sloppy` runtime.
 - A PostgreSQL service with a test database and `users` table.
+- PostgreSQL client support. Current alpha packages use system or
+  build-provided libpq; package-local PostgreSQL provider packages are not
+  shipped yet.
 - `Sloppy__Providers__postgres__main__connectionString` set in the environment.
+
+You do not need PostgreSQL or libpq for normal Sloppy apps, the Quickstart,
+Program Mode, SQLite, templates, or package support.
 
 Example table shape:
 
@@ -55,8 +61,9 @@ from the PostgreSQL database.
 ## Scope
 
 Schema setup is manual for this example. Migrations, ORM-style modeling,
-deployment guidance is outside this example, and package dependency behavior is
-covered by the package/dependency examples.
+deployment guidance, and future PostgreSQL provider-package distribution are
+outside this example. Package dependency behavior is covered by the
+package/dependency examples.
 
 ## Related docs
 

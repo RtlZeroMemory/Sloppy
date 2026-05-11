@@ -26,9 +26,11 @@ if anything looks wrong. Only after that does it evaluate `app.js`.
 them touch V8. You can lint your route table, generate API docs, and run
 a security audit on a host that doesn't even have V8 installed.
 
-**Fail-fast startup.** If your app needs a PostgreSQL provider and the
-host doesn't have `libpq`, the runtime says so and exits — instead of
-half-booting and crashing on the first query.
+**Fail-fast startup.** If your app needs a PostgreSQL provider and PostgreSQL
+client support is unavailable, or if it needs SQL Server and Microsoft ODBC
+Driver 17 or 18 is unavailable, the runtime says so and exits instead of
+half-booting and crashing on the first query. SQLite apps do not need those
+optional provider dependencies.
 
 **Determinism.** A given source + compiler version produces the same
 Plan, byte-for-byte. Plans are fingerprintable cache keys.

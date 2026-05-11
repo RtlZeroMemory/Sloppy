@@ -107,10 +107,16 @@ If `sloppy run` reports that a V8-enabled build is required, the CLI is present
 but that runtime cannot execute handlers.
 
 The normal Quickstart does not require extra native setup. SQLite is included
-with the runtime package. V8 is part of the V8-enabled runtime package. `libpq`
-is only needed for PostgreSQL, ODBC is only needed for SQL Server, declared
-native libraries are only needed for FFI apps, and OpenSSL/TLS matters only
-for TLS/HTTPS paths in the selected build/package configuration.
+with the runtime package. V8 is part of the V8-enabled runtime package.
+PostgreSQL client support is only needed for apps that use the PostgreSQL
+provider or PostgreSQL migrations. Microsoft ODBC Driver 17 or 18 is only
+needed for apps that use the SQL Server provider or SQL Server migrations.
+Declared native libraries are only needed for FFI apps, and OpenSSL/TLS matters
+only for TLS/HTTPS paths in the selected build/package configuration.
+
+Current alpha packages do not bundle PostgreSQL provider-package binaries yet.
+SQL Server uses Microsoft's platform driver or an organization-managed ODBC
+deployment; Sloppy does not bundle Microsoft's ODBC driver in the core package.
 
 ## Common fixes
 

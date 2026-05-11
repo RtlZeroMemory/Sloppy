@@ -177,9 +177,10 @@ For a practical comparison, see
 - **Services, config, and logging.** Singleton/scoped/transient services,
   typed config binding, `appsettings.{Environment}.json`, secret redaction,
   and structured logging.
-- **Data providers.** SQLite has the strongest end-to-end path. PostgreSQL and
-  SQL Server have provider metadata and opt-in live lanes that require local
-  services and platform dependencies.
+- **Data providers.** SQLite is embedded and has the strongest end-to-end path.
+  PostgreSQL and SQL Server are optional provider features with metadata,
+  provider-specific diagnostics, and opt-in live lanes for apps that use those
+  databases.
 - **HTTP runtime.** HTTP/1.1, bounded keep-alive, opt-in TLS, and experimental
   HTTP/2 over TLS ALPN plus h2c prior knowledge and Upgrade handling.
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
@@ -229,8 +230,9 @@ Current limits:
   clearly.
 - macOS arm64, macOS x64, Linux arm64, and Windows arm64 package-manager
   distribution are not part of this alpha.
-- Live PostgreSQL and SQL Server checks need explicit local services and
-  drivers.
+- PostgreSQL and SQL Server are optional provider features. Their live checks
+  need explicit local services and provider dependencies; the Quickstart,
+  Program Mode, SQLite, templates, and package support do not.
 
 See [Roadmap](docs/roadmap.md) and the
 [Node compatibility roadmap](docs/roadmap/node-compatibility.md) for the

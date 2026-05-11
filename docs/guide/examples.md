@@ -176,18 +176,22 @@ the [SQLite walkthrough](sqlite.md).
 
 ### framework-postgres-crud
 
-Same shape, PostgreSQL provider. Requires `libpq` and a running database. The
-example reads its connection string from
+Same shape, PostgreSQL provider. This optional provider example needs
+PostgreSQL client support and a running database. Normal Sloppy apps, the
+Quickstart, Program Mode, SQLite, templates, and package support do not need
+PostgreSQL or libpq. The example reads its connection string from
 `Sloppy__Providers__postgres__main__connectionString`. The compiler emits typed
 provider metadata/wrappers; live execution depends on the PostgreSQL bridge,
 provider config, and service setup.
 
 ### framework-sqlserver-crud
 
-Same shape, SQL Server provider. Requires an ODBC driver and a connection
-string in `Sloppy__Providers__sqlserver__main__connectionString`. The compiler
-emits typed provider metadata/wrappers; live execution depends on the SQL
-Server bridge, provider config, and driver support.
+Same shape, SQL Server provider. This optional provider example needs
+Microsoft ODBC Driver 17 or 18 and a connection string in
+`Sloppy__Providers__sqlserver__main__connectionString`. Normal Sloppy apps, the
+Quickstart, Program Mode, SQLite, templates, and package support do not need
+SQL Server or ODBC. The compiler emits typed provider metadata/wrappers; live
+execution depends on the SQL Server bridge, provider config, and driver support.
 
 ### framework-validation-errors
 

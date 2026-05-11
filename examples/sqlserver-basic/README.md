@@ -6,7 +6,12 @@ SQL Server doctor helper shape.
 
 Current limitations:
 
-- requires SQL Server and Microsoft ODBC Driver 18 for SQL Server;
+- requires SQL Server and Microsoft ODBC Driver 18 for SQL Server, or
+  Microsoft ODBC Driver 17 for SQL Server;
+- this example requires SQL Server, Microsoft ODBC Driver 17 or 18, and a live
+  connection string;
+- normal Sloppy apps, the Quickstart, SQLite, templates, and package support do
+  not require SQL Server or ODBC;
 - uses true-async ODBC connection/statement mode through the V8 provider bridge when the
   configured driver supports async completion;
 - set `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` or equivalent config for live use;

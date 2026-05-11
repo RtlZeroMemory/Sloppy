@@ -97,8 +97,11 @@ sloppy run: required feature 'postgres' is not available
 ```
 
 The Plan declares a capability the runtime can't satisfy. Check
-`sloppy doctor` to see which providers are available. For PostgreSQL/SQL
-Server, install `libpq` / an ODBC driver and re-run.
+`sloppy doctor` to see which providers are available. PostgreSQL and SQL
+Server dependencies are optional. PostgreSQL apps need PostgreSQL client
+support from a future provider package or system libpq. SQL Server apps need
+Microsoft ODBC Driver 17 or 18 from Microsoft's platform package or an
+organization-managed deployment. SQLite-only apps are unaffected.
 
 ### Missing config
 
@@ -198,9 +201,10 @@ environment variable (e.g. `SLOPPY_POSTGRES_TEST_URL`) using
 
 ### SQL Server "driver not found"
 
-ODBC isn't seeing the driver. On Linux, install `unixodbc` plus a vendor
-driver. On Windows, install MSODBCSQL. `sloppy doctor` reports driver
-status under `sqlserver`.
+ODBC isn't seeing Microsoft ODBC Driver 17 or 18. This only matters for apps
+that use SQL Server. Install Microsoft's platform package, or use your
+organization's managed driver deployment. `sloppy doctor` reports driver
+status under the SQL Server provider.
 
 ## "Why is my route not being called?"
 

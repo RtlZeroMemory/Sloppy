@@ -36,4 +36,4 @@ exhaustive level — they're there for "I need every option" lookup.
 
 - [Stability](stability.md) — schema versions, what's pinned and what isn't
 - [Platform status](platform-status.md) — which platforms are supported, to what level
-- [Dependencies](dependencies.md) — V8, libpq, ODBC, OpenSSL — when they matter
+- [Dependencies](dependencies.md) — optional native dependencies and when they matter

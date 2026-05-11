@@ -62,9 +62,10 @@ A few reasons that compound:
   `sloppy capabilities`, `sloppy openapi`, and `sloppy audit` all work off
   the Plan. None of them spin up V8.
 - **The runtime can fail fast on missing dependencies.** If your app needs
-  PostgreSQL and you start it on a host that doesn't have `libpq`, it
-  refuses to serve traffic instead of half-booting and crashing on the
-  first query.
+  PostgreSQL and the PostgreSQL provider dependency is unavailable, or if it
+  needs SQL Server and Microsoft ODBC Driver 17 or 18 is unavailable, Sloppy
+  reports that provider-specific problem instead of half-booting and crashing
+  on the first query. SQLite apps are unaffected.
 - **Tooling has a stable target.** OpenAPI generation, security audits, and
   codegen consumers can read the Plan instead of grepping source.
 - **Determinism.** A given source + compiler version produces the same

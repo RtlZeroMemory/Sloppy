@@ -1,9 +1,18 @@
 # SQL Server Guide
 
-SQL Server support is public alpha, pre-production, and live-service gated. Use
-it when you have a V8-enabled runtime, an ODBC driver with async support, and a
-configured SQL Server service. The normal Quickstart and SQLite template do not
-require an ODBC driver.
+SQL Server support is public alpha, pre-production, optional, and live-service
+gated.
+
+This walkthrough uses SQL Server, so it needs a SQL Server connection string
+and Microsoft ODBC Driver 17 or 18.
+
+You do not need SQL Server or ODBC for normal Sloppy apps, the Quickstart,
+Program Mode, SQLite, templates, or package support.
+
+Sloppy does not bundle Microsoft's ODBC driver in the core alpha package.
+Enterprises often install and manage it centrally. `sloppy doctor` detects
+whether a suitable driver is visible and gives provider-specific guidance when
+it is missing.
 
 ## Configure
 
@@ -20,7 +29,8 @@ const db = data.sqlserver.open({
 ```
 
 Generated typed provider injection records SQL Server metadata, but execution
-depends on the active provider bridge, ODBC configuration, and a live service.
+depends on the active provider bridge, Microsoft ODBC Driver 17 or 18, and a
+live service.
 
 ## Health
 
@@ -31,7 +41,8 @@ await db.queryOne("select 1 as ok", []);
 ```
 
 Live SQL Server checks are optional and gated by environment variables. Default
-tests do not start or require SQL Server.
+tests do not start or require SQL Server or ODBC for apps that do not use SQL
+Server.
 
 ## Migrations
 

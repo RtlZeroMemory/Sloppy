@@ -59,4 +59,5 @@ sloppy run examples/hello/app.js
 ```
 
 That command documents the intended direct-source shape for this example. The
-current emitted-artifact runtime path is `examples/compiler-hello/`.
+current emitted-artifact runtime path is `examples/compiler-hello/`. This is a
+future user-facing shape for this example.

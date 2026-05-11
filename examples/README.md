@@ -40,10 +40,10 @@ sloppy create my-tool --template program
 | `validation-errors` | compile-only / tooling fixture | `ctest -R "conformance.validation_errors\|examples.validation_errors"` | Plan validation metadata and OpenAPI/doctor output | Emits artifacts and CLI metadata. |
 | `framework-explicit-binding` | compile-only / tooling fixture | `ctest -R conformance.framework_explicit_binding` | `Route`, `Query`, `Body`, `Header`, `RequestContext` binding metadata | Emits artifacts and CLI metadata. |
 | `framework-validation-errors` | compile-only / tooling fixture | `ctest -R conformance.framework_validation_errors` | Schema-backed body binding diagnostics | Emits artifacts and CLI metadata. |
-| `framework-postgres-crud` | live-provider example | `.\tools\windows\test-live-postgres.ps1` | Typed PostgreSQL provider shape | Requires V8, libpq, connection-string config, and live PostgreSQL service; default lane skips/unavailable when missing. |
-| `framework-sqlserver-crud` | live-provider example | `.\tools\windows\test-live-sqlserver.ps1` | Typed SQL Server provider shape | Requires V8, ODBC driver, connection-string config, and live SQL Server service; default lane skips/unavailable when missing. |
-| `postgres-basic` | live-provider fixture | `.\tools\windows\test-live-postgres.ps1` | PostgreSQL runtime provider bridge | Requires live PostgreSQL setup. |
-| `sqlserver-basic` | live-provider fixture | `.\tools\windows\test-live-sqlserver.ps1` | SQL Server runtime provider bridge | Requires live SQL Server setup and ODBC driver. |
+| `framework-postgres-crud` | live-provider example | `.\tools\windows\test-live-postgres.ps1` | Typed PostgreSQL provider shape | Optional provider example. Requires V8, PostgreSQL client support, connection-string config, and live PostgreSQL service; default lane skips/unavailable when missing. |
+| `framework-sqlserver-crud` | live-provider example | `.\tools\windows\test-live-sqlserver.ps1` | Typed SQL Server provider shape | Optional provider example. Requires V8, Microsoft ODBC Driver 17 or 18, connection-string config, and live SQL Server service; default lane skips/unavailable when missing. |
+| `postgres-basic` | live-provider fixture | `.\tools\windows\test-live-postgres.ps1` | PostgreSQL runtime provider bridge | Optional provider fixture. Requires PostgreSQL client support and live PostgreSQL setup. |
+| `sqlserver-basic` | live-provider fixture | `.\tools\windows\test-live-sqlserver.ps1` | SQL Server runtime provider bridge | Optional provider fixture. Requires live SQL Server setup and Microsoft ODBC Driver 17 or 18. |
 | `codec-base64-hex` | API-shape fixture | `ctest -R examples.codec.api_shape` | Base64/Base64Url/Hex helpers | Static example check only. |
 | `codec-checksums` | API-shape fixture | `ctest -R examples.codec.api_shape` | CRC/checksum helper boundary | Static example check only; not authentication. |
 | `codec-compression` | API-shape fixture | `ctest -R examples.codec.api_shape` | gzip/gunzip helper shape | Static example check only. |
@@ -99,7 +99,8 @@ sloppy create my-tool --template program
   Plan-backed CLI tools, but no positive handler execution is claimed.
 - `package graph fixture`: the example demonstrates package/dependency graph
   behavior. Local `file:` dependencies avoid internet access.
-- `live-provider example`: the example needs an external database/driver and
-  may be skipped or unavailable on a default machine.
+- `live-provider example`: the example needs an external database and matching
+  optional provider dependency. Default Sloppy apps do not need PostgreSQL, SQL
+  Server, libpq, or ODBC.
 - `API-shape fixture`: static checks keep the example honest about imports,
   APIs, and documentation boundaries.
