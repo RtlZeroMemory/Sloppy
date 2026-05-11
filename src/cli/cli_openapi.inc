@@ -504,6 +504,31 @@ static void sl_cli_openapi_emit_candidates(FILE* out, const SlCliMetadata* metad
     sl_cli_write_cstr(out, "]");
 }
 
+static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadata,
+                                         const SlCliRoute* route, bool* first)
+{
+    size_t index = 0U;
+
+    if (!route->auth_required) {
+        return;
+    }
+    if (metadata->auth_scheme_count == 0U) {
+        sl_cli_openapi_emit_field_prefix(out, first);
+        sl_cli_write_cstr(out,
+                           "\"x-slop-partial\": \"auth required but auth scheme metadata is missing\"");
+        return;
+    }
+    sl_cli_openapi_emit_field_prefix(out, first);
+    sl_cli_write_cstr(out, "\"security\": [");
+    for (index = 0U; index < metadata->auth_scheme_count; index += 1U) {
+        sl_cli_write_cstr(out, index == 0U ? "" : ", ");
+        sl_cli_write_cstr(out, "{ ");
+        sl_cli_json_escape(out, metadata->auth_schemes[index].name);
+        sl_cli_write_cstr(out, ": [] }");
+    }
+    sl_cli_write_cstr(out, "]");
+}
+
 static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metadata,
                                           const SlCliRoute* route)
 {
@@ -526,6 +551,7 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
         }
         sl_cli_write_cstr(out, "]");
     }
+    sl_cli_openapi_emit_security(out, metadata, route, &first);
     if (!sl_cli_span_empty(route->source_path)) {
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"x-slop-source\": { \"path\": ");
@@ -689,7 +715,26 @@ static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metad
     for (index = 0U; index < metadata->schema_count; index += 1U) {
         sl_cli_openapi_emit_schema(out, &metadata->schemas[index], true);
     }
-    sl_cli_write_cstr(out, "\n    }\n  }");
+    sl_cli_write_cstr(out, "\n    }");
+    if (metadata->auth_scheme_count > 0U) {
+        sl_cli_write_cstr(out, ",\n    \"securitySchemes\": {");
+        for (index = 0U; index < metadata->auth_scheme_count; index += 1U) {
+            const SlCliAuthScheme* scheme = &metadata->auth_schemes[index];
+            sl_cli_write_cstr(out, index == 0U ? "\n      " : ",\n      ");
+            sl_cli_json_escape(out, scheme->name);
+            if (sl_cli_span_equal_cstr(scheme->kind, "jwtBearer")) {
+                sl_cli_write_cstr(out, ": { \"type\": \"http\", \"scheme\": \"bearer\", "
+                                       "\"bearerFormat\": \"JWT\" }");
+            }
+            else {
+                sl_cli_write_cstr(out, ": { \"type\": \"apiKey\", \"in\": \"header\", \"name\": ");
+                sl_cli_json_escape(out, scheme->header);
+                sl_cli_write_cstr(out, " }");
+            }
+        }
+        sl_cli_write_cstr(out, "\n    }");
+    }
+    sl_cli_write_cstr(out, "\n  }");
 }
 
 static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadata,

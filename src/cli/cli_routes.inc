@@ -50,6 +50,31 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
            (unsigned long long)route->source_column);
     printf(", \"completeness\": ");
     sl_cli_json_escape(stdout, route->completeness);
+    if (route->auth_required) {
+        size_t item = 0U;
+        printf(", \"auth\": { \"required\": true");
+        if (route->auth_role_count > 0U) {
+            printf(", \"roles\": [");
+            for (item = 0U; item < route->auth_role_count; item += 1U) {
+                printf("%s", item == 0U ? "" : ", ");
+                sl_cli_json_escape(stdout, route->auth_roles[item]);
+            }
+            printf("]");
+        }
+        if (route->auth_claim_count > 0U) {
+            printf(", \"claims\": [");
+            for (item = 0U; item < route->auth_claim_count; item += 1U) {
+                printf("%s", item == 0U ? "" : ", ");
+                sl_cli_json_escape(stdout, route->auth_claims[item]);
+            }
+            printf("]");
+        }
+        if (!sl_cli_span_empty(route->auth_policy)) {
+            printf(", \"policy\": ");
+            sl_cli_json_escape(stdout, route->auth_policy);
+        }
+        printf(" }");
+    }
     if (route->dynamic_metadata) {
         printf(", \"metadata\": { \"dynamic\": true, \"reason\": ");
         sl_cli_json_escape(stdout, route->dynamic_reason);
@@ -105,7 +130,34 @@ static void sl_cli_routes_emit_text_response(const SlCliRoute* route)
     printf("unknown");
 }
 
-static void sl_cli_routes_emit_text_route(const SlCliRoute* route)
+static void sl_cli_routes_emit_text_auth(const SlCliRoute* route)
+{
+    if (!route->auth_required) {
+        printf("-");
+        return;
+    }
+    printf("auth");
+    if (!sl_cli_span_empty(route->auth_policy)) {
+        printf(":policy:%.*s", (int)route->auth_policy.length, route->auth_policy.ptr);
+    }
+    else if (route->auth_role_count > 0U) {
+        printf(":role:%.*s", (int)route->auth_roles[0].length, route->auth_roles[0].ptr);
+    }
+}
+
+static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (metadata->routes[index].auth_required) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_auth)
 {
     printf("%-5zu  %-6.*s  %-19.*s  %-7u  %-8.*s  %-6.*s  ", route->source_order,
            (int)route->method.length, route->method.ptr, (int)route->pattern.length,
@@ -122,6 +174,10 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route)
     sl_cli_routes_emit_text_bindings(route);
     printf("  ");
     sl_cli_routes_emit_text_response(route);
+    if (include_auth) {
+        printf("  ");
+        sl_cli_routes_emit_text_auth(route);
+    }
     printf("  %.*s\n", (int)route->name.length, route->name.ptr);
 }
 
@@ -133,6 +189,7 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     yyjson_doc* doc = NULL;
     SlCliMetadata* metadata = sl_cli_scratch_metadata();
     size_t index = 0U;
+    bool include_auth = false;
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy routes: --plan <path> is required\n");
@@ -151,6 +208,7 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         return 1;
     }
     sl_cli_sort_routes(metadata);
+    include_auth = sl_cli_routes_have_auth(metadata);
 
     if (options->format == SL_CLI_FORMAT_JSON) {
         printf("{\n  \"kind\": ");
@@ -162,15 +220,21 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         printf("\n  ]\n}\n");
     }
     else {
-        printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
-               "BINDINGS  RESPONSE  NAME\n");
+        if (include_auth) {
+            printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
+                   "BINDINGS  RESPONSE  AUTH  NAME\n");
+        }
+        else {
+            printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
+                   "BINDINGS  RESPONSE  NAME\n");
+        }
         if (metadata->route_count == 0U) {
             printf(sl_cli_span_equal_cstr(metadata->kind, "program")
                        ? "Program Plan: no route metadata expected.\n"
                        : "No routes.\n");
         }
         for (index = 0U; index < metadata->route_count; index += 1U) {
-            sl_cli_routes_emit_text_route(&metadata->routes[index]);
+            sl_cli_routes_emit_text_route(&metadata->routes[index], include_auth);
         }
     }
 

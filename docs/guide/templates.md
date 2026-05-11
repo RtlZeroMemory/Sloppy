@@ -1,6 +1,6 @@
 # Templates
 
-`sloppy create` copies a built-in starter into a new directory.
+Sloppy templates are starting points for source-input projects.
 
 ```sh
 sloppy create my-api --template api
@@ -8,7 +8,7 @@ sloppy create my-api --template api
 
 Current public templates are:
 
-| Template | Purpose |
+| Template | Use it for |
 | --- | --- |
 | `api` | SQLite-backed API starter with routes, services, provider config, migrations, health, and packaging flow. |
 | `minimal-api` | Smallest web API starter. |
@@ -16,6 +16,25 @@ Current public templates are:
 | `cli` | CLI-style Program Mode starter. |
 | `package-api` | API starter that uses a compatible local pure-JavaScript package. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
+
+## Authentication
+
+Auth is available from any API template:
+
+```ts
+import { Auth, Config } from "sloppy";
+
+app.use(Auth.jwtBearer({
+  issuer: "sloppy.local",
+  audience: "api",
+  secret: Config.required("Auth:JwtSecret"),
+}));
+```
+
+Auth setup in templates is public-alpha/experimental. There is no dedicated
+auth template yet. Add the auth setup to the generated app file or route
+module, then add the corresponding `Auth:*` keys to `appsettings.json` or your
+deployment configuration.
 
 ## API Template Migrations
 

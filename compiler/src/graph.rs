@@ -36,6 +36,7 @@ pub(crate) struct Route {
     pub(crate) tags: Vec<String>,
     pub(crate) health: Option<HealthRouteMetadata>,
     pub(crate) middleware: Vec<RouteMiddlewareMetadata>,
+    pub(crate) auth: Option<AuthRequirementMetadata>,
     pub(crate) cors: Option<CorsPolicyMetadata>,
     pub(crate) cors_preflight: bool,
     pub(crate) span: Span,
@@ -155,6 +156,7 @@ pub(crate) struct AppGraph {
     pub(crate) ffi: Vec<FfiLibraryMetadata>,
     pub(crate) ffi_structs: Vec<FfiStructMetadata>,
     pub(crate) uses_health: bool,
+    pub(crate) auth: AuthMetadata,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
     pub(crate) dependency_graph: DependencyGraph,
 }
@@ -292,6 +294,41 @@ pub(crate) struct CompatibilityFinding {
 #[derive(Debug, Clone)]
 pub(crate) struct ProblemDetailsDescriptor {
     pub(crate) detail: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AuthMetadata {
+    pub(crate) schemes: Vec<AuthSchemeMetadata>,
+    pub(crate) policies: Vec<AuthPolicyMetadata>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AuthSchemeMetadata {
+    JwtBearer {
+        name: String,
+        issuer: Option<String>,
+        audience: Option<String>,
+        secret_config_key: Option<String>,
+    },
+    ApiKey {
+        name: String,
+        header: String,
+        config_key: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AuthPolicyMetadata {
+    pub(crate) name: String,
+    pub(crate) source: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AuthRequirementMetadata {
+    pub(crate) required: bool,
+    pub(crate) roles: Vec<String>,
+    pub(crate) claims: Vec<String>,
+    pub(crate) policy: Option<String>,
 }
 
 #[derive(Debug, Clone)]
