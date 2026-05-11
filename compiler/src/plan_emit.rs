@@ -35,33 +35,42 @@ fn completeness_json(completeness: &Completeness) -> Value {
 
 #[derive(Debug, Default)]
 struct SchemaReferenceResolution {
-    partial_references: BTreeSet<String>,
+    partial_references: BTreeSet<SchemaReferenceFinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SchemaReferenceFinding {
+    schema: String,
+    reference: Option<String>,
+    reason: &'static str,
 }
 
 impl SchemaReferenceResolution {
     fn mark_partial(&mut self, schema_name: &str, reference: Option<&str>, reason: &'static str) {
-        let reference = reference.unwrap_or("<missing>");
-        self.partial_references
-            .insert(format!("{schema_name}:{reference}:{reason}"));
+        self.partial_references.insert(SchemaReferenceFinding {
+            schema: schema_name.to_string(),
+            reference: reference.map(ToString::to_string),
+            reason,
+        });
     }
 
     fn doctor_checks(&self) -> Vec<Value> {
         self.partial_references
             .iter()
             .map(|finding| {
-                let mut parts = finding.splitn(3, ':');
-                let schema = parts.next().unwrap_or("<unknown>");
-                let reference = parts.next().unwrap_or("<unknown>");
-                let reason = parts.next().unwrap_or("unknown");
+                let reference = finding.reference.as_deref().unwrap_or("<missing>");
                 json!({
                     "id": "schema.reference.partial",
                     "status": "warn",
                     "message": format!(
-                        "Schema '{schema}' contains a '{reference}' reference that could not be fully resolved ({reason}); runtime-safe schema metadata was emitted as partial."
+                        "Schema '{}' contains a '{}' reference that could not be fully resolved ({}); runtime-safe schema metadata was emitted as partial.",
+                        finding.schema,
+                        reference,
+                        finding.reason
                     ),
-                    "schema": schema,
+                    "schema": finding.schema,
                     "reference": reference,
-                    "reason": reason
+                    "reason": finding.reason
                 })
             })
             .collect()
@@ -1102,14 +1111,6 @@ pub(crate) fn emit_plan(
             "status": "info",
             "message": "auth schemes and route authorization requirements are Plan-visible without secret values"
         }));
-    }
-    if !required_features.is_empty() {
-        required_features.sort();
-        required_features.dedup();
-        value["requiredFeatures"] = json!(required_features);
-    }
-    if !doctor_checks.is_empty() {
-        value["doctorChecks"] = json!(doctor_checks);
     }
     if app.dependency_graph.has_entries() {
         for builtin in &app.dependency_graph.node_builtins {

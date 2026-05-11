@@ -117,8 +117,9 @@ Sloppy Program console while top-level code and the entrypoint run, and turns
 integer returns into process exit codes.
 
 The resolver accepts local relative modules, installed pure-JavaScript packages
-from `node_modules`, Sloppy's supported package.json subset, CommonJS/JSON
-modules, string-literal dynamic imports, computed dynamic imports over
+from `node_modules`, npm specifiers for package entries Sloppy can resolve,
+Sloppy's supported package.json subset, CommonJS/JSON modules,
+string-literal dynamic import() calls, computed dynamic import() calls over
 `moduleInclude`, source re-exports, `export *`/namespace re-exports,
 `sloppy/providers/sqlite`, and Node APIs that have explicit Sloppy compatibility
 shims.

@@ -1991,6 +1991,13 @@ fn analyze_program_imports(
         } else if let Statement::ExportNamedDeclaration(export) = statement {
             if export.export_kind != ImportOrExportKind::Type {
                 if let Some(source) = &export.source {
+                    let has_runtime_reexport = export
+                        .specifiers
+                        .iter()
+                        .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
+                    if !has_runtime_reexport {
+                        continue;
+                    }
                     resolve_program_dependency(
                         ProgramDependencyRequest {
                             path,
@@ -2739,7 +2746,7 @@ fn ensure_node_compat_module(
     });
 }
 
-const SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE: &str = r#"function validateSqliteProviderName(name){if(typeof name!=="string"||name.length===0){throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");}if(name.trim()!==name||!/^[A-Za-z0-9_.-]+$/u.test(name)){throw new TypeError("Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.");}}function validateSqliteProviderOptions(options){if(options===undefined){return Object.freeze({});}if(options===null||typeof options!=="object"||Array.isArray(options)){throw new TypeError("Sloppy sqlite provider options must be a plain object.");}if(Object.prototype.hasOwnProperty.call(options,"database")&&typeof options.database!=="string"){throw new TypeError("Sloppy sqlite provider database option must be a string.");}return Object.freeze({...options});}function sqlite(name,options){validateSqliteProviderName(name);return Object.freeze({__sloppyProvider:true,kind:"sqlite",name,token:name.includes(".")?name:`data.${name}`,options:validateSqliteProviderOptions(options)});}module.exports={sqlite,Sqlite:undefined,default:null};module.exports.default=module.exports;"#;
+const SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE: &str = r#"function validateSqliteProviderName(name){if(typeof name!=="string"||name.length===0){throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");}if(name.trim()!==name||!/^[A-Za-z0-9_.-]+$/u.test(name)){throw new TypeError("Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.");}}function validateSqliteProviderOptions(options){if(options===undefined){return Object.freeze({});}if(options===null||typeof options!=="object"||Array.isArray(options)){throw new TypeError("Sloppy sqlite provider options must be a plain object.");}if(Object.prototype.hasOwnProperty.call(options,"database")&&typeof options.database!=="string"){throw new TypeError("Sloppy sqlite provider database option must be a string.");}return Object.freeze({...options});}function sqlite(name,options){validateSqliteProviderName(name);return Object.freeze({__sloppyProvider:true,kind:"sqlite",name,token:name.includes(".")?name:`data.${name}`,options:validateSqliteProviderOptions(options)});}module.exports={sqlite,Sqlite:sqlite,default:null};module.exports.default=module.exports;"#;
 
 fn ensure_sloppy_provider_module(
     backing: &str,
@@ -3668,6 +3675,13 @@ fn program_named_export_replacement(
         return Ok(String::new());
     }
     if let Some(export_source) = &export.source {
+        let has_runtime_reexport = export
+            .specifiers
+            .iter()
+            .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
+        if !has_runtime_reexport {
+            return Ok(String::new());
+        }
         let require_expr = program_reexport_require_expr(
             path,
             export_source.value.as_str(),
@@ -13268,7 +13282,10 @@ fn apply_binding_schema(target: &mut Option<String>, schema: &str) -> bool {
             false
         }
         Some(existing) if existing == schema => false,
-        Some(_) => true,
+        Some(_) => {
+            *target = None;
+            true
+        }
     }
 }
 

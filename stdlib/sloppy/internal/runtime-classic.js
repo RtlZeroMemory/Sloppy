@@ -15,7 +15,7 @@
     const FAST_CREATED = 4;
     const FAST_JSON_MAX_LENGTH = 256;
     const QUERY_MARKER = "__sloppyQuery";
-    const LOWERED_QUERIES = new WeakSet();
+    const LOWERED_QUERY_MARKER = Symbol.for("sloppy.loweredQuery");
     const PLACEHOLDER_STYLES = Object.freeze({
         question: (index) => ({
             text: "?",
@@ -422,20 +422,53 @@
             text += placeholder.text + strings[index + 1];
         }
 
-        const lowered = Object.freeze({
+        const lowered = {
             [QUERY_MARKER]: true,
             text,
             parameters: Object.freeze([...values]),
             parameterCount: values.length,
             placeholderStyle: normalized.placeholderStyle,
             placeholders: Object.freeze(placeholders),
+            templateStrings: Object.freeze([...strings]),
+        };
+        Object.defineProperty(lowered, LOWERED_QUERY_MARKER, {
+            value: true,
+            enumerable: false,
+            configurable: false,
+            writable: false,
         });
-        LOWERED_QUERIES.add(lowered);
-        return lowered;
+        return Object.freeze(lowered);
     }
 
     function isLoweredQuery(value) {
-        return value !== null && typeof value === "object" && LOWERED_QUERIES.has(value);
+        return value !== null &&
+            typeof value === "object" &&
+            value[LOWERED_QUERY_MARKER] === true &&
+            value[QUERY_MARKER] === true &&
+            typeof value.text === "string" &&
+            Array.isArray(value.parameters) &&
+            Number.isInteger(value.parameterCount) &&
+            value.parameterCount === value.parameters.length &&
+            Object.prototype.hasOwnProperty.call(PLACEHOLDER_STYLES, value.placeholderStyle);
+    }
+
+    function renderLoweredQueryText(query, placeholderStyle) {
+        validatePlaceholderStyle(placeholderStyle);
+        if (query.placeholderStyle === placeholderStyle) {
+            return query.text;
+        }
+        if (!Array.isArray(query.templateStrings) ||
+            query.templateStrings.length !== query.parameters.length + 1)
+        {
+            throw new TypeError("Sloppy lowered query cannot be rewritten for this provider.");
+        }
+
+        let text = query.templateStrings[0];
+        for (let index = 0; index < query.parameters.length; index += 1) {
+            text += PLACEHOLDER_STYLES[placeholderStyle](index + 1).text +
+                query.templateStrings[index + 1];
+        }
+        return text;
     }
 
     function sql(strings, ...params) {
@@ -855,7 +888,7 @@ Operation:
     function normalizeSqliteQuery(operation, sql, params) {
         if (isLoweredQuery(sql) && params === undefined) {
             return {
-                text: sql.text,
+                text: renderLoweredQueryText(sql, "question"),
                 parameters: normalizeSqliteParams([...sql.parameters], operation),
             };
         }
@@ -1368,7 +1401,7 @@ Reason:
     function normalizePostgresQuery(operation, sql, params) {
         if (isLoweredQuery(sql) && params === undefined) {
             return {
-                text: sql.text,
+                text: renderLoweredQueryText(sql, "postgres"),
                 parameters: normalizePostgresParams([...sql.parameters], operation),
             };
         }
@@ -1634,7 +1667,7 @@ Reason:
     function normalizeSqlServerQuery(operation, sql, params) {
         if (isLoweredQuery(sql) && params === undefined) {
             return {
-                text: sql.text,
+                text: renderLoweredQueryText(sql, "named"),
                 parameters: normalizeSqlServerParams([...sql.parameters], operation),
             };
         }
@@ -2247,6 +2280,7 @@ Fix:
         sqlite,
         postgres,
         sqlserver,
+        sql,
         migrations: DataMigrations,
         providerHealth: DataProviderHealth,
         values,

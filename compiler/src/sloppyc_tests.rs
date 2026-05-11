@@ -852,6 +852,7 @@ fn program_mode_supports_re_export_declarations() {
         r#"export { value as renamed, "string-name" as "external-name" } from "./dep";
 export * from "./dep";
 export * as namespace from "./dep";
+export { type MissingType } from "./types-only";
 "#,
     )
     .expect("input should write");
@@ -872,6 +873,27 @@ export default 3;
     assert!(app_js.contains("exports[\"external-name\"] = __sloppy_reexport_"));
     assert!(app_js.contains("exports[__sloppy_key] = __sloppy_reexport_"));
     assert!(app_js.contains("exports.namespace = __sloppy_program_require(\"dep.ts\");"));
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    let entry = graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .find(|module| module["id"] == "main.ts")
+        .expect("entry module should be recorded");
+    let resolved_imports = entry["resolvedImports"]
+        .as_array()
+        .expect("resolved imports should be an array");
+    assert!(resolved_imports
+        .iter()
+        .any(|import| import["specifier"] == "./dep"
+            && import["resolvedId"] == "dep.ts"
+            && import["kind"] == "relative"));
+    assert!(!resolved_imports
+        .iter()
+        .any(|import| import["specifier"] == "./types-only"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -904,6 +926,7 @@ export function main() {
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
     assert!(app_js.contains("__sloppy_program_modules[\"sloppy/providers/sqlite\"]"));
     assert!(app_js.contains("__sloppy_program_require(\"sloppy/providers/sqlite\")"));
+    assert!(app_js.contains("module.exports={sqlite,Sqlite:sqlite,default:null}"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -4133,7 +4156,8 @@ export default app;
 
 #[test]
 fn typed_framework_handler_sanitizes_context_schema_reference() {
-    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+    let source = r#"import { Sloppy, Results, Schema, RequestContext } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
 const CreateUser = Schema.object({ name: Schema.string() });
 const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
 const app = Sloppy.create();
@@ -4395,10 +4419,7 @@ export default app;
     let app = extract(std::path::Path::new("app.ts"), source)
         .expect("conflicting fluent schema metadata should compile as partial metadata");
     assert!(app.routes[0].handler.schema_metadata_conflict);
-    assert_eq!(
-        app.routes[0].handler.bindings[0].schema.as_deref(),
-        Some("CreateUser")
-    );
+    assert_eq!(app.routes[0].handler.bindings[0].schema.as_deref(), None);
     let emitted_js = super::emit_app_js(&app);
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(

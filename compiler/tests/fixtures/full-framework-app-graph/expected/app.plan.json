@@ -21,8 +21,8 @@
   "completeness": {
     "reasons": [
       {
-        "code": "partial-route",
-        "message": "one or more routes have partial inferred metadata"
+        "code": "response-metadata-partial",
+        "message": "route response metadata is partial"
       }
     ],
     "status": "partial"

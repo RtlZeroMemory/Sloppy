@@ -182,10 +182,24 @@ pub fn plan_completeness(routes: &[Completeness]) -> Completeness {
         .iter()
         .any(|route| route.status == CompletenessStatus::Partial)
     {
-        return Completeness::partial(vec![CompletenessReason::new(
-            "partial-route",
-            "one or more routes have partial inferred metadata",
-        )]);
+        let mut reasons = Vec::new();
+        for route in routes
+            .iter()
+            .filter(|route| route.status == CompletenessStatus::Partial)
+        {
+            for reason in &route.reasons {
+                if !reasons.iter().any(|existing| existing == reason) {
+                    reasons.push(reason.clone());
+                }
+            }
+        }
+        if reasons.is_empty() {
+            reasons.push(CompletenessReason::new(
+                "partial-route",
+                "one or more routes have partial inferred metadata",
+            ));
+        }
+        return Completeness::partial(reasons);
     }
 
     Completeness::complete()
@@ -223,5 +237,53 @@ mod tests {
             schema_metadata_conflict: false,
         });
         assert_eq!(route.status, CompletenessStatus::Invalid);
+    }
+
+    #[test]
+    fn partial_response_metadata_flows_to_plan_completeness() {
+        let route = route_completeness(&RouteCompletenessInput {
+            has_response_metadata: true,
+            partial_response_metadata: true,
+            body_json_without_schema: false,
+            missing_provider_registration: false,
+            runtime_only: false,
+            schema_metadata_conflict: false,
+        });
+        assert_eq!(route.status, CompletenessStatus::Partial);
+        assert!(route
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "response-metadata-partial"));
+
+        let plan = plan_completeness(&[route]);
+        assert_eq!(plan.status, CompletenessStatus::Partial);
+        assert!(plan
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "response-metadata-partial"));
+    }
+
+    #[test]
+    fn schema_metadata_conflict_flows_to_plan_completeness() {
+        let route = route_completeness(&RouteCompletenessInput {
+            has_response_metadata: true,
+            partial_response_metadata: false,
+            body_json_without_schema: false,
+            missing_provider_registration: false,
+            runtime_only: false,
+            schema_metadata_conflict: true,
+        });
+        assert_eq!(route.status, CompletenessStatus::Partial);
+        assert!(route
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "schema-metadata-conflict"));
+
+        let plan = plan_completeness(&[route]);
+        assert_eq!(plan.status, CompletenessStatus::Partial);
+        assert!(plan
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "schema-metadata-conflict"));
     }
 }

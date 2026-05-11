@@ -456,10 +456,17 @@ fn edit_source_spans(
             .copied()
             .map(|(span, replacement)| Edit::Replace(span, replacement)),
     );
-    edits.sort_by_key(|edit| {
-        std::cmp::Reverse(match edit {
-            Edit::Erase(span) | Edit::Replace(span, _) => span.start,
-        })
+    edits.sort_by(|left, right| {
+        let left_span = match left {
+            Edit::Erase(span) | Edit::Replace(span, _) => span,
+        };
+        let right_span = match right {
+            Edit::Erase(span) | Edit::Replace(span, _) => span,
+        };
+        right_span
+            .start
+            .cmp(&left_span.start)
+            .then_with(|| right_span.end.cmp(&left_span.end))
     });
     for edit in edits {
         let (span, replacement) = match edit {
