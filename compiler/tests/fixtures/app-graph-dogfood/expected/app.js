@@ -13,6 +13,8 @@ function __sloppy_open_data_provider(kind, token) {
 }
 function __sloppy_framework_arg(ctx, scope, binding) {
   if (binding.kind === "body.json") { return ctx.request.json(); }
+  if (binding.kind === "body.form") { return ctx.request.form(); }
+  if (binding.kind === "body.multipart") { return ctx.request.multipart(); }
   if (binding.kind === "context") { return ctx; }
   if (binding.kind === "injection") { return __sloppy_framework_injection(scope, binding); }
   if (binding.kind === "config") { const value = Environment.get(binding.name); if (value !== undefined) { return value; } if (__sloppy_framework_config_defaults.has(binding.name)) { return __sloppy_framework_config_defaults.get(binding.name); } throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); }

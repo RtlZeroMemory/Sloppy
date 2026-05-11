@@ -217,11 +217,16 @@ static int dispatch_single_route_expect(
     status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table, &request,
                                            &result, &diag);
     if (sl_status_code(status) != expected_status) {
+        fprintf(stderr, "unexpected dispatch status: expected %d got %d diag=%d message='%.*s'\n",
+                (int)expected_status, (int)sl_status_code(status), (int)diag.code,
+                (int)diag.message.length, diag.message.ptr == NULL ? "" : diag.message.ptr);
         sl_engine_destroy(engine);
         return 2;
     }
 
     if (result.kind != expected_result_kind) {
+        fprintf(stderr, "unexpected result kind: expected %d got %d diag=%d\n",
+                (int)expected_result_kind, (int)result.kind, (int)diag.code);
         sl_engine_destroy(engine);
         return 3;
     }
@@ -234,6 +239,9 @@ static int dispatch_single_route_expect(
     if (expected_response_body != NULL &&
         expect_bytes_equal(result.response.body, expected_response_body) != 0)
     {
+        fprintf(stderr, "unexpected response body: expected '%s' got '%.*s'\n",
+                expected_response_body, (int)result.response.body.length,
+                result.response.body.ptr == NULL ? "" : (const char*)result.response.body.ptr);
         sl_engine_destroy(engine);
         return 5;
     }
@@ -251,6 +259,51 @@ static int dispatch_single_route_expect(
 
     sl_engine_destroy(engine);
     return 0;
+}
+
+static int dispatch_single_route_result(const char* request_text, SlHttpMethod route_method,
+                                        const char* pattern_text, SlHandlerId handler_id,
+                                        SlEngineResult* out_result, SlDiag* out_diag)
+{
+    static unsigned char engine_storage[TEST_ARENA_SIZE];
+    static unsigned char plan_storage[TEST_ARENA_SIZE];
+    static unsigned char request_storage[TEST_ARENA_SIZE];
+    static unsigned char dispatch_storage[TEST_ARENA_SIZE];
+    SlArena engine_arena = {0};
+    SlArena plan_arena = {0};
+    SlArena request_arena = {0};
+    SlArena dispatch_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlan plan = {0};
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlStatus status;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&plan_arena, plan_storage, sizeof(plan_storage)) != 0 ||
+        init_arena(&request_arena, request_storage, sizeof(request_storage)) != 0 ||
+        init_arena(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage)) != 0 ||
+        load_plan(&plan_arena, &plan, out_diag) != 0 ||
+        create_v8_engine(&engine_arena, &engine) != 0 || eval_app(engine, out_diag) != 0 ||
+        parse_request(&request_arena, request_text, &request) != 0 ||
+        parse_pattern(&dispatch_arena, pattern_text, &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    route.method = route_method;
+    route.pattern = &pattern;
+    route.handler_id = handler_id;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table, &request,
+                                           out_result, out_diag);
+    sl_engine_destroy(engine);
+    return expect_status(status, SL_STATUS_OK);
 }
 
 static int test_get_hello_dispatches_to_handler_id(void)
@@ -388,6 +441,112 @@ static int test_problem_details_wrapped_async_error_returns_safe_problem(void)
     return 0;
 }
 
+static int test_request_cookies_reach_v8_handler(void)
+{
+    if (dispatch_single_route_expect(
+            "GET /cookies HTTP/1.1\r\nHost: example\r\n"
+            "Cookie: session=abc%20123; theme=dark\r\n\r\n",
+            SL_HTTP_METHOD_GET, "/cookies", 9U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"session\":\"abc 123\",\"theme\":\"dark\",\"missing\":null}", SL_DIAG_NONE) != 0)
+    {
+        return 57;
+    }
+    return 0;
+}
+
+static int test_response_cookies_append_set_cookie_headers(void)
+{
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (dispatch_single_route_result("GET /response-cookies HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/response-cookies", 10U, &result,
+                                     &diag) != 0)
+    {
+        return 58;
+    }
+    if (result.kind != SL_ENGINE_RESULT_JSON || result.response.header_count != 2U ||
+        !sl_str_equal_ci_ascii(result.response.headers[0].name, sl_str_from_cstr("Set-Cookie")) ||
+        !sl_str_equal(result.response.headers[0].value,
+                      sl_str_from_cstr("session=abc; Path=/; SameSite=Strict; HttpOnly; Secure")) ||
+        !sl_str_equal_ci_ascii(result.response.headers[1].name, sl_str_from_cstr("Set-Cookie")) ||
+        !sl_str_equal(result.response.headers[1].value, sl_str_from_cstr("theme=dark")))
+    {
+        return 59;
+    }
+    return 0;
+}
+
+static int test_form_urlencoded_body_reaches_v8_handler(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /form HTTP/1.1\r\nHost: example\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 43\r\n\r\n"
+            "name=Ada+Lovelace&repeated=one&repeated=two",
+            SL_HTTP_METHOD_POST, "/form", 11U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"name\":\"Ada Lovelace\",\"repeated\":\"two\",\"entries\":[[\"name\",\"Ada "
+            "Lovelace\"],[\"repeated\",\"one\"],[\"repeated\",\"two\"]]}",
+            SL_DIAG_NONE) != 0)
+    {
+        return 62;
+    }
+    return 0;
+}
+
+static int test_empty_form_urlencoded_body_has_no_fields(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /form HTTP/1.1\r\nHost: example\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 0\r\n\r\n",
+            SL_HTTP_METHOD_POST, "/form", 11U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"name\":null,\"repeated\":null,\"entries\":[]}", SL_DIAG_NONE) != 0)
+    {
+        return 66;
+    }
+    return 0;
+}
+
+static int test_multipart_body_file_reaches_v8_handler(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /multipart HTTP/1.1\r\nHost: example\r\n"
+            "Content-Type: multipart/form-data; boundary=BOUNDARY\r\n"
+            "Content-Length: 194\r\n\r\n"
+            "--BOUNDARY\r\ncontent-disposition: form-data; name=\"title\"\r\n\r\navatar\r\n"
+            "--BOUNDARY\r\ncontent-disposition: form-data; name=\"avatar\"; "
+            "filename=\"ada.txt\"\r\ncontent-type: text/plain\r\n\r\nAda\r\n--BOUNDARY--\r\n",
+            SL_HTTP_METHOD_POST, "/multipart", 12U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"title\":\"avatar\",\"file\":{\"fieldName\":\"avatar\",\"name\":\"ada.txt\","
+            "\"contentType\":\"text/plain\",\"size\":3,\"text\":\"Ada\",\"bytes\":[65,100,97]}}",
+            SL_DIAG_NONE) != 0)
+    {
+        return 63;
+    }
+    return 0;
+}
+
+static int test_stream_response_concatenates_chunks(void)
+{
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (dispatch_single_route_result("GET /stream HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/stream", 13U, &result, &diag) != 0)
+    {
+        return 64;
+    }
+    if (result.kind != SL_ENGINE_RESULT_BYTES || result.response.kind != SL_HTTP_RESPONSE_STREAM ||
+        !sl_str_equal(result.response.content_type,
+                      sl_str_from_cstr("text/plain; charset=utf-8")) ||
+        result.response.stream_chunk_count != 2U || result.response.stream_chunks == NULL ||
+        expect_bytes_equal(result.response.stream_chunks[0].bytes, "hello ") != 0 ||
+        expect_bytes_equal(result.response.stream_chunks[1].bytes, "world") != 0)
+    {
+        return 65;
+    }
+    return 0;
+}
+
 static int test_lifecycle_context_metadata_reaches_v8_handler(void)
 {
     unsigned char engine_storage[TEST_ARENA_SIZE];
@@ -504,6 +663,36 @@ int main(void)
     }
 
     result = test_problem_details_wrapped_async_error_returns_safe_problem();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_cookies_reach_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_response_cookies_append_set_cookie_headers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_form_urlencoded_body_reaches_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_empty_form_urlencoded_body_has_no_fields();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_multipart_body_file_reaches_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_stream_response_concatenates_chunks();
     if (result != 0) {
         return result;
     }

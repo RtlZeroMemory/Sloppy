@@ -328,11 +328,14 @@ static SlStatus sl_http_dispatch_unsupported_media_type(SlArena* arena, SlDiag* 
         arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
         sl_http_dispatch_literal("HTTP request body content type is not supported",
                                  sizeof("HTTP request body content type is not supported") - 1U),
-        sl_http_dispatch_literal("use application/json, text/plain, or application/octet-stream "
-                                 "for bounded request bodies",
-                                 sizeof("use application/json, text/plain, or "
-                                        "application/octet-stream for bounded request bodies") -
-                                     1U),
+        sl_http_dispatch_literal(
+            "use application/json, text/plain, application/octet-stream, "
+            "application/x-www-form-urlencoded, or multipart/form-data for "
+            "bounded request bodies",
+            sizeof("use application/json, text/plain, application/octet-stream, "
+                   "application/x-www-form-urlencoded, or multipart/form-data "
+                   "for bounded request bodies") -
+                1U),
         SL_STATUS_UNSUPPORTED);
 }
 
@@ -579,6 +582,18 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
 
     if (request->body.length == 0U) {
+        if (sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Type"), &content_type))
+        {
+            media_type = sl_http_dispatch_media_type(content_type);
+            if (sl_str_equal_ci_ascii(media_type,
+                                      sl_str_from_cstr("application/x-www-form-urlencoded")))
+            {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_FORM;
+            }
+            else if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data"))) {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_MULTIPART;
+            }
+        }
         return sl_status_ok();
     }
     if (request->body.ptr == NULL) {
@@ -614,6 +629,14 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
     if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/octet-stream"))) {
         *out_body_kind = SL_HTTP_REQUEST_BODY_BYTES;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/x-www-form-urlencoded"))) {
+        *out_body_kind = SL_HTTP_REQUEST_BODY_FORM;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data"))) {
+        *out_body_kind = SL_HTTP_REQUEST_BODY_MULTIPART;
         return sl_status_ok();
     }
 
@@ -1795,7 +1818,13 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             }
             break;
         case SL_PLAN_REQUEST_BINDING_BODY_JSON:
+        case SL_PLAN_REQUEST_BINDING_BODY_FORM:
+        case SL_PLAN_REQUEST_BINDING_BODY_MULTIPART:
             needs.body = true;
+            needs.request = true;
+            break;
+        case SL_PLAN_REQUEST_BINDING_COOKIE:
+            needs.headers = true;
             needs.request = true;
             break;
         case SL_PLAN_REQUEST_BINDING_CONTEXT:

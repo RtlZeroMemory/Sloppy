@@ -11,6 +11,8 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
 - [Authentication](auth.md) — experimental route protection with JWT bearer tokens, API keys, roles, and policies
 - [Request logging](request-logging.md) — add request IDs and structured request logs
+- [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
+- [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files
 - [Examples](examples.md) — curated index of `/examples` worth running
 - [Templates](templates.md) — built-in project templates and where auth setup fits
 - [Troubleshooting](troubleshooting.md) — common errors and how to read them

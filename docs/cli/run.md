@@ -7,6 +7,7 @@ synthetic request. `run` enters V8, so it requires a V8-enabled build.
 sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib <dir>]
            [--environment <name>] [--host <ip>] [--port <n>]
            [--kind web|program]
+           [--header "Name: value"] [--body-file <path>]
            [--once METHOD TARGET] [-- <program-args...>]
 ```
 
@@ -61,6 +62,7 @@ runtime and exits. Use it for smoke tests:
 ```sh
 sloppy run .sloppy --once GET /health
 sloppy run src/main.ts --once POST /users
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /login
 ```
 
 The full HTTP response is written to stdout — status line, response
@@ -81,11 +83,19 @@ Exit status is 0 if the dispatch produced a response (including
 mapped error responses like 404). It is non-zero only on internal
 failures (parse, V8 init, target validation).
 
-`--once` doesn't open a listener, so `--host` and `--port` are ignored.
-It currently creates a minimal synthetic request from only the method and
-target. There are no CLI flags yet for request headers or body bytes. Use the
-app test host for handler tests that need JSON bodies, request headers, CORS
-preflight detail, or request-scope cleanup without entering V8.
+`--header "Name: value"` adds request headers to the synthetic request. Repeat
+it for multiple headers. `--body-file <path>` reads bounded request body bytes
+from disk and adds `Content-Length` if you did not provide one. Use these flags
+to smoke JSON, urlencoded forms, multipart fixtures, and upload handlers:
+
+```sh
+printf "name=Ada" > form.txt
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /form
+```
+
+`--once` doesn't open a listener, so `--host` and `--port` are ignored. Dynamic
+source-input dispatch still only passes method and target; build artifacts first
+when the smoke needs headers or body bytes.
 
 ## Flags
 
@@ -97,6 +107,8 @@ preflight detail, or request-scope cleanup without entering V8.
 | `--host <ip>`          | `127.0.0.1`     | Server bind host                                     |
 | `--port <n>`           | `5173`          | Server bind port (1–65535)                           |
 | `--kind web\|program`  | inferred for direct source, `web` for project mode without `kind` | Override source kind |
+| `--header "Name: value"` | —             | Add a header to a `--once` synthetic request          |
+| `--body-file <path>`   | —               | Read body bytes for a `--once` synthetic request      |
 | `--once METHOD TARGET` | —               | Run one synthetic request and exit                   |
 | `-- <program-args...>` | empty           | Arguments passed to Program Mode `main(args, ctx)`   |
 

@@ -57,6 +57,31 @@
       "id": 8,
       "exportName": "__sloppy_handler_8",
       "displayName": "Http.ProblemDetailsAsync"
+    },
+    {
+      "id": 9,
+      "exportName": "__sloppy_handler_9",
+      "displayName": "Http.Cookies"
+    },
+    {
+      "id": 10,
+      "exportName": "__sloppy_handler_10",
+      "displayName": "Http.ResponseCookies"
+    },
+    {
+      "id": 11,
+      "exportName": "__sloppy_handler_11",
+      "displayName": "Http.Form"
+    },
+    {
+      "id": 12,
+      "exportName": "__sloppy_handler_12",
+      "displayName": "Http.Multipart"
+    },
+    {
+      "id": 13,
+      "exportName": "__sloppy_handler_13",
+      "displayName": "Http.Stream"
     }
   ]
 }
