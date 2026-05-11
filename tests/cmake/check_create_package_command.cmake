@@ -270,8 +270,10 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
             message(FATAL_ERROR "api template capabilities did not include SQLite provider metadata\nstdout:\n${public_capabilities_stdout}")
         endif()
         assert_sloppy_command_success("api template db status pending" "${public_project_dir}" "pending" db status .sloppy --provider main)
+        assert_sloppy_command_success("api template db status json pending with token" "${public_project_dir}" "\"status\":\"pending\"" db status .sloppy --provider data.main --format json)
         assert_sloppy_command_success("api template db migrate" "${public_project_dir}" "applied" db migrate .sloppy --provider main)
         assert_sloppy_command_success("api template db status applied" "${public_project_dir}" "applied" db status .sloppy --provider main)
+        assert_sloppy_command_success("api template db status json current with token" "${public_project_dir}" "\"status\":\"current\"" db status .sloppy --provider data.main --format json)
     endif()
     if(public_template STREQUAL "package-api" OR public_template STREQUAL "node-compat")
         execute_process(
@@ -313,6 +315,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
             message(FATAL_ERROR "api template package manifest did not include migrations metadata\n${api_package_manifest}")
         endif()
         assert_sloppy_command_success("api template package db status" "${public_project_dir}" "applied" db status .sloppy/package --provider main)
+        assert_sloppy_command_success("api template package db status with token" "${public_project_dir}" "applied" db status .sloppy/package --provider data.main)
     endif()
     if(SLOPPY_ENABLE_V8)
         if(public_template STREQUAL "api")

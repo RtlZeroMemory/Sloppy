@@ -1,7 +1,8 @@
 # Database Migrations
 
-Use first-party migrations when the app owns its database schema. The current
-complete migration path is SQLite.
+Use first-party migrations when the app owns its database schema. SQLite,
+PostgreSQL, and SQL Server migrations use the same file ordering and hash
+contract; PostgreSQL and SQL Server require live provider configuration.
 
 ## Add Migration Files
 
@@ -88,13 +89,20 @@ sloppy db migrate .sloppy/package --provider main
 
 - Missing migration directories fail clearly.
 - Files are applied in lexical order.
-- Each SQLite migration runs in its own transaction.
+- Each migration runs in its own provider transaction.
 - A failed migration rolls back and is not recorded.
 - Editing an already-applied migration fails with a hash mismatch.
 - Re-running after a successful migration skips already-applied files.
 
 ## Provider Scope
 
-SQLite migrations are implemented end to end. PostgreSQL and SQL Server remain
-metadata/documentation paths for now; default tests do not require live external
-databases, and Sloppy does not pretend those migrations executed.
+SQLite migrations run against the database path in Plan metadata. PostgreSQL
+and SQL Server migrations run against live connection strings. For generated
+provider metadata, the CLI reads:
+
+- `Sloppy__Providers__postgres__<name>__connectionString`
+- `Sloppy__Providers__sqlserver__<name>__connectionString`
+
+If the Plan provider carries a `configKey`, that key is converted to an
+environment variable name and used instead. Default tests do not start or
+require external database services.

@@ -54,8 +54,9 @@ editing an applied file.
 
 ## Migrate
 
-`migrate` applies pending files in lexical order. For SQLite, each migration is
-wrapped in its own transaction and recorded in `_sloppy_migrations` with:
+`migrate` applies pending files in lexical order. For SQLite, PostgreSQL, and
+SQL Server, each migration is wrapped in its own transaction and recorded in
+`_sloppy_migrations` with:
 
 - `id`
 - `name`
@@ -64,9 +65,15 @@ wrapped in its own transaction and recorded in `_sloppy_migrations` with:
 
 Running `migrate` again is a no-op when all file hashes match.
 
+PostgreSQL and SQL Server migrations require a live connection string. If the
+Plan provider has a `configKey`, `sloppy db` reads the corresponding environment
+variable. Otherwise it reads the compiler-generated key:
+
+- `Sloppy__Providers__postgres__<name>__connectionString`
+- `Sloppy__Providers__sqlserver__<name>__connectionString`
+
 ## Current Limits
 
-- SQLite is the only provider that `sloppy db migrate` executes today.
-- PostgreSQL and SQL Server migration metadata is accepted for package/docs
-  parity, but live migration execution is not faked.
+- PostgreSQL and SQL Server migrations require live database services and
+  provider support on the current machine.
 - Migration paths currently use the project-relative `directory/*.sql` shape.

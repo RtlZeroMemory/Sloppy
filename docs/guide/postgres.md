@@ -33,7 +33,25 @@ tests do not start or require a PostgreSQL service.
 
 ## Migrations
 
-`sloppy.json` may record PostgreSQL migration metadata for package parity, but
-`sloppy db migrate` does not execute PostgreSQL migrations yet. Do not report a
-PostgreSQL migration as applied unless a live provider-specific migration path
-actually ran.
+`sloppy.json` can record PostgreSQL migrations:
+
+```json
+{
+  "migrations": {
+    "main": {
+      "provider": "postgres",
+      "path": "migrations/*.sql"
+    }
+  }
+}
+```
+
+`sloppy db status` and `sloppy db migrate` execute those migrations against a
+live PostgreSQL connection. For generated provider metadata, set:
+
+```sh
+Sloppy__Providers__postgres__main__connectionString=postgres://...
+```
+
+Each migration runs in its own PostgreSQL transaction and is recorded in
+`_sloppy_migrations`.

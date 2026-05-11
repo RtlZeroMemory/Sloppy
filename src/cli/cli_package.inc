@@ -370,18 +370,33 @@ static bool sl_package_append_migration_manifest_path(SlStringBuilder* builder,
 
     if (builder == NULL || relative_dir == NULL || relative_dir[0] == '\0' ||
         !sl_status_is_ok(
-            sl_string_builder_init_fixed(&path_builder, path_storage, sizeof(path_storage))) ||
-        !sl_status_is_ok(sl_string_builder_append_cstr(&path_builder, relative_dir)) ||
-        !sl_status_is_ok(sl_string_builder_append_char(&path_builder, '/')) ||
-        !sl_status_is_ok(sl_string_builder_append_str(&path_builder, file_name)) ||
-        !sl_status_is_ok(sl_string_builder_view_with_nul(&path_builder, &path)))
+            sl_string_builder_init_fixed(&path_builder, path_storage, sizeof(path_storage))))
     {
         return false;
     }
-    for (size_t index = 0U; index < path.length; index += 1U) {
-        if (path.ptr[index] == '\\') {
-            path_storage[index] = '/';
+    for (size_t index = 0U; relative_dir[index] != '\0'; index += 1U) {
+        char ch = relative_dir[index];
+        if (ch == '\\') {
+            ch = '/';
         }
+        if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, ch))) {
+            return false;
+        }
+    }
+    if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, '/'))) {
+        return false;
+    }
+    for (size_t index = 0U; index < file_name.length; index += 1U) {
+        char ch = file_name.ptr[index];
+        if (ch == '\\') {
+            ch = '/';
+        }
+        if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, ch))) {
+            return false;
+        }
+    }
+    if (!sl_status_is_ok(sl_string_builder_view_with_nul(&path_builder, &path))) {
+        return false;
     }
     return sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(path));
 }

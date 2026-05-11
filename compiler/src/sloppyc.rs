@@ -5361,14 +5361,18 @@ fn mark_sloppy_data_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
     if let Some(specifiers) = &import.specifiers {
         for specifier in specifiers {
             if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
-                if specifier.imported.name().as_str() == "sql" {
+                if !import_specifier_is_runtime_value(import, specifier) {
+                    continue;
+                }
+                let imported = specifier.imported.name().as_str();
+                if imported == "sql" {
                     graph.uses_sql_runtime = true;
                 }
-                if specifier.imported.name().as_str() == "Migrations" {
+                if imported == "Migrations" {
                     graph.uses_migrations_runtime = true;
                     graph.uses_fs_runtime = true;
                 }
-                if specifier.imported.name().as_str() == "ProviderHealth" {
+                if imported == "ProviderHealth" {
                     graph.uses_provider_health_runtime = true;
                 }
             }
@@ -5545,15 +5549,21 @@ fn extract_import(
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
                 if imported == "sql" && local == "sql" {
-                    state.sql_imported = true;
-                    state.data_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.sql_imported = true;
+                        state.data_imported = true;
+                    }
                 } else if imported == "Migrations" && local == "Migrations" {
-                    state.data_imported = true;
-                    state.migrations_imported = true;
-                    state.fs_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.migrations_imported = true;
+                        state.fs_imported = true;
+                    }
                 } else if imported == "ProviderHealth" && local == "ProviderHealth" {
-                    state.data_imported = true;
-                    state.provider_health_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.provider_health_imported = true;
+                    }
                 } else {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
@@ -5604,13 +5614,17 @@ fn extract_import(
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
                 ("data", "data") => state.data_imported = true,
                 ("Migrations", "Migrations") => {
-                    state.data_imported = true;
-                    state.migrations_imported = true;
-                    state.fs_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.migrations_imported = true;
+                        state.fs_imported = true;
+                    }
                 }
                 ("ProviderHealth", "ProviderHealth") => {
-                    state.data_imported = true;
-                    state.provider_health_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.provider_health_imported = true;
+                    }
                 }
                 ("schema", "schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}

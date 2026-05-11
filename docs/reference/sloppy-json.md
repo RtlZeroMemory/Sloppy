@@ -98,9 +98,10 @@ metadata and required runtime features; `false` values are ignored.
 }
 ```
 
-Supported provider values are `sqlite`, `postgres`, and `sqlserver`. SQLite is
-the current executable migration path. PostgreSQL and SQL Server entries are
-metadata/package declarations until live migration execution exists.
+Supported provider values are `sqlite`, `postgres`, and `sqlserver`.
+`sloppy db status` and `sloppy db migrate` execute migration files for all
+three providers when the artifact Plan declares the matching provider and the
+required live provider configuration is available.
 
 Paths must be project-relative and currently use the `directory/*.sql` shape.
 `sloppy package` copies matching files into the package and records them in

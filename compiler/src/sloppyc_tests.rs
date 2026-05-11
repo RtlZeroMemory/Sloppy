@@ -5392,6 +5392,43 @@ export default app;
 }
 
 #[test]
+fn type_only_sloppy_data_import_does_not_emit_runtime_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { Migrations, ProviderHealth, sql } from "sloppy/data";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("type-only sloppy/data import should be recognized");
+    assert!(!app.uses_data_runtime);
+    assert!(!app.uses_sql_runtime);
+    assert!(!app.uses_migrations_runtime);
+    assert!(!app.uses_provider_health_runtime);
+    assert!(!app.uses_fs_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results } = __sloppyRuntime;"));
+    assert!(!emitted_js.source.contains("Migrations"));
+    assert!(!emitted_js.source.contains("ProviderHealth"));
+    assert!(!emitted_js.source.contains("sql"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert!(value.get("requiredFeatures").is_none());
+    assert!(value["features"].get("filesystem").is_none());
+    assert!(value["strongPlan"]["evidence"].get("filesystem").is_none());
+}
+
+#[test]
 fn root_sloppy_import_rejects_net_only_exports() {
     let source = r#"import { Sloppy, Results, TcpClient } from "sloppy";
 const app = Sloppy.create();

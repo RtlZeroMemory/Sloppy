@@ -19,6 +19,14 @@ typedef struct SlCliDbMigrationFile
     bool changed;
 } SlCliDbMigrationFile;
 
+typedef enum SlCliDbProviderKind
+{
+    SL_CLI_DB_PROVIDER_SQLITE,
+    SL_CLI_DB_PROVIDER_POSTGRES,
+    SL_CLI_DB_PROVIDER_SQLSERVER,
+    SL_CLI_DB_PROVIDER_UNSUPPORTED
+} SlCliDbProviderKind;
+
 static uint32_t sl_db_fnv1a32_bytes(SlBytes bytes)
 {
     uint32_t hash = 2166136261U;
@@ -85,6 +93,19 @@ static bool sl_db_provider_name_matches(SlCliSpan token, const char* requested)
         return false;
     }
     return sl_cli_span_equal_cstr(token, normalized);
+}
+
+static const char* sl_db_migration_provider_name(const char* requested)
+{
+    SlStr view = {0};
+    if (requested == NULL) {
+        return NULL;
+    }
+    view = sl_str_from_cstr(requested);
+    if (sl_str_starts_with(view, SL_STR_LITERAL("data.")) && view.length > 5U) {
+        return requested + 5U;
+    }
+    return requested;
 }
 
 static const SlCliProvider* sl_db_find_provider(const SlCliMetadata* metadata,
@@ -210,19 +231,143 @@ static bool sl_db_load_migration_config(const SlCliOptions* options, const char*
                                         bool package_target, SlCliDbMigrationConfig* out)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
+    const char* migration_provider =
+        options == NULL ? NULL : sl_db_migration_provider_name(options->db_provider);
     if (package_target) {
         if (!sl_cli_join_leaf(manifest_path, sizeof(manifest_path), base_path, "manifest.json")) {
             sl_cli_write_cstr(stderr, "sloppy db: package manifest path is too long\n");
             return false;
         }
-        if (!sl_db_manifest_migration_config(manifest_path, options->db_provider, out)) {
+        if (!sl_db_manifest_migration_config(manifest_path, migration_provider, out)) {
             sl_cli_write_error_with_value("sloppy db: no package migration config for provider: ",
                                           options->db_provider, "\n");
             return false;
         }
         return true;
     }
-    return sl_db_project_migration_config(options->db_provider, out);
+    return sl_db_project_migration_config(migration_provider, out);
+}
+
+static SlCliDbProviderKind sl_db_provider_kind(const SlCliProvider* provider,
+                                               const SlCliDbMigrationConfig* config)
+{
+    if (provider != NULL) {
+        if (sl_cli_span_equal_cstr(provider->provider_kind, "sqlite") ||
+            sl_cli_span_equal_cstr(provider->provider, "sqlite"))
+        {
+            return SL_CLI_DB_PROVIDER_SQLITE;
+        }
+        if (sl_cli_span_equal_cstr(provider->provider_kind, "postgres") ||
+            sl_cli_span_equal_cstr(provider->provider, "postgres"))
+        {
+            return SL_CLI_DB_PROVIDER_POSTGRES;
+        }
+        if (sl_cli_span_equal_cstr(provider->provider_kind, "sqlserver") ||
+            sl_cli_span_equal_cstr(provider->provider, "sqlserver"))
+        {
+            return SL_CLI_DB_PROVIDER_SQLSERVER;
+        }
+    }
+    if (config != NULL) {
+        if (strcmp(config->provider_kind, "sqlite") == 0) {
+            return SL_CLI_DB_PROVIDER_SQLITE;
+        }
+        if (strcmp(config->provider_kind, "postgres") == 0) {
+            return SL_CLI_DB_PROVIDER_POSTGRES;
+        }
+        if (strcmp(config->provider_kind, "sqlserver") == 0) {
+            return SL_CLI_DB_PROVIDER_SQLSERVER;
+        }
+    }
+    return SL_CLI_DB_PROVIDER_UNSUPPORTED;
+}
+
+static const char* sl_db_provider_kind_name(SlCliDbProviderKind kind)
+{
+    switch (kind) {
+    case SL_CLI_DB_PROVIDER_SQLITE:
+        return "sqlite";
+    case SL_CLI_DB_PROVIDER_POSTGRES:
+        return "postgres";
+    case SL_CLI_DB_PROVIDER_SQLSERVER:
+        return "sqlserver";
+    case SL_CLI_DB_PROVIDER_UNSUPPORTED:
+    default:
+        return "";
+    }
+}
+
+static bool sl_db_config_key_env_name(char* buffer, size_t capacity, SlCliSpan key)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (buffer == NULL || capacity == 0U || sl_cli_span_empty(key) ||
+        !sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)))
+    {
+        return false;
+    }
+    for (size_t index = 0U; index < key.length; index += 1U) {
+        if (key.ptr[index] == ':') {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(&builder, "__"))) {
+                return false;
+            }
+        }
+        else if (!sl_status_is_ok(sl_string_builder_append_char(&builder, key.ptr[index]))) {
+            return false;
+        }
+    }
+    return sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
+}
+
+static bool sl_db_default_connection_env_name(char* buffer, size_t capacity, const char* provider,
+                                              const char* name)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    return buffer != NULL && capacity > 0U && provider != NULL && provider[0] != '\0' &&
+           name != NULL && name[0] != '\0' &&
+           sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, "Sloppy__Providers__")) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, provider)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, "__")) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, name)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, "__connectionString")) &&
+           sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
+}
+
+static bool sl_db_connection_env_name(const SlCliProvider* provider,
+                                      const SlCliDbMigrationConfig* config, char* buffer,
+                                      size_t capacity)
+{
+    if (provider != NULL && !sl_cli_span_empty(provider->config_key)) {
+        return sl_db_config_key_env_name(buffer, capacity, provider->config_key);
+    }
+    if (config == NULL) {
+        return false;
+    }
+    return sl_db_default_connection_env_name(buffer, capacity, config->provider_kind,
+                                             config->provider);
+}
+
+static const char* sl_db_connection_string_from_env(const SlCliProvider* provider,
+                                                    const SlCliDbMigrationConfig* config,
+                                                    char* env_name, size_t env_name_capacity)
+{
+    const char* value = NULL;
+
+    if (!sl_db_connection_env_name(provider, config, env_name, env_name_capacity)) {
+        sl_cli_write_cstr(stderr, "sloppy db: connection-string environment name is too long\n");
+        return NULL;
+    }
+    value = sl_run_getenv(env_name);
+    if (value == NULL || value[0] == '\0') {
+        sl_cli_write_error_with_value(
+            "sloppy db: connection string environment variable is not set: ", env_name, "\n");
+        return NULL;
+    }
+    return value;
 }
 
 static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrationConfig* config,
@@ -232,6 +377,7 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
     unsigned char arena_storage[65536U];
     SlArena arena = {0};
     SlFsDirectoryList list = {0};
+    unsigned char file_storage[SL_CLI_FILE_MAX_BYTES];
     char relative_dir[SL_RUN_PATH_MAX_BYTES];
     char directory[SL_RUN_PATH_MAX_BYTES];
     SlStatus status;
@@ -257,7 +403,6 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
         return 1;
     }
     for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
-        unsigned char file_storage[SL_CLI_FILE_MAX_BYTES];
         SlBytes bytes = {0};
         SlCliDbMigrationFile file = {0};
         if (!sl_package_migration_entry_is_sql_file(&list.entries[entry_index])) {
@@ -405,13 +550,215 @@ static int sl_db_apply_file(SlArena* arena, SlSqliteConnection* connection,
     return 0;
 }
 
+static int sl_db_load_applied_postgres(SlArena* arena, SlPostgresConnection* connection,
+                                       SlCliDbMigrationFile* files, size_t file_count)
+{
+    SlPostgresResult result = {0};
+    SlPostgresExecResult exec_result = {0};
+    SlStatus status;
+
+    status = sl_postgres_exec(
+        arena, connection,
+        sl_str_from_cstr("create table if not exists _sloppy_migrations (id bigint generated by "
+                         "default as identity primary key, name text not null unique, hash text "
+                         "not null, appliedAt text not null)"),
+        NULL, 0U, &exec_result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to ensure PostgreSQL migration table\n");
+        return 1;
+    }
+    status =
+        sl_postgres_query(arena, connection,
+                          sl_str_from_cstr("select name, hash from _sloppy_migrations order by id"),
+                          NULL, 0U, NULL, &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to read PostgreSQL migration metadata\n");
+        return 1;
+    }
+    for (size_t row_index = 0U; row_index < result.row_count; row_index += 1U) {
+        SlPostgresRow* row = &result.rows[row_index];
+        if (result.column_count < 2U || row->values[0].kind != SL_POSTGRES_VALUE_TEXT ||
+            row->values[1].kind != SL_POSTGRES_VALUE_TEXT)
+        {
+            continue;
+        }
+        for (size_t file_index = 0U; file_index < file_count; file_index += 1U) {
+            if (sl_str_equal(row->values[0].value.text, sl_str_from_cstr(files[file_index].name))) {
+                files[file_index].applied = true;
+                files[file_index].changed = !sl_str_equal(row->values[1].value.text,
+                                                          sl_str_from_cstr(files[file_index].hash));
+            }
+        }
+    }
+    return 0;
+}
+
+static int sl_db_apply_file_postgres(SlArena* arena, SlPostgresConnection* connection,
+                                     const SlCliDbMigrationFile* file)
+{
+    unsigned char file_storage[SL_CLI_FILE_MAX_BYTES];
+    SlBytes bytes = {0};
+    SlPostgresTransaction tx = {0};
+    SlPostgresExecResult result = {0};
+    SlPostgresParam params[2] = {0};
+    SlStatus status;
+
+    if (sl_read_file_with_messages(
+            file->path, file_storage, sizeof(file_storage), &bytes,
+            "sloppy db: migration not found: ", "sloppy db: migration is empty or too large: ",
+            "sloppy db: failed to read migration: ") != 0)
+    {
+        return 1;
+    }
+    status = sl_postgres_transaction_begin(arena, connection, &tx, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to begin PostgreSQL migration transaction\n");
+        return 1;
+    }
+    status = sl_postgres_transaction_exec_batch(
+        arena, &tx, sl_str_from_parts((const char*)bytes.ptr, bytes.length), &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_postgres_transaction_rollback(arena, &tx, NULL);
+        sl_cli_write_error_with_value(
+            "sloppy db: PostgreSQL migration failed and was rolled back: ", file->name, "\n");
+        return 1;
+    }
+    params[0].kind = SL_POSTGRES_PARAM_TEXT;
+    params[0].value.text = sl_str_from_cstr(file->name);
+    params[1].kind = SL_POSTGRES_PARAM_TEXT;
+    params[1].value.text = sl_str_from_cstr(file->hash);
+    status = sl_postgres_transaction_exec(
+        arena, &tx,
+        sl_str_from_cstr("insert into _sloppy_migrations (name, hash, appliedAt) values ($1, $2, "
+                         "to_char(clock_timestamp() at time zone 'UTC', "
+                         "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'))"),
+        params, 2U, &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_postgres_transaction_rollback(arena, &tx, NULL);
+        sl_cli_write_error_with_value(
+            "sloppy db: failed to record PostgreSQL migration: ", file->name, "\n");
+        return 1;
+    }
+    status = sl_postgres_transaction_commit(arena, &tx, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value(
+            "sloppy db: failed to commit PostgreSQL migration: ", file->name, "\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int sl_db_load_applied_sqlserver(SlArena* arena, SlSqlServerConnection* connection,
+                                        SlCliDbMigrationFile* files, size_t file_count)
+{
+    SlSqlServerResult result = {0};
+    SlSqlServerExecResult exec_result = {0};
+    SlStatus status;
+
+    status = sl_sqlserver_exec(
+        arena, connection,
+        sl_str_from_cstr("if object_id(N'dbo._sloppy_migrations', N'U') is null create table "
+                         "dbo._sloppy_migrations (id bigint identity(1,1) primary key, name "
+                         "nvarchar(450) not null unique, hash nvarchar(64) not null, appliedAt "
+                         "nvarchar(64) not null)"),
+        NULL, 0U, &exec_result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to ensure SQL Server migration table\n");
+        return 1;
+    }
+    status = sl_sqlserver_query(
+        arena, connection,
+        sl_str_from_cstr("select name, hash from dbo._sloppy_migrations order by id"), NULL, 0U,
+        NULL, &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to read SQL Server migration metadata\n");
+        return 1;
+    }
+    for (size_t row_index = 0U; row_index < result.row_count; row_index += 1U) {
+        SlSqlServerRow* row = &result.rows[row_index];
+        if (result.column_count < 2U || row->values[0].kind != SL_SQLSERVER_VALUE_TEXT ||
+            row->values[1].kind != SL_SQLSERVER_VALUE_TEXT)
+        {
+            continue;
+        }
+        for (size_t file_index = 0U; file_index < file_count; file_index += 1U) {
+            if (sl_str_equal(row->values[0].value.text, sl_str_from_cstr(files[file_index].name))) {
+                files[file_index].applied = true;
+                files[file_index].changed = !sl_str_equal(row->values[1].value.text,
+                                                          sl_str_from_cstr(files[file_index].hash));
+            }
+        }
+    }
+    return 0;
+}
+
+static int sl_db_apply_file_sqlserver(SlArena* arena, SlSqlServerConnection* connection,
+                                      const SlCliDbMigrationFile* file)
+{
+    unsigned char file_storage[SL_CLI_FILE_MAX_BYTES];
+    SlBytes bytes = {0};
+    SlSqlServerTransaction tx = {0};
+    SlSqlServerExecResult result = {0};
+    SlSqlServerParam params[2] = {0};
+    SlStatus status;
+
+    if (sl_read_file_with_messages(
+            file->path, file_storage, sizeof(file_storage), &bytes,
+            "sloppy db: migration not found: ", "sloppy db: migration is empty or too large: ",
+            "sloppy db: failed to read migration: ") != 0)
+    {
+        return 1;
+    }
+    status = sl_sqlserver_transaction_begin(arena, connection, &tx, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy db: failed to begin SQL Server migration transaction\n");
+        return 1;
+    }
+    status = sl_sqlserver_transaction_exec_batch(
+        arena, &tx, sl_str_from_parts((const char*)bytes.ptr, bytes.length), &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_sqlserver_transaction_rollback(arena, &tx, NULL);
+        sl_cli_write_error_with_value(
+            "sloppy db: SQL Server migration failed and was rolled back: ", file->name, "\n");
+        return 1;
+    }
+    params[0].kind = SL_SQLSERVER_PARAM_TEXT;
+    params[0].value.text = sl_str_from_cstr(file->name);
+    params[1].kind = SL_SQLSERVER_PARAM_TEXT;
+    params[1].value.text = sl_str_from_cstr(file->hash);
+    status = sl_sqlserver_transaction_exec(
+        arena, &tx,
+        sl_str_from_cstr("insert into dbo._sloppy_migrations (name, hash, appliedAt) values (?, ?, "
+                         "convert(nvarchar(64), sysutcdatetime(), 127) + N'Z')"),
+        params, 2U, &result, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_sqlserver_transaction_rollback(arena, &tx, NULL);
+        sl_cli_write_error_with_value(
+            "sloppy db: failed to record SQL Server migration: ", file->name, "\n");
+        return 1;
+    }
+    status = sl_sqlserver_transaction_commit(arena, &tx, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value(
+            "sloppy db: failed to commit SQL Server migration: ", file->name, "\n");
+        return 1;
+    }
+    return 0;
+}
+
 static void sl_db_emit_status(const SlCliOptions* options, const SlCliDbMigrationFile* files,
                               size_t count, bool changed)
 {
+    bool pending = false;
+    for (size_t index = 0U; index < count; index += 1U) {
+        pending = pending || (!files[index].applied && !files[index].changed);
+    }
     if (options->format == SL_CLI_FORMAT_JSON) {
         printf("{\"provider\":");
         sl_cli_json_escape(stdout, sl_cli_span_cstr(options->db_provider));
-        printf(",\"status\":\"%s\",\"migrations\":[", changed ? "changed" : "ok");
+        printf(",\"status\":\"%s\",\"migrations\":[", changed   ? "changed"
+                                                      : pending ? "pending"
+                                                                : "current");
         for (size_t index = 0U; index < count; index += 1U) {
             printf("%s{\"name\":", index == 0U ? "" : ",");
             sl_cli_json_escape(stdout, sl_cli_span_cstr(files[index].name));
@@ -446,8 +793,10 @@ static int sl_cli_command_db(const SlCliOptions* options)
     SlCliDbMigrationFile files[128U] = {0};
     size_t file_count = 0U;
     const SlCliProvider* provider = NULL;
-    SlSqliteConnection connection = {0};
-    SlSqliteOpenOptions open_options = {0};
+    SlCliDbProviderKind provider_kind = SL_CLI_DB_PROVIDER_UNSUPPORTED;
+    SlSqliteConnection sqlite_connection = {0};
+    SlPostgresConnection postgres_connection = {0};
+    SlSqlServerConnection sqlserver_connection = {0};
     unsigned char arena_storage[SL_CLI_ARENA_BYTES];
     SlArena arena = {0};
     bool changed = false;
@@ -473,27 +822,25 @@ static int sl_cli_command_db(const SlCliOptions* options)
         yyjson_doc_free(doc);
         return 1;
     }
-    if (!sl_cli_span_equal_cstr(provider->provider_kind, "sqlite") &&
-        !sl_cli_span_equal_cstr(provider->provider, "sqlite"))
-    {
-        sl_cli_write_cstr(stderr,
-                          "sloppy db: migrations currently execute only SQLite providers\n");
-        yyjson_doc_free(doc);
-        return 1;
-    }
-    if (sl_cli_span_empty(provider->database)) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy db: SQLite provider database path is missing from Plan\n");
-        yyjson_doc_free(doc);
-        return 1;
-    }
     if (!sl_db_load_migration_config(options, base_path, package_target, &migration_config)) {
         yyjson_doc_free(doc);
         return 1;
     }
-    if (strcmp(migration_config.provider_kind, "sqlite") != 0) {
+    provider_kind = sl_db_provider_kind(provider, &migration_config);
+    if (provider_kind == SL_CLI_DB_PROVIDER_UNSUPPORTED) {
+        sl_cli_write_cstr(stderr, "sloppy db: unsupported database provider for migrations\n");
+        yyjson_doc_free(doc);
+        return 1;
+    }
+    if (strcmp(migration_config.provider_kind, sl_db_provider_kind_name(provider_kind)) != 0) {
         sl_cli_write_cstr(stderr,
-                          "sloppy db: migrations currently execute only SQLite providers\n");
+                          "sloppy db: migration config provider does not match Plan provider\n");
+        yyjson_doc_free(doc);
+        return 1;
+    }
+    if (provider_kind == SL_CLI_DB_PROVIDER_SQLITE && sl_cli_span_empty(provider->database)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy db: SQLite provider database path is missing from Plan\n");
         yyjson_doc_free(doc);
         return 1;
     }
@@ -507,14 +854,58 @@ static int sl_cli_command_db(const SlCliOptions* options)
         yyjson_doc_free(doc);
         return 1;
     }
-    open_options.path = sl_cli_span_str(provider->database);
-    open_options.access = SL_SQLITE_ACCESS_READWRITE;
-    if (!sl_status_is_ok(sl_sqlite_open(&arena, &open_options, &connection, NULL))) {
-        sl_cli_write_cstr(stderr, "sloppy db: failed to open SQLite database\n");
-        yyjson_doc_free(doc);
-        return 1;
+
+    if (provider_kind == SL_CLI_DB_PROVIDER_SQLITE) {
+        SlSqliteOpenOptions open_options = {0};
+        open_options.path = sl_cli_span_str(provider->database);
+        open_options.access = SL_SQLITE_ACCESS_READWRITE;
+        if (!sl_status_is_ok(sl_sqlite_open(&arena, &open_options, &sqlite_connection, NULL))) {
+            sl_cli_write_cstr(stderr, "sloppy db: failed to open SQLite database\n");
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        result = sl_db_load_applied(&arena, &sqlite_connection, files, file_count);
     }
-    result = sl_db_load_applied(&arena, &connection, files, file_count);
+    else if (provider_kind == SL_CLI_DB_PROVIDER_POSTGRES) {
+        char env_name[SL_RUN_PATH_MAX_BYTES];
+        const char* connection_string = sl_db_connection_string_from_env(
+            provider, &migration_config, env_name, sizeof(env_name));
+        SlPostgresOpenOptions open_options = {0};
+        if (connection_string == NULL) {
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        open_options =
+            sl_postgres_open_options_connection_string(sl_str_from_cstr(connection_string));
+        open_options.access = SL_POSTGRES_ACCESS_READWRITE;
+        if (!sl_status_is_ok(sl_postgres_open(&arena, &open_options, &postgres_connection, NULL))) {
+            sl_cli_write_cstr(stderr, "sloppy db: failed to open PostgreSQL database\n");
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        result = sl_db_load_applied_postgres(&arena, &postgres_connection, files, file_count);
+    }
+    else if (provider_kind == SL_CLI_DB_PROVIDER_SQLSERVER) {
+        char env_name[SL_RUN_PATH_MAX_BYTES];
+        const char* connection_string = sl_db_connection_string_from_env(
+            provider, &migration_config, env_name, sizeof(env_name));
+        SlSqlServerOpenOptions open_options = {0};
+        if (connection_string == NULL) {
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        open_options =
+            sl_sqlserver_open_options_connection_string(sl_str_from_cstr(connection_string));
+        open_options.access = SL_SQLSERVER_ACCESS_READWRITE;
+        if (!sl_status_is_ok(sl_sqlserver_open(&arena, &open_options, &sqlserver_connection, NULL)))
+        {
+            sl_cli_write_cstr(stderr, "sloppy db: failed to open SQL Server database\n");
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        result = sl_db_load_applied_sqlserver(&arena, &sqlserver_connection, files, file_count);
+    }
+
     if (result == 0) {
         for (size_t index = 0U; index < file_count; index += 1U) {
             changed = changed || files[index].changed;
@@ -530,7 +921,21 @@ static int sl_cli_command_db(const SlCliOptions* options)
             if (files[index].applied) {
                 continue;
             }
-            if (sl_db_apply_file(&arena, &connection, &files[index]) != 0) {
+            if (provider_kind == SL_CLI_DB_PROVIDER_SQLITE &&
+                sl_db_apply_file(&arena, &sqlite_connection, &files[index]) != 0)
+            {
+                result = 1;
+                break;
+            }
+            if (provider_kind == SL_CLI_DB_PROVIDER_POSTGRES &&
+                sl_db_apply_file_postgres(&arena, &postgres_connection, &files[index]) != 0)
+            {
+                result = 1;
+                break;
+            }
+            if (provider_kind == SL_CLI_DB_PROVIDER_SQLSERVER &&
+                sl_db_apply_file_sqlserver(&arena, &sqlserver_connection, &files[index]) != 0)
+            {
                 result = 1;
                 break;
             }
@@ -540,7 +945,19 @@ static int sl_cli_command_db(const SlCliOptions* options)
     if (result == 0) {
         sl_db_emit_status(options, files, file_count, false);
     }
-    if (!sl_status_is_ok(sl_sqlite_close(&connection)) && result == 0) {
+    if (sqlite_connection.open && !sl_status_is_ok(sl_sqlite_close(&sqlite_connection)) &&
+        result == 0)
+    {
+        result = 1;
+    }
+    if (postgres_connection.open && !sl_status_is_ok(sl_postgres_close(&postgres_connection)) &&
+        result == 0)
+    {
+        result = 1;
+    }
+    if (sqlserver_connection.open && !sl_status_is_ok(sl_sqlserver_close(&sqlserver_connection)) &&
+        result == 0)
+    {
         result = 1;
     }
     yyjson_doc_free(doc);

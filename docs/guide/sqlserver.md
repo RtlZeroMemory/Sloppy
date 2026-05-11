@@ -34,7 +34,25 @@ tests do not start or require SQL Server.
 
 ## Migrations
 
-`sloppy.json` may record SQL Server migration metadata for package parity, but
-`sloppy db migrate` does not execute SQL Server migrations yet. Do not report a
-SQL Server migration as applied unless a live provider-specific migration path
-actually ran.
+`sloppy.json` can record SQL Server migrations:
+
+```json
+{
+  "migrations": {
+    "main": {
+      "provider": "sqlserver",
+      "path": "migrations/*.sql"
+    }
+  }
+}
+```
+
+`sloppy db status` and `sloppy db migrate` execute those migrations against a
+live SQL Server connection. For generated provider metadata, set:
+
+```sh
+Sloppy__Providers__sqlserver__main__connectionString=Driver={ODBC Driver 18 for SQL Server};...
+```
+
+Each migration runs in its own SQL Server transaction and is recorded in
+`dbo._sloppy_migrations`.
