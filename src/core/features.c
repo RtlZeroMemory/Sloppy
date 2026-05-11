@@ -573,6 +573,10 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("node.compat.crypto"), SL_FEATURE_STR("node:crypto compatibility shim"),
          SL_FEATURE_STR("sloppy/node/crypto"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
          false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_FFI, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.ffi"), SL_FEATURE_STR("native FFI stdlib"),
+         SL_FEATURE_STR("sloppy/ffi"), SL_FEATURE_STR("__sloppy.ffi"), SL_FEATURE_DEPS_FFI,
+         SL_FEATURE_FFI_AVAILABLE, true, true},
         {SL_RUNTIME_FEATURE_NODE_COMPAT_ASSERT, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("node.compat.assert"), SL_FEATURE_STR("node:assert compatibility shim"),
          SL_FEATURE_STR("sloppy/node/assert"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
@@ -580,11 +584,7 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
         {SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("node.compat.stream"), SL_FEATURE_STR("node:stream compatibility shim"),
          SL_FEATURE_STR("sloppy/node/stream"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
-         false, true},
-        {SL_RUNTIME_FEATURE_STDLIB_FFI, SL_RUNTIME_FEATURE_KIND_STDLIB,
-         SL_FEATURE_STR("stdlib.ffi"), SL_FEATURE_STR("native FFI stdlib"),
-         SL_FEATURE_STR("sloppy/ffi"), SL_FEATURE_STR("__sloppy.ffi"), SL_FEATURE_DEPS_FFI,
-         SL_FEATURE_FFI_AVAILABLE, true, true}};
+         false, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

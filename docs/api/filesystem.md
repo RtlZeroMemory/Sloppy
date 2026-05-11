@@ -232,7 +232,7 @@ Working with examples in the repo:
 
 ## Boundaries
 
-- Node `fs` compatibility is partial and lives in explicit compatibility
+- Node `fs` compatibility is experimental and partial. It lives in explicit compatibility
   modules. `node:fs/promises` maps a practical async subset to this `sloppy/fs`
   surface; sync APIs, watchers, and full Node option parity are not provided.
 - No `Buffer`. Bytes are `Uint8Array`.

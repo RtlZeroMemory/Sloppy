@@ -54,7 +54,17 @@ function matchExpected(error, expected) {
         return true;
     }
     if (typeof expected === "function") {
-        return error instanceof expected || expected(error) === true;
+        try {
+            if (error instanceof expected) {
+                return true;
+            }
+        } catch {
+        }
+        try {
+            return expected(error) === true;
+        } catch {
+            return false;
+        }
     }
     if (expected instanceof RegExp) {
         return expected.test(String(error?.message ?? error));
@@ -65,6 +75,15 @@ function matchExpected(error, expected) {
     return false;
 }
 
+function mismatch(error, expected, operator, message) {
+    fail({
+        actual: error,
+        expected,
+        operator,
+        message: message ?? `${operator} validation failed.`,
+    });
+}
+
 function throws(fn, expected = undefined, message = undefined) {
     if (typeof fn !== "function") {
         throw new TypeError("assert.throws expects a function.");
@@ -73,7 +92,7 @@ function throws(fn, expected = undefined, message = undefined) {
         fn();
     } catch (error) {
         if (!matchExpected(error, expected)) {
-            throw error;
+            mismatch(error, expected, "throws", message);
         }
         return error;
     }
@@ -85,7 +104,7 @@ async function rejects(fn, expected = undefined, message = undefined) {
         await (typeof fn === "function" ? fn() : fn);
     } catch (error) {
         if (!matchExpected(error, expected)) {
-            throw error;
+            mismatch(error, expected, "rejects", message);
         }
         return error;
     }

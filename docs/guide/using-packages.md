@@ -25,8 +25,8 @@ also fail with clear diagnostics.
 
 The current Node compatibility layer covers practical subsets of common
 pure-JavaScript package assumptions: explicit `node:process`, `node:buffer`,
-`node:fs/promises`, `node:assert`, `node:stream`, `node:crypto`, path/events,
-and related utility shims. See the
+`node:fs/promises`, `node:assert`, `node:stream`, `node:stream/promises`,
+`node:crypto`, path/events, and related utility shims. See the
 [Node compatibility reference](../reference/node-compatibility.md) for exact
 members and known differences from Node.
 

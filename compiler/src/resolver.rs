@@ -172,6 +172,7 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
                 | "assert"
                 | "assert/strict"
                 | "stream"
+                | "stream/promises"
                 | "timers"
         ) =>
         {
@@ -199,6 +200,7 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
         "node:crypto" => ("partial", Some("sloppy/node/crypto"), Some("crypto")),
         "node:assert" | "node:assert/strict" => ("partial", Some("sloppy/node/assert"), None),
         "node:stream" => ("partial", Some("sloppy/node/stream"), None),
+        "node:stream/promises" => ("partial", Some("sloppy/node/stream/promises"), None),
         _ => ("unsupported", None, None),
     };
     Some(NodeBuiltinResolution {

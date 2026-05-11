@@ -25,6 +25,7 @@ set(required_bootstrap_assets
     node/process.js
     node/querystring.js
     node/stream.js
+    node/stream/promises.js
     node/timers.js
     node/url.js
     node/util.js

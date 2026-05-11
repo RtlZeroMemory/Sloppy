@@ -70,11 +70,15 @@ import { Buffer } from "node:buffer";
 
 export function checkProcessBuffer() {
   process.exitCode = 0;
+  process.env.SLOPPY_NODE_COMPAT_FIXTURE = "ok";
   const euro = Buffer.from("e282ac", "hex").toString("utf8");
   const joined = Buffer.concat([Buffer.from("sl"), Buffer.from("oppy")]).toString();
   const encoded = Buffer.from("c2VhbGVk", "base64").toString("utf8");
-  const slice = Buffer.from("prefix").subarray(0, 3).toString();
-  return `${process.platform}:${process.arch}:${typeof process.cwd()}:${process.version}:${process.exitCode}:${euro}:${joined}:${encoded}:${slice}`;
+  const aliasSource = Buffer.from("prefix");
+  const alias = aliasSource.subarray(0, 3);
+  alias[0] = 80;
+  const slice = `${alias.toString()}:${aliasSource.toString()}`;
+  return `${process.platform}:${process.arch}:${typeof process.cwd()}:${process.version}:${process.exitCode}:${process.env.SLOPPY_NODE_COMPAT_FIXTURE}:${"SLOPPY_NODE_COMPAT_FIXTURE" in process.env}:${euro}:${joined}:${encoded}:${slice}`;
 }
 ]=])
 
@@ -98,8 +102,14 @@ export async function checkFsPromises() {
   const text = await readFile(file, "utf8");
   const names = await readdir(dir);
   const info = await stat(file);
+  let rejected = false;
+  try {
+    await readFile(file, "latin1");
+  } catch {
+    rejected = true;
+  }
   await rm(dir, { recursive: true });
-  return `${text}:${names.includes("message.txt")}:${info.exists === true}`;
+  return `${text}:${names.includes("message.txt")}:${info.isFile() === true}:${rejected}`;
 }
 ]=])
 
@@ -119,6 +129,8 @@ export async function checkAssert() {
   assert.strictEqual(2, 2);
   assert.deepStrictEqual({ b: [2], a: 1 }, { a: 1, b: [2] });
   assert.throws(() => assert.ok(false), assert.AssertionError);
+  assert.throws(() => assert.throws(() => { throw new Error("wrong"); }, TypeError), assert.AssertionError);
+  assert.throws(() => assert.throws(() => { throw new Error("wrong"); }, () => false), assert.AssertionError);
   await assert.rejects(Promise.reject(new Error("boom")), /boom/);
   return "assert";
 }
@@ -132,7 +144,8 @@ write_package_json("package-stream-basic" [=[{
 }
 ]=])
 file(WRITE "${project_dir}/fixtures/package-stream-basic/index.js" [=[
-import { PassThrough, Readable, Writable, pipeline } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export async function checkStreamBasic() {
   const pass = new PassThrough();
@@ -143,7 +156,7 @@ export async function checkStreamBasic() {
     seen.push(chunk);
   }
   const piped = [];
-  await pipeline(Readable.from(["d"]), new Writable({ write(chunk) { piped.push(chunk); } }));
+  await pipeline(Readable.from(["d"]), new Writable({ write(chunk, _encoding, callback) { Promise.resolve().then(() => { piped.push(chunk); callback(); }); } }));
   return `${seen.join("")}:${piped.join("")}`;
 }
 ]=])
@@ -160,7 +173,7 @@ import crypto from "node:crypto";
 
 export async function checkCryptoBasic() {
   const digest = await crypto.createHash("sha256").update("abc").digest("hex");
-  const hmac = await crypto.createHmac("sha256", "key").update("abc").digest("hex");
+  const hmac = await crypto.createHmac("sha256", new Uint8Array([107, 101, 121])).update(new Uint8Array([97, 98, 99])).digest("hex");
   const random = crypto.randomBytes(8);
   const same = crypto.timingSafeEqual(random, random.slice(0));
   return `${digest.slice(0, 8)}:${hmac.length}:${same}`;
@@ -192,7 +205,7 @@ write_package_json("package-mixed-esm-cjs" [=[{
 }
 ]=])
 file(WRITE "${project_dir}/fixtures/package-mixed-esm-cjs/common.cjs" [=[
-module.exports = { value: "cjs-default" };
+module.exports = { value: "cjs-default", default: "shadow-default" };
 ]=])
 file(WRITE "${project_dir}/fixtures/package-mixed-esm-cjs/index.js" [=[
 import common from "./common.cjs";
@@ -299,7 +312,7 @@ endfunction()
 
 run_cli_expect_success("node compatibility package suite build" "${project_dir}" "" build)
 run_cli_expect_success("node compatibility package suite deps" "${project_dir}" "\"nodeBuiltins\"" deps .sloppy --format json)
-foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs/promises node:assert node:stream node:crypto)
+foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs/promises node:assert node:stream node:stream/promises node:crypto)
     if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
         message(FATAL_ERROR "node compatibility dependency graph did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}")
     endif()
@@ -317,7 +330,7 @@ endif()
 
 if(SLOPPY_EXPECT_RUN_SUCCESS)
     run_cli_expect_success("node compatibility package suite run" "${project_dir}" "\"assert\"" run .sloppy)
-    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true" cjs-default subpath sloppy sealed "abc:d")
+    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true:true" cjs-default subpath sloppy sealed "ok:true" "Pre:Prefix" "abc:d")
         if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
             message(FATAL_ERROR "node compatibility run did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
         endif()

@@ -1203,10 +1203,11 @@ fn program_mode_resolves_expanded_node_compat_shims() {
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import crypto from "node:crypto";
 export function main() {
   assert.ok(Buffer.isBuffer(Buffer.concat([Buffer.from("a"), Buffer.from("b")])));
-  return `${process.platform}:${typeof Readable.from}:${typeof crypto.createHash}`;
+  return `${process.platform}:${typeof Readable.from}:${typeof pipeline}:${typeof crypto.createHash}`;
 }"#,
     )
     .expect("entry should write");
@@ -1240,6 +1241,7 @@ export function main() {
         "sloppy/node/events",
         "sloppy/node/process",
         "sloppy/node/stream",
+        "sloppy/node/stream/promises",
     ] {
         assert!(
             app_js.contains(module_id),

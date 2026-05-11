@@ -104,7 +104,9 @@ class Buffer extends Uint8Array {
     }
 
     subarray(start = 0, end = undefined) {
-        return new Buffer(super.subarray(start, end));
+        const view = super.subarray(start, end);
+        Object.setPrototypeOf(view, Buffer.prototype);
+        return view;
     }
 
     slice(start = 0, end = undefined) {

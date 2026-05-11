@@ -30,10 +30,11 @@ packages unrestricted access to Node internals.
 | `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Async helpers and `promises` backed by `sloppy/fs`. Watchers and sync Node APIs are not implemented. |
 | `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | `readFile`, `writeFile`, `appendFile`, `stat`, `mkdir`, `readdir`, `rm`, `unlink`, and `access` backed by `sloppy/fs`. |
 | `node:os`, `os` | `partial` | `sloppy/node/os` | Minimal platform/environment helpers backed by `sloppy/os` where possible. |
-| `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only: `platform`, `arch`, read-only `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, and `exitCode`. Sloppy does not install a global Node `process` object. |
+| `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only: `platform`, `arch`, overlay-writable `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, and `exitCode`. Sloppy does not install a global Node `process` object. |
 | `node:crypto`, `crypto` | `partial` | `sloppy/node/crypto` | `randomBytes`, `randomUUID`, SHA-2 `createHash`, SHA-256 `createHmac`, and `timingSafeEqual` backed by `sloppy/crypto`. Hash/HMAC digest helpers are Promise-shaped because the Sloppy crypto API is async. |
 | `node:assert`, `assert`, `node:assert/strict`, `assert/strict` | `partial` | `sloppy/node/assert` | `ok`, `equal`, `strictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `rejects`, and `AssertionError`. |
 | `node:stream`, `stream` | `partial` | `sloppy/node/stream` | Small EventEmitter-based subset: `Readable.from`, minimal `Writable`, `PassThrough`, and `pipeline`. No full Node stream backpressure or transform contract. |
+| `node:stream/promises`, `stream/promises` | `partial` | `sloppy/node/stream/promises` | Promise-shaped `pipeline` from the small `node:stream` compatibility subset. |
 
 Unsupported families include `node:http`, `node:https`, `node:http2`,
 `node:net`, `node:tls`, `node:dns`, `node:worker_threads`,
