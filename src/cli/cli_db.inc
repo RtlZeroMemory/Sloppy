@@ -970,7 +970,7 @@ static int sl_cli_command_db(const SlCliOptions* options)
     if (provider_kind == SL_CLI_DB_PROVIDER_SQLITE) {
         SlSqliteOpenOptions open_options = {0};
         char sqlite_database_path[SL_RUN_PATH_MAX_BYTES];
-        const char* sqlite_database_base_path = package_target ? "." : base_path;
+        const char* sqlite_database_base_path = base_path;
         if (sl_cli_span_equal_cstr(provider->database, ":memory:") ||
             sl_run_path_span_is_absolute(provider->database))
         {

@@ -111,6 +111,18 @@ static bool sl_sloppyrc_entry_path_is_safe(const char* path)
     return true;
 }
 
+static bool sl_sloppyrc_migration_path_is_sql_glob(const char* path)
+{
+    SlStr text = {0};
+
+    if (path == NULL) {
+        return false;
+    }
+    text = sl_str_from_cstr(path);
+    return sl_str_ends_with(text, SL_STR_LITERAL("/*.sql")) ||
+           sl_str_ends_with(text, SL_STR_LITERAL("\\*.sql"));
+}
+
 static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t capacity,
                                  SlBytes* out, const char* command_name)
 {
@@ -525,12 +537,13 @@ static int sl_sloppyrc_read_migrations(yyjson_val* root, SlSloppyRunConfig* out,
                                           provider_value) ||
             !sl_sloppyrc_provider_supported(sl_str_from_cstr(migration->provider)) ||
             !sl_sloppyrc_copy_json_string(migration->path, sizeof(migration->path), path_value) ||
-            !sl_sloppyrc_entry_path_is_safe(migration->path))
+            !sl_sloppyrc_entry_path_is_safe(migration->path) ||
+            !sl_sloppyrc_migration_path_is_sql_glob(migration->path))
         {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: migrations provider must be sqlite, postgres, or sqlserver "
-                "and path must be project-relative\n");
+                "and path must be a project-relative directory glob ending in *.sql\n");
             return 1;
         }
         out->migration_count += 1U;
