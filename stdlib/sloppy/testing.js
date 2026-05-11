@@ -448,6 +448,8 @@ function parseMultipart(bytes, contentType) {
     if (boundary === undefined || boundary.length === 0) {
         throw new TypeError("Sloppy test host multipart boundary is required.");
     }
+    // Test-host multipart parsing round-trips file parts through UTF-8 text.
+    // Do not use it to assert arbitrary binary upload byte fidelity.
     const text = Text.utf8.decode(bytes);
     const fields = [];
     const files = [];

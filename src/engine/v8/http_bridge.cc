@@ -1861,11 +1861,14 @@ bool http_v8_parse_urlencoded_form(v8::Isolate* isolate, v8::Local<v8::Context> 
                                    const unsigned char* bytes, size_t length,
                                    v8::Local<v8::Object>* out)
 {
-    std::string body(reinterpret_cast<const char*>(bytes), length);
     v8::Local<v8::Array> fields = v8::Array::New(isolate);
     v8::Local<v8::Array> files = v8::Array::New(isolate, 0);
     uint32_t count = 0U;
     size_t start = 0U;
+    if (length == 0U) {
+        return http_v8_make_form_object(isolate, context, fields, files, out);
+    }
+    std::string body(reinterpret_cast<const char*>(bytes), length);
     while (start <= body.size()) {
         size_t end = body.find('&', start);
         if (end == std::string::npos) {
@@ -1941,6 +1944,57 @@ bool http_v8_header_param(std::string_view value, std::string_view key, std::str
     return !out->empty();
 }
 
+std::string_view http_v8_trim_ascii(std::string_view value);
+
+bool http_v8_ascii_equal_ci(std::string_view left, std::string_view right)
+{
+    if (left.size() != right.size()) {
+        return false;
+    }
+    for (size_t index = 0U; index < left.size(); index += 1U) {
+        char left_ch = left[index];
+        char right_ch = right[index];
+        if (left_ch >= 'A' && left_ch <= 'Z') {
+            left_ch = static_cast<char>(left_ch - 'A' + 'a');
+        }
+        if (right_ch >= 'A' && right_ch <= 'Z') {
+            right_ch = static_cast<char>(right_ch - 'A' + 'a');
+        }
+        if (left_ch != right_ch) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool http_v8_multipart_header(std::string_view headers, std::string_view name,
+                              std::string_view* out)
+{
+    size_t start = 0U;
+    if (out == nullptr) {
+        return false;
+    }
+    while (start <= headers.size()) {
+        size_t end = headers.find("\r\n", start);
+        if (end == std::string_view::npos) {
+            end = headers.size();
+        }
+        std::string_view line(headers.data() + start, end - start);
+        size_t colon = line.find(':');
+        if (colon != std::string_view::npos &&
+            http_v8_ascii_equal_ci(http_v8_trim_ascii(line.substr(0U, colon)), name))
+        {
+            *out = http_v8_trim_ascii(line.substr(colon + 1U));
+            return true;
+        }
+        if (end == headers.size()) {
+            break;
+        }
+        start = end + 2U;
+    }
+    return false;
+}
+
 bool http_v8_parse_multipart_form(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                   std::string_view content_type, const unsigned char* bytes,
                                   size_t length, v8::Local<v8::Object>* out)
@@ -1985,28 +2039,17 @@ bool http_v8_parse_multipart_form(v8::Isolate* isolate, v8::Local<v8::Context> c
         std::string name;
         std::string filename;
         std::string part_content_type = "application/octet-stream";
-        size_t disposition_pos = headers.find("Content-Disposition:");
-        size_t type_pos = headers.find("Content-Type:");
-        if (disposition_pos == std::string::npos) {
+        std::string_view disposition;
+        std::string_view content_type_header;
+        if (!http_v8_multipart_header(headers, "Content-Disposition", &disposition)) {
             return false;
         }
-        size_t disposition_end = headers.find("\r\n", disposition_pos);
-        std::string_view disposition(
-            headers.data() + disposition_pos,
-            (disposition_end == std::string::npos ? headers.size() : disposition_end) -
-                disposition_pos);
         if (!http_v8_header_param(disposition, "name=", &name)) {
             return false;
         }
         bool is_file = http_v8_header_param(disposition, "filename=", &filename);
-        if (type_pos != std::string::npos) {
-            size_t type_start = type_pos + sizeof("Content-Type:") - 1U;
-            size_t type_end = headers.find("\r\n", type_start);
-            part_content_type = headers.substr(
-                type_start, type_end == std::string::npos ? type_end : type_end - type_start);
-            while (!part_content_type.empty() && part_content_type.front() == ' ') {
-                part_content_type.erase(part_content_type.begin());
-            }
+        if (http_v8_multipart_header(headers, "Content-Type", &content_type_header)) {
+            part_content_type = std::string(content_type_header);
         }
         const unsigned char* part_bytes =
             reinterpret_cast<const unsigned char*>(body.data() + data_start);
@@ -3341,7 +3384,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         return false;
     }
     if (request_context->needs_body) {
-        if (request_context->request->body.length != 0U) {
+        if (request_context->request->body.length != 0U ||
+            request_context->body_kind != SL_HTTP_REQUEST_BODY_NONE)
+        {
             v8::Local<v8::Uint8Array> body_bytes;
             if (!http_v8_make_uint8_array(isolate, request_context->request->body, &body_bytes)) {
                 return false;

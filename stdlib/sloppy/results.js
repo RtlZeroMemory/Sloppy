@@ -139,6 +139,9 @@ function copySetCookies(options) {
     }
 
     return Object.freeze(setCookies.map((value) => {
+        if (typeof value !== "string") {
+            throw new TypeError("Sloppy Results setCookies entries must be strings.");
+        }
         assertHeaderValueSafe(value, "Set-Cookie");
         return value;
     }));
@@ -229,7 +232,11 @@ function createResult(kind, body, contentType, options, extra, fast) {
 }
 
 function encodeCookieValue(value) {
-    return encodeURIComponent(String(value));
+    try {
+        return encodeURIComponent(String(value));
+    } catch {
+        throw new TypeError("Sloppy Results cookie value must be safe.");
+    }
 }
 
 function normalizeSameSite(value) {
@@ -301,6 +308,13 @@ function buildSetCookie(name, value, options = undefined) {
 function withCookie(descriptor, name, value, options) {
     const existing = Array.isArray(descriptor.setCookies) ? descriptor.setCookies : [];
     const setCookies = Object.freeze([...existing, buildSetCookie(name, value, options)]);
+    const extra = {};
+    if (descriptor.location !== undefined) {
+        extra.location = descriptor.location;
+    }
+    if (descriptor.chunks !== undefined) {
+        extra.chunks = Object.freeze([...descriptor.chunks]);
+    }
     return createResult(
         descriptor.kind,
         descriptor.body,
@@ -310,7 +324,7 @@ function withCookie(descriptor, name, value, options) {
             headers: descriptor.headers,
             setCookies,
         },
-        descriptor.location === undefined ? undefined : { location: descriptor.location },
+        Object.keys(extra).length === 0 ? undefined : extra,
     );
 }
 

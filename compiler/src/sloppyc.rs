@@ -14628,8 +14628,10 @@ fn results_helper_is_supported(property: &str) -> bool {
             | "noContent"
             | "notFound"
             | "badRequest"
+            | "unauthorized"
             | "status"
             | "problem"
+            | "stream"
     )
 }
 
@@ -14647,7 +14649,10 @@ fn results_call_arguments_are_supported(
 
     let argument_count_supported = match property {
         "text" | "html" | "bytes" => matches!(call.arguments.len(), 1 | 2),
-        "json" | "ok" | "accepted" | "notFound" | "badRequest" => call.arguments.len() <= 2,
+        "json" | "ok" | "accepted" | "notFound" | "badRequest" | "unauthorized" => {
+            call.arguments.len() <= 2
+        }
+        "stream" => matches!(call.arguments.len(), 1 | 2),
         "created" | "status" => (1..=3).contains(&call.arguments.len()),
         "noContent" => call.arguments.is_empty(),
         "problem" => call.arguments.len() <= 2,
@@ -14665,10 +14670,28 @@ fn results_call_arguments_are_supported(
             });
     }
 
+    if property == "stream" {
+        return matches!(call.arguments.len(), 1 | 2)
+            && call
+                .arguments
+                .first()
+                .is_some_and(argument_is_stream_writer_callback)
+            && call.arguments.get(1).is_none_or(|argument| {
+                argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+            });
+    }
+
     argument_count_supported
         && call.arguments.iter().all(|argument| {
             argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
         })
+}
+
+fn argument_is_stream_writer_callback(argument: &Argument<'_>) -> bool {
+    matches!(
+        argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    )
 }
 
 fn argument_is_inline_bytes_value(argument: &Argument<'_>) -> bool {

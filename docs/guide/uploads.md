@@ -25,6 +25,13 @@ iterates `[name, value]` pairs in request order.
 You can smoke this through compiled artifacts:
 
 ```sh
+printf "email=ada@example.test" > form.txt
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /login
+```
+
+On Windows PowerShell:
+
+```powershell
 Set-Content -Path form.txt -Value "email=ada@example.test" -NoNewline
 sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /login
 ```
@@ -40,9 +47,14 @@ app.post("/avatars", async (ctx) => {
         return Results.badRequest({ error: "avatar required" });
     }
 
-    await file.saveTo(`uploads/${file.name}`);
-    return Results.created(`/avatars/${file.name}`, {
-        name: file.name,
+    const safeName = file.name
+        .replace(/[/\\]/g, "_")
+        .replace(/[^A-Za-z0-9._-]/g, "_")
+        .slice(0, 128) || "upload.bin";
+
+    await file.saveTo(`uploads/${safeName}`);
+    return Results.created(`/avatars/${safeName}`, {
+        name: safeName,
         contentType: file.contentType,
         size: file.size,
     });

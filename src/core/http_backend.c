@@ -363,15 +363,21 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    *out_kind = SL_HTTP_REQUEST_BODY_NONE;
-    if (content_length == 0U) {
-        return sl_status_ok();
-    }
     if (sl_str_is_empty(sl_http_backend_trim_ascii_space(content_type))) {
+        if (content_length == 0U) {
+            return sl_status_ok();
+        }
         return sl_http_backend_unsupported_media_diag(out_diag);
     }
 
     media_type = sl_http_backend_media_type(content_type);
+    if (content_length == 0U &&
+        !sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/x-www-form-urlencoded")) &&
+        !sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data")))
+    {
+        return sl_status_ok();
+    }
+
     if (sl_http_backend_media_type_json(media_type)) {
         *out_kind = SL_HTTP_REQUEST_BODY_JSON;
         return sl_status_ok();

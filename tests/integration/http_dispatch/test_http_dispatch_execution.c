@@ -217,11 +217,16 @@ static int dispatch_single_route_expect(
     status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table, &request,
                                            &result, &diag);
     if (sl_status_code(status) != expected_status) {
+        fprintf(stderr, "unexpected dispatch status: expected %d got %d diag=%d message='%.*s'\n",
+                (int)expected_status, (int)sl_status_code(status), (int)diag.code,
+                (int)diag.message.length, diag.message.ptr == NULL ? "" : diag.message.ptr);
         sl_engine_destroy(engine);
         return 2;
     }
 
     if (result.kind != expected_result_kind) {
+        fprintf(stderr, "unexpected result kind: expected %d got %d diag=%d\n",
+                (int)expected_result_kind, (int)result.kind, (int)diag.code);
         sl_engine_destroy(engine);
         return 3;
     }
@@ -234,6 +239,9 @@ static int dispatch_single_route_expect(
     if (expected_response_body != NULL &&
         expect_bytes_equal(result.response.body, expected_response_body) != 0)
     {
+        fprintf(stderr, "unexpected response body: expected '%s' got '%.*s'\n",
+                expected_response_body, (int)result.response.body.length,
+                result.response.body.ptr == NULL ? "" : (const char*)result.response.body.ptr);
         sl_engine_destroy(engine);
         return 5;
     }
@@ -485,15 +493,28 @@ static int test_form_urlencoded_body_reaches_v8_handler(void)
     return 0;
 }
 
+static int test_empty_form_urlencoded_body_has_no_fields(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /form HTTP/1.1\r\nHost: example\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 0\r\n\r\n",
+            SL_HTTP_METHOD_POST, "/form", 11U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"name\":null,\"repeated\":null,\"entries\":[]}", SL_DIAG_NONE) != 0)
+    {
+        return 66;
+    }
+    return 0;
+}
+
 static int test_multipart_body_file_reaches_v8_handler(void)
 {
     if (dispatch_single_route_expect(
             "POST /multipart HTTP/1.1\r\nHost: example\r\n"
             "Content-Type: multipart/form-data; boundary=BOUNDARY\r\n"
             "Content-Length: 194\r\n\r\n"
-            "--BOUNDARY\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\navatar\r\n"
-            "--BOUNDARY\r\nContent-Disposition: form-data; name=\"avatar\"; "
-            "filename=\"ada.txt\"\r\nContent-Type: text/plain\r\n\r\nAda\r\n--BOUNDARY--\r\n",
+            "--BOUNDARY\r\ncontent-disposition: form-data; name=\"title\"\r\n\r\navatar\r\n"
+            "--BOUNDARY\r\ncontent-disposition: form-data; name=\"avatar\"; "
+            "filename=\"ada.txt\"\r\ncontent-type: text/plain\r\n\r\nAda\r\n--BOUNDARY--\r\n",
             SL_HTTP_METHOD_POST, "/multipart", 12U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
             "{\"title\":\"avatar\",\"file\":{\"fieldName\":\"avatar\",\"name\":\"ada.txt\","
             "\"contentType\":\"text/plain\",\"size\":3,\"text\":\"Ada\",\"bytes\":[65,100,97]}}",
@@ -657,6 +678,11 @@ int main(void)
     }
 
     result = test_form_urlencoded_body_reaches_v8_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_empty_form_urlencoded_body_has_no_fields();
     if (result != 0) {
         return result;
     }

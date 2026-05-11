@@ -215,8 +215,8 @@ static void sl_cli_openapi_parameters(FILE* file, const SlCliRoute* route)
                  !sl_cli_span_empty(route->binding_names[index]))
         {
             sl_cli_openapi_emit_parameter(file, route->binding_names[index],
-                                          sl_cli_span_cstr("cookie"),
-                                          sl_cli_span_cstr("string"), false, &first);
+                                          sl_cli_span_cstr("cookie"), sl_cli_span_cstr("string"),
+                                          false, &first);
         }
     }
     if (!first) {
@@ -374,7 +374,7 @@ static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
         sl_cli_write_cstr(out, "{ \"type\": \"string\" }");
         return;
     }
-    if (sl_cli_span_equal_cstr(kind, "bytes")) {
+    if (sl_cli_span_equal_cstr(kind, "bytes") || sl_cli_span_equal_cstr(kind, "stream")) {
         sl_cli_write_cstr(out, "{ \"type\": \"string\", \"format\": \"binary\" }");
         return;
     }

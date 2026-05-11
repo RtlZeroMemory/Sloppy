@@ -582,6 +582,18 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
 
     if (request->body.length == 0U) {
+        if (sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Type"), &content_type))
+        {
+            media_type = sl_http_dispatch_media_type(content_type);
+            if (sl_str_equal_ci_ascii(media_type,
+                                      sl_str_from_cstr("application/x-www-form-urlencoded")))
+            {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_FORM;
+            }
+            else if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data"))) {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_MULTIPART;
+            }
+        }
         return sl_status_ok();
     }
     if (request->body.ptr == NULL) {

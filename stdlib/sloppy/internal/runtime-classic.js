@@ -199,7 +199,13 @@
         if (!Array.isArray(setCookies)) {
             throw new TypeError("Sloppy Results setCookies must be an array when provided.");
         }
-        return Object.freeze(setCookies.map(String));
+        return Object.freeze(setCookies.map((cookie) => {
+            if (typeof cookie !== "string") {
+                throw new TypeError("Sloppy Results setCookies entries must be strings.");
+            }
+            assertCookieHeaderValue(cookie, "setCookies entry");
+            return cookie;
+        }));
     }
 
     function copyBytes(value) {
@@ -262,7 +268,12 @@
         if (options !== undefined && !isPlainObject(options)) {
             throw new TypeError("Sloppy Results cookie options must be a plain object.");
         }
-        const encodedValue = encodeURIComponent(String(value));
+        let encodedValue;
+        try {
+            encodedValue = encodeURIComponent(String(value));
+        } catch {
+            throw new TypeError("Sloppy Results cookie value must be safe.");
+        }
         if (/[\x00-\x20\x7F;,]/u.test(encodedValue)) {
             throw new TypeError("Sloppy Results cookie value must be safe.");
         }
@@ -301,6 +312,13 @@
     }
 
     function withCookie(descriptor, name, value, options) {
+        const extra = {};
+        if (descriptor.location !== undefined) {
+            extra.location = descriptor.location;
+        }
+        if (descriptor.chunks !== undefined) {
+            extra.chunks = Object.freeze([...descriptor.chunks]);
+        }
         return createResult(
             descriptor.kind,
             descriptor.body,
@@ -311,7 +329,7 @@
                 setCookies: Object.freeze([...(descriptor.setCookies ?? []), buildSetCookie(name, value, options)]),
             },
             descriptor.status,
-            descriptor.location === undefined ? undefined : { location: descriptor.location },
+            Object.keys(extra).length === 0 ? undefined : extra,
         );
     }
 

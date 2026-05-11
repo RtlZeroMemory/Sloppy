@@ -358,7 +358,8 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
-    printf("  sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
+    printf("  sloppy create <name> [--template "
+           "api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
@@ -370,7 +371,8 @@ static void sl_cli_print_help(void)
            "<dir>] [--stdlib <dir>]\n");
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
            "[--port 5173]\n");
-    printf("             [--once METHOD TARGET] [-- <program-args...>]\n");
+    printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body-file <path>]\n");
+    printf("             [-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
@@ -409,6 +411,7 @@ static void sl_cli_print_command_help(const char* command)
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
         printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
+        printf("                  [--header 'Name: value'] [--body-file <path>]\n");
         printf("                  [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
@@ -439,14 +442,16 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "create") == 0) {
-        printf("Usage: sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat]\n");
+        printf("Usage: sloppy create <name> [--template "
+               "api|minimal-api|program|cli|package-api|node-compat]\n");
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
         printf("Default template: api.\n");
         printf("\n");
         printf("Templates:\n");
-        printf("  api          SQLite-backed backend starter with routes, services, config, and packaging flow\n");
+        printf("  api          SQLite-backed backend starter with routes, services, config, and "
+               "packaging flow\n");
         printf("  minimal-api  Tiny API for the smallest possible first run\n");
         printf("  program      Small Program Mode starter\n");
         printf("  cli          Practical CLI-style Program Mode starter\n");

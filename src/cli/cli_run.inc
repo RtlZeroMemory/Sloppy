@@ -2219,6 +2219,10 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
     }
 
     for (index = 0U; index < options->once_header_count; index += 1U) {
+        if (header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many --header entries\n");
+            return 1;
+        }
         if (!sl_run_once_parse_header(options->once_headers[index], &headers[header_count])) {
             sl_cli_write_cstr(stderr, "sloppy run: --header requires 'Name: value'\n");
             return 1;
@@ -2245,8 +2249,8 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
             if (!sl_status_is_ok(sl_string_builder_init_fixed(&length_builder, content_length,
                                                               sizeof(content_length))) ||
                 !sl_status_is_ok(sl_string_builder_append_size(&length_builder, body.length)) ||
-                !sl_status_is_ok(sl_string_builder_view_with_nul(&length_builder,
-                                                                 &content_length_view)))
+                !sl_status_is_ok(
+                    sl_string_builder_view_with_nul(&length_builder, &content_length_view)))
             {
                 sl_cli_write_cstr(stderr, "sloppy run: --body-file length is too large\n");
                 return 1;

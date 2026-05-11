@@ -1833,6 +1833,10 @@ async function flushMicrotasks(count = 6) {
             bytes: [65, 100, 97],
         },
     });
+    assert.equal((await host.post("/multipart", {
+        headers: { "content-type": "multipart/form-data" },
+        body: "--BROKEN\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\navatar\r\n",
+    })).status, 400);
     assert.equal((await host.post("/json", {
         headers: { "content-type": "application/json" },
         body: "{",
@@ -2173,6 +2177,12 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(Results.json({ ok: true }, { headers: { "x-test": "1" } }).headers, {
         "x-test": "1",
     });
+    const streamCookieResult = (await Results.stream(async (writer) => {
+        writer.writeText("x");
+    })).cookie("seen", "yes");
+    assert.equal(streamCookieResult.kind, "stream");
+    assert.deepEqual(Array.from(streamCookieResult.chunks[0]), [120]);
+    assert.deepEqual(streamCookieResult.setCookies, ["seen=yes"]);
     {
         const protoHeaders = {};
         Object.defineProperty(protoHeaders, "__proto__", {
@@ -2195,6 +2205,9 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.ok("bad", { headers: { "Content-Type": "text/plain" } }), /safe unmanaged/);
     assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": 1 } }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": "a\r\nb" } }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.ok("bad", { setCookies: [1] }), /setCookies entries/);
+    assertThrowsMessage(() => Results.ok("bad", { setCookies: ["a\r\nb"] }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("bad", "\uD800"), /cookie value/);
     assertThrowsMessage(() => Results.created("/users/1\r\nx: y", { id: 1 }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
