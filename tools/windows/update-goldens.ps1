@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "cli", "compiler", "templates", "diagnostics", "alpha-flows", "examples")]
+    [ValidateSet("all", "cli", "compiler", "templates", "diagnostics", "alpha-flows", "examples", "docs-snippets")]
     [string]$Area = "all",
 
     [string]$RunnerPreset = "windows-relwithdebinfo",
@@ -97,4 +97,7 @@ if ($Area -eq "all" -or $Area -eq "examples") {
     foreach ($example in @($manifest.examples | Where-Object { $_.prSmoke -eq $true })) {
         Invoke-AlphaProof "examples" @("--example", $example.name)
     }
+}
+if ($Area -eq "all" -or $Area -eq "docs-snippets") {
+    Invoke-AlphaProof "docs-snippets"
 }

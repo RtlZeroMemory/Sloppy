@@ -43,6 +43,11 @@
       "displayName": "Health.Ready",
       "exportName": "__sloppy_handler_6",
       "id": 6
+    },
+    {
+      "displayName": "GET /public/hello.txt",
+      "exportName": "__sloppy_handler_7",
+      "id": 7
     }
   ],
   "kind": "web",
@@ -91,6 +96,15 @@
       "name": "Health.Ready",
       "pattern": "/health/ready",
       "tags": []
+    },
+    {
+      "handlerId": 7,
+      "method": "GET",
+      "name": null,
+      "pattern": "/public/hello.txt",
+      "tags": [
+        "static"
+      ]
     }
   ]
 }

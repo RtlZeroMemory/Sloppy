@@ -7,7 +7,9 @@
       {
         "bindings": [],
         "completeness": "complete",
+        "constraints": [],
         "handlerId": 1,
+        "kind": "http",
         "method": "GET",
         "module": "",
         "name": "Health.Get",
@@ -33,7 +35,14 @@
           }
         ],
         "completeness": "complete",
+        "constraints": [
+          {
+            "kind": "str",
+            "name": "name"
+          }
+        ],
         "handlerId": 2,
+        "kind": "http",
         "method": "GET",
         "module": "",
         "name": "Hello.Get",

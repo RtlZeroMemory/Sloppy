@@ -6,6 +6,7 @@
   "data/.gitkeep",
   "migrations/0001_create_users.sql",
   "package.json",
+  "public/hello.txt",
   "sloppy.json",
   "src/config.ts",
   "src/db/migrate.ts",

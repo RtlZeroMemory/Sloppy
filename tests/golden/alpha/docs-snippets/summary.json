@@ -1,0 +1,112 @@
+{
+  "documents": [
+    {
+      "checked": 3,
+      "path": "README.md",
+      "skipped": 1,
+      "skippedReasons": [
+        "global npm install and registry access are not deterministic in PR validation"
+      ]
+    },
+    {
+      "checked": 4,
+      "path": "docs/quickstart.md",
+      "skipped": 1,
+      "skippedReasons": [
+        "requires a long-running local server process"
+      ]
+    },
+    {
+      "checked": 4,
+      "path": "docs/install.md",
+      "skipped": 1,
+      "skippedReasons": [
+        "global npm install and registry access are not deterministic in PR validation"
+      ]
+    },
+    {
+      "checked": 5,
+      "path": "docs/guide/templates.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "path": "docs/guide/auth.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 5,
+      "path": "docs/guide/migrations.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 4,
+      "path": "docs/guide/static-assets.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 1,
+      "path": "docs/guide/uploads.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "path": "docs/guide/realtime.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "path": "docs/cli/run.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "path": "docs/cli/db.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "path": "templates/api/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "path": "templates/minimal-api/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "path": "templates/program/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "path": "templates/cli/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "path": "templates/package-api/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "path": "templates/node-compat/README.md",
+      "skipped": 0,
+      "skippedReasons": []
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
   "exitCode": 0,
   "stderr": "",
-  "stdout": "ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME\n2      GET     /                    1                  hello     -  unknown  Hello.Index\n1      GET     /users/create        3                  users     -  unknown  Users.Create\n0      GET     /users/{id:int}      2                  users     -  unknown  Users.Get\n"
+  "stdout": "ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME\n1      GET     http         /users/create        3                  users     -  unknown  Users.Create\n0      GET     http         /users/{id:int}      2                  users     -  unknown  Users.Get\n2      GET     http         /                    1                  hello     -  unknown  Hello.Index\n"
 }

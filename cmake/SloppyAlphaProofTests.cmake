@@ -107,10 +107,14 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
                          framework-explicit-binding
                          framework-di-services
                          framework-sqlite-crud
+                         realtime-dashboard
                          program-hello
                          program-fs-process)
         sloppy_add_alpha_proof_test(alpha.examples.${example} examples "--example" "${example}")
         set_tests_properties(alpha.examples.${example} PROPERTIES LABELS
                                                                   "golden;alpha-proof;examples;package")
     endforeach()
+    sloppy_add_alpha_proof_test(alpha.docs.snippets docs-snippets)
+    set_tests_properties(alpha.docs.snippets PROPERTIES LABELS
+                                                       "golden;alpha-proof;docs")
 endif()

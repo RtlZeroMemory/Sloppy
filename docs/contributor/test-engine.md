@@ -100,7 +100,9 @@ The current native targets are `plan`, `route-pattern`, `http-request`,
 The current JavaScript targets are `config-json`, `openapi-plan`, `headers`,
 `query-string`, `percent-decoding`, `logging-json`, `package-manifest`,
 `route-table`, `required-features`, `http-client-options`, `results-headers`,
-`worker-queue`, `h2-client-options`, and `stdlib-import-shapes`.
+`schema-validation`, `json-serialization`, `request-media`,
+`realtime-metadata`, `worker-queue`, `h2-client-options`, and
+`stdlib-import-shapes`.
 
 The bootstrap property runner covers `codec`, `results`, `time`,
 `http-client`, `workers`, `logging`, and `config`.
@@ -128,8 +130,9 @@ The default-safe PR fuzz/property payload now includes:
   rejection;
 - JavaScript fuzz targets for config JSON, Plan fragments, headers, query and
   percent decoding, logging JSON, package manifests, route tables, required
-  features, HTTP/1 and HTTP/2 client options, result headers, worker queues,
-  and stdlib import shapes;
+  features, HTTP/1 and HTTP/2 client options, result headers, schema
+  validation, JSON serialization, request media/body parsing, realtime
+  metadata, worker queues, and stdlib import shapes;
 - native seed replay corpora for Plan, route pattern, HTTP request, HTTP query,
   HTTP/2 frame/HPACK/session, diagnostics rendering, and memory primitives;
 - focused CTest coverage for HTTP/2 multi-stream ordering, create/package

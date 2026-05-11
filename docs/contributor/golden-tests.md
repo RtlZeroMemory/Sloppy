@@ -52,6 +52,12 @@ It does not normalize meaningful behavior such as route order, Plan kind,
 diagnostic wording, OpenAPI paths, package manifest shape, source-map metadata,
 or whether generated artifacts exist.
 
+Docs snippets use `tests/fixtures/docs-snippets/manifest.json` to assert that
+public docs and template READMEs still contain the commands covered by the
+alpha template, package, database, and metadata lanes. Commands that require a
+registry install or long-running local server stay listed with an explicit skip
+reason instead of being counted as passed execution evidence.
+
 ## Review checklist
 
 When reviewing golden diffs, check:
