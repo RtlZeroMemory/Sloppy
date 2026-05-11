@@ -196,6 +196,122 @@ static bool sl_package_native_library_source_path(char* buffer, size_t capacity,
     return sl_run_join_path(buffer, capacity, config_dir, sl_cli_span_cstr(library->path));
 }
 
+static bool sl_package_migration_pattern_dir(const char* pattern, char* buffer, size_t capacity)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+    SlStr path = sl_str_from_cstr(pattern);
+    size_t dir_length = 0U;
+
+    if (pattern == NULL || buffer == NULL || capacity == 0U || path.length <= 6U) {
+        return false;
+    }
+    if (sl_str_ends_with(path, SL_STR_LITERAL("/*.sql"))) {
+        dir_length = path.length - 6U;
+    }
+    else if (sl_str_ends_with(path, SL_STR_LITERAL("\\*.sql"))) {
+        dir_length = path.length - 6U;
+    }
+    else {
+        return false;
+    }
+    if (dir_length == 0U || dir_length >= capacity ||
+        !sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) ||
+        !sl_status_is_ok(
+            sl_string_builder_append_str(&builder, sl_str_from_parts(path.ptr, dir_length))) ||
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
+    {
+        return false;
+    }
+    return view.ptr == buffer;
+}
+
+static bool sl_package_migration_entry_is_sql_file(const SlFsDirectoryEntry* entry)
+{
+    return entry != NULL && entry->kind == SL_FS_NODE_FILE &&
+           sl_str_ends_with(sl_owned_str_as_view(entry->name), SL_STR_LITERAL(".sql"));
+}
+
+static int sl_package_copy_migrations(const char* package_dir, const char* config_dir,
+                                      const SlSloppyRunConfig* project_config)
+{
+    unsigned char arena_storage[65536U];
+    SlArena arena = {0};
+    SlFsDirectoryList list = {0};
+    SlStatus status;
+
+    if (project_config == NULL || project_config->migration_count == 0U) {
+        return 0;
+    }
+    if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)))) {
+        return 1;
+    }
+    for (size_t migration_index = 0U; migration_index < project_config->migration_count;
+         migration_index += 1U)
+    {
+        const SlSloppyMigrationConfig* migration = &project_config->migrations[migration_index];
+        char relative_dir[SL_RUN_PATH_MAX_BYTES];
+        char source_dir[SL_RUN_PATH_MAX_BYTES];
+        char target_dir[SL_RUN_PATH_MAX_BYTES];
+        size_t copied = 0U;
+
+        sl_arena_reset(&arena);
+        if (!sl_package_migration_pattern_dir(migration->path, relative_dir,
+                                              sizeof(relative_dir)) ||
+            !sl_run_join_path(source_dir, sizeof(source_dir),
+                              config_dir == NULL || config_dir[0] == '\0' ? "." : config_dir,
+                              sl_cli_span_cstr(relative_dir)) ||
+            !sl_run_join_path(target_dir, sizeof(target_dir), package_dir,
+                              sl_cli_span_cstr(relative_dir)))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy package: migration path is too long or unsupported\n");
+            return 1;
+        }
+        status = sl_fs_create_directory(sl_str_from_cstr(target_dir), true, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_error_with_value(
+                "sloppy package: failed to create migration directory: ", target_dir, "\n");
+            return 1;
+        }
+        status = sl_fs_list_directory(&arena, sl_str_from_cstr(source_dir), &list, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_error_with_value(
+                "sloppy package: failed to read migration directory: ", source_dir, "\n");
+            return 1;
+        }
+        for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
+            char source_path[SL_RUN_PATH_MAX_BYTES];
+            char target_path[SL_RUN_PATH_MAX_BYTES];
+            SlCliSpan file_name = {0};
+            if (!sl_package_migration_entry_is_sql_file(&list.entries[entry_index])) {
+                continue;
+            }
+            file_name = sl_cli_span_from_str(sl_owned_str_as_view(list.entries[entry_index].name));
+            if (!sl_run_join_path(source_path, sizeof(source_path), source_dir, file_name) ||
+                !sl_run_join_path(target_path, sizeof(target_path), target_dir, file_name))
+            {
+                sl_cli_write_cstr(stderr, "sloppy package: migration file path is too long\n");
+                return 1;
+            }
+            status = sl_fs_copy_file(sl_str_from_cstr(source_path), sl_str_from_cstr(target_path),
+                                     true, NULL);
+            if (!sl_status_is_ok(status)) {
+                sl_cli_write_error_with_value(
+                    "sloppy package: failed to copy migration: ", source_path, "\n");
+                return 1;
+            }
+            copied += 1U;
+        }
+        if (copied == 0U) {
+            sl_cli_write_error_with_value(
+                "sloppy package: migration directory has no .sql files: ", source_dir, "\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int sl_package_copy_native_libraries(const char* package_dir, const char* config_dir,
                                             const SlRunApp* app,
                                             const SlSloppyRunConfig* project_config)
@@ -331,6 +447,126 @@ static bool sl_package_append_native_libraries_manifest(SlStringBuilder* builder
     return sl_status_is_ok(sl_string_builder_append_cstr(builder, "\n    ]\n  }"));
 }
 
+static bool sl_package_append_migration_manifest_path(SlStringBuilder* builder,
+                                                      const char* relative_dir, SlStr file_name)
+{
+    char path_storage[SL_RUN_PATH_MAX_BYTES];
+    SlStringBuilder path_builder = {0};
+    SlStr path = {0};
+
+    if (builder == NULL || relative_dir == NULL || relative_dir[0] == '\0' ||
+        !sl_status_is_ok(
+            sl_string_builder_init_fixed(&path_builder, path_storage, sizeof(path_storage))))
+    {
+        return false;
+    }
+    for (size_t index = 0U; relative_dir[index] != '\0'; index += 1U) {
+        char ch = relative_dir[index];
+        if (ch == '\\') {
+            ch = '/';
+        }
+        if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, ch))) {
+            return false;
+        }
+    }
+    if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, '/'))) {
+        return false;
+    }
+    for (size_t index = 0U; index < file_name.length; index += 1U) {
+        char ch = file_name.ptr[index];
+        if (ch == '\\') {
+            ch = '/';
+        }
+        if (!sl_status_is_ok(sl_string_builder_append_char(&path_builder, ch))) {
+            return false;
+        }
+    }
+    if (!sl_status_is_ok(sl_string_builder_view_with_nul(&path_builder, &path))) {
+        return false;
+    }
+    return sl_cli_json_builder_append_string(builder, sl_cli_span_from_str(path));
+}
+
+static bool sl_package_append_migrations_manifest(SlStringBuilder* builder, const char* config_dir,
+                                                  const SlSloppyRunConfig* project_config)
+{
+    unsigned char arena_storage[65536U];
+    SlArena arena = {0};
+    SlFsDirectoryList list = {0};
+    size_t emitted_migration = 0U;
+
+    if (builder == NULL || project_config == NULL || project_config->migration_count == 0U) {
+        return true;
+    }
+    if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage))) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(builder, ",\n  \"migrations\": [")))
+    {
+        return false;
+    }
+
+    for (size_t migration_index = 0U; migration_index < project_config->migration_count;
+         migration_index += 1U)
+    {
+        const SlSloppyMigrationConfig* migration = &project_config->migrations[migration_index];
+        char relative_dir[SL_RUN_PATH_MAX_BYTES];
+        char source_dir[SL_RUN_PATH_MAX_BYTES];
+        size_t emitted_file = 0U;
+
+        sl_arena_reset(&arena);
+        if (!sl_package_migration_pattern_dir(migration->path, relative_dir,
+                                              sizeof(relative_dir)) ||
+            !sl_run_join_path(source_dir, sizeof(source_dir),
+                              config_dir == NULL || config_dir[0] == '\0' ? "." : config_dir,
+                              sl_cli_span_cstr(relative_dir)) ||
+            !sl_status_is_ok(
+                sl_fs_list_directory(&arena, sl_str_from_cstr(source_dir), &list, NULL)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(
+                builder,
+                emitted_migration == 0U ? "\n    { \"provider\": " : ",\n    { \"provider\": ")) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(migration->name)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"providerKind\": ")) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(migration->provider)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"path\": ")) ||
+            !sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(migration->path)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"files\": [")))
+        {
+            return false;
+        }
+
+        for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
+            char source_path[SL_RUN_PATH_MAX_BYTES];
+            char sha256[sizeof("sha256:") + 64U];
+            SlCliSpan file_name = {0};
+            if (!sl_package_migration_entry_is_sql_file(&list.entries[entry_index])) {
+                continue;
+            }
+            file_name = sl_cli_span_from_str(sl_owned_str_as_view(list.entries[entry_index].name));
+            if (!sl_run_join_path(source_path, sizeof(source_path), source_dir, file_name) ||
+                !sl_run_sha256_file_hex(source_path, sha256) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(
+                    builder,
+                    emitted_file == 0U ? "\n      { \"path\": " : ",\n      { \"path\": ")) ||
+                !sl_package_append_migration_manifest_path(
+                    builder, relative_dir, sl_owned_str_as_view(list.entries[entry_index].name)) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(builder, ", \"sha256\": ")) ||
+                !sl_cli_json_builder_append_string(builder, sl_cli_span_cstr(sha256)) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(builder, " }")))
+            {
+                return false;
+            }
+            emitted_file += 1U;
+        }
+        if (emitted_file == 0U ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(builder, "\n    ] }")))
+        {
+            return false;
+        }
+        emitted_migration += 1U;
+    }
+
+    return sl_status_is_ok(sl_string_builder_append_cstr(builder, "\n  ]"));
+}
+
 static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
                                      const char* config_dir, const SlRunApp* app,
                                      const SlSloppyRunConfig* project_config,
@@ -391,6 +627,7 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
                                                                  "  }")) ||
         !sl_package_append_native_libraries_manifest(&builder, artifact_dir_name, config_dir, app,
                                                      project_config) ||
+        !sl_package_append_migrations_manifest(&builder, config_dir, project_config) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder,
                                                        ",\n"
                                                        "  \"createdBy\": \"sloppy package\"\n"
@@ -630,6 +867,10 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
     }
 
     if (sl_package_copy_native_libraries(package_dir, config_dir, app, project_config) != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+    if (sl_package_copy_migrations(package_dir, config_dir, project_config) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }

@@ -11,13 +11,16 @@ sloppy build
 sloppy run .sloppy --once GET /health
 ```
 
-## Built-In API Templates
+## Built-In Templates
 
 | Template | Use it for |
 | --- | --- |
-| `minimal-api` | A small route-only API. |
-| `api` | A multi-file API layout with route modules, configuration, health endpoints, SQLite metadata, static files, and package flow examples. |
-| `package-api` | An API intended to exercise package/dependency artifact output. |
+| `minimal-api` | Smallest web API starter. |
+| `api` | SQLite-backed API starter with routes, services, provider config, migrations, health, static files, and packaging flow. |
+| `program` | Program Mode starter. |
+| `cli` | CLI-style Program Mode starter. |
+| `package-api` | API starter that uses a compatible local pure-JavaScript package and exercises package/dependency artifact output. |
+| `node-compat` | Program starter using supported Node compatibility shims. |
 
 The `api` template is the default backend starter. Useful smoke commands:
 
@@ -29,7 +32,7 @@ sloppy package
 sloppy run .sloppy/package --once GET /public/hello.txt
 ```
 
-## Auth
+## Authentication
 
 Auth is available from any API template:
 
@@ -44,9 +47,27 @@ app.use(Auth.jwtBearer({
 ```
 
 Auth setup in templates is public-alpha/experimental. There is no dedicated
-auth template yet. Add the auth setup to the generated `app.js` or route
+auth template yet. Add the auth setup to the generated app file or route
 module, then add the corresponding `Auth:*` keys to `appsettings.json` or your
 deployment configuration.
+
+## API Template Migrations
+
+The `api` template includes:
+
+- `migrations/0001_create_users.sql`
+- `sloppy.json` migration metadata for provider `main`
+- runtime migration usage through `Migrations.apply(...)`
+
+Build and apply the template database schema:
+
+```sh
+sloppy build
+sloppy db migrate .sloppy --provider main
+```
+
+Package output includes the migration file and migration manifest metadata, so
+the same command shape works against `.sloppy/package`.
 
 ## Other Templates
 

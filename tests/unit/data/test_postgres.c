@@ -228,6 +228,14 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 22;
     }
+    status =
+        sl_postgres_exec_batch(&arena, &connection, sl_str_from_cstr("select 1"), &result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_POSTGRES_PROVIDER_ERROR ||
+        !diag_has_hint(&diag, "operation: execBatch"))
+    {
+        return 28;
+    }
     status = sl_postgres_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
                                &query_result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 || query_result.column_count != 0U ||

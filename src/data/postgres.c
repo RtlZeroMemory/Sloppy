@@ -912,6 +912,63 @@ SlStatus sl_postgres_exec(SlArena* arena, SlPostgresConnection* connection, SlSt
     return sl_status_ok();
 }
 
+SlStatus sl_postgres_exec_batch(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
+                                SlPostgresExecResult* out_result, SlDiag* out_diag)
+{
+    PGconn* conn = sl_pg_conn(connection);
+    char* sql_cstr = NULL;
+    PGresult* result = NULL;
+    const char* tuples = NULL;
+    ExecStatusType result_status;
+    SlStatus status;
+
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlPostgresExecResult){0};
+    if (conn == NULL) {
+        return sl_pg_invalid_state_diag(
+            arena, out_diag,
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
+    }
+    if (!sl_pg_str_valid(sql) || sl_str_is_empty(sql)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_pg_copy_cstr(arena, sql, &sql_cstr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    result = PQexec(conn, sql_cstr);
+    if (result == NULL) {
+        return sl_pg_diag(
+            arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+            sl_pg_literal("postgres provider batch allocation failed",
+                          sizeof("postgres provider batch allocation failed") - 1U),
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U),
+            PQerrorMessage(conn), sl_str_empty(), sql,
+            sl_status_from_code(SL_STATUS_OUT_OF_MEMORY));
+    }
+    result_status = PQresultStatus(result);
+    if (result_status != PGRES_COMMAND_OK && result_status != PGRES_TUPLES_OK) {
+        const char* message = PQresultErrorMessage(result);
+
+        PQclear(result);
+        return sl_pg_diag(
+            arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+            sl_pg_literal("postgres provider batch failed",
+                          sizeof("postgres provider batch failed") - 1U),
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U), message,
+            sl_str_empty(), sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+    }
+    tuples = PQcmdTuples(result);
+    if (tuples != NULL && tuples[0] != '\0') {
+        out_result->affected_rows = (int64_t)strtoll(tuples, NULL, 10);
+        out_result->affected_rows_known = true;
+    }
+    PQclear(result);
+    return sl_status_ok();
+}
+
 SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
                            const SlPostgresParam* params, size_t param_count,
                            const SlPostgresQueryOptions* options, SlPostgresResult* out_result,
@@ -1110,6 +1167,17 @@ SlStatus sl_postgres_transaction_exec(SlArena* arena, SlPostgresTransaction* tx,
             arena, out_diag, sl_pg_literal("operation: exec", sizeof("operation: exec") - 1U));
     }
     return sl_postgres_exec(arena, tx->connection, sql, params, param_count, out_result, out_diag);
+}
+
+SlStatus sl_postgres_transaction_exec_batch(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,
+                                            SlPostgresExecResult* out_result, SlDiag* out_diag)
+{
+    if (tx == NULL || tx->connection == NULL || !tx->active) {
+        return sl_pg_invalid_state_diag(
+            arena, out_diag,
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
+    }
+    return sl_postgres_exec_batch(arena, tx->connection, sql, out_result, out_diag);
 }
 
 SlStatus sl_postgres_transaction_query(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,

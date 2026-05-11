@@ -547,6 +547,22 @@ SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, Sl
         sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_UNSUPPORTED));
 }
 
+SlStatus sl_sqlserver_exec_batch(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
+                                 SlSqlServerExecResult* out_result, SlDiag* out_diag)
+{
+    (void)connection;
+    (void)sql;
+    if (out_result != NULL) {
+        *out_result = (SlSqlServerExecResult){0};
+    }
+    return sl_sqlsrv_diag(
+        arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
+        sl_sqlsrv_literal("sqlserver provider ODBC support is unavailable",
+                          sizeof("sqlserver provider ODBC support is unavailable") - 1U),
+        sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U),
+        sl_str_empty(), sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_UNSUPPORTED));
+}
+
 SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
                             const SlSqlServerParam* params, size_t param_count,
                             const SlSqlServerQueryOptions* options, SlSqlServerResult* out_result,
@@ -1239,6 +1255,78 @@ SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, Sl
     return sl_status_ok();
 }
 
+SlStatus sl_sqlserver_exec_batch(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
+                                 SlSqlServerExecResult* out_result, SlDiag* out_diag)
+{
+    SQLHDBC dbc = sl_sqlsrv_dbc(connection);
+    SQLHSTMT stmt = SQL_NULL_HSTMT;
+    SQLLEN row_count = 0;
+    SQLRETURN rc;
+    SlStatus status = sl_status_ok();
+
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlSqlServerExecResult){0};
+    if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ) {
+        return sl_sqlsrv_diag(
+            arena, out_diag, SL_DIAG_PERMISSION_DENIED,
+            sl_sqlsrv_literal(
+                "sqlserver provider read-only connection rejected exec batch",
+                sizeof("sqlserver provider read-only connection rejected exec batch") - 1U),
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U), sql,
+            sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+    }
+    if (dbc == SQL_NULL_HDBC) {
+        return sl_sqlsrv_invalid_state_diag(
+            arena, out_diag,
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
+    }
+    if (!sl_sqlsrv_str_valid(sql) || sl_str_is_empty(sql) || sql.length > 2147483647U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    rc = SQLAllocHandle(SQL_HANDLE_STMT, dbc, &stmt);
+    if (!sl_sqlsrv_success(rc)) {
+        return sl_sqlsrv_diag_from_handle(
+            arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
+            sl_sqlsrv_literal("sqlserver provider statement allocation failed",
+                              sizeof("sqlserver provider statement allocation failed") - 1U),
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U),
+            SQL_HANDLE_DBC, dbc, sl_str_empty(), sql, sl_status_from_code(SL_STATUS_OUT_OF_MEMORY));
+    }
+    rc = SQLExecDirectA(stmt, (SQLCHAR*)sql.ptr, (SQLINTEGER)sql.length);
+    if (!sl_sqlsrv_success(rc)) {
+        status = sl_sqlsrv_diag_from_handle(
+            arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
+            sl_sqlsrv_literal("sqlserver provider batch failed",
+                              sizeof("sqlserver provider batch failed") - 1U),
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U),
+            SQL_HANDLE_STMT, stmt, sl_str_empty(), sql,
+            sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return status;
+    }
+    do {
+        if (sl_sqlsrv_success(SQLRowCount(stmt, &row_count)) && row_count >= 0) {
+            out_result->affected_rows = (int64_t)row_count;
+            out_result->affected_rows_known = true;
+        }
+        rc = SQLMoreResults(stmt);
+    } while (sl_sqlsrv_success(rc));
+
+    if (rc != SQL_NO_DATA) {
+        status = sl_sqlsrv_diag_from_handle(
+            arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
+            sl_sqlsrv_literal("sqlserver provider batch failed",
+                              sizeof("sqlserver provider batch failed") - 1U),
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U),
+            SQL_HANDLE_STMT, stmt, sl_str_empty(), sql,
+            sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+    }
+    SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+    return status;
+}
+
 static SlStatus sl_sqlsrv_copy_columns(SlArena* arena, SQLHSTMT stmt, size_t column_count,
                                        SlStr** out_column_names)
 {
@@ -1915,6 +2003,18 @@ SlStatus sl_sqlserver_transaction_exec(SlArena* arena, SlSqlServerTransaction* t
     return sl_sqlserver_exec(arena, tx->connection, sql, params, param_count, out_result, out_diag);
 }
 
+SlStatus sl_sqlserver_transaction_exec_batch(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
+                                             SlSqlServerExecResult* out_result, SlDiag* out_diag)
+{
+    if (tx == NULL || tx->connection == NULL || !tx->active) {
+        return sl_sqlsrv_invalid_state_diag(
+            arena, out_diag,
+            sl_sqlsrv_literal("operation: transaction.execBatch",
+                              sizeof("operation: transaction.execBatch") - 1U));
+    }
+    return sl_sqlserver_exec_batch(arena, tx->connection, sql, out_result, out_diag);
+}
+
 SlStatus sl_sqlserver_transaction_query(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
                                         const SlSqlServerParam* params, size_t param_count,
                                         const SlSqlServerQueryOptions* options,
@@ -2098,6 +2198,13 @@ SlStatus sl_sqlserver_transaction_exec(SlArena* arena, SlSqlServerTransaction* t
 {
     (void)tx;
     return sl_sqlserver_exec(arena, NULL, sql, params, param_count, out_result, out_diag);
+}
+
+SlStatus sl_sqlserver_transaction_exec_batch(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
+                                             SlSqlServerExecResult* out_result, SlDiag* out_diag)
+{
+    (void)tx;
+    return sl_sqlserver_exec_batch(arena, NULL, sql, out_result, out_diag);
 }
 
 SlStatus sl_sqlserver_transaction_query(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,

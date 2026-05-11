@@ -106,7 +106,9 @@ lib/sloppy/bootstrap/sloppy/
 - Public handler registration APIs will be documented when the runtime support lands.
 - Full compiler extraction and arbitrary import rewriting beyond the supported
   Sloppy/package resolver subset are compiler/runtime work.
-- ORM, migrations, and schema-management behavior belong to future database provider work.
+- ORM and schema-management behavior belong to future database provider work.
+  Current migrations are filename/hash ordered SQL files for SQLite,
+  PostgreSQL, and SQL Server.
 - Native plugins and full app lifecycle integration are planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers,
   tracing, metrics, async service factories, typed DI tokens, and native service graph
