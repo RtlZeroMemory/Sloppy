@@ -135,7 +135,19 @@ function normalizeMigrationOptions(options) {
     const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
     const directory = slash < 0 ? "." : path.slice(0, slash);
     const pattern = slash < 0 ? path : path.slice(slash + 1);
-    if (pattern !== "*.sql") {
+    const parts = path.split(/[\\/]/);
+    if (
+        pattern !== "*.sql" ||
+        directory === "." ||
+        path.startsWith("/") ||
+        path.startsWith("\\") ||
+        path.startsWith("./") ||
+        path.startsWith("../") ||
+        /^[A-Za-z]:[\\/]/.test(path) ||
+        path.includes("://") ||
+        parts.includes(".") ||
+        parts.includes("..")
+    ) {
         throw new Error(`sloppy: migration path is unsupported
 
 Provider:
@@ -148,6 +160,20 @@ Fix:
   Use a project-relative directory glob ending in *.sql, for example migrations/*.sql.`);
     }
     return { provider, path, directory };
+}
+
+function migrationFsPath(path) {
+    if (
+        path === "." ||
+        path.startsWith("/") ||
+        /^[A-Za-z]:[\\/]/.test(path) ||
+        path.startsWith("./") ||
+        path.startsWith("../") ||
+        path.includes("://")
+    ) {
+        return path;
+    }
+    return `./${path}`;
 }
 
 function migrationHash(text) {
@@ -255,7 +281,7 @@ const MIGRATION_SQL = Object.freeze({
 async function listMigrationFiles(options) {
     let entries;
     try {
-        entries = await Directory.list(options.directory);
+        entries = await Directory.list(migrationFsPath(options.directory));
     } catch (error) {
         throw new Error(`sloppy: migration directory is missing or unreadable
 
@@ -282,9 +308,29 @@ async function ensureMigrationsTable(db, providerKind) {
     await db.exec(MIGRATION_SQL[providerKind].ensure, []);
 }
 
-async function readAppliedMigrations(db, providerKind) {
-    await ensureMigrationsTable(db, providerKind);
-    const rows = await db.query(MIGRATION_SQL[providerKind].select, []);
+function isMissingMigrationsTableError(error) {
+    const message = String(error?.message ?? error).toLowerCase();
+    return message.includes("_sloppy_migrations")
+        && (message.includes("no such table")
+            || message.includes("does not exist")
+            || message.includes("invalid object name")
+            || message.includes("undefined_table")
+            || message.includes("42p01"));
+}
+
+async function readAppliedMigrations(db, providerKind, options = {}) {
+    if (options.ensure !== false) {
+        await ensureMigrationsTable(db, providerKind);
+    }
+    let rows;
+    try {
+        rows = await db.query(MIGRATION_SQL[providerKind].select, []);
+    } catch (error) {
+        if (options.ensure === false && isMissingMigrationsTableError(error)) {
+            return new Map();
+        }
+        throw error;
+    }
     const applied = new Map();
     for (const row of rows) {
         applied.set(row.name, row);
@@ -322,7 +368,7 @@ async function migrationFilesWithContent(options) {
     const files = await listMigrationFiles(options);
     const withContent = [];
     for (const file of files) {
-        const sqlText = await File.readText(file.path);
+        const sqlText = await File.readText(migrationFsPath(file.path));
         withContent.push({
             ...file,
             sql: sqlText,
@@ -355,7 +401,7 @@ async function migrationStatus(db, options) {
     const checked = normalizeMigrationOptions(options);
     const providerKind = resolveMigrationProviderKind(db, checked);
     const files = await migrationFilesWithContent(checked);
-    const applied = await readAppliedMigrations(db, providerKind);
+    const applied = await readAppliedMigrations(db, providerKind, { ensure: false });
     const migrations = migrationStatusFor(files, applied);
     const changed = migrations.some((migration) => migration.status === "changed");
     const pending = migrations.filter((migration) => migration.status === "pending").length;
@@ -385,15 +431,37 @@ async function applyMigrations(db, options) {
         if (applied.has(file.name)) {
             continue;
         }
-        await db.transaction(async (tx) => {
-            await tx.exec(file.sql, []);
-            const appliedAt = dialect.appliedAt();
-            const params = appliedAt === undefined
-                ? [file.name, file.hash]
-                : [file.name, file.hash, appliedAt];
-            await tx.exec(dialect.insert, params);
-        });
-        appliedCount += 1;
+        let didApply = false;
+        try {
+            didApply = await db.transaction(async (tx) => {
+                const current = await readAppliedMigrations(tx, providerKind);
+                const record = migrationStatusFor([file], current)[0];
+                assertMigrationHashNotChanged(record);
+                if (current.has(file.name)) {
+                    return false;
+                }
+                const appliedAt = dialect.appliedAt();
+                const params = appliedAt === undefined
+                    ? [file.name, file.hash]
+                    : [file.name, file.hash, appliedAt];
+                await tx.exec(dialect.insert, params);
+                await tx.exec(file.sql, []);
+                return true;
+            });
+        } catch (error) {
+            const current = await readAppliedMigrations(db, providerKind);
+            const record = migrationStatusFor([file], current)[0];
+            assertMigrationHashNotChanged(record);
+            if (current.has(file.name)) {
+                applied.set(file.name, current.get(file.name));
+                continue;
+            }
+            throw error;
+        }
+        if (didApply) {
+            applied.set(file.name, { name: file.name, hash: file.hash });
+            appliedCount += 1;
+        }
     }
 
     return Object.freeze({
@@ -405,8 +473,18 @@ async function applyMigrations(db, options) {
 }
 
 async function checkProviderHealth(db, options = {}) {
-    void options;
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy ProviderHealth options must be a plain object.");
+    }
     const provider = connectionProviderKind(db, "ProviderHealth");
+    if (options.provider !== undefined && (typeof options.provider !== "string" || options.provider.length === 0)) {
+        throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
+    }
+    if (options.provider !== undefined && options.provider !== provider) {
+        throw new TypeError(
+            `Sloppy ProviderHealth provider '${options.provider}' does not match connection provider '${provider}'.`,
+        );
+    }
     await db.queryOne("select 1 as ok", []);
     return Object.freeze({ provider, ok: true });
 }

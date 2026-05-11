@@ -225,6 +225,9 @@ impl DependencyGraph {
                 "sloppy".to_string(),
                 "import".to_string(),
                 "require".to_string(),
+                "node".to_string(),
+                "development".to_string(),
+                "production".to_string(),
                 "default".to_string(),
             ];
         }

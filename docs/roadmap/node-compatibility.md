@@ -22,7 +22,11 @@ The current foundation includes:
 - a Node builtin compatibility registry;
 - partial/pure-JS shims for selected builtins, including practical subsets of
   `process`, `Buffer`, `fs/promises`, `assert`, `stream`, `crypto`, `path`,
-  `events`, `url`, `querystring`, `util`, `timers`, and `os`.
+  `events`, `url`, `querystring`, `util`, `timers`, `os`, `module`,
+  `string_decoder`, `zlib`, `constants`, `console`, `perf_hooks`, and
+  `diagnostics_channel`;
+- importable stubs for detection-heavy modules such as `http`, `https`, and
+  `tty`.
 
 This makes compatible pure-JavaScript dependencies usable when their runtime
 needs fit Sloppy's loader and shim surface.
@@ -35,10 +39,14 @@ Deferred work includes:
 - lockfile-aware dependency policy;
 - full Node module identity and resolution parity;
 - native Node addons and N-API;
+- full Node HTTP client/server compatibility through `node:http` or
+  `node:https`;
 - full Node streams beyond the small compatibility subset;
 - `worker_threads`, `child_process`, `vm`, inspector, REPL, and test-runner
   internals;
-- unrestricted Node globals such as process-wide `process` and `Buffer`;
+- unrestricted Node globals. Bundled package programs may receive temporary
+  `global`, `process`, and `Buffer` compatibility globals, but Sloppy does not
+  expose process-wide Node identity;
 - native-quality synchronous Node crypto semantics; the current hash/HMAC shim
   follows Sloppy's Promise-shaped crypto API;
 - package execution outside Sloppy's sealed artifact graph.

@@ -81,6 +81,9 @@
         "sloppy",
         "import",
         "require",
+        "node",
+        "development",
+        "production",
         "default"
       ],
       "profiles": [

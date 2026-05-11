@@ -261,5 +261,6 @@ typedef struct SlCliOptions
     bool dev_clear;
     bool dev_openapi;
     bool program_args_explicit;
+    bool deps_explain;
     bool help;
 } SlCliOptions;

@@ -1,3 +1,5 @@
+const onceOriginal = Symbol("onceOriginal");
+
 class EventEmitter {
     constructor() {
         this._events = new Map();
@@ -13,17 +15,38 @@ class EventEmitter {
         return this;
     }
 
+    addListener(name, listener) {
+        return this.on(name, listener);
+    }
+
+    prependListener(name, listener) {
+        if (typeof listener !== "function") {
+            throw new TypeError("EventEmitter listener must be a function.");
+        }
+        const listeners = this._events.get(name) ?? [];
+        listeners.unshift(listener);
+        this._events.set(name, listeners);
+        return this;
+    }
+
     once(name, listener) {
+        if (typeof listener !== "function") {
+            throw new TypeError("EventEmitter listener must be a function.");
+        }
         const wrapped = (...args) => {
             this.off(name, wrapped);
             listener(...args);
         };
+        wrapped[onceOriginal] = listener;
         return this.on(name, wrapped);
     }
 
     off(name, listener) {
         const listeners = this._events.get(name) ?? [];
-        this._events.set(name, listeners.filter((candidate) => candidate !== listener));
+        this._events.set(
+            name,
+            listeners.filter((candidate) => candidate !== listener && candidate[onceOriginal] !== listener),
+        );
         return this;
     }
 
@@ -42,6 +65,15 @@ class EventEmitter {
     listenerCount(name) {
         return (this._events.get(name) ?? []).length;
     }
+
+    removeAllListeners(name = undefined) {
+        if (name === undefined) {
+            this._events.clear();
+        } else {
+            this._events.delete(name);
+        }
+        return this;
+    }
 }
 
 function once(emitter, name) {
@@ -50,5 +82,32 @@ function once(emitter, name) {
     });
 }
 
-export { EventEmitter, once };
-export default { EventEmitter, once };
+async function* on(emitter, name) {
+    const queue = [];
+    let notify = undefined;
+    const listener = (...args) => {
+        queue.push(args);
+        if (notify !== undefined) {
+            notify();
+            notify = undefined;
+        }
+    };
+    emitter.on(name, listener);
+    try {
+        while (true) {
+            if (queue.length === 0) {
+                await new Promise((resolve) => {
+                    notify = resolve;
+                });
+            }
+            while (queue.length > 0) {
+                yield queue.shift();
+            }
+        }
+    } finally {
+        emitter.removeListener(name, listener);
+    }
+}
+
+export { EventEmitter, on, once };
+export default { EventEmitter, on, once };

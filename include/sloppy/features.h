@@ -52,15 +52,30 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_STDLIB_FFI = 32,
     SL_RUNTIME_FEATURE_NODE_COMPAT_ASSERT = 33,
     SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM = 34,
-    SL_RUNTIME_FEATURE_COUNT = 35
+    SL_RUNTIME_FEATURE_NODE_COMPAT_CONSOLE = 35,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_CONSTANTS = 36,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_DIAGNOSTICS_CHANNEL = 37,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_HTTP = 38,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_HTTPS = 39,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_MODULE = 40,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_PERF_HOOKS = 41,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_STRING_DECODER = 42,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_TTY = 43,
+    SL_RUNTIME_FEATURE_NODE_COMPAT_ZLIB = 44,
+    SL_RUNTIME_FEATURE_COUNT = 45,
+    SL_RUNTIME_FEATURE_SET_CAPACITY = 64
 } SlRuntimeFeatureId;
 
 #ifdef __cplusplus
-static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint64_t) * 8U),
-              "SlRuntimeFeatureSet.active_mask must cover all runtime features");
+static_assert(SL_RUNTIME_FEATURE_COUNT <= SL_RUNTIME_FEATURE_SET_CAPACITY,
+              "SlRuntimeFeatureSet.activations must cover all runtime features");
+static_assert(SL_RUNTIME_FEATURE_SET_CAPACITY <= (sizeof(uint64_t) * 8U),
+              "SlRuntimeFeatureSet.active_mask must cover all activatable feature slots");
 #else
-_Static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint64_t) * 8U),
-               "SlRuntimeFeatureSet.active_mask must cover all runtime features");
+_Static_assert(SL_RUNTIME_FEATURE_COUNT <= SL_RUNTIME_FEATURE_SET_CAPACITY,
+               "SlRuntimeFeatureSet.activations must cover all runtime features");
+_Static_assert(SL_RUNTIME_FEATURE_SET_CAPACITY <= (sizeof(uint64_t) * 8U),
+               "SlRuntimeFeatureSet.active_mask must cover all activatable feature slots");
 #endif
 
 typedef enum SlRuntimeFeatureKind
@@ -108,7 +123,7 @@ typedef struct SlRuntimeFeatureActivation
 typedef struct SlRuntimeFeatureSet
 {
     uint64_t active_mask;
-    SlRuntimeFeatureActivation activations[SL_RUNTIME_FEATURE_COUNT];
+    SlRuntimeFeatureActivation activations[SL_RUNTIME_FEATURE_SET_CAPACITY];
     size_t activation_count;
 } SlRuntimeFeatureSet;
 

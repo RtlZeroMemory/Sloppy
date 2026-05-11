@@ -24,37 +24,49 @@ packages unrestricted access to Node internals.
 | `node:events`, `events` | `supported` | `sloppy/node/events` | Basic `EventEmitter` methods. |
 | `node:url`, `url` | `supported` | `sloppy/node/url` | Re-exports `URL` and `URLSearchParams` when the JS environment provides them. |
 | `node:querystring`, `querystring` | `supported` | `sloppy/node/querystring` | Basic `parse` and `stringify`. |
-| `node:buffer`, `buffer` | `partial` | `sloppy/node/buffer` | `Buffer.from`, `Buffer.alloc`, zero-filled `allocUnsafe`, `isBuffer`, `byteLength`, `concat`, `equals`, `slice`/`subarray`, and UTF-8/hex/base64 conversion. No full Node buffer identity. |
-| `node:util`, `util` | `partial` | `sloppy/node/util` | Minimal `inspect`, `format`, `promisify`, and type helpers. |
+| `node:buffer`, `buffer` | `partial` | `sloppy/node/buffer` | `Buffer.from`, `Buffer.alloc`, zero-filled `allocUnsafe`, `isBuffer`, `isEncoding`, `byteLength`, `concat`, `compare`, `equals`, `slice`/`subarray`, `write`, basic unsigned integer reads/writes, and UTF-8/hex/base64/base64url conversion. No full Node buffer identity. |
+| `node:console`, `console` | `partial` | `sloppy/node/console` | Reuses the Sloppy program console object where present. |
+| `node:constants`, `constants` | `partial` | `sloppy/node/constants` | Small file-mode constants used by pure-JS feature detection. |
+| `node:util`, `util` | `partial` | `sloppy/node/util` | Minimal `inspect`, `format`, `promisify`, `callbackify`, `inherits`, and type helpers. |
 | `node:timers`, `timers` | `partial` | `sloppy/node/timers` | Maps to available global timers where present; missing timer globals fail clearly. |
-| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Async helpers and `promises` backed by `sloppy/fs`. Watchers and sync Node APIs are not implemented. |
-| `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | `readFile`, `writeFile`, `appendFile`, `stat`, `mkdir`, `readdir`, `rm`, `unlink`, and `access` backed by `sloppy/fs`. |
+| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Callback helpers and `promises` backed by `sloppy/fs`. Watchers and sync Node APIs are not implemented. |
+| `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | `readFile`, `writeFile`, `appendFile`, `copyFile`, `rename`, `stat`, `mkdir`, `readdir`, `rm`, `unlink`, `access`, `readlink`, and `symlink` where Sloppy filesystem policy allows them. `lstat`, `mkdtemp`, and `realpath` throw explicit unsupported errors until matching runtime primitives exist. |
 | `node:os`, `os` | `partial` | `sloppy/node/os` | Minimal platform/environment helpers backed by `sloppy/os` where possible. |
-| `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only: `platform`, `arch`, overlay-writable `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, and `exitCode`. Sloppy does not install a global Node `process` object. |
+| `node:process`, `process` | `partial` | `sloppy/node/process` | `platform`, `arch`, overlay-writable `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, `exitCode`, monotonic `hrtime`/`uptime`, EventEmitter-style `on`/`addListener`/`removeListener`/`emit`, `browser: false`, and minimal stdio objects. |
 | `node:crypto`, `crypto` | `partial` | `sloppy/node/crypto` | `randomBytes`, `randomUUID`, SHA-2 `createHash`, SHA-256 `createHmac`, and `timingSafeEqual` backed by `sloppy/crypto`. Hash/HMAC digest helpers are Promise-shaped because the Sloppy crypto API is async. |
-| `node:assert`, `assert` | `partial` | `sloppy/node/assert` | `ok`, loose `equal`, `strictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `rejects`, and `AssertionError`. |
+| `node:assert`, `assert` | `partial` | `sloppy/node/assert` | `ok`, loose `equal`, `strictEqual`, `notStrictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `doesNotThrow`, `rejects`, `doesNotReject`, `fail`, `ifError`, and `AssertionError`. |
 | `node:assert/strict`, `assert/strict` | `partial` | `sloppy/node/assert/strict` | Same small assert subset, with `equal` mapped to `strictEqual`. |
 | `node:stream`, `stream` | `partial` | `sloppy/node/stream` | Small EventEmitter-based subset: `Readable.from`, minimal `Writable`, `PassThrough`, and `pipeline`. No full Node stream backpressure or transform contract. |
 | `node:stream/promises`, `stream/promises` | `partial` | `sloppy/node/stream/promises` | Promise-shaped `pipeline` from the small `node:stream` compatibility subset. |
+| `node:module`, `module` | `partial` | `sloppy/node/module` | `builtinModules` and `createRequire()` for bundled Sloppy program modules. |
+| `node:string_decoder`, `string_decoder` | `partial` | `sloppy/node/string_decoder` | UTF-8 `StringDecoder` backed by Sloppy text decoding. |
+| `node:zlib`, `zlib` | `partial` | `sloppy/node/zlib` | Async callback `gzip`/`gunzip` backed by Sloppy compression. `deflate`/`inflate` and sync zlib APIs throw explicit unsupported errors. |
+| `node:perf_hooks`, `perf_hooks` | `partial` | `sloppy/node/perf_hooks` | Minimal `performance.now()` and `timeOrigin`. |
+| `node:diagnostics_channel`, `diagnostics_channel` | `partial` | `sloppy/node/diagnostics_channel` | In-process channel publish/subscribe for package instrumentation hooks. |
+| `node:tty`, `tty` | `stubbed` | `sloppy/node/tty` | `isatty()` and stream classes report non-TTY. |
+| `node:http`, `http` | `stubbed` | `sloppy/node/http` | Importable client/server entry points throw `SLOPPY_E_NODE_HTTP_UNSUPPORTED`. |
+| `node:https`, `https` | `stubbed` | `sloppy/node/https` | Importable client/server entry points throw `SLOPPY_E_NODE_HTTPS_UNSUPPORTED`. |
 
-Unsupported families include `node:http`, `node:https`, `node:http2`,
-`node:net`, `node:tls`, `node:dns`, `node:worker_threads`,
+Unsupported families include `node:http2`, `node:net`, `node:tls`,
+`node:dns`, `node:worker_threads`,
 `node:child_process`, `node:vm`, `node:inspector`, `node:test`,
 `node:repl`, and Node internal modules.
 
 ## Runtime Globals
 
-Compatibility shims are modules, not global Node emulation. Sloppy does not
-claim a global `process` or `Buffer` by default. Import the compatibility
-module explicitly:
+Compatibility shims are modules first. Sloppy does not claim process-wide Node
+identity. For bundled installed packages, the generated program wrapper installs
+only `global`, `process`, and `Buffer` while the program entry runs, because many
+pure-JS packages probe those globals. Source code should still import the
+compatibility module explicitly:
 
 ```ts
 import { Buffer } from "node:buffer";
 import process from "node:process";
 ```
 
-Packages that require globals implicitly may still fail until a future
-compatibility slice adds a documented global policy.
+Packages that require other Node globals still fail unless the generated graph
+has a documented shim for them.
 
 ## Diagnostics
 

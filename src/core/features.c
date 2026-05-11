@@ -405,6 +405,50 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.stream"),
                                                  SL_FEATURE_LIT("node:stream compatibility shim"),
                                                  SL_FEATURE_LIT("sloppy/node/stream"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_CONSOLE:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.console"),
+                                                 SL_FEATURE_LIT("node:console compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/console"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_CONSTANTS:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.constants"),
+            SL_FEATURE_LIT("node:constants compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/constants"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_DIAGNOSTICS_CHANNEL:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.diagnostics_channel"),
+            SL_FEATURE_LIT("node:diagnostics_channel compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/diagnostics_channel"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_HTTP:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.http"),
+                                                 SL_FEATURE_LIT("node:http compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/http"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_HTTPS:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.https"),
+                                                 SL_FEATURE_LIT("node:https compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/https"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_MODULE:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.module"),
+                                                 SL_FEATURE_LIT("node:module compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/module"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_PERF_HOOKS:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.perf_hooks"),
+            SL_FEATURE_LIT("node:perf_hooks compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/perf_hooks"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_STRING_DECODER:
+        return sl_feature_node_compat_descriptor(
+            id, SL_FEATURE_LIT("node.compat.string_decoder"),
+            SL_FEATURE_LIT("node:string_decoder compatibility shim"),
+            SL_FEATURE_LIT("sloppy/node/string_decoder"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_TTY:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.tty"),
+                                                 SL_FEATURE_LIT("node:tty compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/tty"));
+    case SL_RUNTIME_FEATURE_NODE_COMPAT_ZLIB:
+        return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.zlib"),
+                                                 SL_FEATURE_LIT("node:zlib compatibility shim"),
+                                                 SL_FEATURE_LIT("sloppy/node/zlib"));
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
@@ -584,6 +628,50 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
         {SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("node.compat.stream"), SL_FEATURE_STR("node:stream compatibility shim"),
          SL_FEATURE_STR("sloppy/node/stream"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_CONSOLE, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.console"), SL_FEATURE_STR("node:console compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/console"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_CONSTANTS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.constants"),
+         SL_FEATURE_STR("node:constants compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/constants"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT,
+         true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_DIAGNOSTICS_CHANNEL, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.diagnostics_channel"),
+         SL_FEATURE_STR("node:diagnostics_channel compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/diagnostics_channel"), SL_FEATURE_EMPTY,
+         SL_FEATURE_DEPS_NODE_COMPAT, true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_HTTP, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.http"), SL_FEATURE_STR("node:http compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/http"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_HTTPS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.https"), SL_FEATURE_STR("node:https compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/https"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_MODULE, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.module"), SL_FEATURE_STR("node:module compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/module"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_PERF_HOOKS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.perf_hooks"),
+         SL_FEATURE_STR("node:perf_hooks compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/perf_hooks"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT,
+         true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_STRING_DECODER, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.string_decoder"),
+         SL_FEATURE_STR("node:string_decoder compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/string_decoder"), SL_FEATURE_EMPTY,
+         SL_FEATURE_DEPS_NODE_COMPAT, true, false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_TTY, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.tty"), SL_FEATURE_STR("node:tty compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/tty"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
+         false, true},
+        {SL_RUNTIME_FEATURE_NODE_COMPAT_ZLIB, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("node.compat.zlib"), SL_FEATURE_STR("node:zlib compatibility shim"),
+         SL_FEATURE_STR("sloppy/node/zlib"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
          false, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
@@ -717,7 +805,7 @@ static SlStatus sl_feature_activate_id(SlRuntimeFeatureSet* set, SlRuntimeFeatur
 
     if ((set->active_mask & SL_FEATURE_BIT(id)) == 0U) {
         SlRuntimeFeatureActivation* activation = NULL;
-        if (set->activation_count >= (size_t)SL_RUNTIME_FEATURE_COUNT) {
+        if (set->activation_count >= (size_t)SL_RUNTIME_FEATURE_SET_CAPACITY) {
             return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         }
         activation = &set->activations[set->activation_count];

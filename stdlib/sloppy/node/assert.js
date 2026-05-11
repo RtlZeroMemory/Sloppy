@@ -9,25 +9,49 @@ class AssertionError extends Error {
     }
 }
 
-function fail(options) {
+function internalFail(options) {
     throw new AssertionError(options);
+}
+
+function fail(actual = undefined, expected = undefined, message = undefined, operator = "!=") {
+    if (arguments.length === 0) {
+        internalFail({ message: "Failed", operator: "fail" });
+    }
+    if (arguments.length === 1) {
+        if (actual instanceof Error) {
+            throw actual;
+        }
+        internalFail({ message: actual === undefined ? "Failed" : actual, operator: "fail" });
+    }
+    internalFail({
+        actual,
+        expected,
+        message: message ?? `${actual} ${operator} ${expected}`,
+        operator,
+    });
 }
 
 function ok(value, message = undefined) {
     if (!value) {
-        fail({ actual: value, expected: true, operator: "ok", message });
+        internalFail({ actual: value, expected: true, operator: "ok", message });
     }
 }
 
 function equal(actual, expected, message = undefined) {
     if (actual != expected) {
-        fail({ actual, expected, operator: "==", message });
+        internalFail({ actual, expected, operator: "==", message });
     }
 }
 
 function strictEqual(actual, expected, message = undefined) {
     if (!Object.is(actual, expected)) {
-        fail({ actual, expected, operator: "strictEqual", message });
+        internalFail({ actual, expected, operator: "strictEqual", message });
+    }
+}
+
+function notStrictEqual(actual, expected, message = undefined) {
+    if (Object.is(actual, expected)) {
+        internalFail({ actual, expected, operator: "notStrictEqual", message });
     }
 }
 
@@ -43,7 +67,7 @@ function stable(value) {
 
 function deepStrictEqual(actual, expected, message = undefined) {
     if (stable(actual) !== stable(expected)) {
-        fail({ actual, expected, operator: "deepStrictEqual", message });
+        internalFail({ actual, expected, operator: "deepStrictEqual", message });
     }
 }
 
@@ -76,12 +100,25 @@ function matchExpected(error, expected) {
 }
 
 function mismatch(error, expected, operator, message) {
-    fail({
+    internalFail({
         actual: error,
         expected,
         operator,
         message: message ?? `${operator} validation failed.`,
     });
+}
+
+function isPromiseLike(value) {
+    return value !== null
+        && (typeof value === "object" || typeof value === "function")
+        && typeof value.then === "function";
+}
+
+function requirePromiseLike(value, operator) {
+    if (!isPromiseLike(value)) {
+        throw new TypeError(`${operator} expects a Promise or a function returning a Promise.`);
+    }
+    return value;
 }
 
 function throws(fn, expected = undefined, message = undefined) {
@@ -96,19 +133,60 @@ function throws(fn, expected = undefined, message = undefined) {
         }
         return error;
     }
-    fail({ actual: undefined, expected, operator: "throws", message });
+    internalFail({ actual: undefined, expected, operator: "throws", message });
+}
+
+function doesNotThrow(fn, expected = undefined, message = undefined) {
+    if (typeof fn !== "function") {
+        throw new TypeError("assert.doesNotThrow expects a function.");
+    }
+    if (typeof expected === "string" && message === undefined) {
+        message = expected;
+        expected = undefined;
+    }
+    try {
+        fn();
+    } catch (error) {
+        if (expected === undefined || matchExpected(error, expected)) {
+            mismatch(error, expected, "doesNotThrow", message);
+        }
+        throw error;
+    }
 }
 
 async function rejects(fn, expected = undefined, message = undefined) {
+    const promise = requirePromiseLike(typeof fn === "function" ? fn() : fn, "assert.rejects");
     try {
-        await (typeof fn === "function" ? fn() : fn);
+        await promise;
     } catch (error) {
         if (!matchExpected(error, expected)) {
             mismatch(error, expected, "rejects", message);
         }
         return error;
     }
-    fail({ actual: undefined, expected, operator: "rejects", message });
+    internalFail({ actual: undefined, expected, operator: "rejects", message });
+}
+
+async function doesNotReject(fn, expected = undefined, message = undefined) {
+    if (typeof expected === "string" && message === undefined) {
+        message = expected;
+        expected = undefined;
+    }
+    const promise = requirePromiseLike(typeof fn === "function" ? fn() : fn, "assert.doesNotReject");
+    try {
+        await promise;
+    } catch (error) {
+        if (expected === undefined || matchExpected(error, expected)) {
+            mismatch(error, expected, "doesNotReject", message);
+        }
+        throw error;
+    }
+}
+
+function ifError(value) {
+    if (value !== null && value !== undefined) {
+        internalFail({ actual: value, expected: null, operator: "ifError", message: value?.message });
+    }
 }
 
 function assert(value, message = undefined) {
@@ -119,7 +197,12 @@ Object.assign(assert, {
     AssertionError,
     deepEqual,
     deepStrictEqual,
+    doesNotReject,
+    doesNotThrow,
     equal,
+    fail,
+    ifError,
+    notStrictEqual,
     ok,
     rejects,
     strictEqual,
@@ -130,7 +213,12 @@ export {
     AssertionError,
     deepEqual,
     deepStrictEqual,
+    doesNotReject,
+    doesNotThrow,
     equal,
+    fail,
+    ifError,
+    notStrictEqual,
     ok,
     rejects,
     strictEqual,

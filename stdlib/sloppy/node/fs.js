@@ -29,6 +29,17 @@ function normalizeEncoding(options, operation) {
     throw new TypeError(`SLOPPY_E_NODE_FS_UNSUPPORTED_ENCODING: ${operation} only supports utf8 text encoding.`);
 }
 
+function recursiveOption(options, operation) {
+    const recursive = options?.recursive;
+    if (recursive === undefined) {
+        return false;
+    }
+    if (typeof recursive !== "boolean") {
+        throw new TypeError(`${operation} recursive option must be a boolean.`);
+    }
+    return recursive;
+}
+
 function nodeStats(stat) {
     return Object.freeze({
         ...stat,
@@ -37,6 +48,9 @@ function nodeStats(stat) {
         },
         isDirectory() {
             return stat.kind === "directory";
+        },
+        isSymbolicLink() {
+            return stat.kind === "symlink" || stat.symlink === true;
         },
     });
 }
@@ -68,6 +82,24 @@ async function unlinkPromise(path) {
     return File.delete(toSloppyPath(path));
 }
 
+async function copyFilePromise(fromPath, toPath) {
+    return File.copy(toSloppyPath(fromPath), toSloppyPath(toPath));
+}
+
+async function renamePromise(fromPath, toPath) {
+    return File.move(toSloppyPath(fromPath), toSloppyPath(toPath));
+}
+
+async function readlinkPromise(path) {
+    return File.readLink(toSloppyPath(path));
+}
+
+async function symlinkPromise(targetPath, linkPath, type = undefined) {
+    return File.createSymlink(toSloppyPath(targetPath), toSloppyPath(linkPath), {
+        directory: type === "dir" || type === "junction",
+    });
+}
+
 function callbackify(method, name) {
     return (...args) => {
         const callback = args.pop();
@@ -87,6 +119,10 @@ function existsSync() {
     throw new Error("SLOPPY_E_NODE_SYNC_FS_UNSUPPORTED: synchronous fs APIs are not available.");
 }
 
+async function unsupportedPromise(name) {
+    throw new Error(`SLOPPY_E_NODE_FS_UNSUPPORTED: node:fs.promises.${name} is not implemented by Sloppy's Node compatibility shim.`);
+}
+
 const promises = Object.freeze({
     access: async (path) => {
         const stat = await File.stat(toSloppyPath(path));
@@ -95,32 +131,46 @@ const promises = Object.freeze({
         }
     },
     appendFile: appendFilePromise,
+    copyFile: copyFilePromise,
+    lstat: () => unsupportedPromise("lstat"),
     mkdir: (path, options) =>
-        Directory.create(toSloppyPath(path), { recursive: Boolean(options?.recursive) }),
+        Directory.create(toSloppyPath(path), { recursive: recursiveOption(options, "node:fs.mkdir") }),
+    mkdtemp: () => unsupportedPromise("mkdtemp"),
     readdir: async (path) => (await Directory.list(toSloppyPath(path))).map((entry) => entry.name),
     readFile: readFilePromise,
+    readlink: readlinkPromise,
+    realpath: () => unsupportedPromise("realpath"),
+    rename: renamePromise,
     rm: async (path, options = undefined) => {
         const sloppyPath = toSloppyPath(path);
         const stat = await File.stat(sloppyPath);
         if (stat.kind === "directory") {
-            return Directory.delete(sloppyPath, { recursive: Boolean(options?.recursive) });
+            return Directory.delete(sloppyPath, { recursive: recursiveOption(options, "node:fs.rm") });
         }
         return File.delete(sloppyPath);
     },
     stat: async (path) => nodeStats(await File.stat(toSloppyPath(path))),
+    symlink: symlinkPromise,
     unlink: unlinkPromise,
     writeFile: writeFilePromise,
 });
 
 const access = callbackify(promises.access, "access");
 const appendFile = callbackify(appendFilePromise, "appendFile");
+const copyFile = callbackify(copyFilePromise, "copyFile");
+const lstat = callbackify(promises.lstat, "lstat");
 const mkdir = callbackify(promises.mkdir, "mkdir");
+const mkdtemp = callbackify(promises.mkdtemp, "mkdtemp");
 const readdir = callbackify(promises.readdir, "readdir");
 const readFile = callbackify(readFilePromise, "readFile");
+const readlink = callbackify(readlinkPromise, "readlink");
+const realpath = callbackify(promises.realpath, "realpath");
+const rename = callbackify(renamePromise, "rename");
 const rm = callbackify(promises.rm, "rm");
 const stat = callbackify(promises.stat, "stat");
+const symlink = callbackify(symlinkPromise, "symlink");
 const unlink = callbackify(unlinkPromise, "unlink");
 const writeFile = callbackify(writeFilePromise, "writeFile");
 
-export { access, appendFile, existsSync, mkdir, promises, readdir, readFile, rm, stat, unlink, writeFile };
-export default { access, appendFile, existsSync, mkdir, promises, readdir, readFile, rm, stat, unlink, writeFile };
+export { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
+export default { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
