@@ -31,6 +31,18 @@
             message(WARNING "PowerShell host not found; source-input fixture harness is unavailable")
         endif()
 
+        add_test(
+            NAME conformance.static_assets.package_and_run
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_ENABLE_V8=${SLOPPY_ENABLE_V8}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_static_assets.cmake")
+        set_tests_properties(
+            conformance.static_assets.package_and_run
+            PROPERTIES LABELS "conformance;source-input;static;asset;package")
+
         if(NOT SLOPPY_ENABLE_V8)
             add_test(
                 NAME sloppy.run.source_input_emits_artifacts_non_v8

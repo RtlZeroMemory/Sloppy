@@ -1527,7 +1527,15 @@ fn web_static_files_emit_routes_and_dependency_assets_from_config_root() {
     let out_dir = root.join(".sloppy");
     fs::create_dir_all(&src_dir).expect("source directory should be created");
     fs::create_dir_all(&public_dir).expect("public directory should be created");
+    fs::write(
+        public_dir.join("index.html"),
+        "<!doctype html><title>static</title>",
+    )
+    .expect("html asset should write");
     fs::write(public_dir.join("hello.txt"), "hello static").expect("text asset should write");
+    fs::write(public_dir.join("data.json"), "{\"ok\":true}\n").expect("json asset should write");
+    fs::write(public_dir.join("module.wasm"), [0x00, 0x61, 0x73, 0x6d])
+        .expect("wasm asset should write");
     fs::write(public_dir.join("app.js"), "export const ok = true;\n")
         .expect("script asset should write");
     fs::write(
@@ -1590,7 +1598,16 @@ export default app;
         && route["cors"]["preflight"] == true));
     assert!(routes
         .iter()
+        .any(|route| route["method"] == "GET" && route["pattern"] == "/public/index.html"));
+    assert!(routes
+        .iter()
         .any(|route| route["method"] == "GET" && route["pattern"] == "/public/app.js"));
+    assert!(routes
+        .iter()
+        .any(|route| route["method"] == "GET" && route["pattern"] == "/public/data.json"));
+    assert!(routes
+        .iter()
+        .any(|route| route["method"] == "GET" && route["pattern"] == "/public/module.wasm"));
 
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app js should emit");
     assert!(app_js.contains("Results.bytes(new Uint8Array(["));
@@ -1613,8 +1630,66 @@ export default app;
         .as_array()
         .expect("assets should be an array")
         .iter()
+        .any(|asset| asset["path"] == "public/index.html"
+            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
         .any(|asset| asset["path"] == "public/app.js"
             && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/data.json"
+            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/module.wasm"
+            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
+fn web_static_files_reject_traversal_root() {
+    let root = fixture_temp_dir("web-static-files-traversal-root");
+    let src_dir = root.join("src");
+    let public_dir = root.join("public");
+    let input = src_dir.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&src_dir).expect("source directory should be created");
+    fs::create_dir_all(&public_dir).expect("public directory should be created");
+    fs::write(public_dir.join("hello.txt"), "hello").expect("asset should write");
+    fs::write(
+        &input,
+        r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.useStaticFiles({ requestPath: "/public", root: "../public" });
+
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Web),
+        config_dir: Some(root.clone()),
+        ..CompileOptions::default()
+    };
+    let failure = super::build(&input, &out_dir, &options).expect_err("traversal root should fail");
+    assert_eq!(
+        failure.diagnostic.code,
+        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES"
+    );
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("root must be a safe project-relative directory"));
 
     fs::remove_dir_all(&root).expect("web fixture directory should be removable");
 }

@@ -75,7 +75,8 @@ function Test-LibuvAllowedPath {
 
     return $RelativePath.StartsWith("src/platform/libuv/", [System.StringComparison]::OrdinalIgnoreCase) -or
         $RelativePath -eq "tests/unit/core/test_http_transport.cc" -or
-        $RelativePath -eq "tests/unit/core/test_net_tcp_client.cc"
+        $RelativePath -eq "tests/unit/core/test_net_tcp_client.cc" -or
+        $RelativePath -eq "tests/unit/core/test_provider_executor.c"
 }
 
 function Test-ProviderNativeAllowedPath {

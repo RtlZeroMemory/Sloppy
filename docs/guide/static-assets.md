@@ -3,7 +3,7 @@
 Alpha: `app.useStaticFiles` is an experimental build-time API.
 
 Use `app.useStaticFiles` when an app needs to ship fixed files such as CSS,
-client JavaScript, SVGs, images, or plain text.
+client JavaScript, SVGs, images, WebAssembly modules, or plain text.
 
 ## Add A Public Directory
 
