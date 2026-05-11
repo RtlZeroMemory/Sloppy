@@ -547,13 +547,21 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                 if !matches!(call.arguments.len(), 1 | 2) {
                     return None;
                 }
-                if !matches!(call.arguments.first(), Some(Argument::RegExpLiteral(_))) {
+                let Some(Argument::RegExpLiteral(regex)) = call.arguments.first() else {
                     return None;
-                }
+                };
                 if call.arguments.len() == 2
                     && !matches!(call.arguments.get(1), Some(Argument::StringLiteral(_)))
                 {
                     return None;
+                }
+                let flags = regex.regex.flags.to_string().replace(['g', 'y'], "");
+                base["pattern"] = json!(regex.regex.pattern.text.as_str());
+                if !flags.is_empty() {
+                    base["patternFlags"] = json!(flags);
+                }
+                if let Some(Argument::StringLiteral(message)) = call.arguments.get(1) {
+                    base["patternMessage"] = json!(message.value.as_str());
                 }
             } else {
                 if call.arguments.len() != 1 {

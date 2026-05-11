@@ -8921,7 +8921,7 @@ fn app_map_controller_call(
             .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
         }
         let mut tags = route_metadata.tags;
-        tags.extend(fluent_metadata.tags);
+        tags.extend(fluent_metadata.tags.clone());
         let middleware = route_middleware_metadata(&state.middleware);
         let cors = state.cors_policy.clone();
         let handler_source = source_slice(&controller.source_text, controller_method.span)
@@ -8948,6 +8948,13 @@ fn app_map_controller_call(
             handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
             handler.is_async = true;
         }
+        apply_route_schema_metadata(
+            path,
+            statement.span,
+            &state.schema_names,
+            &fluent_metadata,
+            &mut handler,
+        )?;
         handler.emitted_source = wrap_handler_with_framework_pipeline(
             &handler.emitted_source,
             &state.middleware,
@@ -12183,13 +12190,30 @@ fn apply_route_schema_metadata(
 
     if let Some(schema) = &metadata.returns_schema {
         validate_route_schema_reference(path, span, schema, schema_names)?;
+        let mut applied = false;
         if let Some(response) = &mut handler.response {
             apply_response_schema(path, span, &mut response.body_schema, schema)?;
+            applied = true;
         }
         for response in &mut handler.responses {
             if response.kind == "json" {
                 apply_response_schema(path, span, &mut response.body_schema, schema)?;
+                applied = true;
             }
+        }
+        if !applied {
+            let response = ResponseMetadata {
+                helper: "returns".to_string(),
+                status: 200,
+                kind: "json".to_string(),
+                body_schema: Some(schema.clone()),
+                source_name: None,
+                source_text: None,
+                span: Some(span),
+                partial: false,
+            };
+            handler.response = Some(response.clone());
+            handler.responses.push(response);
         }
     }
     Ok(())
@@ -13095,6 +13119,9 @@ fn unresolved_body_validate_schema_in_call(
         return None;
     };
     let schema = identifier.name.as_str();
+    if schema == "undefined" {
+        return None;
+    }
     (!schema_names.contains(schema)).then(|| (schema.to_string(), identifier.span))
 }
 
@@ -15266,7 +15293,9 @@ fn body_binding_schema(
         "multipart" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.len() == 1 => {
             let schema = call.arguments.first().and_then(argument_identifier)?;
-            if schema_names.contains(schema) {
+            if schema == "undefined" {
+                Some(None)
+            } else if schema_names.contains(schema) {
                 Some(Some(schema.to_string()))
             } else {
                 None
@@ -15274,7 +15303,9 @@ fn body_binding_schema(
         }
         "validate" if call.arguments.len() == 1 => {
             let schema = call.arguments.first().and_then(argument_identifier)?;
-            if schema_names.contains(schema) {
+            if schema == "undefined" {
+                Some(None)
+            } else if schema_names.contains(schema) {
                 Some(Some(schema.to_string()))
             } else {
                 None
@@ -15806,7 +15837,8 @@ fn body_json_schema_reference_edit(
         let Argument::Identifier(identifier) = call.arguments.first()? else {
             return None;
         };
-        if !schema_names.contains(identifier.name.as_str()) {
+        let schema = identifier.name.as_str();
+        if schema != "undefined" && !schema_names.contains(schema) {
             return None;
         }
         let validate_property_span = if chain[2] == "validate" {
@@ -17336,8 +17368,17 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     if (typeof handler !== "function") { throw new TypeError("Sloppy app route handler must be callable."); }
     const route = { method, pattern, handler, name: undefined, metadata: Object.freeze({}) };
     routes.push(route);
+    function metadataForSchema(schema) {
+      if (schema === undefined || schema === null || typeof schema !== "object" || schema.metadata === undefined) { throw new TypeError("Sloppy endpoint schema metadata is required."); }
+      return schema.metadata;
+    }
+    function setMetadata(key, value) {
+      route.metadata = Object.freeze({ ...route.metadata, [key]: Object.freeze(value) });
+    }
     return Object.freeze({
       withName(name) { route.name = String(name); return this; },
+      accepts(schema) { setMetadata("accepts", { contentType: "application/json", schema: metadataForSchema(schema) }); return this; },
+      returns(schema, options = undefined) { setMetadata("returns", { status: options?.status ?? 200, contentType: options?.contentType ?? "application/json", schema: metadataForSchema(schema) }); return this; },
       withTags() { return this; }
     });
   }

@@ -3912,14 +3912,25 @@ export default app;
         .as_array()
         .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "User"))
         .expect("User schema should exist");
-    assert_eq!(
-        user_schema["definition"]["properties"]["name"]["optional"],
-        true
-    );
-    assert_eq!(
-        user_schema["definition"]["properties"]["name"]["default"],
-        "guest"
-    );
+    let name_property = &user_schema["definition"]["properties"]["name"];
+    assert_eq!(name_property["pattern"], "^[a-z]+$");
+    assert_eq!(name_property["patternFlags"], "u");
+    assert_eq!(name_property["optional"], true);
+    assert_eq!(name_property["default"], "guest");
+}
+
+#[test]
+fn body_validate_undefined_still_sanitizes_to_body_json() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.validate(undefined) }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("validate(undefined) should remain a supported sanitizer path");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.validate(undefined)"));
 }
 
 #[test]
@@ -6375,6 +6386,45 @@ export default app;
 }
 
 #[test]
+fn controller_routes_apply_fluent_schema_metadata() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({ name: Schema.string() });
+const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
+class UsersController {
+  create(_ctx) {
+    return Results.created("/users/1", { id: 1, name: "Ada" });
+  }
+}
+const app = Sloppy.create();
+app.mapController("/users", UsersController, (mapper) => {
+  mapper.post("/", "create").accepts(CreateUser).returns(User);
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("controller fluent schema metadata should extract");
+    let route = app
+        .routes
+        .iter()
+        .find(|route| route.method == "POST" && route.pattern == "/users")
+        .expect("controller route should exist");
+    assert_eq!(route.handler.bindings.len(), 1);
+    assert_eq!(route.handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        route.handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        route
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+}
+
+#[test]
 fn unsupported_dynamic_framework_features_fail_closed() {
     for (source, code) in [
         (
@@ -6812,6 +6862,11 @@ export default app;
     assert_eq!(app.dynamic_routes.len(), 1);
     assert_eq!(app.dynamic_routes[0].method, Some("GET"));
     assert_eq!(app.dynamic_routes[0].pattern.as_deref(), Some("/"));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("accepts(schema)"));
+    assert!(emitted_js
+        .source
+        .contains("returns(schema, options = undefined)"));
 }
 
 #[test]

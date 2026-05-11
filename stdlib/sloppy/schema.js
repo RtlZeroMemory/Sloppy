@@ -67,8 +67,11 @@ function isSchema(value) {
         typeof value.__validateAtPath === "function";
 }
 
+const MODIFIERS = Symbol("SloppySchemaModifiers");
+
 function withModifiers(schema) {
-    return Object.freeze({
+    const modifiers = schema[MODIFIERS] ?? Object.freeze([]);
+    const wrapped = {
         ...schema,
         optional() {
             return createOptionalSchema(schema);
@@ -79,7 +82,37 @@ function withModifiers(schema) {
         default(value) {
             return createDefaultSchema(schema, value);
         },
+    };
+
+    for (const [key, value] of Object.entries(schema)) {
+        if (["validate", "__validateAtPath", "optional", "nullable", "default"].includes(key) ||
+            typeof value !== "function") {
+            continue;
+        }
+        wrapped[key] = (...args) => {
+            const next = value(...args);
+            return isSchema(next) ? applySchemaModifiers(next, modifiers) : next;
+        };
+    }
+
+    Object.defineProperty(wrapped, MODIFIERS, {
+        value: modifiers,
     });
+    return Object.freeze(wrapped);
+}
+
+function applySchemaModifiers(schema, modifiers) {
+    let current = schema;
+    for (const modifier of modifiers) {
+        if (modifier.kind === "optional") {
+            current = createOptionalSchema(current);
+        } else if (modifier.kind === "nullable") {
+            current = createNullableSchema(current);
+        } else if (modifier.kind === "default") {
+            current = createDefaultSchema(current, modifier.value);
+        }
+    }
+    return current;
 }
 
 function createOptionalSchema(inner) {
@@ -92,6 +125,7 @@ function createOptionalSchema(inner) {
     }
 
     return withModifiers({
+        ...inner,
         kind: inner.kind,
         metadata: Object.freeze({
             ...inner.metadata,
@@ -101,6 +135,7 @@ function createOptionalSchema(inner) {
             return validateAtPath(value, []);
         },
         __validateAtPath: validateAtPath,
+        [MODIFIERS]: Object.freeze([...(inner[MODIFIERS] ?? []), Object.freeze({ kind: "optional" })]),
     });
 }
 
@@ -114,6 +149,7 @@ function createNullableSchema(inner) {
     }
 
     return withModifiers({
+        ...inner,
         kind: inner.kind,
         metadata: Object.freeze({
             ...inner.metadata,
@@ -123,6 +159,7 @@ function createNullableSchema(inner) {
             return validateAtPath(value, []);
         },
         __validateAtPath: validateAtPath,
+        [MODIFIERS]: Object.freeze([...(inner[MODIFIERS] ?? []), Object.freeze({ kind: "nullable" })]),
     });
 }
 
@@ -142,6 +179,7 @@ function createDefaultSchema(inner, defaultValue) {
     }
 
     return withModifiers({
+        ...inner,
         kind: inner.kind,
         metadata: Object.freeze({
             ...inner.metadata,
@@ -151,6 +189,7 @@ function createDefaultSchema(inner, defaultValue) {
             return validateAtPath(value, []);
         },
         __validateAtPath: validateAtPath,
+        [MODIFIERS]: Object.freeze([...(inner[MODIFIERS] ?? []), Object.freeze({ kind: "default", value: protectedDefault })]),
     });
 }
 
@@ -356,8 +395,8 @@ function createArraySchema(itemSchema) {
 }
 
 function literal(value) {
-    if (!["string", "number", "boolean"].includes(typeof value) && value !== null) {
-        throw new TypeError("Sloppy schema.literal expects a string, number, boolean, or null.");
+    if (!isJsonLiteral(value)) {
+        throw new TypeError("Sloppy schema.literal expects a string, finite number, boolean, or null.");
     }
 
     function validateAtPath(input, path) {
@@ -377,8 +416,8 @@ function literal(value) {
 }
 
 function oneOf(values) {
-    if (!Array.isArray(values) || values.length === 0) {
-        throw new TypeError("Sloppy schema.enum expects a non-empty array.");
+    if (!Array.isArray(values) || values.length === 0 || !values.every(isJsonLiteral)) {
+        throw new TypeError("Sloppy schema.enum expects a non-empty array of string, finite number, boolean, or null values.");
     }
     const variants = Object.freeze([...values]);
 
@@ -396,6 +435,13 @@ function oneOf(values) {
         },
         __validateAtPath: validateAtPath,
     });
+}
+
+function isJsonLiteral(value) {
+    return value === null ||
+        typeof value === "string" ||
+        typeof value === "boolean" ||
+        (typeof value === "number" && Number.isFinite(value));
 }
 
 function validateShape(shape) {

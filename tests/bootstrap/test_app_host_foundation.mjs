@@ -2629,11 +2629,21 @@ async function flushMicrotasks(count = 6) {
     assert.equal(Schema.enum(["admin", "user"]).validate("admin").ok, true);
     assert.equal(Schema.literal("ok").validate("ok").ok, true);
     assert.equal(Schema.string().nullable().validate(null).ok, true);
+    assert.equal(Schema.string().optional().minLength(1).validate(undefined).ok, true);
+    assert.equal(Schema.string().optional().minLength(1).validate("").issues[0].code, "string.min");
+    assert.equal(Schema.number().nullable().max(5).validate(6).issues[0].code, "number.max");
     assert.deepEqual(Schema.string().default("fallback").validate(undefined), {
         ok: true,
         value: "fallback",
     });
+    assert.deepEqual(Schema.string().default("fallback").minLength(3).validate(undefined), {
+        ok: true,
+        value: "fallback",
+    });
     assertThrowsMessage(() => Schema.string().default(123), /default value must satisfy/);
+    assertThrowsMessage(() => Schema.literal(Number.NaN), /finite number/);
+    assertThrowsMessage(() => Schema.literal(Number.POSITIVE_INFINITY), /finite number/);
+    assertThrowsMessage(() => Schema.enum(["admin", {}]), /non-empty array/);
     const GlobalPattern = Schema.string().pattern(/a/g);
     assert.equal(GlobalPattern.validate("a").ok, true);
     assert.equal(GlobalPattern.validate("a").ok, true);
