@@ -29,8 +29,8 @@ routes are omitted.
 A minimal OpenAPI 3 document in JSON form:
 
 - One `paths` entry per declared route.
-- Path parameters extracted from `{name}` / `{name:str}` / `{name:int}`
-  patterns.
+- Path parameters extracted from `{name}`, `{name:str}`, `{name:int}`,
+  `{name:uuid}`, `{name:alpha}`, and `{name:float}` patterns.
 - Method names mapped to OpenAPI operations.
 - Route names from `.withName(...)` or route metadata options such as
   `{ name: "Users.List" }` become operation IDs.
@@ -108,6 +108,11 @@ directly model:
 
 These fields are stable across builds for a given source/compiler pair,
 suitable for diffing.
+
+Path parameters with Sloppy constraints carry `x-slop-constraint`. Integer
+constraints emit OpenAPI integer schemas, UUID constraints emit string schemas
+with `format: "uuid"`, alpha constraints emit string schemas with an ASCII
+letter pattern, and float constraints emit number schemas.
 
 ## Current limits
 

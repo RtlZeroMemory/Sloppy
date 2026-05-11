@@ -21,6 +21,43 @@ static void sl_cli_routes_emit_json_bindings(const SlCliRoute* route)
     printf("]");
 }
 
+static void sl_cli_routes_emit_json_constraints(SlCliSpan pattern)
+{
+    size_t index = 0U;
+    size_t count = 0U;
+
+    printf(", \"constraints\": [");
+    while (index < pattern.length) {
+        if (pattern.ptr[index] == '{') {
+            size_t name_start = index + 1U;
+            size_t name_end = name_start;
+            SlCliSpan kind = sl_cli_span_cstr("str");
+            while (name_end < pattern.length && pattern.ptr[name_end] != '}' &&
+                   pattern.ptr[name_end] != ':')
+            {
+                name_end += 1U;
+            }
+            if (name_end < pattern.length && pattern.ptr[name_end] == ':') {
+                size_t type_start = name_end + 1U;
+                size_t type_end = type_start;
+                while (type_end < pattern.length && pattern.ptr[type_end] != '}') {
+                    type_end += 1U;
+                }
+                kind = (SlCliSpan){&pattern.ptr[type_start], type_end - type_start};
+            }
+            printf("%s{ \"name\": ", count == 0U ? "" : ", ");
+            sl_cli_json_escape(stdout,
+                               (SlCliSpan){&pattern.ptr[name_start], name_end - name_start});
+            printf(", \"kind\": ");
+            sl_cli_json_escape(stdout, kind);
+            printf(" }");
+            count += 1U;
+        }
+        index += 1U;
+    }
+    printf("]");
+}
+
 static void sl_cli_routes_emit_json_response_value(SlCliSpan kind, SlCliSpan helper,
                                                    uint64_t status, SlCliSpan body_schema)
 {
@@ -87,6 +124,7 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         sl_cli_json_escape(stdout, route->dynamic_reason);
         printf(" }");
     }
+    sl_cli_routes_emit_json_constraints(route->pattern);
     sl_cli_routes_emit_json_bindings(route);
     printf(", \"response\": ");
     sl_cli_routes_emit_json_response_value(route->response_kind, route->response_helper,
@@ -95,10 +133,9 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         printf(", \"responses\": [");
         for (response = 0U; response < route->response_count; response += 1U) {
             printf("%s", response == 0U ? "" : ", ");
-            sl_cli_routes_emit_json_response_value(route->response_kinds[response],
-                                                   route->response_helpers[response],
-                                                   route->response_statuses[response],
-                                                   route->response_body_schemas[response]);
+            sl_cli_routes_emit_json_response_value(
+                route->response_kinds[response], route->response_helpers[response],
+                route->response_statuses[response], route->response_body_schemas[response]);
         }
         printf("]");
     }

@@ -23,8 +23,10 @@ ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOUR
 2      GET     sse          /events              3        complete          app.js:6:1  -  stream/text-event-stream  Events
 ```
 
-Routes are sorted: literal segments before parameter segments, ties broken
-by source order (matching the runtime's match precedence).
+Routes are sorted in runtime match-precedence order: literal segments before
+parameter segments, constrained parameters before unconstrained parameters,
+longer/more-specific patterns before shorter patterns, and source order for
+remaining ties.
 
 When the compiler sees runnable dynamic route registration that it cannot fully
 describe, text output uses known values where available and `<dynamic>` for
@@ -47,7 +49,10 @@ $ sloppy routes .sloppy --format json
 
 JSON output is stable; tooling can pipe it through `jq` or feed it into
 custom validation. Dynamic route entries include metadata that marks the route
-as dynamic and records the reason when the Plan has one.
+as dynamic and records the reason when the Plan has one. Each route also
+includes a `constraints` array for path parameters, with `str` for
+unconstrained parameters and explicit kinds such as `int`, `uuid`, `alpha`, or
+`float` when present in the pattern.
 
 `kind` is `http` for ordinary routes, `sse` for server-sent event routes, and
 `websocket` for WebSocket route intent. WebSocket route metadata does not imply

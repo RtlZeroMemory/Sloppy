@@ -68,7 +68,7 @@ static SlCliSpan sl_cli_openapi_type_for_kind(SlCliSpan kind)
     if (sl_cli_span_equal_cstr(kind, "int") || sl_cli_span_equal_cstr(kind, "integer")) {
         return sl_cli_span_cstr("integer");
     }
-    if (sl_cli_span_equal_cstr(kind, "number")) {
+    if (sl_cli_span_equal_cstr(kind, "number") || sl_cli_span_equal_cstr(kind, "float")) {
         return sl_cli_span_cstr("number");
     }
     if (sl_cli_span_equal_cstr(kind, "boolean") || sl_cli_span_equal_cstr(kind, "bool")) {
@@ -97,7 +97,18 @@ static void sl_cli_openapi_emit_parameter(FILE* file, SlCliSpan name, SlCliSpan 
     sl_cli_write_cstr(file, required ? "true" : "false");
     sl_cli_write_cstr(file, ", \"schema\": { \"type\": ");
     sl_cli_json_escape(file, sl_cli_openapi_type_for_kind(type));
-    sl_cli_write_cstr(file, " } }");
+    if (sl_cli_span_equal_cstr(type, "uuid")) {
+        sl_cli_write_cstr(file, ", \"format\": \"uuid\"");
+    }
+    else if (sl_cli_span_equal_cstr(type, "alpha")) {
+        sl_cli_write_cstr(file, ", \"pattern\": \"^[A-Za-z]+$\"");
+    }
+    sl_cli_write_cstr(file, " }");
+    if (!sl_cli_span_empty(type)) {
+        sl_cli_write_cstr(file, ", \"x-slop-constraint\": ");
+        sl_cli_json_escape(file, type);
+    }
+    sl_cli_write_cstr(file, " }");
     *first = false;
 }
 
@@ -370,7 +381,8 @@ static void sl_cli_openapi_emit_response_schema(FILE* out, const SlCliMetadata* 
             sl_cli_write_cstr(out, "\" }");
         }
         else {
-            sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"response schema shape not declared\" }");
+            sl_cli_write_cstr(out,
+                              "{ \"x-slop-partial\": \"response schema shape not declared\" }");
         }
         return;
     }
@@ -425,9 +437,8 @@ static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, ui
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 
-static void sl_cli_openapi_emit_response(FILE* out, const SlCliMetadata* metadata,
-                                         uint64_t status, SlCliSpan kind, SlCliSpan helper,
-                                         SlCliSpan body_schema)
+static void sl_cli_openapi_emit_response(FILE* out, const SlCliMetadata* metadata, uint64_t status,
+                                         SlCliSpan kind, SlCliSpan helper, SlCliSpan body_schema)
 {
     sl_cli_write_cstr(out, "          \"");
     sl_cli_write_u64(out, status == 0U ? 200U : status);
@@ -526,8 +537,8 @@ static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadat
     }
     if (metadata->auth_scheme_count == 0U) {
         sl_cli_openapi_emit_field_prefix(out, first);
-        sl_cli_write_cstr(out,
-                           "\"x-slop-partial\": \"auth required but auth scheme metadata is missing\"");
+        sl_cli_write_cstr(
+            out, "\"x-slop-partial\": \"auth required but auth scheme metadata is missing\"");
         return;
     }
     sl_cli_openapi_emit_field_prefix(out, first);

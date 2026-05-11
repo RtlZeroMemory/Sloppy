@@ -53,6 +53,9 @@ a parameter:
 | `{name}`      | a single non-`/` segment                 | `ctx.route.name` (string) |
 | `{name:str}`  | same as `{name}`, explicit               | `ctx.route.name` (string) |
 | `{id:int}`    | a single segment of digits               | `ctx.route.id` (string)   |
+| `{id:uuid}`   | UUID text with canonical dashes          | `ctx.route.id` (string)   |
+| `{slug:alpha}`| ASCII letters only                       | `ctx.route.slug` (string) |
+| `{n:float}`   | decimal digits with one `.`              | `ctx.route.n` (string)    |
 
 Even with `:int`, `ctx.route.id` is a string — the type tag validates
 the segment but doesn't coerce. Convert it yourself if you need a
@@ -65,12 +68,14 @@ app.get("/users/{id:int}", (ctx) => {
 });
 ```
 
-Trailing slashes are strict. `/users` and `/users/` are different
-routes.
+Trailing slashes are strict. Non-root route patterns cannot end in `/`; a
+request for `/users/` does not match a registered `/users` route.
 
-When several patterns could match, the runtime sorts routes with no
-parameters before routes with any parameter; ties break in source
-order.
+When several patterns could match, Sloppy uses deterministic precedence:
+literal segments beat parameter segments, constrained parameters beat
+unconstrained parameters, longer/more-specific patterns beat shorter ones,
+and source order breaks remaining ties. Duplicate `method + pattern`
+registrations are rejected. Duplicate route names are rejected.
 
 ## Options object
 
@@ -102,6 +107,22 @@ app.post("/users", createUser)
 
 The app host stores this metadata in route snapshots. The compiler also uses
 static schema identifiers in these fluent calls for Plan and OpenAPI metadata.
+
+## URL generation
+
+Named routes can generate application-relative URLs:
+
+```ts
+app.get("/users/{id:int}", { name: "Users.Get" }, getUser);
+
+const href = app.urlFor("Users.Get", { id: 42 }, { tab: "profile" });
+// "/users/42?tab=profile"
+```
+
+`ctx.urlFor(...)` is available inside handlers and uses the same rules.
+Route parameters are encoded as path segments. Query keys and values are
+encoded for the query string. URL generation rejects missing route parameters,
+extra route parameters, unknown route names, and unnamed routes.
 
 Use `requireAuth(...)` to protect a route:
 
@@ -219,6 +240,7 @@ captured at build/package time, not looked up dynamically per request.
 
 - Direct HEAD route registration
 - Streaming request bodies exposed directly to handlers
-- Custom matchers beyond `{name}` / `{name:int}`
+- Custom matchers beyond the documented `str`, `int`, `uuid`, `alpha`, and
+  `float` path constraints
 - Per-route limits at the API surface (server-wide limits exist via config)
 - Native WebSocket upgrade execution

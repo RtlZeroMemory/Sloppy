@@ -16,6 +16,7 @@ Default context (when handler is called without explicit context) includes:
 - `route` (empty object by default)
 - `routeName`
 - `routePattern`
+- `urlFor(name, params?, query?)`
 - `requestId` when `RequestId.defaults()` middleware is installed before the handler
 
 If a caller provides context, handler receives that context instead.

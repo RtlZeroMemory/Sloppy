@@ -10,9 +10,9 @@
     "optimizations": "reported-only"
   },
   "paths": {
-    "/": {
+    "/users/create": {
       "get": {
-        "operationId": "Hello.Index",
+        "operationId": "Users.Create",
         "x-slop-completeness": "",
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
@@ -22,9 +22,9 @@
         }
       }
     },
-    "/users/create": {
+    "/": {
       "get": {
-        "operationId": "Users.Create",
+        "operationId": "Hello.Index",
         "x-slop-completeness": "",
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
@@ -41,7 +41,7 @@
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "x-slop-constraint": "int" }
         ],
         "responses": {
           "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },

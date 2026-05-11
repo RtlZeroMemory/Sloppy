@@ -1,6 +1,6 @@
 {
   "kind": "web",
   "routes": [
-    { "method": "GET", "kind": "http", "pattern": "/users/{id:int}", "handlerId": 1, "name": "Users.Get", "module": "", "sourceOrder": 0, "source": { "path": "input.js", "line": 6, "column": 1 }, "completeness": "complete", "bindings": [], "response": { "kind": "json", "helper": "json", "status": 200 } }
+    { "method": "GET", "kind": "http", "pattern": "/users/{id:int}", "handlerId": 1, "name": "Users.Get", "module": "", "sourceOrder": 0, "source": { "path": "input.js", "line": 6, "column": 1 }, "completeness": "complete", "constraints": [{ "name": "id", "kind": "int" }], "bindings": [], "response": { "kind": "json", "helper": "json", "status": 200 } }
   ]
 }

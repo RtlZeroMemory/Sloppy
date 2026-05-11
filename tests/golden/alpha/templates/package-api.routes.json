@@ -7,6 +7,7 @@
       {
         "bindings": [],
         "completeness": "complete",
+        "constraints": [],
         "handlerId": 1,
         "method": "GET",
         "module": "healthModule",
@@ -33,6 +34,12 @@
           }
         ],
         "completeness": "complete",
+        "constraints": [
+          {
+            "kind": "str",
+            "name": "name"
+          }
+        ],
         "handlerId": 2,
         "method": "GET",
         "module": "usersModule",

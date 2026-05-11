@@ -14,6 +14,7 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
         strictAccept: false,
     }),
 });
+const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -228,18 +229,30 @@ function splitRouteSegments(value) {
 }
 
 function parsePatternParam(segment) {
-    if (!segment.startsWith("{") || !segment.endsWith("}") || segment.length < 3) {
+    const match = ROUTE_PARAM_PATTERN.exec(segment);
+    if (match === null) {
         return undefined;
     }
+    return { name: match[1], type: match[2] ?? "str" };
+}
 
-    const inner = segment.slice(1, -1);
-    const colon = inner.indexOf(":");
-    const name = colon < 0 ? inner : inner.slice(0, colon);
-    const type = colon < 0 ? "str" : inner.slice(colon + 1);
-    if (!/^[A-Za-z_][0-9A-Za-z_]*$/u.test(name) || (type !== "str" && type !== "int")) {
-        return undefined;
+function routeSegmentMatchesParam(param, value) {
+    if (value.length === 0) {
+        return false;
     }
-    return { name, type };
+    if (param.type === "int") {
+        return /^[0-9]+$/u.test(value);
+    }
+    if (param.type === "uuid") {
+        return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value);
+    }
+    if (param.type === "alpha") {
+        return /^[A-Za-z]+$/u.test(value);
+    }
+    if (param.type === "float") {
+        return /^[0-9]*\.[0-9]+$|^[0-9]+\.[0-9]*$/u.test(value);
+    }
+    return param.type === "str";
 }
 
 function matchRoutePattern(pattern, path) {
@@ -260,7 +273,7 @@ function matchRoutePattern(pattern, path) {
             }
             continue;
         }
-        if (pathSegment.length === 0 || (param.type === "int" && !/^[0-9]+$/u.test(pathSegment))) {
+        if (!routeSegmentMatchesParam(param, pathSegment)) {
             return undefined;
         }
         route[param.name] = pathSegment;
@@ -786,16 +799,42 @@ function findRoute(routes, method, path) {
     return { route: undefined, params: undefined, methodMismatch };
 }
 
-function routeHasParams(route) {
-    return route.pattern.includes("{");
+function routeSpecificity(route, sourceOrder) {
+    const segments = route.pattern === "/" ? [] : route.pattern.split("/").slice(1);
+    let staticSegments = 0;
+    let constrainedParams = 0;
+    let hasParams = false;
+    for (const segment of segments) {
+        const param = parsePatternParam(segment);
+        if (param === undefined) {
+            staticSegments += 1;
+            continue;
+        }
+        hasParams = true;
+        if (param.type !== "str") {
+            constrainedParams += 1;
+        }
+    }
+    return { hasParams, staticSegments, constrainedParams, segmentCount: segments.length, sourceOrder };
 }
 
 function snapshotRoutes(app) {
     return Object.freeze(app.__getRoutes()
         .map((route, index) => Object.freeze({ ...route, __sourceOrder: index }))
         .sort((left, right) => {
-            if (routeHasParams(left) !== routeHasParams(right)) {
-                return routeHasParams(left) ? 1 : -1;
+            const a = routeSpecificity(left, left.__sourceOrder);
+            const b = routeSpecificity(right, right.__sourceOrder);
+            if (a.hasParams !== b.hasParams) {
+                return a.hasParams ? 1 : -1;
+            }
+            if (a.staticSegments !== b.staticSegments) {
+                return b.staticSegments - a.staticSegments;
+            }
+            if (a.constrainedParams !== b.constrainedParams) {
+                return b.constrainedParams - a.constrainedParams;
+            }
+            if (a.segmentCount !== b.segmentCount) {
+                return b.segmentCount - a.segmentCount;
             }
             return left.__sourceOrder - right.__sourceOrder;
         }));

@@ -27,7 +27,10 @@ typedef enum SlRouteParamKind
 {
     SL_ROUTE_PARAM_STRING = 0,
     SL_ROUTE_PARAM_INT = 1,
-    SL_ROUTE_PARAM_INVALID = 2
+    SL_ROUTE_PARAM_UUID = 2,
+    SL_ROUTE_PARAM_ALPHA = 3,
+    SL_ROUTE_PARAM_FLOAT = 4,
+    SL_ROUTE_PARAM_INVALID = 5
 } SlRouteParamKind;
 
 typedef struct SlRouteSegment

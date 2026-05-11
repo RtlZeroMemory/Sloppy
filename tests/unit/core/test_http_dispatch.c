@@ -507,6 +507,52 @@ static int test_route_table_param_buckets_preserve_source_order(void)
     return 0;
 }
 
+static int test_route_table_orders_constrained_params_before_unconstrained(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handlers[3] = {0};
+    SlPlanRoute routes[3] = {0};
+    SlPlan plan = {0};
+    SlHttpRouteTable table = {0};
+    SlDiag diag = {0};
+
+    handlers[0].id = 1U;
+    handlers[0].export_name = sl_str_from_cstr("__sloppy_handler_1");
+    handlers[1].id = 2U;
+    handlers[1].export_name = sl_str_from_cstr("__sloppy_handler_2");
+    handlers[2].id = 3U;
+    handlers[2].export_name = sl_str_from_cstr("__sloppy_handler_3");
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/users/{slug}");
+    routes[0].handler_id = 1U;
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/users/{id:int}");
+    routes[1].handler_id = 2U;
+    routes[2].method = sl_str_from_cstr("GET");
+    routes[2].pattern = sl_str_from_cstr("/users/{name:alpha}/profile");
+    routes[2].handler_id = 3U;
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.handlers = handlers;
+    plan.handler_count = 3U;
+    plan.routes = routes;
+    plan.route_count = 3U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        return 163;
+    }
+
+    if (table.dispatch.route_count != 3U || table.dispatch.routes[0].handler_id != 3U ||
+        table.dispatch.routes[1].handler_id != 2U || table.dispatch.routes[2].handler_id != 1U)
+    {
+        return 164;
+    }
+
+    return expect_true(diag.code == SL_DIAG_NONE);
+}
+
 static int test_route_table_param_buckets_report_method_mismatch(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -2330,6 +2376,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_route_table_build_keeps_method_metadata),
         HTTP_DISPATCH_TEST(test_route_table_exact_index_reports_method_mismatch),
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_preserve_source_order),
+        HTTP_DISPATCH_TEST(test_route_table_orders_constrained_params_before_unconstrained),
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_report_method_mismatch),
         HTTP_DISPATCH_TEST(test_parameter_first_route_reaches_bucket),
         HTTP_DISPATCH_TEST(test_large_param_bucket_miss_uses_indexed_lookup),

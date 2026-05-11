@@ -38,6 +38,9 @@ static int test_parse_valid_patterns(void)
                                   "/users/{id}",
                                   "/users/{id:int}",
                                   "/users/{name:str}",
+                                  "/users/{id:uuid}",
+                                  "/users/{slug:alpha}",
+                                  "/values/{value:float}",
                                   "/users/{id}/posts/{postId:int}"};
     size_t index = 0U;
 
@@ -127,7 +130,7 @@ static int test_parse_invalid_patterns(void)
                                         {"/users/{}", SL_DIAG_INVALID_ROUTE_PATTERN},
                                         {"/users/{123}", SL_DIAG_INVALID_ROUTE_PATTERN},
                                         {"/{id}/{id}", SL_DIAG_DUPLICATE_ROUTE_PARAM},
-                                        {"/{id:uuid}", SL_DIAG_INVALID_ROUTE_PATTERN},
+                                        {"/{id:bool}", SL_DIAG_INVALID_ROUTE_PATTERN},
                                         {"/{foo{bar}}", SL_DIAG_INVALID_ROUTE_PATTERN}};
     size_t index = 0U;
 
@@ -315,6 +318,41 @@ static int test_match_params(void)
         expect_str_equal(match.params[1].value, "42") != 0)
     {
         return 154;
+    }
+
+    if (parse_and_match("/users/{id:uuid}", "/users/00000000-0000-4000-8000-000000000000", &pattern,
+                        &match, parse_storage, match_storage) != 0 ||
+        !match.matched || match.params[0].kind != SL_ROUTE_PARAM_UUID)
+    {
+        return 155;
+    }
+
+    if (parse_and_match("/users/{id:uuid}", "/users/not-a-uuid", &pattern, &match, parse_storage,
+                        match_storage) != 0 ||
+        match.matched)
+    {
+        return 156;
+    }
+
+    if (parse_and_match("/tags/{slug:alpha}", "/tags/abcDEF", &pattern, &match, parse_storage,
+                        match_storage) != 0 ||
+        !match.matched || match.params[0].kind != SL_ROUTE_PARAM_ALPHA)
+    {
+        return 157;
+    }
+
+    if (parse_and_match("/tags/{slug:alpha}", "/tags/abc123", &pattern, &match, parse_storage,
+                        match_storage) != 0 ||
+        match.matched)
+    {
+        return 158;
+    }
+
+    if (parse_and_match("/values/{value:float}", "/values/12.5", &pattern, &match, parse_storage,
+                        match_storage) != 0 ||
+        !match.matched || match.params[0].kind != SL_ROUTE_PARAM_FLOAT)
+    {
+        return 159;
     }
 
     return 0;
