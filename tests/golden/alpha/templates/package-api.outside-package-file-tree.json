@@ -1,0 +1,7 @@
+[
+  "artifacts/app.js",
+  "artifacts/app.js.map",
+  "artifacts/app.plan.json",
+  "artifacts/deps.graph.json",
+  "manifest.json"
+]

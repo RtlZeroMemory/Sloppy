@@ -297,7 +297,7 @@ export default async function checkMoreBuiltins() {
   assert.strictEqual(diagnostics.hasSubscribers("unused-fixture-channel"), false);
   assert.strictEqual(util.format("%d:%i", 1.5, 1.5), "1.5:1");
   assert.strictEqual(typeof performance.timeOrigin, "number");
-  const require = createRequire(new URL("file:///node_modules/package-node-builtins-more/sloppy.js"));
+  const require = createRequire("node_modules/package-node-builtins-more/sloppy.js");
   const resolved = require.resolve("./feature");
   const decoder = new StringDecoder("utf8");
   const decoded = decoder.write(Buffer.from("e282", "hex")) + decoder.end(Buffer.from("ac", "hex"));

@@ -57,6 +57,7 @@
     { "name": "prealpha-control-plane", "kind": "web", "entry": "src/main.js", "tier": "pr", "prSmoke": true, "package": true },
     { "name": "program-fs-process", "kind": "program", "entry": "src/main.ts", "tier": "pr", "prSmoke": true, "package": true, "metadata": true },
     { "name": "program-hello", "kind": "program", "entry": "main.ts", "tier": "pr", "prSmoke": true, "package": true, "metadata": true },
+    { "name": "realtime-dashboard", "kind": "web", "entry": "app.js", "tier": "pr", "prSmoke": true, "package": true },
     { "name": "request-context", "kind": "web", "entry": "app.js", "tier": "pr", "prSmoke": true },
     { "name": "sqlite-basic", "kind": "provider", "entry": "app.js", "tier": "pr", "reason": "covered by static provider API-shape tests" },
     { "name": "sqlserver-basic", "kind": "provider", "entry": "app.js", "tier": "live-provider", "reason": "requires SQL Server provider configuration" },

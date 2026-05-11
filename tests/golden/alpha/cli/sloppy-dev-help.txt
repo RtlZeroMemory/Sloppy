@@ -1,5 +1,5 @@
 Usage: sloppy dev [source.js|source.mjs|source.ts]
-                  [--host 127.0.0.1] [--port 5173]
+                  [--host 127.0.0.1] [--port <port>]
                   [--watch|--no-watch] [--clear] [--openapi]
                   [--env Development] [--environment Development]
 

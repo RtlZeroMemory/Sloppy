@@ -173,6 +173,10 @@ function cmdFileQuote(value) {
     return `"${winPath(value).replace(/"/g, '""')}"`;
 }
 
+function cmdArgQuote(value) {
+    return `"${String(value).replace(/"/g, '""')}"`;
+}
+
 function cmdCommandQuote(value) {
     const text = String(value || "");
     return /[\\/:]/.test(text) ? cmdFileQuote(text) : text;
@@ -263,7 +267,7 @@ async function run(executable, runArgs, options = {}) {
         commandCounter += 1;
         const scriptDir = joinPath(workRoot, "_commands");
         const script = joinPath(scriptDir, `run-${commandCounter}.cmd`);
-        const commandLine = [cmdCommandQuote(executable), ...runArgs.map((part) => cmdFileQuote(part))].join(" ");
+        const commandLine = [cmdCommandQuote(executable), ...runArgs.map((part) => cmdArgQuote(part))].join(" ");
         await Directory.create(fsPath(scriptDir), { recursive: true });
         await File.writeText(fsPath(script), `@echo off\r\ncd /d ${cmdFileQuote(cwd)}\r\n${commandLine}\r\n`);
         command = "cmd.exe";
@@ -529,6 +533,59 @@ function withPassthroughArgs(runArgs) {
     return runArgs.length > 0 ? ["--", ...runArgs] : [];
 }
 
+function packageRunCommandsForTemplate(template) {
+    switch (template) {
+        case "api":
+            return [
+                ["health", ["run", "package", "--once", "GET", "/health"]],
+                ["static", ["run", "package", "--once", "GET", "/public/hello.txt"]],
+            ];
+        case "minimal-api":
+            return [
+                ["health", ["run", "package", "--once", "GET", "/health"]],
+                ["hello", ["run", "package", "--once", "GET", "/hello/Ada"]],
+            ];
+        case "package-api":
+            return [
+                ["health", ["run", "package", "--once", "GET", "/health"]],
+                ["users", ["run", "package", "--once", "GET", "/users/Ada"]],
+            ];
+        case "program":
+            return [["program", ["run", "package", ...withPassthroughArgs(["--name", "Ada"])]]];
+        case "cli":
+            return [["echo", ["run", "package", ...withPassthroughArgs(["echo", "outside"])]]];
+        case "node-compat":
+            return [["program", ["run", "package"]]];
+        default:
+            throw new Error(`unsupported package run template: ${template}`);
+    }
+}
+
+async function assertPackageHasNoNodeModules(packageDir, description) {
+    if (await Directory.exists(fsPath(joinPath(packageDir, "node_modules")))) {
+        throw new Error(`${description} package unexpectedly contains node_modules`);
+    }
+}
+
+async function proveOutsidePackageRun(area, name, projectDir, template) {
+    const outsideRoot = joinPath(workRoot, area, `${name}-outside`);
+    const outsidePackage = joinPath(outsideRoot, "package");
+    await mkdirClean(outsideRoot);
+    await copyTree(joinPath(projectDir, ".sloppy/package"), outsidePackage);
+    await assertPackageHasNoNodeModules(outsidePackage, `${area}/${name}`);
+    await snapshotJson(area, `${name}.outside-package-file-tree`, await stableFileList(outsidePackage, { skip: [".git"] }));
+
+    for (const [runName, runArgs] of packageRunCommandsForTemplate(template)) {
+        const runResult = await run(sloppy, runArgs, { cwd: outsideRoot });
+        if (requireV8) {
+            requireSuccess(runResult, `${area}/${name} outside package ${runName}`);
+        } else {
+            requireFailure(runResult, "requires V8-enabled build", `${area}/${name} non-V8 outside package ${runName}`);
+        }
+        await commandSnapshot(area, `${name}.outside-run-${runName}-${requireV8 ? "v8" : "non-v8"}`, runResult);
+    }
+}
+
 async function runCliArea() {
     if (!selectedCliSection || selectedCliSection === "help") {
         const commands = [
@@ -540,10 +597,12 @@ async function runCliArea() {
             ["sloppy-dev-help", [sloppy, ["dev", "--help"]]],
             ["sloppy-package-help", [sloppy, ["package", "--help"]]],
             ["sloppy-routes-help", [sloppy, ["routes", "--help"]]],
+            ["sloppy-deps-help", [sloppy, ["deps", "--help"]]],
             ["sloppy-capabilities-help", [sloppy, ["capabilities", "--help"]]],
             ["sloppy-doctor-help", [sloppy, ["doctor", "--help"]]],
             ["sloppy-audit-help", [sloppy, ["audit", "--help"]]],
             ["sloppy-openapi-help", [sloppy, ["openapi", "--help"]]],
+            ["sloppy-db-help", [sloppy, ["db", "--help"]]],
             ["sloppyc-help", [sloppyc, ["--help"]]],
         ];
         for (const [name, pair] of commands) {
@@ -649,6 +708,7 @@ async function runTemplateArea() {
         const packageResult = await packageWithSloppy(projectDir);
         await commandSnapshot("templates", `${template}.package-output`, packageResult, { jsonStdout: true });
         await snapshotJson("templates", `${template}.package-manifest`, await readJson(joinPath(projectDir, ".sloppy/package/manifest.json")));
+        await proveOutsidePackageRun("templates", template, projectDir, template);
 
         if (template === "program" || template === "cli" || template === "node-compat") {
             const runArgs = template === "program" ? ["--name", "Ada"] : template === "cli" ? ["--help"] : [];
@@ -742,6 +802,7 @@ async function runAlphaFlowsArea() {
         const packaged = await packageWithSloppy(projectDir);
         await commandSnapshot("alpha-flows", `${template}.package`, packaged, { jsonStdout: true });
         await snapshotJson("alpha-flows", `${template}.package-manifest`, await readJson(joinPath(projectDir, ".sloppy/package/manifest.json")));
+        await proveOutsidePackageRun("alpha-flows", template, projectDir, template);
     }
 
     const directProgram = joinPath(flowsRoot, "direct-program");
@@ -815,6 +876,74 @@ async function runExamplesArea() {
     }
 }
 
+async function runDocsSnippetsArea() {
+    const manifestPath = joinPath(repoRoot, "tests/fixtures/docs-snippets/manifest.json");
+    const manifest = await readJson(manifestPath);
+    if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.documents)) {
+        throw new Error("docs snippets manifest must use schemaVersion 1 and a documents array");
+    }
+    if (typeof manifest.defaultProofLane !== "string" || manifest.defaultProofLane.length === 0) {
+        throw new Error("docs snippets manifest must name a default proof lane");
+    }
+    if (manifest.semantics?.checked === undefined || manifest.semantics?.executed === undefined || manifest.semantics?.skipped === undefined) {
+        throw new Error("docs snippets manifest must define checked, executed, and skipped semantics");
+    }
+
+    const summary = [];
+    for (const document of manifest.documents) {
+        if (typeof document.path !== "string" || document.path.length === 0) {
+            throw new Error("docs snippets manifest document path must be a non-empty string");
+        }
+        const proofLane = document.proofLane ?? manifest.defaultProofLane;
+        if (typeof proofLane !== "string" || proofLane.length === 0) {
+            throw new Error(`${document.path} must name a proof lane for checked snippets`);
+        }
+        const docPath = joinPath(repoRoot, document.path);
+        if (!(await File.exists(fsPath(docPath)))) {
+            throw new Error(`docs snippet source is missing: ${document.path}`);
+        }
+        const text = await File.readText(fsPath(docPath));
+        const checked = [];
+        const skipped = [];
+        for (const snippet of document.snippets || []) {
+            if (typeof snippet.command !== "string" || snippet.command.length === 0) {
+                throw new Error(`docs snippet command is invalid in ${document.path}`);
+            }
+            if (!text.includes(snippet.command)) {
+                throw new Error(`${document.path} is missing documented command: ${snippet.command}`);
+            }
+            if (snippet.template !== undefined && !templates.includes(snippet.template)) {
+                throw new Error(`${document.path} references unsupported template '${snippet.template}'`);
+            }
+            if (snippet.status === "skipped") {
+                if (typeof snippet.reason !== "string" || snippet.reason.length === 0) {
+                    throw new Error(`${document.path} skipped command needs a reason: ${snippet.command}`);
+                }
+                skipped.push({ command: snippet.command, reason: snippet.reason });
+            } else if (snippet.status === "executed") {
+                throw new Error(`${document.path} marks a command executed, but docs-snippet proof does not execute manifest commands: ${snippet.command}`);
+            } else if (snippet.status === "checked") {
+                checked.push({ command: snippet.command, proofLane });
+            } else {
+                throw new Error(`${document.path} snippet status must be checked, executed, or skipped`);
+            }
+        }
+        summary.push({
+            path: document.path,
+            proofLane,
+            checked: checked.length,
+            executed: 0,
+            skipped: skipped.length,
+            skippedReasons: skipped.map((entry) => entry.reason),
+        });
+    }
+    await snapshotJson("docs-snippets", "summary", {
+        coverage: manifest.coverage,
+        semantics: manifest.semantics,
+        documents: summary,
+    });
+}
+
 export async function main(args, ctx) {
     const parsed = parseArgs(args);
     repoRoot = resolvePath(ctx.cwd, parsed.root || ctx.cwd);
@@ -859,6 +988,7 @@ export async function main(args, ctx) {
     if (shouldRun("diagnostics")) await runDiagnosticsArea();
     if (shouldRun("alpha-flows")) await runAlphaFlowsArea();
     if (shouldRun("examples")) await runExamplesArea();
+    if (shouldRun("docs-snippets")) await runDocsSnippetsArea();
 
     return 0;
 }

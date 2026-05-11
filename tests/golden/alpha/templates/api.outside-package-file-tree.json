@@ -1,0 +1,9 @@
+[
+  "artifacts/app.js",
+  "artifacts/app.js.map",
+  "artifacts/app.plan.json",
+  "artifacts/assets/public/hello.txt",
+  "artifacts/deps.graph.json",
+  "manifest.json",
+  "migrations/0001_create_users.sql"
+]

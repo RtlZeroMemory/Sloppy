@@ -7,39 +7,9 @@
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 4,
-        "method": "GET",
-        "module": "healthModule",
-        "name": "Health",
-        "pattern": "/health",
-        "response": {
-          "helper": "text",
-          "kind": "text",
-          "status": 200
-        },
-        "responses": [
-          {
-            "helper": "text",
-            "kind": "text",
-            "status": 200
-          },
-          {
-            "helper": "problem",
-            "kind": "problem",
-            "status": 500
-          }
-        ],
-        "source": {
-          "column": 5,
-          "line": 7,
-          "path": "health.ts"
-        },
-        "sourceOrder": 3
-      },
-      {
-        "bindings": [],
-        "completeness": "complete",
+        "constraints": [],
         "handlerId": 5,
+        "kind": "http",
         "method": "GET",
         "module": "healthModule",
         "name": "Health.Live",
@@ -71,7 +41,9 @@
       {
         "bindings": [],
         "completeness": "complete",
+        "constraints": [],
         "handlerId": 6,
+        "kind": "http",
         "method": "GET",
         "module": "healthModule",
         "name": "Health.Ready",
@@ -108,20 +80,22 @@
       {
         "bindings": [],
         "completeness": "complete",
-        "handlerId": 1,
+        "constraints": [],
+        "handlerId": 4,
+        "kind": "http",
         "method": "GET",
-        "module": "usersModule",
-        "name": "Users.List",
-        "pattern": "/users",
+        "module": "healthModule",
+        "name": "Health",
+        "pattern": "/health",
         "response": {
-          "helper": "ok",
-          "kind": "json",
+          "helper": "text",
+          "kind": "text",
           "status": 200
         },
         "responses": [
           {
-            "helper": "ok",
-            "kind": "json",
+            "helper": "text",
+            "kind": "text",
             "status": 200
           },
           {
@@ -132,10 +106,32 @@
         ],
         "source": {
           "column": 5,
-          "line": 20,
-          "path": "users.ts"
+          "line": 7,
+          "path": "health.ts"
         },
-        "sourceOrder": 0
+        "sourceOrder": 3
+      },
+      {
+        "bindings": [],
+        "completeness": "complete",
+        "constraints": [],
+        "handlerId": 7,
+        "kind": "http",
+        "method": "GET",
+        "module": "",
+        "name": "",
+        "pattern": "/public/hello.txt",
+        "response": {
+          "helper": "bytes",
+          "kind": "bytes",
+          "status": 200
+        },
+        "source": {
+          "column": 1,
+          "line": 10,
+          "path": "main.ts"
+        },
+        "sourceOrder": 6
       },
       {
         "bindings": [
@@ -146,7 +142,14 @@
           }
         ],
         "completeness": "complete",
+        "constraints": [
+          {
+            "kind": "int",
+            "name": "id"
+          }
+        ],
         "handlerId": 2,
+        "kind": "http",
         "method": "GET",
         "module": "usersModule",
         "name": "Users.Get",
@@ -181,6 +184,40 @@
         "sourceOrder": 1
       },
       {
+        "bindings": [],
+        "completeness": "complete",
+        "constraints": [],
+        "handlerId": 1,
+        "kind": "http",
+        "method": "GET",
+        "module": "usersModule",
+        "name": "Users.List",
+        "pattern": "/users",
+        "response": {
+          "helper": "ok",
+          "kind": "json",
+          "status": 200
+        },
+        "responses": [
+          {
+            "helper": "ok",
+            "kind": "json",
+            "status": 200
+          },
+          {
+            "helper": "problem",
+            "kind": "problem",
+            "status": 500
+          }
+        ],
+        "source": {
+          "column": 5,
+          "line": 20,
+          "path": "users.ts"
+        },
+        "sourceOrder": 0
+      },
+      {
         "bindings": [
           {
             "kind": "body.json",
@@ -189,7 +226,9 @@
           }
         ],
         "completeness": "complete",
+        "constraints": [],
         "handlerId": 3,
+        "kind": "http",
         "method": "POST",
         "module": "usersModule",
         "name": "Users.Create",

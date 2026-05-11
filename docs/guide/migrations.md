@@ -47,7 +47,7 @@ import { Migrations } from "sloppy/data";
 
 export async function migrate(db) {
     await Migrations.apply(db, {
-        provider: "main",
+        provider: "sqlite",
         path: "migrations/*.sql",
     });
 }
@@ -62,7 +62,7 @@ files:
 
 ```ts
 const status = await Migrations.status(db, {
-    provider: "main",
+    provider: "sqlite",
     path: "migrations/*.sql",
 });
 ```

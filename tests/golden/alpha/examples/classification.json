@@ -402,6 +402,14 @@
     {
       "entry": "app.js",
       "kind": "web",
+      "name": "realtime-dashboard",
+      "package": true,
+      "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
       "name": "request-context",
       "prSmoke": true,
       "tier": "pr"

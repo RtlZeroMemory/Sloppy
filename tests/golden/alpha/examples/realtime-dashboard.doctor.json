@@ -1,0 +1,78 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "checks": [
+      {
+        "id": "bootstrap.assets",
+        "message": "bootstrap runtime asset found",
+        "status": "ok"
+      },
+      {
+        "id": "engine.v8",
+        "message": "V8 bridge disabled in this build; V8 runtime tests not run",
+        "status": "warn"
+      },
+      {
+        "id": "providers.live",
+        "message": "live provider checks are not configured by default and no live DB was contacted",
+        "status": "warn"
+      },
+      {
+        "id": "package.runtime",
+        "message": "package release status requires package smoke",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.parse",
+        "message": "app plan parsed by native Plan v1 parser",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.routes",
+        "message": "route metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.providers",
+        "message": "provider metadata not present",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.capabilities",
+        "message": "capability metadata not present",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.completeness",
+        "message": "Plan completeness is partial, runtime-only, or invalid",
+        "status": "warn"
+      },
+      {
+        "id": "route.completeness",
+        "message": "route has partial/runtime-only/invalid Plan metadata",
+        "status": "warn"
+      },
+      {
+        "id": "route.response",
+        "message": "route response metadata is unknown",
+        "status": "warn"
+      },
+      {
+        "id": "route.completeness",
+        "message": "route has partial/runtime-only/invalid Plan metadata",
+        "status": "warn"
+      },
+      {
+        "id": "route.response",
+        "message": "route response metadata is unknown",
+        "status": "warn"
+      },
+      {
+        "id": "app.realtime.metadata",
+        "message": "realtime route metadata is Plan-visible; WebSocket upgrade execution is partial in this alpha",
+        "status": "warn"
+      }
+    ]
+  }
+}

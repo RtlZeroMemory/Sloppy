@@ -1,0 +1,155 @@
+{
+  "coverage": {
+    "reason": "origin/main still contains pre-alpha/minimal-api install and platform wording; this manifest checks the current public docs and is not final alpha docs proof",
+    "status": "provisional"
+  },
+  "documents": [
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 1,
+      "skippedReasons": [
+        "global npm install and registry access are not deterministic in PR validation"
+      ]
+    },
+    {
+      "checked": 4,
+      "executed": 0,
+      "path": "docs/quickstart.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 1,
+      "skippedReasons": [
+        "requires a long-running local server process"
+      ]
+    },
+    {
+      "checked": 4,
+      "executed": 0,
+      "path": "docs/install.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 1,
+      "skippedReasons": [
+        "global npm install and registry access are not deterministic in PR validation"
+      ]
+    },
+    {
+      "checked": 5,
+      "executed": 0,
+      "path": "docs/guide/templates.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "executed": 0,
+      "path": "docs/guide/auth.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 5,
+      "executed": 0,
+      "path": "docs/guide/migrations.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 4,
+      "executed": 0,
+      "path": "docs/guide/static-assets.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 1,
+      "executed": 0,
+      "path": "docs/guide/uploads.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "executed": 0,
+      "path": "docs/guide/realtime.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "docs/cli/run.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "executed": 0,
+      "path": "docs/cli/db.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "templates/api/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "templates/minimal-api/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "executed": 0,
+      "path": "templates/program/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 2,
+      "executed": 0,
+      "path": "templates/cli/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "templates/package-api/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    },
+    {
+      "checked": 3,
+      "executed": 0,
+      "path": "templates/node-compat/README.md",
+      "proofLane": "alpha.docs.snippets",
+      "skipped": 0,
+      "skippedReasons": []
+    }
+  ],
+  "semantics": {
+    "checked": "command appears in the document and is covered by the named proof lane; the docs-snippet proof does not run it",
+    "executed": "command is actually run by the docs-snippet proof",
+    "skipped": "command is not run and has an explicit reason"
+  }
+}

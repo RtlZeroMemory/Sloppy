@@ -1,5 +1,6 @@
 {
   "artifacts": {
+    "assets": "artifacts/assets",
     "bundle": "artifacts/app.js",
     "dependencyGraph": "artifacts/deps.graph.json",
     "plan": "artifacts/app.plan.json",
