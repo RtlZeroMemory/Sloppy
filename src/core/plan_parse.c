@@ -1966,6 +1966,12 @@ static SlStatus sl_plan_parse_schema_node(SlPlanParseContext* ctx, yyjson_val* v
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (sl_str_is_empty(out->validation)) {
+        status = sl_plan_parse_optional_string(ctx, value, "format", false, &out->validation);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
     status = sl_plan_parse_i64_field(ctx, value, "min", &out->has_min, &out->min_value);
     if (!sl_status_is_ok(status)) {
         return status;

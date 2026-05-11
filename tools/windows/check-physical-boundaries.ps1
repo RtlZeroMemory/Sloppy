@@ -270,6 +270,7 @@ function Invoke-PhysicalBoundarySelfTest {
         New-Item -ItemType Directory -Force -Path (Join-Path $fixtureRoot "src/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $fixtureRoot "src/engine/v8") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $fixtureRoot "src/platform/libuv") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $fixtureRoot "tests/unit/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $fixtureRoot "examples/bad") | Out-Null
         Set-Content -LiteralPath (Join-Path $fixtureRoot "src/core/bad.c") -Encoding ascii -Value @'
 #include "sloppy/data_sqlite.h"
@@ -280,6 +281,10 @@ void bad(void) {}
 void ok(v8::Isolate*) {}
 '@
         Set-Content -LiteralPath (Join-Path $fixtureRoot "src/platform/libuv/ok.c") -Encoding ascii -Value @'
+#include <uv.h>
+void ok(void) { uv_loop_t loop; (void)loop; }
+'@
+        Set-Content -LiteralPath (Join-Path $fixtureRoot "tests/unit/core/test_provider_executor.c") -Encoding ascii -Value @'
 #include <uv.h>
 void ok(void) { uv_loop_t loop; (void)loop; }
 '@
@@ -301,11 +306,20 @@ set(SLOPPY_C_LINT_SOURCES)
 '@
 
         $script:Root = (Resolve-Path -LiteralPath $fixtureRoot).Path
+        if (-not (Test-LibuvAllowedPath "tests/unit/core/test_provider_executor.c")) {
+            throw "physical boundary self-test did not allow test_provider_executor.c"
+        }
         $findings = Invoke-PhysicalBoundaryScan
         foreach ($expectedRule in @("PB001", "PB007")) {
             if ($expectedRule -notin @($findings | ForEach-Object { $_.Rule })) {
                 throw "physical boundary self-test did not report $expectedRule"
             }
+        }
+        $providerExecutorFinding = @($findings | Where-Object {
+                $_.Rule -eq "PB004" -and $_.File -eq "tests/unit/core/test_provider_executor.c"
+            })
+        if ($providerExecutorFinding.Count -ne 0) {
+            throw "physical boundary self-test reported PB004 for allowed provider executor test"
         }
     } finally {
         if (Test-Path -LiteralPath $fixtureRoot) {

@@ -143,6 +143,8 @@ const char* http_v8_string_key_name(SlV8HttpStringKey key)
         return "text";
     case SL_V8_HTTP_STRING_THROW_IF_ABORTED:
         return "throwIfAborted";
+    case SL_V8_HTTP_STRING_VALIDATE:
+        return "validate";
     case SL_V8_HTTP_STRING_TRACE:
         return "trace";
     case SL_V8_HTTP_STRING_DEBUG:
@@ -404,6 +406,9 @@ bool http_v8_cached_prototype(v8::Isolate* isolate, v8::Local<v8::Context> conte
                                             SL_V8_HTTP_FUNCTION_BODY_TEXT,
                                             http_v8_body_text_callback) ||
             !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_JSON,
+                                            SL_V8_HTTP_FUNCTION_BODY_JSON,
+                                            http_v8_body_json_callback) ||
+            !http_v8_prototype_set_function(isolate, context, prototype, SL_V8_HTTP_STRING_VALIDATE,
                                             SL_V8_HTTP_FUNCTION_BODY_JSON,
                                             http_v8_body_json_callback))
         {
@@ -3510,6 +3515,12 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
     if (request_context->needs_request &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_REQUEST, request))
+    {
+        return false;
+    }
+    if (request_context->needs_body &&
+        !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_BODY,
+                                         body_object))
     {
         return false;
     }

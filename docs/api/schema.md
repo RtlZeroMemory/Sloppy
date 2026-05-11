@@ -108,7 +108,9 @@ failures get nested paths.
 
 `ctx.body.validate(schema)` parses the JSON body, validates it, and returns the
 validated value. Invalid input throws a Sloppy validation error that the app
-host maps to a `400 application/problem+json` response.
+host and native runtime map to a `400 application/problem+json` response. The
+problem body includes `path`, `code`, and `message` for each issue and does not
+echo request body values.
 
 ```ts
 app.post("/users", async (ctx) => {

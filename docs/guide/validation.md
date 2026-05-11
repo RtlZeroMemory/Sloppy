@@ -29,6 +29,8 @@ app.post("/users", async (ctx) => {
 `ctx.body.validate(schema)` parses the JSON body and returns the validated
 value. Invalid JSON, missing required fields, wrong field types, invalid email
 values, and nested array element failures return `400 application/problem+json`.
+Validation problem entries include the failing path, a code, and a message.
+They do not copy raw body values into the response.
 
 `.accepts(schema)` records request body metadata. `.returns(schema)` records
 the default JSON response body metadata. Static schema identifiers are emitted

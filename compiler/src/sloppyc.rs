@@ -255,7 +255,6 @@ struct RouteMetadata {
 #[derive(Debug, Clone)]
 struct SchemaReferenceEdit {
     argument_span: Span,
-    validate_property_span: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -16646,18 +16645,8 @@ fn body_json_schema_reference_edit(
         if schema != "undefined" && !schema_names.contains(schema) {
             return None;
         }
-        let validate_property_span = if chain[2] == "validate" {
-            if let Expression::StaticMemberExpression(member) = &call.callee {
-                Some(member.property.span)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
         return Some(SchemaReferenceEdit {
             argument_span: identifier.span,
-            validate_property_span,
         });
     }
     None
@@ -16671,9 +16660,6 @@ fn sanitize_handler_schema_references(
     let mut replacements = Vec::new();
     for edit in edits {
         replacements.push((edit.argument_span, "undefined"));
-        if let Some(span) = edit.validate_property_span {
-            replacements.push((span, "json"));
-        }
     }
     replacements.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
     for (span, replacement) in replacements {
