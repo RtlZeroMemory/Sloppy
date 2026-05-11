@@ -30,3 +30,11 @@ sloppy run .sloppy/package --once GET /users/Ada
 
 The packaged app contains the bundled dependency graph and does not need
 `node_modules` at runtime.
+
+The supported package shapes are committed in
+[`tests/fixtures/npm-compat/`](../../tests/fixtures/npm-compat). Adding a real
+package outside that matrix may surface a clear unsupported-shape diagnostic;
+the diagnostic identifies the package, the field, the subpath, and the
+reason. The optional `tools/scripts/npm-compat-smoke.mjs` script can install a
+curated list of small pure-JS packages and try to build them; it is advisory,
+not a release gate.

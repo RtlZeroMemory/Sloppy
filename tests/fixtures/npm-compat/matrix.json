@@ -1,0 +1,569 @@
+{
+    "schemaVersion": 1,
+    "description": "Committed npm/package compatibility matrix exercised by the resolver test harness.",
+    "groups": [
+        "basic-shapes",
+        "exports",
+        "imports",
+        "self-reference",
+        "interop",
+        "json",
+        "builtins",
+        "assets",
+        "optional-native-unsupported",
+        "dynamic",
+        "peer"
+    ],
+    "fixtures": [
+        {
+            "name": "basic-main-cjs",
+            "group": "basic-shapes",
+            "fixture": "basic-main-cjs",
+            "importer": "basic-main-cjs/importer.js",
+            "specifier": "greet-cjs",
+            "importMode": false,
+            "status": "supported",
+            "features": ["main", "cjs"],
+            "expected": {
+                "kind": "package",
+                "packageName": "greet-cjs",
+                "entry": "basic-main-cjs/node_modules/greet-cjs/lib/greet.js",
+                "format": "commonjs",
+                "source": "installed"
+            }
+        },
+        {
+            "name": "basic-main-esm",
+            "group": "basic-shapes",
+            "fixture": "basic-main-esm",
+            "importer": "basic-main-esm/importer.js",
+            "specifier": "greet-esm",
+            "importMode": true,
+            "status": "supported",
+            "features": ["main", "esm", "type-module"],
+            "expected": {
+                "kind": "package",
+                "packageName": "greet-esm",
+                "entry": "basic-main-esm/node_modules/greet-esm/greet.js",
+                "format": "esm"
+            }
+        },
+        {
+            "name": "basic-type-module",
+            "group": "basic-shapes",
+            "fixture": "basic-type-module",
+            "importer": "basic-type-module/importer.js",
+            "specifier": "typemod-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["type-module", "index"],
+            "expected": {
+                "kind": "package",
+                "packageName": "typemod-pkg",
+                "entry": "basic-type-module/node_modules/typemod-pkg/index.js",
+                "format": "esm"
+            }
+        },
+        {
+            "name": "basic-type-commonjs",
+            "group": "basic-shapes",
+            "fixture": "basic-type-commonjs",
+            "importer": "basic-type-commonjs/importer.js",
+            "specifier": "typemod-cjs-pkg",
+            "importMode": false,
+            "status": "supported",
+            "features": ["type-commonjs", "index"],
+            "expected": {
+                "kind": "package",
+                "packageName": "typemod-cjs-pkg",
+                "entry": "basic-type-commonjs/node_modules/typemod-cjs-pkg/index.js",
+                "format": "commonjs"
+            }
+        },
+        {
+            "name": "basic-no-main-index",
+            "group": "basic-shapes",
+            "fixture": "basic-no-main-index",
+            "importer": "basic-no-main-index/importer.js",
+            "specifier": "no-main-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["no-main", "index"],
+            "expected": {
+                "kind": "package",
+                "packageName": "no-main-pkg",
+                "entry": "basic-no-main-index/node_modules/no-main-pkg/index.js",
+                "format": "esm"
+            }
+        },
+        {
+            "name": "basic-directory-index",
+            "group": "basic-shapes",
+            "fixture": "basic-directory-index",
+            "importer": "basic-directory-index/importer.js",
+            "specifier": "dir-index-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["main-directory", "index"],
+            "expected": {
+                "kind": "package",
+                "packageName": "dir-index-pkg",
+                "entry": "basic-directory-index/node_modules/dir-index-pkg/lib/index.js",
+                "format": "esm"
+            }
+        },
+        {
+            "name": "basic-scoped",
+            "group": "basic-shapes",
+            "fixture": "basic-scoped",
+            "importer": "basic-scoped/importer.js",
+            "specifier": "@scope/util",
+            "importMode": true,
+            "status": "supported",
+            "features": ["scoped-package"],
+            "expected": {
+                "kind": "package",
+                "packageName": "@scope/util",
+                "entry": "basic-scoped/node_modules/@scope/util/index.js",
+                "format": "esm"
+            }
+        },
+
+        {
+            "name": "exports-string",
+            "group": "exports",
+            "fixture": "exports-string",
+            "importer": "exports-string/importer.js",
+            "specifier": "exports-string-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "string"],
+            "expected": {
+                "kind": "package",
+                "packageName": "exports-string-pkg",
+                "entry": "exports-string/node_modules/exports-string-pkg/entry.js"
+            }
+        },
+        {
+            "name": "exports-object-default",
+            "group": "exports",
+            "fixture": "exports-object-default",
+            "importer": "exports-object-default/importer.js",
+            "specifier": "exports-object-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "object", "self-dot"],
+            "expected": {
+                "kind": "package",
+                "packageName": "exports-object-pkg",
+                "entry": "exports-object-default/node_modules/exports-object-pkg/entry.js"
+            }
+        },
+        {
+            "name": "exports-subpath",
+            "group": "exports",
+            "fixture": "exports-subpath",
+            "importer": "exports-subpath/importer.js",
+            "specifier": "subpath-pkg/feature",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "subpath", "extensioned"],
+            "expected": {
+                "kind": "package",
+                "packageName": "subpath-pkg",
+                "entry": "exports-subpath/node_modules/subpath-pkg/feature.js"
+            }
+        },
+        {
+            "name": "exports-subpath-extensionless",
+            "group": "exports",
+            "fixture": "exports-subpath-extensionless",
+            "importer": "exports-subpath-extensionless/importer.js",
+            "specifier": "ext-pkg/feature",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "subpath", "extensionless"],
+            "expected": {
+                "kind": "package",
+                "packageName": "ext-pkg",
+                "entry": "exports-subpath-extensionless/node_modules/ext-pkg/feature.js"
+            }
+        },
+        {
+            "name": "exports-pattern",
+            "group": "exports",
+            "fixture": "exports-pattern",
+            "importer": "exports-pattern/importer.js",
+            "specifier": "pattern-pkg/features/alpha",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "pattern"],
+            "expected": {
+                "kind": "package",
+                "packageName": "pattern-pkg",
+                "entry": "exports-pattern/node_modules/pattern-pkg/features/alpha.js"
+            }
+        },
+        {
+            "name": "exports-nested-conditions",
+            "group": "exports",
+            "fixture": "exports-nested-conditions",
+            "importer": "exports-nested-conditions/importer.js",
+            "specifier": "nested-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "nested-conditions"],
+            "expected": {
+                "kind": "package",
+                "packageName": "nested-pkg",
+                "entry": "exports-nested-conditions/node_modules/nested-pkg/entry.mjs"
+            }
+        },
+        {
+            "name": "exports-nested-conditions-require",
+            "group": "exports",
+            "fixture": "exports-nested-conditions",
+            "importer": "exports-nested-conditions/importer.js",
+            "specifier": "nested-pkg",
+            "importMode": false,
+            "status": "supported",
+            "features": ["exports", "nested-conditions", "require"],
+            "expected": {
+                "kind": "package",
+                "packageName": "nested-pkg",
+                "entry": "exports-nested-conditions/node_modules/nested-pkg/entry.cjs"
+            }
+        },
+        {
+            "name": "exports-import-require-import",
+            "group": "exports",
+            "fixture": "exports-import-require",
+            "importer": "exports-import-require/importer.js",
+            "specifier": "ir-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "import", "require"],
+            "expected": {
+                "kind": "package",
+                "packageName": "ir-pkg",
+                "entry": "exports-import-require/node_modules/ir-pkg/entry.mjs"
+            }
+        },
+        {
+            "name": "exports-import-require-require",
+            "group": "exports",
+            "fixture": "exports-import-require",
+            "importer": "exports-import-require/importer.js",
+            "specifier": "ir-pkg",
+            "importMode": false,
+            "status": "supported",
+            "features": ["exports", "import", "require"],
+            "expected": {
+                "kind": "package",
+                "packageName": "ir-pkg",
+                "entry": "exports-import-require/node_modules/ir-pkg/entry.cjs"
+            }
+        },
+        {
+            "name": "exports-node-default",
+            "group": "exports",
+            "fixture": "exports-node-default",
+            "importer": "exports-node-default/importer.js",
+            "specifier": "node-default-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "node", "default"],
+            "expected": {
+                "kind": "package",
+                "packageName": "node-default-pkg",
+                "entry": "exports-node-default/node_modules/node-default-pkg/node-entry.js"
+            }
+        },
+        {
+            "name": "exports-sloppy-condition",
+            "group": "exports",
+            "fixture": "exports-sloppy-condition",
+            "importer": "exports-sloppy-condition/importer.js",
+            "specifier": "sloppy-cond-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "sloppy"],
+            "expected": {
+                "kind": "package",
+                "packageName": "sloppy-cond-pkg",
+                "entry": "exports-sloppy-condition/node_modules/sloppy-cond-pkg/sloppy-entry.js"
+            }
+        },
+        {
+            "name": "exports-unsupported-shape",
+            "group": "exports",
+            "fixture": "exports-unsupported-shape",
+            "importer": "exports-unsupported-shape/importer.js",
+            "specifier": "array-exports-pkg",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["exports", "array-shape"],
+            "expected": {
+                "kind": "packageExportUnsupported",
+                "specifier": "array-exports-pkg"
+            }
+        },
+
+        {
+            "name": "imports-alias",
+            "group": "imports",
+            "fixture": "imports-alias",
+            "importer": "imports-alias/src/importer.js",
+            "specifier": "#util",
+            "importMode": true,
+            "status": "supported",
+            "features": ["imports", "alias"],
+            "expected": {
+                "kind": "package",
+                "packageName": "imports-alias-pkg",
+                "entry": "imports-alias/src/util.js",
+                "source": "imports"
+            }
+        },
+        {
+            "name": "imports-pattern",
+            "group": "imports",
+            "fixture": "imports-pattern",
+            "importer": "imports-pattern/src/importer.js",
+            "specifier": "#lib/alpha",
+            "importMode": true,
+            "status": "supported",
+            "features": ["imports", "pattern"],
+            "expected": {
+                "kind": "package",
+                "packageName": "imports-pattern-pkg",
+                "entry": "imports-pattern/src/lib/alpha.js",
+                "source": "imports"
+            }
+        },
+        {
+            "name": "imports-unsupported",
+            "group": "imports",
+            "fixture": "imports-unsupported",
+            "importer": "imports-unsupported/src/importer.js",
+            "specifier": "#missing",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["imports", "missing-target"],
+            "expected": {
+                "kind": "packageExportUnsupported",
+                "specifier": "#missing"
+            }
+        },
+
+        {
+            "name": "self-reference-main",
+            "group": "self-reference",
+            "fixture": "self-reference",
+            "importer": "self-reference/src/importer.js",
+            "specifier": "self-ref-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["self-reference", "exports"],
+            "expected": {
+                "kind": "package",
+                "packageName": "self-ref-pkg",
+                "entry": "self-reference/index.js",
+                "source": "self"
+            }
+        },
+        {
+            "name": "self-reference-subpath",
+            "group": "self-reference",
+            "fixture": "self-reference",
+            "importer": "self-reference/src/importer.js",
+            "specifier": "self-ref-pkg/feature",
+            "importMode": true,
+            "status": "supported",
+            "features": ["self-reference", "exports", "subpath"],
+            "expected": {
+                "kind": "package",
+                "packageName": "self-ref-pkg",
+                "entry": "self-reference/feature.js",
+                "source": "self"
+            }
+        },
+
+        {
+            "name": "interop-cjs-requires-cjs",
+            "group": "interop",
+            "fixture": "interop-cjs-requires-cjs",
+            "importer": "interop-cjs-requires-cjs/importer.js",
+            "specifier": "cjs-deep-pkg",
+            "importMode": false,
+            "status": "supported",
+            "features": ["cjs", "require"],
+            "expected": {
+                "kind": "package",
+                "packageName": "cjs-deep-pkg",
+                "entry": "interop-cjs-requires-cjs/node_modules/cjs-deep-pkg/index.js",
+                "format": "commonjs"
+            }
+        },
+        {
+            "name": "interop-cjs-requires-json",
+            "group": "interop",
+            "fixture": "interop-cjs-requires-json",
+            "importer": "interop-cjs-requires-json/importer.js",
+            "specifier": "cjs-json-pkg",
+            "importMode": false,
+            "status": "supported",
+            "features": ["cjs", "json"],
+            "expected": {
+                "kind": "package",
+                "packageName": "cjs-json-pkg",
+                "entry": "interop-cjs-requires-json/node_modules/cjs-json-pkg/index.js",
+                "format": "commonjs"
+            }
+        },
+        {
+            "name": "interop-esm-imports-cjs",
+            "group": "interop",
+            "fixture": "interop-esm-imports-cjs",
+            "importer": "interop-esm-imports-cjs/importer.js",
+            "specifier": "esm-of-cjs-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["esm", "imports-cjs"],
+            "expected": {
+                "kind": "package",
+                "packageName": "esm-of-cjs-pkg",
+                "entry": "interop-esm-imports-cjs/node_modules/esm-of-cjs-pkg/index.cjs",
+                "format": "commonjs"
+            }
+        },
+
+        {
+            "name": "json-require",
+            "group": "json",
+            "fixture": "json-require",
+            "importer": "json-require/importer.js",
+            "specifier": "json-pkg/config",
+            "importMode": false,
+            "status": "supported",
+            "features": ["json"],
+            "expected": {
+                "kind": "package",
+                "packageName": "json-pkg",
+                "entry": "json-require/node_modules/json-pkg/config.json",
+                "format": "json"
+            }
+        },
+
+        {
+            "name": "builtins-fs-promises-buffer",
+            "group": "builtins",
+            "fixture": "builtins-fs-promises-buffer",
+            "importer": "builtins-fs-promises-buffer/importer.js",
+            "specifier": "buf-fs-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["builtins", "node:fs/promises", "node:buffer"],
+            "expected": {
+                "kind": "package",
+                "packageName": "buf-fs-pkg",
+                "entry": "builtins-fs-promises-buffer/node_modules/buf-fs-pkg/index.js",
+                "format": "esm"
+            }
+        },
+
+        {
+            "name": "assets-package-data",
+            "group": "assets",
+            "fixture": "assets-package-data",
+            "importer": "assets-package-data/importer.js",
+            "specifier": "asset-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["assets", "json-with"],
+            "expected": {
+                "kind": "package",
+                "packageName": "asset-pkg",
+                "entry": "assets-package-data/node_modules/asset-pkg/index.js",
+                "format": "esm"
+            }
+        },
+
+        {
+            "name": "optional-native-unused",
+            "group": "optional-native-unsupported",
+            "fixture": "optional-native-unused",
+            "importer": "optional-native-unused/importer.js",
+            "specifier": "opt-native-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["optionalDependencies", "no-native-import"],
+            "expected": {
+                "kind": "package",
+                "packageName": "opt-native-pkg",
+                "entry": "optional-native-unused/node_modules/opt-native-pkg/index.js"
+            }
+        },
+        {
+            "name": "native-addon-used",
+            "group": "optional-native-unsupported",
+            "fixture": "native-addon-used",
+            "importer": "native-addon-used/importer.js",
+            "specifier": "native-pkg",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["native-addon", ".node"],
+            "expected": {
+                "kind": "nativeAddonUnsupported",
+                "packageName": "native-pkg"
+            }
+        },
+        {
+            "name": "unsupported-builtin-child_process",
+            "group": "optional-native-unsupported",
+            "fixture": "unsupported-builtin-child_process",
+            "importer": "unsupported-builtin-child_process/node_modules/shell-pkg/index.js",
+            "specifier": "node:child_process",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["builtins", "child_process"],
+            "expected": {
+                "kind": "nodeBuiltin",
+                "specifier": "node:child_process",
+                "builtinStatus": "unsupported"
+            }
+        },
+
+        {
+            "name": "dynamic-require-literal",
+            "group": "dynamic",
+            "fixture": "dynamic-require-literal",
+            "importer": "dynamic-require-literal/importer.js",
+            "specifier": "dyn-pkg/helper",
+            "importMode": false,
+            "status": "supported",
+            "features": ["require", "literal"],
+            "expected": {
+                "kind": "package",
+                "packageName": "dyn-pkg",
+                "entry": "dynamic-require-literal/node_modules/dyn-pkg/helper.js"
+            }
+        },
+
+        {
+            "name": "peer-dependency-meta",
+            "group": "peer",
+            "fixture": "peer-dependency-meta",
+            "importer": "peer-dependency-meta/importer.js",
+            "specifier": "peer-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["peerDependencies", "peerDependenciesMeta"],
+            "expected": {
+                "kind": "package",
+                "packageName": "peer-pkg",
+                "entry": "peer-dependency-meta/node_modules/peer-pkg/index.js"
+            }
+        }
+    ]
+}

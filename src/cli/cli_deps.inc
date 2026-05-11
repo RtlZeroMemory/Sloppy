@@ -186,32 +186,80 @@ static void sl_cli_deps_emit_text(yyjson_val* graph)
     sl_cli_deps_emit_text_array(graph, "Findings", "compatibilityFindings", "code");
 }
 
+static size_t sl_cli_deps_count_by_string(yyjson_val* array, const char* key, const char* value)
+{
+    yyjson_arr_iter iter;
+    yyjson_val* entry = NULL;
+    size_t count = 0U;
+
+    if (array == NULL || !yyjson_is_arr(array)) {
+        return 0U;
+    }
+    yyjson_arr_iter_init(array, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliSpan span = sl_cli_json_span(entry, key);
+        if (sl_cli_span_equal_cstr(span, value)) {
+            count++;
+        }
+    }
+    return count;
+}
+
 static void sl_cli_deps_emit_explain(yyjson_val* graph)
 {
     yyjson_val* packages = yyjson_obj_get(graph, "packages");
+    yyjson_val* modules = yyjson_obj_get(graph, "modules");
+    yyjson_val* assets = yyjson_obj_get(graph, "assets");
     yyjson_val* node_builtins = yyjson_obj_get(graph, "nodeBuiltins");
     yyjson_val* findings = yyjson_obj_get(graph, "compatibilityFindings");
     size_t package_count = packages != NULL && yyjson_is_arr(packages) ? yyjson_arr_size(packages)
                                                                        : 0U;
+    size_t module_count = modules != NULL && yyjson_is_arr(modules) ? yyjson_arr_size(modules)
+                                                                    : 0U;
+    size_t asset_count = assets != NULL && yyjson_is_arr(assets) ? yyjson_arr_size(assets) : 0U;
     size_t node_count = node_builtins != NULL && yyjson_is_arr(node_builtins)
                             ? yyjson_arr_size(node_builtins)
                             : 0U;
     size_t finding_count = findings != NULL && yyjson_is_arr(findings) ? yyjson_arr_size(findings)
                                                                        : 0U;
 
+    size_t supported_count = sl_cli_deps_count_by_string(node_builtins, "status", "supported");
+    size_t partial_count = sl_cli_deps_count_by_string(node_builtins, "status", "partial");
+    size_t stubbed_count = sl_cli_deps_count_by_string(node_builtins, "status", "stubbed");
+    size_t unsupported_count = sl_cli_deps_count_by_string(node_builtins, "status", "unsupported");
+
+    size_t error_count = sl_cli_deps_count_by_string(findings, "severity", "error");
+    size_t warning_count = sl_cli_deps_count_by_string(findings, "severity", "warning");
+
     printf("\nCompatibility explanation\n");
     printf("  Packages bundled: %zu\n", package_count);
+    printf("  Bundled modules: %zu\n", module_count);
+    printf("  Packaged assets: %zu\n", asset_count);
     printf("  Node compatibility shims used: %zu\n", node_count);
-    printf("  Compatibility findings: %zu\n", finding_count);
+    if (node_count > 0U) {
+        printf("    supported=%zu  partial=%zu  stubbed=%zu  unsupported=%zu\n",
+               supported_count, partial_count, stubbed_count, unsupported_count);
+    }
+    printf("  Compatibility findings: %zu", finding_count);
+    if (finding_count > 0U) {
+        printf("  (errors=%zu  warnings=%zu)", error_count, warning_count);
+    }
+    printf("\n");
+
     if (node_count > 0U) {
         printf("  Shim statuses:\n");
         sl_cli_deps_emit_text_array(graph, "  Node shim matrix", "nodeBuiltins", "specifier");
     }
     if (finding_count == 0U) {
         printf("  No dependency compatibility findings were recorded.\n");
+        printf("  Package graph is sealed for outside-checkout use.\n");
     }
     else {
         printf("  Review findings before treating the package graph as runtime-ready.\n");
+        if (error_count > 0U) {
+            printf("  Errors must be resolved before the artifact runs outside the source "
+                   "checkout.\n");
+        }
     }
 }
 

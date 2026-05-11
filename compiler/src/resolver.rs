@@ -29,10 +29,46 @@ pub(crate) enum ImportKind {
     NodeBuiltin(NodeBuiltinResolution),
     Package(PackageResolution),
     NativeAddonUnsupported(PackageResolution),
-    PackageExportUnsupported(String),
+    PackageExportUnsupported(PackageExportFailure),
     UnresolvedRelative(String),
     UnsupportedBare(String),
     Remote(String),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct PackageExportFailure {
+    pub(crate) subject: String,
+    pub(crate) field: &'static str,
+    pub(crate) subpath: String,
+    pub(crate) reason: &'static str,
+}
+
+impl PackageExportFailure {
+    pub(crate) fn exports(
+        subject: impl Into<String>,
+        subpath: impl Into<String>,
+        reason: &'static str,
+    ) -> Self {
+        Self {
+            subject: subject.into(),
+            field: "exports",
+            subpath: subpath.into(),
+            reason,
+        }
+    }
+
+    pub(crate) fn imports(
+        subject: impl Into<String>,
+        subpath: impl Into<String>,
+        reason: &'static str,
+    ) -> Self {
+        Self {
+            subject: subject.into(),
+            field: "imports",
+            subpath: subpath.into(),
+            reason,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -120,7 +156,11 @@ pub(crate) fn classify_import_with_mode(
         if let Some(package) = resolve_package_imports(from_path, specifier, import_mode) {
             return package;
         }
-        return ImportKind::PackageExportUnsupported(specifier.to_string());
+        return ImportKind::PackageExportUnsupported(PackageExportFailure::imports(
+            specifier,
+            specifier,
+            "no enclosing package.json declared a matching imports entry",
+        ));
     }
     if let Some(package) = resolve_package_import(from_path, specifier, import_mode) {
         return package;
@@ -255,12 +295,25 @@ fn resolve_package_import(
         .and_then(Value::as_str)
         .unwrap_or("commonjs");
 
+    let subpath_label = if subpath.is_empty() {
+        ".".to_string()
+    } else {
+        format!("./{subpath}")
+    };
     let entry = match package_json_value
         .as_ref()
         .and_then(|json| resolve_package_entry(&package_root, json, subpath, import_mode))
     {
         Some(Ok(path)) => path,
-        Some(Err(())) => return Some(ImportKind::PackageExportUnsupported(package_name)),
+        Some(Err(())) => {
+            return Some(ImportKind::PackageExportUnsupported(
+                PackageExportFailure::exports(
+                    package_name,
+                    subpath_label,
+                    "package exports entry uses an unsupported shape or has no matching condition",
+                ),
+            ));
+        }
         None => {
             if !subpath.is_empty() {
                 package_root.join(subpath)
@@ -277,7 +330,13 @@ fn resolve_package_import(
     };
 
     let Some(entry) = resolve_file_or_directory(&entry) else {
-        return Some(ImportKind::PackageExportUnsupported(package_name));
+        return Some(ImportKind::PackageExportUnsupported(
+            PackageExportFailure::exports(
+                package_name,
+                subpath_label,
+                "package entry file was not found on disk",
+            ),
+        ));
     };
     let format = module_format_for_path(&entry, package_type);
     let package = PackageResolution {
@@ -318,10 +377,24 @@ fn resolve_package_imports(
     let entry = resolve_imports_entry(&package_root, imports, specifier, import_mode)?;
     let entry = match entry {
         Ok(path) => path,
-        Err(()) => return Some(ImportKind::PackageExportUnsupported(specifier.to_string())),
+        Err(()) => {
+            return Some(ImportKind::PackageExportUnsupported(
+                PackageExportFailure::imports(
+                    specifier,
+                    specifier,
+                    "imports entry uses an unsupported shape or has no matching condition",
+                ),
+            ));
+        }
     };
     let Some(entry) = resolve_file_or_directory(&entry) else {
-        return Some(ImportKind::PackageExportUnsupported(specifier.to_string()));
+        return Some(ImportKind::PackageExportUnsupported(
+            PackageExportFailure::imports(
+                specifier,
+                specifier,
+                "imports target file was not found on disk",
+            ),
+        ));
     };
     let package_type = package_json_value
         .get("type")
@@ -679,5 +752,166 @@ mod tests {
         let resolved = std::env::current_dir().expect("current directory should exist");
         let relative_root = Path::new(".");
         assert!(stays_within_source_root(&resolved, relative_root));
+    }
+
+    #[test]
+    fn npm_compat_matrix_resolves_as_expected() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let matrix_root = fs::canonicalize(manifest_dir.join("../tests/fixtures/npm-compat"))
+            .expect("npm-compat fixtures directory should exist");
+        let matrix_path = matrix_root.join("matrix.json");
+        let matrix_json = fs::read_to_string(&matrix_path).expect("matrix.json should be readable");
+        let matrix: Value =
+            serde_json::from_str(&matrix_json).expect("matrix should be valid JSON");
+        let fixtures = matrix
+            .get("fixtures")
+            .and_then(Value::as_array)
+            .expect("matrix.fixtures array should be present");
+
+        let mut failures: Vec<String> = Vec::new();
+        for entry in fixtures {
+            let name = entry["name"].as_str().expect("matrix entry name");
+            let importer = matrix_root.join(
+                entry["importer"]
+                    .as_str()
+                    .expect("matrix entry importer path"),
+            );
+            let specifier = entry["specifier"].as_str().expect("matrix entry specifier");
+            let import_mode = entry["importMode"].as_bool().unwrap_or(true);
+            let expected = entry
+                .get("expected")
+                .expect("matrix entry expected projection");
+
+            let result = classify_import_with_mode(&importer, specifier, import_mode);
+            if let Err(message) = check_matrix_entry(expected, &result, &matrix_root) {
+                failures.push(format!("{name}: {message}"));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "npm-compat matrix failures:\n  - {}",
+            failures.join("\n  - ")
+        );
+    }
+
+    fn check_matrix_entry(
+        expected: &Value,
+        result: &ImportKind,
+        matrix_root: &Path,
+    ) -> Result<(), String> {
+        let expected_kind = expected["kind"]
+            .as_str()
+            .ok_or_else(|| "expected.kind is required".to_string())?;
+        match (expected_kind, result) {
+            ("package", ImportKind::Package(package)) => {
+                check_expected_package(expected, package, matrix_root)
+            }
+            ("packageExportUnsupported", ImportKind::PackageExportUnsupported(failure)) => {
+                if let Some(expected_specifier) = expected.get("specifier").and_then(Value::as_str)
+                {
+                    if failure.subject != expected_specifier {
+                        return Err(format!(
+                            "subject mismatch: expected {expected_specifier}, got {}",
+                            failure.subject
+                        ));
+                    }
+                }
+                if let Some(expected_field) = expected.get("field").and_then(Value::as_str) {
+                    if failure.field != expected_field {
+                        return Err(format!(
+                            "field mismatch: expected {expected_field}, got {}",
+                            failure.field
+                        ));
+                    }
+                }
+                if let Some(expected_reason) = expected.get("reason").and_then(Value::as_str) {
+                    if !failure.reason.contains(expected_reason) {
+                        return Err(format!(
+                            "reason mismatch: expected substring {expected_reason}, got {}",
+                            failure.reason
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            ("nativeAddonUnsupported", ImportKind::NativeAddonUnsupported(package)) => {
+                if let Some(expected_name) = expected.get("packageName").and_then(Value::as_str) {
+                    if package.name != expected_name {
+                        return Err(format!(
+                            "native package name mismatch: expected {expected_name}, got {}",
+                            package.name
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            ("nodeBuiltin", ImportKind::NodeBuiltin(builtin)) => {
+                if let Some(expected_specifier) = expected.get("specifier").and_then(Value::as_str)
+                {
+                    if builtin.specifier != expected_specifier {
+                        return Err(format!(
+                            "builtin specifier mismatch: expected {expected_specifier}, got {}",
+                            builtin.specifier
+                        ));
+                    }
+                }
+                if let Some(expected_status) = expected.get("builtinStatus").and_then(Value::as_str)
+                {
+                    if builtin.status != expected_status {
+                        return Err(format!(
+                            "builtin status mismatch: expected {expected_status}, got {}",
+                            builtin.status
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            (kind, result) => Err(format!("expected {kind}, got {result:?}")),
+        }
+    }
+
+    fn check_expected_package(
+        expected: &Value,
+        package: &PackageResolution,
+        matrix_root: &Path,
+    ) -> Result<(), String> {
+        if let Some(expected_name) = expected.get("packageName").and_then(Value::as_str) {
+            if package.name != expected_name {
+                return Err(format!(
+                    "package name mismatch: expected {expected_name}, got {}",
+                    package.name
+                ));
+            }
+        }
+        if let Some(expected_entry) = expected.get("entry").and_then(Value::as_str) {
+            let expected_path =
+                fs::canonicalize(matrix_root.join(expected_entry)).map_err(|error| {
+                    format!("expected entry {expected_entry} should canonicalize: {error}")
+                })?;
+            if package.entry != expected_path {
+                return Err(format!(
+                    "entry mismatch: expected {}, got {}",
+                    expected_path.display(),
+                    package.entry.display()
+                ));
+            }
+        }
+        if let Some(expected_format) = expected.get("format").and_then(Value::as_str) {
+            if package.format.as_str() != expected_format {
+                return Err(format!(
+                    "format mismatch: expected {expected_format}, got {}",
+                    package.format.as_str()
+                ));
+            }
+        }
+        if let Some(expected_source) = expected.get("source").and_then(Value::as_str) {
+            if package.source != expected_source {
+                return Err(format!(
+                    "source mismatch: expected {expected_source}, got {}",
+                    package.source
+                ));
+            }
+        }
+        Ok(())
     }
 }

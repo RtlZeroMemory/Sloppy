@@ -47,6 +47,14 @@ function Test-ExcludedPath {
         }
     }
 
+    if ($RelativePath -match '(^|/)node_modules/') {
+        return $true
+    }
+
+    if ($RelativePath.StartsWith("tests/fixtures/npm-compat/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
     return $false
 }
 

@@ -94,3 +94,11 @@ Package "sharp" requires a native Node addon. Sloppy does not support Node nativ
 Use [`sloppy deps`](../cli/deps.md), [`sloppy audit`](../cli/audit.md), and
 [`sloppy doctor`](../cli/doctor.md) to inspect registry use and compatibility
 findings.
+
+## Package Resolution Matrix
+
+The package shapes Sloppy promises to resolve are committed at
+`tests/fixtures/npm-compat/` with a `matrix.json` index. The compiler resolver
+test walks the matrix on every test run, so a shape that is not in the matrix
+is not a regression — it is a feature request. Add a fixture plus matrix
+entry alongside any change that broadens resolver behavior.
