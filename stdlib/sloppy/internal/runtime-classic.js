@@ -1427,6 +1427,14 @@ Operation:
                 bridge.close(state.handle);
                 state.closed = true;
             },
+            __debug() {
+                return Object.freeze({
+                    kind: "postgres-connection",
+                    closed: state.closed,
+                    transactionActive: state.transactionActive,
+                    resource: "opaque",
+                });
+            },
         });
     }
 
@@ -1676,6 +1684,14 @@ Operation:
                 }
                 bridge.close(state.handle);
                 state.closed = true;
+            },
+            __debug() {
+                return Object.freeze({
+                    kind: "sqlserver-connection",
+                    closed: state.closed,
+                    transactionActive: state.transactionActive,
+                    resource: "opaque",
+                });
             },
         });
     }
@@ -2145,6 +2161,18 @@ Reason:
         if (typeof path !== "string" || path.length === 0) {
             throw new TypeError("Sloppy Migrations path must be a non-empty string.");
         }
+        if (/^(?:[A-Za-z]:[\\/]|[\\/]|[A-Za-z][A-Za-z0-9_.-]*:[\\/])/.test(path)) {
+            throw new Error(`sloppy: migration path is unsupported
+
+Provider:
+  ${provider}
+
+Path:
+  ${path}
+
+Fix:
+  Use a project-relative directory glob ending in *.sql, for example migrations/*.sql.`);
+        }
         const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
         const directory = slash < 0 ? "." : path.slice(0, slash);
         const pattern = slash < 0 ? path : path.slice(slash + 1);
@@ -2194,7 +2222,7 @@ Fix:
     }
 
     function migrationProviderKind(db) {
-        const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
+        const debug = typeof db?.__debug === "function" ? db.__debug() : db;
         if (debug?.kind === "sqlite-connection") {
             return "sqlite";
         }
@@ -2421,9 +2449,15 @@ Fix:
     }
 
     async function checkProviderHealth(db, options = {}) {
-        const provider = options.provider ?? "sqlite";
+        const providerKind = migrationProviderKind(db);
+        const provider = options.provider ?? providerKind;
         if (typeof provider !== "string" || provider.length === 0) {
             throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
+        }
+        if (MIGRATION_PROVIDER_KINDS[provider] === true && provider !== providerKind) {
+            throw new TypeError(
+                `Sloppy ProviderHealth provider '${provider}' does not match connection provider '${providerKind}'.`,
+            );
         }
         await db.queryOne("select 1 as ok", []);
         return Object.freeze({ provider, ok: true });

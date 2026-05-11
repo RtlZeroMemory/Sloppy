@@ -4255,6 +4255,7 @@ export default app;
         .expect("validate(undefined) should remain a supported sanitizer path");
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("ctx.body.validate(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.json(undefined)"));
 }
 
 #[test]
