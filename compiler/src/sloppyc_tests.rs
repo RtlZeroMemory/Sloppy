@@ -2356,6 +2356,89 @@ export default app;
 }
 
 #[test]
+fn function_module_exports_local_schema_metadata() {
+    let root = fixture_temp_dir("function-module-local-schema-metadata");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results, Schema } from "sloppy";
+
+export function usersModule(app) {
+    const CreateUser = Schema.object({
+        name: Schema.string().min(1),
+    });
+    const User = Schema.object({
+        id: Schema.integer(),
+        name: Schema.string(),
+    });
+
+    app.post("/users", async (ctx) =>
+        Results.created("/users/1", await ctx.body.validate(CreateUser))
+    ).accepts(CreateUser).returns(User).withName("Users.Create");
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("module schemas should extract");
+    assert_eq!(app.schemas.len(), 2);
+    let route = &app.routes[0];
+    assert_eq!(route.handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        route.handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        route
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn function_module_duplicate_schema_names_fail_closed() {
+    let root = fixture_temp_dir("function-module-duplicate-schema");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("users.js"),
+        r#"import { Results, Schema } from "sloppy";
+
+export function usersModule(app) {
+    const User = Schema.object({ id: Schema.integer() });
+    app.get("/users", () => Results.ok({ id: 1 })).returns(User);
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy, Schema } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const User = Schema.object({ id: Schema.integer() });
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+    let diagnostic =
+        extract_temp_input(&root, source).expect_err("duplicate module schema should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_DUPLICATE_SCHEMA");
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn function_module_can_register_health_checks() {
     let root = fixture_temp_dir("function-module-health");
     let modules = root.join("modules");
@@ -3686,6 +3769,255 @@ export default app;
     assert_eq!(plan["routes"][0]["bindings"][4]["name"], "content-md5");
     assert_eq!(plan["routes"][0]["response"]["helper"], "json");
     assert_eq!(plan["features"]["metadataInference"], true);
+}
+
+#[test]
+fn extracts_schema_alias_body_validate_and_fluent_route_schemas() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({
+  name: Schema.string().min(1).max(100),
+  email: Schema.string().email()
+});
+const User = Schema.object({
+  id: Schema.integer(),
+  name: Schema.string(),
+  email: Schema.string(),
+  role: Schema.enum(["admin", "user"]),
+  status: Schema.literal("active")
+});
+const app = Sloppy.create();
+app.post("/users", async (ctx) =>
+  Results.created("/users/1", await ctx.body.validate(CreateUser))
+).accepts(CreateUser).returns(User).withName("Users.Create");
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("Schema alias and fluent schemas should extract");
+    assert_eq!(app.schemas.len(), 2);
+    assert_eq!(app.routes[0].name.as_deref(), Some("Users.Create"));
+    assert_eq!(app.routes[0].handler.bindings.len(), 1);
+    assert_eq!(app.routes[0].handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        app.routes[0]
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.validate(CreateUser)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["bindings"][0]["schema"], "CreateUser");
+    assert_eq!(plan["routes"][0]["response"]["bodySchema"], "User");
+    let user_schema = plan["schemas"]
+        .as_array()
+        .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "User"))
+        .expect("User schema should exist");
+    assert_eq!(
+        user_schema["definition"]["properties"]["role"]["kind"],
+        "literalUnion"
+    );
+    assert_eq!(
+        user_schema["definition"]["properties"]["role"]["variants"][0]["value"],
+        "admin"
+    );
+    assert_eq!(
+        user_schema["definition"]["properties"]["status"]["kind"],
+        "literal"
+    );
+    assert_eq!(
+        user_schema["definition"]["properties"]["status"]["value"],
+        "active"
+    );
+}
+
+#[test]
+fn returns_schema_metadata_only_applies_to_json_responses() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const User = Schema.object({ id: Schema.integer() });
+const app = Sloppy.create();
+app.get("/users", () => Results.text("ok")).returns(User);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("returns metadata should extract for non-json handlers");
+    let response = app.routes[0]
+        .handler
+        .response
+        .as_ref()
+        .expect("text response should remain primary metadata");
+    assert_eq!(response.kind, "text");
+    assert_eq!(response.body_schema, None);
+    assert!(app.routes[0].handler.responses.iter().any(|response| {
+        response.kind == "json" && response.body_schema.as_deref() == Some("User")
+    }));
+}
+
+#[test]
+fn rejects_unresolved_fluent_route_schema_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", () => Results.created("/users/1", {})).accepts(CreateUser);
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.ts"), source)
+        .expect_err("unresolved fluent schema metadata should fail extraction");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA");
+}
+
+#[test]
+fn rejects_unresolved_body_validate_schema_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", async (ctx) => Results.created("/users/1", await ctx.body.validate(CreateUser)));
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.ts"), source)
+        .expect_err("unresolved body validation schema should fail extraction");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA");
+}
+
+#[test]
+fn rejects_unresolved_body_validate_schema_metadata_in_control_flow() {
+    let fixtures = [
+        (
+            "while body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  while (ctx.request.method) {
+    return Results.ok({ body: ctx.body.validate(CreateUser) });
+  }
+  return Results.ok({});
+});
+export default app;
+"#,
+        ),
+        (
+            "switch body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  switch (ctx.request.method) {
+    case "POST":
+      return Results.ok({ body: ctx.body.validate(CreateUser) });
+    default:
+      return Results.ok({});
+  }
+});
+export default app;
+"#,
+        ),
+        (
+            "try body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  try {
+    return Results.ok({ body: ctx.body.validate(CreateUser) });
+  } catch {
+    return Results.ok({});
+  }
+});
+export default app;
+"#,
+        ),
+        (
+            "nested call argument",
+            r#"import { Sloppy, Results } from "sloppy";
+function wrap(value) { return value; }
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.ok({ body: wrap(ctx.body.validate(CreateUser)) }));
+export default app;
+"#,
+        ),
+    ];
+
+    for (name, source) in fixtures {
+        let diagnostic = match extract(std::path::Path::new("app.ts"), source) {
+            Ok(_) => panic!("{name} should fail on unresolved body validation schema"),
+            Err(diagnostic) => diagnostic,
+        };
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA", "{name}");
+    }
+}
+
+#[test]
+fn rejects_conflicting_fluent_route_schema_metadata() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({ name: Schema.string() });
+const UpdateUser = Schema.object({ name: Schema.string() });
+const app = Sloppy.create();
+app.post("/users", async (ctx) =>
+  Results.created("/users/1", await ctx.body.validate(CreateUser))
+).accepts(UpdateUser);
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("app.ts"), source)
+        .expect_err("conflicting fluent schema metadata should fail extraction");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_CONFLICTING_ROUTE_SCHEMA");
+}
+
+#[test]
+fn extracts_default_and_pattern_schema_modifiers() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const User = Schema.object({
+  name: Schema.string().pattern(/^[a-z]+$/u).default("guest")
+});
+const app = Sloppy.create();
+app.post("/users", async (ctx) =>
+  Results.created("/users/1", await ctx.body.validate(User))
+).accepts(User);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("default and pattern modifiers should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let user_schema = plan["schemas"]
+        .as_array()
+        .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "User"))
+        .expect("User schema should exist");
+    let name_property = &user_schema["definition"]["properties"]["name"];
+    assert_eq!(name_property["pattern"], "^[a-z]+$");
+    assert_eq!(name_property["patternFlags"], "u");
+    assert_eq!(name_property["optional"], true);
+    assert_eq!(name_property["default"], "guest");
+}
+
+#[test]
+fn body_validate_undefined_still_sanitizes_to_body_json() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.validate(undefined) }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("validate(undefined) should remain a supported sanitizer path");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.validate(undefined)"));
 }
 
 #[test]
@@ -6141,6 +6473,45 @@ export default app;
 }
 
 #[test]
+fn controller_routes_apply_fluent_schema_metadata() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({ name: Schema.string() });
+const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
+class UsersController {
+  create(_ctx) {
+    return Results.created("/users/1", { id: 1, name: "Ada" });
+  }
+}
+const app = Sloppy.create();
+app.mapController("/users", UsersController, (mapper) => {
+  mapper.post("/", "create").accepts(CreateUser).returns(User);
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("controller fluent schema metadata should extract");
+    let route = app
+        .routes
+        .iter()
+        .find(|route| route.method == "POST" && route.pattern == "/users")
+        .expect("controller route should exist");
+    assert_eq!(route.handler.bindings.len(), 1);
+    assert_eq!(route.handler.bindings[0].kind, "body.json");
+    assert_eq!(
+        route.handler.bindings[0].schema.as_deref(),
+        Some("CreateUser")
+    );
+    assert_eq!(
+        route
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.body_schema.as_deref()),
+        Some("User")
+    );
+}
+
+#[test]
 fn unsupported_dynamic_framework_features_fail_closed() {
     for (source, code) in [
         (
@@ -6578,6 +6949,11 @@ export default app;
     assert_eq!(app.dynamic_routes.len(), 1);
     assert_eq!(app.dynamic_routes[0].method, Some("GET"));
     assert_eq!(app.dynamic_routes[0].pattern.as_deref(), Some("/"));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("accepts(schema)"));
+    assert!(emitted_js
+        .source
+        .contains("returns(schema, options = undefined)"));
 }
 
 #[test]

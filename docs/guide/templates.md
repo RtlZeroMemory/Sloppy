@@ -17,6 +17,27 @@ Current public templates are:
 | `package-api` | API starter that uses a compatible local pure-JavaScript package. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
 
+## API Template
+
+The `api` template is the default alpha starter for a Sloppy Web Mode backend.
+
+```sh
+sloppy create api my-api
+cd my-api
+sloppy build
+sloppy run .sloppy --once GET /health
+```
+
+The `api` template's `POST /users` route uses `Schema` validation:
+
+```ts
+const input = await ctx.body.validate(CreateUser);
+```
+
+The route also declares `.accepts(CreateUser)` and `.returns(User)`, so
+`sloppy routes`, `sloppy audit`, and `sloppy openapi` can report request and
+response metadata from the generated Plan.
+
 ## Authentication
 
 Auth is available from any API template:

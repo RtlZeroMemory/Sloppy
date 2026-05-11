@@ -7,6 +7,8 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [Using installed packages](using-packages.md) — bundle compatible pure-JavaScript packages
 - [Native FFI](native-ffi.md) — typed, Plan-visible native C ABI calls
 - [TypeScript support](typescript.md) — what the compiler accepts today, what it rejects
+- [Validation](validation.md) — validate JSON request bodies with `Schema`
+- [Templates](templates.md) — use the built-in project templates
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
 - [Database migrations](migrations.md) — configure, apply, package, and inspect schema migrations

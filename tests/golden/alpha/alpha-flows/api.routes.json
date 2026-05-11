@@ -132,7 +132,7 @@
         ],
         "source": {
           "column": 5,
-          "line": 15,
+          "line": 20,
           "path": "users.ts"
         },
         "sourceOrder": 0
@@ -175,7 +175,7 @@
         ],
         "source": {
           "column": 5,
-          "line": 18,
+          "line": 23,
           "path": "users.ts"
         },
         "sourceOrder": 1
@@ -185,27 +185,24 @@
           {
             "kind": "body.json",
             "name": "",
-            "schema": ""
+            "schema": "CreateUser"
           }
         ],
-        "completeness": "partial",
+        "completeness": "complete",
         "handlerId": 3,
         "method": "POST",
         "module": "usersModule",
         "name": "Users.Create",
         "pattern": "/users",
         "response": {
-          "helper": "badRequest",
+          "bodySchema": "User",
+          "helper": "created",
           "kind": "json",
-          "status": 400
+          "status": 201
         },
         "responses": [
           {
-            "helper": "badRequest",
-            "kind": "json",
-            "status": 400
-          },
-          {
+            "bodySchema": "User",
             "helper": "created",
             "kind": "json",
             "status": 201
@@ -218,7 +215,7 @@
         ],
         "source": {
           "column": 5,
-          "line": 27,
+          "line": 32,
           "path": "users.ts"
         },
         "sourceOrder": 2

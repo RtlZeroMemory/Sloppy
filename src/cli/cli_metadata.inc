@@ -176,6 +176,7 @@ static int sl_cli_parse_route_response_entry(yyjson_val* value, SlCliRoute* rout
     }
     route->response_kinds[route->response_count] = sl_cli_json_span(value, "kind");
     route->response_helpers[route->response_count] = sl_cli_json_span(value, "helper");
+    route->response_body_schemas[route->response_count] = sl_cli_json_span(value, "bodySchema");
     route->response_statuses[route->response_count] = sl_cli_json_uint_or_zero(value, "status");
     route->response_count += 1U;
     return 0;
@@ -222,6 +223,7 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
     if (route->response_count == 0U && !sl_cli_span_empty(route->response_kind)) {
         route->response_kinds[0] = route->response_kind;
         route->response_helpers[0] = route->response_helper;
+        route->response_body_schemas[0] = sl_cli_json_span(response, "bodySchema");
         route->response_statuses[0] = route->response_status;
         route->response_count = 1U;
     }

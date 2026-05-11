@@ -9,5 +9,18 @@
   "dependencyMode": "bundled",
   "entry": "artifacts/app.plan.json",
   "kind": "web",
+  "migrations": [
+    {
+      "files": [
+        {
+          "path": "migrations/0001_create_users.sql",
+          "sha256": "sha256:e865783ce49768e5a3f905652d320b741247654717a4acb877302799cbd3642a"
+        }
+      ],
+      "path": "migrations/*.sql",
+      "provider": "main",
+      "providerKind": "sqlite"
+    }
+  ],
   "schema": "sloppy.app-package.v1"
 }

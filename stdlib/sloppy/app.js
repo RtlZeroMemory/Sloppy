@@ -31,6 +31,7 @@ import {
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
 import { Results } from "./results.js";
+import { isValidationError, validationProblem } from "./schema.js";
 
 const DEFAULT_HEALTH_PATH = "/health";
 const DEFAULT_LIVENESS_PATH = "/health/live";
@@ -67,6 +68,10 @@ function safeProblemDetails(error, descriptor, config) {
     }
 
     return Results.problem(problem, { status: 500 });
+}
+
+function validationProblemResult(error) {
+    return Results.problem(validationProblem(error.issues), { status: 400 });
 }
 
 function isWorkerResource(resource) {
@@ -293,6 +298,9 @@ function createApp(host) {
         ...host,
         auth: authState,
         handleError(error) {
+            if (isValidationError(error)) {
+                return validationProblemResult(error);
+            }
             if (problemDetails === null) {
                 throw error;
             }

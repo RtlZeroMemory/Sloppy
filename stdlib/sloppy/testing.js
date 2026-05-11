@@ -1,8 +1,10 @@
 import { Text } from "./codec.js";
 import * as fsPromises from "node:fs/promises";
+import { Schema, validationProblem } from "./schema.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 
@@ -490,6 +492,18 @@ function parseMultipart(bytes, contentType) {
 function createBodyObject(kind, bytes) {
     let consumed = false;
     let textCache;
+    function readJson() {
+        if (consumed) {
+            throw new TypeError("Request body is already consumed.");
+        }
+        consumed = true;
+        if (kind !== "json") {
+            throw new TypeError("Request body is not available as JSON.");
+        }
+        textCache ??= Text.utf8.decode(bytes);
+        return JSON.parse(textCache);
+    }
+
     const body = {
         get consumed() {
             return consumed;
@@ -510,15 +524,10 @@ function createBodyObject(kind, bytes) {
             return textCache;
         },
         json() {
-            if (consumed) {
-                throw new TypeError("Request body is already consumed.");
-            }
-            consumed = true;
-            if (kind !== "json") {
-                throw new TypeError("Request body is not available as JSON.");
-            }
-            textCache ??= Text.utf8.decode(bytes);
-            return JSON.parse(textCache);
+            return readJson();
+        },
+        async validate(schema) {
+            return Schema.validate(readJson(), schema);
         },
     };
     return Object.freeze(body);
@@ -576,6 +585,7 @@ function signalObject() {
 }
 
 function createContext(app, method, targetParts, headers, route, bodyKind, bodyBytes) {
+    const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
     return Object.freeze({
         services: app.services.createScope(),
         capabilities: app.capabilities,
@@ -583,7 +593,8 @@ function createContext(app, method, targetParts, headers, route, bodyKind, bodyB
         log: app.log,
         route,
         query: parseQuery(targetParts.queryString),
-        request: createRequestObject(method, targetParts, headers, bodyKind, bodyBytes),
+        request,
+        body: request.body,
         cookies: createCookiesLike(headers),
         connection: Object.freeze({
             id: "test-host",
@@ -636,6 +647,14 @@ function responseFromParts(status, headers, bodyBytes) {
 
 function responseFromText(status, text, contentType = TEXT_CONTENT_TYPE) {
     return responseFromParts(status, [["Content-Type", contentType]], Text.utf8.encode(text));
+}
+
+function responseFromProblem(problem) {
+    return responseFromParts(
+        problem.status ?? 400,
+        [["Content-Type", PROBLEM_CONTENT_TYPE]],
+        Text.utf8.encode(JSON.stringify(problem)),
+    );
 }
 
 function responseFromResult(result) {
@@ -782,7 +801,13 @@ function createTestHost(app) {
 
             const bodyKind = bodyKindForRequest(headers, bodyBytes);
             if (bodyKind === "malformed-json") {
-                return responseFromText(400, "Malformed JSON\n");
+                return responseFromProblem(validationProblem([
+                    {
+                        path: [],
+                        code: "json.invalid",
+                        message: "Request body is not valid JSON.",
+                    },
+                ]));
             }
             if (bodyKind === "malformed-multipart") {
                 return responseFromText(400, "Malformed Multipart\n");

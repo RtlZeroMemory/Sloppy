@@ -54,7 +54,7 @@
         "x-slop-optimization-candidates": ["native-json-serialization", "static-route-dispatch"],
         "parameters": [],
         "responses": {
-          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } }
+          "200": { "description": "json", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonResponse" } } } }
         }
       }
     },
@@ -98,6 +98,13 @@
           "title": { "type": "string" },
           "detail": { "type": "string" }
         }
+      },
+      "JsonResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        },
+        "required": ["message"]
       }
     }
   }

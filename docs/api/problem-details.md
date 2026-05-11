@@ -30,3 +30,8 @@ Options:
 
 ProblemDetails integration is pre-alpha and is tied to the app-host/framework
 surface that consumes the descriptor.
+
+Request validation failures from `ctx.body.validate(schema)` are not treated as
+handler faults. They return `400 application/problem+json` with
+`SLOPPY_E_VALIDATION_FAILED` whether or not `ProblemDetails.defaults()` is
+installed.

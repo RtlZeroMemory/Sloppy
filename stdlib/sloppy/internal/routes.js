@@ -6,6 +6,7 @@ import {
     snapshotAuthRequirement,
 } from "../auth.js";
 import { Results } from "../results.js";
+import { isSchema } from "../schema.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
 import { isPlainObject } from "./shared.js";
 
@@ -188,6 +189,12 @@ function validateTag(tag) {
 function validateName(name, subject) {
     if (typeof name !== "string" || name.length === 0) {
         throw new TypeError(`Sloppy ${subject} name must be a non-empty string.`);
+    }
+}
+
+function validateSchema(schema, subject) {
+    if (!isSchema(schema)) {
+        throw new TypeError(`Sloppy ${subject} schema must be a Schema value.`);
     }
 }
 
@@ -614,6 +621,30 @@ function createEndpointBuilder(route, assertAppMutable) {
             if (route.routeInfo !== undefined) {
                 route.routeInfo.auth = requirement;
             }
+            return endpoint;
+        },
+        accepts(schema) {
+            assertAppMutable();
+            validateSchema(schema, "endpoint accepts");
+
+            route.metadata.accepts = Object.freeze({
+                contentType: "application/json",
+                schema: schema.metadata,
+            });
+            return endpoint;
+        },
+        returns(schema, options = undefined) {
+            assertAppMutable();
+            validateSchema(schema, "endpoint returns");
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy endpoint returns options must be a plain object.");
+            }
+
+            route.metadata.returns = Object.freeze({
+                status: options?.status ?? 200,
+                contentType: options?.contentType ?? "application/json",
+                schema: schema.metadata,
+            });
             return endpoint;
         },
     };
