@@ -71,11 +71,17 @@ keyed by media type:
 | `text`             | `text/plain`                | `{ type: "string" }`                    |
 | `html`             | `text/html`                 | `{ type: "string" }`                    |
 | `bytes`            | `application/octet-stream`  | `{ type: "string", format: "binary" }`  |
+| `stream`           | `application/octet-stream`  | `{ type: "string", format: "binary" }`  |
 | `empty`            | none                        | status and description only             |
 
 JSON responses use the declared Plan response body schema when the schema is
 available. They carry `x-slop-partial` when the compiler could not see a
 response body schema.
+
+Request body media types are emitted from Plan binding metadata:
+`application/json`, `application/x-www-form-urlencoded`, and
+`multipart/form-data`. Validation problem responses use
+`application/problem+json`.
 
 ## Sloppy extensions
 

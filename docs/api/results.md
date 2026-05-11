@@ -34,6 +34,38 @@ Called with no argument, the descriptor carries no body — the runtime
 sends only headers. With a string they emit `"…"`; with an object, the
 object.
 
+JSON payloads use Sloppy's alpha JSON policy before response bytes are emitted:
+
+- Plain objects and arrays serialize recursively.
+- Strings, finite numbers, booleans, and `null` serialize as their JSON values.
+- `Date` serializes as an ISO 8601 string.
+- `BigInt` serializes as a decimal string by default.
+- `Uint8Array`, `ArrayBuffer`, and typed-array views serialize as base64 strings.
+- `undefined` object fields are omitted; `undefined` array entries become `null`.
+- Circular references, symbols, functions, invalid dates, and `NaN`/infinite numbers throw.
+- Class instances serialize their enumerable own properties.
+- `Error` objects serialize as `{ name, message }` plus enumerable safe fields; stack is not included.
+
+Use app-level JSON options when you need the small supported policy switches:
+
+```ts
+import { Sloppy } from "sloppy";
+
+const app = Sloppy.create({
+    json: {
+        casing: "camelCase",
+        includeNulls: true,
+        dateFormat: "iso8601",
+        bigint: "string",
+    },
+});
+```
+
+`app.useJson({ casing: "camelCase", bigint: "string" })` applies the same
+options before the app is frozen. Current options are `casing:
+"preserve" | "camelCase"`, `includeNulls: boolean`, `dateFormat: "iso8601"`,
+`bigint: "string" | "error"`, and `bytes: "base64" | "array"`.
+
 ## Body-shape results
 
 | Helper                          | Status | `Content-Type`                  |
@@ -149,6 +181,7 @@ return Results.ok(data, {
   instead. Invalid names or values throw a `TypeError`.
 - `contentType` — override the helper's default `Content-Type`. The runtime
   still adds `; charset=utf-8` for textual content where appropriate.
+- `json` — per-result JSON options for the supported Sloppy JSON policy.
 
 Every descriptor also has `.cookie(name, value, options?)`:
 

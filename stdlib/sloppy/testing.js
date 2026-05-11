@@ -1,5 +1,6 @@
 import { Text } from "./codec.js";
 import * as fsPromises from "node:fs/promises";
+import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { Schema, validationProblem } from "./schema.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
@@ -7,6 +8,12 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
+const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
+    json: undefined,
+    contentNegotiation: Object.freeze({
+        strictAccept: false,
+    }),
+});
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -116,7 +123,7 @@ function bodySourceCount(options) {
     return ["body", "text", "json"].filter((key) => options?.[key] !== undefined).length;
 }
 
-function normalizeRequestBody(options, headerEntries) {
+function normalizeRequestBodyWithOptions(options, headerEntries, serializationOptions) {
     if (options === undefined || options === null) {
         return new Uint8Array(0);
     }
@@ -137,7 +144,7 @@ function normalizeRequestBody(options, headerEntries) {
     if (options.json !== undefined) {
         let text;
         try {
-            text = JSON.stringify(options.json);
+            text = serializeJson(options.json, serializationOptions.json);
         } catch (error) {
             throw new TypeError(`Sloppy test host JSON body could not be serialized: ${error.message}`);
         }
@@ -159,6 +166,10 @@ function normalizeRequestBody(options, headerEntries) {
         setDefaultHeader(headerEntries, "Content-Length", String(bytes.byteLength));
     }
     return bytes;
+}
+
+function normalizeRequestBody(options, headerEntries) {
+    return normalizeRequestBodyWithOptions(options, headerEntries, DEFAULT_SERIALIZATION_OPTIONS);
 }
 
 function splitTarget(target) {
@@ -283,6 +294,34 @@ function contentTypeParameter(contentType, name) {
 function isJsonMediaType(contentType) {
     const type = mediaType(contentType);
     return type === "application/json" || (type.startsWith("application/") && type.endsWith("+json"));
+}
+
+function acceptsMediaType(accept, contentType) {
+    if (accept === undefined || accept.trim().length === 0) {
+        return true;
+    }
+    const responseType = mediaType(contentType);
+    const slash = responseType.indexOf("/");
+    const responseTop = slash < 0 ? responseType : responseType.slice(0, slash);
+
+    for (const rawPart of accept.split(",")) {
+        const part = rawPart.trim();
+        if (part.length === 0) {
+            continue;
+        }
+        const [range, ...parameters] = part.split(";").map((value) => value.trim().toLowerCase());
+        const qParameter = parameters.find((parameter) => parameter.startsWith("q="));
+        if (qParameter !== undefined && Number(qParameter.slice(2)) === 0) {
+            continue;
+        }
+        if (range === "*/*" || range === responseType) {
+            return true;
+        }
+        if (range.endsWith("/*") && range.slice(0, -2) === responseTop) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function bodyKindForRequest(headers, bodyBytes) {
@@ -663,11 +702,27 @@ function responseFromProblem(problem) {
     return responseFromParts(
         problem.status ?? 400,
         [["Content-Type", PROBLEM_CONTENT_TYPE]],
-        Text.utf8.encode(JSON.stringify(problem)),
+        Text.utf8.encode(serializeJson(problem)),
     );
 }
 
-function responseFromResult(result) {
+function isUnsupportedMediaHelperError(error) {
+    return error instanceof TypeError &&
+        /^Request body is not available as (JSON|form data|multipart data)\.$/u.test(error.message);
+}
+
+function negotiatedResponse(response, requestHeaders, options) {
+    if (options.contentNegotiation?.strictAccept !== true) {
+        return response;
+    }
+    const contentType = response.headers.get("content-type");
+    if (contentType === undefined || acceptsMediaType(requestHeaders.get("accept"), contentType)) {
+        return response;
+    }
+    return responseFromText(406, "Not Acceptable\n");
+}
+
+function responseFromResultWithOptions(result, serializationOptions) {
     if (typeof result === "string") {
         return responseFromText(200, result);
     }
@@ -698,11 +753,21 @@ function responseFromResult(result) {
         return responseFromParts(result.status, headers, body);
     }
     if (result.kind === "json" || result.kind === "problem") {
-        const body = result.body === undefined ? null : result.body;
-        return responseFromParts(result.status, headers, Text.utf8.encode(JSON.stringify(body)));
+        const body = Object.prototype.hasOwnProperty.call(result, RAW_JSON_BODY)
+            ? result[RAW_JSON_BODY]
+            : (result.body === undefined ? null : result.body);
+        return responseFromParts(
+            result.status,
+            headers,
+            Text.utf8.encode(serializeJson(body, result.json ?? serializationOptions.json)),
+        );
     }
 
     throw new TypeError(`Sloppy test host does not support result kind '${result.kind}'.`);
+}
+
+function responseFromResult(result) {
+    return responseFromResultWithOptions(result, DEFAULT_SERIALIZATION_OPTIONS);
 }
 
 function findRoute(routes, method, path) {
@@ -764,6 +829,9 @@ function createTestHost(app) {
 
     app.freeze();
     const routes = snapshotRoutes(app);
+    const serializationOptions = typeof app.__getSerializationOptions === "function"
+        ? app.__getSerializationOptions()
+        : DEFAULT_SERIALIZATION_OPTIONS;
     let closed = false;
     let activeRequests = 0;
     let closePromise = undefined;
@@ -799,7 +867,7 @@ function createTestHost(app) {
             const normalizedOptions = normalizeOptions(options);
             const targetParts = splitTarget(target);
             const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
-            const bodyBytes = normalizeRequestBody(normalizedOptions, headerEntries);
+            const bodyBytes = normalizeRequestBodyWithOptions(normalizedOptions, headerEntries, serializationOptions);
             const headers = createHeadersLike(headerEntries);
             const match = findRoute(routes, normalizedMethod, targetParts.path);
 
@@ -835,7 +903,18 @@ function createTestHost(app) {
 
             const context = createContext(app, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes);
             try {
-                return responseFromResult(await match.route.handler(context));
+                try {
+                    return negotiatedResponse(
+                        responseFromResultWithOptions(await match.route.handler(context), serializationOptions),
+                        headers,
+                        serializationOptions,
+                    );
+                } catch (error) {
+                    if (isUnsupportedMediaHelperError(error)) {
+                        return responseFromText(415, "Unsupported Media Type\n");
+                    }
+                    throw error;
+                }
             } finally {
                 await context.services.dispose();
             }
