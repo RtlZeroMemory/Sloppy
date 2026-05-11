@@ -109,8 +109,10 @@ try {
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${futureIssued}` },
     })).response.status, 401);
+    const noneHeader = Base64Url.encode(Text.utf8.encode(JSON.stringify({ alg: "none", typ: "JWT" })));
+    const noneClaims = Base64Url.encode(Text.utf8.encode(JSON.stringify({ sub: "user-1" })));
     assert.equal((await requestJson(host, "GET", "/me", {
-        headers: { Authorization: `Bearer ${jwt("test-secret", { sub: "user-1" }, { alg: "none", typ: "JWT" })}` },
+        headers: { Authorization: `Bearer ${noneHeader}.${noneClaims}.` },
     })).response.status, 401);
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${jwt("test-secret", ["not-object"])}` },
@@ -202,7 +204,7 @@ try {
     assert.equal(me.body.email, "ada@example.com");
     assert.equal(me.body.scheme, "cookieSession");
 
-    const tampered = `${session.slice(0, -1)}${session.endsWith("A") ? "B" : "A"}`;
+    const tampered = `${session}A`;
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { cookie: `sloppy.session=${tampered}` },
     })).response.status, 401);
