@@ -17,7 +17,8 @@ the app as needing the filesystem bridge.
 
 ## Current status
 
-API shape is committed for pre-alpha. All operations require the
+This public alpha, pre-production API shape is committed for current experiments. All
+operations require the
 `stdlib.fs` runtime feature; without it the first call rejects with
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`. There is no JS-only fallback.
 

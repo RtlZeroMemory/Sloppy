@@ -5,8 +5,8 @@ local programs. The compiler reads supported source, extracts web app or
 Program Mode metadata into a Plan, then the runtime validates and executes
 those artifacts.
 
-These docs describe current pre-alpha behavior. Planned surfaces are marked as
-planned or future work.
+These docs describe current public alpha, pre-production behavior. Planned
+surfaces are marked as planned or future work.
 
 ## Start Here
 

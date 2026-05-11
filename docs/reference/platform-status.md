@@ -1,6 +1,21 @@
 # Platform Status Reference
 
-Sloppy is designed to be cross-platform, but current runtime/Plan enforcement is still bounded.
+Sloppy is designed to be cross-platform, but the public alpha,
+pre-production package set is still narrow.
+
+## npm Platform Packages
+
+| Platform | Current alpha status |
+| --- | --- |
+| Windows x64 | Published alpha npm platform package: `@rtlzeromemory/sloppy-win32-x64`. |
+| Linux x64 glibc | Published alpha npm platform package: `@rtlzeromemory/sloppy-linux-x64`. |
+| macOS arm64 | Source/archive builds only; repo contains a private/unpublished package template. |
+| macOS x64 | Source/archive builds only; repo contains a private/unpublished package template. |
+| Linux arm64 | No alpha npm platform package. Use a source build. |
+| Windows arm64 | No alpha npm platform package. Use a source build. |
+
+The root `@rtlzeromemory/sloppy` launcher references only the Windows x64 and
+Linux x64 glibc platform packages in this alpha.
 
 ## Current Emitted Target
 
@@ -9,7 +24,10 @@ Compiler-emitted plans currently target:
 - `platform: windows-x64`
 - `engine: v8`
 
-`sloppy run` checks these target fields and rejects unsupported targets.
+`sloppy run` checks these target fields and rejects unsupported artifact
+targets. Platform package availability and emitted Plan target metadata are
+separate surfaces; this alpha still carries Windows-centered Plan goldens while
+the release package scripts also stage Linux x64 glibc runtime packages.
 
 ## Status Table
 
@@ -43,5 +61,5 @@ Examples from doctor output:
 ## Current Limits
 
 - Runtime/provider/package checks are not fully validated on every OS yet.
-- Current `sloppy run` target enforcement is still centered on `windows-x64`
-  Plan targets.
+- Current Plan target enforcement and many checked-in Plan goldens are still
+  centered on `windows-x64`.

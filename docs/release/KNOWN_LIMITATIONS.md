@@ -6,14 +6,14 @@ own status.
 
 ## Platform Status
 
-- Windows x64: supported for the current local developer lane when the Windows
-  gates pass.
-- Linux x64: experimental hosted/source-build lane; package dry-run evidence is
-  separate.
-- macOS arm64: experimental hosted/source-build lane; package dry-run evidence
-  is separate.
-- macOS x64: optional hosted dry-run lane when the Intel runner is requested.
-- Windows arm64: package and V8 package status are not established yet.
+- Windows x64: public alpha npm platform package
+  `@rtlzeromemory/sloppy-win32-x64`.
+- Linux x64 glibc: public alpha npm platform package
+  `@rtlzeromemory/sloppy-linux-x64`.
+- macOS arm64 and macOS x64: source/archive builds only; repo package
+  templates are private/unpublished and are not referenced by the root npm
+  package.
+- Linux arm64 and Windows arm64: no alpha npm platform package.
 
 ## V8 SDK and Runtime
 
@@ -30,7 +30,7 @@ own status.
 
 ## Package and Release Limits
 
-- Packages are experimental development artifacts.
+- Packages are public alpha, pre-production artifacts.
 - No installer, signing, notarization, auto-update, Homebrew, winget, or public
   GitHub release is included in the dry-run.
 - npm dry-run packages install Sloppy itself; app dependencies are still
@@ -45,4 +45,4 @@ own status.
   platforms.
 - Signing, notarization, installers, and package-manager distribution.
 - Final hosted release notes after the readiness gate accepts the validation report.
-- Final verification and product-mode cutover.
+- Final production-readiness verification.

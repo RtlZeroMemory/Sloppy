@@ -14,8 +14,8 @@ artifact runtime path.
 The example demonstrates `sloppy.json`, `appsettings.json`, `appsettings.Development.json`, and
 Plan-visible `app.config.getString(...)` reads. The `Development` overlay is present so
 tooling can inspect the selected environment's config requirements. The `/config` handler
-returns static supported-subset JSON because closed-over config values in route results are
-not implemented yet.
+returns static supported-subset JSON because closed-over config values in route
+results are outside this example's current compiler metadata path.
 
 Route:
 

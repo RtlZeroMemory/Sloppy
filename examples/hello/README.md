@@ -46,8 +46,8 @@ Current product state:
 - This source-stdlib example is a checked-in API-shape fixture.
 - `sloppy run --artifacts` currently runs emitted artifacts such as
   `examples/compiler-hello`.
-- `sloppyc` route extraction and `app.plan.json` emission for this broader builder shape
-  are future source-extraction work.
+- `sloppyc` route extraction and `app.plan.json` emission for this broader
+  builder shape are planned separately.
 - `app.run` and `app.listen` belong to later app-host runtime work.
 - Direct `../../stdlib` imports are reserved for internal bootstrap tests; public examples
   use the Sloppy facade import shape that `sloppyc` recognizes.
@@ -58,5 +58,5 @@ Runtime Command:
 sloppy run examples/hello/app.js
 ```
 
-That command is future user-facing shape for this example. The current emitted-artifact
-runtime path is `examples/compiler-hello/`.
+That command documents the intended direct-source shape for this example. The
+current emitted-artifact runtime path is `examples/compiler-hello/`.

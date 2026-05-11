@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Sloppy
   text: Compiler-first TypeScript backend runtime
-  tagline: Write a Sloppy app, compile it into a Plan, and run that known app shape on a native runtime with an isolated V8 bridge.
+  tagline: Public alpha, pre-production runtime for TypeScript APIs, CLIs, local tools, and packaged app artifacts.
   image:
     src: /logo.svg
     alt: Sloppy
@@ -30,7 +30,7 @@ hero:
 
 features:
   - title: Compiler-first app shape
-    details: Routes, handlers, config, capabilities, providers, and response metadata are emitted into deterministic artifacts before runtime execution.
+    details: Routes, handlers, config, capabilities, providers, package dependencies, migrations, and response metadata are emitted into deterministic artifacts before runtime execution.
   - title: First-party backend APIs
     details: Routing, results, config, services, logging, data, workers, filesystem, network, time, crypto, codec, and schema live in the Sloppy stdlib.
   - title: Native runtime, explicit bridge
@@ -50,28 +50,34 @@ New to Sloppy? Read these in order:
 If you are comparing Sloppy with other JavaScript runtimes, read
 [Sloppy vs Node, Bun, and Deno](about/sloppy-vs-node-bun-deno.md).
 
-## The app loop
+## The App Loop
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
-sloppy create my-api --template minimal-api
+sloppy create my-api
 cd my-api
 sloppy build
+sloppy db migrate .sloppy --provider main
+sloppy routes .sloppy
 sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /users
 sloppy openapi .sloppy
-sloppy package --format json
+sloppy package
+sloppy db migrate .sloppy/package --provider main
+sloppy run .sloppy/package --once GET /health
 ```
 
 That loop creates a project, compiles the supported source into `.sloppy/`
-artifacts, runs one request through the runtime, generates OpenAPI from Plan
-metadata, and writes an app package.
+artifacts, applies the template SQLite migration, inspects routes, runs
+requests through the runtime, generates OpenAPI from Plan metadata, writes an
+app package, and proves the package can run outside the source checkout.
 
 ## What works today
 
 - Templates: `api`, `minimal-api`, `program`, `cli`, `package-api`, and
   `node-compat`.
-- CLI: `create`, `build`, `run`, `package`, `routes`, `deps`,
-  `capabilities`, `doctor`, `audit`, and `openapi`.
+- CLI: `create`, `build`, `dev`, `run`, `package`, `routes`, `deps`,
+  `capabilities`, `doctor`, `audit`, `openapi`, and `db status|migrate`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
   execution on Windows x64 and Linux x64 alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
@@ -87,15 +93,17 @@ metadata, and writes an app package.
 - [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
   Plan exists.
 
-## Pre-alpha limits
+## Public Alpha Limits
 
-Sloppy is for experiments, demos, and feedback right now. APIs and artifacts can
-change between alpha revisions. Package support is limited to compatible
-installed JavaScript that Sloppy can bundle, and Sloppy is not a full Node
-runtime.
+Sloppy is a public alpha, pre-production runtime. It is ready for experiments,
+demos, feedback, and early exploration, but not production deployments yet.
+APIs and artifacts can change between alpha revisions. Package support is
+limited to compatible installed JavaScript that Sloppy can bundle, and Sloppy is
+not a full Node runtime.
 
-Platform packages are currently Windows x64 and Linux x64. macOS and arm64 are
-source-build paths until matching alpha packages are available.
+Platform npm packages are currently Windows x64 and Linux x64 glibc. macOS
+arm64, macOS x64, Linux arm64, and Windows arm64 are source-build paths until
+matching alpha packages are available.
 
 ## Examples
 

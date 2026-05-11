@@ -1,7 +1,7 @@
-# Dogfood Catalog
+# Contributor/Internal Evidence Catalog
 
-This directory is a catalog of current dogfood targets. The machine-readable source is
-`dogfood.json`.
+This contributor/internal directory is a machine-readable catalog of current
+runtime evidence targets. The source is `dogfood.json`.
 
 Current runnable or diagnosable targets:
 
@@ -18,6 +18,6 @@ Feature app targets for HTTP, HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and the
 framework surface are listed with their current blocked or gated status until the required
 runtime support is available.
 
-Default non-V8 dogfood runs validate clear diagnostics for V8-required
-examples. Positive execution of the hello handlers and the pre-alpha control
-plane requires a V8-enabled build.
+Default non-V8 runs validate clear diagnostics for V8-required examples.
+Positive execution of the hello handlers and control-plane example requires a
+V8-enabled build.

@@ -2,7 +2,7 @@
 
 Build a web project, start the local development server, and rebuild on
 project file changes. This command is experimental; behavior and support may
-change while Sloppy is pre-alpha.
+change during the public alpha, pre-production period.
 
 ```text
 sloppy dev [source]

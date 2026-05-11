@@ -1,8 +1,9 @@
 # SQL Server Guide
 
-SQL Server support is pre-alpha and live-service gated. Use it when you have a
-V8-enabled runtime, an ODBC driver with async support, and a configured SQL
-Server service.
+SQL Server support is public alpha, pre-production, and live-service gated. Use
+it when you have a V8-enabled runtime, an ODBC driver with async support, and a
+configured SQL Server service. The normal Quickstart and SQLite template do not
+require an ODBC driver.
 
 ## Configure
 

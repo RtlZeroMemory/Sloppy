@@ -10,9 +10,11 @@ docs/examples, manifest, and license files. The launcher sets `SLOPPY_SLOPPYC` s
 commands such as `sloppy create`, `sloppy build`, and `sloppy package` work outside a
 repository checkout.
 
-npm is only a distribution channel for Sloppy itself. Sloppy apps do not support arbitrary
-npm package imports, `node_modules` resolution, Node built-ins, CommonJS compatibility, or
-package-manager behavior in this alpha track.
+npm is only a distribution channel for Sloppy itself. Sloppy apps can bundle
+compatible already-installed pure-JavaScript packages when their imports fit
+Sloppy's resolver, module loader, and runtime boundary. Sloppy does not install
+packages from a registry, solve semver, support Node native addons/N-API, or
+claim full Node compatibility in this alpha track.
 
 The package has no native install script, no `node-gyp`, and no postinstall V8 build or
 download.

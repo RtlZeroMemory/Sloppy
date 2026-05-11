@@ -1,6 +1,6 @@
 # Install
 
-The public alpha package is `@rtlzeromemory/sloppy`.
+The public alpha, pre-production package is `@rtlzeromemory/sloppy`.
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
@@ -10,7 +10,7 @@ Check the install:
 
 ```sh
 sloppy --version
-sloppy doctor
+sloppy --help
 ```
 
 Create and run a minimal app:
@@ -34,12 +34,15 @@ ok
 | --- | --- |
 | Windows x64 | npm platform package with V8-backed handler execution |
 | Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS | source/archive builds only in this alpha |
-| arm64 | source/archive builds only in this alpha |
+| macOS arm64 | source/archive builds only; npm package template is private/unpublished |
+| macOS x64 | source/archive builds only; npm package template is private/unpublished |
+| Linux arm64 | no alpha npm platform package; source build only |
+| Windows arm64 | no alpha npm platform package; source build only |
 
-The root package installs a small launcher plus the matching platform package
-through npm optional dependencies. It does not build native code during
-install.
+The root package installs a small launcher plus the matching Windows x64 or
+Linux x64 glibc platform package through npm optional dependencies. It does not
+build native code during install, run `node-gyp`, or download V8 in
+`postinstall`.
 
 ## Build from source
 
@@ -102,6 +105,12 @@ needs a V8-enabled runtime package or source build.
 
 If `sloppy run` reports that a V8-enabled build is required, the CLI is present
 but that runtime cannot execute handlers.
+
+The normal Quickstart does not require extra native setup. SQLite is included
+with the runtime package. V8 is part of the V8-enabled runtime package. `libpq`
+is only needed for PostgreSQL, ODBC is only needed for SQL Server, declared
+native libraries are only needed for FFI apps, and OpenSSL/TLS matters only
+for TLS/HTTPS paths in the selected build/package configuration.
 
 ## Common fixes
 

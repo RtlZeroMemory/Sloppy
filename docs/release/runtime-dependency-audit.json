@@ -7,7 +7,7 @@
     {
       "id": "v8",
       "packagePolicy": "SDK headers/import libraries excluded; V8 runtime support included only in explicit V8 package lanes; static Linux SDK packages may link V8 into bin/sloppy",
-      "currentStatus": "Windows x64 SDK artifact source exists; Linux x64 SDK can be built locally with tools/unix/build-v8.sh; macOS V8 runtime package lanes are planned",
+      "currentStatus": "Windows x64 and Linux x64 glibc are the current public alpha npm runtime package targets; macOS package templates are private/unpublished; Linux arm64 and Windows arm64 have no alpha npm platform package",
       "noticeStatus": "incomplete before publishing"
     },
     {
@@ -49,7 +49,7 @@
     {
       "id": "platform-system-libraries",
       "packagePolicy": "system libraries are declared through manifest dependency status when not bundled",
-      "currentStatus": "Linux/macOS package status remains experimental until hosted package smoke evidence is reviewed",
+      "currentStatus": "Windows x64 and Linux x64 glibc are the current npm package targets; macOS remains source/archive or private template only until hosted package smoke evidence exists",
       "noticeStatus": "incomplete before publishing"
     }
   ],

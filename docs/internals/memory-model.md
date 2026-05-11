@@ -475,7 +475,7 @@ native-library defects are impossible.
 
 Sloppy does not currently promise:
 
-- stable pre-alpha internals or artifact formats;
+- stable public alpha, pre-production internals or artifact formats;
 - Rust-style ownership checking for the C/C++ runtime;
 - formal verification;
 - absence of leaks, use-after-free bugs, data races, or logic bugs;

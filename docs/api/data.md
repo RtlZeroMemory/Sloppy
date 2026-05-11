@@ -4,9 +4,10 @@ Sloppy ships first-party providers for SQLite, PostgreSQL, and SQL Server.
 Queries use a tagged template literal that's safe by construction — every
 interpolation becomes a parameter, never a string concatenation.
 
-> SQLite is the most complete provider path today. PostgreSQL and SQL
-> Server are pre-alpha and require their live dependencies (libpq,
-> ODBC) plus a V8-enabled runtime.
+> SQLite is the most complete provider path today and does not require an
+> external database server. PostgreSQL and SQL Server are live-service-gated
+> public alpha, pre-production features; they require `libpq` or ODBC plus a V8-enabled
+> runtime.
 
 ## Tagged template
 

@@ -39,7 +39,7 @@ Dogfood evidence is a separate wrapper over existing lanes:
 
 Without V8 it must report V8-required dogfood lanes as `UNAVAILABLE` after
 verifying compile/diagnostic behavior. With `-EnableV8`, the same wrapper may
-record `PASS` for V8-gated hello and pre-alpha control-plane execution.
+record `PASS` for V8-gated hello and `prealpha-control-plane` execution.
 
 For cross-lane evidence, use the test engine wrapper:
 

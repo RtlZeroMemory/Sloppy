@@ -1,9 +1,9 @@
 # Sloppy API Starter
 
-This is the recommended public alpha starter for building a backend with
-Sloppy. It shows routes, route modules, a small service/repository split,
-configuration, SQLite provider metadata, Schema request validation, health
-endpoints, and the app package flow.
+This is the recommended public alpha, pre-production starter for building a
+backend with Sloppy. It shows routes, route modules, a small
+service/repository split, configuration, SQLite provider metadata, Schema
+request validation, health endpoints, and the app package flow.
 
 ## Layout
 
@@ -75,8 +75,8 @@ performs a SQLite query after running the template migration.
 
 ## Alpha Limits
 
-Sloppy is pre-production alpha software. SQLite is available through Sloppy's
-current provider bridge. The template uses `migrations/0001_create_users.sql`
-for schema setup and deterministic seed rows in code. Sloppy is not full Node,
-and this template does not require internet packages, Docker, or external
-services.
+Sloppy is public alpha, pre-production software. SQLite is available through
+Sloppy's current provider bridge. The template uses
+`migrations/0001_create_users.sql` for schema setup and deterministic seed rows
+in code. Sloppy is not full Node, and this template does not require internet
+packages, Docker, or external services.

@@ -39,8 +39,8 @@ Current product state:
 - This source-stdlib example is a checked-in API-shape fixture.
 - `sloppy run --artifacts` currently runs emitted artifacts such as
   `examples/compiler-hello`.
-- `sloppyc` compilation and `app.plan.json` emission for this SQLite source shape are
-  future source-extraction work.
+- `sloppyc` compilation and `app.plan.json` emission for this SQLite source
+  shape are planned separately.
 - The bounded `sloppy run` path currently loads generated artifacts, not this
   source-stdlib SQLite example directly.
 - Executable SQLite runtime coverage currently lives in the internal V8-gated artifact

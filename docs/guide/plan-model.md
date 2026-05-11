@@ -74,8 +74,9 @@ A few reasons that compound:
 
 Things the Plan deliberately is *not*:
 
-- It isn't an npm `package.json`. It doesn't list dependencies. Sloppy apps
-  have no third-party packages to list.
+- It isn't an npm `package.json`. Package-manager metadata stays in
+  `package.json`; Sloppy records compatible bundled modules in dependency graph
+  metadata instead of using the Plan as a package manager lockfile.
 - It isn't a deployment descriptor. It says nothing about how to run the
   app on Kubernetes or anywhere else.
 - It isn't user-editable. Editing it by hand is supported in the sense that
@@ -94,6 +95,6 @@ or compiler flags, not to edit the artifact.
 
 ## Plan version
 
-The schema version is recorded as `schemaVersion: "plan/v1-alpha"`. Pre-alpha
-breaking changes are possible — if a runtime upgrade rejects an old Plan,
-rebuild with the matching compiler.
+The schema version is recorded as `schemaVersion: "plan/v1-alpha"`.
+Public alpha, pre-production breaking changes are possible. If a runtime
+upgrade rejects an old Plan, rebuild with the matching compiler.

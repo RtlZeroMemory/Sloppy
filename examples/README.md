@@ -1,7 +1,8 @@
 # Sloppy Examples
 
 Examples are split by confidence level. Runnable examples are useful to try by
-hand. Fixture examples are small source shapes kept stable by tests.
+hand during the public alpha, pre-production period. Fixture examples are small
+source shapes kept stable by tests.
 
 Run commands from the repository root unless a row says otherwise. `sloppy run`
 handler execution requires a V8-enabled build.
@@ -26,7 +27,7 @@ sloppy create my-tool --template program
 | `dynamic-module-include` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Computed dynamic imports over `moduleInclude` plus asset metadata | Runtime dynamic import succeeds only for modules sealed into the graph. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
 | `web-dynamic-routes` | runnable with source input | `sloppyc build examples/web-dynamic-routes/app.ts --out .sloppy` | Static and dynamic web route registration with partial Plan metadata | Static route metadata remains complete; dynamic routes emit findings and require V8 for handler execution. |
-| `prealpha-control-plane` | app-host dogfood and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
+| `prealpha-control-plane` | contributor/internal app-host and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
 | `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | V8 lane returns JSON request context fields. |
 | `auth-api` | compile-only / tooling fixture | `sloppy build && sloppy routes .sloppy && sloppy openapi .sloppy` from the example directory | JWT/API-key/session auth setup, route requirements, roles, policies, OpenAPI security metadata | Uses placeholder secrets; protected-route manual execution needs a request path that can supply headers or cookies. |
 | `realtime-dashboard` | compile-only / tooling fixture | `sloppy build examples/realtime-dashboard/app.js --out .sloppy && sloppy routes .sloppy && sloppy openapi .sloppy` | SSE route metadata, WebSocket route intent, and in-process hub shape | SSE uses bounded `Results.stream`; WebSocket execution returns the documented `501` unavailable response. |
@@ -62,7 +63,7 @@ sloppy create my-tool --template program
 | `crypto-random-token` | API-shape fixture | `ctest -R examples.crypto.api_shape` | Random token helpers | Static example check only. |
 | `crypto-secret-constant-time` | API-shape fixture | `ctest -R examples.crypto.api_shape` | Secret cleanup and constant-time compare shape | Static example check only. |
 | `data-foundation` | API-shape fixture | `ctest -R examples.data_foundation.api_shape` | Provider/capability descriptors | Static example check only. |
-| `dogfood` | machine-readable catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Dogfood scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
+| `dogfood` | contributor/internal machine-readable catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
 | `ergonomics` | API-shape fixture | `ctest -R examples.ergonomics.api_shape` | Route groups, Results helpers, config/log/services shape | Static example check only. |
 | `framework-controller` | API-shape fixture | `ctest -R examples.framework.api_shape` | Controller mapper and DI shape | App-host fixture; compiler source input covers the static controller mapping subset in compiler fixtures. |
 | `fs-basic` | API-shape fixture | `ctest -R examples.fs.api_shape` | Directory/File helpers and deadline option | Static example check only. |

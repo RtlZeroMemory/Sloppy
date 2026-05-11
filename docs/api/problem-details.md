@@ -29,8 +29,8 @@ Options:
 `options` must be a plain object when provided. Invalid `detail` values throw
 `TypeError`.
 
-ProblemDetails integration is pre-alpha and is tied to the app-host/framework
-surface that consumes the descriptor.
+ProblemDetails integration is part of the current public alpha,
+pre-production app-host and framework surface that consumes the descriptor.
 
 `ProblemDetails.defaults(...)` uses the same safe handler-error machinery as
 `app.useErrors(...)`, with missing-route handling disabled for compatibility.

@@ -1,6 +1,8 @@
 # Stability Reference
 
-Sloppy is pre-alpha. Contracts and behavior can change between revisions.
+Sloppy is public alpha, pre-production software. It is ready for experiments,
+demos, feedback, and early exploration, but not production deployments yet.
+Contracts and behavior can change between alpha revisions.
 
 ## Version Fields in Current Artifacts
 
@@ -42,7 +44,7 @@ Parser behavior:
 
 This matrix is the compact current-state map. `supported` means the surface is
 covered by current source and tests in that column. `experimental` means the
-surface exists but is still pre-alpha and may change. `rejected` means the
+surface exists in the public alpha, pre-production runtime but may change. `rejected` means the
 compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
@@ -101,7 +103,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | `node:buffer` is partial compatibility and does not claim full Node Buffer identity. |
 | Workers stdlib | supported app-host | supported from `sloppy/workers` | `stdlib.workers` feature emitted | pure JS for `BackgroundService`/`WorkQueue`; V8 bridge for `WorkerPool.run` and `Worker.start` | App shutdown does not yet auto-stop background services. |
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
-| Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
+| Examples and evidence catalog | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
 | Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json`, `sloppy deps --explain` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, full Node HTTP/socket parity, or unrestricted runtime discovery. |
 | Package/install path | n/a | n/a | package layout | experimental | Windows x64 and Linux x64 npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
 

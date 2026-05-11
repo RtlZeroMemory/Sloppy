@@ -47,9 +47,20 @@ export default defineConfig({
         items: [
           { text: "Project layout", link: "/guide/project-layout" },
           { text: "Templates", link: "/guide/templates" },
-          { text: "Static assets (experimental)", link: "/guide/static-assets" },
-          { text: "Realtime updates (experimental)", link: "/guide/realtime" },
+          { text: "Static assets", link: "/guide/static-assets" },
+          { text: "Realtime updates", link: "/guide/realtime" },
           { text: "TypeScript source input", link: "/guide/typescript" },
+          { text: "Validation", link: "/guide/validation" },
+          { text: "Authentication", link: "/guide/auth" },
+          { text: "Error handling", link: "/guide/error-handling" },
+          { text: "Cookies", link: "/guide/cookies" },
+          { text: "Forms and uploads", link: "/guide/uploads" },
+          { text: "Using packages", link: "/guide/using-packages" },
+          { text: "Migrations", link: "/guide/migrations" },
+          { text: "PostgreSQL", link: "/guide/postgres" },
+          { text: "SQL Server", link: "/guide/sqlserver" },
+          { text: "Native FFI", link: "/guide/native-ffi" },
+          { text: "Program Mode", link: "/guide/program-mode" },
           { text: "Examples and demo app", link: "/guide/examples" },
           { text: "Testing apps", link: "/api/testing" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" },
@@ -99,9 +110,11 @@ export default defineConfig({
           { text: "package", link: "/cli/package" },
           { text: "doctor", link: "/cli/doctor" },
           { text: "routes", link: "/cli/routes" },
+          { text: "deps", link: "/cli/deps" },
           { text: "capabilities", link: "/cli/capabilities" },
           { text: "audit", link: "/cli/audit" },
           { text: "openapi", link: "/cli/openapi" },
+          { text: "db", link: "/cli/db" },
           { text: "sloppyc", link: "/cli/sloppyc" }
         ]
       },
@@ -112,6 +125,12 @@ export default defineConfig({
           { text: "Supported syntax", link: "/reference/supported-syntax" },
           { text: "Plan format", link: "/reference/plan-format" },
           { text: "Configuration keys", link: "/reference/configuration" },
+          { text: "Dependency graph", link: "/reference/dependency-graph" },
+          { text: "Node compatibility", link: "/reference/node-compatibility" },
+          { text: "Dependencies", link: "/reference/dependencies" },
+          { text: "Data API", link: "/reference/data-api" },
+          { text: "Providers", link: "/reference/providers" },
+          { text: "FFI", link: "/reference/ffi" },
           { text: "Diagnostics", link: "/reference/diagnostics" },
           { text: "Release artifact contract", link: "/release/artifact-contract" }
         ]
@@ -142,7 +161,7 @@ export default defineConfig({
       { icon: "github", link: "https://github.com/RtlZeroMemory/Slop" }
     ],
     footer: {
-      message: "Pre-alpha runtime. APIs and artifact formats may change.",
+      message: "Public alpha, pre-production runtime. APIs and artifact formats may change.",
       copyright: "Released under the Sloppy project license."
     }
   }

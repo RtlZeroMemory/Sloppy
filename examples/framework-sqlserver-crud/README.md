@@ -57,7 +57,8 @@ JSON rows from SQL Server.
 
 Schema setup is manual for this example. It also depends on an installed ODBC
 driver and available async SQL Server support. Migrations, ORM-style modeling,
-deployment guidance, and package dependency support are future work.
+deployment guidance is outside this example, and package dependency behavior is
+covered by the package/dependency examples.
 
 ## Related docs
 

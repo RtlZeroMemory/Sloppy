@@ -1,7 +1,7 @@
 # Roadmap
 
-Sloppy is pre-alpha. This page separates what exists now from the directions
-that are still being designed.
+Sloppy is public alpha, pre-production software. This page separates what
+exists now from the directions that are still being designed.
 
 ## Current foundation
 
@@ -19,6 +19,7 @@ Current Sloppy includes:
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;
+- typed, Plan-visible FFI for deliberate C ABI interop;
 - Windows x64 and Linux x64 npm platform packages;
 - source/archive build paths for other platforms.
 
@@ -62,14 +63,18 @@ fit the Sloppy boundary, and broader conformance evidence.
 
 ## FFI and native modules
 
-Native extension work is future work. Likely stages:
+Typed C ABI FFI exists today as an experimental, unsafe boundary. It supports
+static top-level library/function declarations, typed marshaling, refs, buffers,
+pointer-based sequential structs, package metadata for mapped local libraries,
+and V8/libffi runtime execution when the needed native library is available.
+
+What remains future work:
 
 - Sloppy-owned native module ABI;
-- controlled C ABI FFI;
-- native dependency metadata in the Plan;
 - possible N-API compatibility later if it fits the runtime boundary.
 
-No current docs should imply arbitrary native modules work today.
+No current docs should imply arbitrary native modules, callbacks, C++ ABI,
+native addons, or N-API work today.
 
 ## Dependency story
 
@@ -82,7 +87,8 @@ compatibility remain separate roadmap work. See
 
 ## Production hardening
 
-Production hardening needs more work:
+Production hardening needs more work before Sloppy can be described as
+production-ready:
 
 - graceful shutdown and connection drain;
 - broader TLS policy;

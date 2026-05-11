@@ -39,7 +39,7 @@ services and config arguments when the compiled handler declares them.
 | `ctx.routePattern` | string                | Matched route pattern, when known                  |
 | `ctx.log`          | `Logger`              | Request logger                                     |
 | `ctx.urlFor`       | function              | Generate a URL for a named route                   |
-| `ctx.user`         | `AuthUser`            | Public-alpha/experimental auth user; anonymous by default and authenticated after JWT/API-key auth succeeds |
+| `ctx.user`         | `AuthUser`            | Public alpha, pre-production auth user; anonymous by default and authenticated after JWT/API-key auth succeeds |
 | `ctx.services`     | service scope         | App-host/test-host direct field; compiler-generated wrappers use request scopes for `Service<T>` |
 | `ctx.config`       | `ConfigProvider`      | App-host/test-host direct field; compiled `Config<"KEY">` parameters are materialized by generated wrappers |
 | `ctx.capabilities` | capability provider   | App-host/test-host direct field                    |

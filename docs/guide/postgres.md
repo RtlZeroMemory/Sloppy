@@ -1,7 +1,8 @@
 # PostgreSQL Guide
 
-PostgreSQL support is pre-alpha and live-service gated. Use it when you have a
-V8-enabled runtime, `libpq`, and a configured PostgreSQL service.
+PostgreSQL support is public alpha, pre-production, and live-service gated. Use
+it when you have a V8-enabled runtime, `libpq`, and a configured PostgreSQL
+service. The normal Quickstart and SQLite template do not require `libpq`.
 
 ## Configure
 

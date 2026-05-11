@@ -20,8 +20,8 @@ Default template: `api`.
 | `package-api` | Backend starter using a compatible local pure-JS package. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
 
-`sloppy create <name>` defaults to `api`. These starters are public alpha
-templates: they are intended for real experiments and early apps, but their
+`sloppy create <name>` defaults to `api`. These starters are public alpha,
+pre-production templates: they are intended for real experiments and early apps, but their
 structure and supported runtime surface can still change before a stable
 release. The `package-api` template includes a local `file:` dependency and
 needs `npm install --ignore-scripts --no-audit` before `sloppy build`. Sloppy

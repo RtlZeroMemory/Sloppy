@@ -3,6 +3,11 @@
 Sloppy uses a small, named set of native libraries. This page tells you which
 ones you need installed for which features, and where they show up.
 
+The normal Quickstart and built-in SQLite starter do not require extra native
+setup beyond installing a supported Sloppy package. SQLite and the Plan parser
+are included with the runtime. PostgreSQL, SQL Server, TLS, FFI, and source
+builds add feature-specific native requirements.
+
 ## Quick map
 
 | Feature | Library | When you need it |

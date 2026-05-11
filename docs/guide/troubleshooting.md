@@ -48,6 +48,17 @@ diagnostic:
 
 ## Runtime startup errors
 
+### Platform package unavailable
+
+```
+Sloppy npm platform package is not published for this platform.
+```
+
+The public alpha npm package currently targets Windows x64 and Linux x64
+glibc. macOS arm64/x64 package templates exist in the repo but are not
+published npm packages. Linux arm64 and Windows arm64 do not have alpha npm
+platform packages. Use a supported npm target or build from source.
+
 ### V8 unavailable
 
 ```
@@ -89,6 +100,48 @@ The Plan declares a capability the runtime can't satisfy. Check
 `sloppy doctor` to see which providers are available. For PostgreSQL/SQL
 Server, install `libpq` / an ODBC driver and re-run.
 
+### Missing config
+
+```
+sloppy run: required config key 'ConnectionStrings:Main' is missing
+```
+
+Configuration comes from `appsettings.json`, `appsettings.<Environment>.json`,
+and environment variables recorded in the Plan. Check the selected environment,
+then rebuild so Plan/config metadata matches the files you expect.
+
+### Missing auth secret
+
+```
+sloppy run: auth secret for scheme 'bearer' is not configured
+```
+
+JWT, API-key, and session examples use explicit config keys for secrets. Do
+not hard-code production secrets into source. Put local values in
+`appsettings.Development.json` or environment variables, then rebuild.
+
+### Missing migration directory or changed migration hash
+
+```
+sloppy db migrate: migration directory was not found
+sloppy db migrate: migration hash mismatch
+```
+
+`sloppy db` reads migration metadata from the Plan. If the directory is
+missing, restore the configured `migrations` path and rebuild. If a hash
+changed, create a new migration instead of editing an already-applied one.
+
+### FFI library unavailable or hash mismatch
+
+```
+sloppy run: FFI library 'hash' was not found
+sloppy run: FFI library 'hash' hash mismatch
+```
+
+FFI libraries are unsafe native dependencies. Confirm the platform path in
+`sloppy.json`, rebuild, and for packaged apps run from the package directory so
+the manifest path override can resolve the copied library.
+
 ## HTTP-level errors
 
 | Status | Cause                                           | Fix                                          |
@@ -97,9 +150,35 @@ Server, install `libpq` / an ODBC driver and re-run.
 | 404    | No route matched                                | Run `sloppy routes` to confirm registrations |
 | 405    | Method not allowed for this path                | Add the verb, or hit the right path          |
 | 413    | Body exceeded the configured request limit      | Raise the configured server max-body-bytes   |
-| 415    | Unsupported `Content-Type`                      | Use `application/json` or `text/plain` today |
+| 415    | Unsupported `Content-Type`                      | Send a content type the route accepts        |
 | 500    | Handler threw or returned an unsupported result | Check the diagnostic on stderr               |
-| 501    | Transfer encoding not accepted                  | Avoid `Transfer-Encoding: chunked` for now   |
+| 501    | Transfer encoding or WebSocket execution unavailable | Use supported request framing; WebSocket route execution is unavailable today |
+
+Validation failures return `400 application/problem+json` with path, code, and
+message fields. They do not include raw request body values.
+
+### Static asset root invalid
+
+```
+sloppy build: static asset root escapes the project
+```
+
+`app.useStaticFiles` roots must stay under the project. Keep public assets in a
+project directory such as `public/`, rebuild, and confirm the static route with
+`sloppy routes`.
+
+### Realtime WebSocket unavailable
+
+`app.ws(...)` emits route metadata and OpenAPI extensions, but native WebSocket
+handler execution is unavailable in the public alpha, pre-production runtime.
+SSE routes use the bounded streaming response path.
+
+### `sloppy dev` does not restart the way I expected
+
+`sloppy dev` is experimental polling watch mode. It watches source, config,
+static, template, and migration inputs, restarts after successful builds, and
+keeps the previous server running after build failures. It is not a production
+supervisor.
 
 ## Provider errors
 

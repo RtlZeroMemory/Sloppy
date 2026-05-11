@@ -1,6 +1,7 @@
 # Performance
 
-Sloppy is pre-alpha. Performance is *not* a marketing surface yet.
+Sloppy is public alpha, pre-production software. Performance is not a marketing
+surface yet.
 Benchmarks measure specific workloads when they're run as benchmarks;
 benchmark *smoke* runs only verify the harness executes — they're
 neither performance numbers nor correctness coverage.
@@ -77,11 +78,11 @@ benchmark" without that context is informal, not a project claim.
 
 ## Why numbers are not published yet
 
-Pre-alpha numbers are misleading. Optimizations land sporadically, the
-HTTP server isn't production-hardened (so any test under load measures
-non-final code), and the framework feature set is still landing. Locking
-in a number now would tell future Sloppy something untrue about its own
-floor.
+Public alpha, pre-production numbers are useful for local regression tracking,
+but misleading as public claims. Optimizations land sporadically, the HTTP
+server is not production-hardened, and the framework feature set is still
+landing. Locking in a number now would tell future Sloppy something untrue
+about its own floor.
 
 Before benchmark numbers are published, Sloppy needs:
 

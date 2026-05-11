@@ -55,7 +55,8 @@ from the PostgreSQL database.
 ## Scope
 
 Schema setup is manual for this example. Migrations, ORM-style modeling,
-deployment guidance, and package dependency support are future work.
+deployment guidance is outside this example, and package dependency behavior is
+covered by the package/dependency examples.
 
 ## Related docs
 
