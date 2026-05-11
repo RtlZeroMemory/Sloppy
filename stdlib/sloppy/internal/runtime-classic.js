@@ -2158,9 +2158,6 @@ Reason:
         if (typeof provider !== "string" || provider.length === 0) {
             throw new TypeError("Sloppy Migrations provider must be a non-empty string.");
         }
-        if (MIGRATION_PROVIDER_KINDS[provider] !== true) {
-            throw new TypeError("Sloppy Migrations provider must be one of sqlite, postgres, or sqlserver.");
-        }
         if (typeof path !== "string" || path.length === 0) {
             throw new TypeError("Sloppy Migrations path must be a non-empty string.");
         }
@@ -2245,7 +2242,7 @@ Fix:
 
     function resolveMigrationProviderKind(db, options) {
         const providerKind = migrationProviderKind(db);
-        if (options.provider !== providerKind) {
+        if (MIGRATION_PROVIDER_KINDS[options.provider] === true && options.provider !== providerKind) {
             throw new TypeError(
                 `Sloppy Migrations provider '${options.provider}' does not match connection provider '${providerKind}'.`,
             );
@@ -2472,10 +2469,7 @@ Fix:
         if (typeof provider !== "string" || provider.length === 0) {
             throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
         }
-        if (MIGRATION_PROVIDER_KINDS[provider] !== true) {
-            throw new TypeError("Sloppy ProviderHealth provider must be one of sqlite, postgres, or sqlserver.");
-        }
-        if (provider !== providerKind) {
+        if (MIGRATION_PROVIDER_KINDS[provider] === true && provider !== providerKind) {
             throw new TypeError(
                 `Sloppy ProviderHealth provider '${provider}' does not match connection provider '${providerKind}'.`,
             );
