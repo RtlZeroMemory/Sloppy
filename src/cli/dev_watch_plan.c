@@ -49,6 +49,8 @@ static bool sl_dev_watch_path_equal(const char* left, const char* right)
     return left[index] == right[index];
 }
 
+static bool sl_dev_watch_ends_with(const char* text, const char* suffix);
+
 static bool sl_dev_watch_plan_add_root(SlDevWatchPlan* plan, const char* path, bool recursive)
 {
     size_t index = 0U;
@@ -88,6 +90,12 @@ static bool sl_dev_watch_entry_root(char* buffer, size_t capacity, const char* e
         if (entry[index] == '/' || entry[index] == '\\') {
             last_separator = index;
         }
+    }
+    if (last_separator == SIZE_MAX &&
+        (sl_dev_watch_ends_with(entry, ".js") || sl_dev_watch_ends_with(entry, ".mjs") ||
+         sl_dev_watch_ends_with(entry, ".ts")))
+    {
+        return sl_dev_watch_copy(buffer, capacity, ".");
     }
     if (last_separator == SIZE_MAX) {
         return sl_dev_watch_copy(buffer, capacity, entry);

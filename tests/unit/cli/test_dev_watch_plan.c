@@ -118,10 +118,28 @@ static void test_positional_directory_inputs_are_not_collapsed(void)
     }
 }
 
+static void test_root_level_source_watches_current_directory(void)
+{
+    SlDevWatchPlan plan = {0};
+
+    if (!sl_dev_watch_plan_build(NULL, "main.ts", &plan)) {
+        fprintf(stderr, "root-level source watch plan did not build\n");
+        failures += 1;
+        return;
+    }
+
+    expect_root(&plan, ".", true);
+    if (plan.root_count != 9U) {
+        fprintf(stderr, "unexpected root-level source watch root count: %zu\n", plan.root_count);
+        failures += 1;
+    }
+}
+
 int main(void)
 {
     test_project_watch_plan_includes_source_config_assets_and_migrations();
     test_positional_source_uses_source_directory_without_project_config();
     test_positional_directory_inputs_are_not_collapsed();
+    test_root_level_source_watches_current_directory();
     return failures == 0 ? 0 : 1;
 }
