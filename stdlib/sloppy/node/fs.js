@@ -74,10 +74,12 @@ function callbackify(method, name) {
         if (typeof callback !== "function") {
             throw new TypeError(`node:fs.${name} requires a callback.`);
         }
-        method(...args).then(
-            (value) => callback(null, value),
-            (error) => callback(error),
-        );
+        Promise.resolve()
+            .then(() => method(...args))
+            .then(
+                (value) => callback(null, value),
+                (error) => callback(error),
+            );
     };
 }
 
@@ -89,7 +91,7 @@ const promises = Object.freeze({
     access: async (path) => {
         const stat = await File.stat(toSloppyPath(path));
         if (!stat.exists) {
-            throw new Error(`SLOPPY_E_NODE_FS_ACCESS: ${path} is not accessible.`);
+            throw new Error("SLOPPY_E_NODE_FS_ACCESS: path is not accessible.");
         }
     },
     appendFile: appendFilePromise,

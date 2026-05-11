@@ -9,10 +9,11 @@ import base, {
 } from "../assert.js";
 
 const equal = strictEqual;
-const strict = {
-    ...base,
-    equal,
-};
+function strict(value, message = undefined) {
+    return ok(value, message);
+}
+
+Object.assign(strict, base, { equal });
 
 export {
     AssertionError,

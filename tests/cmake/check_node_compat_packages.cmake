@@ -96,6 +96,7 @@ write_package_json("package-fs-promises" [=[{
 }
 ]=])
 file(WRITE "${project_dir}/fixtures/package-fs-promises/index.js" [=[
+import { mkdir as mkdirCallback } from "node:fs";
 import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 
 export async function checkFsPromises() {
@@ -110,6 +111,17 @@ export async function checkFsPromises() {
   await writeFile(bytesFile, new Uint8Array([1, 2, 3]), "utf8");
   await appendFile(bytesFile, new Uint8Array([4]), "utf8");
   const bytes = await readFile(bytesFile);
+  let redacted = false;
+  try {
+    await access(`${dir}/missing-secret-name.txt`);
+  } catch (error) {
+    redacted = error.message === "SLOPPY_E_NODE_FS_ACCESS: path is not accessible.";
+  }
+  const callbackError = await new Promise((resolve) => {
+    mkdirCallback(`${dir}/bad-callback`, { recursive: "yes" }, (error) => {
+      resolve(error instanceof TypeError && /recursive/.test(error.message));
+    });
+  });
   const names = await readdir(dir);
   const info = await stat(file);
   let rejected = false;
@@ -119,7 +131,7 @@ export async function checkFsPromises() {
     rejected = true;
   }
   await rm(dir, { recursive: true });
-  return `${text}:${names.includes("message.txt")}:${info.isFile() === true}:${rejected}:${Array.from(bytes).join(",")}`;
+  return `${text}:${names.includes("message.txt")}:${info.isFile() === true}:${rejected}:${Array.from(bytes).join(",")}:${redacted}:${callbackError}`;
 }
 ]=])
 
@@ -135,6 +147,8 @@ import assert from "node:assert";
 import strictAssert from "node:assert/strict";
 
 export async function checkAssert() {
+  assert(true);
+  strictAssert(true);
   assert.ok(true);
   assert.equal("1", 1);
   assert.strictEqual(2, 2);
@@ -324,7 +338,7 @@ endfunction()
 
 run_cli_expect_success("node compatibility package suite build" "${project_dir}" "" build)
 run_cli_expect_success("node compatibility package suite deps" "${project_dir}" "\"nodeBuiltins\"" deps .sloppy --format json)
-foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs/promises node:assert node:assert/strict node:stream node:stream/promises node:crypto)
+foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs node:fs/promises node:assert node:assert/strict node:stream node:stream/promises node:crypto)
     if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
         message(FATAL_ERROR "node compatibility dependency graph did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}")
     endif()
@@ -342,7 +356,7 @@ endif()
 
 if(SLOPPY_EXPECT_RUN_SUCCESS)
     run_cli_expect_success("node compatibility package suite run" "${project_dir}" "\"assert\"" run .sloppy)
-    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true:true:1,2,3,4" cjs-default subpath sloppy sealed "ok:true" "Pre:Prefix" "abc:d")
+    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true:true:1,2,3,4:true:true" cjs-default subpath sloppy sealed "ok:true" "Pre:Prefix" "abc:d")
         if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
             message(FATAL_ERROR "node compatibility run did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
         endif()

@@ -1207,6 +1207,8 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import crypto from "node:crypto";
 export function main() {
+  assert(true);
+  strictAssert(true);
   assert.ok(Buffer.isBuffer(Buffer.concat([Buffer.from("a"), Buffer.from("b")])));
   assert.throws(() => strictAssert.equal(1, "1"), assert.AssertionError);
   return `${process.platform}:${typeof Readable.from}:${typeof pipeline}:${typeof crypto.createHash}`;

@@ -111,6 +111,21 @@ async function rejects(fn, expected = undefined, message = undefined) {
     fail({ actual: undefined, expected, operator: "rejects", message });
 }
 
+function assert(value, message = undefined) {
+    return ok(value, message);
+}
+
+Object.assign(assert, {
+    AssertionError,
+    deepEqual,
+    deepStrictEqual,
+    equal,
+    ok,
+    rejects,
+    strictEqual,
+    throws,
+});
+
 export {
     AssertionError,
     deepEqual,
@@ -122,13 +137,4 @@ export {
     throws,
 };
 
-export default {
-    AssertionError,
-    deepEqual,
-    deepStrictEqual,
-    equal,
-    ok,
-    rejects,
-    strictEqual,
-    throws,
-};
+export default assert;
