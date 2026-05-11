@@ -7,27 +7,9 @@
       {
         "bindings": [],
         "completeness": "",
-        "handlerId": 1,
-        "method": "GET",
-        "module": "hello",
-        "name": "Hello.Index",
-        "pattern": "/",
-        "response": {
-          "helper": "",
-          "kind": "",
-          "status": 0
-        },
-        "source": {
-          "column": 0,
-          "line": 0,
-          "path": ""
-        },
-        "sourceOrder": 2
-      },
-      {
-        "bindings": [],
-        "completeness": "",
+        "constraints": [],
         "handlerId": 3,
+        "kind": "http",
         "method": "GET",
         "module": "users",
         "name": "Users.Create",
@@ -47,7 +29,14 @@
       {
         "bindings": [],
         "completeness": "",
+        "constraints": [
+          {
+            "kind": "int",
+            "name": "id"
+          }
+        ],
         "handlerId": 2,
+        "kind": "http",
         "method": "GET",
         "module": "users",
         "name": "Users.Get",
@@ -63,6 +52,28 @@
           "path": ""
         },
         "sourceOrder": 0
+      },
+      {
+        "bindings": [],
+        "completeness": "",
+        "constraints": [],
+        "handlerId": 1,
+        "kind": "http",
+        "method": "GET",
+        "module": "hello",
+        "name": "Hello.Index",
+        "pattern": "/",
+        "response": {
+          "helper": "",
+          "kind": "",
+          "status": 0
+        },
+        "source": {
+          "column": 0,
+          "line": 0,
+          "path": ""
+        },
+        "sourceOrder": 2
       }
     ]
   }

@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "HTTP/1.1 200 OK\n\nConnection: close\n\nContent-Type: application/json; charset=utf-8\n\nContent-Length: 15\n\n\n\n{\"hello\":\"Ada\"}"
+}

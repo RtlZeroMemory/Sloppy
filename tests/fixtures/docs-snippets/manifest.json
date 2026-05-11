@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "coverage": {
+    "status": "provisional",
+    "reason": "origin/main still contains pre-alpha/minimal-api install and platform wording; this manifest checks the current public docs and is not final alpha docs proof"
+  },
+  "defaultProofLane": "alpha.docs.snippets",
+  "semantics": {
+    "checked": "command appears in the document and is covered by the named proof lane; the docs-snippet proof does not run it",
+    "executed": "command is actually run by the docs-snippet proof",
+    "skipped": "command is not run and has an explicit reason"
+  },
+  "documents": [
+    {
+      "path": "README.md",
+      "snippets": [
+        { "command": "sloppy build", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /hello/Ada", "status": "checked" },
+        { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
+        { "command": "npm install -g @rtlzeromemory/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" }
+      ]
+    },
+    {
+      "path": "docs/quickstart.md",
+      "snippets": [
+        { "command": "sloppy create hello-api --template minimal-api", "template": "minimal-api", "status": "checked" },
+        { "command": "sloppy build", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /hello/Ada", "status": "checked" },
+        { "command": "sloppy package", "status": "checked" },
+        { "command": "curl http://127.0.0.1:5173/hello/Ada", "status": "skipped", "reason": "requires a long-running local server process" }
+      ]
+    },
+    {
+      "path": "docs/install.md",
+      "snippets": [
+        { "command": "npm install -g @rtlzeromemory/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" },
+        { "command": "sloppy doctor", "status": "checked" },
+        { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
+        { "command": "sloppy build", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /health", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/templates.md",
+      "snippets": [
+        { "command": "sloppy create my-api --template api", "template": "api", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /health", "status": "checked" },
+        { "command": "sloppy run .sloppy --once POST /users --json \"{\\\"name\\\":\\\"Ada Lovelace\\\",\\\"email\\\":\\\"ada@example.test\\\"}\"", "status": "checked" },
+        { "command": "sloppy package", "status": "checked" },
+        { "command": "sloppy db migrate .sloppy --provider main", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/auth.md",
+      "snippets": [
+        { "command": "sloppy openapi --plan .sloppy/app.plan.json", "status": "checked" },
+        { "command": "sloppy audit --plan .sloppy/app.plan.json", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/migrations.md",
+      "snippets": [
+        { "command": "sloppy build", "status": "checked" },
+        { "command": "sloppy db status .sloppy --provider main", "status": "checked" },
+        { "command": "sloppy db migrate .sloppy --provider main", "status": "checked" },
+        { "command": "sloppy db status .sloppy/package --provider main", "status": "checked" },
+        { "command": "sloppy db migrate .sloppy/package --provider main", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/static-assets.md",
+      "snippets": [
+        { "command": "sloppy build", "status": "checked" },
+        { "command": "sloppy routes .sloppy", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /public/app.js", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /public/app.js", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/uploads.md",
+      "snippets": [
+        { "command": "sloppy run .sloppy --header \"content-type: application/x-www-form-urlencoded\" --body-file form.txt --once POST /login", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/guide/realtime.md",
+      "snippets": [
+        { "command": "sloppy build app.js --out .sloppy", "status": "checked" },
+        { "command": "sloppy routes .sloppy", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/cli/run.md",
+      "snippets": [
+        { "command": "sloppy run .sloppy --once GET /health", "status": "checked" },
+        { "command": "sloppy run src/main.ts --once POST /users --json '{\"name\":\"Ada\"}'", "status": "checked" },
+        { "command": "sloppy run .sloppy/package -- --name Ada", "status": "checked" }
+      ]
+    },
+    {
+      "path": "docs/cli/db.md",
+      "snippets": [
+        { "command": "sloppy db status .sloppy --provider main", "status": "checked" },
+        { "command": "sloppy db migrate .sloppy --provider main", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/api/README.md",
+      "snippets": [
+        { "command": "sloppy db migrate .sloppy --provider main", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /health", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /public/hello.txt", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/minimal-api/README.md",
+      "snippets": [
+        { "command": "sloppy routes .sloppy", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /hello/Ada", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /health", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/program/README.md",
+      "snippets": [
+        { "command": "sloppy run src/main.ts -- --name Ada", "status": "checked" },
+        { "command": "sloppy run .sloppy/package -- --name Ada", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/cli/README.md",
+      "snippets": [
+        { "command": "sloppy run src/main.ts -- --help", "status": "checked" },
+        { "command": "sloppy run .sloppy/package -- echo hello", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/package-api/README.md",
+      "snippets": [
+        { "command": "sloppy deps .sloppy --format json", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /users/Ada", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /users/Ada", "status": "checked" }
+      ]
+    },
+    {
+      "path": "templates/node-compat/README.md",
+      "snippets": [
+        { "command": "sloppy deps .sloppy --explain", "status": "checked" },
+        { "command": "sloppy run .sloppy", "status": "checked" },
+        { "command": "sloppy run .sloppy/package", "status": "checked" }
+      ]
+    }
+  ]
+}

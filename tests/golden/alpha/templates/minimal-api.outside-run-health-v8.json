@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "HTTP/1.1 200 OK\n\nConnection: close\n\nContent-Type: text/plain; charset=utf-8\n\nContent-Length: 2\n\n\n\nok"
+}

@@ -24,7 +24,7 @@ Current targets:
 | `fuzz_http2_session` | HTTP/2 session seed replay covers malformed prefaces, DATA-before-HEADERS, unknown RST streams, GOAWAY, and continuation ordering. |
 | `fuzz_diagnostics_render` | Diagnostic renderers handle arbitrary text/path/source inputs and redaction never emits secret-marked values. |
 | `fuzz_memory_primitives` | Arena, checked-size, string/byte scan, and builder helpers preserve invariants for deterministic memory seeds. |
-| `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, worker queues, and stdlib import shapes. |
+| `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, schema validation, JSON serialization, request media/body parsing, realtime metadata, worker queues, and stdlib import shapes. |
 | `run_property_tests.mjs` | Bootstrap stdlib properties for codec, Results/ProblemDetails, time, HttpClient option validation, workers, logging, and config. |
 
 Default seed replay:

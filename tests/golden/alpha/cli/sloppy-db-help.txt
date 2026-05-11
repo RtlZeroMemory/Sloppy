@@ -1,0 +1,1 @@
+Usage: sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format text|json]

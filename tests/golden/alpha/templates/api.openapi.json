@@ -256,6 +256,37 @@
           }
         }
       },
+      "/public/hello.txt": {
+        "get": {
+          "parameters": [],
+          "responses": {
+            "200": {
+              "content": {
+                "application/octet-stream": {
+                  "schema": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "bytes"
+            }
+          },
+          "tags": [
+            "static"
+          ],
+          "x-slop-capabilities": [],
+          "x-slop-completeness": "complete",
+          "x-slop-optimization-candidates": [
+            "static-route-dispatch"
+          ],
+          "x-slop-source": {
+            "column": 1,
+            "line": 10,
+            "path": "main.ts"
+          }
+        }
+      },
       "/users": {
         "get": {
           "operationId": "Users.List",
@@ -412,7 +443,8 @@
               "required": true,
               "schema": {
                 "type": "integer"
-              }
+              },
+              "x-slop-constraint": "int"
             }
           ],
           "responses": {

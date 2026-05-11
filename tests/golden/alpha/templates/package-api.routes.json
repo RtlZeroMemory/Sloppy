@@ -9,6 +9,7 @@
         "completeness": "complete",
         "constraints": [],
         "handlerId": 1,
+        "kind": "http",
         "method": "GET",
         "module": "healthModule",
         "name": "Health.Get",
@@ -41,6 +42,7 @@
           }
         ],
         "handlerId": 2,
+        "kind": "http",
         "method": "GET",
         "module": "usersModule",
         "name": "Users.Validate",

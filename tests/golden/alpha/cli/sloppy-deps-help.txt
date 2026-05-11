@@ -1,0 +1,2 @@
+Usage: sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--explain]
+--explain adds a text compatibility summary for packages, Node shims, and findings.

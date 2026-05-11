@@ -76,3 +76,6 @@ for entry in manifest["examples"]:
         print(entry["name"])
 PY
 fi
+if [[ "$area" == "all" || "$area" == "docs-snippets" ]]; then
+  invoke_alpha_proof docs-snippets
+fi

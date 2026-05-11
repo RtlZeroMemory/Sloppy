@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": "HTTP/1.1 200 OK\n\nConnection: close\n\nContent-Type: text/plain; charset=utf-8\n\nCache-Control: public, max-age=60\n\nETag: \"sha256:3e944c1bdc33d72136a05b97b1f6e3cf5ab1a5bb6196507d061f5b83e21fe12c\"\n\nContent-Length: 36\n\n\n\nHello from the Sloppy API template.\n"
+}

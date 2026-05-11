@@ -12,7 +12,9 @@ import {
     Hex,
     HttpClient,
     ProblemDetails,
+    Realtime,
     Results,
+    Schema,
     Sloppy,
     Testing,
     Text,
@@ -31,6 +33,10 @@ export const DEFAULT_JS_TARGETS = Object.freeze([
     "required-features",
     "http-client-options",
     "results-headers",
+    "schema-validation",
+    "json-serialization",
+    "request-media",
+    "realtime-metadata",
     "worker-queue",
     "h2-client-options",
     "stdlib-import-shapes",
@@ -480,6 +486,197 @@ const targets = Object.freeze({
             __sloppyProblemDetails: true,
             detail: "never",
         });
+    },
+
+    "schema-validation"(random) {
+        const Profile = Schema.object({
+            name: Schema.string().min(1).max(32),
+            email: Schema.string().email().optional(),
+            age: Schema.integer().min(0).max(130).default(42),
+            tags: Schema.array(Schema.string().max(12)).default([]),
+            mode: Schema.enum(["alpha", "beta", "stable"]).nullable(),
+        });
+        const candidate = {
+            name: random.bool() ? textFromPrng(random, 16) || "Ada" : random.pick(["", 7, null]),
+            email: random.bool() ? "ada@example.test" : random.pick(["not-email", undefined, 42]),
+            age: random.bool() ? random.int(140) : random.pick([undefined, "old", Number.NaN]),
+            tags: random.bool() ? [textFromPrng(random, 8), "tag"] : random.pick([undefined, ["this-tag-is-too-long"], "tag"]),
+            mode: random.pick(["alpha", "beta", "stable", null, "unknown"]),
+        };
+        const result = Profile.validate(candidate);
+        assert.equal(typeof result.ok, "boolean");
+        assert.equal(Object.isFrozen(Profile.metadata), true);
+        assert.doesNotThrow(() => JSON.stringify(Profile.metadata));
+        if (result.ok) {
+            assert.equal(typeof result.value.name, "string");
+            assert.equal(Number.isInteger(result.value.age), true);
+        } else {
+            assert(Array.isArray(result.issues));
+            for (const current of result.issues) {
+                assert(Array.isArray(current.path));
+                assert.equal(typeof current.code, "string");
+            }
+            const problem = Schema.validationProblem(result.issues);
+            assert.equal(problem.code, "SLOPPY_E_VALIDATION_FAILED");
+            assert.equal(JSON.stringify(problem).includes(SECRET_MARKER), false);
+        }
+        maybeThrows(() => Schema.object({ bad: "not-a-schema" }));
+        maybeThrows(() => Schema.string().pattern("not-regexp"));
+        maybeThrows(() => Schema.integer().default(1.5));
+    },
+
+    async "json-serialization"(random) {
+        const bytes = bytesFromPrng(random, 16);
+        const value = {
+            created_at: new Date(Date.UTC(2026, random.int(11), 1 + random.int(20))),
+            count: BigInt(random.int(10000)),
+            bytes,
+            nested: { keep_null: null, omit_me: undefined },
+            error: Object.assign(new Error("expected"), { code: "SLOPPY_E_EXPECTED" }),
+        };
+        const options = {
+            json: {
+                casing: random.pick(["preserve", "camelCase"]),
+                includeNulls: random.bool(),
+                bigint: random.pick(["string", "error"]),
+                bytes: random.pick(["base64", "array"]),
+            },
+        };
+        maybeThrows(() => Results.json(value, options));
+        maybeThrows(() => Results.ok({ bad: random.pick([Number.NaN, Infinity, -Infinity]) }));
+        const circular = {};
+        circular.self = circular;
+        assert.equal(maybeThrows(() => Results.json(circular)).ok, false);
+        const streamed = await maybeRejects(() => Results.stream((writer) => {
+            writer.writeText(textFromPrng(random, 16));
+            writer.writeBytes(bytes);
+            if (random.bool()) {
+                writer.close();
+            }
+        }));
+        if (streamed.ok) {
+            assertResultDescriptor(streamed.value);
+            assert.equal(streamed.value.kind, "stream");
+        }
+        await maybeRejects(() => Results.stream((writer) => {
+            writer.writeBytes(new Uint8Array(65537));
+        }));
+    },
+
+    async "request-media"(random) {
+        const app = Sloppy.create();
+        app.useErrors({ maxBodyBytes: 256 });
+        app.useContentNegotiation({ strictAccept: true });
+        const Input = Schema.object({
+            name: Schema.string().min(1),
+            age: Schema.integer().optional(),
+        });
+        app.post("/schema", async (ctx) => {
+            const input = await ctx.body.validate(Input);
+            return Results.ok({
+                name: input.name,
+                age: input.age ?? null,
+                session: ctx.cookies.get("sid"),
+            }, {
+                json: { casing: "camelCase", includeNulls: false },
+            });
+        }).accepts(Input).returns(Input);
+        app.post("/form", (ctx) => Results.ok({ name: ctx.request.form().get("name") }));
+        app.post("/upload", (ctx) => {
+            const file = ctx.request.multipart().file("file");
+            return Results.text(file === null ? "missing" : file.text());
+        });
+        const host = Testing.createHost(app);
+        try {
+            const valid = await host.post("/schema", {
+                headers: {
+                    accept: random.pick(["application/json", "*/*", "application/*"]),
+                    cookie: "sid=abc123; ignored",
+                },
+                json: { name: textFromPrng(random, 8) || "Ada", age: random.int(100) },
+            });
+            assert.equal(valid.status, 200);
+            assert.equal((await valid.json()).session, "abc123");
+
+            const invalid = await host.post("/schema", {
+                headers: { accept: "application/problem+json, application/json" },
+                json: { name: "" },
+            });
+            assert.equal(invalid.status, 400);
+            assert.equal((await invalid.json()).code, "SLOPPY_E_VALIDATION_FAILED");
+
+            const unacceptable = await host.post("/schema", {
+                headers: { accept: "text/html" },
+                json: { name: "Ada" },
+            });
+            assert.equal(unacceptable.status, 406);
+
+            const form = await maybeRejects(() => host.post("/form", {
+                headers: { "content-type": "application/x-www-form-urlencoded" },
+                body: `name=${encodeURIComponent(textFromPrng(random, 16) || "Ada")}`,
+            }));
+            if (form.ok) {
+                assert.equal(form.value.status, 200);
+            }
+
+            const boundary = `b${random.int(10000)}`;
+            const multipart = [
+                `--${boundary}`,
+                'Content-Disposition: form-data; name="file"; filename="note.txt"',
+                "Content-Type: text/plain",
+                "",
+                textFromPrng(random, 20) || "hello",
+                `--${boundary}--`,
+                "",
+            ].join("\r\n");
+            const upload = await host.post("/upload", {
+                headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+                body: multipart,
+            });
+            assert.equal(upload.status, 200);
+
+            const unsupported = await host.post("/schema", {
+                headers: { "content-type": "application/xml" },
+                body: "<name>Ada</name>",
+            });
+            assert.equal(unsupported.status, 415);
+        } finally {
+            await host.close();
+        }
+    },
+
+    async "realtime-metadata"(random) {
+        const app = Sloppy.create();
+        app.sse("/events", async (_ctx, stream) => {
+            stream.comment("ready");
+            stream.event("message", { value: textFromPrng(random, 12) || "ok" }, { id: "1" });
+            if (random.bool()) {
+                stream.heartbeat();
+            }
+        }).withName("Events.Stream");
+        app.ws("/socket", () => undefined).withName("Socket.Connect");
+        const routes = app.__getRoutes();
+        assert.equal(routes.find((route) => route.name === "Events.Stream")?.kind, "sse");
+        assert.equal(routes.find((route) => route.name === "Socket.Connect")?.kind, "websocket");
+        const host = Testing.createHost(app);
+        try {
+            const events = await host.get("/events");
+            assert.equal(events.status, 200);
+            assert.equal(events.headers.get("x-slop-realtime"), "sse");
+            assert.match(events.text(), /event: message/);
+            const socket = await host.get("/socket");
+            assert.equal(socket.status, 501);
+            assert.equal(socket.headers.get("x-slop-realtime"), "websocket");
+            assert.equal((await socket.json()).code, "SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE");
+        } finally {
+            await host.close();
+        }
+        const hub = Realtime.hub(`hub${random.int(1000)}`);
+        const connection = hub.register();
+        connection.join("admins");
+        await hub.group("admins").sendJson({ ok: true });
+        assert.equal(hub.__debug().connections[0].messages[0].json.ok, true);
+        assert.equal(connection.close(1000, "done"), true);
     },
 
     async "worker-queue"(random) {

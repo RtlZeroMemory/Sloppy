@@ -40,6 +40,10 @@ $JsTargets = @(
     "required-features",
     "http-client-options",
     "results-headers",
+    "schema-validation",
+    "json-serialization",
+    "request-media",
+    "realtime-metadata",
     "worker-queue",
     "h2-client-options",
     "stdlib-import-shapes"

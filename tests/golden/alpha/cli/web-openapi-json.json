@@ -78,7 +78,8 @@
               "required": true,
               "schema": {
                 "type": "integer"
-              }
+              },
+              "x-slop-constraint": "int"
             }
           ],
           "responses": {
