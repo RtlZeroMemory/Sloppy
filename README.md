@@ -1,4 +1,6 @@
-<img src="docs/public/logo.svg" alt="Sloppy logo" width="120" />
+<p align="center">
+  <img src="docs/public/logo.svg" alt="Sloppy logo" width="160" />
+</p>
 
 # Sloppy
 
