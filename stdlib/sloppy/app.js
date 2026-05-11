@@ -2,6 +2,12 @@ import {
     createCapabilityProvider,
     createCapabilityRegistry,
 } from "./internal/capabilities.js";
+import {
+    createAuthState,
+    isAuthProviderDescriptor,
+    registerAuthProvider,
+    snapshotAuthState,
+} from "./auth.js";
 import { createConfigBuilder, createConfigProvider } from "./internal/config.js";
 import { createLogger, createLoggingBuilder } from "./internal/logging.js";
 import {
@@ -326,8 +332,10 @@ function createApp(host) {
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
     const directModules = new Set();
     let problemDetails = null;
+    const authState = createAuthState();
     const routeHost = {
         ...host,
+        auth: authState,
         handleError(error) {
             if (problemDetails === null) {
                 throw error;
@@ -353,6 +361,22 @@ function createApp(host) {
         log: host.log,
         services: host.services,
         capabilities: host.capabilities,
+        auth: Object.freeze({
+            addPolicy(name, policy) {
+                assertAppMutable();
+                if (typeof name !== "string" || name.length === 0) {
+                    throw new TypeError("Sloppy auth policy name must be a non-empty string.");
+                }
+                if (typeof policy !== "function") {
+                    throw new TypeError("Sloppy auth policy must be a function.");
+                }
+                if (authState.policies.has(name)) {
+                    throw new TypeError(`Sloppy auth policy '${name}' is already registered.`);
+                }
+                authState.policies.set(name, policy);
+                return app.auth;
+            },
+        }),
 
         use(provider) {
             assertAppMutable();
@@ -362,6 +386,13 @@ function createApp(host) {
             }
             if (typeof provider === "function") {
                 middleware.push({ fn: provider, sequence: nextMiddlewareSequence() });
+                return app;
+            }
+            if (isAuthProviderDescriptor(provider)) {
+                middleware.push({
+                    fn: registerAuthProvider(authState, provider, host.config),
+                    sequence: nextMiddlewareSequence(),
+                });
                 return app;
             }
             if (isWorkerResource(provider)) {
@@ -681,6 +712,7 @@ function createApp(host) {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
                 capabilities: host.capabilities.list(),
+                auth: snapshotAuthState(authState),
                 workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
             });
         },

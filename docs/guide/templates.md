@@ -11,19 +11,15 @@ sloppy build
 sloppy run .sloppy --once GET /health
 ```
 
-## API Template
+## Built-In API Templates
 
-The `api` template is the default backend starter. It includes:
+| Template | Use it for |
+| --- | --- |
+| `minimal-api` | A small route-only API. |
+| `api` | A multi-file API layout with route modules, configuration, health endpoints, SQLite metadata, static files, and package flow examples. |
+| `package-api` | An API intended to exercise package/dependency artifact output. |
 
-- route modules;
-- health endpoints;
-- ProblemDetails handler-error mapping;
-- SQLite provider metadata;
-- app settings files;
-- a `public/` directory registered through `app.useStaticFiles`;
-- package flow examples.
-
-Useful smoke commands:
+The `api` template is the default backend starter. Useful smoke commands:
 
 ```sh
 sloppy run .sloppy --once GET /health
@@ -33,9 +29,26 @@ sloppy package
 sloppy run .sloppy/package --once GET /public/hello.txt
 ```
 
+## Auth
+
+Auth is available from any API template:
+
+```ts
+import { Auth, Config } from "sloppy";
+
+app.use(Auth.jwtBearer({
+  issuer: "sloppy.local",
+  audience: "api",
+  secret: Config.required("Auth:JwtSecret"),
+}));
+```
+
+Auth setup in templates is public-alpha/experimental. There is no dedicated
+auth template yet. Add the auth setup to the generated `app.js` or route
+module, then add the corresponding `Auth:*` keys to `appsettings.json` or your
+deployment configuration.
+
 ## Other Templates
 
-Use `minimal-api` for the smallest web shape, `program` for route-free Program
-Mode, `cli` for command-style Program Mode, `package-api` for local package
-compatibility, and `node-compat` for explicit partial Node-compatibility
-experiments.
+Use `program` for route-free Program Mode, `cli` for command-style Program
+Mode, and `node-compat` for explicit partial Node-compatibility experiments.

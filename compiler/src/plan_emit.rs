@@ -5,7 +5,8 @@ use serde_json::{json, Value};
 
 use crate::diagnostic::Diagnostic;
 use crate::graph::{
-    route_parameter_names, ConfigurationPackageEntry, DependencyGraph, ExtractedApp, ProjectKind,
+    route_parameter_names, AuthSchemeMetadata, ConfigurationPackageEntry, DependencyGraph,
+    ExtractedApp, ProjectKind,
 };
 use crate::hash::sha256_hex;
 use crate::source::line_column;
@@ -43,8 +44,11 @@ pub(crate) fn emit_plan(
     }
 
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
-    let emits_app_metadata =
-        !app.schemas.is_empty() || !app.config_reads.is_empty() || app.uses_health;
+    let emits_app_metadata = !app.schemas.is_empty()
+        || !app.config_reads.is_empty()
+        || app.uses_health
+        || !app.auth.schemes.is_empty()
+        || !app.auth.policies.is_empty();
     let route_completeness_values = app
         .routes
         .iter()
@@ -92,6 +96,7 @@ pub(crate) fn emit_plan(
                 || !route.handler.effects.is_empty()
                 || route.health.is_some()
                 || !route.middleware.is_empty()
+                || route.auth.is_some()
                 || route.cors.is_some()
         });
     let handlers = app
@@ -167,6 +172,14 @@ pub(crate) fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
+            if let Some(auth) = &route.auth {
+                route_json["auth"] = json!({
+                    "required": auth.required,
+                    "roles": auth.roles,
+                    "claims": auth.claims,
+                    "policy": auth.policy
+                });
+            }
             if let Some(cors) = &route.cors {
                 route_json["cors"] = json!({
                     "origins": cors.origins,
@@ -199,6 +212,7 @@ pub(crate) fn emit_plan(
                 || !route.handler.effects.is_empty()
                 || route.health.is_some()
                 || !route.middleware.is_empty()
+                || route.auth.is_some()
                 || route.cors.is_some();
             if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route
@@ -650,6 +664,48 @@ pub(crate) fn emit_plan(
         })
         .collect::<Vec<_>>();
 
+    let auth_schemes = app
+        .auth
+        .schemes
+        .iter()
+        .map(|scheme| match scheme {
+            AuthSchemeMetadata::JwtBearer {
+                name,
+                issuer,
+                audience,
+                secret_config_key,
+            } => json!({
+                "kind": "jwtBearer",
+                "name": name,
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "algorithm": "HS256",
+                "issuer": issuer,
+                "audience": audience,
+                "secretConfigKey": secret_config_key,
+                "secret": "<redacted>"
+            }),
+            AuthSchemeMetadata::ApiKey {
+                name,
+                header,
+                config_key,
+            } => json!({
+                "kind": "apiKey",
+                "name": name,
+                "in": "header",
+                "header": header,
+                "configKey": config_key,
+                "secret": "<redacted>"
+            }),
+        })
+        .collect::<Vec<_>>();
+    let auth_policies = app
+        .auth
+        .policies
+        .iter()
+        .map(|policy| policy.name.clone())
+        .collect::<Vec<_>>();
+
     let dependency_graph = if app.dependency_graph.has_entries() {
         Some((
             dependency_graph_json(&app.dependency_graph),
@@ -845,6 +901,19 @@ pub(crate) fn emit_plan(
     if app.uses_health {
         value["strongPlan"]["evidence"]["health"] = json!(true);
         value["features"]["health"] = json!(true);
+    }
+    if !auth_schemes.is_empty() || !auth_policies.is_empty() {
+        value["auth"] = json!({
+            "schemes": auth_schemes,
+            "policies": auth_policies
+        });
+        value["strongPlan"]["evidence"]["auth"] = json!(true);
+        value["features"]["auth"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "app.auth.metadata",
+            "status": "info",
+            "message": "auth schemes and route authorization requirements are Plan-visible without secret values"
+        }));
     }
     if !required_features.is_empty() {
         required_features.sort();

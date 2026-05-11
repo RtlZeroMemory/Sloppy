@@ -4,7 +4,9 @@
   "status": "bootstrap-api-shape",
   "modules": [
     "sloppy/index.js",
+    "sloppy/auth.js",
     "sloppy/codec.js",
+    "sloppy/config.js",
     "sloppy/crypto.js",
     "sloppy/data.js",
     "sloppy/ffi.js",
