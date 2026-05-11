@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include <uv.h>
+
 enum
 {
     PROVIDER_RECORD_CAPACITY = 64
@@ -567,6 +569,9 @@ static int wait_until_atomic_at_least(atomic_int* value, int expected)
         if (atomic_load(value) >= expected) {
             return 0;
         }
+        if ((attempts & 0x3FFFU) == 0x3FFFU) {
+            uv_sleep(1U);
+        }
     }
 
     return 2;
@@ -587,6 +592,9 @@ static int drain_until_dispatch_count(SlAsyncLoop* loop, ProviderRecord* record,
         }
         if (record->dispatch_count >= expected) {
             return 0;
+        }
+        if ((attempts & 0xFFU) == 0xFFU) {
+            uv_sleep(1U);
         }
     }
 
@@ -609,6 +617,9 @@ static int drain_until_cleanup_count(SlAsyncLoop* loop, ProviderRecord* record, 
         if (record->cleanup_count >= expected) {
             return 0;
         }
+        if ((attempts & 0xFFU) == 0xFFU) {
+            uv_sleep(1U);
+        }
     }
 
     return 3;
@@ -625,6 +636,9 @@ static int wait_until_worker_stopped_count(SlProviderInstanceExecutor* executor,
     for (attempts = 0U; attempts < 200000000U; attempts += 1U) {
         if (executor->worker_stopped_count >= expected) {
             return 0;
+        }
+        if ((attempts & 0x3FFFU) == 0x3FFFU) {
+            uv_sleep(1U);
         }
     }
 
@@ -706,6 +720,9 @@ static int expect_pool_stress_drained(SlProviderInstanceExecutor* executor, SlAs
             sl_provider_executor_in_flight_count(executor) == 0U)
         {
             break;
+        }
+        if ((attempts & 0xFFU) == 0xFFU) {
+            uv_sleep(1U);
         }
     }
     if (record->dispatch_count != operation_count || record->cleanup_count != operation_count) {
