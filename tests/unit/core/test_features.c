@@ -211,7 +211,7 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 35) {
+    if (SL_RUNTIME_FEATURE_COUNT != 45) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
@@ -467,6 +467,16 @@ static int test_node_compat_required_features_activate_v8_dependency(void)
         {"node.compat.crypto", SL_RUNTIME_FEATURE_NODE_COMPAT_CRYPTO},
         {"node.compat.assert", SL_RUNTIME_FEATURE_NODE_COMPAT_ASSERT},
         {"node.compat.stream", SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM},
+        {"node.compat.console", SL_RUNTIME_FEATURE_NODE_COMPAT_CONSOLE},
+        {"node.compat.constants", SL_RUNTIME_FEATURE_NODE_COMPAT_CONSTANTS},
+        {"node.compat.diagnostics_channel", SL_RUNTIME_FEATURE_NODE_COMPAT_DIAGNOSTICS_CHANNEL},
+        {"node.compat.http", SL_RUNTIME_FEATURE_NODE_COMPAT_HTTP},
+        {"node.compat.https", SL_RUNTIME_FEATURE_NODE_COMPAT_HTTPS},
+        {"node.compat.module", SL_RUNTIME_FEATURE_NODE_COMPAT_MODULE},
+        {"node.compat.perf_hooks", SL_RUNTIME_FEATURE_NODE_COMPAT_PERF_HOOKS},
+        {"node.compat.string_decoder", SL_RUNTIME_FEATURE_NODE_COMPAT_STRING_DECODER},
+        {"node.compat.tty", SL_RUNTIME_FEATURE_NODE_COMPAT_TTY},
+        {"node.compat.zlib", SL_RUNTIME_FEATURE_NODE_COMPAT_ZLIB},
     };
     size_t index = 0U;
 

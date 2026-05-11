@@ -4,9 +4,9 @@ Inspect dependency graph metadata emitted by `sloppyc`. `deps` is read-only and
 does not enter V8.
 
 ```text
-sloppy deps <artifacts-dir|plan.json> [--format text|json]
-sloppy deps --plan <path> [--format text|json]
-sloppy deps --artifacts <dir> [--format text|json]
+sloppy deps <artifacts-dir|plan.json> [--format text|json] [--explain]
+sloppy deps --plan <path> [--format text|json] [--explain]
+sloppy deps --artifacts <dir> [--format text|json] [--explain]
 ```
 
 Use `sloppy deps .sloppy` for the common case.
@@ -16,6 +16,10 @@ Use `sloppy deps .sloppy` for the common case.
 `deps` first looks for `dependencyGraph` embedded in `app.plan.json`. If the
 command was given an artifact directory and the Plan does not embed the graph,
 it falls back to `deps.graph.json` next to the Plan.
+
+`--explain` is text-only. It adds a package compatibility summary with package
+counts, Node shim counts, and compatibility finding counts. Use `--format json`
+when a tool needs the full graph.
 
 If neither exists, the command exits non-zero with:
 
@@ -38,6 +42,11 @@ Node compatibility (1)
   node:path  supported -> sloppy/node/path
 Findings (0)
   -
+
+Compatibility explanation
+  Packages bundled: 1
+  Node compatibility shims used: 1
+  Compatibility findings: 0
 ```
 
 ## JSON Output

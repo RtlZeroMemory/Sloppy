@@ -47,7 +47,7 @@ absolute machine paths.
       "installed-packages",
       "node-compat-shims"
     ],
-    "conditions": ["sloppy", "import", "require", "default"]
+    "conditions": ["sloppy", "import", "require", "node", "development", "production", "default"]
   },
   "packages": [],
   "modules": [],
@@ -93,8 +93,10 @@ starts from what is already installed. Sloppy does not call a registry, install
 dependencies, solve semver ranges, or read a lockfile to choose versions.
 
 The supported package subset covers package.json `exports`, `imports`, `main`,
-and `type` for common pure-JavaScript packages. Unsupported export shapes fail
-with `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED` instead of silently choosing a
+and `type` for common pure-JavaScript packages. Export condition resolution
+prefers `sloppy`, then the active module mode (`import` or `require`), then
+`node`, `development`, `production`, and `default`. Unsupported export shapes
+fail with `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED` instead of silently choosing a
 different entry.
 
 ## Modules
@@ -127,8 +129,9 @@ shim modules:
 - `json`
 
 CommonJS modules run in a generated wrapper with `exports`, `module`,
-`require`, `__filename`, and `__dirname`. JSON modules export the parsed JSON
-value as the module value and default export.
+`require`, `require.resolve`, `require.cache`, `__filename`, and `__dirname`.
+JSON modules export the parsed JSON value as the module value and default
+export.
 
 ## Dynamic Imports
 
@@ -176,7 +179,9 @@ registry:
 }
 ```
 
-`status` can be `supported`, `partial`, `stubbed`, or `unsupported`. See
+`status` can be `supported`, `partial`, `stubbed`, or `unsupported`. Stubbed
+modules are importable but throw for unsupported operations or report
+detection-only values such as non-TTY streams. See
 [Node compatibility](node-compatibility.md) for the current registry.
 
 ## Compatibility Findings
@@ -200,3 +205,5 @@ It is not a formal guarantee that every native package shape is recognized.
 
 `sloppy audit` reports dependency graph findings. `sloppy doctor` reports the
 dependency graph summary. `sloppy deps` prints the graph directly.
+`sloppy deps .sloppy --explain` adds a text compatibility summary for package
+review while `--format json` remains the full-fidelity machine-readable graph.

@@ -167,17 +167,27 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
                 | "url"
                 | "querystring"
                 | "buffer"
+                | "console"
+                | "constants"
                 | "util"
                 | "fs"
                 | "fs/promises"
                 | "os"
                 | "process"
                 | "crypto"
+                | "diagnostics_channel"
                 | "assert"
                 | "assert/strict"
+                | "http"
+                | "https"
+                | "module"
+                | "perf_hooks"
                 | "stream"
                 | "stream/promises"
+                | "string_decoder"
                 | "timers"
+                | "tty"
+                | "zlib"
         ) =>
         {
             format!("node:{specifier}")
@@ -190,6 +200,8 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
         "node:url" => ("supported", Some("sloppy/node/url"), None),
         "node:querystring" => ("supported", Some("sloppy/node/querystring"), None),
         "node:buffer" => ("partial", Some("sloppy/node/buffer"), None),
+        "node:console" => ("partial", Some("sloppy/node/console"), None),
+        "node:constants" => ("partial", Some("sloppy/node/constants"), None),
         "node:util" => ("partial", Some("sloppy/node/util"), None),
         "node:timers" => ("partial", Some("sloppy/node/timers"), Some("time")),
         "node:fs" => ("partial", Some("sloppy/node/fs"), Some("fs")),
@@ -197,10 +209,18 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
         "node:os" => ("partial", Some("sloppy/node/os"), Some("os")),
         "node:process" => ("partial", Some("sloppy/node/process"), Some("os")),
         "node:crypto" => ("partial", Some("sloppy/node/crypto"), Some("crypto")),
+        "node:diagnostics_channel" => ("partial", Some("sloppy/node/diagnostics_channel"), None),
+        "node:http" => ("stubbed", Some("sloppy/node/http"), Some("net")),
+        "node:https" => ("stubbed", Some("sloppy/node/https"), Some("net")),
+        "node:module" => ("partial", Some("sloppy/node/module"), None),
+        "node:perf_hooks" => ("partial", Some("sloppy/node/perf_hooks"), Some("time")),
         "node:assert" => ("partial", Some("sloppy/node/assert"), None),
         "node:assert/strict" => ("partial", Some("sloppy/node/assert/strict"), None),
         "node:stream" => ("partial", Some("sloppy/node/stream"), None),
         "node:stream/promises" => ("partial", Some("sloppy/node/stream/promises"), None),
+        "node:string_decoder" => ("partial", Some("sloppy/node/string_decoder"), Some("codec")),
+        "node:tty" => ("stubbed", Some("sloppy/node/tty"), None),
+        "node:zlib" => ("partial", Some("sloppy/node/zlib"), Some("codec")),
         _ => ("unsupported", None, None),
     };
     Some(NodeBuiltinResolution {
@@ -472,9 +492,23 @@ fn resolve_exports_value_with_star(
         return Err(());
     };
     let conditions = if import_mode {
-        ["sloppy", "import", "default"]
+        [
+            "sloppy",
+            "import",
+            "node",
+            "development",
+            "production",
+            "default",
+        ]
     } else {
-        ["sloppy", "require", "default"]
+        [
+            "sloppy",
+            "require",
+            "node",
+            "development",
+            "production",
+            "default",
+        ]
     };
     for condition in conditions {
         if let Some(entry) = object.get(condition) {

@@ -8,13 +8,20 @@ import { promises } from "../fs.js";
 const {
     access,
     appendFile,
+    copyFile,
+    lstat,
     mkdir,
+    mkdtemp,
     readdir,
     readFile,
+    readlink,
+    realpath,
+    rename,
     rm,
     stat,
+    symlink,
     unlink,
     writeFile,
 } = promises;
 
-export { access, appendFile, mkdir, readdir, readFile, rm, stat, unlink, writeFile };
+export { access, appendFile, copyFile, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };

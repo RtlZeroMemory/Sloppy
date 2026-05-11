@@ -84,7 +84,22 @@ export function checkProcessBuffer() {
   const alias = aliasSource.subarray(0, 3);
   alias[0] = 80;
   const slice = `${alias.toString()}:${aliasSource.toString()}`;
-  return `${process.platform}:${process.arch}:${typeof process.cwd()}:${process.version}:${process.exitCode}:${process.env.SLOPPY_NODE_COMPAT_FIXTURE}:${"SLOPPY_NODE_COMPAT_FIXTURE" in process.env}:${euro}:${joined}:${encoded}:${slice}`;
+  let writeUnsupported = false;
+  try {
+    process.stdout.write("x");
+  } catch (error) {
+    writeUnsupported = /SLOPPY_E_PROCESS_STREAM_WRITE_UNSUPPORTED/.test(error.message);
+  }
+  let eventSeen = false;
+  const mark = () => {
+    eventSeen = true;
+  };
+  process.addListener("fixture", mark);
+  process.emit("fixture");
+  process.removeListener("fixture", mark);
+  const hr = process.hrtime();
+  const hrBigint = typeof process.hrtime.bigint() === "bigint";
+  return `${process.platform}:${process.arch}:${typeof process.cwd()}:${process.version}:${process.exitCode}:${process.env.SLOPPY_NODE_COMPAT_FIXTURE}:${"SLOPPY_NODE_COMPAT_FIXTURE" in process.env}:${euro}:${joined}:${encoded}:${slice}:${writeUnsupported}:${eventSeen}:${hr.length}:${hrBigint}`;
 }
 ]=])
 
@@ -97,7 +112,7 @@ write_package_json("package-fs-promises" [=[{
 ]=])
 file(WRITE "${project_dir}/fixtures/package-fs-promises/index.js" [=[
 import { mkdir as mkdirCallback } from "node:fs";
-import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 
 export async function checkFsPromises() {
   const dir = ".node-compat-fixture-fs";
@@ -130,8 +145,18 @@ export async function checkFsPromises() {
   } catch {
     rejected = true;
   }
+  let unsupportedCount = 0;
+  for (const operation of [() => lstat(file), () => mkdtemp("node-compat-"), () => realpath(file)]) {
+    try {
+      await operation();
+    } catch (error) {
+      if (/SLOPPY_E_NODE_FS_UNSUPPORTED/.test(error.message)) {
+        unsupportedCount += 1;
+      }
+    }
+  }
   await rm(dir, { recursive: true });
-  return `${text}:${names.includes("message.txt")}:${info.isFile() === true}:${rejected}:${Array.from(bytes).join(",")}:${redacted}:${callbackError}`;
+  return `${text}:${names.includes("message.txt")}:${info.isFile() === true}:${rejected}:${Array.from(bytes).join(",")}:${redacted}:${callbackError}:${unsupportedCount}`;
 }
 ]=])
 
@@ -152,12 +177,20 @@ export async function checkAssert() {
   assert.ok(true);
   assert.equal("1", 1);
   assert.strictEqual(2, 2);
+  assert.notStrictEqual(2, "2");
   assert.deepStrictEqual({ b: [2], a: 1 }, { a: 1, b: [2] });
   assert.throws(() => assert.ok(false), assert.AssertionError);
   assert.throws(() => assert.throws(() => { throw new Error("wrong"); }, TypeError), assert.AssertionError);
   assert.throws(() => assert.throws(() => { throw new Error("wrong"); }, () => false), assert.AssertionError);
+  assert.throws(() => assert.doesNotThrow(() => { throw new TypeError("skip"); }, RangeError), TypeError);
+  assert.throws(() => assert.doesNotThrow(() => { throw new TypeError("boom"); }, TypeError), assert.AssertionError);
+  assert.throws(() => assert.fail("plain fail"), assert.AssertionError);
+  assert.throws(() => assert.fail(1, 2, "bad", "!="), assert.AssertionError);
   assert.throws(() => strictAssert.equal(1, "1"), assert.AssertionError);
   await assert.rejects(Promise.reject(new Error("boom")), /boom/);
+  await assert.rejects(assert.doesNotReject(1), TypeError);
+  await assert.rejects(assert.doesNotReject(Promise.reject(new TypeError("skip")), RangeError), TypeError);
+  await assert.rejects(assert.doesNotReject(Promise.reject(new TypeError("boom")), TypeError), assert.AssertionError);
   return "assert";
 }
 ]=])
@@ -203,6 +236,119 @@ export async function checkCryptoBasic() {
   const random = crypto.randomBytes(8);
   const same = crypto.timingSafeEqual(random, random.slice(0));
   return `${digest.slice(0, 8)}:${hmac.length}:${same}`;
+}
+]=])
+
+write_package_json("package-node-builtins-more" [=[{
+  "name": "package-node-builtins-more",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "sloppy": "./sloppy.js",
+      "node": "./node.js",
+      "default": "./index.js"
+    },
+    "./feature": "./feature.js"
+  },
+  "imports": {
+    "#label": "./label.js"
+  }
+}
+]=])
+file(WRITE "${project_dir}/fixtures/package-node-builtins-more/label.js" [=[
+export default "imports-ok";
+]=])
+file(WRITE "${project_dir}/fixtures/package-node-builtins-more/feature.js" [=[
+export const feature = "subpath-ok";
+]=])
+file(WRITE "${project_dir}/fixtures/package-node-builtins-more/node.js" [=[
+export default function nodeOnly() {
+  return "node-condition";
+}
+]=])
+file(WRITE "${project_dir}/fixtures/package-node-builtins-more/index.js" [=[
+export default function defaultOnly() {
+  return "default-condition";
+}
+]=])
+file(WRITE "${project_dir}/fixtures/package-node-builtins-more/sloppy.js" [=[
+import assert from "node:assert";
+import { Buffer } from "node:buffer";
+import consoleModule from "node:console";
+import constants from "node:constants";
+import diagnostics from "node:diagnostics_channel";
+import { createRequire } from "node:module";
+import { performance } from "node:perf_hooks";
+import { StringDecoder } from "node:string_decoder";
+import tty from "node:tty";
+import http from "node:http";
+import util from "node:util";
+import label from "#label";
+import { feature } from "./feature";
+
+export default async function checkMoreBuiltins() {
+  assert.doesNotThrow(() => assert.ifError(null));
+  assert.strictEqual(Buffer.isEncoding(undefined), false);
+  assert.strictEqual(typeof consoleModule.log, "function");
+  assert.strictEqual(typeof consoleModule.warn, "function");
+  assert.strictEqual(typeof consoleModule.info, "function");
+  assert.strictEqual(typeof consoleModule.debug, "function");
+  assert.strictEqual(diagnostics.hasSubscribers("unused-fixture-channel"), false);
+  assert.strictEqual(util.format("%d:%i", 1.5, 1.5), "1.5:1");
+  assert.strictEqual(typeof performance.timeOrigin, "number");
+  const require = createRequire(new URL("file:///node_modules/package-node-builtins-more/sloppy.js"));
+  const resolved = require.resolve("./feature");
+  const decoder = new StringDecoder("utf8");
+  const decoded = decoder.write(Buffer.from("e282", "hex")) + decoder.end(Buffer.from("ac", "hex"));
+  const channel = diagnostics.channel("fixture");
+  let diagnostic = "none";
+  channel.subscribe((message) => {
+    diagnostic = message.kind;
+  });
+  channel.publish({ kind: "diagnostic-ok" });
+  let httpStub = false;
+  try {
+    http.get("http://example.test");
+  } catch (error) {
+    httpStub = /SLOPPY_E_NODE_HTTP_UNSUPPORTED/.test(error.message);
+  }
+  consoleModule.log("node-builtins-more");
+  const perfOk = performance.now() >= 0 && performance.timeOrigin > 0;
+  return `${global.process.browser}:${typeof global.Buffer}:${constants.O_RDONLY}:${decoded}:${diagnostic}:${perfOk}:${tty.isatty(1)}:${label}:${feature}:${resolved.includes("feature")}:${httpStub}`;
+}
+]=])
+
+write_package_json("package-zlib-basic" [=[{
+  "name": "package-zlib-basic",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./index.js"
+}
+]=])
+file(WRITE "${project_dir}/fixtures/package-zlib-basic/index.js" [=[
+import zlib from "node:zlib";
+import { Buffer } from "node:buffer";
+
+export async function checkZlibBasic() {
+  const gz = await new Promise((resolve, reject) => {
+    zlib.gzip(Buffer.from("zip-ok"), (error, value) => error ? reject(error) : resolve(value));
+  });
+  const plain = await new Promise((resolve, reject) => {
+    zlib.gunzip(gz, (error, value) => error ? reject(error) : resolve(value));
+  });
+  let syncStub = false;
+  try {
+    zlib.gzipSync(Buffer.from("x"));
+  } catch (error) {
+    syncStub = /SLOPPY_E_NODE_ZLIB_SYNC_UNSUPPORTED/.test(error.message);
+  }
+  const deflateStub = await new Promise((resolve) => {
+    zlib.deflate(Buffer.from("x"), (error) => {
+      resolve(/SLOPPY_E_NODE_ZLIB_UNSUPPORTED/.test(error.message));
+    });
+  });
+  return `${Buffer.from(plain).toString()}:${syncStub}:${deflateStub}`;
 }
 ]=])
 
@@ -255,6 +401,8 @@ file(WRITE "${project_dir}/package.json" [=[{
     "package-assert": "file:fixtures/package-assert",
     "package-stream-basic": "file:fixtures/package-stream-basic",
     "package-crypto-basic": "file:fixtures/package-crypto-basic",
+    "package-node-builtins-more": "file:fixtures/package-node-builtins-more",
+    "package-zlib-basic": "file:fixtures/package-zlib-basic",
     "package-cjs-json": "file:fixtures/package-cjs-json",
     "package-mixed-esm-cjs": "file:fixtures/package-mixed-esm-cjs"
   }
@@ -273,8 +421,10 @@ import { checkCryptoBasic } from "package-crypto-basic";
 import { checkFsPromises } from "package-fs-promises";
 import checkMixed from "package-mixed-esm-cjs";
 import feature from "package-mixed-esm-cjs/feature";
+import checkMoreBuiltins from "package-node-builtins-more";
 import { checkProcessBuffer } from "package-process-buffer";
 import { checkStreamBasic } from "package-stream-basic";
+import { checkZlibBasic } from "package-zlib-basic";
 
 export async function main() {
   const results = [
@@ -283,9 +433,11 @@ export async function main() {
     await checkCryptoBasic(),
     await checkFsPromises(),
     checkMixed(),
+    await checkMoreBuiltins(),
     feature(),
     checkProcessBuffer(),
-    await checkStreamBasic()
+    await checkStreamBasic(),
+    await checkZlibBasic()
   ];
   console.log(JSON.stringify({ results }));
 }
@@ -338,9 +490,15 @@ endfunction()
 
 run_cli_expect_success("node compatibility package suite build" "${project_dir}" "" build)
 run_cli_expect_success("node compatibility package suite deps" "${project_dir}" "\"nodeBuiltins\"" deps .sloppy --format json)
-foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs node:fs/promises node:assert node:assert/strict node:stream node:stream/promises node:crypto)
+foreach(expected IN ITEMS package-process-buffer package-fs-promises package-assert package-stream-basic package-crypto-basic package-node-builtins-more package-zlib-basic package-cjs-json package-mixed-esm-cjs node:process node:buffer node:fs node:fs/promises node:assert node:assert/strict node:stream node:stream/promises node:crypto node:module node:string_decoder node:constants node:console node:perf_hooks node:diagnostics_channel node:tty node:http node:zlib)
     if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
         message(FATAL_ERROR "node compatibility dependency graph did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}")
+    endif()
+endforeach()
+run_cli_expect_success("node compatibility package suite deps explain" "${project_dir}" "Compatibility explanation" deps .sloppy --explain)
+foreach(expected IN ITEMS "Packages bundled" "Node compatibility shims used" "node:zlib")
+    if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
+        message(FATAL_ERROR "node compatibility deps explain did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}")
     endif()
 endforeach()
 run_cli_expect_success("node compatibility package suite package" "${project_dir}" "Created Sloppy app package" package)
@@ -356,7 +514,7 @@ endif()
 
 if(SLOPPY_EXPECT_RUN_SUCCESS)
     run_cli_expect_success("node compatibility package suite run" "${project_dir}" "\"assert\"" run .sloppy)
-    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true:true:1,2,3,4:true:true" cjs-default subpath sloppy sealed "ok:true" "Pre:Prefix" "abc:d")
+    foreach(expected IN ITEMS json-ok ba7816bf "hello fs:true:true:true:1,2,3,4:true:true:3" cjs-default subpath "false:function:0:.*:diagnostic-ok:true:false:imports-ok:subpath-ok:true:true" sloppy sealed "ok:true" "Pre:Prefix:true" "abc:d" "zip-ok:true:true")
         if(NOT RUN_CLI_STDOUT MATCHES "${expected}")
             message(FATAL_ERROR "node compatibility run did not include ${expected}\nstdout:\n${RUN_CLI_STDOUT}\nstderr:\n${RUN_CLI_STDERR}")
         endif()

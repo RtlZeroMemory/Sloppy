@@ -190,12 +190,14 @@ Current limits:
   bundled, and executed inside Sloppy's runtime boundary. It does not install
   from a registry or solve semver ranges.
 - Package resolution supports a documented subset of package.json `exports`,
-  `imports`, `main`, and `type`; unsupported export shapes fail clearly.
+  `imports`, conditions, subpaths, `main`, and `type`; unsupported export
+  shapes fail clearly.
 - Sloppy does not support Node native addons or N-API yet. Obvious native
   addon package shapes are rejected with pattern-based diagnostics, but that is
   not a complete native-package classifier.
 - Sloppy is not a full Node runtime. Node compatibility is partial and grows
-  through explicit shims backed by Sloppy Core APIs.
+  through explicit shims backed by Sloppy Core APIs; importable stubs do not
+  imply full HTTP, socket, or native-addon support.
 - The compiler supports a focused source subset. Dynamic web shapes can run
   with partial metadata; unsupported imports/runtime features still fail
   clearly.

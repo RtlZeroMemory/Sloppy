@@ -380,7 +380,7 @@ static void sl_cli_print_help(void)
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
            "[--format text|json]\n");
     printf("  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
-           "text|json]\n");
+           "text|json] [--explain]\n");
     printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
@@ -405,7 +405,9 @@ static void sl_cli_print_command_help(const char* command)
     }
     if (strcmp(command, "deps") == 0) {
         printf("Usage: sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
-               "[--format text|json]\n");
+               "[--format text|json] [--explain]\n");
+        printf("--explain adds a text compatibility summary for packages, Node shims, and "
+               "findings.\n");
         return;
     }
     if (strcmp(command, "run") == 0) {
@@ -1093,6 +1095,12 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
             return -1;
         }
         *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--explain") == 0 && strcmp(out->command, "deps") == 0) {
+        out->deps_explain = true;
+        *index += 1;
         return 1;
     }
 

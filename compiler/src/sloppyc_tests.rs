@@ -1355,7 +1355,13 @@ fn program_mode_commonjs_modules_receive_wrapper_bindings() {
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
     assert!(app_js.contains("function(exports, module, require, __filename, __dirname)"));
     assert!(app_js.contains(
-        "factory(module.exports, module, function(specifier) { return __sloppy_program_require_from(id, specifier); }, id, __sloppy_program_dirname(id));"
+        "const localRequire = function(specifier) { return __sloppy_program_require_from(id, specifier); };"
+    ));
+    assert!(app_js.contains(
+        "localRequire.resolve = function(specifier) { return __sloppy_program_resolve(id, specifier); };"
+    ));
+    assert!(app_js.contains(
+        "factory(module.exports, module, localRequire, id, __sloppy_program_dirname(id));"
     ));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");

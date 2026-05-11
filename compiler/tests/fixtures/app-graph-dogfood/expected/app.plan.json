@@ -198,6 +198,9 @@
         "sloppy",
         "import",
         "require",
+        "node",
+        "development",
+        "production",
         "default"
       ],
       "profiles": [
@@ -210,7 +213,7 @@
     "schemaVersion": 1
   },
   "dependencyGraphArtifact": {
-    "hash": "sha256:72844ae6d5bef2ea90e22b83232a66932f6b13b046a08fab4b2f49a4b690a23e",
+    "hash": "sha256:637ec8ce3ce61af0d01c63a24b66519b3780af923e6c6c5d654bb9e0182e39d9",
     "id": "sloppyc-deps-graph",
     "path": "deps.graph.json"
   },

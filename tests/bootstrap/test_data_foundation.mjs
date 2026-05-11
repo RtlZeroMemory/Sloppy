@@ -896,6 +896,21 @@ function createForgedLoweredQuery() {
         releaseTransaction("settled");
         assert.equal(await pendingTransaction, "settled");
         assert.equal(db.__debug().transactionActive, false);
+        await assertRejectsMessage(() => data.migrations.status(db, {
+            provider: "sqlite",
+            path: "../migrations/*.sql",
+        }), /migration path is unsupported/);
+        await assertRejectsMessage(() => data.migrations.status(db, {
+            provider: "sqlite-typo",
+            path: "migrations/*.sql",
+        }), /provider must be sqlite, postgres, or sqlserver/);
+        await assertRejectsMessage(() => data.providerHealth.check(db, null), /options must be a plain object/);
+        await assertRejectsMessage(() => data.providerHealth.check(db, {
+            provider: "sqlite-typo",
+        }), /does not match connection provider 'sqlite'/);
+        assert.deepEqual(await data.providerHealth.check(db, {
+            provider: "sqlite",
+        }), { provider: "sqlite", ok: true });
         db.close();
 
         const thenGetterDb = data.sqlite.open({
@@ -944,19 +959,20 @@ function createForgedLoweredQuery() {
         ["open"],
         ["begin", 1],
         ["commit", 1],
+        ["queryOne", 1, "select 1 as ok", []],
         ["close", 1],
         ["open"],
-        ["begin", 5],
-        ["rollback", 5],
-        ["close", 5],
+        ["begin", 6],
+        ["rollback", 6],
+        ["close", 6],
         ["open"],
-        ["begin", 9],
-        ["commit", 9],
-        ["close", 9],
+        ["begin", 10],
+        ["commit", 10],
+        ["close", 10],
         ["open"],
-        ["begin", 13],
-        ["rollback", 13],
-        ["close", 13],
+        ["begin", 14],
+        ["rollback", 14],
+        ["close", 14],
     ]);
 }
 

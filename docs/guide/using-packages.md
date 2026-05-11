@@ -26,7 +26,10 @@ also fail with clear diagnostics.
 The current Node compatibility layer covers practical subsets of common
 pure-JavaScript package assumptions: explicit `node:process`, `node:buffer`,
 `node:fs/promises`, `node:assert`, `node:stream`, `node:stream/promises`,
-`node:crypto`, path/events, and related utility shims. See the
+`node:crypto`, `node:module`, `node:string_decoder`, `node:zlib`,
+`node:diagnostics_channel`, path/events, and related utility shims. `node:http`,
+`node:https`, and `node:tty` are importable stubs with clear unsupported or
+non-TTY behavior. See the
 [Node compatibility reference](../reference/node-compatibility.md) for exact
 members and known differences from Node.
 
@@ -68,6 +71,8 @@ Sloppy supports a practical package.json subset for installed packages:
 - `exports` string entries
 - `exports` object entries with `sloppy`, `import`, `require`, and `default`
   conditions
+- `node`, `development`, and `production` conditions after `sloppy` and the
+  mode-specific condition
 - package subpath exports such as `"./feature"`
 - `imports` for package-local `#...` specifiers where resolvable
 - `main`
@@ -77,8 +82,9 @@ Sloppy supports a practical package.json subset for installed packages:
 
 Condition order is:
 
-- ESM/import: `sloppy`, `import`, `default`
-- CommonJS/require: `sloppy`, `require`, `default`
+- ESM/import: `sloppy`, `import`, `node`, `development`, `production`, `default`
+- CommonJS/require: `sloppy`, `require`, `node`, `development`, `production`,
+  `default`
 
 Unsupported package export shapes fail with
 `SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`.
@@ -86,7 +92,9 @@ Unsupported package export shapes fail with
 ## CommonJS And JSON
 
 CommonJS packages can be bundled when their `require(...)` calls are
-statically resolvable. ESM imports of CommonJS modules receive the CommonJS
+statically resolvable. The generated CommonJS wrapper provides `exports`,
+`module`, `require`, `require.resolve`, `require.cache`, `__filename`, and
+`__dirname`. ESM imports of CommonJS modules receive the CommonJS
 `module.exports` value as the default-like module value. Named imports from
 CommonJS are best-effort and should not be treated as full Node semantics.
 
@@ -134,13 +142,15 @@ JavaScript modules.
 
 ```sh
 sloppy deps .sloppy
+sloppy deps .sloppy --explain
 sloppy deps .sloppy --format json
 sloppy audit .sloppy
 sloppy doctor .sloppy
 ```
 
 `sloppy deps` lists bundled packages, module counts, assets, Node compatibility
-shims, and compatibility findings.
+shims, and compatibility findings. `--explain` adds a text compatibility
+summary for package review.
 
 ## Current Limits
 
@@ -148,9 +158,11 @@ shims, and compatibility findings.
 - No native Node addons or N-API. Obvious native addon shapes are rejected, but
   detection is not a complete native-package classifier.
 - No full Node builtin parity. The stream and crypto shims are partial, and
-  workers, VM, child process, inspector, REPL, and Node internals remain
-  unsupported.
-- No implicit global Node runtime identity.
+  full HTTP, sockets, TLS, DNS, workers, VM, child process, inspector, REPL,
+  and Node internals remain unsupported.
+- No process-wide Node runtime identity. Bundled package runs install only
+  `global`, `process`, and `Buffer` while the generated Sloppy program entry is
+  executing.
 - No unrestricted runtime discovery outside the sealed graph.
 
 Real installed packages work when their JavaScript and runtime API usage are

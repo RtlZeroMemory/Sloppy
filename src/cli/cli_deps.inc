@@ -186,6 +186,35 @@ static void sl_cli_deps_emit_text(yyjson_val* graph)
     sl_cli_deps_emit_text_array(graph, "Findings", "compatibilityFindings", "code");
 }
 
+static void sl_cli_deps_emit_explain(yyjson_val* graph)
+{
+    yyjson_val* packages = yyjson_obj_get(graph, "packages");
+    yyjson_val* node_builtins = yyjson_obj_get(graph, "nodeBuiltins");
+    yyjson_val* findings = yyjson_obj_get(graph, "compatibilityFindings");
+    size_t package_count = packages != NULL && yyjson_is_arr(packages) ? yyjson_arr_size(packages)
+                                                                       : 0U;
+    size_t node_count = node_builtins != NULL && yyjson_is_arr(node_builtins)
+                            ? yyjson_arr_size(node_builtins)
+                            : 0U;
+    size_t finding_count = findings != NULL && yyjson_is_arr(findings) ? yyjson_arr_size(findings)
+                                                                       : 0U;
+
+    printf("\nCompatibility explanation\n");
+    printf("  Packages bundled: %zu\n", package_count);
+    printf("  Node compatibility shims used: %zu\n", node_count);
+    printf("  Compatibility findings: %zu\n", finding_count);
+    if (node_count > 0U) {
+        printf("  Shim statuses:\n");
+        sl_cli_deps_emit_text_array(graph, "  Node shim matrix", "nodeBuiltins", "specifier");
+    }
+    if (finding_count == 0U) {
+        printf("  No dependency compatibility findings were recorded.\n");
+    }
+    else {
+        printf("  Review findings before treating the package graph as runtime-ready.\n");
+    }
+}
+
 static int sl_cli_command_deps(const SlCliOptions* options)
 {
     yyjson_doc* doc = NULL;
@@ -203,6 +232,9 @@ static int sl_cli_command_deps(const SlCliOptions* options)
     }
     else {
         sl_cli_deps_emit_text(graph);
+        if (options->deps_explain) {
+            sl_cli_deps_emit_explain(graph);
+        }
     }
 
     yyjson_doc_free(doc);

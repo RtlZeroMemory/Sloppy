@@ -14,14 +14,18 @@ This template uses:
 - `node:process`
 - `node:stream` basics
 - `node:crypto` basics
+- `node:module`, `node:string_decoder`, `node:perf_hooks`, and other package
+  compatibility helpers are documented in the Node compatibility reference.
 
-It intentionally avoids `node:http`, `node:net`, `node:tls`,
-`node:child_process`, native addons, and implicit globals such as `process` or
-`Buffer`. Import compatibility modules explicitly.
+It intentionally avoids full `node:http`, `node:net`, `node:tls`,
+`node:child_process`, native addons, and process-wide Node identity. Import
+compatibility modules explicitly in source. Bundled package programs may receive
+temporary `global`, `process`, and `Buffer` compatibility globals while the
+program entry runs.
 
 ```sh
 sloppy build
-sloppy deps .sloppy
+sloppy deps .sloppy --explain
 sloppy run .sloppy
 sloppy package
 sloppy run .sloppy/package

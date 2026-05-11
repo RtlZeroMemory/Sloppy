@@ -161,19 +161,29 @@ set(
     node/assert.js
     node/assert/strict.js
     node/buffer.js
+    node/console.js
+    node/constants.js
     node/crypto.js
+    node/diagnostics_channel.js
     node/events.js
     node/fs.js
     node/fs/promises.js
+    node/http.js
+    node/https.js
+    node/module.js
     node/os.js
     node/path.js
+    node/perf_hooks.js
     node/process.js
     node/querystring.js
     node/stream.js
     node/stream/promises.js
+    node/string_decoder.js
     node/timers.js
+    node/tty.js
     node/url.js
     node/util.js
+    node/zlib.js
     providers/sqlite.js
     results.js
     schema.js
