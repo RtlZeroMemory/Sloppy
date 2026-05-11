@@ -4,8 +4,8 @@ Sloppy is C + Rust + C++ (V8 bridge). Building from source means CMake
 for the runtime, Cargo for the compiler, and an optional V8 SDK for
 runtime execution.
 
-Windows x64 is the most validated lane. Linux x64 works; macOS and arm64
-need work.
+Windows x64, Linux x64, and macOS are validated alpha lanes. Linux arm64,
+Windows arm64, and other non-alpha targets may need source-build work.
 
 ## Windows
 

@@ -1,6 +1,6 @@
 # Install
 
-The public alpha package is `@rtlzeromemory/sloppy`.
+The public alpha, pre-production package is `@rtlzeromemory/sloppy`.
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
@@ -10,7 +10,7 @@ Check the install:
 
 ```sh
 sloppy --version
-sloppy doctor
+sloppy --help
 ```
 
 Create and run a minimal app:
@@ -34,17 +34,20 @@ ok
 | --- | --- |
 | Windows x64 | npm platform package with V8-backed handler execution |
 | Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS | source/archive builds only in this alpha |
-| arm64 | source/archive builds only in this alpha |
+| macOS arm64 | supported macOS alpha lane with V8-backed handler execution |
+| macOS x64 | supported macOS alpha lane with V8-backed handler execution |
+| Linux arm64 | no alpha npm platform package; source build only |
+| Windows arm64 | no alpha npm platform package; source build only |
 
-The root package installs a small launcher plus the matching platform package
-through npm optional dependencies. It does not build native code during
-install.
+The root package installs a small launcher plus the matching supported
+platform package through npm optional dependencies. It does not build native
+code during install, run `node-gyp`, or download V8 in `postinstall`.
 
 ## Build from source
 
 Use a source build when you are working on Sloppy itself, testing an unpublished
-change, or using a platform without an npm package.
+change, or using Linux arm64, Windows arm64, or another platform without an
+alpha package.
 
 Windows x64:
 
@@ -102,6 +105,18 @@ needs a V8-enabled runtime package or source build.
 
 If `sloppy run` reports that a V8-enabled build is required, the CLI is present
 but that runtime cannot execute handlers.
+
+The normal Quickstart does not require extra native setup. SQLite is included
+with the runtime package. V8 is part of the V8-enabled runtime package.
+PostgreSQL client support is only needed for apps that use the PostgreSQL
+provider or PostgreSQL migrations. Microsoft ODBC Driver 17 or 18 is only
+needed for apps that use the SQL Server provider or SQL Server migrations.
+Declared native libraries are only needed for FFI apps, and OpenSSL/TLS matters
+only for TLS/HTTPS paths in the selected build/package configuration.
+
+Current alpha packages do not bundle PostgreSQL provider-package binaries yet.
+SQL Server uses Microsoft's platform driver or an organization-managed ODBC
+deployment; Sloppy does not bundle Microsoft's ODBC driver in the core package.
 
 ## Common fixes
 

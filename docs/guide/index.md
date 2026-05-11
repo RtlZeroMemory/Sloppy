@@ -11,7 +11,6 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [TypeScript support](typescript.md) — what the compiler accepts today, what it rejects
 - [Validation](validation.md) — validate JSON request bodies with `Schema`
 - [Content negotiation](content-negotiation.md) — JSON policy, request `Content-Type`, `Accept`, and response media types
-- [Templates](templates.md) — use the built-in project templates
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
 - [Database migrations](migrations.md) — configure, apply, package, and inspect schema migrations
@@ -24,7 +23,6 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
 - [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files
 - [Examples](examples.md) — curated index of `/examples` worth running
-- [Templates](templates.md) — built-in project templates and where auth setup fits
 - [Troubleshooting](troubleshooting.md) — common errors and how to read them
 
 If you're new, start with the [Quickstart](../quickstart.md) instead.

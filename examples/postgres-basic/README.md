@@ -7,7 +7,10 @@ query-template lowering, a simple bounded pool option, and transaction usage.
 
 Current limitations:
 
-- requires PostgreSQL and a connection string such as `SLOPPY_POSTGRES_TEST_URL`;
+- this example requires PostgreSQL, PostgreSQL client support, and a connection
+  string such as `SLOPPY_POSTGRES_TEST_URL`;
+- normal Sloppy apps, the Quickstart, SQLite, templates, and package support do
+  not require PostgreSQL or libpq;
 - not part of default CI live database execution;
 - the V8 bridge uses nonblocking libpq socket readiness and a bounded connection pool;
 - parameterized exec/query/queryOne and callback transactions are supported through the

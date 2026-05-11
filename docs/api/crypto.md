@@ -24,7 +24,8 @@ The compiler recognizes `sloppy/crypto` as a stdlib subpath and emits the
 
 ## Current status
 
-API shape is committed for pre-alpha. Every operation requires the
+This public alpha, pre-production API shape is committed for current experiments. Every
+operation requires the
 `__sloppy.crypto` bridge; without it the call rejects with
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`. Sloppy doesn't ship its own
 cryptographic primitives in JS — these helpers route to the platform

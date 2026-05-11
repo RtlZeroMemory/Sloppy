@@ -5,7 +5,7 @@ literal when you want the compiler to extract metadata.
 
 ## Start From The API Template
 
-The `api` starter is a public alpha template. It is suitable for experimenting
+The `api` starter is a public alpha, pre-production template. It is suitable for experimenting
 with Sloppy's backend shape, but it is not a production-stability promise.
 
 ```sh

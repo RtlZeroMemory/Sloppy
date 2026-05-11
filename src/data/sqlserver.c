@@ -480,11 +480,11 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
     SlStatus status = sl_sqlsrv_set_doctor(
         arena, out_result, false, sl_sqlsrv_literal("unavailable", sizeof("unavailable") - 1U),
         sl_sqlsrv_literal("unchecked", sizeof("unchecked") - 1U),
-        sl_sqlsrv_literal("SQL Server provider was built without ODBC support",
-                          sizeof("SQL Server provider was built without ODBC support") - 1U),
-        sl_sqlsrv_literal("enable SLOPPY_ENABLE_SQLSERVER with ODBC headers/libraries",
-                          sizeof("enable SLOPPY_ENABLE_SQLSERVER with ODBC headers/libraries") -
-                              1U),
+        sl_sqlsrv_literal(
+            "SQL Server provider is optional and this build has no ODBC support",
+            sizeof("SQL Server provider is optional and this build has no ODBC support") - 1U),
+        sl_sqlsrv_literal("this only matters for apps that use SQL Server",
+                          sizeof("this only matters for apps that use SQL Server") - 1U),
         sl_str_empty());
 
     if (!sl_status_is_ok(status)) {
@@ -495,9 +495,8 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
         sl_sqlsrv_literal("sqlserver provider ODBC support is unavailable",
                           sizeof("sqlserver provider ODBC support is unavailable") - 1U),
         sl_sqlsrv_literal("operation: doctor", sizeof("operation: doctor") - 1U), sl_str_empty(),
-        sl_sqlsrv_literal("enable SLOPPY_ENABLE_SQLSERVER with ODBC headers/libraries",
-                          sizeof("enable SLOPPY_ENABLE_SQLSERVER with ODBC headers/libraries") -
-                              1U),
+        sl_sqlsrv_literal("this only matters for apps that use SQL Server",
+                          sizeof("this only matters for apps that use SQL Server") - 1U),
         sl_str_empty(), sl_status_from_code(SL_STATUS_UNSUPPORTED));
 }
 
@@ -673,8 +672,11 @@ static SlStatus sl_sqlsrv_alloc_env(SQLHENV* out_env, SlDiag* out_diag, SlArena*
             sl_sqlsrv_literal("ODBC driver manager is unavailable",
                               sizeof("ODBC driver manager is unavailable") - 1U),
             operation,
-            sl_sqlsrv_literal("install or repair the platform ODBC driver manager",
-                              sizeof("install or repair the platform ODBC driver manager") - 1U),
+            sl_sqlsrv_literal("SQL Server is optional; install or repair the platform ODBC driver "
+                              "manager only for SQL Server apps",
+                              sizeof("SQL Server is optional; install or repair the platform ODBC "
+                                     "driver manager only for SQL Server apps") -
+                                  1U),
             sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_UNSUPPORTED));
     }
     rc = SQLSetEnvAttr(env, SQL_ATTR_ODBC_VERSION, (SQLPOINTER)SQL_OV_ODBC3, 0);
@@ -813,8 +815,11 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
             sl_sqlsrv_literal("unchecked", sizeof("unchecked") - 1U),
             sl_sqlsrv_literal("ODBC driver manager is unavailable",
                               sizeof("ODBC driver manager is unavailable") - 1U),
-            sl_sqlsrv_literal("install or repair the platform ODBC driver manager",
-                              sizeof("install or repair the platform ODBC driver manager") - 1U),
+            sl_sqlsrv_literal("SQL Server is optional; install or repair the platform ODBC driver "
+                              "manager only for SQL Server apps",
+                              sizeof("SQL Server is optional; install or repair the platform ODBC "
+                                     "driver manager only for SQL Server apps") -
+                                  1U),
             sl_str_empty());
         return status;
     }
@@ -829,9 +834,13 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
             sl_sqlsrv_literal("missing", sizeof("missing") - 1U),
             sl_sqlsrv_literal("Microsoft ODBC Driver for SQL Server was not found",
                               sizeof("Microsoft ODBC Driver for SQL Server was not found") - 1U),
-            sl_sqlsrv_literal("install Microsoft ODBC Driver 18 for SQL Server",
-                              sizeof("install Microsoft ODBC Driver 18 for SQL Server") - 1U),
-            sl_sqlsrv_literal("check driver name", sizeof("check driver name") - 1U));
+            sl_sqlsrv_literal("This only matters for apps that use SQL Server",
+                              sizeof("This only matters for apps that use SQL Server") - 1U),
+            sl_sqlsrv_literal("Install Microsoft ODBC Driver 17 or 18, or use your organization's "
+                              "managed driver deployment",
+                              sizeof("Install Microsoft ODBC Driver 17 or 18, or use your "
+                                     "organization's managed driver deployment") -
+                                  1U));
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -840,8 +849,9 @@ SlStatus sl_sqlserver_doctor(SlArena* arena, const SlSqlServerOpenOptions* optio
             sl_sqlsrv_literal("sqlserver provider ODBC driver is missing",
                               sizeof("sqlserver provider ODBC driver is missing") - 1U),
             sl_sqlsrv_literal("operation: doctor", sizeof("operation: doctor") - 1U), driver,
-            sl_sqlsrv_literal("install Microsoft ODBC Driver 18 for SQL Server",
-                              sizeof("install Microsoft ODBC Driver 18 for SQL Server") - 1U),
+            sl_sqlsrv_literal("Install Microsoft ODBC Driver 17 or 18 for SQL Server apps",
+                              sizeof("Install Microsoft ODBC Driver 17 or 18 for SQL Server apps") -
+                                  1U),
             sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     return sl_sqlsrv_set_doctor(

@@ -36,11 +36,12 @@ documents what Sloppy does today and what it doesn't.
   V8 intrinsics, but once enabled they perform real OS calls. Treat
   capability checks as policy, not a sandbox; if you need process
   isolation, that's the OS's job.
-- **Replace an identity provider.** Sloppy's pre-alpha auth stack covers HS256
-  JWT bearer tokens, API keys, route requirements, roles, claims, and policies.
-  It does not implement OIDC discovery, JWKS, OAuth flows, refresh tokens,
-  session cookies, or user management. Use an upstream identity provider when
-  you need those features.
+- **Replace an identity provider.** Sloppy's public alpha, pre-production auth
+  stack covers HS256 JWT bearer tokens, API keys, route requirements, roles,
+  claims, and policies.
+  It does not implement OIDC discovery, JWKS, OAuth flows, refresh tokens, or
+  user management. Use an upstream identity provider when you need those
+  features.
 - **Encrypt secrets at rest.** Config files are plaintext. Use your
   platform's secret store (Kubernetes secrets, AWS Secrets Manager,
   Vault) and inject through environment variables read via

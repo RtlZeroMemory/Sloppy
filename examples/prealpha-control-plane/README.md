@@ -1,8 +1,9 @@
 # Pre-alpha control plane
 
-This is a multi-file dogfood app for the current Sloppy app-host and
-source-input path. It models a small deployment control plane with projects,
-apps, builds, deployments, diagnostics, health routes, and a SQLite provider.
+This is a multi-file contributor/internal example for the current Sloppy
+app-host and source-input path. It models a small deployment control plane with
+projects, apps, builds, deployments, diagnostics, health routes, and a SQLite
+provider.
 
 The example is intentionally plain JavaScript source with no `package.json`.
 No npm package scope is required. The compiler resolves `"sloppy"` and relative

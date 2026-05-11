@@ -1,6 +1,8 @@
 # Stability Reference
 
-Sloppy is pre-alpha. Contracts and behavior can change between revisions.
+Sloppy is public alpha, pre-production software. It is ready for experiments,
+demos, feedback, and early exploration, but not production deployments yet.
+Contracts and behavior can change between alpha revisions.
 
 ## Version Fields in Current Artifacts
 
@@ -34,15 +36,16 @@ Parser behavior:
 - Provider metadata supports `sqlite`, `postgres`, `sqlserver`.
 - Compiler-generated static provider handles are sqlite-only.
 - Typed-handler provider injection is generated for SQLite, PostgreSQL,
-  and SQL Server; execution depends on the active bridge, provider
-  config, and live service setup.
+  and SQL Server. SQLite is embedded. PostgreSQL and SQL Server execution
+  depends on optional provider dependencies, provider config, and live service
+  setup only when those providers are used.
 - Live provider checks are opt-in and environment-dependent.
 
 ## Feature Matrix
 
 This matrix is the compact current-state map. `supported` means the surface is
 covered by current source and tests in that column. `experimental` means the
-surface exists but is still pre-alpha and may change. `rejected` means the
+surface exists in the public alpha, pre-production runtime but may change. `rejected` means the
 compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
@@ -66,8 +69,8 @@ compiler refuses the input rather than emitting a partial Plan.
 | Services | supported | supported for literal registrations and `Service<T>` | supported | supported through generated wrappers | App-host exposes `ctx.services`; native base context does not. |
 | Config/defaults/secrets | supported | supported for config metadata and `Config<"KEY">` defaults | supported | supported | Secret values are not persisted in Plan metadata. |
 | SQLite provider | supported | supported | supported | supported with V8/provider bridge | Strongest current provider path. |
-| PostgreSQL provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Requires config, active bridge, and live PostgreSQL service. |
-| SQL Server provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Requires config, ODBC driver, active bridge, and live SQL Server service. |
+| PostgreSQL provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Optional provider. Requires config, PostgreSQL client support, active bridge, and live PostgreSQL service when used. Current alpha packages do not yet ship package-local libpq. |
+| SQL Server provider | supported through runtime API and typed injection | supported metadata/generated typed injection | supported generated wrapper | live-provider gated | Optional provider. Requires config, Microsoft ODBC Driver 17 or 18, active bridge, and live SQL Server service when used. The core package does not bundle Microsoft's ODBC driver. |
 | Static provider handles | sqlite supported | sqlite supported | sqlite supported | sqlite supported | Static non-SQLite handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`. |
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
@@ -80,12 +83,12 @@ compiler refuses the input rather than emitting a partial Plan.
 | CLI `dev` | n/a | supported source/project handoff | rebuilds artifacts and optional OpenAPI | experimental V8-backed dev server | Polling watch mode rebuilds source/config/static/template/migration inputs, restarts after successful builds, and keeps the previous server running after build failures. Not a production supervisor. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; dependency graph assets and local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes/metadata. Not a runtime release archive. |
-| CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | no V8 required; PostgreSQL/SQL Server need live provider config | `status` and `migrate` work for SQLite, PostgreSQL, and SQL Server artifacts/packages. PostgreSQL and SQL Server require connection-string configuration and a reachable service. |
+| CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | no V8 required; SQLite needs no external DB driver; PostgreSQL/SQL Server need optional provider config only when selected | `status` and `migrate` work for SQLite, PostgreSQL, and SQL Server artifacts/packages. PostgreSQL and SQL Server report provider-specific diagnostics when their optional driver/service dependencies are missing. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |
 | CLI `deps` | n/a | Plan-derived | metadata-only | no V8 required | Reads dependency graph metadata from Plan or `deps.graph.json`. |
 | CLI `capabilities` | n/a | Plan-derived | metadata-only | no V8 required | Shows declared capability/provider metadata. |
 | CLI `audit` | n/a | Plan-derived | metadata-only | no V8 required | Reports static Plan issues and policy notes. |
-| CLI `doctor` | n/a | Plan-derived | metadata-only | no V8 required | Reports artifact and feature readiness. |
+| CLI `doctor` | n/a | Plan-derived | metadata-only | no V8 required | Reports artifact and feature readiness. Missing PostgreSQL or SQL Server dependencies are optional provider guidance unless the app uses that provider. |
 | App test host | supported | rejected import | n/a | n/a | `Testing` remains a JS test helper and is not valid compiler input. |
 | Logging | supported | supported config metadata | supported | supported | Native runtime owns console/file sinks; memory sink is deterministic app-host test surface. |
 | Request IDs | supported middleware | supported static middleware | supported | supported | Compiler input supports static `RequestId.defaults(...)`; generator callbacks remain app-host test-only. Native `ctx.requestId` exists. |
@@ -101,9 +104,9 @@ compiler refuses the input rather than emitting a partial Plan.
 | Codec stdlib | supported | supported from `sloppy/codec` | `stdlib.codec` feature emitted | pure JS except `Compression` (V8 bridge) | `node:buffer` is partial compatibility and does not claim full Node Buffer identity. |
 | Workers stdlib | supported app-host | supported from `sloppy/workers` | `stdlib.workers` feature emitted | pure JS for `BackgroundService`/`WorkQueue`; V8 bridge for `WorkerPool.run` and `Worker.start` | App shutdown does not yet auto-stop background services. |
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
-| Examples/dogfood | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
+| Examples and evidence catalog | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
 | Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json`, `sloppy deps --explain` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, full Node HTTP/socket parity, or unrestricted runtime discovery. |
-| Package/install path | n/a | n/a | package layout | experimental | Windows x64 and Linux x64 npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
+| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
 
 ## Current Limits
 

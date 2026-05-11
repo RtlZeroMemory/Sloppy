@@ -428,13 +428,23 @@ SlStatus sl_postgres_open(SlArena* diag_arena, const SlPostgresOpenOptions* opti
     }
     if (PQstatus(conn) != CONNECTION_OK) {
         const char* message = PQerrorMessage(conn);
+        char* message_copy = NULL;
+
+        if (message != NULL && message[0] != '\0') {
+            status = sl_pg_copy_cstr(diag_arena, sl_str_from_cstr(message), &message_copy);
+            if (!sl_status_is_ok(status)) {
+                PQfinish(conn);
+                return status;
+            }
+        }
 
         PQfinish(conn);
         return sl_pg_diag(diag_arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
                           sl_pg_literal("postgres provider connection failed",
                                         sizeof("postgres provider connection failed") - 1U),
-                          sl_pg_literal("operation: open", sizeof("operation: open") - 1U), message,
-                          safe, sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+                          sl_pg_literal("operation: open", sizeof("operation: open") - 1U),
+                          message_copy, safe, sl_str_empty(),
+                          sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
     out_connection->handle = conn;

@@ -131,7 +131,7 @@ app.get("/admin", handler)
   .requireAuth({ role: "admin" });
 ```
 
-Route auth requirements are public-alpha/experimental.
+Route auth requirements are public alpha, pre-production behavior.
 
 See [Auth](auth.md) for JWT bearer, API keys, roles, claims, and policies.
 
@@ -230,7 +230,7 @@ Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 
 ## Static files
 
-Alpha: `app.useStaticFiles(options)` is an experimental build-time API.
+`app.useStaticFiles(options)` is a public alpha, pre-production build-time API.
 
 Use [`app.useStaticFiles(options)`](static-files.md) to expose a
 project-relative directory as generated static `GET` routes. Static files are

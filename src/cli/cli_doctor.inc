@@ -456,13 +456,63 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
     if (!has_protected_routes && metadata->auth_scheme_count == 0U) {
         return;
     }
-    sl_cli_doctor_emit(
-        options, arena, sl_cli_span_cstr("app.auth.metadata"),
-        metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
-        metadata->auth_scheme_count > 0U
-            ? sl_cli_span_cstr("auth scheme metadata is Plan-visible")
-            : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
-        emitted);
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.metadata"),
+                       metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok")
+                                                        : sl_cli_span_cstr("warn"),
+                       metadata->auth_scheme_count > 0U
+                           ? sl_cli_span_cstr("auth scheme metadata is Plan-visible")
+                           : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
+                       emitted);
+}
+
+static bool sl_cli_provider_is_kind(const SlCliProvider* provider, const char* kind)
+{
+    if (provider == NULL || kind == NULL) {
+        return false;
+    }
+    return sl_cli_span_equal_cstr(provider->provider_kind, kind) ||
+           sl_cli_span_equal_cstr(provider->provider, kind);
+}
+
+static void sl_cli_doctor_emit_database_provider_dependencies(const SlCliOptions* options,
+                                                              SlArena* arena,
+                                                              const SlCliMetadata* metadata,
+                                                              bool* emitted)
+{
+    bool has_sqlite = false;
+    bool has_postgres = false;
+    bool has_sqlserver = false;
+
+    for (size_t index = 0U; index < metadata->provider_count; index += 1U) {
+        const SlCliProvider* provider = &metadata->providers[index];
+
+        has_sqlite = has_sqlite || sl_cli_provider_is_kind(provider, "sqlite");
+        has_postgres = has_postgres || sl_cli_provider_is_kind(provider, "postgres");
+        has_sqlserver = has_sqlserver || sl_cli_provider_is_kind(provider, "sqlserver");
+    }
+
+    if (has_sqlite) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("sqlite.provider"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("SQLite is embedded; SQLite providers do not require "
+                                            "PostgreSQL, SQL Server, libpq, or ODBC"),
+                           emitted);
+    }
+    if (has_postgres) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("postgres.provider"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr(
+                "PostgreSQL is optional; apps that use it need a connection string and libpq from "
+                "a bundled provider package when available or from the system"),
+            emitted);
+    }
+    if (has_sqlserver) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("sqlserver.provider"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("SQL Server is optional; apps that use it need Microsoft ODBC Driver "
+                             "17 or 18 visible to the driver manager"),
+            emitted);
+    }
 }
 
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
@@ -499,6 +549,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_ffi(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     sl_cli_doctor_emit_auth(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_database_provider_dependencies(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =

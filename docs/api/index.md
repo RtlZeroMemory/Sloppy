@@ -45,6 +45,6 @@ configuration, services, validation, or data access.
 ## Stability
 
 Surfaces are tagged `Stable`, `Experimental`, or `Planned`. Unmarked surfaces
-are stable in the sense that the *shape* won't change underneath you in
-pre-alpha — but Sloppy is pre-alpha, so breakage is possible. See
+are the current public alpha shape, not a stable compatibility promise. APIs
+and artifact formats can still change before a stable release. See
 [reference/stability.md](../reference/stability.md) for the current matrix.

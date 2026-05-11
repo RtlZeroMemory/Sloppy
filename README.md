@@ -1,19 +1,19 @@
-<img width="1267" height="370" alt="SLOPPY" src="https://github.com/user-attachments/assets/5741c460-6617-4a70-92e0-0e00c4579a4d" />
+![Sloppy logo](docs/public/logo.svg)
 
 # Sloppy
 
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml)
 [![npm alpha](https://img.shields.io/npm/v/@rtlzeromemory/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@rtlzeromemory/sloppy)
-![pre-alpha](https://img.shields.io/badge/status-pre--alpha-yellow)
+![public alpha, pre-production](https://img.shields.io/badge/status-public%20alpha%2C%20pre--production-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Pre-alpha compiler-first TypeScript runtime for backend apps, tools, and local programs.
+> Public alpha, pre-production TypeScript runtime and application framework for backend apps, tools, and local programs.
 
-Sloppy is an experimental TypeScript runtime built around a compiler-first app
-model. You write supported TypeScript, `sloppyc` lowers the source into a
-structured Plan, and the native runtime executes that known shape through an
-isolated V8 bridge.
+Sloppy is a public alpha, pre-production TypeScript runtime built around a
+compiler-visible app model. You write supported TypeScript, `sloppyc` lowers
+the source into a structured Plan, and the native runtime executes that known
+shape through an isolated V8 bridge.
 
 Sloppy has two current execution shapes:
 
@@ -64,7 +64,9 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Pre-alpha means APIs and artifact formats can change between alpha revisions.
+Public alpha, pre-production means Sloppy is ready for experiments, demos,
+feedback, and early exploration, but not production deployments yet. APIs and
+artifact formats may still change.
 
 ## Start here
 
@@ -82,27 +84,51 @@ available under [`docs/`](docs/README.md).
 
 ## Install
 
-The public alpha package is:
+The public alpha, pre-production package is:
 
 ```sh
 npm install -g @rtlzeromemory/sloppy@alpha
 ```
 
-Create, build, and run a minimal API:
+Create, build, inspect, and run the recommended API starter:
 
 ```sh
-sloppy create my-api --template minimal-api
+sloppy create my-api
 cd my-api
 sloppy build
+sloppy db migrate .sloppy --provider main
+sloppy routes .sloppy
 sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /users
+sloppy package
+sloppy run .sloppy/package --once GET /health
+```
+
+For an edit-refresh loop from the same project:
+
+```sh
 # Experimental.
 sloppy dev
 ```
 
-`sloppy dev` is experimental and may change while Sloppy is pre-alpha.
+`sloppy dev` is experimental and may change during the public alpha,
+pre-production period.
 
-Windows x64 and Linux x64 are the npm runtime targets for this alpha. macOS and
-arm64 are not published as npm platform packages yet; use source builds there.
+Create and package a route-free Program Mode tool:
+
+```sh
+sloppy create hello-tool --template program
+cd hello-tool
+sloppy run src/main.ts -- --name Ada
+sloppy build
+sloppy package
+sloppy run .sloppy/package -- --name Ada
+```
+
+Windows x64, Linux x64 glibc, and macOS are the runtime targets for this
+alpha. macOS arm64 and macOS x64 are supported macOS lanes. Linux arm64 and
+Windows arm64 do not have alpha npm platform packages yet; use source builds
+there.
 
 More detail: [Install](docs/install.md).
 
@@ -122,8 +148,8 @@ Sloppy explores a different shape:
   process.
 
 Current web-app features include routing, Results, middleware, CORS, health
-checks, JWT/API-key auth, config metadata, OpenAPI, and Plan-based audit/doctor
-commands.
+checks, JWT/API-key/session auth, config metadata, OpenAPI, SQLite/migrations,
+package/dependency graph inspection, and Plan-based audit/doctor commands.
 
 The developer experience is closer to ASP.NET Core Minimal APIs than to an
 Express-style middleware stack. The runtime model is its own: a C kernel,
@@ -151,9 +177,10 @@ For a practical comparison, see
 - **Services, config, and logging.** Singleton/scoped/transient services,
   typed config binding, `appsettings.{Environment}.json`, secret redaction,
   and structured logging.
-- **Data providers.** SQLite has the strongest end-to-end path. PostgreSQL and
-  SQL Server have provider metadata and opt-in live lanes that require local
-  services and platform dependencies.
+- **Data providers.** SQLite is embedded and has the strongest end-to-end path.
+  PostgreSQL and SQL Server are optional provider features with metadata,
+  provider-specific diagnostics, and opt-in live lanes for apps that use those
+  databases.
 - **HTTP runtime.** HTTP/1.1, bounded keep-alive, opt-in TLS, and experimental
   HTTP/2 over TLS ALPN plus h2c prior knowledge and Upgrade handling.
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
@@ -177,7 +204,7 @@ For a practical comparison, see
 Surface-by-surface status is tracked in
 [Stability Reference](docs/reference/stability.md).
 
-## What pre-alpha means
+## What public alpha, pre-production means
 
 Sloppy is usable for experiments, demos, and feedback. It is not hardened as a
 production edge runtime.
@@ -201,9 +228,11 @@ Current limits:
 - The compiler supports a focused source subset. Dynamic web shapes can run
   with partial metadata; unsupported imports/runtime features still fail
   clearly.
-- macOS and arm64 package-manager distribution are not part of this alpha.
-- Live PostgreSQL and SQL Server checks need explicit local services and
-  drivers.
+- Linux arm64 and Windows arm64 package-manager distribution are not part of
+  this alpha. macOS is supported as a macOS alpha target.
+- PostgreSQL and SQL Server are optional provider features. Their live checks
+  need explicit local services and provider dependencies; the Quickstart,
+  Program Mode, SQLite, templates, and package support do not.
 
 See [Roadmap](docs/roadmap.md) and the
 [Node compatibility roadmap](docs/roadmap/node-compatibility.md) for the
@@ -237,9 +266,9 @@ dependency story, native interop, and production-hardening direction.
 
 ## Contributing and feedback
 
-Sloppy is pre-alpha. Reports from real attempts are useful: install problems,
-confusing diagnostics, examples that do not match behavior, missing docs, and
-small API paper cuts.
+Sloppy is public alpha, pre-production software. Reports from real attempts are
+useful: install problems, confusing diagnostics, examples that do not match
+behavior, missing docs, and small API paper cuts.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [Contributor docs](docs/contributor/index.md)

@@ -1,5 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sloppy">
-  <rect width="64" height="64" rx="10" fill="#0f172a"/>
-  <path d="M15 42h34v7H15zM19 15h26v7H19zM15 29h34v7H15z" fill="#f8fafc"/>
-  <path d="M45 15h4v21h-4z" fill="#14b8a6"/>
+  <defs>
+    <linearGradient id="snout" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFB7C9"/>
+      <stop offset="1" stop-color="#F58AA8"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#2A1430"/>
+  <path d="M16 22 L22 16 L24 26 Z" fill="#F58AA8"/>
+  <path d="M48 22 L42 16 L40 26 Z" fill="#F58AA8"/>
+  <path d="M16 22 L22 16 L24 26 Z" fill="none" stroke="#2A1430" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M48 22 L42 16 L40 26 Z" fill="none" stroke="#2A1430" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M19 16.5 L22.5 19 L21 23 Z" fill="#FFD3DE"/>
+  <path d="M45 16.5 L41.5 19 L43 23 Z" fill="#FFD3DE"/>
+  <circle cx="32" cy="34" r="16" fill="#F58AA8" stroke="#2A1430" stroke-width="2"/>
+  <ellipse cx="32" cy="38" rx="9" ry="7" fill="url(#snout)" stroke="#2A1430" stroke-width="2"/>
+  <ellipse cx="29" cy="38" rx="1.1" ry="1.6" fill="#2A1430"/>
+  <ellipse cx="35" cy="38" rx="1.1" ry="1.6" fill="#2A1430"/>
+  <circle cx="26" cy="30" r="1.6" fill="#2A1430"/>
+  <circle cx="38" cy="30" r="1.6" fill="#2A1430"/>
+  <path d="M27 44 Q31 46 33.5 44.5" fill="none" stroke="#2A1430" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="26" cy="29.4" r="0.5" fill="#FFD3DE"/>
+  <circle cx="38" cy="29.4" r="0.5" fill="#FFD3DE"/>
 </svg>

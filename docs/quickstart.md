@@ -1,7 +1,9 @@
 # Quickstart
 
-A two-route Sloppy API in under five minutes. You'll create a project, build
-artifacts, and run a request through the runtime.
+A Sloppy API in under five minutes. Sloppy is public alpha,
+pre-production software: this flow is useful for experiments, demos, and
+feedback, but not a production deployment recipe. You'll create a project,
+build artifacts, and run a request through the runtime.
 
 Prerequisites:
 
@@ -9,6 +11,27 @@ Prerequisites:
 - Your build executes handlers — `sloppy --version` succeeds and your CLI was
   built/published with V8 enabled. If not, you can still finish the
   `sloppy build` step.
+
+## Fast path: API starter
+
+The default `api` template is the recommended backend starter. It includes
+routes, SQLite migration metadata, validation, static files, and package flow.
+
+```sh
+sloppy create my-api
+cd my-api
+sloppy build
+sloppy db migrate .sloppy --provider main
+sloppy routes .sloppy
+sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /users
+sloppy package
+sloppy db migrate .sloppy/package --provider main
+sloppy run .sloppy/package --once GET /health
+```
+
+Use the `minimal-api` walkthrough below when you want the smallest source file
+instead of the recommended starter.
 
 ## 1. Create a project
 
@@ -115,7 +138,8 @@ sloppy run src/main.ts --once GET /hello/Ada
 ```
 
 For a normal edit-refresh loop, use experimental `sloppy dev` from the project
-directory. Its behavior may change while Sloppy is pre-alpha.
+directory. Its behavior may change during the public alpha, pre-production
+period.
 
 ```sh
 # Experimental.
@@ -130,6 +154,7 @@ the previous server keeps running while the diagnostic is printed.
 
 ```sh
 sloppy package
+sloppy run .sloppy/package --once GET /health
 ```
 
 This validates the generated artifacts and writes:
@@ -162,6 +187,42 @@ curl http://127.0.0.1:5173/health
 
 ```sh
 sloppy run .sloppy --host 0.0.0.0 --port 8080
+```
+
+## Program Mode quick check
+
+Program Mode is the route-free shape for console tools and local programs:
+
+```sh
+sloppy create hello-tool --template program
+cd hello-tool
+sloppy run src/main.ts -- --name Ada
+sloppy build
+sloppy run .sloppy -- --name Ada
+sloppy package
+sloppy run .sloppy/package -- --name Ada
+```
+
+See [Program Mode](guide/program-mode.md) for args, context, exit codes, and
+package layout.
+
+## Package dependency quick check
+
+The `package-api` starter shows compatible installed package bundling. Sloppy
+uses dependencies that are already present in `node_modules`; it does not
+install registry packages during `sloppy build` or discover `node_modules` at
+runtime.
+
+```sh
+sloppy create package-demo --template package-api
+cd package-demo
+npm install --ignore-scripts --no-audit
+sloppy build
+sloppy deps .sloppy
+sloppy deps .sloppy --explain
+sloppy run .sloppy --once GET /health
+sloppy package
+sloppy run .sloppy/package --once GET /health
 ```
 
 ## What just happened

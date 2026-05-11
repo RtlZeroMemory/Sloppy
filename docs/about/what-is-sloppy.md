@@ -41,7 +41,9 @@ which provider implementations to wire up.
   existing Node apps unchanged. It runs Sloppy applications.
 - **Not a library you bolt onto an existing app.** It's a runtime; you
   invoke `sloppy run`, not `node`.
-- **Pre-alpha.** APIs and artifact formats can change between alpha revisions.
+- **Public alpha, pre-production.** Sloppy is ready for experiments, demos, and
+  feedback, but not production deployments yet. APIs and artifact formats can
+  change between alpha revisions.
 
 ## What it inspires from
 
@@ -63,7 +65,7 @@ Real:
   service injection, structured logging,
   configuration with typed binding.
 
-Pre-alpha:
+Public alpha, pre-production:
 
 - Production hardening (long graceful drain, broader TLS posture).
 - The app-host feature surface and compiler subset are intentionally narrow:
@@ -73,7 +75,8 @@ Pre-alpha:
   at build time with a diagnostic.
 - OpenAPI is generated from Plan metadata today; security schemes, richer
   response schemas, and full runtime-pipeline modeling are not represented.
-- npm runtime packages for Windows x64 and Linux x64.
-- Cross-platform polish: macOS and arm64 use source/archive paths today.
+- npm runtime packages for Windows x64, Linux x64 glibc, and macOS.
+- Cross-platform polish: Linux arm64 and Windows arm64 use source/archive paths
+  today.
 
 [Quickstart →](../quickstart.md)

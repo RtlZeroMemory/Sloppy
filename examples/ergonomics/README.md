@@ -26,8 +26,8 @@ Current product state:
   fixture.
 - `sloppy run --artifacts` currently runs emitted artifacts such as
   `examples/compiler-hello`.
-- `sloppyc` compilation, route-group/schema extraction, and `app.plan.json` emission for
-  this broader builder shape are future source-extraction work.
+- `sloppyc` compilation, route-group/schema extraction, and `app.plan.json` emission
+  for this broader builder shape are planned separately.
 - The bounded `sloppy run` path currently loads generated artifacts. Source-shape loading,
   request-context materialization, and request body/query parsing for this example belong
   to later app-host runtime work.

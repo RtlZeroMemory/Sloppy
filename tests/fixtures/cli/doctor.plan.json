@@ -24,21 +24,27 @@
       "displayName": "Doctor.Index"
     }
   ],
-  "doctorChecks": [
+  "dataProviders": [
     {
-      "id": "sqlite.provider",
-      "status": "ok",
-      "message": "sqlite provider metadata available"
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": "data.main",
+      "database": "app.db"
     },
     {
-      "id": "postgres.live",
-      "status": "warn",
-      "message": "live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set"
+      "token": "data.analytics",
+      "provider": "postgres",
+      "providerKind": "postgres",
+      "service": "data.analytics",
+      "configKey": "Sloppy:Providers:postgres:analytics:connectionString"
     },
     {
-      "id": "sqlserver.driver",
-      "status": "error",
-      "message": "connectionString=Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=<PASSWORD>; Microsoft ODBC Driver 18 for SQL Server not found"
+      "token": "data.reporting",
+      "provider": "sqlserver",
+      "providerKind": "sqlserver",
+      "service": "data.reporting",
+      "configKey": "Sloppy:Providers:sqlserver:reporting:connectionString"
     }
   ]
 }

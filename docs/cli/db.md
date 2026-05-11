@@ -65,15 +65,26 @@ SQL Server, each migration is wrapped in its own transaction and recorded in
 
 Running `migrate` again is a no-op when all file hashes match.
 
-PostgreSQL and SQL Server migrations require a live connection string. If the
-Plan provider has a `configKey`, `sloppy db` reads the corresponding environment
-variable. Otherwise it reads the compiler-generated key:
+SQLite migrations do not require PostgreSQL, SQL Server, libpq, or ODBC.
+
+PostgreSQL and SQL Server migrations are optional provider paths. They require
+a live connection string and the matching provider dependency only when the
+selected provider uses that database. If the Plan provider has a `configKey`,
+`sloppy db` reads the corresponding environment variable. Otherwise it reads
+the compiler-generated key:
 
 - `Sloppy__Providers__postgres__<name>__connectionString`
 - `Sloppy__Providers__sqlserver__<name>__connectionString`
 
+If PostgreSQL support is unavailable, the command reports that the PostgreSQL
+provider is unavailable and points to the optional provider package path when
+available or system libpq. If SQL Server support is unavailable, the command
+reports that the SQL Server provider is unavailable and points to Microsoft
+ODBC Driver 17 or 18 from Microsoft's platform packages or an
+organization-managed deployment. Connection strings are redacted.
+
 ## Current Limits
 
 - PostgreSQL and SQL Server migrations require live database services and
-  provider support on the current machine.
+  provider support only when the selected provider uses those databases.
 - Migration paths currently use the project-relative `directory/*.sql` shape.

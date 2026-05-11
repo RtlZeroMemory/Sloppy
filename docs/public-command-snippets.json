@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "status": "public alpha, pre-production",
+  "purpose": "Lightweight manifest of public command snippets that should stay aligned with README, docs, templates, and current CLI reference.",
+  "snippets": [
+    {
+      "id": "install-smoke",
+      "source": "docs/install.md",
+      "commands": [
+        "npm install -g @rtlzeromemory/sloppy@alpha",
+        "sloppy --version",
+        "sloppy --help"
+      ],
+      "verification": "Registry metadata and CLI reference checked; executable sloppy is not installed in this workspace."
+    },
+    {
+      "id": "readme-api-starter",
+      "source": "README.md",
+      "commands": [
+        "sloppy create my-api",
+        "cd my-api",
+        "sloppy build",
+        "sloppy db migrate .sloppy --provider main",
+        "sloppy routes .sloppy",
+        "sloppy run .sloppy --once GET /health",
+        "sloppy run .sloppy --once GET /users",
+        "sloppy package",
+        "sloppy run .sloppy/package --once GET /health"
+      ],
+      "verification": "Command shapes match templates/api/README.md and CLI reference."
+    },
+    {
+      "id": "quickstart-minimal-api",
+      "source": "docs/quickstart.md",
+      "commands": [
+        "sloppy create hello-api --template minimal-api",
+        "cd hello-api",
+        "sloppy build",
+        "sloppy run .sloppy --once GET /hello/Ada",
+        "sloppy run src/main.ts --once GET /hello/Ada",
+        "sloppy dev",
+        "sloppy package",
+        "sloppy run .sloppy/package --once GET /health"
+      ],
+      "verification": "Command shapes match templates/minimal-api/README.md and CLI reference."
+    },
+    {
+      "id": "program-mode",
+      "source": "docs/guide/program-mode.md",
+      "commands": [
+        "sloppy create hello-tool --template program",
+        "cd hello-tool",
+        "sloppy run src/main.ts -- --name Ada",
+        "sloppy build",
+        "sloppy run .sloppy -- --name Ada",
+        "sloppy package",
+        "sloppy run .sloppy/package -- --name Ada"
+      ],
+      "verification": "Command shapes match templates/program/README.md and CLI reference."
+    },
+    {
+      "id": "package-dependency-starter",
+      "source": "templates/package-api/README.md",
+      "commands": [
+        "npm install --ignore-scripts --no-audit",
+        "sloppy build",
+        "sloppy deps .sloppy",
+        "sloppy deps .sloppy --explain",
+        "sloppy deps .sloppy --format json",
+        "sloppy run .sloppy --once GET /health",
+        "sloppy package",
+        "sloppy run .sloppy/package --once GET /health"
+      ],
+      "verification": "Command shapes match package/dependency docs and CLI reference."
+    }
+  ]
+}

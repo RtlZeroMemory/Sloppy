@@ -22,6 +22,19 @@
         set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endfunction()
 
+    function(sloppy_add_cli_nonzero_stderr_test test_name expected_stderr forbidden_stderr env_name
+             env_value)
+        add_test(
+            NAME ${test_name}
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_EXPECTED_STDERR=${expected_stderr}"
+                "-DSLOPPY_FORBIDDEN_STDERR=${forbidden_stderr}" "-DSLOPPY_ENV_NAME=${env_name}"
+                "-DSLOPPY_ENV_VALUE=${env_value}" "-DSLOPPY_CLI_ARGS=${ARGN}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_nonzero_stderr_contains.cmake")
+        set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endfunction()
+
     sloppy_add_cli_golden_test(
         sloppy.cli.routes_text tests/golden/cli/routes-text.txt routes --plan
         tests/fixtures/cli/route-metadata.plan.json --format text)
@@ -192,6 +205,18 @@
     sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_config_json tests/golden/cli/audit-config-json.json audit --plan
         tests/fixtures/cli/config.plan.json --format json)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.db_postgres_optional_dependency
+        "PostgreSQL provider is unavailable(.|\n|\r)*This only matters for apps that use PostgreSQL(.|\n|\r)*optional PostgreSQL provider package"
+        "pg-secret-leak" "Sloppy__Providers__postgres__main__connectionString"
+        "postgres://user:pg-secret-leak@127.0.0.1:1/sloppy?connect_timeout=1" db status
+        tests/fixtures/cli/db-postgres-missing/compiled --provider main)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.db_sqlserver_optional_dependency
+        "SQL Server provider is unavailable(.|\n|\r)*This only matters for apps that use SQL Server(.|\n|\r)*Microsoft ODBC Driver 17 or 18"
+        "sql-secret-leak" "Sloppy__Providers__sqlserver__main__connectionString"
+        "Driver={Sloppy Missing Driver For Tests}\\;PWD=sql-secret-leak" db status
+        tests/fixtures/cli/db-sqlserver-missing/compiled --provider main)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_partial_json tests/golden/cli/audit-partial-json.json audit --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)

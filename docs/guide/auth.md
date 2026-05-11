@@ -3,7 +3,8 @@
 This guide shows a small API protected with JWT bearer tokens, signed session
 cookies, API keys, and a named authorization policy.
 
-Auth is public-alpha/experimental in this pre-alpha runtime.
+Auth is a public alpha, pre-production framework feature. Sloppy provides auth
+building blocks for API apps; it is not an identity provider.
 
 ## Configure Secrets
 
@@ -139,6 +140,7 @@ auth scheme metadata.
 ## Current Limits
 
 - JWT support is HS256 only. `none` and unsupported algorithms are rejected.
-- OIDC discovery, JWKS, asymmetric JWT algorithms, and OAuth flows are not implemented.
+- OIDC discovery, JWKS, asymmetric JWT algorithms, OAuth flows, refresh tokens,
+  and user database management are not included.
 - `sloppy run --once` has a minimal synthetic request path and is not the best
   interface for manual auth-header testing.

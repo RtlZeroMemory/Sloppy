@@ -4,9 +4,11 @@ Sloppy ships first-party providers for SQLite, PostgreSQL, and SQL Server.
 Queries use a tagged template literal that's safe by construction — every
 interpolation becomes a parameter, never a string concatenation.
 
-> SQLite is the most complete provider path today. PostgreSQL and SQL
-> Server are pre-alpha and require their live dependencies (libpq,
-> ODBC) plus a V8-enabled runtime.
+> SQLite is the most complete provider path today and does not require an
+> external database server. PostgreSQL and SQL Server are optional,
+> live-service-gated public alpha features. Normal Sloppy apps, the Quickstart,
+> Program Mode, SQLite, templates, and package support do not need PostgreSQL,
+> SQL Server, libpq, or ODBC.
 
 ## Tagged template
 
@@ -209,7 +211,11 @@ fixed result shapes.
 ## PostgreSQL
 
 > Experimental. Requires a V8-enabled runtime and `libpq` available at
-> runtime. Live evidence is opt-in.
+> runtime when the app uses PostgreSQL. Live evidence is opt-in.
+
+PostgreSQL client support is optional. Current alpha packages use system or
+build-provided libpq; package-local PostgreSQL provider packages are planned
+only after binary distribution and license contents are verified.
 
 `data.postgres.open(...)` requires an explicit `connectionString`. Set
 `maxConnections` from 1 to 256 to size the native pool for the deployment; the
@@ -263,7 +269,12 @@ generated provider metadata.
 ## SQL Server
 
 > Experimental. Requires a V8-enabled runtime and an ODBC driver capable
-> of async connection/statement work.
+> of async connection/statement work when the app uses SQL Server.
+
+SQL Server support is optional. Sloppy does not bundle Microsoft's ODBC driver
+in the core alpha package; install Microsoft ODBC Driver 17 or 18 from
+Microsoft's platform packages or through your organization's managed driver
+deployment.
 
 Same shape — `data.sqlserver.open({ connectionString })` requires an
 explicit ODBC connection string. Set `maxConnections` from 1 to 256 to size the
@@ -322,8 +333,8 @@ configuration:
 | Marker | Generated provider metadata | Runtime requirements |
 | --- | --- | --- |
 | `Sqlite<"main">` | `sqlite/main` provider plus `data.main` capability | V8-enabled runtime and SQLite bridge/config |
-| `Postgres<"main">` | `postgres/main` provider plus `data.main` capability | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, and live service setup |
-| `SqlServer<"main">` | `sqlserver/main` provider plus `data.main` capability | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, and ODBC driver support |
+| `Postgres<"main">` | `postgres/main` provider plus `data.main` capability | `Sloppy__Providers__postgres__main__connectionString`, active PostgreSQL bridge, PostgreSQL client support, and live service setup |
+| `SqlServer<"main">` | `sqlserver/main` provider plus `data.main` capability | `Sloppy__Providers__sqlserver__main__connectionString`, active SQL Server bridge, Microsoft ODBC Driver 17 or 18, and live service setup |
 
 The `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` diagnostic applies to
 compiler-generated **static** non-SQLite provider handles such as

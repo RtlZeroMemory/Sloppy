@@ -62,9 +62,10 @@ A few reasons that compound:
   `sloppy capabilities`, `sloppy openapi`, and `sloppy audit` all work off
   the Plan. None of them spin up V8.
 - **The runtime can fail fast on missing dependencies.** If your app needs
-  PostgreSQL and you start it on a host that doesn't have `libpq`, it
-  refuses to serve traffic instead of half-booting and crashing on the
-  first query.
+  PostgreSQL and the PostgreSQL provider dependency is unavailable, or if it
+  needs SQL Server and Microsoft ODBC Driver 17 or 18 is unavailable, Sloppy
+  reports that provider-specific problem instead of half-booting and crashing
+  on the first query. SQLite apps are unaffected.
 - **Tooling has a stable target.** OpenAPI generation, security audits, and
   codegen consumers can read the Plan instead of grepping source.
 - **Determinism.** A given source + compiler version produces the same
@@ -74,8 +75,9 @@ A few reasons that compound:
 
 Things the Plan deliberately is *not*:
 
-- It isn't an npm `package.json`. It doesn't list dependencies. Sloppy apps
-  have no third-party packages to list.
+- It isn't an npm `package.json`. Package-manager metadata stays in
+  `package.json`; Sloppy records compatible bundled modules in dependency graph
+  metadata instead of using the Plan as a package manager lockfile.
 - It isn't a deployment descriptor. It says nothing about how to run the
   app on Kubernetes or anywhere else.
 - It isn't user-editable. Editing it by hand is supported in the sense that
@@ -94,6 +96,6 @@ or compiler flags, not to edit the artifact.
 
 ## Plan version
 
-The schema version is recorded as `schemaVersion: "plan/v1-alpha"`. Pre-alpha
-breaking changes are possible — if a runtime upgrade rejects an old Plan,
-rebuild with the matching compiler.
+The schema version is recorded as `schemaVersion: "plan/v1-alpha"`.
+Public alpha, pre-production breaking changes are possible. If a runtime
+upgrade rejects an old Plan, rebuild with the matching compiler.

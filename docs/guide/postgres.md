@@ -1,7 +1,18 @@
 # PostgreSQL Guide
 
-PostgreSQL support is pre-alpha and live-service gated. Use it when you have a
-V8-enabled runtime, `libpq`, and a configured PostgreSQL service.
+PostgreSQL support is public alpha, pre-production, optional, and live-service
+gated.
+
+This walkthrough uses PostgreSQL, so it needs a PostgreSQL connection string
+and PostgreSQL client support.
+
+You do not need PostgreSQL, libpq, or the PostgreSQL provider package for
+normal Sloppy apps, the Quickstart, Program Mode, SQLite, templates, or package
+support.
+
+Current alpha packages use system or build-provided libpq. Package-local
+PostgreSQL provider packages are the intended product path when the binaries,
+licenses, and package contents are verified.
 
 ## Configure
 
@@ -29,7 +40,8 @@ await db.queryOne("select 1 as ok", []);
 ```
 
 Live PostgreSQL checks are optional and gated by environment variables. Default
-tests do not start or require a PostgreSQL service.
+tests do not start or require a PostgreSQL service or libpq setup for apps that
+do not use PostgreSQL.
 
 ## Migrations
 

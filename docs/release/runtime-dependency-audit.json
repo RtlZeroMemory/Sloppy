@@ -7,7 +7,7 @@
     {
       "id": "v8",
       "packagePolicy": "SDK headers/import libraries excluded; V8 runtime support included only in explicit V8 package lanes; static Linux SDK packages may link V8 into bin/sloppy",
-      "currentStatus": "Windows x64 SDK artifact source exists; Linux x64 SDK can be built locally with tools/unix/build-v8.sh; macOS V8 runtime package lanes are planned",
+      "currentStatus": "Windows x64, Linux x64 glibc, and macOS are the current public alpha runtime package targets; Linux arm64 and Windows arm64 have no alpha npm platform package",
       "noticeStatus": "incomplete before publishing"
     },
     {
@@ -30,14 +30,14 @@
     },
     {
       "id": "libpq",
-      "packagePolicy": "Windows package bundles vcpkg runtime DLLs where present; Unix packages currently declare host-linked/system-provided status",
-      "currentStatus": "live PostgreSQL lanes are opt-in and not default package evidence",
+      "packagePolicy": "main package stays lean; PostgreSQL provider-package binaries require separate verified package contents, license notices, and package evidence before they are shipped",
+      "currentStatus": "current alpha uses system or build-provided libpq; package-local PostgreSQL provider packages are planned follow-up work, not default package evidence",
       "noticeStatus": "incomplete before publishing"
     },
     {
       "id": "sql-server-odbc",
-      "packagePolicy": "ODBC driver installation is not bundled in default packages",
-      "currentStatus": "driver availability must be reported as dependency-backed or unavailable evidence",
+      "packagePolicy": "Microsoft ODBC driver installation is not bundled in default packages or Sloppy core; users install Microsoft's platform package or use organization-managed driver deployment",
+      "currentStatus": "driver availability must be reported as optional provider dependency-backed or unavailable evidence",
       "noticeStatus": "incomplete before publishing"
     },
     {
@@ -49,13 +49,14 @@
     {
       "id": "platform-system-libraries",
       "packagePolicy": "system libraries are declared through manifest dependency status when not bundled",
-      "currentStatus": "Linux/macOS package status remains experimental until hosted package smoke evidence is reviewed",
+      "currentStatus": "Windows x64, Linux x64 glibc, and macOS are the current npm package targets; Linux arm64 and Windows arm64 remain source-build paths until alpha package evidence exists",
       "noticeStatus": "incomplete before publishing"
     }
   ],
   "boundaries": [
     "This audit is not final legal review.",
     "Publishing requires a separate release approval.",
-    "This audit does not make live providers, TLS, V8, or every platform supported."
+    "This audit does not make live providers, TLS, V8, or every platform supported.",
+    "This audit does not approve bundled PostgreSQL binaries or Microsoft ODBC binaries."
   ]
 }

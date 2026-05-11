@@ -136,16 +136,17 @@ runtime secret/config hand-off design.
 - **OS sandboxing.** Capabilities are policy declarations; they don't
   prevent native code or kernel bugs from misbehaving. If you need
   process isolation, that's the OS's job.
-- **Identity-provider features.** Sloppy's pre-alpha auth stack covers HS256
-  JWT bearer tokens, API keys, route requirements, roles, claims, and policies.
+- **Identity-provider features.** Sloppy's public alpha, pre-production auth
+  stack covers HS256 JWT bearer tokens, API keys, route requirements, roles,
+  claims, and policies.
   OIDC, JWKS, OAuth flows, refresh tokens, session cookies, and user management
   are separate product work.
 - **Encryption at rest.** Use the platform's secret store (Kubernetes
   secrets, AWS Secrets Manager, Vault) to inject values via
   environment variables.
-- **Threat modeling for production deployment.** Pre-alpha. The
-  bridge boundaries and redaction give you a reasonable foundation;
-  production posture is your responsibility for now.
+- **Threat modeling for production deployment.** Sloppy is public alpha,
+  pre-production software. The bridge boundaries and redaction give you a
+  reasonable foundation; production posture is your responsibility for now.
 
 ## Reporting issues
 

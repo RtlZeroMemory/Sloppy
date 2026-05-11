@@ -416,6 +416,47 @@ static const char* sl_db_connection_string_from_env(const SlCliProvider* provide
     return value;
 }
 
+static void sl_db_write_diag_hint(SlStr hint)
+{
+    if (sl_str_is_empty(hint)) {
+        return;
+    }
+    sl_cli_write_cstr(stderr, "  ");
+    fwrite(hint.ptr, 1U, hint.length, stderr);
+    sl_cli_write_cstr(stderr, "\n");
+}
+
+static void sl_db_write_postgres_open_failure(const SlDiag* diag)
+{
+    sl_cli_write_cstr(stderr, "sloppy db: PostgreSQL provider is unavailable\n");
+    sl_cli_write_cstr(
+        stderr,
+        "This only matters for apps that use PostgreSQL migrations or the PostgreSQL provider.\n");
+    sl_cli_write_cstr(stderr, "Fix: install the optional PostgreSQL provider package when "
+                              "available, or install system libpq for your platform.\n");
+    if (diag != NULL) {
+        for (size_t index = 0U; index < diag->hint_count; index += 1U) {
+            sl_db_write_diag_hint(diag->hints[index]);
+        }
+    }
+}
+
+static void sl_db_write_sqlserver_open_failure(const SlDiag* diag)
+{
+    sl_cli_write_cstr(stderr, "sloppy db: SQL Server provider is unavailable\n");
+    sl_cli_write_cstr(
+        stderr,
+        "This only matters for apps that use SQL Server migrations or the SQL Server provider.\n");
+    sl_cli_write_cstr(stderr,
+                      "Required: Microsoft ODBC Driver 17 or 18, installed from Microsoft's "
+                      "platform package or your organization's managed driver deployment.\n");
+    if (diag != NULL) {
+        for (size_t index = 0U; index < diag->hint_count; index += 1U) {
+            sl_db_write_diag_hint(diag->hints[index]);
+        }
+    }
+}
+
 static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrationConfig* config,
                                       SlCliDbMigrationFile* files, size_t capacity,
                                       size_t* out_count)
@@ -1002,6 +1043,7 @@ static int sl_cli_command_db(const SlCliOptions* options)
         const char* connection_string = sl_db_connection_string_from_env(
             provider, &migration_config, env_name, sizeof(env_name));
         SlPostgresOpenOptions open_options = {0};
+        SlDiag diag = {0};
         if (connection_string == NULL) {
             yyjson_doc_free(doc);
             return 1;
@@ -1009,8 +1051,9 @@ static int sl_cli_command_db(const SlCliOptions* options)
         open_options =
             sl_postgres_open_options_connection_string(sl_str_from_cstr(connection_string));
         open_options.access = SL_POSTGRES_ACCESS_READWRITE;
-        if (!sl_status_is_ok(sl_postgres_open(&arena, &open_options, &postgres_connection, NULL))) {
-            sl_cli_write_cstr(stderr, "sloppy db: failed to open PostgreSQL database\n");
+        if (!sl_status_is_ok(sl_postgres_open(&arena, &open_options, &postgres_connection, &diag)))
+        {
+            sl_db_write_postgres_open_failure(&diag);
             yyjson_doc_free(doc);
             return 1;
         }
@@ -1021,6 +1064,7 @@ static int sl_cli_command_db(const SlCliOptions* options)
         const char* connection_string = sl_db_connection_string_from_env(
             provider, &migration_config, env_name, sizeof(env_name));
         SlSqlServerOpenOptions open_options = {0};
+        SlDiag diag = {0};
         if (connection_string == NULL) {
             yyjson_doc_free(doc);
             return 1;
@@ -1028,9 +1072,10 @@ static int sl_cli_command_db(const SlCliOptions* options)
         open_options =
             sl_sqlserver_open_options_connection_string(sl_str_from_cstr(connection_string));
         open_options.access = SL_SQLSERVER_ACCESS_READWRITE;
-        if (!sl_status_is_ok(sl_sqlserver_open(&arena, &open_options, &sqlserver_connection, NULL)))
+        if (!sl_status_is_ok(
+                sl_sqlserver_open(&arena, &open_options, &sqlserver_connection, &diag)))
         {
-            sl_cli_write_cstr(stderr, "sloppy db: failed to open SQL Server database\n");
+            sl_db_write_sqlserver_open_failure(&diag);
             yyjson_doc_free(doc);
             return 1;
         }

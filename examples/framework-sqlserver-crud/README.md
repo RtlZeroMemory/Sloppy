@@ -17,6 +17,11 @@ A users API backed by SQL Server:
 - A SQL Server test database with a `users` table.
 - `Sloppy__Providers__sqlserver__main__connectionString` set in the environment.
 
+You do not need SQL Server or ODBC for normal Sloppy apps, the Quickstart,
+Program Mode, SQLite, templates, or package support. Sloppy does not bundle
+Microsoft's ODBC driver in the core alpha package; install it from Microsoft's
+platform packages or through your organization's managed deployment.
+
 Example table shape:
 
 ```sql
@@ -55,9 +60,10 @@ JSON rows from SQL Server.
 
 ## Scope
 
-Schema setup is manual for this example. It also depends on an installed ODBC
-driver and available async SQL Server support. Migrations, ORM-style modeling,
-deployment guidance, and package dependency support are future work.
+Schema setup is manual for this example. It also depends on Microsoft ODBC
+Driver 17 or 18 and available async SQL Server support. Migrations, ORM-style
+modeling, deployment guidance is outside this example, and package dependency
+behavior is covered by the package/dependency examples.
 
 ## Related docs
 
