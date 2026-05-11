@@ -15,6 +15,7 @@ Current Sloppy includes:
 - `sloppy create`, `build`, `run`, `routes`, `deps`, `capabilities`,
   `doctor`, `audit`, `openapi`, and `package`;
 - HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c;
+- experimental build-time static file routes for supported project assets;
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;
@@ -32,7 +33,9 @@ shape:
 - more examples that show real app structure without implying Node
   compatibility;
 - broader provider evidence for PostgreSQL and SQL Server;
-- repeated HTTP/2 conformance and client/server coverage.
+- repeated HTTP/2 conformance and client/server coverage;
+- stronger production static-file behavior such as range requests,
+  compression negotiation, and cache policy hardening.
 
 ## Program Mode
 

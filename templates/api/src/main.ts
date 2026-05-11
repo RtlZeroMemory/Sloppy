@@ -7,6 +7,11 @@ const app = Sloppy.create();
 
 app.use(sqlite("main"));
 app.use(ProblemDetails.defaults({ detail: "never" }));
+app.useStaticFiles({
+    requestPath: "/public",
+    root: "public",
+    cache: { maxAgeSeconds: 60 },
+});
 app.useModule(usersModule);
 app.useModule(healthModule);
 

@@ -191,6 +191,14 @@ What's on `ctx` is documented in [request-context](request-context.md).
 Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 (group-local). See [middleware](middleware.md).
 
+## Static files
+
+Alpha: `app.useStaticFiles(options)` is an experimental build-time API.
+
+Use [`app.useStaticFiles(options)`](static-files.md) to expose a
+project-relative directory as generated static `GET` routes. Static files are
+captured at build/package time, not looked up dynamically per request.
+
 ## What's not supported yet
 
 - Direct HEAD route registration

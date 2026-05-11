@@ -362,17 +362,17 @@ static void sl_cli_print_help(void)
            "api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
-    printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("               [--environment Development] [--host 127.0.0.1] [--port <port>]\n");
     printf(
         "  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
-    printf("                 [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
+    printf("                 [--environment Development] [--host 127.0.0.1] [--port <port>]\n");
     printf("                 [--format text|json]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts "
            "<dir>] [--stdlib <dir>]\n");
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
-           "[--port 5173]\n");
-    printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body-file <path>]\n");
-    printf("             [-- <program-args...>]\n");
+           "[--port <port>]\n");
+    printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body text]\n");
+    printf("             [--body-file path] [--json json] [-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
@@ -412,8 +412,8 @@ static void sl_cli_print_command_help(const char* command)
                "[--stdlib "
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
-        printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
-        printf("                  [--header 'Name: value'] [--body-file <path>]\n");
+        printf("                  [--host 127.0.0.1] [--port <port>] [--once METHOD TARGET]\n");
+        printf("                  [--header 'Name: value'] [--body text|--body-file path|--json json]\n");
         printf("                  [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
@@ -425,7 +425,7 @@ static void sl_cli_print_command_help(const char* command)
         printf("Usage: sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind "
                "web|program]\n");
         printf("                    [--environment Development] [--host 127.0.0.1]\n");
-        printf("                    [--port 5173]\n");
+        printf("                    [--port <port>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc and validates Plan-backed artifacts.\n");
         printf("--artifacts is not accepted for build; build never enters V8.\n");
@@ -435,7 +435,7 @@ static void sl_cli_print_command_help(const char* command)
         printf("Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind "
                "web|program]\n");
         printf("                      [--environment Development] [--host 127.0.0.1]\n");
-        printf("                      [--port 5173] [--format text|json]\n");
+        printf("                      [--port <port>] [--format text|json]\n");
         printf("\n");
         printf("Compiles source input and writes a directory app package under .sloppy/package/ "
                "or <out>/package/.\n");
@@ -578,6 +578,39 @@ static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCli
     return 0;
 }
 
+static int sl_cli_set_once_body_flag(SlCliOptions* out, const char* flag, const char* value)
+{
+    if (out == NULL || flag == NULL || value == NULL) {
+        return -1;
+    }
+    if (out->once_body != NULL || out->once_body_file != NULL || out->once_json != NULL) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: --body, --body-file, and --json are mutually exclusive\n");
+        return -1;
+    }
+    if (strcmp(flag, "--body") == 0) {
+        out->once_body = value;
+        return 0;
+    }
+    if (strcmp(flag, "--body-file") == 0) {
+        if (value[0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy run: --body-file requires a path\n");
+            return -1;
+        }
+        out->once_body_file = value;
+        return 0;
+    }
+    if (strcmp(flag, "--json") == 0) {
+        if (value[0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy run: --json requires JSON text\n");
+            return -1;
+        }
+        out->once_json = value;
+        return 0;
+    }
+    return -1;
+}
+
 static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     int path_result = 0;
@@ -698,6 +731,38 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         out->once_method = argv[*index + 1];
         out->once_target = argv[*index + 2];
         *index += 3;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--header") == 0) {
+        if (*index + 1 >= argc || strchr(argv[*index + 1], ':') == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy run: --header requires name:value\n");
+            return -1;
+        }
+        if (out->once_header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many --header values\n");
+            return -1;
+        }
+        out->once_headers[out->once_header_count] = argv[*index + 1];
+        out->once_header_count += 1U;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--body") == 0 || strcmp(argv[*index], "--body-file") == 0 ||
+        strcmp(argv[*index], "--json") == 0)
+    {
+        const char* flag = argv[*index];
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: ");
+            sl_cli_write_cstr(stderr, flag);
+            sl_cli_write_cstr(stderr, " requires a value\n");
+            return -1;
+        }
+        if (sl_cli_set_once_body_flag(out, flag, argv[*index + 1]) != 0) {
+            return -1;
+        }
+        *index += 2;
         return 1;
     }
 
@@ -964,7 +1029,7 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
         return 1;
     }
 
-    if (strcmp(argv[*index], "--json") == 0) {
+    if (strcmp(argv[*index], "--json") == 0 && strcmp(out->command, "run") != 0) {
         out->format = SL_CLI_FORMAT_JSON;
         *index += 1;
         return 1;
@@ -1126,6 +1191,16 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
             sl_cli_write_error_with_value("sloppy: unknown option '", argv[index], "'\n");
             return 1;
         }
+    }
+
+    if (!out->help && strcmp(out->command, "run") == 0 && out->once_method == NULL &&
+        (out->once_header_count != 0U || out->once_body != NULL ||
+         out->once_body_file != NULL || out->once_json != NULL))
+    {
+        sl_cli_write_cstr(
+            stderr,
+            "sloppy run: --header, --body, --body-file, and --json require --once\n");
+        return 1;
     }
 
     if (!out->help && out->plan_path == NULL &&
