@@ -19,6 +19,7 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [SQL Server](sqlserver.md) — ODBC setup boundaries and health checks
 - [Authentication](auth.md) — experimental route protection with JWT bearer tokens, API keys, roles, and policies
 - [Error handling](error-handling.md) — problem responses, typed mappings, request IDs, and redacted logs
+- [Realtime updates](realtime.md) — model SSE routes and current WebSocket limits
 - [Request logging](request-logging.md) — add request IDs and structured request logs
 - [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
 - [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files

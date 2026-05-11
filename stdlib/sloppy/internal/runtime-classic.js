@@ -9902,8 +9902,233 @@ Reason:
         },
     });
 
+    function __sloppyRealtimeSse(handler, options = undefined) {
+        if (typeof handler !== "function") {
+            throw new TypeError("Sloppy Realtime.sse handler must be a function.");
+        }
+        return async function sloppySseHandler(ctx) {
+            let closed = false;
+            let queued = 0;
+            const maxQueuedEvents = options?.maxQueuedEvents ?? 64;
+            return Results.stream(async (writer) => {
+                function write(frame) {
+                    if (closed) {
+                        throw new TypeError("Sloppy SSE stream is closed.");
+                    }
+                    if (queued >= maxQueuedEvents) {
+                        throw new TypeError("Sloppy SSE bounded write queue is full.");
+                    }
+                    queued += 1;
+                    writer.writeText(frame);
+                }
+                const stream = Object.freeze({
+                    send(data) {
+                        const text = typeof data === "string" ? data : JSON.stringify(data);
+                        write(`${String(text).split("\n").map((line) => `data: ${line}`).join("\n")}\n\n`);
+                    },
+                    event(name, data) {
+                        if (typeof name !== "string" || name.length === 0 || !/^[A-Za-z0-9_.:-]+$/u.test(name)) {
+                            throw new TypeError("Sloppy SSE event names must be non-empty token strings.");
+                        }
+                        const text = typeof data === "string" ? data : JSON.stringify(data);
+                        write(`event: ${name}\n${String(text).split("\n").map((line) => `data: ${line}`).join("\n")}\n\n`);
+                    },
+                    comment(text) {
+                        write(`: ${String(text)}\n\n`);
+                    },
+                    heartbeat() {
+                        write(": heartbeat\n\n");
+                    },
+                    close() {
+                        closed = true;
+                        writer.close();
+                    },
+                });
+                await handler(ctx, stream);
+                stream.close();
+            }, {
+                contentType: "text/event-stream",
+                headers: {
+                    "Cache-Control": "no-cache",
+                    "X-Slop-Realtime": "sse",
+                },
+            });
+        };
+    }
+
+    function __sloppyRealtimeWebSocket(handler) {
+        if (typeof handler !== "function") {
+            throw new TypeError("Sloppy WebSocket route handler must be a function.");
+        }
+        return function sloppyWebSocketUnavailable() {
+            return Results.problem({
+                status: 501,
+                title: "WebSocket runtime is not available",
+                code: "SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE",
+            }, {
+                status: 501,
+                headers: {
+                    "X-Slop-Realtime": "websocket",
+                },
+            });
+        };
+    }
+
+    function __sloppyRealtimeHub(name) {
+        if (typeof name !== "string" || name.length === 0) {
+            throw new TypeError("Sloppy Realtime.hub name must be a non-empty string.");
+        }
+        const connections = new Map();
+        const groups = new Map();
+        function ensureGroup(groupName) {
+            if (typeof groupName !== "string" || groupName.length === 0) {
+                throw new TypeError("Sloppy realtime group name must be a non-empty string.");
+            }
+            let group = groups.get(groupName);
+            if (group === undefined) {
+                group = new Set();
+                groups.set(groupName, group);
+            }
+            return group;
+        }
+        function connection(id) {
+            const client = connections.get(id);
+            return Object.freeze({
+                sendText(text) {
+                    if (client === undefined) {
+                        return false;
+                    }
+                    client.messages.push({ type: "text", text: String(text) });
+                    return true;
+                },
+                sendJson(value) {
+                    if (client === undefined) {
+                        return false;
+                    }
+                    client.messages.push({ type: "json", json: value });
+                    return true;
+                },
+                close(code = 1000, reason = "") {
+                    if (client === undefined) {
+                        return false;
+                    }
+                    client.closed = true;
+                    client.close = { code, reason: String(reason) };
+                    return true;
+                },
+            });
+        }
+        async function sendTo(ids, kind, value) {
+            for (const id of ids) {
+                const target = connection(id);
+                if (kind === "json") {
+                    target.sendJson(value);
+                } else {
+                    target.sendText(value);
+                }
+            }
+        }
+        return Object.freeze({
+            name,
+            socket(handler) {
+                if (typeof handler !== "function") {
+                    throw new TypeError("Sloppy Realtime.hub socket handler must be a function.");
+                }
+                return __sloppyRealtimeWebSocket(handler);
+            },
+            register(id = undefined) {
+                const connectionId = id ?? `${name}:${connections.size + 1}`;
+                if (connections.has(connectionId)) {
+                    throw new Error(`Sloppy realtime connection '${connectionId}' is already registered.`);
+                }
+                const client = { id: connectionId, groups: new Set(), messages: [], closed: false };
+                connections.set(connectionId, client);
+                return Object.freeze({
+                    id: connectionId,
+                    join(groupName) {
+                        ensureGroup(groupName).add(connectionId);
+                        client.groups.add(groupName);
+                    },
+                    leave(groupName) {
+                        groups.get(groupName)?.delete(connectionId);
+                        client.groups.delete(groupName);
+                    },
+                    sendText(text) {
+                        client.messages.push({ type: "text", text: String(text) });
+                    },
+                    sendJson(value) {
+                        client.messages.push({ type: "json", json: value });
+                    },
+                    close(code = 1000, reason = "") {
+                        client.closed = true;
+                        client.close = { code, reason: String(reason) };
+                    },
+                });
+            },
+            unregister(id) {
+                const client = connections.get(id);
+                if (client === undefined) {
+                    return false;
+                }
+                for (const groupName of client.groups) {
+                    groups.get(groupName)?.delete(id);
+                }
+                connections.delete(id);
+                return true;
+            },
+            connection,
+            group(groupName) {
+                const members = ensureGroup(groupName);
+                return Object.freeze({
+                    sendText(text) {
+                        return sendTo(members, "text", String(text));
+                    },
+                    sendJson(value) {
+                        return sendTo(members, "json", value);
+                    },
+                    close(code = 1001, reason = "server shutdown") {
+                        for (const id of members) {
+                            connection(id).close(code, reason);
+                        }
+                    },
+                });
+            },
+            broadcastText(text) {
+                return sendTo(connections.keys(), "text", String(text));
+            },
+            broadcastJson(value) {
+                return sendTo(connections.keys(), "json", value);
+            },
+            __debug() {
+                return Object.freeze({
+                    connections: Object.freeze([...connections.values()].map((client) => Object.freeze({
+                        id: client.id,
+                        groups: Object.freeze([...client.groups]),
+                        messages: Object.freeze([...client.messages]),
+                        closed: client.closed,
+                        close: client.close,
+                    }))),
+                    groups: Object.freeze([...groups.entries()].map(([groupName, ids]) => Object.freeze({
+                        name: groupName,
+                        connections: Object.freeze([...ids]),
+                    }))),
+                });
+            },
+        });
+    }
+
+    const Realtime = Object.freeze({
+        sse: __sloppyRealtimeSse,
+        websocket: __sloppyRealtimeWebSocket,
+        hub: __sloppyRealtimeHub,
+        textBytes(value) {
+            return Text.utf8.encode(String(value));
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
+        Realtime,
         ProblemDetails,
         Random,
         Hash,

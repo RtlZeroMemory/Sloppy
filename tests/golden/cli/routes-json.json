@@ -1,8 +1,8 @@
 {
   "kind": "web",
   "routes": [
-    { "method": "GET", "pattern": "/", "handlerId": 1, "name": "Hello.Index", "module": "hello", "sourceOrder": 2, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } },
-    { "method": "GET", "pattern": "/users/create", "handlerId": 3, "name": "Users.Create", "module": "users", "sourceOrder": 1, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } },
-    { "method": "GET", "pattern": "/users/{id:int}", "handlerId": 2, "name": "Users.Get", "module": "users", "sourceOrder": 0, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } }
+    { "method": "GET", "kind": "http", "pattern": "/", "handlerId": 1, "name": "Hello.Index", "module": "hello", "sourceOrder": 2, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } },
+    { "method": "GET", "kind": "http", "pattern": "/users/create", "handlerId": 3, "name": "Users.Create", "module": "users", "sourceOrder": 1, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } },
+    { "method": "GET", "kind": "http", "pattern": "/users/{id:int}", "handlerId": 2, "name": "Users.Get", "module": "users", "sourceOrder": 0, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "", "bindings": [], "response": { "kind": "", "helper": "", "status": 0 } }
   ]
 }

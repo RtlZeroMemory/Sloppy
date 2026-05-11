@@ -21,10 +21,17 @@ app.post(pattern, handler)
 app.put(pattern, handler)
 app.patch(pattern, handler)
 app.delete(pattern, handler)
+app.sse(pattern, handler)
+app.ws(pattern, handler)
 ```
 
 `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and `mapDelete` are aliases — same
 behavior, longer name.
+
+`sse` and `ws` register `GET` routes with realtime metadata. `sse` wraps the
+handler in the current bounded server-sent events stream shape. `ws` records
+WebSocket route intent and returns the current `501` unavailable response until
+native upgrade execution exists. See [Realtime](realtime.md).
 
 `HEAD` and `OPTIONS` are not directly registrable verbs. Incoming `HEAD`
 requests match the corresponding `GET` route and return the same headers
@@ -139,6 +146,14 @@ const internal = app.group("/internal").requireAuth();
 internal.get("/status", handler);
 ```
 
+Groups also expose `sse` and `ws`:
+
+```ts
+const live = app.group("/live").requireAuth();
+live.sse("/events", handler);
+live.ws("/socket", handler);
+```
+
 ## Controllers
 
 A controller is a class whose methods become route handlers. Use them when
@@ -205,3 +220,4 @@ captured at build/package time, not looked up dynamically per request.
 - Streaming request bodies exposed directly to handlers
 - Custom matchers beyond `{name}` / `{name:int}`
 - Per-route limits at the API surface (server-wide limits exist via config)
+- Native WebSocket upgrade execution

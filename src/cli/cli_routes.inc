@@ -42,6 +42,8 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
 
     printf("%s\n    { \"method\": ", index == 0U ? "" : ",");
     sl_cli_json_escape(stdout, route->method);
+    printf(", \"kind\": ");
+    sl_cli_json_escape(stdout, route->kind);
     printf(", \"pattern\": ");
     sl_cli_json_escape(stdout, route->pattern);
     printf(", \"handlerId\": %u, \"name\": ", route->handler_id);
@@ -165,9 +167,10 @@ static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
 
 static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_auth)
 {
-    printf("%-5zu  %-6.*s  %-19.*s  %-7u  %-8.*s  %-6.*s  ", route->source_order,
-           (int)route->method.length, route->method.ptr, (int)route->pattern.length,
-           route->pattern.ptr, route->handler_id, (int)route->completeness.length,
+    printf("%-5zu  %-6.*s  %-11.*s  %-19.*s  %-7u  %-8.*s  %-6.*s  ", route->source_order,
+           (int)route->method.length, route->method.ptr, (int)route->kind.length,
+           route->kind.ptr, (int)route->pattern.length, route->pattern.ptr, route->handler_id,
+           (int)route->completeness.length,
            route->completeness.ptr, (int)route->module.length, route->module.ptr);
     if (!sl_cli_span_empty(route->source_path)) {
         printf("%.*s:%llu:%llu", (int)route->source_path.length, route->source_path.ptr,
@@ -227,11 +230,11 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     }
     else {
         if (include_auth) {
-            printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
+            printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
                    "BINDINGS  RESPONSE  AUTH  NAME\n");
         }
         else {
-            printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
+            printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
                    "BINDINGS  RESPONSE  NAME\n");
         }
         if (metadata->route_count == 0U) {

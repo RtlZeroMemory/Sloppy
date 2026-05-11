@@ -33,6 +33,7 @@
     "sloppy/node/util.js",
     "sloppy/providers/sqlite.js",
     "sloppy/problem-details.js",
+    "sloppy/realtime.js",
     "sloppy/request-id.js",
     "sloppy/request-logging.js",
     "sloppy/results.js",

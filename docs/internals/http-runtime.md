@@ -76,6 +76,12 @@ stream into `SlHttpRequestLifecycle`. `:method`, `:scheme`, `:authority`,
 response descriptor is translated back into HTTP/2 HEADERS/DATA frames by the
 HTTP/2 dispatcher; handlers do not see a different API.
 
+Realtime routes currently stay inside this route/response model. SSE handlers
+return bounded `Results.stream` descriptors with `text/event-stream` metadata.
+WebSocket route registrations are Plan-visible, but the native HTTP upgrade
+execution path is not implemented and generated handlers return `501`
+unavailable.
+
 ## Route table
 
 Built once at startup from validated Plan routes. Entries are sorted in
@@ -283,3 +289,4 @@ connection draining) is the responsibility of an in-front reverse proxy.
   basic header passthrough.
 - HTTP/1.1 pipelining.
 - Server push public API or server push frames.
+- Native WebSocket upgrade execution.

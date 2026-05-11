@@ -19,6 +19,7 @@ Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
 $ sloppy routes .sloppy
 GET    /health           handler=1 name=Health.Get
 GET    /hello/{name}     handler=2 name=Hello.Get
+GET    /events           kind=sse handler=3
 ```
 
 Routes are sorted: literal segments before parameter segments, ties broken
@@ -36,8 +37,9 @@ $ sloppy routes .sloppy --format json
 {
   "kind": "web",
   "routes": [
-    { "method": "GET", "pattern": "/health", "handlerId": 1, "name": "Health.Get" },
-    { "method": "GET", "pattern": "/hello/{name}", "handlerId": 2, "name": "Hello.Get" }
+    { "method": "GET", "pattern": "/health", "kind": "http", "handlerId": 1, "name": "Health.Get" },
+    { "method": "GET", "pattern": "/hello/{name}", "kind": "http", "handlerId": 2, "name": "Hello.Get" },
+    { "method": "GET", "pattern": "/events", "kind": "sse", "handlerId": 3 }
   ]
 }
 ```
@@ -45,6 +47,10 @@ $ sloppy routes .sloppy --format json
 JSON output is stable; tooling can pipe it through `jq` or feed it into
 custom validation. Dynamic route entries include metadata that marks the route
 as dynamic and records the reason when the Plan has one.
+
+`kind` is `http` for ordinary routes, `sse` for server-sent event routes, and
+`websocket` for WebSocket route intent. WebSocket route metadata does not imply
+native upgrade execution in this alpha.
 
 For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
 array. Text output says no route metadata is expected for a program Plan.

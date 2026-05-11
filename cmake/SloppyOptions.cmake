@@ -152,6 +152,7 @@ set(
     net.js
     os.js
     problem-details.js
+    realtime.js
     request-id.js
     request-logging.js
     time.js

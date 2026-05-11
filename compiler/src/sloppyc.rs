@@ -226,6 +226,7 @@ impl CompileMetrics {
 
 struct HandlerExtractionContext<'a> {
     route_pattern: &'a str,
+    route_kind: &'static str,
     source: &'a str,
     source_name: &'a str,
     allow_data_handler_body: bool,
@@ -337,6 +338,7 @@ struct HealthRouteSpec<'a> {
 type RouteCallParts<'a> = (
     &'a str,
     &'static str,
+    &'static str,
     String,
     RouteMetadata,
     &'a Argument<'a>,
@@ -364,6 +366,7 @@ struct AppState {
     net_imported: bool,
     os_imported: bool,
     http_client_imported: bool,
+    realtime_imported: bool,
     workers_imported: bool,
     ffi_imported: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
@@ -427,6 +430,7 @@ impl AppState {
             net_imported: false,
             os_imported: false,
             http_client_imported: false,
+            realtime_imported: false,
             workers_imported: false,
             ffi_imported: false,
             ffi_libraries: Vec::new(),
@@ -987,6 +991,7 @@ struct ModuleGraph {
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
+    uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
     dependency_graph: DependencyGraph,
     uses_ffi_runtime: bool,
@@ -1036,6 +1041,7 @@ impl ModuleGraph {
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
+            uses_realtime_runtime: false,
             uses_workers_runtime: false,
             dependency_graph: DependencyGraph::default(),
             uses_ffi_runtime: false,
@@ -1520,6 +1526,7 @@ fn extract_program_with_metrics(
         uses_net_runtime: graph.uses_net_runtime,
         uses_os_runtime: graph.uses_os_runtime,
         uses_http_client_runtime: graph.uses_http_client_runtime,
+        uses_realtime_runtime: graph.uses_realtime_runtime,
         uses_workers_runtime: graph.uses_workers_runtime,
         uses_ffi_runtime: graph.uses_ffi_runtime,
         ffi: graph.ffi_libraries,
@@ -4038,6 +4045,8 @@ fn extract_entry(
     } else {
         Some(transform_dynamic_web_entry(path, source)?)
     };
+    let uses_realtime_runtime =
+        state.realtime_imported || state.routes.iter().any(|route| route.kind != "http");
 
     Ok(ExtractedApp {
         kind: ProjectKind::Web,
@@ -4099,6 +4108,7 @@ fn extract_entry(
             || framework_needs_os_runtime
             || !state.auth.schemes.is_empty(),
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
+        uses_realtime_runtime,
         uses_workers_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
         ffi: {
@@ -5709,6 +5719,7 @@ fn extract_import(
                 ("Sloppy", "Sloppy") => state.sloppy_imported = true,
                 ("Results", "Results") => state.results_imported = true,
                 ("Auth", "Auth") => state.auth_imported = true,
+                ("Realtime", "Realtime") => state.realtime_imported = true,
                 ("Config", "Config") => state.config_imported = true,
                 ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
                 ("RequestId", "RequestId") => state.request_id_imported = true,
@@ -5795,6 +5806,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
         "Sloppy"
             | "Results"
             | "Auth"
+            | "Realtime"
             | "ProblemDetails"
             | "RequestId"
             | "RequestLogging"
@@ -6207,7 +6219,7 @@ fn extract_expression_statement(
     let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
         .map_err(|diagnostic| diagnostic.with_path(path))?;
 
-    let Some((receiver, method, pattern, route_metadata, handler_arg)) =
+    let Some((receiver, method, kind, pattern, route_metadata, handler_arg)) =
         route_call_parts(route_expr, &state.static_strings)
             .map_err(|diagnostic| diagnostic.with_path(path))?
     else {
@@ -6270,6 +6282,7 @@ fn extract_expression_statement(
     let schema_names = schema_names(state);
     let handler_context = HandlerExtractionContext {
         route_pattern: &full_pattern,
+        route_kind: kind,
         source,
         source_name,
         allow_data_handler_body: state.data_imported,
@@ -6308,6 +6321,13 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
+    if kind == "sse" {
+        handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
+        handler.is_async = false;
+    } else if kind == "websocket" {
+        handler.emitted_source = format!("Realtime.websocket({})", handler.emitted_source);
+        handler.is_async = false;
+    }
     apply_route_schema_metadata(
         path,
         statement.span,
@@ -6368,6 +6388,7 @@ fn extract_expression_statement(
 
     state.routes.push(Route {
         method,
+        kind,
         framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
         pattern: normalized_pattern,
         name: fluent_metadata.name.or(route_metadata.name),
@@ -6423,7 +6444,7 @@ fn unsupported_route_call_diagnostic(
                 )
                 .with_path(path)
                 .with_span(call.span)
-                .with_hint("Supported compiler methods are mapGet, mapPost, mapPut, mapPatch, and mapDelete."),
+                .with_hint("Supported compiler methods are mapGet, mapPost, mapPut, mapPatch, mapDelete, sse, and ws."),
             );
         }
         return None;
@@ -6463,6 +6484,7 @@ fn unsupported_route_call_diagnostic(
                     .first()
                     .and_then(string_argument)
                     .unwrap_or_default(),
+                route_kind: crate::slop_dsl::route_kind_from_property(property).unwrap_or("http"),
                 source,
                 source_name: "",
                 allow_data_handler_body: state.data_imported,
@@ -6535,6 +6557,7 @@ fn record_dynamic_route_if_supported(
             let schema_names = schema_names(state);
             let context = HandlerExtractionContext {
                 route_pattern: "",
+                route_kind: "http",
                 source,
                 source_name,
                 allow_data_handler_body: state.data_imported,
@@ -6570,7 +6593,7 @@ fn validate_supported_initializer(
     state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
-    if let Some((_, _, _, _)) = route_call(
+    if let Some((_, _, _, _, _)) = route_call(
         init,
         source,
         source_name,
@@ -8249,6 +8272,7 @@ fn static_asset_route(
         wrap_handler_with_framework_pipeline(&handler_source, context.middleware, context.cors);
     Route {
         method: "GET",
+        kind: "http",
         framework_path: None,
         pattern: route_path,
         name: None,
@@ -9538,6 +9562,7 @@ fn app_map_controller_call(
         handler.is_async = true;
         routes.push(Route {
             method,
+            kind: "http",
             framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
             pattern: normalized_pattern,
             name: fluent_metadata.name.or(route_metadata.name),
@@ -9889,6 +9914,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
         };
         routes.push(Route {
             method: "OPTIONS",
+            kind: "http",
             framework_path: None,
             pattern,
             name: None,
@@ -10592,6 +10618,7 @@ fn health_route(
     handler_source = wrap_handler_with_framework_pipeline(&handler_source, middleware, cors);
     Ok(Route {
         method: "GET",
+        kind: "http",
         framework_path: (normalized_pattern != spec.framework_path)
             .then(|| spec.framework_path.to_string()),
         pattern: normalized_pattern,
@@ -12161,7 +12188,7 @@ fn extract_module_function_routes(
                 let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let static_strings = StaticStringEnv::default();
-                let Some((receiver, method, pattern, route_metadata, handler_arg)) =
+                let Some((receiver, method, kind, pattern, route_metadata, handler_arg)) =
                     route_call_parts(route_expr, &static_strings)
                         .map_err(|diagnostic| diagnostic.with_path(path))?
                 else {
@@ -12201,6 +12228,7 @@ fn extract_module_function_routes(
 
                 let handler_context = HandlerExtractionContext {
                     route_pattern: &full_pattern,
+                    route_kind: kind,
                     source,
                     source_name,
                     allow_data_handler_body: !providers.is_empty(),
@@ -12218,6 +12246,14 @@ fn extract_module_function_routes(
                         statement.span,
                     ));
                 };
+                if kind == "sse" {
+                    handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
+                    handler.is_async = false;
+                } else if kind == "websocket" {
+                    handler.emitted_source =
+                        format!("Realtime.websocket({})", handler.emitted_source);
+                    handler.is_async = false;
+                }
 
                 let referenced_helper_sources =
                     helper_sources_referenced_by_handler(&handler.emitted_source, &helper_sources);
@@ -12270,6 +12306,7 @@ fn extract_module_function_routes(
                 }
                 routes.push(Route {
                     method,
+                    kind,
                     framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
                     pattern: normalized_pattern,
                     name: fluent_metadata.name.or(route_metadata.name),
@@ -12512,14 +12549,15 @@ fn route_call<'a>(
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
     static_strings: &StaticStringEnv,
-) -> Result<Option<(&'a str, &'static str, String, Handler)>, Diagnostic> {
-    let Some((receiver, method, pattern, _metadata, handler_arg)) =
+) -> Result<Option<(&'a str, &'static str, &'static str, String, Handler)>, Diagnostic> {
+    let Some((receiver, method, kind, pattern, _metadata, handler_arg)) =
         route_call_parts(expression, static_strings)?
     else {
         return Ok(None);
     };
     let context = HandlerExtractionContext {
         route_pattern: &pattern,
+        route_kind: kind,
         source,
         source_name,
         allow_data_handler_body,
@@ -12530,7 +12568,7 @@ fn route_call<'a>(
     let Some(handler) = handler_from_argument(handler_arg, &context) else {
         return Ok(None);
     };
-    Ok(Some((receiver, method, pattern, handler)))
+    Ok(Some((receiver, method, kind, pattern, handler)))
 }
 
 fn route_call_parts<'a>(
@@ -12546,6 +12584,7 @@ fn route_call_parts<'a>(
     let Some(method) = route_method_from_property(property) else {
         return Ok(None);
     };
+    let kind = crate::slop_dsl::route_kind_from_property(property).unwrap_or("http");
     if !matches!(call.arguments.len(), 2 | 3) {
         return Ok(None);
     }
@@ -12565,7 +12604,14 @@ fn route_call_parts<'a>(
     } else {
         (RouteMetadata::default(), &call.arguments[1])
     };
-    Ok(Some((receiver, method, pattern, metadata, handler_arg)))
+    Ok(Some((
+        receiver,
+        method,
+        kind,
+        pattern,
+        metadata,
+        handler_arg,
+    )))
 }
 
 fn route_method_from_property(property: &str) -> Option<&'static str> {
@@ -13371,10 +13417,12 @@ fn handler_from_argument(
                 context.source,
                 context.source_name,
             );
-            if handler_parameters_are_unsupported(&function.params)
+            let realtime_route = context.route_kind == "sse" || context.route_kind == "websocket";
+            if handler_parameters_are_unsupported_for_kind(&function.params, context.route_kind)
                 || arrow_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
-                || (!context.allow_data_handler_body
+                || (!realtime_route
+                    && !context.allow_data_handler_body
                     && effects.effects.is_empty()
                     && effects.helper_calls.is_empty()
                     && !handler_body_is_supported_arrow(function, context.schema_names))
@@ -13432,10 +13480,12 @@ fn handler_from_argument(
                 context.source,
                 context.source_name,
             );
-            if handler_parameters_are_unsupported(&function.params)
+            let realtime_route = context.route_kind == "sse" || context.route_kind == "websocket";
+            if handler_parameters_are_unsupported_for_kind(&function.params, context.route_kind)
                 || function_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
-                || (!context.allow_data_handler_body
+                || (!realtime_route
+                    && !context.allow_data_handler_body
                     && effects.effects.is_empty()
                     && effects.helper_calls.is_empty()
                     && !handler_body_is_supported_function(function, context.schema_names))
@@ -15040,6 +15090,24 @@ fn handler_parameters_are_unsupported(parameters: &oxc_ast::ast::FormalParameter
 
     parameter.initializer.is_some()
         || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_))
+}
+
+fn handler_parameters_are_unsupported_for_kind(
+    parameters: &oxc_ast::ast::FormalParameters<'_>,
+    route_kind: &str,
+) -> bool {
+    let max_parameters = if route_kind == "sse" || route_kind == "websocket" {
+        2
+    } else {
+        1
+    };
+    if parameters.items.len() > max_parameters || parameters.rest.is_some() {
+        return true;
+    }
+    parameters.items.iter().any(|parameter| {
+        parameter.initializer.is_some()
+            || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_))
+    })
 }
 
 fn handler_context_parameter_name(
@@ -17527,6 +17595,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     );
     push_generated_line(&mut output, &mut generated_line, "}");
     let mut runtime_exports = vec!["Results"];
+    if app.uses_realtime_runtime {
+        runtime_exports.push("Realtime");
+    }
     if app.problem_details.is_some() {
         runtime_exports.push("ProblemDetails");
     }
@@ -18185,7 +18256,7 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Environment, data, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
     output.push_str(
         r#"function __sloppy_create_dynamic_app() {
   const routes = [];
@@ -18549,6 +18620,9 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
                 "module": route.module,
                 "source": source_location_json(&route.source_name, &route.source, route.span)
             });
+            if route.kind != "http" {
+                route_json["kind"] = json!(route.kind);
+            }
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);
             }
