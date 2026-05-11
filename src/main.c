@@ -12,6 +12,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/compiler.h"
+#include "sloppy/data_sqlite.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
 #include "sloppy/diagnostics.h"
@@ -90,7 +91,7 @@
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_PATH_MAX_BYTES 1024U
 #define SL_CREATE_ARENA_BYTES 65536U
-#define SL_PACKAGE_MANIFEST_BYTES 8192U
+#define SL_PACKAGE_MANIFEST_BYTES 16384U
 #define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
@@ -112,6 +113,7 @@
 #include "cli/cli_create.inc"
 #include "cli/cli_package.inc"
 #include "cli/cli_lookup.inc"
+#include "cli/cli_db.inc"
 #include "cli/cli_routes.inc"
 #include "cli/cli_deps.inc"
 #include "cli/cli_doctor.inc"
@@ -164,6 +166,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "doctor") == 0) {
         return sl_cli_command_doctor(&options);
+    }
+    if (strcmp(options.command, "db") == 0) {
+        return sl_cli_command_db(&options);
     }
     if (strcmp(options.command, "audit") == 0) {
         return sl_cli_command_audit(&options);

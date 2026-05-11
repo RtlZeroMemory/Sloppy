@@ -381,6 +381,8 @@ static void sl_cli_print_help(void)
            "text|json]\n");
     printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
+    printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
+           "text|json]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
@@ -465,6 +467,11 @@ static void sl_cli_print_command_help(const char* command)
     }
     if (strcmp(command, "doctor") == 0) {
         printf("Usage: sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "db") == 0) {
+        printf("Usage: sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> "
                "[--format text|json]\n");
         return;
     }
@@ -860,6 +867,46 @@ static int sl_cli_parse_create_option(int argc, char** argv, int* index, SlCliOp
     return 0;
 }
 
+static int sl_cli_parse_db_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
+        strcmp(out->command, "db") != 0)
+    {
+        return 0;
+    }
+
+    if (strcmp(argv[*index], "--provider") == 0) {
+        if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy db: --provider requires a provider name\n");
+            return -1;
+        }
+        out->db_provider = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (argv[*index][0] != '-') {
+        if (out->db_action == NULL) {
+            if (strcmp(argv[*index], "status") != 0 && strcmp(argv[*index], "migrate") != 0) {
+                sl_cli_write_cstr(stderr, "sloppy db: expected status or migrate\n");
+                return -1;
+            }
+            out->db_action = argv[*index];
+            *index += 1;
+            return 1;
+        }
+        if (out->db_target_path != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy db: expected only one artifact or package path\n");
+            return -1;
+        }
+        out->db_target_path = argv[*index];
+        *index += 1;
+        return 1;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_metadata_path_option(char** argv, int* index, SlCliOptions* out)
 {
     const char* command_name = out->command != NULL ? out->command : "metadata";
@@ -1055,6 +1102,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
             continue;
         }
 
+        run_parse = sl_cli_parse_db_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
+        if (run_parse > 0) {
+            continue;
+        }
+
         run_parse = sl_cli_parse_metadata_path_option(argv, &index, out);
         if (run_parse < 0) {
             return 1;
@@ -1080,6 +1135,20 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         if (!sl_cli_set_default_artifacts_plan_path(out)) {
             sl_cli_write_cstr(stderr, "sloppy: .sloppy artifacts path is too long\n");
             return 1;
+        }
+    }
+
+    if (!out->help && strcmp(out->command, "db") == 0) {
+        if (out->db_action == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy db: expected status or migrate\n");
+            return 1;
+        }
+        if (out->db_provider == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy db: --provider is required\n");
+            return 1;
+        }
+        if (out->db_target_path == NULL) {
+            out->db_target_path = ".sloppy";
         }
     }
 

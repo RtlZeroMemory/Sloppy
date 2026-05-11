@@ -775,6 +775,22 @@ function createForgedLoweredQuery() {
 }
 
 {
+    const fakeDb = data.createFakeProvider({
+        query() {
+            return [];
+        },
+        exec() {
+            return { affectedRows: 1 };
+        },
+    });
+
+    await assertRejectsMessage(() => data.migrations.status(fakeDb, {
+        provider: "sqlite",
+        path: "migrations/*.sql",
+    }), /only supports sqlite, postgres, and sqlserver connections/);
+}
+
+{
     const DataModule = Sloppy.module("data")
         .capabilities((caps) => {
             caps.addDatabase("data.main", {

@@ -16,6 +16,7 @@ use crate::{graph::ModuleFormat, source::display_path};
 pub(crate) enum ImportKind {
     Relative(PathBuf),
     SlopStdlib,
+    SlopData,
     SlopTime,
     SlopFilesystem,
     SlopCrypto,
@@ -70,6 +71,9 @@ pub(crate) fn classify_import_with_mode(
     }
     if specifier == "sloppy" {
         return ImportKind::SlopStdlib;
+    }
+    if specifier == "sloppy/data" {
+        return ImportKind::SlopData;
     }
     if specifier == "sloppy/time" {
         return ImportKind::SlopTime;
@@ -557,6 +561,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/providers/sqlite"),
             ImportKind::SqliteProvider
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/data"),
+            ImportKind::SlopData
         );
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/time"),

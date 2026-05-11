@@ -150,6 +150,29 @@ const result = await db.query(sql`SELECT 1 AS value, 2 AS value`, {
 `tx.query(...)`, `tx.queryRaw(...)`, `tx.queryOne(...)`, and `tx.exec(...)`
 methods.
 
+### Migrations
+
+SQLite, PostgreSQL, and SQL Server support first-party migrations through
+`Migrations` from `sloppy/data`:
+
+```ts
+import { Migrations } from "sloppy/data";
+
+await Migrations.apply(db, {
+    provider: "main",
+    path: "migrations/*.sql",
+});
+```
+
+Migration state is stored in `_sloppy_migrations` with `id`, `name`, `hash`,
+and `appliedAt`. Files are read in lexical order, each pending migration
+runs in its provider transaction, and a second run skips unchanged files. If a file
+with the same name was already applied with a different hash, migration fails.
+
+`Migrations.status(db, options)` returns `current`, `pending`, or `changed`
+status without applying pending files. `ProviderHealth.check(db, { provider:
+"main" })` runs a small provider readiness query.
+
 ### Transactions
 
 ```ts
@@ -232,6 +255,11 @@ PostgreSQL-specific value wrappers worth knowing:
 - `sql.json(...)` becomes `jsonb`-friendly text on the wire.
 - `sql.bytes(...)` becomes `bytea`.
 
+PostgreSQL migrations use PostgreSQL placeholders for migration metadata and
+require a live PostgreSQL connection. The CLI reads the Plan `configKey` when
+present, or `Sloppy__Providers__postgres__<name>__connectionString` for
+generated provider metadata.
+
 ## SQL Server
 
 > Experimental. Requires a V8-enabled runtime and an ODBC driver capable
@@ -262,6 +290,11 @@ const SqlServerModule = Sloppy.module("data.sqlserver")
         );
     });
 ```
+
+SQL Server migrations use ODBC `?` placeholders for migration metadata and
+require a live SQL Server connection. The CLI reads the Plan `configKey` when
+present, or `Sloppy__Providers__sqlserver__<name>__connectionString` for
+generated provider metadata.
 
 Connection strings, decimal handling, and async ODBC support matter;
 check `data.sqlserver.open(...)` diagnostics if startup fails.

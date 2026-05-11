@@ -245,6 +245,13 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 22;
     }
+    status =
+        sl_sqlserver_exec_batch(&arena, &connection, sl_str_from_cstr("select 1"), &result, &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR)
+    {
+        return 23;
+    }
     status = sl_sqlserver_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
                                 &query_result, &diag);
     if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || query_result.column_count != 0U ||
@@ -284,6 +291,13 @@ static int test_invalid_options_and_use_after_close(void)
     {
         return 22;
     }
+    status =
+        sl_sqlserver_exec_batch(&arena, &connection, sl_str_from_cstr("select 1"), &result, &diag);
+    if (sl_status_code(status) != SL_STATUS_INVALID_STATE &&
+        sl_status_code(status) != SL_STATUS_UNSUPPORTED)
+    {
+        return 33;
+    }
     status = sl_sqlserver_query(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, NULL,
                                 &query_result, &diag);
     if (sl_status_code(status) != SL_STATUS_INVALID_STATE &&
@@ -312,6 +326,13 @@ static int test_invalid_options_and_use_after_close(void)
         diag.code != SL_DIAG_PERMISSION_DENIED)
     {
         return 25;
+    }
+    status = sl_sqlserver_exec_batch(&arena, &read_only,
+                                     sl_str_from_cstr("insert into t values (1)"), &result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED)
+    {
+        return 34;
     }
     options.connection_string = sl_str_from_cstr("Driver={x};Server=x");
     options.access = (SlSqlServerAccess)99;
