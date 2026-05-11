@@ -20,7 +20,9 @@ The current foundation includes:
 - dependency graph metadata in Plan/source maps and optional `deps.graph.json`;
 - `sloppy deps` inspection;
 - a Node builtin compatibility registry;
-- partial/pure-JS shims for selected builtins.
+- partial/pure-JS shims for selected builtins, including practical subsets of
+  `process`, `Buffer`, `fs/promises`, `assert`, `stream`, `crypto`, `path`,
+  `events`, `url`, `querystring`, `util`, `timers`, and `os`.
 
 This makes compatible pure-JavaScript dependencies usable when their runtime
 needs fit Sloppy's loader and shim surface.
@@ -33,10 +35,12 @@ Deferred work includes:
 - lockfile-aware dependency policy;
 - full Node module identity and resolution parity;
 - native Node addons and N-API;
-- full Node streams;
+- full Node streams beyond the small compatibility subset;
 - `worker_threads`, `child_process`, `vm`, inspector, REPL, and test-runner
   internals;
 - unrestricted Node globals such as process-wide `process` and `Buffer`;
+- native-quality synchronous Node crypto semantics; the current hash/HMAC shim
+  follows Sloppy's Promise-shaped crypto API;
 - package execution outside Sloppy's sealed artifact graph.
 
 Unsupported surfaces should fail clearly during build or through a shim error.

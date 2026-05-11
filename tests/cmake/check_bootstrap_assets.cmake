@@ -16,6 +16,22 @@ set(required_bootstrap_assets
     time.js
     workers.js
     index.js
+    node/assert.js
+    node/buffer.js
+    node/crypto.js
+    node/events.js
+    node/fs.js
+    node/fs/promises.js
+    node/assert/strict.js
+    node/os.js
+    node/path.js
+    node/process.js
+    node/querystring.js
+    node/stream.js
+    node/stream/promises.js
+    node/timers.js
+    node/url.js
+    node/util.js
     providers/sqlite.js
     results.js
     schema.js

@@ -926,14 +926,16 @@ pub(crate) fn emit_plan(
     if app.dependency_graph.has_entries() {
         for builtin in &app.dependency_graph.node_builtins {
             if builtin.status != "unsupported" {
-                required_features.push(format!(
-                    "node.compat.{}",
-                    builtin
+                let feature_name = match builtin.specifier.as_str() {
+                    "node:assert/strict" => "assert".to_string(),
+                    "node:stream/promises" => "stream".to_string(),
+                    _ => builtin
                         .specifier
                         .strip_prefix("node:")
                         .unwrap_or(&builtin.specifier)
-                        .replace('/', ".")
-                ));
+                        .replace('/', "."),
+                };
+                required_features.push(format!("node.compat.{feature_name}"));
             }
         }
         doctor_checks.push(json!({

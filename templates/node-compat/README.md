@@ -10,10 +10,14 @@ This template uses:
 - `node:events`
 - `node:buffer`
 - `node:querystring`
+- `node:assert`
+- `node:process`
+- `node:stream` basics
+- `node:crypto` basics
 
-It intentionally avoids `node:stream`, `node:http`, `node:net`, `node:tls`,
+It intentionally avoids `node:http`, `node:net`, `node:tls`,
 `node:child_process`, native addons, and implicit globals such as `process` or
-`Buffer`.
+`Buffer`. Import compatibility modules explicitly.
 
 ```sh
 sloppy build
