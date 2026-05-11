@@ -191,6 +191,9 @@ async function verifyJwt(token, scheme) {
         throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT signature is invalid.");
     }
     const claims = jsonFromBase64Url(parts[1], "JWT payload");
+    if (!isPlainObject(claims)) {
+        throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT payload must be a JSON object.");
+    }
     const current = nowSeconds(scheme.clock);
     if (scheme.issuer !== undefined && claims.iss !== scheme.issuer) {
         throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT issuer is invalid.");
@@ -268,7 +271,14 @@ async function apiKeyMiddleware(ctx, next, scheme) {
     }
     let result;
     try {
-        result = await scheme.validate(key, { constantTimeEquals: constantTimeStringEquals });
+        result = await scheme.validate(key, {
+            constantTimeEquals: constantTimeStringEquals,
+            expectedKey: scheme.configKey === undefined ? undefined : secretString(
+                { __sloppyConfigReference: true, key: scheme.configKey },
+                scheme.config,
+                "API key",
+            ),
+        });
     } catch {
         result = false;
     }
@@ -332,7 +342,9 @@ export function registerAuthProvider(state, provider, config) {
             name: "apiKey",
             header: provider.header,
             validate: provider.validate,
-            expectedKey: provider.configKey === undefined ? undefined : secretString(
+            config: config,
+            configKey: provider.configKey,
+            expectedKey: provider.configKey === undefined || provider.usesStaticConfigEquality !== true ? undefined : secretString(
                 { __sloppyConfigReference: true, key: provider.configKey },
                 config,
                 "API key",
@@ -448,8 +460,10 @@ function apiKey(options) {
         __sloppyAuth: true,
         kind: "apiKey",
         header: header.toLowerCase(),
-        validate: options.validate ?? (() => false),
+        validate: options.validate,
         configKey,
+        usesStaticConfigEquality: typeof options.validate !== "function" ||
+            apiKeyValidatorUsesOnlyConfigKey(options.validate, configKey),
     });
 }
 
@@ -484,6 +498,17 @@ function configRequiredKeysFromFunction(fn) {
         source = source.slice(end + 2);
     }
     return keys;
+}
+
+function apiKeyValidatorUsesOnlyConfigKey(validate, configKey) {
+    if (configKey === undefined || typeof validate !== "function") {
+        return false;
+    }
+    const source = Function.prototype.toString.call(validate).trim();
+    const escaped = configKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parameter = "([A-Za-z_$][0-9A-Za-z_$]*)";
+    return new RegExp(`^\\(?\\s*${parameter}\\s*\\)?\\s*=>\\s*\\1\\s*===\\s*Config\\.required\\(["']${escaped}["']\\)\\s*$`, "u").test(source) ||
+        new RegExp(`^\\(?\\s*${parameter}\\s*\\)?\\s*=>\\s*Config\\.required\\(["']${escaped}["']\\)\\s*===\\s*\\1\\s*$`, "u").test(source);
 }
 
 export const Auth = Object.freeze({

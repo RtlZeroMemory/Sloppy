@@ -54,10 +54,11 @@ app.use(Auth.apiKey({
 | `validate` | `(key, helpers) => boolean \| object \| Promise<boolean \| object>` | Return `true` for the default API-key user or a claims object for a custom user. |
 | `configKey` | `string` | Config key for direct API-key comparison when no custom validator is needed. Compiler extraction requires either this or exactly one literal `Config.required(...)` reference in `validate`. |
 
-When the validator references `Config.required("...")`, Sloppy treats that key
-as the config-backed API key and compares it without writing the value to Plan
-metadata. `helpers.constantTimeEquals(left, right)` is also available for
-custom string comparison.
+When the validator is the direct `key === Config.required("...")` shape, Sloppy
+treats that key as the config-backed API key and compares it without writing
+the value to Plan metadata. Custom validators still run when `configKey` is
+present. They receive `helpers.expectedKey` for the resolved config value and
+`helpers.constantTimeEquals(left, right)` for custom string comparison.
 
 ## Route Authorization
 

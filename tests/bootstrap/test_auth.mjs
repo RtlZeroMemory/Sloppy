@@ -85,6 +85,9 @@ try {
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${expired}` },
     })).response.status, 401);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { Authorization: `Bearer ${jwt("test-secret", ["not-object"])}` },
+    })).response.status, 401);
 
     const me = await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${valid}` },
@@ -167,6 +170,30 @@ try {
     });
     assert.equal(status.response.status, 200);
     assert.equal(status.body.scheme, "apiKey");
+
+    await host.close();
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({
+        Auth: {
+            ApiKey: "stored-secret",
+        },
+    });
+    const app = builder.build();
+    app.use(Auth.apiKey({
+        header: "x-custom-key",
+        configKey: "Auth:ApiKey",
+        validate: (key, helpers) =>
+            helpers.constantTimeEquals(key, helpers.expectedKey) && key.endsWith("-allowed"),
+    }));
+    app.get("/custom-key", () => Results.ok({ ok: true })).requireAuth();
+
+    const host = Testing.createHost(app);
+    assert.equal((await requestJson(host, "GET", "/custom-key", {
+        headers: { "x-custom-key": "stored-secret" },
+    })).response.status, 401);
 
     await host.close();
 }

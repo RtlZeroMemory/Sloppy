@@ -66,13 +66,14 @@ app.get("/internal/status", () => Results.ok({ ok: true }))
   .requireAuth();
 ```
 
-API-key validators can return `true` or a claims object. Use plain strings
-inside custom comparisons; `Config.required("...")` is recognized for the
-simple config-backed equality shape shown above.
+API-key validators can return `true` or a claims object. The direct
+`key === Config.required("...")` shape shown above is recognized as
+config-backed equality. Custom validators with `configKey` receive the resolved
+secret as `helpers.expectedKey`.
 
 ```ts
 validate: (key, helpers) =>
-  helpers.constantTimeEquals(key, expectedKey)
+  helpers.constantTimeEquals(key, helpers.expectedKey)
     ? { sub: "internal-client", roles: ["internal"] }
     : false
 ```
