@@ -12,7 +12,7 @@ planned or future work.
 
 - [Home](index.md) - docs site landing page
 - [Install](install.md) - npm, source builds, and platform notes
-- [Quickstart](quickstart.md) - create, build, run, and package a first API
+- [Quickstart](quickstart.md) - create, build, experimental `sloppy dev`, and package a first API
 - [Tutorials](tutorials/index.md) - guided paths through the app workflow
 - [Roadmap](roadmap.md) - current support and future direction
 

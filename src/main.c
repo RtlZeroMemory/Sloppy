@@ -3,8 +3,7 @@
  *
  * Provides plan introspection commands and the development `sloppy run` path.
  * Runtime execution requires V8-enabled artifacts and intentionally avoids production
- * HTTP, package-manager behavior, Node behavior, middleware, streaming, and hot
- * reload behavior.
+ * HTTP, package-manager behavior, Node behavior, middleware, and streaming behavior.
  */
 #include "sloppy/arena.h"
 #include "sloppy/alloc.h"
@@ -27,10 +26,12 @@
 #include "sloppy/platform.h"
 #include "sloppy/platform_dynlib.h"
 #include "sloppy/platform_process.h"
+#include "sloppy/platform_thread.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include "cli/dev_watch_plan.h"
 #include "cli/sloppyrc.h"
 
 #include <limits.h>
@@ -39,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 1024U
@@ -119,6 +121,7 @@
 #include "cli/cli_doctor.inc"
 #include "cli/cli_audit.inc"
 #include "cli/cli_openapi.inc"
+#include "cli/cli_dev.inc"
 
 int main(int argc, char** argv)
 {
@@ -160,6 +163,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "package") == 0) {
         return sl_cli_command_package(&options);
+    }
+    if (strcmp(options.command, "dev") == 0) {
+        return sl_cli_command_dev(&options);
     }
     if (strcmp(options.command, "create") == 0) {
         return sl_cli_command_create(&options);

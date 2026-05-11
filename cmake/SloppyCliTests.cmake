@@ -277,6 +277,9 @@
     set_tests_properties(sloppy.cli.help_includes_create
                          PROPERTIES PASS_REGULAR_EXPRESSION "sloppy create")
 
+    add_test(NAME sloppy.cli.help_includes_dev COMMAND "$<TARGET_FILE:sloppy>" --help)
+    set_tests_properties(sloppy.cli.help_includes_dev PROPERTIES PASS_REGULAR_EXPRESSION "sloppy dev")
+
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         add_test(
             NAME sloppy.cli.create_package_command
