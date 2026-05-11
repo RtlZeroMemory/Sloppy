@@ -1,7 +1,8 @@
 # ProblemDetails
 
-`ProblemDetails` configures RFC 7807-style error responses for the app-host
-surface that supports it.
+`ProblemDetails` is the compatibility descriptor for RFC 7807-style handler
+error responses. New application code should prefer [`app.useErrors(...)`](errors.md)
+because it also covers typed mappings and app-host status mappings.
 
 Import:
 
@@ -30,6 +31,9 @@ Options:
 
 ProblemDetails integration is pre-alpha and is tied to the app-host/framework
 surface that consumes the descriptor.
+
+`ProblemDetails.defaults(...)` uses the same safe handler-error machinery as
+`app.useErrors(...)`, with missing-route handling disabled for compatibility.
 
 Request validation failures from `ctx.body.validate(schema)` are not treated as
 handler faults. They return `400 application/problem+json` with

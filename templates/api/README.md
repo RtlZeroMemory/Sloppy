@@ -54,6 +54,10 @@ curl -X POST http://127.0.0.1:5173/users -H "content-type: application/json" -d 
 Invalid JSON or invalid `name`/`email` fields return a `400
 application/problem+json` validation problem.
 
+Add `app.useErrors(...)` in `src/main.ts` when you want one explicit error
+policy for typed exception mappings, request IDs in error bodies, and redacted
+error logs.
+
 ## Package
 
 ```sh

@@ -100,25 +100,30 @@ function invokeMiddlewarePipeline(context, middleware, terminal) {
 
         return Promise.resolve(middlewareReturn).then(
             (value) => downstreamPromise.then(() => value),
-            (error) => downstreamPromise.then(
-                () => {
+            (error) => {
+                if (downstreamPromise === undefined) {
                     throw error;
-                },
-                () => {
-                    throw error;
-                },
-            ),
+                }
+                return downstreamPromise.then(
+                    () => {
+                        throw error;
+                    },
+                    () => {
+                        throw error;
+                    },
+                );
+            },
         );
     }
 
     return dispatch(0);
 }
 
-function handleRouteError(host, error) {
+function handleRouteError(host, error, context) {
     if (typeof host.handleError !== "function") {
         throw error;
     }
-    return host.handleError(error);
+    return host.handleError(error, context);
 }
 
 function appendContextResponseHeaders(result, context) {
@@ -145,7 +150,7 @@ function finishRouteResult(result, policy, context) {
 }
 
 function finishHandledRouteError(host, error, policy, context) {
-    return finishRouteResult(handleRouteError(host, error), policy, context);
+    return finishRouteResult(handleRouteError(host, error, context), policy, context);
 }
 
 function finishRouteError(host, error, policy, context, cleanup) {

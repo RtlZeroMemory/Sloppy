@@ -18,6 +18,7 @@ function defaults(options) {
     }
 
     return Object.freeze({
+        __sloppyErrorPolicy: true,
         __sloppyProblemDetails: true,
         detail: validateDetailPolicy(options?.detail),
     });

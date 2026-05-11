@@ -18,6 +18,7 @@ configuration, services, validation, or data access.
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
 - [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, `ctx.user`
 - [Health checks](health.md) — `app.mapHealthChecks(options?)`, liveness/readiness
+- [Errors](errors.md) — `app.useErrors(...)`, typed mappings, safe logging
 - [ProblemDetails](problem-details.md) — problem response descriptor options
 - [Request IDs](request-id.md) — request ID middleware and response header behavior
 - [Request logging](request-logging.md) — structured request completion logs

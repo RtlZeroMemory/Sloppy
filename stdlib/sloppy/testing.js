@@ -649,6 +649,16 @@ function responseFromText(status, text, contentType = TEXT_CONTENT_TYPE) {
     return responseFromParts(status, [["Content-Type", contentType]], Text.utf8.encode(text));
 }
 
+function responseFromErrorStatus(app, status, context = undefined, fallbackText = `${status}\n`) {
+    if (typeof app.__handleErrorStatus === "function") {
+        const result = app.__handleErrorStatus(status, context);
+        if (result !== undefined) {
+            return responseFromResult(result);
+        }
+    }
+    return responseFromText(status, fallbackText);
+}
+
 function responseFromProblem(problem) {
     return responseFromParts(
         problem.status ?? 400,
@@ -793,10 +803,17 @@ function createTestHost(app) {
             const headers = createHeadersLike(headerEntries);
             const match = findRoute(routes, normalizedMethod, targetParts.path);
 
+            const policy = typeof app.__getErrorPolicy === "function" ? app.__getErrorPolicy() : undefined;
+            if (policy !== undefined && bodyBytes.byteLength > policy.maxBodyBytes) {
+                return responseFromErrorStatus(app, 413, undefined, "Payload Too Large\n");
+            }
+
             if (match.route === undefined) {
                 return match.methodMismatch
                     ? responseFromText(405, "Method Not Allowed\n")
-                    : responseFromText(404, "Not Found\n");
+                    : policy?.missingRoute === true
+                        ? responseFromErrorStatus(app, 404, undefined, "Not Found\n")
+                        : responseFromText(404, "Not Found\n");
             }
 
             const bodyKind = bodyKindForRequest(headers, bodyBytes);
@@ -813,7 +830,7 @@ function createTestHost(app) {
                 return responseFromText(400, "Malformed Multipart\n");
             }
             if (bodyKind === "unsupported" && bodyBytes.byteLength !== 0) {
-                return responseFromText(415, "Unsupported Media Type\n");
+                return responseFromErrorStatus(app, 415, undefined, "Unsupported Media Type\n");
             }
 
             const context = createContext(app, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes);
