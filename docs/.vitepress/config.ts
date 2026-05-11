@@ -92,6 +92,7 @@ export default defineConfig({
           { text: "Overview", link: "/cli/" },
           { text: "create", link: "/cli/create" },
           { text: "build", link: "/cli/build" },
+          { text: "dev", link: "/cli/dev" },
           { text: "run", link: "/cli/run" },
           { text: "package", link: "/cli/package" },
           { text: "doctor", link: "/cli/doctor" },

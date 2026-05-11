@@ -1,6 +1,6 @@
 Usage: sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
                     [--environment Development] [--host 127.0.0.1]
-                    [--port <port>]
+                    [--port 5173]
 
 Source input compiles through sloppyc and validates Plan-backed artifacts.
 --artifacts is not accepted for build; build never enters V8.

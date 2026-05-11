@@ -236,3 +236,8 @@ void sl_platform_thread_join(SlPlatformThread* thread)
         thread->joined = true;
     }
 }
+
+void sl_platform_sleep_ms(uint64_t milliseconds)
+{
+    uv_sleep((unsigned int)milliseconds);
+}

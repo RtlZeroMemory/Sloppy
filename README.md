@@ -95,6 +95,7 @@ sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
 sloppy run .sloppy --once GET /health
+sloppy dev
 ```
 
 Windows x64 and Linux x64 are the npm runtime targets for this alpha. macOS and
@@ -155,7 +156,7 @@ For a practical comparison, see
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
   h2 multiplexing, and HTTPS `auto` ALPN selection where the private outbound
   TLS bridge is available.
-- **CLI tooling.** `sloppy create`, `build`, `run`, `routes`, `deps`,
+- **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `routes`, `deps`,
   `capabilities`, `doctor`, `audit`, `openapi`, and `package`.
 - **Program Mode.** Route-free source files can compile to Program Plans with
   opaque metadata and a generated `main`/default/top-level entrypoint.
@@ -218,7 +219,7 @@ dependency story, native interop, and production-hardening direction.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) - create, build, run, and package a first API
+- [Quickstart](docs/quickstart.md) - create, build, run, dev-watch, and package a first API
 - [Install](docs/install.md) - npm, source builds, and platform notes
 - [Tutorials](docs/tutorials/index.md) - guided app-building path
 - [API](docs/api/index.md) - first-party stdlib and app APIs

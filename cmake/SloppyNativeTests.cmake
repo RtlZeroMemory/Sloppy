@@ -372,6 +372,15 @@
     add_test(NAME sloppy.cli.help COMMAND sloppy --help)
     set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Pre-alpha runtime")
 
+    add_executable(cli_dev_watch_plan tests/unit/cli/test_dev_watch_plan.c src/cli/dev_watch_plan.c)
+    target_include_directories(cli_dev_watch_plan PRIVATE "${PROJECT_SOURCE_DIR}/include"
+                                                          "${PROJECT_SOURCE_DIR}/src")
+    target_compile_features(cli_dev_watch_plan PRIVATE c_std_17)
+    sloppy_apply_warnings(cli_dev_watch_plan)
+    sloppy_apply_sanitizers(cli_dev_watch_plan)
+    add_test(NAME sloppy.cli.dev_watch_plan COMMAND cli_dev_watch_plan)
+    set_tests_properties(sloppy.cli.dev_watch_plan PROPERTIES LABELS "cli;dev;watch")
+
     add_test(NAME benchmarks.sloppy_bench.list COMMAND sloppy_bench --list)
     set_tests_properties(
         benchmarks.sloppy_bench.list PROPERTIES PASS_REGULAR_EXPRESSION "memory.bytes.find_any")

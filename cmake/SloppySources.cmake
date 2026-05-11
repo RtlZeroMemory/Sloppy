@@ -127,6 +127,7 @@ set(
     SLOPPY_C_LINT_SOURCES
     src/main.c
     src/cli/sloppyrc.c
+    src/cli/dev_watch_plan.c
     ${SLOPPY_CORE_SOURCES}
     tests/unit/core/test_status.c
     tests/unit/core/test_source_loc.c

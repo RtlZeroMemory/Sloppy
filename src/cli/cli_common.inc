@@ -367,6 +367,8 @@ static void sl_cli_print_help(void)
         "  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port <port>]\n");
     printf("                 [--format text|json]\n");
+    printf("  sloppy dev [source.js|source.mjs|source.ts] [--host 127.0.0.1] [--port 5173]\n");
+    printf("             [--watch|--no-watch] [--clear] [--openapi] [--env Development]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts "
            "<dir>] [--stdlib <dir>]\n");
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
@@ -441,6 +443,17 @@ static void sl_cli_print_command_help(const char* command)
                "or <out>/package/.\n");
         printf("This is an app artifact package, not a runtime release archive.\n");
         printf("--format json and --json print the package path and artifact directory.\n");
+        return;
+    }
+    if (strcmp(command, "dev") == 0) {
+        printf("Usage: sloppy dev [source.js|source.mjs|source.ts]\n");
+        printf("                  [--host 127.0.0.1] [--port 5173]\n");
+        printf("                  [--watch|--no-watch] [--clear] [--openapi]\n");
+        printf("                  [--env Development] [--environment Development]\n");
+        printf("\n");
+        printf("Builds the current project, starts the development HTTP server, and watches "
+               "source/config/static/template/migration inputs by default.\n");
+        printf("On rebuild failure, the previous server keeps running when one is active.\n");
         return;
     }
     if (strcmp(command, "create") == 0) {
@@ -808,7 +821,8 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
     const char* command_name = NULL;
 
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
-        (strcmp(out->command, "build") != 0 && strcmp(out->command, "package") != 0))
+        (strcmp(out->command, "build") != 0 && strcmp(out->command, "package") != 0 &&
+         strcmp(out->command, "dev") != 0))
     {
         return 0;
     }
@@ -856,7 +870,9 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
         return 1;
     }
 
-    if (strcmp(argv[*index], "--environment") == 0) {
+    if (strcmp(argv[*index], "--environment") == 0 ||
+        (strcmp(out->command, "dev") == 0 && strcmp(argv[*index], "--env") == 0))
+    {
         if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
             sl_cli_write_cstr(stderr, "sloppy ");
             sl_cli_write_cstr(stderr, command_name);
@@ -866,6 +882,32 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
         out->environment = argv[*index + 1];
         out->environment_explicit = true;
         *index += 2;
+        return 1;
+    }
+
+    if (strcmp(out->command, "dev") == 0 && strcmp(argv[*index], "--watch") == 0) {
+        out->dev_watch = true;
+        out->dev_watch_explicit = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "dev") == 0 && strcmp(argv[*index], "--no-watch") == 0) {
+        out->dev_watch = false;
+        out->dev_watch_explicit = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "dev") == 0 && strcmp(argv[*index], "--clear") == 0) {
+        out->dev_clear = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "dev") == 0 && strcmp(argv[*index], "--openapi") == 0) {
+        out->dev_openapi = true;
+        *index += 1;
         return 1;
     }
 
@@ -1121,6 +1163,7 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     out->format = SL_CLI_FORMAT_TEXT;
     out->host = SL_RUN_DEFAULT_HOST;
     out->port = (uint16_t)SL_RUN_DEFAULT_PORT;
+    out->dev_watch = true;
 
     if (argc <= 1) {
         out->help = true;

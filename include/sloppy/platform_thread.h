@@ -4,6 +4,8 @@
 #include "sloppy/arena.h"
 #include "sloppy/status.h"
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -36,6 +38,7 @@ void sl_platform_cond_destroy(SlPlatformCond* cond);
 SlStatus sl_platform_thread_start(SlArena* arena, SlPlatformThreadMainFn main_fn, void* user,
                                   SlPlatformThread** out_thread);
 void sl_platform_thread_join(SlPlatformThread* thread);
+void sl_platform_sleep_ms(uint64_t milliseconds);
 
 #ifdef __cplusplus
 }
