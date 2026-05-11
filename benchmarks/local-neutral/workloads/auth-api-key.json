@@ -1,0 +1,14 @@
+{
+  "name": "auth-api-key",
+  "method": "GET",
+  "path": "/private",
+  "description": "Header API key check with a small JSON response.",
+  "headers": {
+    "x-api-key": "benchmark-secret"
+  },
+  "expectedStatus": 200,
+  "expectedJson": {
+    "ok": true,
+    "sub": "api-key"
+  }
+}

@@ -52,6 +52,7 @@ engineering feedback:
 ```powershell
 tools/windows/bench.ps1 -Suite http -Runtime sloppy,node,bun,deno
 tools/windows/bench-realistic.ps1 -Suite http -Runtime sloppy,node,bun,deno
+node benchmarks/local-neutral/scripts/run.mjs --runtime sloppy,node --workload health
 ```
 
 The realistic suite under `benchmarks/realistic/` is the longer-lived
@@ -62,6 +63,15 @@ and feature-rich app shapes separate so unlike rows are not treated as
 apples-to-apples measurements. Missing comparator runtimes are reported as
 `UNAVAILABLE`. Use larger measured runs to compare branches on the same machine,
 not to rank Sloppy publicly.
+
+The local neutral suite under `benchmarks/local-neutral/` starts equivalent
+Sloppy, Node, Bun, and Deno apps and drives them with an external tool such as
+`oha`, `wrk`, `k6`, or `vegeta`. Use it when the benchmark client must be
+outside Sloppy. It writes JSON, CSV, Markdown, raw logs, and environment
+metadata under `artifacts/benchmarks/local-neutral/`. It is still a local
+engineering harness, not a source of public performance claims. The current
+Sloppy fixture records `auth-api-key` as `SKIPPED`; the report keeps that gap
+visible instead of treating that row as equivalent.
 
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy

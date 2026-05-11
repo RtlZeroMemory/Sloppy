@@ -214,6 +214,93 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     return sl_status_ok();
 }
 
+static SlStatus bench_route_table_param_dispatch_noop(const SlBenchContext* context,
+                                                      uint64_t iterations, uint64_t* out_checksum)
+{
+    unsigned char engine_storage[1024];
+    unsigned char route_storage[8192];
+    unsigned char dispatch_storage[8192];
+    SlArena engine_arena;
+    SlArena route_arena;
+    SlArena dispatch_arena;
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {1U, sl_str_from_cstr("getUserPost"),
+                             sl_str_from_cstr("GET /users/{id:int}/posts/{postId:int}")};
+    SlPlanRequestBinding bindings[] = {
+        {.parameter = sl_str_from_cstr("id"),
+         .name = sl_str_from_cstr("id"),
+         .schema = sl_str_from_cstr("number"),
+         .type = sl_str_from_cstr("Route<number>"),
+         .kind = SL_PLAN_REQUEST_BINDING_ROUTE},
+        {.parameter = sl_str_from_cstr("postId"),
+         .name = sl_str_from_cstr("postId"),
+         .schema = sl_str_from_cstr("number"),
+         .type = sl_str_from_cstr("Route<number>"),
+         .kind = SL_PLAN_REQUEST_BINDING_ROUTE},
+    };
+    SlPlanRoute route = {
+        .method = sl_str_from_cstr("GET"),
+        .pattern = sl_str_from_cstr("/users/{id:int}/posts/{postId:int}"),
+        .handler_id = 1U,
+        .bindings = bindings,
+        .binding_count = sizeof(bindings) / sizeof(bindings[0]),
+    };
+    SlPlan plan = sl_bench_plan(&handler, 1U);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    uint64_t checksum = 0U;
+    uint64_t index;
+    SlStatus status;
+
+    (void)context;
+
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_bench_create_noop_engine(&engine_arena, &engine);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_route_table_build(&route_arena, &plan, &table, NULL);
+    if (!sl_status_is_ok(status)) {
+        sl_engine_destroy(engine);
+        return status;
+    }
+
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr("/users/123/posts/456");
+    request.raw_target = request.path;
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlEngineResult result = {0};
+        sl_arena_reset(&dispatch_arena);
+        status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table.dispatch,
+                                               &request, &result, NULL);
+        if (sl_status_code(status) != SL_STATUS_UNSUPPORTED) {
+            sl_engine_destroy(engine);
+            return status;
+        }
+        checksum += (uint64_t)sl_status_code(status);
+        checksum += (uint64_t)result.kind;
+    }
+
+    sl_engine_destroy(engine);
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
 static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t target_index,
                                                    bool expect_missing, uint64_t iterations,
                                                    uint64_t* out_checksum)
@@ -446,6 +533,10 @@ static const SlBenchDefinition handler_definitions[] = {
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
      "not a server throughput benchmark; no sockets or response writer are involved", false},
+    {"route.dispatch.generated_table.param", "route",
+     "dispatch and capture params through a generated route table", 1000U, 100000U,
+     bench_route_table_param_dispatch_noop,
+     "generated route table is built before timing; noop engine result is expected", false},
     {"route.dispatch.generated_table.10.first", "route",
      "dispatch first static route in a generated 10-route table", 1000U, 100000U,
      bench_route_table_10_first, "generated route table is built before timing", false},

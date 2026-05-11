@@ -81,6 +81,42 @@ SlStatus sl_bytes_find_any_avx2(SlBytes bytes, SlBytes needles, SlBytesFindResul
         *out = result;
         return sl_status_ok();
     }
+    if (needles.length == 1U) {
+        return sl_bytes_find_avx2(bytes, needles.ptr[0], out);
+    }
+    if (needles.length <= 4U) {
+        const __m256i needle0 = _mm256_set1_epi8((char)needles.ptr[0]);
+        const __m256i needle1 = _mm256_set1_epi8((char)needles.ptr[1]);
+        const __m256i needle2 =
+            needles.length > 2U ? _mm256_set1_epi8((char)needles.ptr[2]) : _mm256_setzero_si256();
+        const __m256i needle3 =
+            needles.length > 3U ? _mm256_set1_epi8((char)needles.ptr[3]) : _mm256_setzero_si256();
+
+        while (index + 32U <= bytes.length) {
+            const __m256i chunk = sl_avx2_loadu_256(bytes.ptr + index);
+            uint32_t match_mask =
+                (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, needle0)) |
+                (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, needle1));
+
+            if (needles.length > 2U) {
+                match_mask |= (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, needle2));
+            }
+            if (needles.length > 3U) {
+                match_mask |= (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, needle3));
+            }
+
+            if (match_mask != 0U) {
+                size_t offset = sl_avx2_first_mask_index(match_mask);
+                result.found = true;
+                result.index = index + offset;
+                result.value = bytes.ptr[result.index];
+                *out = result;
+                return sl_status_ok();
+            }
+
+            index += 32U;
+        }
+    }
 
     while (index + 32U <= bytes.length) {
         size_t needle_index = 0U;

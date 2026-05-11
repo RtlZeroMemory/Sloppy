@@ -1,0 +1,16 @@
+{
+  "name": "post-json-validated",
+  "method": "POST",
+  "path": "/users",
+  "description": "Small JSON request body with equivalent validation.",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": "{\"name\":\"Ada Lovelace\",\"email\":\"ada@example.test\"}",
+  "expectedStatus": 200,
+  "expectedJson": {
+    "id": 1,
+    "name": "Ada Lovelace",
+    "email": "ada@example.test"
+  }
+}

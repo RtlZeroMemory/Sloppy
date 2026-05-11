@@ -1,0 +1,11 @@
+{
+  "name": "route-param",
+  "method": "GET",
+  "path": "/users/123",
+  "description": "One route parameter and a small JSON response.",
+  "expectedStatus": 200,
+  "expectedJson": {
+    "id": "123",
+    "name": "Ada"
+  }
+}
