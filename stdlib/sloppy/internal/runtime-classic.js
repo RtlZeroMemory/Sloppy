@@ -2328,7 +2328,16 @@ Path:
 Fix:
   Use a project-relative directory glob ending in *.sql, for example migrations/*.sql.`);
         }
-        if (path.startsWith(".") || path.startsWith("/") || path.startsWith("\\") || path.includes(":/")) {
+        if (path === ".") {
+            return "./";
+        }
+        if (
+            path.startsWith("./") ||
+            path.startsWith(".\\") ||
+            path.startsWith("/") ||
+            path.startsWith("\\") ||
+            path.includes(":/")
+        ) {
             return path;
         }
         return `./${path}`;
@@ -2338,9 +2347,33 @@ Fix:
         await db.exec(MIGRATION_SQL[providerKind].ensure, []);
     }
 
-    async function readAppliedMigrations(db, providerKind) {
-        await ensureMigrationsTable(db, providerKind);
-        const rows = await db.query(MIGRATION_SQL[providerKind].select, []);
+    function migrationTableMissing(error, providerKind) {
+        const message = String(error?.message ?? error ?? "");
+        if (!message.toLowerCase().includes(MIGRATIONS_TABLE.toLowerCase())) {
+            return false;
+        }
+        if (providerKind === "sqlite") {
+            return /no such table|does not exist|not found/i.test(message);
+        }
+        if (providerKind === "postgres") {
+            return /does not exist|undefined_table|not found/i.test(message);
+        }
+        if (providerKind === "sqlserver") {
+            return /invalid object name|does not exist|not found/i.test(message);
+        }
+        return false;
+    }
+
+    async function readAppliedMigrations(db, providerKind, options = {}) {
+        let rows;
+        try {
+            rows = await db.query(MIGRATION_SQL[providerKind].select, []);
+        } catch (error) {
+            if (options.missingTableAsEmpty === true && migrationTableMissing(error, providerKind)) {
+                return new Map();
+            }
+            throw error;
+        }
         const applied = new Map();
         for (const row of rows) {
             applied.set(row.name, row);
@@ -2411,7 +2444,7 @@ Fix:
         const checked = normalizeMigrationOptions(options);
         const providerKind = resolveMigrationProviderKind(db, checked);
         const files = await migrationFilesWithContent(checked);
-        const applied = await readAppliedMigrations(db, providerKind);
+        const applied = await readAppliedMigrations(db, providerKind, { missingTableAsEmpty: true });
         const migrations = migrationStatusFor(files, applied);
         const changed = migrations.some((migration) => migration.status === "changed");
         const pending = migrations.filter((migration) => migration.status === "pending").length;
@@ -2430,6 +2463,7 @@ Fix:
         const providerKind = resolveMigrationProviderKind(db, checked);
         const dialect = MIGRATION_SQL[providerKind];
         const files = await migrationFilesWithContent(checked);
+        await ensureMigrationsTable(db, providerKind);
         const applied = await readAppliedMigrations(db, providerKind);
         const records = migrationStatusFor(files, applied);
         for (const record of records) {
