@@ -13753,7 +13753,8 @@ fn response_schema_from_type_arguments(
 fn response_body_argument<'a>(call: &'a CallExpression<'a>) -> Option<&'a Argument<'a>> {
     let (_, helper) = static_member_name(&call.callee)?;
     let index = match helper {
-        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
+        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "unauthorized" | "notFound"
+        | "problem" => 0,
         "created" | "status" => 1,
         _ => return None,
     };
@@ -13847,7 +13848,9 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         "created" => (201, "json"),
         "accepted" => (202, "json"),
         "noContent" => (204, "empty"),
+        "stream" => (200, "stream"),
         "badRequest" => (400, "json"),
+        "unauthorized" => (401, "json"),
         "notFound" => (404, "json"),
         "problem" => (500, "problem"),
         "status" => (status_result_code(call)?, "json"),
@@ -14344,6 +14347,53 @@ fn request_binding_from_call(
     schema_names: &BTreeSet<String>,
 ) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "request" {
+        let kind = match chain[2] {
+            "form" if call.arguments.is_empty() => Some("body.form"),
+            "multipart" if call.arguments.is_empty() => Some("body.multipart"),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            return Some(RequestBinding {
+                kind: kind.to_string(),
+                name: None,
+                schema: None,
+                parameter: None,
+                type_name: None,
+                source_name: None,
+                source_text: None,
+                span: None,
+                wrapper: None,
+                injection_kind: None,
+                provider_kind: None,
+                capability: None,
+                semantic: None,
+                redacted: false,
+            });
+        }
+    }
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "cookies" && chain[2] == "get" {
+        if call.arguments.len() != 1 {
+            return None;
+        }
+        let name = call.arguments.first().and_then(argument_string_literal)?;
+        return Some(RequestBinding {
+            kind: "cookie".to_string(),
+            name: Some(name),
+            schema: None,
+            parameter: None,
+            type_name: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            wrapper: None,
+            injection_kind: None,
+            provider_kind: None,
+            capability: None,
+            semantic: None,
+            redacted: true,
+        });
+    }
     if chain.len() >= 2 && chain[0] == ctx_name && chain[1] == "request" {
         return Some(context_request_binding());
     }
@@ -14377,6 +14427,8 @@ fn body_binding_schema(
     match method {
         "text" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.is_empty() => Some(None),
+        "form" if call.arguments.is_empty() => Some(None),
+        "multipart" if call.arguments.is_empty() => Some(None),
         "json" if call.arguments.len() == 1 => {
             let schema = call.arguments.first().and_then(argument_identifier)?;
             if schema_names.contains(schema) {
@@ -14949,6 +15001,13 @@ fn argument_identifier<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
     }
 }
 
+fn argument_string_literal(argument: &Argument<'_>) -> Option<String> {
+    match argument {
+        Argument::StringLiteral(value) => Some(value.value.as_str().to_string()),
+        _ => None,
+    }
+}
+
 fn argument_span(argument: &Argument<'_>) -> Option<Span> {
     match argument {
         Argument::SpreadElement(node) => Some(node.span),
@@ -15096,8 +15155,10 @@ fn results_helper_is_supported(property: &str) -> bool {
             | "noContent"
             | "notFound"
             | "badRequest"
+            | "unauthorized"
             | "status"
             | "problem"
+            | "stream"
     )
 }
 
@@ -15115,7 +15176,10 @@ fn results_call_arguments_are_supported(
 
     let argument_count_supported = match property {
         "text" | "html" | "bytes" => matches!(call.arguments.len(), 1 | 2),
-        "json" | "ok" | "accepted" | "notFound" | "badRequest" => call.arguments.len() <= 2,
+        "json" | "ok" | "accepted" | "notFound" | "badRequest" | "unauthorized" => {
+            call.arguments.len() <= 2
+        }
+        "stream" => matches!(call.arguments.len(), 1 | 2),
         "created" | "status" => (1..=3).contains(&call.arguments.len()),
         "noContent" => call.arguments.is_empty(),
         "problem" => call.arguments.len() <= 2,
@@ -15133,10 +15197,35 @@ fn results_call_arguments_are_supported(
             });
     }
 
+    if property == "stream" {
+        return matches!(call.arguments.len(), 1 | 2)
+            && call.arguments.first().is_some_and(|argument| {
+                argument_is_stream_writer_callback(argument, allowed_roots)
+            })
+            && call.arguments.get(1).is_none_or(|argument| {
+                argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+            });
+    }
+
     argument_count_supported
         && call.arguments.iter().all(|argument| {
             argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
         })
+}
+
+fn argument_is_stream_writer_callback(
+    argument: &Argument<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    let mut free_identifiers = service_factory_free_identifiers(argument);
+    free_identifiers.remove("Results");
+    free_identifiers.remove("Promise");
+    free_identifiers.remove("Uint8Array");
+    free_identifiers.retain(|identifier| !allowed_roots.contains(identifier));
+    matches!(
+        argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) && free_identifiers.is_empty()
 }
 
 fn argument_is_inline_bytes_value(argument: &Argument<'_>) -> bool {
@@ -15890,6 +15979,16 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut output,
             &mut generated_line,
             "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.form\") { return ctx.request.form(); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  if (binding.kind === \"body.multipart\") { return ctx.request.multipart(); }",
         );
         push_generated_line(
             &mut output,

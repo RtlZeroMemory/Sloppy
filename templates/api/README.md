@@ -33,8 +33,14 @@ sloppy run .sloppy --once GET /health
 sloppy run .sloppy --once GET /users
 sloppy run .sloppy --once GET /public/hello.txt
 sloppy run .sloppy --once POST /users --json "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
+printf "name=Katherine Johnson&email=katherine@example.test" > user.form
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file user.form --once POST /users
 ```
 
+```powershell
+Set-Content -Path user.form -Value "name=Katherine Johnson&email=katherine@example.test" -NoNewline
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file user.form --once POST /users
+```
 You can also run the development server and send requests with your HTTP
 client:
 

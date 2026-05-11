@@ -155,11 +155,14 @@ static SlStatus sl_http_backend_unsupported_media_diag(SlDiag* out_diag)
         out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
         sl_http_backend_literal("HTTP request body content type is not supported",
                                 sizeof("HTTP request body content type is not supported") - 1U),
-        sl_http_backend_literal("use application/json, text/plain, or application/octet-stream for "
-                                "bounded request bodies",
-                                sizeof("use application/json, text/plain, or "
-                                       "application/octet-stream for bounded request bodies") -
-                                    1U),
+        sl_http_backend_literal(
+            "use application/json, text/plain, application/octet-stream, "
+            "application/x-www-form-urlencoded, or multipart/form-data for "
+            "bounded request bodies",
+            sizeof("use application/json, text/plain, application/octet-stream, "
+                   "application/x-www-form-urlencoded, or multipart/form-data for "
+                   "bounded request bodies") -
+                1U),
         SL_STATUS_UNSUPPORTED);
 }
 
@@ -360,15 +363,21 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    *out_kind = SL_HTTP_REQUEST_BODY_NONE;
-    if (content_length == 0U) {
-        return sl_status_ok();
-    }
     if (sl_str_is_empty(sl_http_backend_trim_ascii_space(content_type))) {
+        if (content_length == 0U) {
+            return sl_status_ok();
+        }
         return sl_http_backend_unsupported_media_diag(out_diag);
     }
 
     media_type = sl_http_backend_media_type(content_type);
+    if (content_length == 0U &&
+        !sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/x-www-form-urlencoded")) &&
+        !sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data")))
+    {
+        return sl_status_ok();
+    }
+
     if (sl_http_backend_media_type_json(media_type)) {
         *out_kind = SL_HTTP_REQUEST_BODY_JSON;
         return sl_status_ok();
@@ -379,6 +388,14 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
     }
     if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/octet-stream"))) {
         *out_kind = SL_HTTP_REQUEST_BODY_BYTES;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/x-www-form-urlencoded"))) {
+        *out_kind = SL_HTTP_REQUEST_BODY_FORM;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("multipart/form-data"))) {
+        *out_kind = SL_HTTP_REQUEST_BODY_MULTIPART;
         return sl_status_ok();
     }
 

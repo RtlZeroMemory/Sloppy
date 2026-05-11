@@ -2194,6 +2194,7 @@ static bool sl_run_once_header_name_valid(SlStr name)
 static int sl_run_once_parse_header(const char* text, SlHttpHeader* out_header)
 {
     const char* colon = NULL;
+    const char* value_start = NULL;
     SlStr name = {0};
     SlStr value = {0};
 
@@ -2204,8 +2205,12 @@ static int sl_run_once_parse_header(const char* text, SlHttpHeader* out_header)
     if (colon == NULL) {
         return 1;
     }
+    value_start = colon + 1;
+    while (*value_start == ' ' || *value_start == '\t') {
+        value_start += 1;
+    }
     name = sl_str_from_parts(text, (size_t)(colon - text));
-    value = sl_str_from_cstr(colon + 1);
+    value = sl_str_from_cstr(value_start);
     if (!sl_run_once_header_name_valid(name) ||
         value.length > SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH ||
         sl_run_once_header_has_crlf(name) || sl_run_once_header_has_crlf(value))
@@ -2220,12 +2225,13 @@ static bool sl_run_once_has_header(const SlHttpHeader* headers, size_t header_co
                                    const char* name)
 {
     size_t index = 0U;
+    SlStr needle = sl_str_from_cstr(name);
 
     if (headers == NULL || name == NULL) {
         return false;
     }
     for (index = 0U; index < header_count; index += 1U) {
-        if (sl_str_equal_ci_ascii(headers[index].name, sl_str_from_cstr(name))) {
+        if (sl_str_equal_ci_ascii(headers[index].name, needle)) {
             return true;
         }
     }

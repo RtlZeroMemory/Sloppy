@@ -109,6 +109,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Not Modified";
     case 400U:
         return "Bad Request";
+    case 401U:
+        return "Unauthorized";
     case 404U:
         return "Not Found";
     case 405U:
@@ -123,6 +125,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Expectation Failed";
     case 500U:
         return "Internal Server Error";
+    case 503U:
+        return "Service Unavailable";
     case 501U:
         return "Not Implemented";
     default:

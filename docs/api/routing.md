@@ -174,6 +174,5 @@ captured at build/package time, not looked up dynamically per request.
 
 - Direct HEAD route registration
 - Streaming request bodies exposed directly to handlers
-- `multipart/form-data` and file uploads
 - Custom matchers beyond `{name}` / `{name:int}`
 - Per-route limits at the API surface (server-wide limits exist via config)

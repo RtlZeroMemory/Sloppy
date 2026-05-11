@@ -7,7 +7,7 @@ synthetic request. `run` enters V8, so it requires a V8-enabled build.
 sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib <dir>]
            [--environment <name>] [--host <ip>] [--port <n>]
            [--kind web|program]
-           [--once METHOD TARGET] [--header name:value]
+           [--once METHOD TARGET] [--header "Name: value"]
            [--body text | --body-file path | --json json]
            [-- <program-args...>]
 ```
@@ -64,6 +64,7 @@ runtime and exits. Use it for smoke tests:
 sloppy run .sloppy --once GET /health
 sloppy run src/main.ts --once POST /users --json '{"name":"Ada"}'
 sloppy run .sloppy --once POST /upload --header content-type:text/plain --body-file request.txt
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /login
 ```
 
 The full HTTP response is written to stdout — status line, response
@@ -86,9 +87,9 @@ failures (parse, V8 init, target validation).
 
 `--once` doesn't open a listener, so `--host` and `--port` are ignored.
 
-Use `--header name:value` to add request headers. The flag is repeatable.
-Header names must be HTTP token names, and header names/values cannot contain
-CR or LF bytes.
+Use `--header "Name: value"` to add request headers. The flag is repeatable.
+Header names must be HTTP token names, leading spaces or tabs after the colon
+are ignored, and header names/values cannot contain CR or LF bytes.
 
 Use one body flag at most:
 
@@ -100,7 +101,13 @@ Use one body flag at most:
 When a body is present, `sloppy run` adds `Content-Length`. Do not pass your
 own `Content-Length` header. For `--body` and `--body-file`, pass an explicit
 `Content-Type` such as `application/json`, `text/plain`, or
-`application/octet-stream`.
+`application/octet-stream`; `--body-file` is also useful for URL-encoded forms,
+multipart fixtures, and upload handlers.
+
+```sh
+printf "name=Ada" > form.txt
+sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file form.txt --once POST /form
+```
 
 Header and body one-shot dispatch currently requires static route metadata.
 Dynamic fallback routes still support method-and-target one-shot requests only.
@@ -116,7 +123,7 @@ Dynamic fallback routes still support method-and-target one-shot requests only.
 | `--port <n>`           | `5173`          | Server bind port (1–65535)                           |
 | `--kind web\|program`  | inferred for direct source, `web` for project mode without `kind` | Override source kind |
 | `--once METHOD TARGET` | —               | Run one synthetic request and exit                   |
-| `--header name:value`  | empty           | Add a synthetic one-shot request header              |
+| `--header "Name: value"` | empty        | Add a synthetic one-shot request header              |
 | `--body <text>`        | empty           | Add a synthetic one-shot text body                   |
 | `--body-file <path>`   | empty           | Read a synthetic one-shot body from a file           |
 | `--json <json>`        | empty           | Add a JSON one-shot body and JSON content type       |
