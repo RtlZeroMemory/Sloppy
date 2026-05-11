@@ -66,7 +66,8 @@ file(WRITE "${project_dir}/public/css/site.css" "body { color: #123456; }\n")
 file(WRITE "${project_dir}/public/data.json" "{\"ok\":true}\n")
 file(WRITE "${project_dir}/public/img/pixel.png" "png-bytes")
 file(WRITE "${project_dir}/public/wasm/module.wasm" "wasm-bytes")
-file(WRITE "${project_dir}/public/secret.txt" "secret\n")
+set(outside_secret_marker "__outside-static-root-secret__")
+file(WRITE "${project_dir}/secret.txt" "${outside_secret_marker}\n")
 
 function(run_static_command description working_dir expected_output)
   execute_process(
@@ -203,7 +204,7 @@ if(NOT traversal_result EQUAL 0)
   message(FATAL_ERROR "traversal request command failed with ${traversal_result}\nSTDOUT:\n${traversal_output}\nSTDERR:\n${traversal_error}")
 endif()
 
-if(traversal_output MATCHES "secret")
+if(traversal_output MATCHES "${outside_secret_marker}")
   message(FATAL_ERROR "traversal response leaked asset contents\n${traversal_output}")
 endif()
 
