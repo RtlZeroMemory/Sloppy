@@ -53,10 +53,18 @@ diagnostic wording, OpenAPI paths, package manifest shape, source-map metadata,
 or whether generated artifacts exist.
 
 Docs snippets use `tests/fixtures/docs-snippets/manifest.json` to assert that
-public docs and template READMEs still contain the commands covered by the
-alpha template, package, database, and metadata lanes. Commands that require a
-registry install or long-running local server stay listed with an explicit skip
-reason instead of being counted as passed execution evidence.
+public docs and template READMEs still contain commands covered by a named proof
+lane. Manifest status values are precise:
+
+- `checked` means the command appears in the document and is covered by the
+  named proof lane. It is not executed by the docs-snippet proof.
+- `executed` means the command is actually run by the docs-snippet proof.
+- `skipped` means the command is not run and has an explicit reason.
+
+Commands that require a registry install or long-running local server stay
+listed with an explicit skip reason instead of being counted as passed execution
+evidence. The current manifest is provisional while public alpha docs are still
+being consolidated; do not cite it as final alpha documentation proof.
 
 ## Review checklist
 

@@ -159,7 +159,7 @@ SQLite, PostgreSQL, and SQL Server support first-party migrations through
 import { Migrations } from "sloppy/data";
 
 await Migrations.apply(db, {
-    provider: "main",
+    provider: "sqlite",
     path: "migrations/*.sql",
 });
 ```

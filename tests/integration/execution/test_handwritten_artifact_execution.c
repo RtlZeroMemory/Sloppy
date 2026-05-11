@@ -3,7 +3,8 @@
 #include <stdio.h>
 
 #define TEST_ARENA_SIZE 16384U
-#define TEST_FILE_SIZE 393216U
+#define TEST_RUNTIME_ARENA_SIZE 1048576U
+#define TEST_FILE_SIZE 524288U
 
 static int expect_true(bool condition)
 {
@@ -87,7 +88,7 @@ static SlEngineOptions v8_options(void)
 static int load_plan_from_path(const char* path, SlArena* plan_arena, SlPlan* out_plan,
                                SlDiag* out_diag)
 {
-    unsigned char json_storage[TEST_FILE_SIZE];
+    static unsigned char json_storage[TEST_FILE_SIZE];
     SlBytes json = {0};
     SlPlanParseOptions options = {0};
 
@@ -109,18 +110,18 @@ static int load_handwritten_plan(SlArena* plan_arena, SlPlan* out_plan, SlDiag* 
 static int eval_app_from_path(const char* path, const char* source_name, SlEngine* engine,
                               SlDiag* out_diag)
 {
-    unsigned char js_storage[TEST_FILE_SIZE];
+    static unsigned char js_storage[TEST_FILE_SIZE];
     SlBytes js = {0};
     SlStr source = {0};
+    SlStatus status;
 
     if (read_file(path, js_storage, sizeof(js_storage), &js) != 0) {
         return 1;
     }
 
     source = sl_str_from_parts((const char*)js.ptr, js.length);
-    return expect_status(
-        sl_engine_eval_source(engine, sl_str_from_cstr(source_name), source, out_diag),
-        SL_STATUS_OK);
+    status = sl_engine_eval_source(engine, sl_str_from_cstr(source_name), source, out_diag);
+    return expect_status(status, SL_STATUS_OK);
 }
 
 static int eval_bootstrap_runtime(SlEngine* engine, SlDiag* out_diag)
@@ -139,9 +140,9 @@ static int run_artifact_handler_text(const char* plan_path, const char* app_path
                                      const char* source_name, SlHandlerId handler_id,
                                      const char* expected_text)
 {
-    unsigned char engine_storage[TEST_ARENA_SIZE];
-    unsigned char plan_storage[TEST_ARENA_SIZE];
-    unsigned char result_storage[TEST_ARENA_SIZE];
+    static unsigned char engine_storage[TEST_ARENA_SIZE];
+    static unsigned char plan_storage[TEST_ARENA_SIZE];
+    static unsigned char result_storage[TEST_ARENA_SIZE];
     SlArena engine_arena = {0};
     SlArena plan_arena = {0};
     SlArena result_arena = {0};
@@ -193,9 +194,9 @@ static int test_handwritten_plan_and_app_call_handler_1(void)
 
 static int test_compiler_artifact_plan_and_app_call_handler_1(void)
 {
-    unsigned char engine_storage[TEST_ARENA_SIZE];
-    unsigned char plan_storage[TEST_ARENA_SIZE];
-    unsigned char result_storage[TEST_ARENA_SIZE];
+    static unsigned char engine_storage[TEST_RUNTIME_ARENA_SIZE];
+    static unsigned char plan_storage[TEST_RUNTIME_ARENA_SIZE];
+    static unsigned char result_storage[TEST_RUNTIME_ARENA_SIZE];
     SlArena engine_arena = {0};
     SlArena plan_arena = {0};
     SlArena result_arena = {0};
@@ -236,9 +237,10 @@ static int test_compiler_artifact_plan_and_app_call_handler_1(void)
         return 3;
     }
 
-    if (expect_status(
-            sl_runtime_contract_call_handler(engine, &result_arena, &plan, 1U, &result, &diag),
-            SL_STATUS_OK) != 0)
+    /* Compiler-generated handlers are dispatched through registered handler context. */
+    if (expect_status(sl_runtime_contract_call_handler_with_context(engine, &result_arena, &plan,
+                                                                    1U, &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 4;
@@ -249,22 +251,6 @@ static int test_compiler_artifact_plan_and_app_call_handler_1(void)
     {
         sl_engine_destroy(engine);
         return 5;
-    }
-
-    result = (SlEngineResult){0};
-    if (expect_status(sl_runtime_contract_call_handler_with_context(engine, &result_arena, &plan,
-                                                                    1U, &context, &result, &diag),
-                      SL_STATUS_OK) != 0)
-    {
-        sl_engine_destroy(engine);
-        return 6;
-    }
-
-    if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
-    {
-        sl_engine_destroy(engine);
-        return 7;
     }
 
     sl_engine_destroy(engine);

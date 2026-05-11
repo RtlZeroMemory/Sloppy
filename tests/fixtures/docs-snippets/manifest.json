@@ -1,5 +1,15 @@
 {
   "schemaVersion": 1,
+  "coverage": {
+    "status": "provisional",
+    "reason": "origin/main still contains pre-alpha/minimal-api install and platform wording; this manifest checks the current public docs and is not final alpha docs proof"
+  },
+  "defaultProofLane": "alpha.docs.snippets",
+  "semantics": {
+    "checked": "command appears in the document and is covered by the named proof lane; the docs-snippet proof does not run it",
+    "executed": "command is actually run by the docs-snippet proof",
+    "skipped": "command is not run and has an explicit reason"
+  },
   "documents": [
     {
       "path": "README.md",

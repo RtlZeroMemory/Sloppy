@@ -882,11 +882,21 @@ async function runDocsSnippetsArea() {
     if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.documents)) {
         throw new Error("docs snippets manifest must use schemaVersion 1 and a documents array");
     }
+    if (typeof manifest.defaultProofLane !== "string" || manifest.defaultProofLane.length === 0) {
+        throw new Error("docs snippets manifest must name a default proof lane");
+    }
+    if (manifest.semantics?.checked === undefined || manifest.semantics?.executed === undefined || manifest.semantics?.skipped === undefined) {
+        throw new Error("docs snippets manifest must define checked, executed, and skipped semantics");
+    }
 
     const summary = [];
     for (const document of manifest.documents) {
         if (typeof document.path !== "string" || document.path.length === 0) {
             throw new Error("docs snippets manifest document path must be a non-empty string");
+        }
+        const proofLane = document.proofLane ?? manifest.defaultProofLane;
+        if (typeof proofLane !== "string" || proofLane.length === 0) {
+            throw new Error(`${document.path} must name a proof lane for checked snippets`);
         }
         const docPath = joinPath(repoRoot, document.path);
         if (!(await File.exists(fsPath(docPath)))) {
@@ -910,20 +920,28 @@ async function runDocsSnippetsArea() {
                     throw new Error(`${document.path} skipped command needs a reason: ${snippet.command}`);
                 }
                 skipped.push({ command: snippet.command, reason: snippet.reason });
+            } else if (snippet.status === "executed") {
+                throw new Error(`${document.path} marks a command executed, but docs-snippet proof does not execute manifest commands: ${snippet.command}`);
             } else if (snippet.status === "checked") {
-                checked.push({ command: snippet.command });
+                checked.push({ command: snippet.command, proofLane });
             } else {
-                throw new Error(`${document.path} snippet status must be checked or skipped`);
+                throw new Error(`${document.path} snippet status must be checked, executed, or skipped`);
             }
         }
         summary.push({
             path: document.path,
+            proofLane,
             checked: checked.length,
+            executed: 0,
             skipped: skipped.length,
             skippedReasons: skipped.map((entry) => entry.reason),
         });
     }
-    await snapshotJson("docs-snippets", "summary", { documents: summary });
+    await snapshotJson("docs-snippets", "summary", {
+        coverage: manifest.coverage,
+        semantics: manifest.semantics,
+        documents: summary,
+    });
 }
 
 export async function main(args, ctx) {
