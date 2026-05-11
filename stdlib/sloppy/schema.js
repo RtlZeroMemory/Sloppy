@@ -127,9 +127,15 @@ function createNullableSchema(inner) {
 }
 
 function createDefaultSchema(inner, defaultValue) {
+    const defaultResult = inner.__validateAtPath(defaultValue, []);
+    if (!defaultResult.ok) {
+        throw new TypeError("Sloppy schema default value must satisfy the wrapped schema.");
+    }
+    const protectedDefault = protectDefaultValue(defaultResult.value);
+
     function validateAtPath(value, path) {
         if (value === undefined) {
-            return success(defaultValue);
+            return success(protectedDefault);
         }
 
         return inner.__validateAtPath(value, path);
@@ -139,13 +145,28 @@ function createDefaultSchema(inner, defaultValue) {
         kind: inner.kind,
         metadata: Object.freeze({
             ...inner.metadata,
-            default: defaultValue,
+            default: protectedDefault,
         }),
         validate(value) {
             return validateAtPath(value, []);
         },
         __validateAtPath: validateAtPath,
     });
+}
+
+function protectDefaultValue(value) {
+    if (value === null || typeof value !== "object") {
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return Object.freeze(value.map((item) => protectDefaultValue(item)));
+    }
+    if (!isPlainObject(value)) {
+        throw new TypeError("Sloppy schema default object values must be plain JSON-compatible objects.");
+    }
+    return Object.freeze(Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, protectDefaultValue(item)]),
+    ));
 }
 
 function normalizeStringRuleValue(value, name) {
@@ -221,7 +242,8 @@ function createStringSchema(rules = []) {
             if (message !== undefined && typeof message !== "string") {
                 throw new TypeError("Sloppy schema.string().pattern message must be a string.");
             }
-            return createStringSchema([...rules, Object.freeze({ kind: "pattern", value: pattern, message })]);
+            const normalizedPattern = new RegExp(pattern.source, pattern.flags.replace(/[gy]/gu, ""));
+            return createStringSchema([...rules, Object.freeze({ kind: "pattern", value: normalizedPattern, message })]);
         },
         validate(value) {
             return validateAtPath(value, []);
@@ -306,14 +328,17 @@ function createArraySchema(itemSchema) {
         }
 
         const issues = [];
+        const output = [];
         for (let index = 0; index < value.length; index += 1) {
             const itemResult = itemSchema.__validateAtPath(value[index], [...path, index]);
             if (!itemResult.ok) {
                 issues.push(...itemResult.issues);
+            } else {
+                output.push(itemResult.value);
             }
         }
 
-        return issues.length === 0 ? success(value) : failure(issues);
+        return issues.length === 0 ? success(output) : failure(issues);
     }
 
     return withModifiers({
@@ -406,16 +431,19 @@ function object(shape) {
         }
 
         const issues = [];
+        const output = {};
 
         for (const [key, fieldSchema] of Object.entries(fields)) {
             const fieldResult = fieldSchema.__validateAtPath(value[key], [...path, key]);
 
             if (!fieldResult.ok) {
                 issues.push(...fieldResult.issues);
+            } else if (fieldResult.value !== undefined || Object.prototype.hasOwnProperty.call(value, key)) {
+                output[key] = fieldResult.value;
             }
         }
 
-        return issues.length === 0 ? success(value) : failure(issues);
+        return issues.length === 0 ? success(output) : failure(issues);
     }
 
     return withModifiers({

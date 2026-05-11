@@ -2633,6 +2633,22 @@ async function flushMicrotasks(count = 6) {
         ok: true,
         value: "fallback",
     });
+    assertThrowsMessage(() => Schema.string().default(123), /default value must satisfy/);
+    const GlobalPattern = Schema.string().pattern(/a/g);
+    assert.equal(GlobalPattern.validate("a").ok, true);
+    assert.equal(GlobalPattern.validate("a").ok, true);
+    assert.deepEqual(Schema.object({
+        role: Schema.string().default("user"),
+        tags: Schema.array(Schema.string().default("tag")),
+    }).validate({ tags: [undefined] }), {
+        ok: true,
+        value: { role: "user", tags: ["tag"] },
+    });
+    const defaultProfile = Schema.object({
+        profile: Schema.object({ flags: Schema.array(Schema.string()) }).default({ flags: [] }),
+    }).validate({});
+    assert.equal(Object.isFrozen(defaultProfile.value.profile), true);
+    assert.equal(Object.isFrozen(defaultProfile.value.profile.flags), true);
     assertThrowsMessage(() => schema.array({}), /must be a schema/);
     assertThrowsMessage(() => schema.object({ bad: {} }), /must be a schema/);
     assertThrowsMessage(
@@ -2693,4 +2709,5 @@ async function flushMicrotasks(count = 6) {
     assert.equal(malformed.status, 400);
     assert.equal(malformed.headers.get("content-type"), "application/problem+json; charset=utf-8");
     assert.equal(malformed.json().errors[0].code, "json.invalid");
+    await host.close();
 }

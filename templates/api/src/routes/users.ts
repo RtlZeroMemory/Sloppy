@@ -35,6 +35,6 @@ export function usersModule(app) {
         return Results.created(`/users/${user.id}`, user);
     })
         .accepts(CreateUser)
-        .returns(User)
+        .returns(User, { status: 201 })
         .withName("Users.Create");
 }

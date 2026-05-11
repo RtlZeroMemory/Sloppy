@@ -252,6 +252,12 @@ struct RouteMetadata {
 }
 
 #[derive(Debug, Clone)]
+struct SchemaReferenceEdit {
+    argument_span: Span,
+    validate_property_span: Option<Span>,
+}
+
+#[derive(Debug, Clone)]
 struct HealthOptions {
     path: String,
     liveness_path: String,
@@ -3890,10 +3896,16 @@ fn extract_entry(
             .routes
             .iter()
             .any(|route| route.health.is_some());
-        for schema in &module_export.schemas {
-            state.schema_names.insert(schema.name.clone());
+        for schema in module_export.schemas {
+            if !state.schema_names.insert(schema.name.clone()) {
+                return Err(duplicate_schema_diagnostic(
+                    &imported.path,
+                    schema.span,
+                    &schema.name,
+                ));
+            }
+            state.schemas.push(schema);
         }
-        state.schemas.extend(module_export.schemas);
         state.routes.extend(module_export.routes);
     }
     if let Some(metrics) = metrics.as_mut() {
@@ -6237,6 +6249,7 @@ fn extract_expression_statement(
         provider_bindings: &state.provider_bindings,
         helper_effects: &state.helper_effects,
     };
+    validate_handler_body_validate_schema_references(path, handler_arg, &schema_names)?;
     let Some(handler) = handler_from_argument(handler_arg, &handler_context) else {
         let diagnostic = handler_diagnostic(
             path,
@@ -6267,39 +6280,13 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
-    if let Some(schema) = &fluent_metadata.accepts_schema {
-        validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
-        if let Some(binding) = handler
-            .bindings
-            .iter_mut()
-            .find(|binding| binding.kind == "body.json")
-        {
-            if binding.schema.is_none() {
-                binding.schema = Some(schema.clone());
-            }
-        } else {
-            handler.bindings.push(framework_binding(
-                "body.json",
-                None,
-                Some(schema),
-                None,
-                statement.span,
-            ));
-        }
-    }
-    if let Some(schema) = &fluent_metadata.returns_schema {
-        validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
-        if let Some(response) = &mut handler.response {
-            if response.body_schema.is_none() {
-                response.body_schema = Some(schema.clone());
-            }
-        }
-        for response in &mut handler.responses {
-            if response.body_schema.is_none() && response.kind == "json" {
-                response.body_schema = Some(schema.clone());
-            }
-        }
-    }
+    apply_route_schema_metadata(
+        path,
+        statement.span,
+        &schema_names,
+        &fluent_metadata,
+        &mut handler,
+    )?;
     if handler.requires_results_import && state.results_required_span.is_none() {
         state.results_required_span = Some(handler.span);
     }
@@ -11617,6 +11604,7 @@ fn extract_module_function_routes(
                     provider_bindings: &providers,
                     helper_effects: &helper_effects,
                 };
+                validate_handler_body_validate_schema_references(path, handler_arg, &schema_names)?;
                 let Some(mut handler) = handler_from_argument(handler_arg, &handler_context) else {
                     return Err(handler_diagnostic(
                         path,
@@ -11658,39 +11646,13 @@ fn extract_module_function_routes(
                         handler.is_async,
                     );
                 }
-                if let Some(schema) = &fluent_metadata.accepts_schema {
-                    validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
-                    if let Some(binding) = handler
-                        .bindings
-                        .iter_mut()
-                        .find(|binding| binding.kind == "body.json")
-                    {
-                        if binding.schema.is_none() {
-                            binding.schema = Some(schema.clone());
-                        }
-                    } else {
-                        handler.bindings.push(framework_binding(
-                            "body.json",
-                            None,
-                            Some(schema),
-                            None,
-                            statement.span,
-                        ));
-                    }
-                }
-                if let Some(schema) = &fluent_metadata.returns_schema {
-                    validate_route_schema_reference(path, statement.span, schema, &schema_names)?;
-                    if let Some(response) = &mut handler.response {
-                        if response.body_schema.is_none() {
-                            response.body_schema = Some(schema.clone());
-                        }
-                    }
-                    for response in &mut handler.responses {
-                        if response.body_schema.is_none() && response.kind == "json" {
-                            response.body_schema = Some(schema.clone());
-                        }
-                    }
-                }
+                apply_route_schema_metadata(
+                    path,
+                    statement.span,
+                    &schema_names,
+                    &fluent_metadata,
+                    &mut handler,
+                )?;
                 tags.extend(route_metadata.tags);
                 tags.extend(fluent_metadata.tags);
                 let auth = fluent_metadata
@@ -12180,13 +12142,129 @@ fn validate_route_schema_reference(
     if schema_names.contains(schema) {
         return Ok(());
     }
-    Err(Diagnostic::new(
+    Err(unresolved_schema_diagnostic(path, span, schema))
+}
+
+fn unresolved_schema_diagnostic(path: &Path, span: Span, schema: &str) -> Diagnostic {
+    Diagnostic::new(
         "SLOPPYC_E_UNRESOLVED_SCHEMA",
         format!("route schema '{schema}' is not declared as a supported Sloppy schema"),
     )
     .with_path(path)
     .with_span(span)
-    .with_hint("Declare the schema with Schema.object(...), Schema.array(...), or another supported Schema constructor in compiler-visible source."))
+    .with_hint("Declare the schema with Schema.object(...), Schema.array(...), or another supported Schema constructor in compiler-visible source.")
+}
+
+fn apply_route_schema_metadata(
+    path: &Path,
+    span: Span,
+    schema_names: &BTreeSet<String>,
+    metadata: &RouteMetadata,
+    handler: &mut Handler,
+) -> Result<(), Diagnostic> {
+    if let Some(schema) = &metadata.accepts_schema {
+        validate_route_schema_reference(path, span, schema, schema_names)?;
+        if let Some(binding) = handler
+            .bindings
+            .iter_mut()
+            .find(|binding| binding.kind == "body.json")
+        {
+            apply_binding_schema(path, span, &mut binding.schema, schema)?;
+        } else {
+            handler.bindings.push(framework_binding(
+                "body.json",
+                None,
+                Some(schema),
+                None,
+                span,
+            ));
+        }
+    }
+
+    if let Some(schema) = &metadata.returns_schema {
+        validate_route_schema_reference(path, span, schema, schema_names)?;
+        if let Some(response) = &mut handler.response {
+            apply_response_schema(path, span, &mut response.body_schema, schema)?;
+        }
+        for response in &mut handler.responses {
+            if response.kind == "json" {
+                apply_response_schema(path, span, &mut response.body_schema, schema)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn apply_binding_schema(
+    path: &Path,
+    span: Span,
+    target: &mut Option<String>,
+    schema: &str,
+) -> Result<(), Diagnostic> {
+    match target {
+        None => {
+            *target = Some(schema.to_string());
+            Ok(())
+        }
+        Some(existing) if existing == schema => Ok(()),
+        Some(existing) => Err(conflicting_route_schema_diagnostic(
+            path,
+            span,
+            existing,
+            schema,
+            "request body",
+        )),
+    }
+}
+
+fn apply_response_schema(
+    path: &Path,
+    span: Span,
+    target: &mut Option<String>,
+    schema: &str,
+) -> Result<(), Diagnostic> {
+    match target {
+        None => {
+            *target = Some(schema.to_string());
+            Ok(())
+        }
+        Some(existing) if existing == schema => Ok(()),
+        Some(existing) => Err(conflicting_route_schema_diagnostic(
+            path,
+            span,
+            existing,
+            schema,
+            "response body",
+        )),
+    }
+}
+
+fn conflicting_route_schema_diagnostic(
+    path: &Path,
+    span: Span,
+    existing: &str,
+    fluent: &str,
+    subject: &str,
+) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_CONFLICTING_ROUTE_SCHEMA",
+        format!(
+            "route {subject} schema '{fluent}' conflicts with handler-inferred schema '{existing}'"
+        ),
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Use the same schema identifier in handler validation and fluent route metadata.")
+}
+
+fn duplicate_schema_diagnostic(path: &Path, span: Span, schema: &str) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_DUPLICATE_SCHEMA",
+        format!("schema '{schema}' is declared more than once"),
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint("Use unique schema names across the entry module and imported function modules.")
 }
 
 fn route_name_from_argument(call: &CallExpression<'_>) -> Result<String, Diagnostic> {
@@ -12772,6 +12850,252 @@ fn handler_from_argument(
         }
         _ => None,
     }
+}
+
+fn validate_handler_body_validate_schema_references(
+    path: &Path,
+    argument: &Argument<'_>,
+    schema_names: &BTreeSet<String>,
+) -> Result<(), Diagnostic> {
+    let unresolved = match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            handler_context_parameter_name(&function.params).and_then(|ctx_name| {
+                function.body.statements.iter().find_map(|statement| {
+                    unresolved_body_validate_schema_in_statement(statement, &ctx_name, schema_names)
+                })
+            })
+        }
+        Argument::FunctionExpression(function) => handler_context_parameter_name(&function.params)
+            .and_then(|ctx_name| {
+                function.body.as_ref().and_then(|body| {
+                    body.statements.iter().find_map(|statement| {
+                        unresolved_body_validate_schema_in_statement(
+                            statement,
+                            &ctx_name,
+                            schema_names,
+                        )
+                    })
+                })
+            }),
+        _ => None,
+    };
+    if let Some((schema, span)) = unresolved {
+        return Err(unresolved_schema_diagnostic(path, span, &schema));
+    }
+    Ok(())
+}
+
+fn unresolved_body_validate_schema_in_statement(
+    statement: &Statement<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    match statement {
+        Statement::BlockStatement(block) => block.body.iter().find_map(|statement| {
+            unresolved_body_validate_schema_in_statement(statement, ctx_name, schema_names)
+        }),
+        Statement::ReturnStatement(statement) => statement.argument.as_ref().and_then(|argument| {
+            unresolved_body_validate_schema_in_expression(argument, ctx_name, schema_names)
+        }),
+        Statement::ExpressionStatement(statement) => unresolved_body_validate_schema_in_expression(
+            &statement.expression,
+            ctx_name,
+            schema_names,
+        ),
+        Statement::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().find_map(|declarator| {
+                declarator.init.as_ref().and_then(|init| {
+                    unresolved_body_validate_schema_in_expression(init, ctx_name, schema_names)
+                })
+            })
+        }
+        Statement::IfStatement(statement) => {
+            unresolved_body_validate_schema_in_expression(&statement.test, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_statement(
+                        &statement.consequent,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+                .or_else(|| {
+                    statement.alternate.as_ref().and_then(|alternate| {
+                        unresolved_body_validate_schema_in_statement(
+                            alternate,
+                            ctx_name,
+                            schema_names,
+                        )
+                    })
+                })
+        }
+        Statement::ThrowStatement(statement) => unresolved_body_validate_schema_in_expression(
+            &statement.argument,
+            ctx_name,
+            schema_names,
+        ),
+        _ => None,
+    }
+}
+
+fn unresolved_body_validate_schema_in_expression(
+    expression: &Expression<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    match expression {
+        Expression::CallExpression(call) => {
+            unresolved_body_validate_schema_in_call(call, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &call.callee,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+                .or_else(|| {
+                    call.arguments.iter().find_map(|argument| {
+                        unresolved_body_validate_schema_in_argument(
+                            argument,
+                            ctx_name,
+                            schema_names,
+                        )
+                    })
+                })
+        }
+        Expression::AwaitExpression(expression) => unresolved_body_validate_schema_in_expression(
+            &expression.argument,
+            ctx_name,
+            schema_names,
+        ),
+        Expression::ObjectExpression(object) => object.properties.iter().find_map(|property| {
+            if let ObjectPropertyKind::ObjectProperty(property) = property {
+                unresolved_body_validate_schema_in_expression(
+                    &property.value,
+                    ctx_name,
+                    schema_names,
+                )
+            } else {
+                None
+            }
+        }),
+        Expression::ArrayExpression(array) => array.elements.iter().find_map(|element| {
+            unresolved_body_validate_schema_in_array_element(element, ctx_name, schema_names)
+        }),
+        Expression::StaticMemberExpression(member) => {
+            unresolved_body_validate_schema_in_expression(&member.object, ctx_name, schema_names)
+        }
+        Expression::ComputedMemberExpression(member) => {
+            unresolved_body_validate_schema_in_expression(&member.object, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &member.expression,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Expression::ParenthesizedExpression(expression) => {
+            unresolved_body_validate_schema_in_expression(
+                &expression.expression,
+                ctx_name,
+                schema_names,
+            )
+        }
+        Expression::ConditionalExpression(expression) => {
+            unresolved_body_validate_schema_in_expression(&expression.test, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &expression.consequent,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &expression.alternate,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Expression::UnaryExpression(expression) => unresolved_body_validate_schema_in_expression(
+            &expression.argument,
+            ctx_name,
+            schema_names,
+        ),
+        Expression::BinaryExpression(expression) => {
+            unresolved_body_validate_schema_in_expression(&expression.left, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &expression.right,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Expression::LogicalExpression(expression) => {
+            unresolved_body_validate_schema_in_expression(&expression.left, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &expression.right,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Expression::SequenceExpression(expression) => {
+            expression.expressions.iter().find_map(|expression| {
+                unresolved_body_validate_schema_in_expression(expression, ctx_name, schema_names)
+            })
+        }
+        _ => None,
+    }
+}
+
+fn unresolved_body_validate_schema_in_argument(
+    argument: &Argument<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    match argument {
+        Argument::CallExpression(call) => {
+            unresolved_body_validate_schema_in_call(call, ctx_name, schema_names)
+        }
+        _ => argument.as_expression().and_then(|expression| {
+            unresolved_body_validate_schema_in_expression(expression, ctx_name, schema_names)
+        }),
+    }
+}
+
+fn unresolved_body_validate_schema_in_array_element(
+    element: &ArrayExpressionElement<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    match element {
+        ArrayExpressionElement::CallExpression(call) => {
+            unresolved_body_validate_schema_in_call(call, ctx_name, schema_names)
+        }
+        _ => element.as_expression().and_then(|expression| {
+            unresolved_body_validate_schema_in_expression(expression, ctx_name, schema_names)
+        }),
+    }
+}
+
+fn unresolved_body_validate_schema_in_call(
+    call: &CallExpression<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    let chain = static_member_chain(&call.callee)?;
+    if chain.len() != 3 || chain[0] != ctx_name || chain[1] != "body" || chain[2] != "validate" {
+        return None;
+    }
+    let Argument::Identifier(identifier) = call.arguments.first()? else {
+        return None;
+    };
+    let schema = identifier.name.as_str();
+    (!schema_names.contains(schema)).then(|| (schema.to_string(), identifier.span))
 }
 
 fn arrow_requires_results_import(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
@@ -14978,7 +15302,7 @@ fn body_json_schema_argument_spans_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-) -> Vec<Span> {
+) -> Vec<SchemaReferenceEdit> {
     let mut spans = Vec::new();
     for statement in &function.body.statements {
         collect_statement_schema_argument_spans(statement, ctx_name, schema_names, &mut spans);
@@ -14990,7 +15314,7 @@ fn body_json_schema_argument_spans_function(
     function: &oxc_ast::ast::Function<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-) -> Vec<Span> {
+) -> Vec<SchemaReferenceEdit> {
     let mut spans = Vec::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
@@ -15004,7 +15328,7 @@ fn collect_statement_schema_argument_spans(
     statement: &Statement<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-    spans: &mut Vec<Span>,
+    spans: &mut Vec<SchemaReferenceEdit>,
 ) {
     match statement {
         Statement::BlockStatement(block) => {
@@ -15159,7 +15483,7 @@ fn collect_for_init_schema_argument_spans(
     init: &ForStatementInit<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-    spans: &mut Vec<Span>,
+    spans: &mut Vec<SchemaReferenceEdit>,
 ) {
     match init {
         ForStatementInit::VariableDeclaration(declaration) => {
@@ -15181,12 +15505,12 @@ fn collect_expression_schema_argument_spans(
     expression: &Expression<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-    spans: &mut Vec<Span>,
+    spans: &mut Vec<SchemaReferenceEdit>,
 ) {
     match expression {
         Expression::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
-                spans.push(span);
+            if let Some(edit) = body_json_schema_reference_edit(call, ctx_name, schema_names) {
+                spans.push(edit);
             } else {
                 collect_expression_schema_argument_spans(
                     &call.callee,
@@ -15370,12 +15694,12 @@ fn collect_argument_schema_argument_spans(
     argument: &Argument<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-    spans: &mut Vec<Span>,
+    spans: &mut Vec<SchemaReferenceEdit>,
 ) {
     match argument {
         Argument::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
-                spans.push(span);
+            if let Some(edit) = body_json_schema_reference_edit(call, ctx_name, schema_names) {
+                spans.push(edit);
             } else {
                 collect_expression_schema_argument_spans(
                     &call.callee,
@@ -15422,12 +15746,12 @@ fn collect_array_element_schema_argument_spans(
     element: &ArrayExpressionElement<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-    spans: &mut Vec<Span>,
+    spans: &mut Vec<SchemaReferenceEdit>,
 ) {
     match element {
         ArrayExpressionElement::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
-                spans.push(span);
+            if let Some(edit) = body_json_schema_reference_edit(call, ctx_name, schema_names) {
+                spans.push(edit);
             } else {
                 collect_expression_schema_argument_spans(
                     &call.callee,
@@ -15465,11 +15789,11 @@ fn collect_array_element_schema_argument_spans(
     }
 }
 
-fn body_json_schema_argument_span(
+fn body_json_schema_reference_edit(
     call: &CallExpression<'_>,
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
-) -> Option<Span> {
+) -> Option<SchemaReferenceEdit> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3
         && chain[0] == ctx_name
@@ -15485,7 +15809,19 @@ fn body_json_schema_argument_span(
         if !schema_names.contains(identifier.name.as_str()) {
             return None;
         }
-        return Some(identifier.span);
+        let validate_property_span = if chain[2] == "validate" {
+            if let Expression::StaticMemberExpression(member) = &call.callee {
+                Some(member.property.span)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        return Some(SchemaReferenceEdit {
+            argument_span: identifier.span,
+            validate_property_span,
+        });
     }
     None
 }
@@ -15493,11 +15829,17 @@ fn body_json_schema_argument_span(
 fn sanitize_handler_schema_references(
     mut source: String,
     handler_start: u32,
-    spans: &[Span],
+    edits: &[SchemaReferenceEdit],
 ) -> String {
-    let mut spans = spans.to_vec();
-    spans.sort_by_key(|span| std::cmp::Reverse(span.start));
-    for span in spans {
+    let mut replacements = Vec::new();
+    for edit in edits {
+        replacements.push((edit.argument_span, "undefined"));
+        if let Some(span) = edit.validate_property_span {
+            replacements.push((span, "json"));
+        }
+    }
+    replacements.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
+    for (span, replacement) in replacements {
         let Some(start) = span.start.checked_sub(handler_start) else {
             continue;
         };
@@ -15511,10 +15853,9 @@ fn sanitize_handler_schema_references(
             continue;
         };
         if start <= end && end <= source.len() {
-            source.replace_range(start..end, "undefined");
+            source.replace_range(start..end, replacement);
         }
     }
-    source = source.replace(".body.validate(undefined)", ".body.json(undefined)");
     source
 }
 

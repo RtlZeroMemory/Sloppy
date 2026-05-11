@@ -21,7 +21,8 @@ export { ProblemDetails } from "./problem-details.js";
 export { RequestId } from "./request-id.js";
 export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";
-export { Schema, schema } from "./schema.js";
+export { Schema } from "./schema.js";
+export { schema } from "./schema.js";
 export { Testing } from "./testing.js";
 export {
     CancelledError,

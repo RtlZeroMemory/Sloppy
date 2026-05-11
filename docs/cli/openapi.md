@@ -103,7 +103,8 @@ suitable for diffing.
 
 - Full request body schemas beyond what the Plan emitted from
   `schema.object(...)` (partials get `x-slop-partial`).
-- Response bodies that are not declared in Plan metadata.
+- Full response body schemas for responses not declared in Plan metadata
+  (those responses emit `x-slop-partial`).
 - Security schemes beyond Plan-visible Sloppy auth providers.
 - Servers or external-docs metadata.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are

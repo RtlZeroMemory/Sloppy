@@ -19,7 +19,7 @@ Current public templates are:
 
 ## API Template
 
-Create the default API template with:
+The `api` template is the default alpha starter for a Sloppy Web Mode backend.
 
 ```sh
 sloppy create api my-api

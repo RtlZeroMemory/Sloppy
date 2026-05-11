@@ -501,7 +501,16 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
         let property = member.property.name.as_str();
         if matches!(
             property,
-            "optional" | "nullable" | "min" | "max" | "minLength" | "maxLength" | "email" | "uuid"
+            "optional"
+                | "nullable"
+                | "default"
+                | "min"
+                | "max"
+                | "minLength"
+                | "maxLength"
+                | "email"
+                | "uuid"
+                | "pattern"
         ) {
             let mut base = schema_definition(&member.object)?;
             if property == "optional" {
@@ -514,6 +523,16 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                     return None;
                 }
                 base["nullable"] = json!(true);
+            } else if property == "default" {
+                if call.arguments.len() != 1 {
+                    return None;
+                }
+                let value = call
+                    .arguments
+                    .first()
+                    .and_then(schema_json_argument_value)?;
+                base["optional"] = json!(true);
+                base["default"] = value;
             } else if property == "email" {
                 if !call.arguments.is_empty() {
                     return None;
@@ -524,6 +543,18 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                     return None;
                 }
                 base["format"] = json!("uuid");
+            } else if property == "pattern" {
+                if !matches!(call.arguments.len(), 1 | 2) {
+                    return None;
+                }
+                if !matches!(call.arguments.first(), Some(Argument::RegExpLiteral(_))) {
+                    return None;
+                }
+                if call.arguments.len() == 2
+                    && !matches!(call.arguments.get(1), Some(Argument::StringLiteral(_)))
+                {
+                    return None;
+                }
             } else {
                 if call.arguments.len() != 1 {
                     return None;
@@ -779,6 +810,90 @@ pub(super) fn literal_array_element_json_value(
         ArrayExpressionElement::BooleanLiteral(value) => Some(json!(value.value)),
         _ => None,
     }
+}
+
+pub(super) fn schema_json_argument_value(argument: &Argument<'_>) -> Option<Value> {
+    match argument {
+        Argument::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Argument::NumericLiteral(_) => numeric_argument_json_value(argument),
+        Argument::BooleanLiteral(value) => Some(json!(value.value)),
+        Argument::NullLiteral(_) => Some(Value::Null),
+        Argument::ArrayExpression(array) => {
+            let mut values = Vec::new();
+            for element in &array.elements {
+                values.push(schema_json_array_element_value(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        Argument::ObjectExpression(object) => schema_json_object_value(object),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            schema_json_expression_value(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn schema_json_expression_value(expression: &Expression<'_>) -> Option<Value> {
+    match expression {
+        Expression::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Expression::NumericLiteral(value) => numeric_json_value(value.value),
+        Expression::BooleanLiteral(value) => Some(json!(value.value)),
+        Expression::NullLiteral(_) => Some(Value::Null),
+        Expression::ArrayExpression(array) => {
+            let mut values = Vec::new();
+            for element in &array.elements {
+                values.push(schema_json_array_element_value(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        Expression::ObjectExpression(object) => schema_json_object_value(object),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            schema_json_expression_value(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn schema_json_array_element_value(
+    element: &ArrayExpressionElement<'_>,
+) -> Option<Value> {
+    match element {
+        ArrayExpressionElement::StringLiteral(value) => Some(json!(value.value.as_str())),
+        ArrayExpressionElement::NumericLiteral(value) => numeric_json_value(value.value),
+        ArrayExpressionElement::BooleanLiteral(value) => Some(json!(value.value)),
+        ArrayExpressionElement::NullLiteral(_) => Some(Value::Null),
+        ArrayExpressionElement::ArrayExpression(array) => {
+            let mut values = Vec::new();
+            for element in &array.elements {
+                values.push(schema_json_array_element_value(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        ArrayExpressionElement::ObjectExpression(object) => schema_json_object_value(object),
+        _ => None,
+    }
+}
+
+pub(super) fn schema_json_object_value(
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+) -> Option<Value> {
+    let mut values = serde_json::Map::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.kind != PropertyKind::Init
+            || property.method
+            || property.shorthand
+            || property.computed
+        {
+            return None;
+        }
+        let key = property_key_string(&property.key)?;
+        let value = schema_json_expression_value(&property.value)?;
+        values.insert(key, value);
+    }
+    Some(Value::Object(values))
 }
 
 fn numeric_json_value(value: f64) -> Option<Value> {
