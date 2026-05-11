@@ -162,9 +162,39 @@ static int sl_package_create_parent_directory(const char* path)
     }
     status = sl_fs_create_directory(sl_str_from_cstr(parent), true, NULL);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy package: failed to create asset directory: ",
+        sl_cli_write_error_with_value("sloppy package: failed to create parent directory: ",
                                       parent, "\n");
         return 1;
+    }
+    return 0;
+}
+
+static int sl_package_create_sqlite_database_parent_directories(const char* package_dir,
+                                                                const SlRunApp* app)
+{
+    if (package_dir == NULL || app == NULL || app->plan.data_provider_count == 0U) {
+        return 0;
+    }
+    for (size_t index = 0U; index < app->plan.data_provider_count; index += 1U) {
+        const SlPlanDataProvider* provider = &app->plan.data_providers[index];
+        char database_path[SL_RUN_PATH_MAX_BYTES];
+        if (!sl_str_equal(provider->provider, SL_STR_LITERAL("sqlite")) ||
+            sl_str_is_empty(provider->database) ||
+            sl_str_equal(provider->database, SL_STR_LITERAL(":memory:")) ||
+            sl_run_path_span_is_absolute(sl_cli_span_from_str(provider->database)))
+        {
+            continue;
+        }
+        if (!sl_run_join_path(database_path, sizeof(database_path), package_dir,
+                              sl_cli_span_from_str(provider->database)))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy package: SQLite database package path is too long\n");
+            return 1;
+        }
+        if (sl_package_create_parent_directory(database_path) != 0) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -871,6 +901,10 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         return 1;
     }
     if (sl_package_copy_migrations(package_dir, config_dir, project_config) != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+    if (sl_package_create_sqlite_database_parent_directories(package_dir, app) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }

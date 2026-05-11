@@ -10,7 +10,8 @@ own status.
   `@rtlzeromemory/sloppy-win32-x64`.
 - Linux x64 glibc: public alpha npm platform package
   `@rtlzeromemory/sloppy-linux-x64`.
-- macOS arm64 and macOS x64: supported macOS alpha platform packages
+- macOS arm64 and macOS x64: deferred npm platform packages pending
+  Mac-built artifact and registry install smoke evidence for
   `@rtlzeromemory/sloppy-darwin-arm64` and
   `@rtlzeromemory/sloppy-darwin-x64`.
 - Linux arm64 and Windows arm64: no alpha npm platform package.

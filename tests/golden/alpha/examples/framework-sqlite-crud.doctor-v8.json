@@ -54,6 +54,11 @@
         "status": "ok"
       },
       {
+        "id": "sqlite.provider",
+        "message": "SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC",
+        "status": "ok"
+      },
+      {
         "id": "app.plan.completeness",
         "message": "Plan completeness is complete",
         "status": "ok"

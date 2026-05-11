@@ -48,8 +48,8 @@
       "packageRoot": "sloppy-macos-arm64",
       "packageFormat": "tar.gz",
       "platformStatus": "supported",
-      "runtimeUserStatus": "supported macOS alpha package lane",
-      "v8RuntimeStatus": "supported when the macOS arm64 package is built with the matching Sloppy-owned V8 runtime"
+      "runtimeUserStatus": "experimental pending Mac registry install smoke evidence",
+      "v8RuntimeStatus": "experimental pending Mac registry install smoke evidence"
     },
     {
       "id": "macos-x64",
@@ -57,8 +57,8 @@
       "packageRoot": "sloppy-macos-x64",
       "packageFormat": "tar.gz",
       "platformStatus": "supported",
-      "runtimeUserStatus": "supported macOS alpha package lane",
-      "v8RuntimeStatus": "supported when the macOS x64 package is built with the matching Sloppy-owned V8 runtime"
+      "runtimeUserStatus": "experimental pending Mac registry install smoke evidence",
+      "v8RuntimeStatus": "experimental pending Mac registry install smoke evidence"
     }
   ],
   "requiredPackageLayout": [

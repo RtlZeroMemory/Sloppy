@@ -328,6 +328,37 @@ bool sqlite_v8_access_allows(SlSqliteAccess access, SlCapabilityOperation operat
     return false;
 }
 
+bool sqlite_v8_database_path_is_absolute(const std::string& path)
+{
+    if (path.empty()) {
+        return false;
+    }
+    if (path[0] == '/' || path[0] == '\\') {
+        return true;
+    }
+    if (path.size() < 3 || path[1] != ':' || (path[2] != '/' && path[2] != '\\')) {
+        return false;
+    }
+    const char drive = path[0];
+    return (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+}
+
+std::string sqlite_v8_resolve_database_path(const SlV8Engine* backend, const std::string& path)
+{
+    if (path.empty() || path == ":memory:" || sqlite_v8_database_path_is_absolute(path) ||
+        backend == nullptr || backend->filesystem_policy == nullptr ||
+        sl_str_is_empty(backend->filesystem_policy->app_root))
+    {
+        return path;
+    }
+    std::string root(backend->filesystem_policy->app_root.ptr,
+                     backend->filesystem_policy->app_root.length);
+    if (!root.empty() && root.back() != '/' && root.back() != '\\') {
+        root.push_back('/');
+    }
+    return root + path;
+}
+
 bool sqlite_v8_check_handle_access(v8::Isolate* isolate, const SqliteV8ConnectionResource* resource,
                                    SlCapabilityOperation operation)
 {
@@ -1203,7 +1234,8 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    options.path = sl_str_from_parts(request.database.data(), request.database.size());
+    std::string database_path = sqlite_v8_resolve_database_path(backend, request.database);
+    options.path = sl_str_from_parts(database_path.data(), database_path.size());
     options.access = request.access;
     SlStatus status = sl_sqlite_open(&arena, &options, &resource->connection, &diag);
     if (!sl_status_is_ok(status)) {

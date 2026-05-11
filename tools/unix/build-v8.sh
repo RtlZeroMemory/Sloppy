@@ -3,7 +3,7 @@ set -euo pipefail
 
 depot_tools_root=".sdeps/depot_tools"
 work_root=".sdeps/v8-work"
-sdk_root=".sdeps/v8/linux-x64"
+sdk_root=""
 archive_dir="artifacts/v8-sdk"
 v8_revision="7221f49fdb6c89cce6be08005732ebcab3c45b38"
 cr_libcxx_revision="af4386908c3762433d412689038de6e6333f5921"
@@ -50,8 +50,8 @@ while [[ $# -gt 0 ]]; do
 Usage: tools/unix/build-v8.sh [--depot-tools-root DIR] [--work-root DIR] [--sdk-root DIR] [--archive-dir DIR]
                               [--v8-revision SHA] [--skip-fetch] [--skip-build] [--package-only]
 
-Builds and packages Sloppy's pinned Linux x64 V8 SDK. The default SDK root is
-.sdeps/v8/linux-x64, which tools/unix/resolve-v8-sdk.sh and tools/unix/dev.sh --enable-v8
+Builds and packages Sloppy's pinned Unix V8 SDK. The default SDK root is
+.sdeps/v8/<platform-arch>, which tools/unix/resolve-v8-sdk.sh and tools/unix/dev.sh --enable-v8
 consume. This script intentionally does not adapt distro Node/V8 development packages.
 USAGE
       exit 0
@@ -103,6 +103,37 @@ assert_tool() {
   fi
 }
 
+read_command_lines() {
+  local output_array_name="$1"
+  shift
+  local line
+  eval "$output_array_name=()"
+  while IFS= read -r line; do
+    eval "$output_array_name+=(\"\$line\")"
+  done < <("$@")
+}
+
+resolve_archive_tool() {
+  local v8_llvm_ar="$v8_checkout/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
+  if [[ -x "$v8_llvm_ar" ]]; then
+    printf '%s\n' "$v8_llvm_ar"
+    return 0
+  fi
+  if command -v llvm-ar >/dev/null 2>&1; then
+    command -v llvm-ar
+    return 0
+  fi
+  if command -v xcrun >/dev/null 2>&1; then
+    local xcrun_llvm_ar
+    xcrun_llvm_ar="$(xcrun -f llvm-ar 2>/dev/null || true)"
+    if [[ -n "$xcrun_llvm_ar" && -x "$xcrun_llvm_ar" ]]; then
+      printf '%s\n' "$xcrun_llvm_ar"
+      return 0
+    fi
+  fi
+  command -v ar
+}
+
 copy_required_file() {
   local source="$1"
   local destination="$2"
@@ -117,7 +148,7 @@ copy_static_archive_as_full() {
   local source="$1"
   local destination="$2"
   local member_root="$3"
-  local archive_tool="ar"
+  local archive_tool
   local members=()
   local object_paths=()
   local member
@@ -126,14 +157,12 @@ copy_static_archive_as_full() {
     echo "build-v8: expected build output is missing: $source" >&2
     exit 1
   fi
-  if command -v llvm-ar >/dev/null 2>&1; then
-    archive_tool="llvm-ar"
-  fi
+  archive_tool="$(resolve_archive_tool)"
   if ! file "$source" | grep -q "thin archive"; then
     cp -f "$source" "$destination"
     return
   fi
-  mapfile -t members < <("$archive_tool" t "$source")
+  read_command_lines members "$archive_tool" t "$source"
   if [[ "${#members[@]}" -eq 0 ]]; then
     echo "build-v8: archive has no members: $source" >&2
     exit 1
@@ -147,7 +176,7 @@ copy_static_archive_as_full() {
       object_paths+=("$member")
     else
       local matches=()
-      mapfile -t matches < <(find "$member_root" -name "$member" -type f | sort)
+      read_command_lines matches find "$member_root" -name "$member" -type f
       if [[ "${#matches[@]}" -eq 1 ]]; then
         object_paths+=("${matches[0]}")
       else
@@ -171,28 +200,39 @@ archive_objects() {
     exit 1
   fi
 
-  mapfile -t objects < <(find "$object_root" -name '*.o' -type f | sort)
+  read_command_lines objects find "$object_root" -name '*.o' -type f
   rm -f "$destination"
-  if command -v llvm-ar >/dev/null 2>&1; then
-    llvm-ar crs "$destination" "${objects[@]}"
-  else
-    ar crs "$destination" "${objects[@]}"
-  fi
+  "$(resolve_archive_tool)" crs "$destination" "${objects[@]}"
 }
+
+kernel_name="$(uname -s)"
+machine_name="$(uname -m)"
+case "$kernel_name:$machine_name" in
+  Linux:x86_64|Linux:amd64) platform="linux-x64"; v8_cpu="x64" ;;
+  Darwin:arm64|Darwin:aarch64) platform="macos-arm64"; v8_cpu="arm64" ;;
+  Darwin:x86_64|Darwin:amd64) platform="macos-x64"; v8_cpu="x64" ;;
+  *) echo "build-v8: unsupported V8 SDK platform: $kernel_name $machine_name" >&2; exit 1 ;;
+esac
 
 write_gn_args() {
   local args_path="$1"
-  cat > "$args_path" <<'GNARGS'
+  local custom_libcxx="false"
+  local enable_sandbox="false"
+  if [[ "$platform" == "linux-x64" ]]; then
+    custom_libcxx="true"
+    enable_sandbox="true"
+  fi
+  cat > "$args_path" <<GNARGS
 is_debug = false
-target_cpu = "x64"
-v8_target_cpu = "x64"
+target_cpu = "$v8_cpu"
+v8_target_cpu = "$v8_cpu"
 is_component_build = false
 v8_monolithic = true
 v8_use_external_startup_data = false
 v8_enable_temporal_support = false
 v8_enable_webassembly = false
-v8_enable_sandbox = true
-use_custom_libcxx = true
+v8_enable_sandbox = $enable_sandbox
+use_custom_libcxx = $custom_libcxx
 use_thin_archives = false
 use_allocator_shim = false
 treat_warnings_as_errors = false
@@ -200,29 +240,26 @@ symbol_level = 1
 GNARGS
 }
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "build-v8: this SDK builder is currently scoped to Linux x64." >&2
-  exit 1
-fi
-case "$(uname -m)" in
-  x86_64|amd64) ;;
-  *) echo "build-v8: this SDK builder is currently scoped to Linux x64, found $(uname -m)." >&2; exit 1 ;;
-esac
-
-for tool in git python3 cmake ninja tar file pkg-config; do
+for tool in git python3 cmake ninja tar file; do
   assert_tool "$tool"
 done
-if ! pkg-config --exists glib-2.0 gmodule-2.0 gobject-2.0 gthread-2.0; then
-  echo "build-v8: missing GLib development pkg-config entries; install libglib2.0-dev." >&2
-  exit 1
+if [[ "$platform" == "linux-x64" ]]; then
+  assert_tool pkg-config
+  if ! pkg-config --exists glib-2.0 gmodule-2.0 gobject-2.0 gthread-2.0; then
+    echo "build-v8: missing GLib development pkg-config entries; install libglib2.0-dev." >&2
+    exit 1
+  fi
 fi
 
+if [[ -z "$sdk_root" ]]; then
+  sdk_root=".sdeps/v8/$platform"
+fi
 depot_tools_root="$(assert_safe_local_path "DepotToolsRoot" "$(resolve_repo_path "$depot_tools_root")")"
 work_root="$(assert_safe_local_path "WorkRoot" "$(resolve_repo_path "$work_root")")"
 sdk_root="$(assert_safe_local_path "SdkRoot" "$(resolve_repo_path "$sdk_root")")"
 archive_dir="$(assert_safe_local_path "ArchiveDir" "$(resolve_repo_path "$archive_dir")")"
 v8_checkout="$work_root/v8"
-v8_build_dir="$v8_checkout/out.gn/x64.release"
+v8_build_dir="$v8_checkout/out.gn/$platform.release"
 needs_depot_tools=0
 if [[ "$package_only" -eq 0 && ( "$skip_fetch" -eq 0 || "$skip_build" -eq 0 ) ]]; then
   needs_depot_tools=1
@@ -263,8 +300,8 @@ if [[ "$package_only" -eq 0 ]]; then
 fi
 
 if [[ "$skip_build" -eq 0 && "$package_only" -eq 0 ]]; then
-  (cd "$v8_checkout" && gn gen out.gn/x64.release)
-  (cd "$v8_checkout" && ninja -C out.gn/x64.release v8_monolith v8_libplatform v8_libbase)
+  (cd "$v8_checkout" && gn gen "out.gn/$platform.release")
+  (cd "$v8_checkout" && ninja -C "out.gn/$platform.release" v8_monolith v8_libplatform v8_libbase)
 fi
 
 revision="$(git -C "$v8_checkout" rev-parse HEAD)"
@@ -274,7 +311,7 @@ if [[ "$revision" != "$v8_revision" ]]; then
 fi
 
 rm -rf "$sdk_root"
-mkdir -p "$sdk_root/include" "$sdk_root/lib" "$sdk_root/share" "$sdk_root/support/libcxx/include" "$sdk_root/support/libcxx/buildtools"
+mkdir -p "$sdk_root/include" "$sdk_root/lib" "$sdk_root/share"
 cp -R "$v8_checkout/include/." "$sdk_root/include/"
 copy_static_archive_as_full "$v8_build_dir/obj/libv8_monolith.a" "$sdk_root/lib/libv8_monolith.a" "$v8_build_dir/obj"
 copy_static_archive_as_full "$v8_build_dir/obj/libv8_libplatform.a" "$sdk_root/lib/libv8_libplatform.a" "$v8_build_dir/obj"
@@ -282,32 +319,36 @@ copy_static_archive_as_full "$v8_build_dir/obj/libv8_libbase.a" "$sdk_root/lib/l
 if [[ -f "$v8_build_dir/obj/libv8_libsampler.a" ]]; then
   copy_static_archive_as_full "$v8_build_dir/obj/libv8_libsampler.a" "$sdk_root/lib/libv8_libsampler.a" "$v8_build_dir/obj"
 fi
-archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++/libc++" "$sdk_root/lib/libc++.a" "libc++"
-archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++abi/libc++abi" "$sdk_root/lib/libc++abi.a" "libc++abi"
-cp -R "$v8_checkout/third_party/libc++/src/include/." "$sdk_root/support/libcxx/include/"
-copy_required_file "$v8_checkout/buildtools/third_party/libc++/__config_site" "$sdk_root/support/libcxx/buildtools/__config_site"
-copy_required_file "$v8_checkout/buildtools/third_party/libc++/__assertion_handler" "$sdk_root/support/libcxx/buildtools/__assertion_handler"
+if [[ "$platform" == "linux-x64" ]]; then
+  mkdir -p "$sdk_root/support/libcxx/include" "$sdk_root/support/libcxx/buildtools"
+  archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++/libc++" "$sdk_root/lib/libc++.a" "libc++"
+  archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++abi/libc++abi" "$sdk_root/lib/libc++abi.a" "libc++abi"
+  cp -R "$v8_checkout/third_party/libc++/src/include/." "$sdk_root/support/libcxx/include/"
+  copy_required_file "$v8_checkout/buildtools/third_party/libc++/__config_site" "$sdk_root/support/libcxx/buildtools/__config_site"
+  copy_required_file "$v8_checkout/buildtools/third_party/libc++/__assertion_handler" "$sdk_root/support/libcxx/buildtools/__assertion_handler"
+fi
 copy_required_file "$v8_build_dir/v8_features.json" "$sdk_root/share/v8_features.json"
 copy_required_file "$v8_build_dir/v8_build_config.json" "$sdk_root/share/v8_build_config.json"
 
-python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$cr_libcxx_revision" <<'PY'
+python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$cr_libcxx_revision" "$platform" "$v8_cpu" <<'PY'
 import json
 import sys
 
-features_path, manifest_path, revision, cr_libcxx_revision = sys.argv[1:5]
+features_path, manifest_path, revision, cr_libcxx_revision, platform, v8_cpu = sys.argv[1:7]
 with open(features_path, encoding="utf-8") as handle:
     features = json.load(handle)
 
+crt = "glibc clang-libc++ static-v8" if platform == "linux-x64" else "darwin system-libc++ static-v8"
 manifest = {
     "name": "sloppy-v8-sdk",
-    "platform": "linux-x64",
+    "platform": platform,
     "source": "sloppy-built-v8",
     "v8Revision": revision,
     "buildType": "release",
-    "crtCompatibility": "glibc clang-libc++ static-v8",
+    "crtCompatibility": crt,
     "abi": {
         "crLibcxxRevision": cr_libcxx_revision,
-        "v8TargetArch": "x64",
+        "v8TargetArch": v8_cpu,
         "v8CompressPointers": bool(features["v8_enable_pointer_compression"]),
         "v8CompressPointersInSharedCage": bool(features["v8_enable_pointer_compression_shared_cage"]),
         "v8_31BitSmisOn64BitArch": bool(features["v8_enable_31bit_smis_on_64bit_arch"]),
@@ -319,15 +360,15 @@ manifest = {
     "buildConfigMetadata": "share/v8_build_config.json",
     "gnArgs": [
         "is_debug=false",
-        "target_cpu=x64",
-        "v8_target_cpu=x64",
+        f"target_cpu={v8_cpu}",
+        f"v8_target_cpu={v8_cpu}",
         "is_component_build=false",
         "v8_monolithic=true",
         "v8_use_external_startup_data=false",
         "v8_enable_temporal_support=false",
         "v8_enable_webassembly=false",
-        "v8_enable_sandbox=true",
-        "use_custom_libcxx=true",
+        f"v8_enable_sandbox={'true' if platform == 'linux-x64' else 'false'}",
+        f"use_custom_libcxx={'true' if platform == 'linux-x64' else 'false'}",
         "use_thin_archives=false",
         "use_allocator_shim=false",
         "treat_warnings_as_errors=false",
@@ -343,7 +384,7 @@ PY
 "$repo_root/tools/unix/resolve-v8-sdk.sh" --mode REQUIRED --v8-root "$sdk_root" --quiet >/dev/null
 
 mkdir -p "$archive_dir"
-archive_name="sloppy-v8-sdk-linux-x64-v8-$revision.tar.gz"
+archive_name="sloppy-v8-sdk-$platform-v8-$revision.tar.gz"
 archive_path="$archive_dir/$archive_name"
 tar -C "$(dirname "$sdk_root")" -czf "$archive_path" "$(basename "$sdk_root")"
 if command -v sha256sum >/dev/null 2>&1; then

@@ -91,8 +91,8 @@ platform_triplet="$platform-$arch"
 resolved_v8_root=""
 resolved_v8_llvm_root=""
 
-if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" ]]; then
-  echo "package: --enable-v8 is currently supported only on linux-x64." >&2
+if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" && "$platform_triplet" != "macos-arm64" && "$platform_triplet" != "macos-x64" ]]; then
+  echo "package: --enable-v8 is currently supported only on linux-x64, macos-arm64, and macos-x64." >&2
   exit 1
 fi
 
@@ -277,7 +277,7 @@ if [[ "$enable_v8" -eq 1 ]]; then
   contains_v8_runtime=true
   v8_status="linked runtime"
   v8_runtime_status="linked into packaged runtime"
-  v8_notes="Linux V8 runtime is provided by the Sloppy-owned SDK and linked into the packaged runtime"
+  v8_notes="$platform_triplet V8 runtime is provided by the Sloppy-owned SDK and linked into the packaged runtime"
   runtime_dependency_status="V8 linked into packaged runtime; platform system libraries remain host-provided"
   enabled_features='"native-runtime", "stdlib", "compiler", "v8"'
   dynamic_v8_runtime_count=0

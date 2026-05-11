@@ -19,13 +19,13 @@
       "id": "macos-arm64-archive",
       "status": "NOT RUN",
       "requiredEvidence": ["hosted package dry-run", "outside-checkout smoke", "runtime execution or explicit V8 blocker"],
-      "notes": "macOS arm64 is a supported alpha lane. Hosted evidence belongs to the manual release-artifacts workflow."
+      "notes": "macOS arm64 npm publishing is deferred until Mac-built artifact and registry install smoke evidence exist."
     },
     {
       "id": "macos-x64-archive",
       "status": "NOT RUN",
       "requiredEvidence": ["hosted package dry-run", "outside-checkout smoke", "runtime execution or explicit V8 blocker"],
-      "notes": "macOS x64 is a supported alpha lane. Hosted evidence belongs to the manual release-artifacts workflow."
+      "notes": "macOS x64 npm publishing is deferred until Mac-built artifact and registry install smoke evidence exist."
     },
     {
       "id": "npm-root-launcher",
@@ -37,7 +37,7 @@
       "id": "npm-platform-packages",
       "status": "NOT RUN",
       "requiredEvidence": ["platform package generated from archive contents", "npm pack dry-run", "no native install scripts", "alpha dist-tag policy"],
-      "notes": "Windows x64, Linux x64 GNU, and macOS are the current npm platform package set. Platform packages must not independently build Sloppy."
+      "notes": "Windows x64 and Linux x64 GNU are the current npm platform package set. macOS npm packages are deferred until Mac-built artifact and registry install smoke evidence exist. Platform packages must not independently build Sloppy."
     },
     {
       "id": "v8-package-lane",

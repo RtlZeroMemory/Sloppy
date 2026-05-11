@@ -25,6 +25,7 @@ typedef struct SlRunApp
     SlInternTable plan_metadata_interns;
     SlRuntimeFeatureSet runtime_features;
     SlCapabilityRegistry capability_registry;
+    SlFsPolicy filesystem_policy;
     SlBytes app_js_bytes;
     SlBytes source_map_bytes;
     SlEngine* engine;
@@ -94,6 +95,7 @@ typedef struct SlRunApp
     bool config_has_logging_console_enabled;
     bool config_has_logging_console_format;
     bool config_has_logging_file_path;
+    bool has_filesystem_policy;
     bool has_dynamic_routes;
 } SlRunApp;
 
@@ -1185,6 +1187,8 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js
      */
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
+    options.filesystem_policy =
+        app == NULL || !app->has_filesystem_policy ? NULL : &app->filesystem_policy;
     options.runtime_features = app == NULL ? NULL : &app->runtime_features;
     options.ffi_library_overrides =
         app == NULL || app->ffi_library_override_count == 0U ? NULL : app->ffi_library_overrides;
@@ -1804,6 +1808,10 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path,
     }
     if (is_package && sl_run_validate_runtime_features(app) != 0) {
         return 1;
+    }
+    if (is_package) {
+        app->filesystem_policy = sl_fs_development_policy(sl_str_from_cstr(package_path));
+        app->has_filesystem_policy = true;
     }
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
                           sl_run_str_span(app->plan.bundle.path)))

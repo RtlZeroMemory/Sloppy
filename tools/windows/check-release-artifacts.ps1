@@ -283,9 +283,16 @@ function Test-NpmPackagePolicy {
 
     $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "sloppy/package.json") -Raw | ConvertFrom-Json
     Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/LICENSE") -PathType Leaf) "Root npm package must include a LICENSE file matching its license metadata."
-    foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64", "@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
+    $artifactContract = Read-JsonFile -Relative "docs/release/artifact-contract.json"
+    $publishedPlatformPackages = @($artifactContract.npmPackages.platformPackages)
+    $deferredPlatformPackages = @($artifactContract.npmPackages.deferredPlatformPackages)
+    foreach ($dependency in $publishedPlatformPackages) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
         Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
+    }
+    foreach ($dependency in $deferredPlatformPackages) {
+        $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
+        Assert-True ($null -eq $property) "Root npm package must not reference deferred optional dependency '$dependency'."
     }
     Assert-True (-not [string]::IsNullOrWhiteSpace($rootPackage.version)) "Root npm package version must not be empty."
     foreach ($package in @("sloppy-win32-x64", "sloppy-linux-x64", "sloppy-darwin-arm64", "sloppy-darwin-x64")) {
@@ -293,8 +300,13 @@ function Test-NpmPackagePolicy {
         Assert-True ($platformPackage.version -eq $rootPackage.version) "npm package $package version '$($platformPackage.version)' must match root version '$($rootPackage.version)'."
         $dependencyName = [string]$platformPackage.name
         $dependency = $rootPackage.optionalDependencies.PSObject.Properties[$dependencyName]
-        Assert-True ($null -ne $dependency) "Root npm package missing optional dependency '$dependencyName'."
-        Assert-True ($dependency.Value -eq $rootPackage.version) "Root optional dependency '$dependencyName' must pin version '$($rootPackage.version)', found '$($dependency.Value)'."
+        if ($publishedPlatformPackages -contains $dependencyName) {
+            Assert-True ($null -ne $dependency) "Root npm package missing optional dependency '$dependencyName'."
+            Assert-True ($dependency.Value -eq $rootPackage.version) "Root optional dependency '$dependencyName' must pin version '$($rootPackage.version)', found '$($dependency.Value)'."
+        } else {
+            Assert-True ($deferredPlatformPackages -contains $dependencyName) "npm package $package must be listed as published or deferred in the artifact contract."
+            Assert-True ($null -eq $dependency) "Root npm package must not reference deferred optional dependency '$dependencyName'."
+        }
     }
 
     $launcher = Read-RequiredText -Relative "packages/npm/sloppy/bin/sloppy.js"

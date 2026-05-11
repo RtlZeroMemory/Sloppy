@@ -227,6 +227,7 @@ jobs:
         with:
           path: |
             .sdeps/v8/linux-x64
+            .sdeps/v8-work/v8/third_party/llvm-build
             artifacts/v8-sdk
           key: linux-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
           restore-keys: |
@@ -290,6 +291,7 @@ jobs:
         with:
           path: |
             .sdeps/v8/linux-x64
+            .sdeps/v8-work/v8/third_party/llvm-build
             artifacts/v8-sdk
           key: ${{ steps.linux-v8-sdk-cache.outputs.cache-primary-key }}
 
@@ -389,6 +391,27 @@ jobs:
             macOS-macos-clang-arm64-vcpkg-${{ env.VCPKG_COMMIT }}-
             macOS-macos-clang-vcpkg-
 
+      - name: Restore macOS arm64 V8 SDK cache
+        id: macos-arm64-v8-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/v8/macos-arm64
+            .sdeps/v8-work
+            .sdeps/depot_tools
+          key: macos-arm64-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+
+      - name: Validate macOS arm64 V8 SDK cache
+        id: macos-arm64-v8-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tools/unix/resolve-v8-sdk.sh --mode AUTO --quiet > /tmp/sloppy-v8-root && [ -s /tmp/sloppy-v8-root ]; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -408,6 +431,22 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Build macOS arm64 V8 SDK
+        if: steps.macos-arm64-v8-sdk.outputs.cached != 'true'
+        shell: bash
+        run: tools/unix/dev.sh build-v8
+
+      - name: Save macOS arm64 V8 SDK cache
+        if: steps.macos-arm64-v8-sdk.outputs.cached != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/v8/macos-arm64
+            .sdeps/v8-work
+            .sdeps/depot_tools
+          key: macos-arm64-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -419,7 +458,12 @@ jobs:
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
+          args+=(--enable-v8)
           tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: npm launcher dry-run from macOS arm64 archive
+        shell: bash
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-macos-arm64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -441,6 +485,8 @@ jobs:
             artifacts/packages/sloppy-*.tar.gz
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz
 
   package-macos-x64:
     name: release dry-run / macos-x64
@@ -498,6 +544,27 @@ jobs:
             macOS-macos-clang-x64-vcpkg-${{ env.VCPKG_COMMIT }}-
             macOS-macos-clang-vcpkg-
 
+      - name: Restore macOS x64 V8 SDK cache
+        id: macos-x64-v8-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/v8/macos-x64
+            .sdeps/v8-work
+            .sdeps/depot_tools
+          key: macos-x64-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+
+      - name: Validate macOS x64 V8 SDK cache
+        id: macos-x64-v8-sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if tools/unix/resolve-v8-sdk.sh --mode AUTO --quiet > /tmp/sloppy-v8-root && [ -s /tmp/sloppy-v8-root ]; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -517,6 +584,22 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Build macOS x64 V8 SDK
+        if: steps.macos-x64-v8-sdk.outputs.cached != 'true'
+        shell: bash
+        run: tools/unix/dev.sh build-v8
+
+      - name: Save macOS x64 V8 SDK cache
+        if: steps.macos-x64-v8-sdk.outputs.cached != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/v8/macos-x64
+            .sdeps/v8-work
+            .sdeps/depot_tools
+          key: macos-x64-v8-sdk-${{ hashFiles('tools/unix/build-v8.sh', 'tools/unix/resolve-v8-sdk.sh', 'tools/deps/sloppy-deps.json') }}
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -528,7 +611,12 @@ jobs:
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
+          args+=(--enable-v8)
           tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: npm launcher dry-run from macOS x64 archive
+        shell: bash
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-macos-x64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -550,3 +638,5 @@ jobs:
             artifacts/packages/sloppy-*.tar.gz
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz

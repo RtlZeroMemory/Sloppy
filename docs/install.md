@@ -34,8 +34,8 @@ ok
 | --- | --- |
 | Windows x64 | npm platform package with V8-backed handler execution |
 | Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS arm64 | supported macOS alpha lane with V8-backed handler execution |
-| macOS x64 | supported macOS alpha lane with V8-backed handler execution |
+| macOS arm64 | npm platform package deferred pending Mac-built artifact and registry install smoke evidence |
+| macOS x64 | npm platform package deferred pending Mac-built artifact and registry install smoke evidence |
 | Linux arm64 | no alpha npm platform package; source build only |
 | Windows arm64 | no alpha npm platform package; source build only |
 
@@ -46,8 +46,8 @@ code during install, run `node-gyp`, or download V8 in `postinstall`.
 ## Build from source
 
 Use a source build when you are working on Sloppy itself, testing an unpublished
-change, or using Linux arm64, Windows arm64, or another platform without an
-alpha package.
+change, or using macOS before the npm package lane is published, Linux arm64,
+Windows arm64, or another platform without an alpha package.
 
 Windows x64:
 

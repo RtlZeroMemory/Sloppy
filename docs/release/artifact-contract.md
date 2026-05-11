@@ -16,8 +16,8 @@ design areas.
 | --- | --- | --- | --- |
 | Windows x64 | `sloppy-windows-x64.zip` | `sloppy-windows-x64` | Experimental dry-run package lane. |
 | Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and `test-package --require-v8-runtime`. |
-| macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Supported macOS alpha package lane. |
-| macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Supported macOS alpha package lane. |
+| macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Experimental npm package lane pending Mac registry install smoke evidence. |
+| macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Experimental npm package lane pending Mac registry install smoke evidence. |
 
 The package root contains:
 
@@ -65,6 +65,9 @@ selects an installed platform package:
 - `@rtlzeromemory/sloppy-linux-x64`
 - `@rtlzeromemory/sloppy-darwin-arm64`
 - `@rtlzeromemory/sloppy-darwin-x64`
+
+The macOS npm platform packages are generated from Mac CI artifacts. Mac
+registry install smoke evidence is a separate lane.
 
 npm package dry-runs must use `--tag alpha`, never `latest`. Platform package
 contents are generated from already-built archive contents; npm install must

@@ -14,9 +14,9 @@ imply that Sloppy apps can import arbitrary npm packages.
 
 The npm publish workflow consumes tarballs produced by the release artifact
 lane. Platform packages are published before the root
-`@rtlzeromemory/sloppy` launcher package. macOS arm64 and macOS x64 are
-supported macOS alpha lanes and require the same install and runtime
-verification evidence as Windows and Linux.
+`@rtlzeromemory/sloppy` launcher package. This alpha npm release publishes
+Windows x64 and Linux x64 glibc packages. macOS npm platform packages are
+deferred until Mac-built artifacts and registry install smoke evidence exist.
 
 ## Required Evidence
 

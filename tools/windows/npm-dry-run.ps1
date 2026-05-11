@@ -93,8 +93,8 @@ function Get-PlatformPackageName {
     switch ($triplet) {
         "windows-x64" { return "sloppy-win32-x64" }
         "linux-x64" { return "sloppy-linux-x64" }
-        "macos-arm64" { throw "macOS npm packages are not staged in this alpha." }
-        "macos-x64" { throw "macOS npm packages are not staged in this alpha." }
+        "macos-arm64" { return "sloppy-darwin-arm64" }
+        "macos-x64" { return "sloppy-darwin-x64" }
         default { throw "Unsupported npm platform package triplet in manifest: $triplet" }
     }
 }

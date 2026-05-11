@@ -16,7 +16,7 @@
       "snippets": [
         { "command": "sloppy build", "status": "checked" },
         { "command": "sloppy run .sloppy --once GET /hello/Ada", "status": "checked" },
-        { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
+        { "command": "sloppy create my-api", "template": "api", "status": "checked" },
         { "command": "npm install -g @rtlzeromemory/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" }
       ]
     },
@@ -34,7 +34,6 @@
       "path": "docs/install.md",
       "snippets": [
         { "command": "npm install -g @rtlzeromemory/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" },
-        { "command": "sloppy doctor", "status": "checked" },
         { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
         { "command": "sloppy build", "status": "checked" },
         { "command": "sloppy run .sloppy --once GET /health", "status": "checked" }

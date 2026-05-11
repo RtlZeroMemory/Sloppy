@@ -45,11 +45,11 @@ function resolvePlatformPackage(env, processPlatform, processArch) {
   if (platform === "darwin" && arch === "x64") {
     return { supported: true, packageName: "@rtlzeromemory/sloppy-darwin-x64" };
   }
-
   return {
     supported: false,
     message:
       `Unsupported Sloppy runtime npm platform: platform=${platform} arch=${arch} libc=${libc}. ` +
+      "This alpha npm release includes Windows x64, Linux x64 glibc, macOS arm64, and macOS x64 packages only. " +
       "Use a GitHub Release archive or build Sloppy from source for this platform."
   };
 }
