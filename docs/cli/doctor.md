@@ -40,7 +40,7 @@ Sloppy Doctor
 [warn] app.plan.capabilities: capability metadata not present
 [ok] dependency.graph: dependency graph available: 1 package(s), 4 module(s), 1 Node binding(s)
 [ok] ffi.native: native FFI metadata available: 1 library, 4 function(s)
-[ok] sqlite.provider: SQLite is embedded; this app does not need PostgreSQL, SQL Server, libpq, or ODBC
+[ok] sqlite.provider: SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC
 [warn] postgres.provider: PostgreSQL is optional; apps that use it need a connection string and libpq from a bundled provider package when available or from the system
 [warn] sqlserver.provider: SQL Server is optional; apps that use it need Microsoft ODBC Driver 17 or 18 visible to the driver manager
 ```

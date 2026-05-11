@@ -8,7 +8,7 @@ questions on its own.
 
 ### Unsupported syntax
 
-```
+```text
 error: cannot extract route metadata from this expression
   --> src/main.ts:12:3
 12 |   for (const route of routes) {
@@ -27,7 +27,7 @@ fixes:
 
 ### Import not allowed
 
-```
+```text
 SLOPPYC_E_PACKAGE_NOT_FOUND
 Package "lodash" was not found from src/main.ts.
 hint: Install it with your package manager, for example: npm install lodash
@@ -50,7 +50,7 @@ diagnostic:
 
 ### Platform package unavailable
 
-```
+```text
 Sloppy npm platform package is not published for this platform.
 ```
 
@@ -61,7 +61,7 @@ platform packages. Use a supported npm target or build from source.
 
 ### V8 unavailable
 
-```
+```text
 sloppy run: handler execution requires a V8-enabled build
 ```
 
@@ -72,7 +72,7 @@ includes V8.
 
 ### Plan schema mismatch
 
-```
+```text
 sloppy run: app.plan.json schema 'plan/v1-alpha' is unsupported
 hint: this Plan was produced by an older or newer compiler version
 ```
@@ -82,7 +82,7 @@ that the runtime validates strictly.
 
 ### Artifact hash mismatch
 
-```
+```text
 sloppy run: app.js hash mismatch
 ```
 
@@ -92,7 +92,7 @@ Run `sloppy build` to regenerate.
 
 ### Required feature missing
 
-```
+```text
 sloppy run: required feature 'postgres' is not available
 ```
 
@@ -105,7 +105,7 @@ organization-managed deployment. SQLite-only apps are unaffected.
 
 ### Missing config
 
-```
+```text
 sloppy run: required config key 'ConnectionStrings:Main' is missing
 ```
 
@@ -115,7 +115,7 @@ then rebuild so Plan/config metadata matches the files you expect.
 
 ### Missing auth secret
 
-```
+```text
 sloppy run: auth secret for scheme 'bearer' is not configured
 ```
 
@@ -125,7 +125,7 @@ not hard-code production secrets into source. Put local values in
 
 ### Missing migration directory or changed migration hash
 
-```
+```text
 sloppy db migrate: migration directory was not found
 sloppy db migrate: migration hash mismatch
 ```
@@ -136,7 +136,7 @@ changed, create a new migration instead of editing an already-applied one.
 
 ### FFI library unavailable or hash mismatch
 
-```
+```text
 sloppy run: FFI library 'hash' was not found
 sloppy run: FFI library 'hash' hash mismatch
 ```
@@ -162,7 +162,7 @@ message fields. They do not include raw request body values.
 
 ### Static asset root invalid
 
-```
+```text
 sloppy build: static asset root escapes the project
 ```
 
@@ -210,7 +210,7 @@ status under the SQL Server provider.
 
 Run, in order:
 
-```
+```text
 sloppy build
 sloppy routes --plan .sloppy
 ```

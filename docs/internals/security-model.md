@@ -144,9 +144,9 @@ runtime secret/config hand-off design.
 - **Encryption at rest.** Use the platform's secret store (Kubernetes
   secrets, AWS Secrets Manager, Vault) to inject values via
   environment variables.
-- **Threat modeling for production deployment.** Pre-alpha. The
-  bridge boundaries and redaction give you a reasonable foundation;
-  production posture is your responsibility for now.
+- **Threat modeling for production deployment.** Sloppy is public alpha,
+  pre-production software. The bridge boundaries and redaction give you a
+  reasonable foundation; production posture is your responsibility for now.
 
 ## Reporting issues
 

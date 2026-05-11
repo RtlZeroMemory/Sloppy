@@ -19,7 +19,7 @@ Current Sloppy includes:
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;
-- typed, Plan-visible FFI for deliberate C ABI interop;
+- experimental typed, Plan-visible FFI for deliberate C ABI interop;
 - Windows x64 and Linux x64 npm platform packages;
 - source/archive build paths for other platforms.
 

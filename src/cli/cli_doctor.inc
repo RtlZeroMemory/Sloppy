@@ -494,7 +494,7 @@ static void sl_cli_doctor_emit_database_provider_dependencies(const SlCliOptions
     if (has_sqlite) {
         sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("sqlite.provider"),
                            sl_cli_span_cstr("ok"),
-                           sl_cli_span_cstr("SQLite is embedded; this app does not need "
+                           sl_cli_span_cstr("SQLite is embedded; SQLite providers do not require "
                                             "PostgreSQL, SQL Server, libpq, or ODBC"),
                            emitted);
     }
