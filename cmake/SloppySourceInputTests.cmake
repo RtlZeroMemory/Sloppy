@@ -225,6 +225,17 @@
                              PROPERTIES LABELS "source-input;program-mode")
 
         add_test(
+            NAME sloppy.node_compat.package_fixtures
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_EXPECT_RUN_SUCCESS=${SLOPPY_ENABLE_V8}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_node_compat_packages.cmake")
+        set_tests_properties(sloppy.node_compat.package_fixtures
+                             PROPERTIES LABELS "source-input;program-mode;node_compat;package;deps")
+
+        add_test(
             NAME sloppy.build.missing_project_config
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
