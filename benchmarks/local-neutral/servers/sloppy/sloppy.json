@@ -1,0 +1,6 @@
+{
+  "kind": "web",
+  "entry": "src/main.ts",
+  "outDir": ".sloppy",
+  "capabilities": ["net"]
+}

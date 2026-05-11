@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "defaultPreset": "quick",
+  "presets": {
+    "quick": {
+      "workloads": ["health", "json-small", "route-param"],
+      "connections": [1, 16],
+      "repeats": 3,
+      "duration": "15s",
+      "warmup": "5s"
+    },
+    "alpha": {
+      "workloads": [
+        "health",
+        "json-small",
+        "route-param",
+        "post-json-validated",
+        "auth-api-key",
+        "static-small",
+        "mixed-realistic"
+      ],
+      "connections": [1, 16, 64],
+      "repeats": 5,
+      "duration": "30s",
+      "warmup": "5s"
+    },
+    "full": {
+      "workloads": [
+        "health",
+        "json-small",
+        "route-param",
+        "post-json-validated",
+        "auth-api-key",
+        "static-small",
+        "mixed-realistic"
+      ],
+      "connections": [1, 8, 16, 64, 128],
+      "repeats": 5,
+      "duration": "60s",
+      "warmup": "10s"
+    }
+  },
+  "tools": ["oha", "wrk", "k6", "vegeta"],
+  "runtimes": ["sloppy", "node", "bun", "deno"]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "health",
+  "method": "GET",
+  "path": "/health",
+  "description": "Plain text health check.",
+  "expectedStatus": 200,
+  "expectedBody": "ok"
+}

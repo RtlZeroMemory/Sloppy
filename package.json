@@ -4,6 +4,8 @@
   "type": "module",
   "description": "Documentation site tooling for Sloppy.",
   "scripts": {
+    "bench:local-neutral": "node benchmarks/local-neutral/scripts/run.mjs",
+    "bench:local-neutral:check": "node benchmarks/local-neutral/scripts/run.mjs --check-tools",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

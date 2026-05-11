@@ -100,9 +100,9 @@ static SlStr sl_http_trim_ows(SlStr value)
     return sl_str_from_parts(value.ptr == NULL ? NULL : value.ptr + start, end - start);
 }
 
-static bool sl_http_header_name_equal(SlStr name, const char* expected)
+static bool sl_http_header_name_equal(SlStr name, SlStr expected)
 {
-    return sl_str_equal_ci_ascii(name, sl_str_from_cstr(expected));
+    return sl_str_equal_ci_ascii(name, expected);
 }
 
 static SlStatus sl_http_set_error(SlHttpParseContext* ctx, SlDiagCode code, SlStr message,
@@ -142,33 +142,47 @@ SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method)
     }
 
     *out_method = SL_HTTP_METHOD_UNKNOWN;
-    if (sl_str_equal(method, sl_str_from_cstr("GET"))) {
-        *out_method = SL_HTTP_METHOD_GET;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("POST"))) {
-        *out_method = SL_HTTP_METHOD_POST;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("PUT"))) {
-        *out_method = SL_HTTP_METHOD_PUT;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("PATCH"))) {
-        *out_method = SL_HTTP_METHOD_PATCH;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("DELETE"))) {
-        *out_method = SL_HTTP_METHOD_DELETE;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("OPTIONS"))) {
-        *out_method = SL_HTTP_METHOD_OPTIONS;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("HEAD"))) {
-        *out_method = SL_HTTP_METHOD_HEAD;
-        return sl_status_ok();
+    switch (method.length) {
+    case sizeof("GET") - 1U:
+        if (sl_str_equal(method, SL_STR_LITERAL("GET"))) {
+            *out_method = SL_HTTP_METHOD_GET;
+            return sl_status_ok();
+        }
+        if (sl_str_equal(method, SL_STR_LITERAL("PUT"))) {
+            *out_method = SL_HTTP_METHOD_PUT;
+            return sl_status_ok();
+        }
+        break;
+    case sizeof("POST") - 1U:
+        if (sl_str_equal(method, SL_STR_LITERAL("POST"))) {
+            *out_method = SL_HTTP_METHOD_POST;
+            return sl_status_ok();
+        }
+        if (sl_str_equal(method, SL_STR_LITERAL("HEAD"))) {
+            *out_method = SL_HTTP_METHOD_HEAD;
+            return sl_status_ok();
+        }
+        break;
+    case sizeof("PATCH") - 1U:
+        if (sl_str_equal(method, SL_STR_LITERAL("PATCH"))) {
+            *out_method = SL_HTTP_METHOD_PATCH;
+            return sl_status_ok();
+        }
+        break;
+    case sizeof("DELETE") - 1U:
+        if (sl_str_equal(method, SL_STR_LITERAL("DELETE"))) {
+            *out_method = SL_HTTP_METHOD_DELETE;
+            return sl_status_ok();
+        }
+        break;
+    case sizeof("OPTIONS") - 1U:
+        if (sl_str_equal(method, SL_STR_LITERAL("OPTIONS"))) {
+            *out_method = SL_HTTP_METHOD_OPTIONS;
+            return sl_status_ok();
+        }
+        break;
+    default:
+        break;
     }
 
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
@@ -349,13 +363,13 @@ static SlStatus sl_http_finish_current_header(SlHttpParseContext* ctx)
                 sizeof("increase max_headers only when the caller can bound memory use") - 1U));
     }
 
-    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_name,
-                                   &ctx->headers[ctx->header_count].name);
+    SlHttpHeader* header = &ctx->headers[ctx->header_count];
+
+    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_name, &header->name);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_value,
-                                   &ctx->headers[ctx->header_count].value);
+    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_value, &header->value);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -764,15 +778,15 @@ static SlStatus sl_http_validate_singleton_headers(SlHttpParseContext* ctx, cons
 
     for (index = 0U; index < ctx->header_count; index += 1U) {
         SlHttpHeader* header = &ctx->headers[index];
-        if (sl_http_header_name_equal(header->name, "Host")) {
+        if (sl_http_header_name_equal(header->name, SL_STR_LITERAL("Host"))) {
             host_count += 1U;
             host_value = header->value;
         }
-        else if (sl_http_header_name_equal(header->name, "Content-Length")) {
+        else if (sl_http_header_name_equal(header->name, SL_STR_LITERAL("Content-Length"))) {
             content_length_count += 1U;
             has_content_length = true;
         }
-        else if (sl_http_header_name_equal(header->name, "Transfer-Encoding")) {
+        else if (sl_http_header_name_equal(header->name, SL_STR_LITERAL("Transfer-Encoding"))) {
             transfer_encoding_count += 1U;
             has_transfer_encoding = true;
         }

@@ -1,0 +1,24 @@
+{
+  "name": "mixed-realistic",
+  "description": "Weighted mix of required local-neutral workloads.",
+  "mixed": true,
+  "requests": [
+    { "method": "GET", "path": "/health", "weight": 35 },
+    { "method": "GET", "path": "/json-small", "weight": 25 },
+    { "method": "GET", "path": "/users/123", "weight": 20 },
+    {
+      "method": "POST",
+      "path": "/users",
+      "headers": { "content-type": "application/json" },
+      "body": "{\"name\":\"Ada Lovelace\",\"email\":\"ada@example.test\"}",
+      "weight": 10
+    },
+    {
+      "method": "GET",
+      "path": "/private",
+      "headers": { "x-api-key": "benchmark-secret" },
+      "weight": 5
+    },
+    { "method": "GET", "path": "/public/hello.txt", "weight": 5 }
+  ]
+}
