@@ -3,6 +3,8 @@
 This guide shows a small API protected with JWT bearer tokens, API keys, and a
 named authorization policy.
 
+Auth is public-alpha/experimental in this pre-alpha runtime.
+
 ## Configure Secrets
 
 Keep auth secrets in application configuration, not source code.

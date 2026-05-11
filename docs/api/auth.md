@@ -28,7 +28,7 @@ Registers a JWT bearer provider for `Authorization: Bearer <token>`.
 | --- | --- | --- |
 | `issuer` | `string?` | Expected `iss` claim. |
 | `audience` | `string?` | Expected `aud` claim. Array audiences are accepted when one entry matches. |
-| `secret` | `string | Config.required(...)` | HS256 signing secret. Use config references for app secrets. |
+| `secret` | `string \| Config.required(...)` | HS256 signing secret. Use config references for app secrets. Compiler extraction requires `Config.required(...)`. |
 
 JWT support is intentionally small for alpha:
 
@@ -51,7 +51,8 @@ app.use(Auth.apiKey({
 | Option | Type | Notes |
 | --- | --- | --- |
 | `header` | `string` | Header to read. Defaults to `x-api-key`. |
-| `validate` | `(key, helpers) => boolean | object | Promise<boolean | object>` | Return `true` for the default API-key user or a claims object for a custom user. |
+| `validate` | `(key, helpers) => boolean \| object \| Promise<boolean \| object>` | Return `true` for the default API-key user or a claims object for a custom user. |
+| `configKey` | `string` | Config key for direct API-key comparison when no custom validator is needed. Compiler extraction requires either this or exactly one literal `Config.required(...)` reference in `validate`. |
 
 When the validator references `Config.required("...")`, Sloppy treats that key
 as the config-backed API key and compares it without writing the value to Plan

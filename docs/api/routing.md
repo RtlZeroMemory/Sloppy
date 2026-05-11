@@ -90,6 +90,8 @@ app.get("/admin", handler)
   .requireAuth({ role: "admin" });
 ```
 
+Route auth requirements are public-alpha/experimental.
+
 See [Auth](auth.md) for JWT bearer, API keys, roles, claims, and policies.
 
 ## Route groups

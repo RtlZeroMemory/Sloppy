@@ -481,6 +481,12 @@ static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadat
     if (!route->auth_required) {
         return;
     }
+    if (metadata->auth_scheme_count == 0U) {
+        sl_cli_openapi_emit_field_prefix(out, first);
+        sl_cli_write_cstr(out,
+                           "\"x-slop-partial\": \"auth required but auth scheme metadata is missing\"");
+        return;
+    }
     sl_cli_openapi_emit_field_prefix(out, first);
     sl_cli_write_cstr(out, "\"security\": [");
     for (index = 0U; index < metadata->auth_scheme_count; index += 1U) {

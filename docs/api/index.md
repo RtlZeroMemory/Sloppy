@@ -15,7 +15,7 @@ configuration, services, validation, or data access.
 - [Routing](routing.md) — `app.get`/`post`/`put`/`patch`/`delete`, route patterns, groups, controllers
 - [Middleware](middleware.md) — `app.use(fn)`, `group.use(fn)`, pipeline order
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
-- [Auth](auth.md) — JWT bearer, API keys, route authorization, `ctx.user`
+- [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, `ctx.user`
 - [Health checks](health.md) — `app.mapHealthChecks(options?)`, liveness/readiness
 - [ProblemDetails](problem-details.md) — problem response descriptor options
 - [Request IDs](request-id.md) — request ID middleware and response header behavior

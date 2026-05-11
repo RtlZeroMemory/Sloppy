@@ -247,6 +247,10 @@
         sloppy.cli.openapi_partial_json tests/golden/cli/openapi-partial.json openapi --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_auth_missing_schemes_json
+        tests/golden/cli/openapi-auth-missing-schemes.json openapi --plan
+        tests/fixtures/cli/openapi-auth-missing-schemes.plan.json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.openapi_scalar_schema_json tests/golden/cli/openapi-scalar-schema.json openapi
         --plan tests/fixtures/cli/openapi-scalar-schema.plan.json)
     sloppy_add_cli_golden_test(

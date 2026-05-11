@@ -326,6 +326,9 @@ function createApp(host) {
                 if (typeof policy !== "function") {
                     throw new TypeError("Sloppy auth policy must be a function.");
                 }
+                if (authState.policies.has(name)) {
+                    throw new TypeError(`Sloppy auth policy '${name}' is already registered.`);
+                }
                 authState.policies.set(name, policy);
                 return app.auth;
             },

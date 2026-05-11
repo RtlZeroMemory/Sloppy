@@ -7703,46 +7703,69 @@ fn app_use_auth_provider_call(
             let audience = object_string_property_value(options, "audience").map(str::to_string);
             let secret_config_key = object_property_expression(options, "secret")
                 .and_then(config_required_key_from_expression)
-                .map(str::to_string);
-            if let Some(key) = &secret_config_key {
-                state.config_reads.push(config_required_read(
-                    key,
-                    "secret",
-                    true,
-                    source,
-                    source_name,
-                    call.span,
-                ));
-            }
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "Auth.jwtBearer requires secret: Config.required(\"...\") for compiler extraction",
+                    )
+                    .with_path(path)
+                    .with_span(call.span)
+                })?
+                .to_string();
+            state.config_reads.push(config_required_read(
+                &secret_config_key,
+                "secret",
+                true,
+                source,
+                source_name,
+                call.span,
+            ));
             state.auth.schemes.push(AuthSchemeMetadata::JwtBearer {
                 name: "bearerAuth".to_string(),
                 issuer,
                 audience,
-                secret_config_key,
+                secret_config_key: Some(secret_config_key),
             });
         }
         "apiKey" => {
             let header = object_string_property_value(options, "header")
                 .unwrap_or("x-api-key")
                 .to_string();
-            let config_keys = config_required_keys_from_source(
-                &source_slice(source, call.span).unwrap_or_default(),
-            );
+            let config_keys = if let Some(key) = object_string_property_value(options, "configKey")
+            {
+                vec![key.to_string()]
+            } else {
+                config_required_keys_from_source(&source_slice(source, call.span).unwrap_or_default())
+                    .ok_or_else(|| {
+                        Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_AUTH",
+                            "Auth.apiKey requires a literal Config.required(\"...\") validator reference or configKey for compiler extraction",
+                        )
+                        .with_path(path)
+                        .with_span(call.span)
+                    })?
+            };
+            let [config_key] = config_keys.as_slice() else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.apiKey requires exactly one config key for compiler extraction",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            };
+            state.config_reads.push(config_required_read(
+                config_key,
+                "secret",
+                true,
+                source,
+                source_name,
+                call.span,
+            ));
             state.auth.schemes.push(AuthSchemeMetadata::ApiKey {
                 name: "apiKeyAuth".to_string(),
                 header,
-                config_key: config_keys.first().cloned(),
+                config_key: Some(config_key.clone()),
             });
-            for key in config_keys {
-                state.config_reads.push(config_required_read(
-                    &key,
-                    "secret",
-                    true,
-                    source,
-                    source_name,
-                    call.span,
-                ));
-            }
         }
         _ => {}
     }
@@ -7784,15 +7807,28 @@ fn app_auth_policy_call(
         .with_path(path)
         .with_span(call.span));
     };
+    let Some(policy_argument) = call.arguments.get(1) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_AUTH",
+            "app.auth.addPolicy requires an inline policy function",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    let policy_span = argument_span(policy_argument).unwrap_or(call.span);
+    let policy_source = source_slice(source, policy_span).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_AUTH",
+            "app.auth.addPolicy policy source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(policy_span)
+    })?;
+    validate_auth_policy_source(path, &policy_source, policy_span)?;
     if !state.auth.policies.iter().any(|policy| policy.name == name) {
-        let policy_source = call
-            .arguments
-            .get(1)
-            .and_then(|argument| argument_span(argument))
-            .and_then(|span| source_slice(source, span));
         state.auth.policies.push(AuthPolicyMetadata {
             name: name.to_string(),
-            source: policy_source,
+            source: Some(policy_source),
         });
     }
     Ok(true)
@@ -7864,31 +7900,241 @@ fn config_required_key_from_expression<'a>(expression: &'a Expression<'a>) -> Op
     call.arguments.first().and_then(string_argument)
 }
 
-fn config_required_keys_from_source(source: &str) -> Vec<String> {
+fn config_required_keys_from_source(source: &str) -> Option<Vec<String>> {
     let mut keys = Vec::new();
     let mut rest = source;
     while let Some(index) = rest.find("Config.required") {
         rest = &rest[index + "Config.required".len()..];
-        let Some(open) = rest.find('(') else {
-            break;
-        };
+        let open = rest.find('(')?;
         rest = &rest[open + 1..];
         let trimmed = rest.trim_start();
-        let Some(quote) = trimmed
+        let quote = trimmed
             .chars()
             .next()
-            .filter(|ch| *ch == '"' || *ch == '\'')
-        else {
-            continue;
-        };
+            .filter(|ch| *ch == '"' || *ch == '\'')?;
         let key_start = quote.len_utf8();
-        let Some(end) = trimmed[key_start..].find(quote) else {
-            continue;
-        };
+        let end = trimmed[key_start..].find(quote)?;
         keys.push(trimmed[key_start..key_start + end].to_string());
         rest = &trimmed[key_start + end + quote.len_utf8()..];
     }
-    keys
+    Some(keys)
+}
+
+fn validate_auth_policy_source(path: &Path, source: &str, span: Span) -> Result<(), Diagnostic> {
+    let params = auth_policy_parameters(source).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_AUTH",
+            "app.auth.addPolicy compiler extraction supports inline functions with simple parameters",
+        )
+        .with_path(path)
+        .with_span(span)
+    })?;
+    if let Some(identifier) = captured_auth_policy_identifier(source, &params) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_AUTH",
+            format!(
+                "app.auth.addPolicy inline policy cannot capture '{identifier}' in compiler output"
+            ),
+        )
+        .with_path(path)
+        .with_span(span));
+    }
+    Ok(())
+}
+
+fn auth_policy_parameters(source: &str) -> Option<BTreeSet<String>> {
+    let mut trimmed = source.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("async") {
+        if rest.starts_with(char::is_whitespace) {
+            trimmed = rest.trim_start();
+        }
+    }
+    if let Some(rest) = trimmed.strip_prefix("function") {
+        let open = rest.find('(')?;
+        let close = rest[open + 1..].find(')')? + open + 1;
+        return auth_policy_parameter_list(&rest[open + 1..close]);
+    }
+    if let Some(rest) = trimmed.strip_prefix('(') {
+        let close = rest.find(')')?;
+        let after = rest[close + 1..].trim_start();
+        if !after.starts_with("=>") {
+            return None;
+        }
+        return auth_policy_parameter_list(&rest[..close]);
+    }
+    let arrow = trimmed.find("=>")?;
+    let parameter = trimmed[..arrow].trim();
+    if js_identifier(parameter) {
+        let mut params = BTreeSet::new();
+        params.insert(parameter.to_string());
+        return Some(params);
+    }
+    None
+}
+
+fn auth_policy_parameter_list(source: &str) -> Option<BTreeSet<String>> {
+    let mut params = BTreeSet::new();
+    let trimmed = source.trim();
+    if trimmed.is_empty() {
+        return Some(params);
+    }
+    for part in trimmed.split(',') {
+        let name = part.trim();
+        if !js_identifier(name) {
+            return None;
+        }
+        params.insert(name.to_string());
+    }
+    Some(params)
+}
+
+fn captured_auth_policy_identifier(source: &str, params: &BTreeSet<String>) -> Option<String> {
+    let bytes = source.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_js_quoted_literal(bytes, index);
+                continue;
+            }
+            b'/' if index + 1 < bytes.len() && bytes[index + 1] == b'/' => {
+                index = skip_js_line_comment(bytes, index + 2);
+                continue;
+            }
+            b'/' if index + 1 < bytes.len() && bytes[index + 1] == b'*' => {
+                index = skip_js_block_comment(bytes, index + 2);
+                continue;
+            }
+            _ => {}
+        }
+        if js_identifier_start(bytes[index]) {
+            let start = index;
+            index += 1;
+            while index < bytes.len() && js_identifier_part(bytes[index]) {
+                index += 1;
+            }
+            let identifier = &source[start..index];
+            if auth_policy_identifier_allowed(source, start, index, identifier, params) {
+                continue;
+            }
+            return Some(identifier.to_string());
+        }
+        index += 1;
+    }
+    None
+}
+
+fn auth_policy_identifier_allowed(
+    source: &str,
+    start: usize,
+    end: usize,
+    identifier: &str,
+    params: &BTreeSet<String>,
+) -> bool {
+    if params.contains(identifier)
+        || auth_policy_keyword(identifier)
+        || auth_policy_global(identifier)
+    {
+        return true;
+    }
+    if previous_non_ws_byte(source.as_bytes(), start) == Some(b'.') {
+        return true;
+    }
+    if next_non_ws_byte(source.as_bytes(), end) == Some(b':') {
+        return true;
+    }
+    false
+}
+
+fn auth_policy_keyword(identifier: &str) -> bool {
+    matches!(
+        identifier,
+        "async"
+            | "await"
+            | "break"
+            | "case"
+            | "catch"
+            | "const"
+            | "continue"
+            | "default"
+            | "do"
+            | "else"
+            | "false"
+            | "finally"
+            | "for"
+            | "function"
+            | "if"
+            | "in"
+            | "instanceof"
+            | "let"
+            | "new"
+            | "null"
+            | "return"
+            | "switch"
+            | "throw"
+            | "true"
+            | "try"
+            | "typeof"
+            | "undefined"
+            | "var"
+            | "void"
+            | "while"
+    )
+}
+
+fn auth_policy_global(identifier: &str) -> bool {
+    matches!(
+        identifier,
+        "Array"
+            | "Boolean"
+            | "Date"
+            | "JSON"
+            | "Map"
+            | "Math"
+            | "Number"
+            | "Object"
+            | "RegExp"
+            | "Set"
+            | "String"
+    )
+}
+
+fn js_identifier(source: &str) -> bool {
+    let mut bytes = source.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    js_identifier_start(first) && bytes.all(js_identifier_part)
+}
+
+fn js_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$'
+}
+
+fn js_identifier_part(byte: u8) -> bool {
+    js_identifier_start(byte) || byte.is_ascii_digit()
+}
+
+fn previous_non_ws_byte(bytes: &[u8], start: usize) -> Option<u8> {
+    let mut index = start;
+    while index > 0 {
+        index -= 1;
+        if !bytes[index].is_ascii_whitespace() {
+            return Some(bytes[index]);
+        }
+    }
+    None
+}
+
+fn next_non_ws_byte(bytes: &[u8], start: usize) -> Option<u8> {
+    let mut index = start;
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_whitespace() {
+            return Some(bytes[index]);
+        }
+        index += 1;
+    }
+    None
 }
 
 fn config_required_read(
@@ -8537,6 +8783,11 @@ fn app_map_controller_call(
             responses: Vec::new(),
             effects: Vec::new(),
         };
+        let auth = fluent_metadata.auth.or(route_metadata.auth);
+        if let Some(requirement) = &auth {
+            handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
+            handler.is_async = true;
+        }
         handler.emitted_source = wrap_handler_with_framework_pipeline(
             &handler.emitted_source,
             &state.middleware,
@@ -8551,7 +8802,7 @@ fn app_map_controller_call(
             tags,
             health: None,
             middleware,
-            auth: None,
+            auth,
             cors: cors.as_ref().map(cors_policy_metadata),
             cors_preflight: false,
             span: statement.span,
@@ -16160,12 +16411,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); const now = Math.floor(Date.now() / 1000); if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\"); }",
+            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return undefined; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); const now = Math.floor(Date.now() / 1000); if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\"); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } const expected = Environment.get(scheme.configKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\"); return true; } } return false; }",
+            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } if (typeof scheme.configKey !== \"string\" || scheme.configKey.length === 0) { return false; } const expected = Environment.get(scheme.configKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\"); return true; } } return false; }",
         );
         push_generated_line(
             &mut output,

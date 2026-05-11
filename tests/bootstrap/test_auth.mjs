@@ -3,6 +3,8 @@ import { createHmac } from "node:crypto";
 
 import { Auth, Base64Url, Config, Results, Sloppy, Testing, Text } from "../../stdlib/sloppy/index.js";
 
+const previousSloppy = globalThis.__sloppy;
+
 globalThis.__sloppy = {
     crypto: {
         hmac(algorithm, key, bytes) {
@@ -25,6 +27,7 @@ async function requestJson(host, method, target, options = undefined) {
     return { response, body: response.text().length === 0 ? null : response.json() };
 }
 
+try {
 {
     const builder = Sloppy.createBuilder();
     builder.config.addObject({
@@ -48,6 +51,10 @@ async function requestJson(host, method, target, options = undefined) {
     })).requireAuth();
     app.get("/admin", () => Results.ok({ ok: true })).requireAuth({ role: "admin" });
     app.auth.addPolicy("ops", (user) => user.claims.department === "ops");
+    assert.throws(
+        () => app.auth.addPolicy("ops", () => true),
+        /already registered/,
+    );
     app.get("/ops", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
 
     const host = Testing.createHost(app);
@@ -138,8 +145,42 @@ async function requestJson(host, method, target, options = undefined) {
 }
 
 {
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({
+        Auth: {
+            ApiKey: "static-secret",
+        },
+    });
+    const app = builder.build();
+    app.use(Auth.apiKey({
+        header: "x-static-key",
+        configKey: "Auth:ApiKey",
+    }));
+    app.get("/static-key", (ctx) => Results.ok({ scheme: ctx.user.scheme })).requireAuth();
+
+    const host = Testing.createHost(app);
+    assert.equal((await requestJson(host, "GET", "/static-key", {
+        headers: { "x-static-key": "wrong" },
+    })).response.status, 401);
+    const status = await requestJson(host, "GET", "/static-key", {
+        headers: { "x-static-key": "static-secret" },
+    });
+    assert.equal(status.response.status, 200);
+    assert.equal(status.body.scheme, "apiKey");
+
+    await host.close();
+}
+
+{
     assert.throws(
         () => Sloppy.create().use(Auth.jwtBearer({ secret: Config.required("Auth:Missing") })),
         /required but was not provided/,
     );
+}
+} finally {
+    if (previousSloppy === undefined) {
+        delete globalThis.__sloppy;
+    } else {
+        globalThis.__sloppy = previousSloppy;
+    }
 }

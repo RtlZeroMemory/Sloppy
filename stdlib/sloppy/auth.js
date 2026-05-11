@@ -436,19 +436,29 @@ function apiKey(options) {
     }
     const header = options.header ?? "x-api-key";
     validateHeaderName(header, "API key");
-    if (typeof options.validate !== "function") {
+    const configKey = stringOption(options.configKey, "API key configKey", false)
+        ?? configRequiredKeysFromFunction(options.validate)?.[0];
+    if (typeof options.validate !== "function" && configKey === undefined) {
+        throw new TypeError("Sloppy Auth.apiKey requires validate or configKey.");
+    }
+    if (options.validate !== undefined && typeof options.validate !== "function") {
         throw new TypeError("Sloppy Auth.apiKey validate must be a function.");
     }
     return Object.freeze({
         __sloppyAuth: true,
         kind: "apiKey",
         header: header.toLowerCase(),
-        validate: options.validate,
-        configKey: configRequiredKeysFromFunction(options.validate)[0],
+        validate: options.validate ?? (() => false),
+        configKey,
     });
 }
 
 function configRequiredKeysFromFunction(fn) {
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    // This only recognizes direct literal Config.required("...") calls. When the
+    // function source cannot be parsed confidently, leave metadata undefined.
     const keys = [];
     let source = Function.prototype.toString.call(fn);
     while (source.length !== 0) {
@@ -459,16 +469,16 @@ function configRequiredKeysFromFunction(fn) {
         source = source.slice(index + "Config.required".length);
         const open = source.indexOf("(");
         if (open < 0) {
-            break;
+            return undefined;
         }
         source = source.slice(open + 1).trimStart();
         const quote = source[0];
         if (quote !== "\"" && quote !== "'") {
-            continue;
+            return undefined;
         }
         const end = source.slice(1).indexOf(quote);
         if (end < 0) {
-            break;
+            return undefined;
         }
         keys.push(source.slice(1, end + 1));
         source = source.slice(end + 2);

@@ -1,0 +1,27 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "status": "plan-supported-subset",
+    "unknownMetadata": "explicit-partial-markers",
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/protected": {
+      "get": {
+        "operationId": "Protected.Index",
+        "x-slop-partial": "auth required but auth scheme metadata is missing",
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
+        }
+      }
+    }
+  }
+}

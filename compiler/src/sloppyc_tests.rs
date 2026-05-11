@@ -5949,7 +5949,7 @@ const api = app.group("/api");
 api.use((ctx, next) => next());
 api.get("/status", () => Results.ok({ ok: true })).withName("Status");
 app.mapController("/users", UsersController, (mapper) => {
-  mapper.get("/", "list", { tags: ["Users"] }).withName("Users.List");
+  mapper.get("/", "list", { tags: ["Users"] }).requireAuth({ role: "admin" }).withName("Users.List");
 });
 export default app;
 "#;
@@ -5981,12 +5981,53 @@ export default app;
         .find(|route| route.name.as_deref() == Some("Users.List"))
         .expect("controller route should exist");
     assert_eq!(controller.tags, vec!["Users"]);
+    let controller_auth = controller
+        .auth
+        .as_ref()
+        .expect("controller route auth should extract");
+    assert_eq!(controller_auth.roles, vec!["admin"]);
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_run_middleware"));
+    assert!(emitted_js.source.contains("__sloppy_require_auth"));
     assert!(emitted_js.source.contains("__sloppy_cors_preflight"));
     assert!(emitted_js.source.contains("__sloppy_request_id"));
     assert!(emitted_js.source.contains("__sloppy_request_logging"));
     assert!(emitted_js.source.contains("new UsersController"));
+}
+
+#[test]
+fn static_auth_config_metadata_fails_closed() {
+    for source in [
+        r#"import { Sloppy, Results, Auth } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.jwtBearer({ secret: "literal-secret" }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.apiKey({ validate: (key) => key === "literal-secret" }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.apiKey({ validate: (key) => key === Config.required("Auth:ApiKey") || key === Config.required("Auth:BackupKey") }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const requiredDepartment = "ops";
+app.auth.addPolicy("ops", (user) => user.claims.department === requiredDepartment);
+app.get("/", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err("unsupported static auth metadata should fail closed");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_AUTH");
+    }
 }
 
 #[test]
