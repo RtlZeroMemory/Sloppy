@@ -273,41 +273,36 @@ function buildRouteUrl(pattern, params = {}, query = undefined) {
     return `${path}${encodeQuery(query)}`;
 }
 
-function routeSpecificity(route, sourceOrder) {
-    const segments = route.pattern === "/" ? [] : route.pattern.split("/").slice(1);
-    let staticSegments = 0;
-    let constrainedParams = 0;
-    let hasParams = false;
-    for (const segment of segments) {
-        const match = ROUTE_PARAM_PATTERN.exec(segment);
-        if (match === null) {
-            staticSegments += 1;
-            continue;
-        }
-        hasParams = true;
-        if ((match[2] ?? "str") !== "str") {
-            constrainedParams += 1;
-        }
+function routeSegments(pattern) {
+    return pattern === "/" ? [] : pattern.split("/").slice(1);
+}
+
+function routeSegmentRank(segment) {
+    const match = ROUTE_PARAM_PATTERN.exec(segment);
+    if (match === null) {
+        return 3;
     }
-    return { hasParams, staticSegments, constrainedParams, segmentCount: segments.length, sourceOrder };
+    return (match[2] ?? "str") === "str" ? 1 : 2;
 }
 
 function compareRouteSpecificity(left, right) {
-    const a = left.__specificity;
-    const b = right.__specificity;
-    if (a.hasParams !== b.hasParams) {
-        return a.hasParams ? 1 : -1;
+    const leftSegments = routeSegments(left.route.pattern);
+    const rightSegments = routeSegments(right.route.pattern);
+    const shared = Math.min(leftSegments.length, rightSegments.length);
+    for (let index = 0; index < shared; index += 1) {
+        const leftRank = routeSegmentRank(leftSegments[index]);
+        const rightRank = routeSegmentRank(rightSegments[index]);
+        if (leftRank !== rightRank) {
+            return rightRank - leftRank;
+        }
+        if (leftRank === 3 && leftSegments[index] !== rightSegments[index]) {
+            return leftSegments[index] < rightSegments[index] ? -1 : 1;
+        }
     }
-    if (a.staticSegments !== b.staticSegments) {
-        return b.staticSegments - a.staticSegments;
+    if (leftSegments.length !== rightSegments.length) {
+        return rightSegments.length - leftSegments.length;
     }
-    if (a.constrainedParams !== b.constrainedParams) {
-        return b.constrainedParams - a.constrainedParams;
-    }
-    if (a.segmentCount !== b.segmentCount) {
-        return b.segmentCount - a.segmentCount;
-    }
-    return a.sourceOrder - b.sourceOrder;
+    return left.sourceOrder - right.sourceOrder;
 }
 
 function validateSchema(schema, subject) {
@@ -714,7 +709,7 @@ function snapshotRoute(route) {
 function routeSnapshotOrder(routes) {
     return routes.map((route, index) => Object.freeze({
         route,
-        __specificity: routeSpecificity(route, index),
+        sourceOrder: index,
     })).sort(compareRouteSpecificity).map((entry) => entry.route);
 }
 
@@ -916,6 +911,11 @@ function registerRoute(
 
     if (routes.some((route) => route.method === method && route.pattern === args.pattern)) {
         throw new Error(`Sloppy route '${method} ${args.pattern}' is already registered.`);
+    }
+    if (args.metadata?.name !== undefined &&
+        (typeof args.metadata.name !== "string" || args.metadata.name.length === 0))
+    {
+        throw new TypeError("Sloppy route name must be a non-empty string.");
     }
     if (args.metadata?.name !== undefined &&
         routes.some((route) => route.name === args.metadata.name))

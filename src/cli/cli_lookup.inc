@@ -73,6 +73,7 @@ static bool sl_cli_route_segment_is_param(SlCliSpan segment, bool* out_constrain
 {
     size_t index = 0U;
     bool constrained = false;
+    SlCliSpan kind = sl_cli_span_cstr("str");
 
     if (out_constrained != NULL) {
         *out_constrained = false;
@@ -84,7 +85,8 @@ static bool sl_cli_route_segment_is_param(SlCliSpan segment, bool* out_constrain
     }
     for (index = 1U; index + 1U < segment.length; index += 1U) {
         if (segment.ptr[index] == ':') {
-            constrained = true;
+            kind = (SlCliSpan){&segment.ptr[index + 1U], segment.length - index - 2U};
+            constrained = !sl_cli_span_equal_cstr(kind, "str");
             break;
         }
     }
@@ -94,83 +96,67 @@ static bool sl_cli_route_segment_is_param(SlCliSpan segment, bool* out_constrain
     return true;
 }
 
-static void sl_cli_route_specificity(const SlCliRoute* route, bool* out_has_params,
-                                     size_t* out_static_segments, size_t* out_constrained_params,
-                                     size_t* out_segments)
+static SlCliSpan sl_cli_route_segment_at(SlCliSpan pattern, size_t* cursor)
 {
-    size_t index = 1U;
-    bool has_params = false;
-    size_t static_segments = 0U;
-    size_t constrained_params = 0U;
-    size_t segments = 0U;
+    size_t start = 0U;
+    size_t end = 0U;
 
-    if (route == NULL || route->pattern.length == 0U || route->pattern.ptr == NULL ||
-        sl_cli_span_equal_cstr(route->pattern, "/"))
+    if (cursor == NULL || pattern.length == 0U || pattern.ptr == NULL ||
+        sl_cli_span_equal_cstr(pattern, "/") || *cursor >= pattern.length)
     {
-        goto done;
+        return (SlCliSpan){0};
     }
 
-    while (index <= route->pattern.length) {
-        size_t start = index;
-        size_t end = index;
-        bool constrained = false;
-        SlCliSpan segment = {0};
-        while (end < route->pattern.length && route->pattern.ptr[end] != '/') {
-            end += 1U;
-        }
-        segment = (SlCliSpan){&route->pattern.ptr[start], end - start};
-        if (sl_cli_route_segment_is_param(segment, &constrained)) {
-            has_params = true;
-            if (constrained) {
-                constrained_params += 1U;
-            }
-        }
-        else {
-            static_segments += 1U;
-        }
-        segments += 1U;
-        if (end == route->pattern.length) {
-            break;
-        }
-        index = end + 1U;
+    start = *cursor == 0U ? 1U : *cursor;
+    end = start;
+    while (end < pattern.length && pattern.ptr[end] != '/') {
+        end += 1U;
     }
+    *cursor = end == pattern.length ? pattern.length : end + 1U;
+    return (SlCliSpan){&pattern.ptr[start], end - start};
+}
 
-done:
-    *out_has_params = has_params;
-    *out_static_segments = static_segments;
-    *out_constrained_params = constrained_params;
-    *out_segments = segments;
+static int sl_cli_route_segment_rank(SlCliSpan segment)
+{
+    bool constrained = false;
+
+    if (!sl_cli_route_segment_is_param(segment, &constrained)) {
+        return 3;
+    }
+    return constrained ? 2 : 1;
 }
 
 static int sl_cli_route_compare(const SlCliRoute* left, const SlCliRoute* right)
 {
     int result = sl_cli_span_compare(left->method, right->method);
-    bool left_params = false;
-    bool right_params = false;
-    size_t left_static = 0U;
-    size_t right_static = 0U;
-    size_t left_constrained = 0U;
-    size_t right_constrained = 0U;
-    size_t left_segments = 0U;
-    size_t right_segments = 0U;
+    size_t left_cursor = 0U;
+    size_t right_cursor = 0U;
 
     if (result != 0) {
         return result;
     }
-    sl_cli_route_specificity(left, &left_params, &left_static, &left_constrained, &left_segments);
-    sl_cli_route_specificity(right, &right_params, &right_static, &right_constrained,
-                             &right_segments);
-    if (left_params != right_params) {
-        return left_params ? 1 : -1;
-    }
-    if (left_static != right_static) {
-        return left_static > right_static ? -1 : 1;
-    }
-    if (left_constrained != right_constrained) {
-        return left_constrained > right_constrained ? -1 : 1;
-    }
-    if (left_segments != right_segments) {
-        return left_segments > right_segments ? -1 : 1;
+
+    while (left_cursor < left->pattern.length || right_cursor < right->pattern.length) {
+        SlCliSpan left_segment = sl_cli_route_segment_at(left->pattern, &left_cursor);
+        SlCliSpan right_segment = sl_cli_route_segment_at(right->pattern, &right_cursor);
+        int left_rank = sl_cli_route_segment_rank(left_segment);
+        int right_rank = sl_cli_route_segment_rank(right_segment);
+
+        if (left_segment.ptr == NULL || right_segment.ptr == NULL) {
+            if (left_segment.ptr != right_segment.ptr) {
+                return left_segment.ptr == NULL ? 1 : -1;
+            }
+            break;
+        }
+        if (left_rank != right_rank) {
+            return left_rank > right_rank ? -1 : 1;
+        }
+        if (left_rank == 3 && !sl_cli_span_equal(left_segment, right_segment)) {
+            result = sl_cli_span_compare(left_segment, right_segment);
+            if (result != 0) {
+                return result;
+            }
+        }
     }
     if (left->source_order == right->source_order) {
         return 0;

@@ -648,16 +648,28 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
 static bool sl_http_route_entry_less(const SlHttpRouteTableEntry* left,
                                      const SlHttpRouteTableEntry* right)
 {
-    if (left->has_params != right->has_params) {
-        return !left->has_params;
-    }
+    size_t index = 0U;
+    size_t shared_segments = left->pattern.segment_count < right->pattern.segment_count
+                                 ? left->pattern.segment_count
+                                 : right->pattern.segment_count;
 
-    if (left->static_segment_count != right->static_segment_count) {
-        return left->static_segment_count > right->static_segment_count;
-    }
+    for (index = 0U; index < shared_segments; index += 1U) {
+        const SlRouteSegment* left_segment = &left->pattern.segments[index];
+        const SlRouteSegment* right_segment = &right->pattern.segments[index];
+        bool left_param = left_segment->kind == SL_ROUTE_SEGMENT_PARAM;
+        bool right_param = right_segment->kind == SL_ROUTE_SEGMENT_PARAM;
+        bool left_constrained = left_param && left_segment->param_kind != SL_ROUTE_PARAM_STRING;
+        bool right_constrained = right_param && right_segment->param_kind != SL_ROUTE_PARAM_STRING;
 
-    if (left->constrained_param_count != right->constrained_param_count) {
-        return left->constrained_param_count > right->constrained_param_count;
+        if (left_param != right_param) {
+            return !left_param;
+        }
+        if (left_param && left_constrained != right_constrained) {
+            return left_constrained;
+        }
+        if (!left_param && !right_param && !sl_str_equal(left_segment->text, right_segment->text)) {
+            return sl_str_compare(left_segment->text, right_segment->text) < 0;
+        }
     }
 
     if (left->pattern.segment_count != right->pattern.segment_count) {
@@ -1664,7 +1676,7 @@ sl_http_dispatch_next_param_candidate(const SlHttpRouteCandidateBucket* first, s
         *first_index += 1U;
         return first_route;
     }
-    if (first_route->route_index <= generic_route->route_index) {
+    if (first_route <= generic_route) {
         *first_index += 1U;
         return first_route;
     }

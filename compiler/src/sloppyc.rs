@@ -18311,8 +18311,11 @@ function __sloppy_dynamic_match(pattern, path) {
     const segment = patternParts[index];
     const value = decodeURIComponent(pathParts[index] ?? "");
     if (segment.startsWith("{") && segment.endsWith("}")) {
-      const [name, kind = "str"] = segment.slice(1, -1).split(":");
+      const parts = segment.slice(1, -1).split(":");
+      if (parts.length > 2) { return null; }
+      const [name, kind = "str"] = parts;
       if (value.length === 0) { return null; }
+      if (kind !== "str" && kind !== "int" && kind !== "uuid" && kind !== "alpha" && kind !== "float") { return null; }
       if (kind === "int" && !/^[0-9]+$/u.test(value)) { return null; }
       if (kind === "uuid" && !/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value)) { return null; }
       if (kind === "alpha" && !/^[A-Za-z]+$/u.test(value)) { return null; }

@@ -104,7 +104,7 @@ static void sl_cli_openapi_emit_parameter(FILE* file, SlCliSpan name, SlCliSpan 
         sl_cli_write_cstr(file, ", \"pattern\": \"^[A-Za-z]+$\"");
     }
     sl_cli_write_cstr(file, " }");
-    if (!sl_cli_span_empty(type)) {
+    if (sl_cli_span_equal_cstr(location, "path") && !sl_cli_span_empty(type)) {
         sl_cli_write_cstr(file, ", \"x-slop-constraint\": ");
         sl_cli_json_escape(file, type);
     }

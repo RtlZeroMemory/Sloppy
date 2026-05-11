@@ -799,45 +799,42 @@ function findRoute(routes, method, path) {
     return { route: undefined, params: undefined, methodMismatch };
 }
 
-function routeSpecificity(route, sourceOrder) {
-    const segments = route.pattern === "/" ? [] : route.pattern.split("/").slice(1);
-    let staticSegments = 0;
-    let constrainedParams = 0;
-    let hasParams = false;
-    for (const segment of segments) {
-        const param = parsePatternParam(segment);
-        if (param === undefined) {
-            staticSegments += 1;
-            continue;
+function routeSegments(pattern) {
+    return pattern === "/" ? [] : pattern.split("/").slice(1);
+}
+
+function routeSegmentRank(segment) {
+    const param = parsePatternParam(segment);
+    if (param === undefined) {
+        return 3;
+    }
+    return param.type === "str" ? 1 : 2;
+}
+
+function compareRoutesByPrecedence(left, right) {
+    const leftSegments = routeSegments(left.pattern);
+    const rightSegments = routeSegments(right.pattern);
+    const shared = Math.min(leftSegments.length, rightSegments.length);
+    for (let index = 0; index < shared; index += 1) {
+        const leftRank = routeSegmentRank(leftSegments[index]);
+        const rightRank = routeSegmentRank(rightSegments[index]);
+        if (leftRank !== rightRank) {
+            return rightRank - leftRank;
         }
-        hasParams = true;
-        if (param.type !== "str") {
-            constrainedParams += 1;
+        if (leftRank === 3 && leftSegments[index] !== rightSegments[index]) {
+            return leftSegments[index] < rightSegments[index] ? -1 : 1;
         }
     }
-    return { hasParams, staticSegments, constrainedParams, segmentCount: segments.length, sourceOrder };
+    if (leftSegments.length !== rightSegments.length) {
+        return rightSegments.length - leftSegments.length;
+    }
+    return left.__sourceOrder - right.__sourceOrder;
 }
 
 function snapshotRoutes(app) {
     return Object.freeze(app.__getRoutes()
         .map((route, index) => Object.freeze({ ...route, __sourceOrder: index }))
-        .sort((left, right) => {
-            const a = routeSpecificity(left, left.__sourceOrder);
-            const b = routeSpecificity(right, right.__sourceOrder);
-            if (a.hasParams !== b.hasParams) {
-                return a.hasParams ? 1 : -1;
-            }
-            if (a.staticSegments !== b.staticSegments) {
-                return b.staticSegments - a.staticSegments;
-            }
-            if (a.constrainedParams !== b.constrainedParams) {
-                return b.constrainedParams - a.constrainedParams;
-            }
-            if (a.segmentCount !== b.segmentCount) {
-                return b.segmentCount - a.segmentCount;
-            }
-            return left.__sourceOrder - right.__sourceOrder;
-        }));
+        .sort(compareRoutesByPrecedence));
 }
 
 function normalizeMethod(method) {

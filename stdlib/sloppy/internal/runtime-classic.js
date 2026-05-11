@@ -850,6 +850,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1335,6 +1336,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1593,6 +1595,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1909,7 +1912,24 @@ Fix:
         const files = await listMigrationFiles(options);
         const withContent = [];
         for (const file of files) {
-            const sqlText = await File.readText(file.path);
+            let sqlText;
+            try {
+                sqlText = await File.readText(file.path);
+            } catch (error) {
+                throw new Error(
+                    `sloppy: migration file is missing or unreadable
+
+Provider:
+  ${options.provider}
+
+Path:
+  ${file.path}
+
+Fix:
+  Ensure every listed migration file exists and is readable before running migrations.`,
+                    { cause: error },
+                );
+            }
             withContent.push({
                 ...file,
                 sql: sqlText,
@@ -1992,10 +2012,8 @@ Fix:
     }
 
     async function checkProviderHealth(db, options = {}) {
-        const provider = options.provider ?? "sqlite";
-        if (typeof provider !== "string" || provider.length === 0) {
-            throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
-        }
+        void options;
+        const provider = migrationProviderKind(db);
         await db.queryOne("select 1 as ok", []);
         return Object.freeze({ provider, ok: true });
     }

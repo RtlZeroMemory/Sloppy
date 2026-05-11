@@ -27,10 +27,10 @@ typedef enum SlRouteParamKind
 {
     SL_ROUTE_PARAM_STRING = 0,
     SL_ROUTE_PARAM_INT = 1,
-    SL_ROUTE_PARAM_UUID = 2,
-    SL_ROUTE_PARAM_ALPHA = 3,
-    SL_ROUTE_PARAM_FLOAT = 4,
-    SL_ROUTE_PARAM_INVALID = 5
+    SL_ROUTE_PARAM_INVALID = 2,
+    SL_ROUTE_PARAM_UUID = 3,
+    SL_ROUTE_PARAM_ALPHA = 4,
+    SL_ROUTE_PARAM_FLOAT = 5
 } SlRouteParamKind;
 
 typedef struct SlRouteSegment
@@ -86,6 +86,9 @@ typedef struct SlRouteMatch
  * - static non-empty segments, such as `/users/profile`
  * - string parameters, such as `/users/{id}` and `/users/{name:str}`
  * - integer parameters, such as `/users/{id:int}`
+ * - UUID parameters, such as `/users/{id:uuid}`
+ * - ASCII alpha parameters, such as `/users/{slug:alpha}`
+ * - decimal float parameters, such as `/metrics/{value:float}`
  *
  * The current route-pattern contract does not support query strings, catch-all, optional
  * segments, regex constraints, route groups, method matching, route tables, percent
@@ -106,7 +109,9 @@ SlStatus sl_route_pattern_parse(SlArena* arena, SlStr pattern_text, SlRoutePatte
  * `arena`, `pattern`, and `out_match` are required. `path` must be a non-empty borrowed view
  * that starts with `/` and must not contain a query string. Static segments match exactly.
  * String parameters capture one non-empty segment. Integer parameters capture one non-empty
- * ASCII decimal digit segment; signs and integer conversion are intentionally deferred.
+ * ASCII decimal digit segment. UUID, alpha, and float parameters validate their documented
+ * segment shape. All captured values remain borrowed string slices; conversion is
+ * intentionally deferred to callers.
  * Trailing slashes are strict: `/users` does not match `/users/`, and `/` matches only `/`.
  * No percent decoding is performed.
  */
