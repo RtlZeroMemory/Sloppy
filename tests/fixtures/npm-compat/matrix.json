@@ -305,7 +305,102 @@
             "features": ["exports", "array-shape"],
             "expected": {
                 "kind": "packageExportUnsupported",
-                "specifier": "array-exports-pkg"
+                "specifier": "array-exports-pkg",
+                "field": "exports",
+                "reason": "value shape is unsupported"
+            }
+        },
+        {
+            "name": "exports-multi-star",
+            "group": "exports",
+            "fixture": "exports-multi-star",
+            "importer": "exports-multi-star/importer.js",
+            "specifier": "multi-star-pkg/features/alpha/beta",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["exports", "multi-star-pattern"],
+            "expected": {
+                "kind": "packageExportUnsupported",
+                "specifier": "multi-star-pkg",
+                "field": "exports",
+                "reason": "more than one wildcard"
+            }
+        },
+        {
+            "name": "exports-subpath-only-root-rejected",
+            "group": "exports",
+            "fixture": "exports-subpath-only",
+            "importer": "exports-subpath-only/importer.js",
+            "specifier": "subpath-only-pkg",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["exports", "subpath-only", "no-root"],
+            "expected": {
+                "kind": "packageExportUnsupported",
+                "specifier": "subpath-only-pkg",
+                "field": "exports",
+                "reason": "no root entry"
+            }
+        },
+        {
+            "name": "exports-subpath-only-feature",
+            "group": "exports",
+            "fixture": "exports-subpath-only",
+            "importer": "exports-subpath-only/importer.js",
+            "specifier": "subpath-only-pkg/feature",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "subpath-only", "subpath"],
+            "expected": {
+                "kind": "package",
+                "packageName": "subpath-only-pkg",
+                "entry": "exports-subpath-only/node_modules/subpath-only-pkg/feature.js"
+            }
+        },
+        {
+            "name": "exports-mixed-shape",
+            "group": "exports",
+            "fixture": "exports-mixed-shape",
+            "importer": "exports-mixed-shape/importer.js",
+            "specifier": "mixed-shape-pkg",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["exports", "mixed-shape"],
+            "expected": {
+                "kind": "packageExportUnsupported",
+                "specifier": "mixed-shape-pkg",
+                "field": "exports",
+                "reason": "mixes subpath keys with condition keys"
+            }
+        },
+        {
+            "name": "exports-root-plus-subpath-root",
+            "group": "exports",
+            "fixture": "exports-root-plus-subpath",
+            "importer": "exports-root-plus-subpath/importer.js",
+            "specifier": "dot-plus-sub-pkg",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "dot-and-subpath"],
+            "expected": {
+                "kind": "package",
+                "packageName": "dot-plus-sub-pkg",
+                "entry": "exports-root-plus-subpath/node_modules/dot-plus-sub-pkg/root.js"
+            }
+        },
+        {
+            "name": "exports-root-plus-subpath-extra",
+            "group": "exports",
+            "fixture": "exports-root-plus-subpath",
+            "importer": "exports-root-plus-subpath/importer.js",
+            "specifier": "dot-plus-sub-pkg/extra",
+            "importMode": true,
+            "status": "supported",
+            "features": ["exports", "dot-and-subpath", "subpath"],
+            "expected": {
+                "kind": "package",
+                "packageName": "dot-plus-sub-pkg",
+                "entry": "exports-root-plus-subpath/node_modules/dot-plus-sub-pkg/extra.js"
             }
         },
 
@@ -516,6 +611,20 @@
             "expected": {
                 "kind": "nativeAddonUnsupported",
                 "packageName": "native-pkg"
+            }
+        },
+        {
+            "name": "bindings-native-signal",
+            "group": "optional-native-unsupported",
+            "fixture": "bindings-native-signal",
+            "importer": "bindings-native-signal/importer.js",
+            "specifier": "bindings-native-pkg",
+            "importMode": true,
+            "status": "unsupported",
+            "features": ["native-addon", "bindings"],
+            "expected": {
+                "kind": "nativeAddonUnsupported",
+                "packageName": "bindings-native-pkg"
             }
         },
         {

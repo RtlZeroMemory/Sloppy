@@ -218,4 +218,5 @@ string/object/subpath/extensionless/pattern/nested conditions, `imports`
 aliases and patterns, self-reference, JSON require, optional dependency
 metadata, peer dependency metadata, native addon, unsupported Node builtin,
 and dynamic require), and the resolver test exercises each entry. The matrix
-is the source of truth for what shapes Sloppy promises to resolve.
+is the regression baseline for currently tested package shapes; shapes not in
+the matrix are not implicit non-regressions for users.

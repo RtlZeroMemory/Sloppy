@@ -179,8 +179,9 @@ string/object/subpath/extensionless/pattern/nested-conditions, `imports`
 aliases and patterns, self-reference, JSON require, optional dependencies,
 peer dependency metadata, native addon, unsupported Node builtin, etc.). The
 resolver test walks `matrix.json` and asserts that each shape resolves to the
-documented outcome. The matrix is the source of truth for what Sloppy can and
-cannot resolve; add a new fixture before claiming support for a new shape.
+documented outcome. The matrix is the regression baseline for currently tested
+package shapes — shapes outside the matrix are not implicit non-regressions;
+add a new fixture before claiming support for a new shape.
 
 There is also an optional ad-hoc smoke script at
 `tools/scripts/npm-compat-smoke.mjs` that installs a curated list of small

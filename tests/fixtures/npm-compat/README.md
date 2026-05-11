@@ -30,8 +30,10 @@ tests/fixtures/npm-compat/
     sloppy.json               -- optional, when the fixture is also buildable
 ```
 
-`matrix.json` is the source of truth for expected status. Tests load it
-and assert resolver behavior matches each entry.
+`matrix.json` is the regression baseline for currently tested package shapes.
+The resolver test loads it and asserts resolver behavior matches each entry.
+Shapes outside the matrix are not implicit non-regressions for users; add a
+new fixture before claiming support for a new shape.
 
 ## Status values
 
@@ -41,6 +43,6 @@ and assert resolver behavior matches each entry.
 | `partial`     | Sloppy resolves the supported subset; specific subpaths or conditions fail with explicit diagnostics. |
 | `unsupported` | Sloppy must emit a documented diagnostic and fail. |
 
-The local smoke script `tools/bench-or-test/npm-compat-smoke.mjs` can install
+The local smoke script `tools/scripts/npm-compat-smoke.mjs` can install
 a curated list of real pure-JS packages for ad-hoc experimentation. The smoke
 script is not part of normal CI and does not gate release.

@@ -97,8 +97,9 @@ findings.
 
 ## Package Resolution Matrix
 
-The package shapes Sloppy promises to resolve are committed at
+The package shapes Sloppy currently tests are committed at
 `tests/fixtures/npm-compat/` with a `matrix.json` index. The compiler resolver
-test walks the matrix on every test run, so a shape that is not in the matrix
-is not a regression — it is a feature request. Add a fixture plus matrix
-entry alongside any change that broadens resolver behavior.
+test walks the matrix on every test run. The matrix is the regression baseline
+for currently tested package shapes; shapes outside the matrix are not
+implicit non-regressions for users. Add a fixture plus matrix entry alongside
+any change that broadens resolver behavior.

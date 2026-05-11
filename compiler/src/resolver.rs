@@ -305,13 +305,9 @@ fn resolve_package_import(
         .and_then(|json| resolve_package_entry(&package_root, json, subpath, import_mode))
     {
         Some(Ok(path)) => path,
-        Some(Err(())) => {
+        Some(Err(reason)) => {
             return Some(ImportKind::PackageExportUnsupported(
-                PackageExportFailure::exports(
-                    package_name,
-                    subpath_label,
-                    "package exports entry uses an unsupported shape or has no matching condition",
-                ),
+                PackageExportFailure::exports(package_name, subpath_label, reason),
             ));
         }
         None => {
@@ -377,13 +373,9 @@ fn resolve_package_imports(
     let entry = resolve_imports_entry(&package_root, imports, specifier, import_mode)?;
     let entry = match entry {
         Ok(path) => path,
-        Err(()) => {
+        Err(reason) => {
             return Some(ImportKind::PackageExportUnsupported(
-                PackageExportFailure::imports(
-                    specifier,
-                    specifier,
-                    "imports entry uses an unsupported shape or has no matching condition",
-                ),
+                PackageExportFailure::imports(specifier, specifier, reason),
             ));
         }
     };
@@ -473,30 +465,89 @@ fn find_nearest_package_scope(from_path: &Path) -> Option<PathBuf> {
     None
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ExportsShape {
+    Subpath,
+    Conditions,
+    Mixed,
+    Empty,
+}
+
+fn detect_exports_shape(object: &serde_json::Map<String, Value>) -> ExportsShape {
+    let mut subpath = false;
+    let mut condition = false;
+    for key in object.keys() {
+        if key.starts_with("./") || key == "." {
+            subpath = true;
+        } else {
+            condition = true;
+        }
+    }
+    match (subpath, condition) {
+        (true, false) => ExportsShape::Subpath,
+        (false, true) => ExportsShape::Conditions,
+        (false, false) => ExportsShape::Empty,
+        (true, true) => ExportsShape::Mixed,
+    }
+}
+
 fn resolve_package_entry(
     package_root: &Path,
     package_json: &Value,
     subpath: &str,
     import_mode: bool,
-) -> Option<Result<PathBuf, ()>> {
+) -> Option<Result<PathBuf, &'static str>> {
     let exports = package_json.get("exports")?;
-    let key = if subpath.is_empty() {
-        "."
-    } else {
-        let request = format!("./{subpath}");
-        if let Some(value) = exports.get(request.as_str()) {
-            return Some(resolve_exports_value(package_root, value, import_mode));
+
+    if let Some(_path) = exports.as_str() {
+        if !subpath.is_empty() {
+            return Some(Err(
+                "package exports string shorthand only describes the root entry",
+            ));
         }
-        return resolve_pattern_entry(package_root, exports, &request, import_mode);
-    };
-    if exports.is_string() || exports.is_object() && exports.get(key).is_none() {
         return Some(resolve_exports_value(package_root, exports, import_mode));
     }
-    Some(resolve_exports_value(
-        package_root,
-        exports.get(key)?,
-        import_mode,
-    ))
+
+    let Some(object) = exports.as_object() else {
+        return Some(Err(
+            "package exports shape is unsupported (expected string or object)",
+        ));
+    };
+
+    let shape = detect_exports_shape(object);
+    let request = if subpath.is_empty() {
+        ".".to_string()
+    } else {
+        format!("./{subpath}")
+    };
+
+    match shape {
+        ExportsShape::Mixed => Some(Err(
+            "package exports object mixes subpath keys with condition keys",
+        )),
+        ExportsShape::Empty => Some(Err("package exports object has no entries")),
+        ExportsShape::Subpath => {
+            if let Some(value) = object.get(&request) {
+                return Some(resolve_exports_value(package_root, value, import_mode));
+            }
+            match resolve_pattern_entry(package_root, exports, &request, import_mode) {
+                Some(result) => Some(result),
+                None => Some(Err(if subpath.is_empty() {
+                    "package exports object has no root entry"
+                } else {
+                    "package exports object has no entry for the requested subpath"
+                })),
+            }
+        }
+        ExportsShape::Conditions => {
+            if !subpath.is_empty() {
+                return Some(Err(
+                    "package exports object only defines conditions for the root entry",
+                ));
+            }
+            Some(resolve_exports_value(package_root, exports, import_mode))
+        }
+    }
 }
 
 fn resolve_imports_entry(
@@ -504,7 +555,7 @@ fn resolve_imports_entry(
     imports: &Value,
     specifier: &str,
     import_mode: bool,
-) -> Option<Result<PathBuf, ()>> {
+) -> Option<Result<PathBuf, &'static str>> {
     if let Some(value) = imports.get(specifier) {
         return Some(resolve_exports_value(package_root, value, import_mode));
     }
@@ -516,35 +567,59 @@ fn resolve_pattern_entry(
     entries: &Value,
     request: &str,
     import_mode: bool,
-) -> Option<Result<PathBuf, ()>> {
+) -> Option<Result<PathBuf, &'static str>> {
     let object = entries.as_object()?;
     for (pattern, value) in object {
-        let Some(star) = pattern_key_match(pattern, request) else {
-            continue;
-        };
-        return Some(resolve_exports_value_with_star(
-            package_root,
-            value,
-            import_mode,
-            Some(star.as_str()),
-        ));
+        match pattern_key_match(pattern, request) {
+            PatternMatch::Match(star) => {
+                return Some(resolve_exports_value_with_star(
+                    package_root,
+                    value,
+                    import_mode,
+                    Some(star.as_str()),
+                ));
+            }
+            PatternMatch::MultiStarPattern => {
+                return Some(Err(
+                    "package exports pattern has more than one wildcard, which is not supported",
+                ));
+            }
+            PatternMatch::NoMatch => continue,
+        }
     }
     None
 }
 
-fn pattern_key_match(pattern: &str, request: &str) -> Option<String> {
-    let (prefix, suffix) = pattern.split_once('*')?;
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum PatternMatch {
+    Match(String),
+    NoMatch,
+    MultiStarPattern,
+}
+
+fn pattern_key_match(pattern: &str, request: &str) -> PatternMatch {
+    let mut star_iter = pattern.match_indices('*');
+    let Some((star_index, _)) = star_iter.next() else {
+        return PatternMatch::NoMatch;
+    };
+    if star_iter.next().is_some() {
+        return PatternMatch::MultiStarPattern;
+    }
+    let prefix = &pattern[..star_index];
+    let suffix = &pattern[star_index + 1..];
     request
         .strip_prefix(prefix)
         .and_then(|rest| rest.strip_suffix(suffix))
-        .map(ToOwned::to_owned)
+        .map_or(PatternMatch::NoMatch, |star| {
+            PatternMatch::Match(star.to_string())
+        })
 }
 
 fn resolve_exports_value(
     package_root: &Path,
     value: &Value,
     import_mode: bool,
-) -> Result<PathBuf, ()> {
+) -> Result<PathBuf, &'static str> {
     resolve_exports_value_with_star(package_root, value, import_mode, None)
 }
 
@@ -553,16 +628,18 @@ fn resolve_exports_value_with_star(
     value: &Value,
     import_mode: bool,
     star: Option<&str>,
-) -> Result<PathBuf, ()> {
+) -> Result<PathBuf, &'static str> {
     if let Some(path) = value.as_str() {
         let path = star.map_or_else(|| path.to_string(), |star| path.replace('*', star));
         if path.starts_with("./") && !path.contains("..") {
             return Ok(package_root.join(path));
         }
-        return Err(());
+        return Err("package exports target must be a \"./\"-relative path without \"..\"");
     }
     let Some(object) = value.as_object() else {
-        return Err(());
+        return Err(
+            "package exports value shape is unsupported (expected string or condition object)",
+        );
     };
     let conditions = if import_mode {
         [
@@ -588,7 +665,7 @@ fn resolve_exports_value_with_star(
             return resolve_exports_value_with_star(package_root, entry, import_mode, star);
         }
     }
-    Err(())
+    Err("package exports condition object had no matching condition for the current import mode")
 }
 
 fn resolve_file_or_directory(candidate: &Path) -> Option<PathBuf> {
@@ -745,6 +822,131 @@ mod tests {
             classify_import(Path::new("app.js"), "./data.json"),
             ImportKind::UnresolvedRelative("./data.json".to_string())
         );
+    }
+
+    #[test]
+    fn node_builtin_registry_backing_files_exist_for_every_entry() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let stdlib_root = fs::canonicalize(manifest_dir.join("../stdlib"))
+            .expect("stdlib directory should exist");
+        let entries = [
+            "node:path",
+            "node:events",
+            "node:url",
+            "node:querystring",
+            "node:buffer",
+            "node:console",
+            "node:constants",
+            "node:util",
+            "node:timers",
+            "node:fs",
+            "node:fs/promises",
+            "node:os",
+            "node:process",
+            "node:crypto",
+            "node:diagnostics_channel",
+            "node:http",
+            "node:https",
+            "node:module",
+            "node:perf_hooks",
+            "node:assert",
+            "node:assert/strict",
+            "node:stream",
+            "node:stream/promises",
+            "node:string_decoder",
+            "node:tty",
+            "node:zlib",
+        ];
+
+        for specifier in entries {
+            let resolution = resolve_node_builtin(specifier)
+                .unwrap_or_else(|| panic!("registry should resolve {specifier}"));
+            assert_ne!(
+                resolution.status, "unsupported",
+                "{specifier}: registry entry must not be classified unsupported"
+            );
+            let Some(backing) = resolution.backing else {
+                panic!("{specifier}: registry entry must declare a backing module");
+            };
+            let path = stdlib_root.join(format!("{backing}.js"));
+            assert!(
+                path.is_file(),
+                "{specifier}: backing module {backing}.js does not exist at {}",
+                path.display()
+            );
+            let body = fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("backing for {specifier} unreadable: {error}"));
+            assert!(
+                !body.trim().is_empty(),
+                "{specifier}: backing module {backing}.js is empty"
+            );
+        }
+    }
+
+    #[test]
+    fn node_compatibility_docs_table_matches_registry() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let docs_path =
+            fs::canonicalize(manifest_dir.join("../docs/reference/node-compatibility.md"))
+                .expect("node-compatibility.md should exist");
+        let docs = fs::read_to_string(&docs_path).expect("node-compatibility.md should read");
+        let entries: &[(&str, &str, &str)] = &[
+            ("node:path", "supported", "sloppy/node/path"),
+            ("node:events", "supported", "sloppy/node/events"),
+            ("node:url", "supported", "sloppy/node/url"),
+            ("node:querystring", "supported", "sloppy/node/querystring"),
+            ("node:buffer", "partial", "sloppy/node/buffer"),
+            ("node:console", "partial", "sloppy/node/console"),
+            ("node:constants", "partial", "sloppy/node/constants"),
+            ("node:util", "partial", "sloppy/node/util"),
+            ("node:timers", "partial", "sloppy/node/timers"),
+            ("node:fs", "partial", "sloppy/node/fs"),
+            ("node:fs/promises", "partial", "sloppy/node/fs/promises"),
+            ("node:os", "partial", "sloppy/node/os"),
+            ("node:process", "partial", "sloppy/node/process"),
+            ("node:crypto", "partial", "sloppy/node/crypto"),
+            (
+                "node:diagnostics_channel",
+                "partial",
+                "sloppy/node/diagnostics_channel",
+            ),
+            ("node:assert", "partial", "sloppy/node/assert"),
+            ("node:assert/strict", "partial", "sloppy/node/assert/strict"),
+            ("node:stream", "partial", "sloppy/node/stream"),
+            (
+                "node:stream/promises",
+                "partial",
+                "sloppy/node/stream/promises",
+            ),
+            ("node:module", "partial", "sloppy/node/module"),
+            (
+                "node:string_decoder",
+                "partial",
+                "sloppy/node/string_decoder",
+            ),
+            ("node:zlib", "partial", "sloppy/node/zlib"),
+            ("node:perf_hooks", "partial", "sloppy/node/perf_hooks"),
+            ("node:tty", "stubbed", "sloppy/node/tty"),
+            ("node:http", "stubbed", "sloppy/node/http"),
+            ("node:https", "stubbed", "sloppy/node/https"),
+        ];
+        for (specifier, expected_status, expected_backing) in entries {
+            let resolution = resolve_node_builtin(specifier)
+                .unwrap_or_else(|| panic!("registry should resolve {specifier}"));
+            assert_eq!(
+                resolution.status, *expected_status,
+                "{specifier}: registry status disagrees with docs"
+            );
+            assert_eq!(
+                resolution.backing,
+                Some(*expected_backing),
+                "{specifier}: registry backing disagrees with docs"
+            );
+            assert!(
+                docs.contains(&format!("`{specifier}`")) && docs.contains(expected_status),
+                "{specifier}: node-compatibility.md must list this specifier with status {expected_status}"
+            );
+        }
     }
 
     #[test]
