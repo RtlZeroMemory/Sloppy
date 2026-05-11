@@ -1801,6 +1801,29 @@ void sl_v8_append_postgres_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_one_callback));
 }
 
+size_t sl_v8_postgres_pending_native_activity(SlV8Engine* backend)
+{
+    size_t pending = 0U;
+    if (backend == nullptr || backend->resources.entries == nullptr) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < backend->resources.capacity; ++index) {
+        SlResourceEntry* entry = &backend->resources.entries[index];
+        if (!entry->occupied || entry->kind != SL_RESOURCE_KIND_POSTGRES_CONNECTION ||
+            entry->ptr == nullptr)
+        {
+            continue;
+        }
+        auto* resource = static_cast<PgV8ConnectionResource*>(entry->ptr);
+        for (const PgV8Connection& connection : resource->connections) {
+            if (connection.request != nullptr) {
+                ++pending;
+            }
+        }
+    }
+    return pending;
+}
+
 bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data)
 {

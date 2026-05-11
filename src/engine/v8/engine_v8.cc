@@ -1559,6 +1559,8 @@ size_t sl_v8_pending_native_activity(SlV8Engine* backend)
     if (backend->sqlite_executor_initialized) {
         pending += sl_provider_executor_pending_count(&backend->sqlite_executor);
     }
+    pending += sl_v8_postgres_pending_native_activity(backend);
+    pending += sl_v8_sqlserver_pending_native_activity(backend);
     {
         std::lock_guard<std::mutex> lock(backend->time_mutex);
         pending += backend->time_requests.size();

@@ -9,10 +9,11 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, ClassElement,
-    Declaration, ExportDefaultDeclaration, ExportNamedDeclaration, Expression, ExpressionStatement,
-    ForStatementInit, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
-    MethodDefinitionKind, ModuleExportName, ObjectPropertyKind, PropertyKey, PropertyKind,
-    Statement, TSLiteral, TSSignature, TSType, TSTypeName, VariableDeclaration,
+    Declaration, ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration,
+    Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
+    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
+    ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral, TSSignature, TSType,
+    TSTypeName, VariableDeclaration,
 };
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -1987,6 +1988,45 @@ fn analyze_program_imports(
         )?;
         if let Statement::ImportDeclaration(import) = statement {
             analyze_program_import(path, import, graph, visiting, modules, package.clone())?;
+        } else if let Statement::ExportNamedDeclaration(export) = statement {
+            if export.export_kind != ImportOrExportKind::Type {
+                if let Some(source) = &export.source {
+                    let has_runtime_reexport = export
+                        .specifiers
+                        .iter()
+                        .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
+                    if !has_runtime_reexport {
+                        continue;
+                    }
+                    resolve_program_dependency(
+                        ProgramDependencyRequest {
+                            path,
+                            specifier: source.value.as_str(),
+                            package: package.clone(),
+                            import_mode: true,
+                            span: source.span,
+                        },
+                        graph,
+                        visiting,
+                        modules,
+                    )?;
+                }
+            }
+        } else if let Statement::ExportAllDeclaration(export) = statement {
+            if export.export_kind != ImportOrExportKind::Type {
+                resolve_program_dependency(
+                    ProgramDependencyRequest {
+                        path,
+                        specifier: export.source.value.as_str(),
+                        package: package.clone(),
+                        import_mode: true,
+                        span: export.source.span,
+                    },
+                    graph,
+                    visiting,
+                    modules,
+                )?;
+            }
         }
     }
     Ok(())
@@ -2307,9 +2347,19 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
-        | resolver::ImportKind::SlopFfi => {
+        | resolver::ImportKind::SlopFfi
+        | resolver::ImportKind::SqliteProvider => {
             validate_program_stdlib_import(path, import, &import_kind)?;
             mark_program_import(graph, &import_kind, import);
+            if matches!(import_kind, resolver::ImportKind::SqliteProvider) {
+                ensure_sloppy_provider_module("sloppy/providers/sqlite", graph, modules);
+                graph.add_dependency_import(
+                    &from_id,
+                    specifier,
+                    "sloppy/providers/sqlite",
+                    "sloppy-provider",
+                );
+            }
             Ok(())
         }
         resolver::ImportKind::NodeBuiltin(builtin) => {
@@ -2380,13 +2430,6 @@ fn analyze_program_import(
         .with_path(path)
         .with_span(import.source.span)
         .with_hint("Use a supported exports condition or a package main/subpath entry.")),
-        resolver::ImportKind::SqliteProvider => Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT",
-            "program mode does not support provider imports yet",
-        )
-        .with_path(path)
-        .with_span(import.source.span)
-        .with_hint("Use documented Sloppy stdlib imports or relative source imports.")),
         resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!(
@@ -2703,6 +2746,37 @@ fn ensure_node_compat_module(
     });
 }
 
+const SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE: &str = r#"function validateSqliteProviderName(name){if(typeof name!=="string"||name.length===0){throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");}if(name.trim()!==name||!/^[A-Za-z0-9_.-]+$/u.test(name)){throw new TypeError("Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.");}}function validateSqliteProviderOptions(options){if(options===undefined){return Object.freeze({});}if(options===null||typeof options!=="object"||Array.isArray(options)){throw new TypeError("Sloppy sqlite provider options must be a plain object.");}if(Object.prototype.hasOwnProperty.call(options,"database")&&typeof options.database!=="string"){throw new TypeError("Sloppy sqlite provider database option must be a string.");}return Object.freeze({...options});}function sqlite(name,options){validateSqliteProviderName(name);return Object.freeze({__sloppyProvider:true,kind:"sqlite",name,token:name.includes(".")?name:`data.${name}`,options:validateSqliteProviderOptions(options)});}module.exports={sqlite,Sqlite:sqlite,default:null};module.exports.default=module.exports;"#;
+
+fn ensure_sloppy_provider_module(
+    backing: &str,
+    graph: &mut ModuleGraph,
+    modules: &mut Vec<ProgramModule>,
+) {
+    if modules.iter().any(|module| module.id == backing) {
+        return;
+    }
+    let source = match backing {
+        "sloppy/providers/sqlite" => SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE,
+        _ => return,
+    };
+    graph.dependency_graph.ensure_defaults();
+    graph.add_dependency_module(
+        backing.to_string(),
+        backing.to_string(),
+        ModuleFormat::CommonJs,
+        None,
+        Some("sloppy-stdlib-provider".to_string()),
+    );
+    modules.push(ProgramModule {
+        id: backing.to_string(),
+        source_name: backing.to_string(),
+        source: source.to_string(),
+        emitted_source: source.to_string(),
+        format: ModuleFormat::CommonJs,
+    });
+}
+
 fn node_compat_module_source(backing: &str) -> Option<&'static str> {
     match backing {
         "sloppy/node/path" => Some(NODE_PATH_SHIM),
@@ -2861,6 +2935,16 @@ fn resolve_program_dependency(
                 Ok(None)
             }
         }
+        resolver::ImportKind::SqliteProvider => {
+            ensure_sloppy_provider_module("sloppy/providers/sqlite", graph, modules);
+            graph.add_dependency_import(
+                &from_id,
+                specifier,
+                "sloppy/providers/sqlite",
+                "sloppy-provider",
+            );
+            Ok(Some("sloppy/providers/sqlite".to_string()))
+        }
         resolver::ImportKind::NodeBuiltin(builtin) => Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
             format!(
@@ -2945,6 +3029,9 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
+        resolver::ImportKind::SqliteProvider => {
+            validate_module_sloppy_sqlite_provider_import(path, import)
+        }
         resolver::ImportKind::SlopStdlib => {
             validate_module_sloppy_root_import(path, import).map(|_| ())
         }
@@ -3033,13 +3120,11 @@ fn rewrite_program_module_exports(
                 });
             }
             Statement::ExportAllDeclaration(export) => {
-                return Err(Diagnostic::new(
-                    "SLOPPYC_E_UNSUPPORTED_EXPORT",
-                    "program mode does not support export-all declarations",
-                )
-                .with_path(path)
-                .with_span(export.span)
-                .with_hint("Export values explicitly from the module that defines them."));
+                is_esm = true;
+                replacements.push(ProgramReplacement {
+                    span: export.span,
+                    text: program_export_all_replacement(path, export, graph, package.as_deref())?,
+                });
             }
             _ => {}
         }
@@ -3442,6 +3527,9 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
+        resolver::ImportKind::SqliteProvider => {
+            "__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string()
+        }
         resolver::ImportKind::NodeBuiltin(builtin) if builtin.status != "unsupported" => {
             let backing = builtin.backing.unwrap_or("sloppy/node/unsupported");
             format!("__sloppy_program_require({})", json_string(backing))
@@ -3586,14 +3674,36 @@ fn program_named_export_replacement(
     if export.export_kind == ImportOrExportKind::Type {
         return Ok(String::new());
     }
-    if export.source.is_some() {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_EXPORT",
-            "program mode does not support re-export declarations",
-        )
-        .with_path(path)
-        .with_span(export.span)
-        .with_hint("Import the value, then export it explicitly."));
+    if let Some(export_source) = &export.source {
+        let has_runtime_reexport = export
+            .specifiers
+            .iter()
+            .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
+        if !has_runtime_reexport {
+            return Ok(String::new());
+        }
+        let require_expr = program_reexport_require_expr(
+            path,
+            export_source.value.as_str(),
+            export_source.span,
+            graph,
+            package,
+        )?;
+        let module_var = format!("__sloppy_reexport_{}", export.span.start);
+        let mut output = format!("const {module_var} = {require_expr};\n");
+        for specifier in &export.specifiers {
+            if specifier.export_kind == ImportOrExportKind::Type {
+                continue;
+            }
+            let local = module_export_name_text(&specifier.local);
+            let exported = module_export_name_text(&specifier.exported);
+            output.push_str(&export_assignment(
+                &exported,
+                &member_access_expr(&module_var, &local),
+            ));
+            output.push('\n');
+        }
+        return Ok(output);
     }
     let mut output = String::new();
     if let Some(declaration) = &export.declaration {
@@ -3635,6 +3745,123 @@ fn program_named_export_replacement(
         output.push('\n');
     }
     Ok(output)
+}
+
+fn program_export_all_replacement(
+    path: &Path,
+    export: &ExportAllDeclaration<'_>,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+) -> Result<String, Diagnostic> {
+    if export.export_kind == ImportOrExportKind::Type {
+        return Ok(String::new());
+    }
+    let require_expr = program_reexport_require_expr(
+        path,
+        export.source.value.as_str(),
+        export.source.span,
+        graph,
+        package,
+    )?;
+    let module_var = format!("__sloppy_reexport_{}", export.span.start);
+    if let Some(exported) = &export.exported {
+        return Ok(export_assignment(
+            &module_export_name_text(exported),
+            &require_expr,
+        ));
+    }
+    Ok(format!(
+        "const {module_var} = {require_expr};\nfor (const __sloppy_key of Object.keys({module_var})) {{ if (__sloppy_key !== \"default\" && __sloppy_key !== \"__esModule\" && !Object.prototype.hasOwnProperty.call(exports, __sloppy_key)) {{ exports[__sloppy_key] = {module_var}[__sloppy_key]; }} }}"
+    ))
+}
+
+fn program_reexport_require_expr(
+    path: &Path,
+    specifier: &str,
+    span: Span,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+) -> Result<String, Diagnostic> {
+    match resolver::classify_import(path, specifier) {
+        resolver::ImportKind::Relative(resolved) => Ok(format!(
+            "__sloppy_program_require({})",
+            json_string(&program_module_id(graph, &resolved, package))
+        )),
+        resolver::ImportKind::SlopStdlib
+        | resolver::ImportKind::SlopData
+        | resolver::ImportKind::SlopTime
+        | resolver::ImportKind::SlopFilesystem
+        | resolver::ImportKind::SlopCrypto
+        | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopWorkers
+        | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
+        resolver::ImportKind::SqliteProvider => {
+            Ok("__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string())
+        }
+        resolver::ImportKind::NodeBuiltin(builtin) if builtin.status != "unsupported" => {
+            let backing = builtin.backing.unwrap_or("sloppy/node/unsupported");
+            Ok(format!("__sloppy_program_require({})", json_string(backing)))
+        }
+        resolver::ImportKind::Package(package) => {
+            let entry_id = program_module_id(graph, &package.entry, Some(&package.name));
+            Ok(format!("__sloppy_program_require({})", json_string(&entry_id)))
+        }
+        resolver::ImportKind::NativeAddonUnsupported(package) => Err(Diagnostic::new(
+            "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+            format!(
+                "Package \"{}\" requires a native Node addon. Sloppy does not support Node native addons yet.",
+                package.name
+            ),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency.")),
+        resolver::ImportKind::PackageExportUnsupported(package_name) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
+            format!("Package \"{package_name}\" has an exports shape Sloppy does not support yet."),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a supported exports condition or a package main/subpath entry.")),
+        resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_PACKAGE_NOT_FOUND",
+            format!(
+                "Package \"{specifier}\" was not found from {}.",
+                source_map_source_name(path)
+            ),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint(format!(
+            "Install it with your package manager, for example:\n  npm install {specifier}"
+        ))),
+        resolver::ImportKind::UnresolvedRelative(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_MISSING_RELATIVE_IMPORT",
+            format!("relative import \"{specifier}\" could not be resolved"),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a relative .js/.mjs/.cjs/.ts/.tsx/.json module inside the source root.")),
+        resolver::ImportKind::Remote(specifier) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            format!("remote import \"{specifier}\" is outside the sealed Sloppy artifact graph"),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use installed packages, Sloppy stdlib imports, or relative modules.")),
+        resolver::ImportKind::NodeBuiltin(builtin) => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
+            format!(
+                "{} is not supported by Sloppy's Node compatibility registry yet.",
+                builtin.specifier
+            ),
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a Sloppy stdlib API or a package path that avoids this Node builtin.")),
+    }
 }
 
 fn program_default_export_replacement(
@@ -3706,6 +3933,14 @@ fn export_assignment(exported: &str, local: &str) -> String {
         format!("exports.{exported} = {local};")
     } else {
         format!("exports[{}] = {local};", json_string(exported))
+    }
+}
+
+fn member_access_expr(object: &str, property: &str) -> String {
+    if identifier_like(property) {
+        format!("{object}.{property}")
+    } else {
+        format!("{object}[{}]", json_string(property))
     }
 }
 
@@ -4237,6 +4472,10 @@ fn sloppy_data_import_name_supported(name: &str) -> bool {
     matches!(name, "sql" | "Migrations" | "ProviderHealth")
 }
 
+fn sloppy_sqlite_provider_import_name_supported(name: &str) -> bool {
+    matches!(name, "sqlite" | "Sqlite")
+}
+
 fn sloppy_fs_import_name_supported(name: &str) -> bool {
     matches!(
         name,
@@ -4604,6 +4843,37 @@ fn validate_module_sloppy_root_import(
     Ok(results_imported)
 }
 
+fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclaration<'_>) {
+    let Some(specifiers) = &import.specifiers else {
+        return;
+    };
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            continue;
+        };
+        if !import_specifier_is_runtime_value(import, specifier) {
+            continue;
+        }
+        match specifier.imported.name().as_str() {
+            "data" => graph.uses_data_runtime = true,
+            "sql" => {
+                graph.uses_data_runtime = true;
+                graph.uses_sql_runtime = true;
+            }
+            "Migrations" => {
+                graph.uses_data_runtime = true;
+                graph.uses_migrations_runtime = true;
+                graph.uses_fs_runtime = true;
+            }
+            "ProviderHealth" => {
+                graph.uses_data_runtime = true;
+                graph.uses_provider_health_runtime = true;
+            }
+            _ => {}
+        }
+    }
+}
+
 fn missing_results_import_diagnostic(path: &Path, span: Span) -> Diagnostic {
     Diagnostic::new(
         "SLOPPYC_E_UNSUPPORTED_IMPORT",
@@ -4666,6 +4936,18 @@ fn validate_module_sloppy_data_import(
         import,
         "sloppy/data",
         sloppy_data_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_sqlite_provider_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/providers/sqlite",
+        sloppy_sqlite_provider_import_name_supported,
     )
 }
 
@@ -5771,6 +6053,12 @@ fn extract_import(
                 ("RequestId", "RequestId") => state.request_id_imported = true,
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
                 ("data", "data") => state.data_imported = true,
+                ("sql", "sql") => {
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.sql_imported = true;
+                    }
+                }
                 ("Migrations", "Migrations") => {
                     if import_specifier_is_runtime_value(import, specifier) {
                         state.data_imported = true;
@@ -5858,6 +6146,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "RequestLogging"
             | "Testing"
             | "data"
+            | "sql"
             | "Migrations"
             | "ProviderHealth"
             | "schema"
@@ -5945,16 +6234,19 @@ fn extract_variable_declaration(
                     .map(|parent| parent.tags.clone())
                     .unwrap_or_default()
             };
+            let auth = metadata.auth.or_else(|| {
+                state
+                    .group_vars
+                    .get(receiver)
+                    .and_then(|parent| parent.auth.clone())
+            });
             tags.extend(metadata.tags);
             state.group_vars.insert(
                 name.to_string(),
                 RouteGroupState {
                     prefix: full_prefix,
                     tags,
-                    auth: state
-                        .group_vars
-                        .get(receiver)
-                        .and_then(|parent| parent.auth.clone()),
+                    auth,
                     middleware: state
                         .group_vars
                         .get(receiver)
@@ -5994,7 +6286,9 @@ fn extract_variable_declaration(
             state.helper_effects.insert(name.to_string(), summary);
             resolve_helper_effect_callgraph(&mut state.helper_effects);
         } else if state.schema_imported {
-            if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
+            if let Some(schema) =
+                schema_declaration(path, source, source_name, name, init, &state.schema_names)?
+            {
                 state.schemas.push(schema);
             } else if let Some(config_reads) =
                 config_read_metadata(path, source, source_name, state, init)?
@@ -6150,7 +6444,13 @@ fn extract_class_declaration(
 
 fn helper_initializer(expression: &Expression<'_>) -> Option<()> {
     match expression {
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => Some(()),
+        Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_)
+        | Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::TemplateLiteral(_) => Some(()),
         _ => None,
     }
 }
@@ -7113,11 +7413,19 @@ fn app_group_call<'a>(
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
         };
-        if member.property.name.as_str() != "withTags" {
-            break;
+        match member.property.name.as_str() {
+            "withTags" => {
+                tag_groups.push(route_tags_from_arguments(call)?);
+                current = &member.object;
+            }
+            "requireAuth" => {
+                if metadata.auth.is_none() {
+                    metadata.auth = Some(auth_requirement_from_call(call)?);
+                }
+                current = &member.object;
+            }
+            _ => break,
         }
-        tag_groups.push(route_tags_from_arguments(call)?);
-        current = &member.object;
     }
     for tags in tag_groups.into_iter().rev() {
         metadata.tags.extend(tags);
@@ -8352,6 +8660,7 @@ fn static_asset_route(
             }),
             responses: Vec::new(),
             effects: Vec::new(),
+            schema_metadata_conflict: false,
         },
     }
 }
@@ -9581,6 +9890,7 @@ fn app_map_controller_call(
             response: None,
             responses: Vec::new(),
             effects: Vec::new(),
+            schema_metadata_conflict: false,
         };
         apply_route_schema_metadata(
             path,
@@ -10002,6 +10312,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
                     partial: false,
                 }],
                 effects: Vec::new(),
+                schema_metadata_conflict: false,
             },
         });
     }
@@ -10693,6 +11004,7 @@ fn health_route(
             response: Some(response),
             responses,
             effects: Vec::new(),
+            schema_metadata_conflict: false,
         },
     })
 }
@@ -10873,28 +11185,66 @@ fn app_service_registration_call(
         .with_span(call.span));
     };
     let free_identifiers = service_factory_free_identifiers(factory_argument);
-    if !free_identifiers.is_empty() {
+    let unsupported_capture = free_identifiers
+        .iter()
+        .find(|identifier| !service_factory_capture_is_emit_safe(identifier, state));
+    if let Some(identifier) = unsupported_capture {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION",
             format!(
                 "service registration '{}' factory captures unsupported identifier '{}'",
-                token,
-                free_identifiers
-                    .iter()
-                    .next()
-                    .map(String::as_str)
-                    .unwrap_or("")
+                token, identifier
             ),
         )
         .with_path(path)
         .with_span(argument_span(factory_argument).unwrap_or(call.span))
-        .with_hint("Use an inline factory that only depends on its scope parameter and local values, or lift the service into a runtime-only registration path."));
+        .with_hint("Use an inline factory that depends only on its scope parameter, emitted top-level helper functions, JavaScript globals, or local values."));
     }
     Ok(Some(ServiceRegistration {
         token: token.to_string(),
         lifetime,
         factory_source,
     }))
+}
+
+fn service_factory_capture_is_emit_safe(identifier: &str, state: &AppState) -> bool {
+    if state.helper_sources.contains_key(identifier)
+        && helper_source_is_safe_for_top_level(state.helper_effects.get(identifier))
+    {
+        return true;
+    }
+    if matches!(
+        identifier,
+        "Array"
+            | "Boolean"
+            | "Date"
+            | "Error"
+            | "Intl"
+            | "JSON"
+            | "Map"
+            | "Math"
+            | "Number"
+            | "Object"
+            | "Promise"
+            | "RegExp"
+            | "Set"
+            | "String"
+            | "TypeError"
+            | "URL"
+            | "URLSearchParams"
+            | "console"
+            | "globalThis"
+            | "undefined"
+    ) {
+        return true;
+    }
+    matches!(
+        identifier,
+        "data" if state.data_imported
+    ) || matches!(
+        identifier,
+        "sql" if state.sql_imported
+    )
 }
 
 fn service_factory_free_identifiers(argument: &Argument<'_>) -> BTreeSet<String> {
@@ -11295,6 +11645,7 @@ fn extract_relative_helper_import(
         let import_source = import.source.value.as_str();
         if import_source == "sloppy" {
             validate_module_sloppy_root_import(&imported.path, import)?;
+            mark_sloppy_root_runtime_usage(graph, import);
             continue;
         }
         if import_source == "sloppy/time" {
@@ -11670,6 +12021,7 @@ fn extract_relative_module(
         let import_source = import.source.value.as_str();
         if import_source == "sloppy" {
             module_results_imported |= validate_module_sloppy_root_import(&imported.path, import)?;
+            mark_sloppy_root_runtime_usage(graph, import);
             continue;
         }
         if import_source == "sloppy/time" {
@@ -12138,9 +12490,14 @@ fn extract_module_function_routes(
                     if let Some(binding) = app_provider_call(init, app_name) {
                         providers.insert(name.to_string(), binding);
                     } else if schema_names.contains(name) {
-                        if let Some(schema) =
-                            schema_declaration(path, source, source_name, name, init)?
-                        {
+                        if let Some(schema) = schema_declaration(
+                            path,
+                            source,
+                            source_name,
+                            name,
+                            init,
+                            &schema_names,
+                        )? {
                             schemas.push(schema);
                         }
                     } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
@@ -12164,13 +12521,16 @@ fn extract_module_function_routes(
                                 .map(|parent| parent.tags.clone())
                                 .unwrap_or_default()
                         };
+                        let auth = metadata.auth.or_else(|| {
+                            groups.get(receiver).and_then(|parent| parent.auth.clone())
+                        });
                         tags.extend(metadata.tags);
                         groups.insert(
                             name.to_string(),
                             RouteGroupState {
                                 prefix: full_prefix,
                                 tags,
-                                auth: groups.get(receiver).and_then(|parent| parent.auth.clone()),
+                                auth,
                                 middleware: Vec::new(),
                             },
                         );
@@ -12859,6 +13219,7 @@ fn apply_route_schema_metadata(
     metadata: &RouteMetadata,
     handler: &mut Handler,
 ) -> Result<(), Diagnostic> {
+    let mut schema_metadata_conflict = false;
     if let Some(schema) = &metadata.accepts_schema {
         validate_route_schema_reference(path, span, schema, schema_names)?;
         if let Some(binding) = handler
@@ -12866,7 +13227,7 @@ fn apply_route_schema_metadata(
             .iter_mut()
             .find(|binding| binding.kind == "body.json")
         {
-            apply_binding_schema(path, span, &mut binding.schema, schema)?;
+            schema_metadata_conflict |= apply_binding_schema(&mut binding.schema, schema);
         } else {
             handler.bindings.push(framework_binding(
                 "body.json",
@@ -12883,13 +13244,13 @@ fn apply_route_schema_metadata(
         let mut applied = false;
         if let Some(response) = &mut handler.response {
             if response.kind == "json" {
-                apply_response_schema(path, span, &mut response.body_schema, schema)?;
+                schema_metadata_conflict |= apply_response_schema(response, schema);
                 applied = true;
             }
         }
         for response in &mut handler.responses {
             if response.kind == "json" {
-                apply_response_schema(path, span, &mut response.body_schema, schema)?;
+                schema_metadata_conflict |= apply_response_schema(response, schema);
                 applied = true;
             }
         }
@@ -12910,69 +13271,36 @@ fn apply_route_schema_metadata(
             handler.responses.push(response);
         }
     }
+    handler.schema_metadata_conflict |= schema_metadata_conflict;
     Ok(())
 }
 
-fn apply_binding_schema(
-    path: &Path,
-    span: Span,
-    target: &mut Option<String>,
-    schema: &str,
-) -> Result<(), Diagnostic> {
+fn apply_binding_schema(target: &mut Option<String>, schema: &str) -> bool {
     match target {
         None => {
             *target = Some(schema.to_string());
-            Ok(())
+            false
         }
-        Some(existing) if existing == schema => Ok(()),
-        Some(existing) => Err(conflicting_route_schema_diagnostic(
-            path,
-            span,
-            existing,
-            schema,
-            "request body",
-        )),
+        Some(existing) if existing == schema => false,
+        Some(_) => {
+            *target = None;
+            true
+        }
     }
 }
 
-fn apply_response_schema(
-    path: &Path,
-    span: Span,
-    target: &mut Option<String>,
-    schema: &str,
-) -> Result<(), Diagnostic> {
-    match target {
+fn apply_response_schema(response: &mut ResponseMetadata, schema: &str) -> bool {
+    match &mut response.body_schema {
         None => {
-            *target = Some(schema.to_string());
-            Ok(())
+            response.body_schema = Some(schema.to_string());
+            false
         }
-        Some(existing) if existing == schema => Ok(()),
-        Some(existing) => Err(conflicting_route_schema_diagnostic(
-            path,
-            span,
-            existing,
-            schema,
-            "response body",
-        )),
+        Some(existing) if existing == schema => false,
+        Some(_) => {
+            response.partial = true;
+            true
+        }
     }
-}
-
-fn conflicting_route_schema_diagnostic(
-    path: &Path,
-    span: Span,
-    existing: &str,
-    fluent: &str,
-    subject: &str,
-) -> Diagnostic {
-    Diagnostic::new(
-        "SLOPPYC_E_CONFLICTING_ROUTE_SCHEMA",
-        format!(
-            "route {subject} schema '{fluent}' conflicts with handler-inferred schema '{existing}'"
-        ),
-    )
-    .with_path(path)
-    .with_span(span)
-    .with_hint("Use the same schema identifier in handler validation and fluent route metadata.")
 }
 
 fn duplicate_schema_diagnostic(path: &Path, span: Span, schema: &str) -> Diagnostic {
@@ -13512,6 +13840,7 @@ fn handler_from_argument(
                 response: responses.first().cloned(),
                 responses,
                 effects: effects.effects,
+                schema_metadata_conflict: false,
             })
         }
         Argument::FunctionExpression(function) => {
@@ -13579,6 +13908,7 @@ fn handler_from_argument(
                 response: responses.first().cloned(),
                 responses,
                 effects: effects.effects,
+                schema_metadata_conflict: false,
             })
         }
         _ => None,
@@ -14245,8 +14575,20 @@ fn typed_framework_handler_from_arrow(
     let bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses = response_metadata_many_from_arrow(function, source_name, source, schema_names);
-    let handler_source =
-        crate::framework_runtime::typed_arrow_handler_source(function, source, &bindings)?;
+    let schema_replacements = handler_context_parameter_name_from_bindings(&bindings)
+        .map(|ctx_name| {
+            body_json_schema_argument_spans_arrow(function, &ctx_name, schema_names)
+                .into_iter()
+                .map(|edit| (edit.argument_span, "undefined"))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let handler_source = crate::framework_runtime::typed_arrow_handler_source_with_replacements(
+        function,
+        source,
+        &bindings,
+        &schema_replacements,
+    )?;
     Some(Handler {
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
@@ -14262,6 +14604,7 @@ fn typed_framework_handler_from_arrow(
         response: responses.first().cloned(),
         responses,
         effects: Vec::new(),
+        schema_metadata_conflict: false,
     })
 }
 
@@ -14276,8 +14619,20 @@ fn typed_framework_handler_from_function(
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
     let responses =
         response_metadata_many_from_function(function, source_name, source, schema_names);
-    let handler_source =
-        crate::framework_runtime::typed_function_handler_source(function, source, &bindings)?;
+    let schema_replacements = handler_context_parameter_name_from_bindings(&bindings)
+        .map(|ctx_name| {
+            body_json_schema_argument_spans_function(function, &ctx_name, schema_names)
+                .into_iter()
+                .map(|edit| (edit.argument_span, "undefined"))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let handler_source = crate::framework_runtime::typed_function_handler_source_with_replacements(
+        function,
+        source,
+        &bindings,
+        &schema_replacements,
+    )?;
     Some(Handler {
         source: handler_source.original_source,
         emitted_source: handler_source.emitted_source,
@@ -14293,6 +14648,7 @@ fn typed_framework_handler_from_function(
         response: responses.first().cloned(),
         responses,
         effects: Vec::new(),
+        schema_metadata_conflict: false,
     })
 }
 
@@ -15171,6 +15527,14 @@ fn handler_context_parameter_name(
     Some(identifier.name.as_str().to_string())
 }
 
+fn handler_context_parameter_name_from_bindings(bindings: &[RequestBinding]) -> Option<String> {
+    bindings.iter().find_map(|binding| {
+        (binding.kind == "context" && binding.name.as_deref() == Some("RequestContext"))
+            .then(|| binding.parameter.clone())
+            .flatten()
+    })
+}
+
 fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
     function.type_parameters.is_some()
         || function.return_type.is_some()
@@ -15548,22 +15912,30 @@ fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMet
 }
 
 fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMetadata> {
-    let (_, helper) = static_member_name(&call.callee)?;
-    let (status, kind) = match helper {
-        "ok" => (200, "json"),
-        "json" => (200, "json"),
-        "text" => (200, "text"),
-        "html" => (200, "html"),
-        "bytes" => (200, "bytes"),
-        "created" => (201, "json"),
-        "accepted" => (202, "json"),
-        "noContent" => (204, "empty"),
-        "stream" => (200, "stream"),
-        "badRequest" => (400, "json"),
-        "unauthorized" => (401, "json"),
-        "notFound" => (404, "json"),
-        "problem" => (500, "problem"),
-        "status" => (status_result_code(call)?, "json"),
+    let (receiver, helper) = static_member_name(&call.callee)?;
+    let (status, kind) = match receiver {
+        "Auth" => match helper {
+            "signIn" => (200, "json"),
+            "signOut" => (204, "empty"),
+            _ => return None,
+        },
+        "Results" => match helper {
+            "ok" => (200, "json"),
+            "json" => (200, "json"),
+            "text" => (200, "text"),
+            "html" => (200, "html"),
+            "bytes" => (200, "bytes"),
+            "created" => (201, "json"),
+            "accepted" => (202, "json"),
+            "noContent" => (204, "empty"),
+            "stream" => (200, "stream"),
+            "badRequest" => (400, "json"),
+            "unauthorized" => (401, "json"),
+            "notFound" => (404, "json"),
+            "problem" => (500, "problem"),
+            "status" => (status_result_code(call)?, "json"),
+            _ => return None,
+        },
         _ => return None,
     };
     Some(ResponseMetadata {
@@ -18294,7 +18666,7 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
     output.push_str(
         r#"function __sloppy_create_dynamic_app() {
   const routes = [];

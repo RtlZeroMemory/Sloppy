@@ -14,6 +14,25 @@
     const FAST_JSON = 3;
     const FAST_CREATED = 4;
     const FAST_JSON_MAX_LENGTH = 256;
+    const QUERY_MARKER = "__sloppyQuery";
+    const LOWERED_QUERY_MARKER = Symbol.for("sloppy.loweredQuery");
+    const PLACEHOLDER_STYLES = Object.freeze({
+        question: (index) => ({
+            text: "?",
+            name: null,
+            position: index,
+        }),
+        postgres: (index) => ({
+            text: `$${index}`,
+            name: null,
+            position: index,
+        }),
+        named: (index) => ({
+            text: `@p${index}`,
+            name: `p${index}`,
+            position: index,
+        }),
+    });
     const POSTGRES_MAX_POOL_CONNECTIONS = 256;
     const SQLSERVER_MAX_POOL_CONNECTIONS = 256;
     function resolveStatus(options, defaultStatus) {
@@ -348,6 +367,133 @@
         bytes: dbBytes,
         isDbValue,
     });
+
+    function validatePlaceholderStyle(style) {
+        if (!Object.prototype.hasOwnProperty.call(PLACEHOLDER_STYLES, style)) {
+            throw new TypeError("Sloppy data placeholderStyle must be one of question, postgres, or named.");
+        }
+    }
+
+    function normalizeLoweringOptions(options) {
+        if (options === undefined) {
+            return {
+                placeholderStyle: "question",
+            };
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy query lowering options must be a plain object.");
+        }
+        const placeholderStyle = options.placeholderStyle ?? "question";
+        validatePlaceholderStyle(placeholderStyle);
+        return { placeholderStyle };
+    }
+
+    function validateTemplateStrings(strings, operation) {
+        if (!Array.isArray(strings)) {
+            throw new TypeError(
+                `Sloppy data ${operation} must be called as a tagged template or with a lowered query object.`,
+            );
+        }
+        for (const segment of strings) {
+            if (typeof segment !== "string") {
+                throw new TypeError(`Sloppy data ${operation} template segments must be strings.`);
+            }
+        }
+    }
+
+    function createLoweredQuery(strings, values, options) {
+        validateTemplateStrings(strings, "sql");
+        if (strings.length !== values.length + 1) {
+            throw new TypeError("Sloppy sql tag received an invalid template segment/value count.");
+        }
+
+        const normalized = normalizeLoweringOptions(options);
+        const placeholders = [];
+        let text = strings[0];
+
+        for (let index = 0; index < values.length; index += 1) {
+            const placeholder = PLACEHOLDER_STYLES[normalized.placeholderStyle](index + 1);
+            placeholders.push(Object.freeze({
+                index,
+                text: placeholder.text,
+                name: placeholder.name,
+                position: placeholder.position,
+            }));
+            text += placeholder.text + strings[index + 1];
+        }
+
+        const lowered = {
+            [QUERY_MARKER]: true,
+            text,
+            parameters: Object.freeze([...values]),
+            parameterCount: values.length,
+            placeholderStyle: normalized.placeholderStyle,
+            placeholders: Object.freeze(placeholders),
+            templateStrings: Object.freeze([...strings]),
+        };
+        Object.defineProperty(lowered, LOWERED_QUERY_MARKER, {
+            value: true,
+            enumerable: false,
+            configurable: false,
+            writable: false,
+        });
+        return Object.freeze(lowered);
+    }
+
+    function isLoweredQuery(value) {
+        return value !== null &&
+            typeof value === "object" &&
+            value[LOWERED_QUERY_MARKER] === true &&
+            value[QUERY_MARKER] === true &&
+            typeof value.text === "string" &&
+            Array.isArray(value.parameters) &&
+            Number.isInteger(value.parameterCount) &&
+            value.parameterCount === value.parameters.length &&
+            Object.prototype.hasOwnProperty.call(PLACEHOLDER_STYLES, value.placeholderStyle);
+    }
+
+    function renderLoweredQueryText(query, placeholderStyle) {
+        validatePlaceholderStyle(placeholderStyle);
+        if (query.placeholderStyle === placeholderStyle) {
+            return query.text;
+        }
+        if (!Array.isArray(query.templateStrings) ||
+            query.templateStrings.length !== query.parameters.length + 1)
+        {
+            throw new TypeError("Sloppy lowered query cannot be rewritten for this provider.");
+        }
+
+        let text = query.templateStrings[0];
+        for (let index = 0; index < query.parameters.length; index += 1) {
+            text += PLACEHOLDER_STYLES[placeholderStyle](index + 1).text +
+                query.templateStrings[index + 1];
+        }
+        return text;
+    }
+
+    function sql(strings, ...params) {
+        return createLoweredQuery(strings, params, { placeholderStyle: "question" });
+    }
+
+    sql.lower = function lower(strings, params = [], options) {
+        if (!Array.isArray(params)) {
+            throw new TypeError("Sloppy sql.lower values must be an array.");
+        }
+        return createLoweredQuery(strings, params, options);
+    };
+    sql.decimal = values.decimal;
+    sql.uuid = values.uuid;
+    sql.date = values.date;
+    sql.time = values.time;
+    sql.timestamp = values.timestamp;
+    sql.instant = values.instant;
+    sql.offsetDateTime = values.offsetDateTime;
+    sql.json = values.json;
+    sql.rawJson = values.rawJson;
+    sql.bytes = values.bytes;
+    sql.isDbValue = values.isDbValue;
+
+    Object.freeze(sql);
 
     const SQLITE_TEXT_DB_VALUE_KINDS = new Set([
         "decimal",
@@ -740,6 +886,12 @@ Operation:
     }
 
     function normalizeSqliteQuery(operation, sql, params) {
+        if (isLoweredQuery(sql) && params === undefined) {
+            return {
+                text: renderLoweredQueryText(sql, "question"),
+                parameters: normalizeSqliteParams([...sql.parameters], operation),
+            };
+        }
         if (typeof sql !== "string" || sql.length === 0) {
             throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
         }
@@ -1247,6 +1399,12 @@ Reason:
     }
 
     function normalizePostgresQuery(operation, sql, params) {
+        if (isLoweredQuery(sql) && params === undefined) {
+            return {
+                text: renderLoweredQueryText(sql, "postgres"),
+                parameters: normalizePostgresParams([...sql.parameters], operation),
+            };
+        }
         if (typeof sql !== "string" || sql.length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
         }
@@ -1507,6 +1665,12 @@ Reason:
     }
 
     function normalizeSqlServerQuery(operation, sql, params) {
+        if (isLoweredQuery(sql) && params === undefined) {
+            return {
+                text: renderLoweredQueryText(sql, "named"),
+                parameters: normalizeSqlServerParams([...sql.parameters], operation),
+            };
+        }
         if (typeof sql !== "string" || sql.length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
         }
@@ -2116,6 +2280,7 @@ Fix:
         sqlite,
         postgres,
         sqlserver,
+        sql,
         migrations: DataMigrations,
         providerHealth: DataProviderHealth,
         values,
@@ -10667,6 +10832,7 @@ Reason:
         Compression,
         Checksums,
         data,
+        sql,
         Migrations: DataMigrations,
         ProviderHealth: DataProviderHealth,
         Time,
