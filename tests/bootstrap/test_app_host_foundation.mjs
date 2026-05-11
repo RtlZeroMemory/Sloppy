@@ -1837,6 +1837,10 @@ async function flushMicrotasks(count = 6) {
         headers: { "content-type": "multipart/form-data" },
         body: "--BROKEN\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\navatar\r\n",
     })).status, 400);
+    assert.equal((await host.post("/multipart", {
+        headers: { "content-type": "multipart/form-data; boundary=" },
+        body: "x",
+    })).status, 400);
     assert.equal((await host.post("/json", {
         headers: { "content-type": "application/json" },
         body: "{",
@@ -1863,6 +1867,9 @@ async function flushMicrotasks(count = 6) {
     app.get("/bad-request", () => Results.badRequest({ bad: true }));
     app.get("/unauthorized", () => Results.unauthorized({ auth: false }));
     app.get("/cookie", (ctx) => Results.ok({ session: ctx.cookies.get("session") }).cookie("seen", "yes", { httpOnly: true }));
+    app.get("/cookies", () => Results.ok({ ok: true })
+        .cookie("first", "one")
+        .cookie("second", "two", { expires: new Date("2030-01-01T00:00:00Z") }));
     app.get("/stream", () => Results.stream(async (writer) => {
         writer.writeText("hello ");
         writer.writeBytes(new Uint8Array([119, 111, 114, 108, 100]));
@@ -1894,6 +1901,11 @@ async function flushMicrotasks(count = 6) {
     const cookie = await host.get("/cookie", { headers: { cookie: "session=abc%20123" } });
     assert.equal(cookie.headers.get("set-cookie"), "seen=yes; HttpOnly");
     assert.deepEqual(await cookie.json(), { session: "abc 123" });
+    const cookies = await host.get("/cookies");
+    assert.deepEqual(Array.from(cookies.headers.entries()).filter(([name]) => name === "set-cookie"), [
+        ["set-cookie", "first=one"],
+        ["set-cookie", "second=two; Expires=Tue, 01 Jan 2030 00:00:00 GMT"],
+    ]);
     const stream = await host.get("/stream");
     assert.equal(stream.headers.get("content-type"), "text/plain; charset=utf-8");
     assert.equal(await stream.text(), "hello world");
@@ -2208,6 +2220,23 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.ok("bad", { setCookies: [1] }), /setCookies entries/);
     assertThrowsMessage(() => Results.ok("bad", { setCookies: ["a\r\nb"] }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.ok("bad").cookie("bad", "\uD800"), /cookie value/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { path: "/; Secure" }), /cookie path/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { domain: "example.test; HttpOnly" }), /cookie domain/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { expires: "Wed, 01 Jan 2030 00:00:00 GMT; Secure" }), /cookie expires/);
+    await assertRejectsMessage(
+        () => Results.stream(async (writer) => {
+            writer.writeBytes(new Uint8Array(65537));
+        }),
+        /bounded stream limit/,
+    );
+    await assertRejectsMessage(
+        () => Results.stream(async (writer) => {
+            writer.writeBytes(new Uint8Array(65536));
+            writer.writeBytes(new Uint8Array(65536));
+            writer.writeText("x");
+        }),
+        /bounded stream limit/,
+    );
     assertThrowsMessage(() => Results.created("/users/1\r\nx: y", { id: 1 }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);

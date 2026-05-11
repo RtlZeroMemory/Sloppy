@@ -13231,7 +13231,8 @@ fn response_schema_from_type_arguments(
 fn response_body_argument<'a>(call: &'a CallExpression<'a>) -> Option<&'a Argument<'a>> {
     let (_, helper) = static_member_name(&call.callee)?;
     let index = match helper {
-        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
+        "ok" | "json" | "bytes" | "accepted" | "badRequest" | "unauthorized" | "notFound"
+        | "problem" => 0,
         "created" | "status" => 1,
         _ => return None,
     };
@@ -13850,9 +13851,13 @@ fn request_binding_from_call(
         }
     }
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "cookies" && chain[2] == "get" {
+        if call.arguments.len() != 1 {
+            return None;
+        }
+        let name = call.arguments.first().and_then(argument_string_literal)?;
         return Some(RequestBinding {
             kind: "cookie".to_string(),
-            name: call.arguments.first().and_then(argument_string_literal),
+            name: Some(name),
             schema: None,
             parameter: None,
             type_name: None,
@@ -14672,10 +14677,9 @@ fn results_call_arguments_are_supported(
 
     if property == "stream" {
         return matches!(call.arguments.len(), 1 | 2)
-            && call
-                .arguments
-                .first()
-                .is_some_and(argument_is_stream_writer_callback)
+            && call.arguments.first().is_some_and(|argument| {
+                argument_is_stream_writer_callback(argument, allowed_roots)
+            })
             && call.arguments.get(1).is_none_or(|argument| {
                 argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
             });
@@ -14687,11 +14691,19 @@ fn results_call_arguments_are_supported(
         })
 }
 
-fn argument_is_stream_writer_callback(argument: &Argument<'_>) -> bool {
+fn argument_is_stream_writer_callback(
+    argument: &Argument<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    let mut free_identifiers = service_factory_free_identifiers(argument);
+    free_identifiers.remove("Results");
+    free_identifiers.remove("Promise");
+    free_identifiers.remove("Uint8Array");
+    free_identifiers.retain(|identifier| !allowed_roots.contains(identifier));
     matches!(
         argument,
         Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
-    )
+    ) && free_identifiers.is_empty()
 }
 
 fn argument_is_inline_bytes_value(argument: &Argument<'_>) -> bool {

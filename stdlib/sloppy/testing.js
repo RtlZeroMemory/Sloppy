@@ -66,6 +66,10 @@ function normalizeHeaderEntries(entries) {
     const normalized = [];
     for (const [name, value] of entries) {
         const lower = name.toLowerCase();
+        if (lower === "set-cookie") {
+            normalized.push([lower, value]);
+            continue;
+        }
         const existing = normalized.find((entry) => entry[0] === lower);
         if (existing === undefined) {
             normalized.push([lower, value]);
@@ -308,11 +312,11 @@ function bodyKindForRequest(headers, bodyBytes) {
     if (type === "application/x-www-form-urlencoded") {
         return "form";
     }
-    if (type === "multipart/form-data" && contentTypeParameter(contentType, "boundary") !== undefined) {
-        return "multipart";
-    }
     if (type === "multipart/form-data") {
-        return "malformed-multipart";
+        const boundary = contentTypeParameter(contentType, "boundary");
+        return typeof boundary === "string" && boundary.length > 0
+            ? "multipart"
+            : "malformed-multipart";
     }
     return "unsupported";
 }

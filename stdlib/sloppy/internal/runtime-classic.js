@@ -5,6 +5,8 @@
     const BYTES_CONTENT_TYPE = "application/octet-stream";
     const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
     const STREAM_CONTENT_TYPE = "application/octet-stream";
+    const STREAM_MAX_CHUNK_BYTES = 65536;
+    const STREAM_MAX_TOTAL_BYTES = 131072;
     const FAST_RESULT_KIND = "__sloppyFastResult";
     const FAST_JSON_TEXT = "__sloppyJsonText";
     const FAST_TEXT_OK = 1;
@@ -222,25 +224,19 @@
     }
 
     function encodeUtf8Text(value) {
-        const bytes = [];
-        for (const ch of String(value)) {
-            const code = ch.codePointAt(0);
-            if (code <= 0x7f) {
-                bytes.push(code);
-            } else if (code <= 0x7ff) {
-                bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-            } else if (code <= 0xffff) {
-                bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-            } else {
-                bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-            }
-        }
-        return new Uint8Array(bytes);
+        return encodeUtf8(String(value));
     }
 
     function assertCookieHeaderValue(value, label) {
         if (typeof value !== "string" || /[\x00-\x1F\x7F]/.test(value)) {
             throw new TypeError(`Sloppy Results ${label} must be a safe HTTP header value.`);
+        }
+    }
+
+    function assertCookieAttributeValue(value, label) {
+        assertCookieHeaderValue(value, label);
+        if (value.includes(";")) {
+            throw new TypeError(`Sloppy Results ${label} must not contain ';'.`);
         }
     }
 
@@ -279,11 +275,11 @@
         }
         const parts = [`${name}=${encodedValue}`];
         if (options?.path !== undefined) {
-            assertCookieHeaderValue(options.path, "cookie path");
+            assertCookieAttributeValue(options.path, "cookie path");
             parts.push(`Path=${options.path}`);
         }
         if (options?.domain !== undefined) {
-            assertCookieHeaderValue(options.domain, "cookie domain");
+            assertCookieAttributeValue(options.domain, "cookie domain");
             parts.push(`Domain=${options.domain}`);
         }
         const maxAgeSeconds = options?.maxAgeSeconds ?? options?.maxAge;
@@ -295,7 +291,7 @@
         }
         if (options?.expires !== undefined) {
             const expires = options.expires instanceof Date ? options.expires.toUTCString() : String(options.expires);
-            assertCookieHeaderValue(expires, "cookie expires");
+            assertCookieAttributeValue(expires, "cookie expires");
             parts.push(`Expires=${expires}`);
         }
         const sameSite = normalizeSameSite(options?.sameSite);
@@ -817,19 +813,30 @@ Operation:
                 throw new TypeError("Sloppy Results.stream callback must be a function.");
             }
             const chunks = [];
+            let totalBytes = 0;
             let closed = false;
+            function appendChunk(chunk) {
+                if (chunk.byteLength > STREAM_MAX_CHUNK_BYTES) {
+                    throw new TypeError("Sloppy Results.stream chunk exceeds the bounded stream limit.");
+                }
+                if (totalBytes + chunk.byteLength > STREAM_MAX_TOTAL_BYTES) {
+                    throw new TypeError("Sloppy Results.stream body exceeds the bounded stream limit.");
+                }
+                totalBytes += chunk.byteLength;
+                chunks.push(chunk);
+            }
             const writer = Object.freeze({
                 writeText(text) {
                     if (closed) {
                         throw new TypeError("Sloppy stream writer is closed.");
                     }
-                    chunks.push(encodeUtf8Text(text));
+                    appendChunk(encodeUtf8Text(text));
                 },
                 writeBytes(bytes) {
                     if (closed) {
                         throw new TypeError("Sloppy stream writer is closed.");
                     }
-                    chunks.push(copyBytes(bytes));
+                    appendChunk(copyBytes(bytes));
                 },
                 close() {
                     closed = true;

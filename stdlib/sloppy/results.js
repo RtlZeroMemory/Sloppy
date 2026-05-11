@@ -6,6 +6,8 @@ const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const BYTES_CONTENT_TYPE = "application/octet-stream";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const STREAM_CONTENT_TYPE = "application/octet-stream";
+const STREAM_MAX_CHUNK_BYTES = 65536;
+const STREAM_MAX_TOTAL_BYTES = 131072;
 const FAST_RESULT_KIND = "__sloppyFastResult";
 const FAST_JSON_TEXT = "__sloppyJsonText";
 const FAST_TEXT_OK = 1;
@@ -91,6 +93,13 @@ function isHeaderValueSafe(value) {
 function assertHeaderValueSafe(value, label) {
     if (typeof value !== "string" || !isHeaderValueSafe(value)) {
         throw new TypeError(`Sloppy Results ${label} must be a safe HTTP header value.`);
+    }
+}
+
+function assertCookieAttributeValueSafe(value, label) {
+    assertHeaderValueSafe(value, label);
+    if (value.includes(";")) {
+        throw new TypeError(`Sloppy Results ${label} must not contain ';'.`);
     }
 }
 
@@ -272,11 +281,11 @@ function buildSetCookie(name, value, options = undefined) {
     const parts = [`${name}=${encodedValue}`];
 
     if (options?.path !== undefined) {
-        assertHeaderValueSafe(options.path, "cookie path");
+        assertCookieAttributeValueSafe(options.path, "cookie path");
         parts.push(`Path=${options.path}`);
     }
     if (options?.domain !== undefined) {
-        assertHeaderValueSafe(options.domain, "cookie domain");
+        assertCookieAttributeValueSafe(options.domain, "cookie domain");
         parts.push(`Domain=${options.domain}`);
     }
     const maxAgeSeconds = options?.maxAgeSeconds ?? options?.maxAge;
@@ -288,7 +297,7 @@ function buildSetCookie(name, value, options = undefined) {
     }
     if (options?.expires !== undefined) {
         const expires = options.expires instanceof Date ? options.expires.toUTCString() : String(options.expires);
-        assertHeaderValueSafe(expires, "cookie expires");
+        assertCookieAttributeValueSafe(expires, "cookie expires");
         parts.push(`Expires=${expires}`);
     }
     const sameSite = normalizeSameSite(options?.sameSite);
@@ -393,19 +402,30 @@ async function stream(callback, options) {
         throw new TypeError("Sloppy Results.stream callback must be a function.");
     }
     const chunks = [];
+    let totalBytes = 0;
     let closed = false;
+    function appendChunk(chunk) {
+        if (chunk.byteLength > STREAM_MAX_CHUNK_BYTES) {
+            throw new TypeError("Sloppy Results.stream chunk exceeds the bounded stream limit.");
+        }
+        if (totalBytes + chunk.byteLength > STREAM_MAX_TOTAL_BYTES) {
+            throw new TypeError("Sloppy Results.stream body exceeds the bounded stream limit.");
+        }
+        totalBytes += chunk.byteLength;
+        chunks.push(chunk);
+    }
     const writer = Object.freeze({
         writeText(text) {
             if (closed) {
                 throw new TypeError("Sloppy stream writer is closed.");
             }
-            chunks.push(Text.utf8.encode(String(text)));
+            appendChunk(Text.utf8.encode(String(text)));
         },
         writeBytes(bytes) {
             if (closed) {
                 throw new TypeError("Sloppy stream writer is closed.");
             }
-            chunks.push(copyBytes(bytes));
+            appendChunk(copyBytes(bytes));
         },
         close() {
             closed = true;
