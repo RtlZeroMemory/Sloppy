@@ -10,18 +10,6 @@
     "optimizations": "reported-only"
   },
   "paths": {
-    "/": {
-      "get": {
-        "operationId": "Hello.Index",
-        "x-slop-completeness": "",
-        "x-slop-capabilities": [],
-        "x-slop-optimization-candidates": [],
-        "parameters": [],
-        "responses": {
-          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
-        }
-      }
-    },
     "/users/create": {
       "get": {
         "operationId": "Users.Create",
@@ -41,11 +29,23 @@
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "x-slop-constraint": "int" }
         ],
         "responses": {
           "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
           "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "operationId": "Hello.Index",
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
         }
       }
     }

@@ -1,6 +1,6 @@
 SCOPE  TOKEN/ROUTE  KIND  ACCESS  REASON  SOURCE
 PLAN  data.main  database  readwrite  declared  data.main
-GET /api/users  data.main  sqlite  read  generated:db.query  input.js:26:1
 GET /api/users/{id:int}  data.main  sqlite  read  generated:db.queryOne  input.js:35:1
+GET /api/users  data.main  sqlite  read  generated:db.query  input.js:26:1
 POST /api/users  data.main  sqlite  write  generated:db.exec  input.js:31:1
 POST /api/users  data.main  sqlite  read  generated:db.queryOne  input.js:31:1

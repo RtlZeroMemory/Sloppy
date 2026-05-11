@@ -27,6 +27,7 @@ import {
     normalizeCorsPolicy,
     registerRoute,
     snapshotRoute,
+    urlForRoute,
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
@@ -974,6 +975,10 @@ function createApp(host) {
 
         group(prefix) {
             return app.mapGroup(prefix);
+        },
+
+        urlFor(name, params = {}, query = undefined) {
+            return urlForRoute(routes, name, params, query);
         },
 
         mapController(prefix, Controller, configure) {

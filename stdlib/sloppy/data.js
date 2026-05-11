@@ -126,6 +126,9 @@ function normalizeMigrationOptions(options) {
     if (typeof provider !== "string" || provider.length === 0) {
         throw new TypeError("Sloppy Migrations provider must be a non-empty string.");
     }
+    if (MIGRATION_PROVIDER_KINDS[provider] !== true) {
+        throw new TypeError("Sloppy Migrations provider must be sqlite, postgres, or sqlserver.");
+    }
     if (typeof path !== "string" || path.length === 0) {
         throw new TypeError("Sloppy Migrations path must be a non-empty string.");
     }
@@ -177,7 +180,7 @@ function migrationHash(text) {
     return `${MIGRATION_HASH_PREFIX}${hash.toString(16).padStart(8, "0")}`;
 }
 
-function migrationProviderKind(db) {
+function connectionProviderKind(db, operation) {
     const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
     if (debug?.kind === "sqlite-connection") {
         return "sqlite";
@@ -189,13 +192,17 @@ function migrationProviderKind(db) {
         return "sqlserver";
     }
     throw new TypeError(
-        "Sloppy Migrations only supports sqlite, postgres, and sqlserver connections created by sloppy/data.",
+        `Sloppy ${operation} only supports sqlite, postgres, and sqlserver connections created by sloppy/data.`,
     );
+}
+
+function migrationProviderKind(db) {
+    return connectionProviderKind(db, "Migrations");
 }
 
 function resolveMigrationProviderKind(db, options) {
     const providerKind = migrationProviderKind(db);
-    if (MIGRATION_PROVIDER_KINDS[options.provider] === true && options.provider !== providerKind) {
+    if (options.provider !== providerKind) {
         throw new TypeError(
             `Sloppy Migrations provider '${options.provider}' does not match connection provider '${providerKind}'.`,
         );
@@ -353,7 +360,7 @@ async function migrationStatus(db, options) {
     const changed = migrations.some((migration) => migration.status === "changed");
     const pending = migrations.filter((migration) => migration.status === "pending").length;
     return Object.freeze({
-        provider: checked.provider,
+        provider: providerKind,
         path: checked.path,
         status: changed ? "changed" : pending > 0 ? "pending" : "current",
         pending,
@@ -390,7 +397,7 @@ async function applyMigrations(db, options) {
     }
 
     return Object.freeze({
-        provider: checked.provider,
+        provider: providerKind,
         path: checked.path,
         applied: appliedCount,
         skipped: files.length - appliedCount,
@@ -398,10 +405,8 @@ async function applyMigrations(db, options) {
 }
 
 async function checkProviderHealth(db, options = {}) {
-    const provider = options.provider ?? "sqlite";
-    if (typeof provider !== "string" || provider.length === 0) {
-        throw new TypeError("Sloppy ProviderHealth provider must be a non-empty string.");
-    }
+    void options;
+    const provider = connectionProviderKind(db, "ProviderHealth");
     await db.queryOne("select 1 as ok", []);
     return Object.freeze({ provider, ok: true });
 }

@@ -260,7 +260,8 @@ Compiler-enforced route grammar:
 
 - `/`
 - static segments without braces
-- `{name}`, `{name:str}`, `{name:int}`
+- `{name}`, `{name:str}`, `{name:int}`, `{name:uuid}`, `{name:alpha}`,
+  `{name:float}`
 
 Normalization:
 

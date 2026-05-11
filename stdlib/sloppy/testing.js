@@ -14,6 +14,7 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
         strictAccept: false,
     }),
 });
+const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -228,18 +229,30 @@ function splitRouteSegments(value) {
 }
 
 function parsePatternParam(segment) {
-    if (!segment.startsWith("{") || !segment.endsWith("}") || segment.length < 3) {
+    const match = ROUTE_PARAM_PATTERN.exec(segment);
+    if (match === null) {
         return undefined;
     }
+    return { name: match[1], type: match[2] ?? "str" };
+}
 
-    const inner = segment.slice(1, -1);
-    const colon = inner.indexOf(":");
-    const name = colon < 0 ? inner : inner.slice(0, colon);
-    const type = colon < 0 ? "str" : inner.slice(colon + 1);
-    if (!/^[A-Za-z_][0-9A-Za-z_]*$/u.test(name) || (type !== "str" && type !== "int")) {
-        return undefined;
+function routeSegmentMatchesParam(param, value) {
+    if (value.length === 0) {
+        return false;
     }
-    return { name, type };
+    if (param.type === "int") {
+        return /^[0-9]+$/u.test(value);
+    }
+    if (param.type === "uuid") {
+        return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value);
+    }
+    if (param.type === "alpha") {
+        return /^[A-Za-z]+$/u.test(value);
+    }
+    if (param.type === "float") {
+        return /^[0-9]*\.[0-9]+$|^[0-9]+\.[0-9]*$/u.test(value);
+    }
+    return param.type === "str";
 }
 
 function matchRoutePattern(pattern, path) {
@@ -260,7 +273,7 @@ function matchRoutePattern(pattern, path) {
             }
             continue;
         }
-        if (pathSegment.length === 0 || (param.type === "int" && !/^[0-9]+$/u.test(pathSegment))) {
+        if (!routeSegmentMatchesParam(param, pathSegment)) {
             return undefined;
         }
         route[param.name] = pathSegment;
@@ -786,19 +799,42 @@ function findRoute(routes, method, path) {
     return { route: undefined, params: undefined, methodMismatch };
 }
 
-function routeHasParams(route) {
-    return route.pattern.includes("{");
+function routeSegments(pattern) {
+    return pattern === "/" ? [] : pattern.split("/").slice(1);
+}
+
+function routeSegmentRank(segment) {
+    const param = parsePatternParam(segment);
+    if (param === undefined) {
+        return 3;
+    }
+    return param.type === "str" ? 1 : 2;
+}
+
+function compareRoutesByPrecedence(left, right) {
+    const leftSegments = routeSegments(left.pattern);
+    const rightSegments = routeSegments(right.pattern);
+    const shared = Math.min(leftSegments.length, rightSegments.length);
+    for (let index = 0; index < shared; index += 1) {
+        const leftRank = routeSegmentRank(leftSegments[index]);
+        const rightRank = routeSegmentRank(rightSegments[index]);
+        if (leftRank !== rightRank) {
+            return rightRank - leftRank;
+        }
+        if (leftRank === 3 && leftSegments[index] !== rightSegments[index]) {
+            return leftSegments[index] < rightSegments[index] ? -1 : 1;
+        }
+    }
+    if (leftSegments.length !== rightSegments.length) {
+        return rightSegments.length - leftSegments.length;
+    }
+    return left.__sourceOrder - right.__sourceOrder;
 }
 
 function snapshotRoutes(app) {
     return Object.freeze(app.__getRoutes()
         .map((route, index) => Object.freeze({ ...route, __sourceOrder: index }))
-        .sort((left, right) => {
-            if (routeHasParams(left) !== routeHasParams(right)) {
-                return routeHasParams(left) ? 1 : -1;
-            }
-            return left.__sourceOrder - right.__sourceOrder;
-        }));
+        .sort(compareRoutesByPrecedence));
 }
 
 function normalizeMethod(method) {

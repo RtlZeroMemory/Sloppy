@@ -6277,7 +6277,7 @@ fn extract_expression_statement(
         )
         .with_path(path)
         .with_span(statement.span)
-        .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
+        .with_hint("Use '/', static segments, {name}, {name:str}, {name:int}, {name:uuid}, {name:alpha}, or {name:float}."));
     }
 
     let schema_names = schema_names(state);
@@ -13393,8 +13393,12 @@ fn route_segment_supported(segment: &str) -> bool {
     !name.is_empty()
         && name
             .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        && name
+            .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        && matches!(kind, "str" | "int")
+        && matches!(kind, "str" | "int" | "uuid" | "alpha" | "float")
 }
 
 fn handler_from_argument(
@@ -18307,7 +18311,16 @@ function __sloppy_dynamic_match(pattern, path) {
     const segment = patternParts[index];
     const value = decodeURIComponent(pathParts[index] ?? "");
     if (segment.startsWith("{") && segment.endsWith("}")) {
-      route[segment.slice(1, -1).split(":")[0]] = value;
+      const parts = segment.slice(1, -1).split(":");
+      if (parts.length > 2) { return null; }
+      const [name, kind = "str"] = parts;
+      if (value.length === 0) { return null; }
+      if (kind !== "str" && kind !== "int" && kind !== "uuid" && kind !== "alpha" && kind !== "float") { return null; }
+      if (kind === "int" && !/^[0-9]+$/u.test(value)) { return null; }
+      if (kind === "uuid" && !/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value)) { return null; }
+      if (kind === "alpha" && !/^[A-Za-z]+$/u.test(value)) { return null; }
+      if (kind === "float" && !(/^[0-9]*\.[0-9]+$/u.test(value) || /^[0-9]+\.[0-9]*$/u.test(value))) { return null; }
+      route[name] = value;
     } else if (segment.startsWith(":")) {
       route[segment.slice(1).split(":")[0]] = value;
     } else if (segment !== value) {

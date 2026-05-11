@@ -134,8 +134,9 @@ sloppy routes --plan .sloppy
 
 If the route isn't listed there, the compiler didn't extract it. Check the
 build output for a diagnostic. If it *is* listed but a request still 404s,
-make sure the URL has the right method and trailing-slash shape — Sloppy
-treats `/users` and `/users/` as distinct routes.
+make sure the URL has the right method and trailing-slash shape. Non-root
+patterns cannot end in `/`, and a request for `/users/` does not match
+`/users`.
 
 ## Getting better diagnostics
 

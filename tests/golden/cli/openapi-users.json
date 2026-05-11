@@ -10,6 +10,22 @@
     "optimizations": "reported-only"
   },
   "paths": {
+    "/api/users/{id}": {
+      "get": {
+        "operationId": "Users.Get",
+        "x-slop-source": { "path": "input.js", "line": 35, "column": 1 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
+        "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "x-slop-constraint": "int" }
+        ],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
+          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+        }
+      }
+    },
     "/api/users": {
       "get": {
         "operationId": "Users.List",
@@ -37,22 +53,6 @@
         },
         "responses": {
           "201": { "description": "created", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
-          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
-        }
-      }
-    },
-    "/api/users/{id}": {
-      "get": {
-        "operationId": "Users.Get",
-        "x-slop-source": { "path": "input.js", "line": 35, "column": 1 },
-        "x-slop-completeness": "complete",
-        "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
-        "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
-        ],
-        "responses": {
-          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
           "400": { "$ref": "#/components/responses/SlopValidationProblem" }
         }
       }

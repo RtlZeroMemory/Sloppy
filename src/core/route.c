@@ -171,12 +171,28 @@ static SlStatus sl_route_parse_param_type(SlRouteParseContext* ctx, SlStr type,
         return sl_status_ok();
     }
 
+    if (sl_str_equal(type, sl_route_literal("uuid", sizeof("uuid") - 1U))) {
+        *out = SL_ROUTE_PARAM_UUID;
+        return sl_status_ok();
+    }
+
+    if (sl_str_equal(type, sl_route_literal("alpha", sizeof("alpha") - 1U))) {
+        *out = SL_ROUTE_PARAM_ALPHA;
+        return sl_status_ok();
+    }
+
+    if (sl_str_equal(type, sl_route_literal("float", sizeof("float") - 1U))) {
+        *out = SL_ROUTE_PARAM_FLOAT;
+        return sl_status_ok();
+    }
+
     return sl_route_invalid_pattern(
         ctx,
         sl_route_literal("unknown route parameter type",
                          sizeof("unknown route parameter type") - 1U),
-        sl_route_literal("supported route parameter types are int and str",
-                         sizeof("supported route parameter types are int and str") - 1U));
+        sl_route_literal(
+            "supported route parameter types are str, int, uuid, alpha, and float",
+            sizeof("supported route parameter types are str, int, uuid, alpha, and float") - 1U));
 }
 
 static SlStatus sl_route_parse_param_segment(SlRouteParseContext* ctx, SlStr segment,
@@ -550,6 +566,79 @@ static bool sl_route_segment_is_ascii_digits(SlStr segment)
     return true;
 }
 
+static bool sl_route_ascii_hex(char byte)
+{
+    return (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'F') ||
+           (byte >= 'a' && byte <= 'f');
+}
+
+static bool sl_route_segment_is_uuid(SlStr segment)
+{
+    static const size_t dash_positions[] = {8U, 13U, 18U, 23U};
+    size_t dash_index = 0U;
+    size_t index = 0U;
+
+    if (segment.length != 36U || segment.ptr == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index < segment.length; index += 1U) {
+        if (dash_index < sizeof(dash_positions) / sizeof(dash_positions[0]) &&
+            index == dash_positions[dash_index])
+        {
+            if (segment.ptr[index] != '-') {
+                return false;
+            }
+            dash_index += 1U;
+            continue;
+        }
+        if (!sl_route_ascii_hex(segment.ptr[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_route_segment_is_alpha(SlStr segment)
+{
+    size_t index = 0U;
+
+    if (segment.length == 0U || segment.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < segment.length; index += 1U) {
+        char byte = segment.ptr[index];
+        if (!((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_route_segment_is_float(SlStr segment)
+{
+    size_t index = 0U;
+    bool saw_digit = false;
+    bool saw_dot = false;
+
+    if (segment.length == 0U || segment.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < segment.length; index += 1U) {
+        char byte = segment.ptr[index];
+        if (byte >= '0' && byte <= '9') {
+            saw_digit = true;
+            continue;
+        }
+        if (byte == '.' && !saw_dot) {
+            saw_dot = true;
+            continue;
+        }
+        return false;
+    }
+    return saw_digit && saw_dot;
+}
+
 static bool sl_route_match_param(SlRouteParamKind kind, SlStr segment)
 {
     if (segment.length == 0U || segment.ptr == NULL) {
@@ -559,8 +648,17 @@ static bool sl_route_match_param(SlRouteParamKind kind, SlStr segment)
     if (kind == SL_ROUTE_PARAM_INT) {
         return sl_route_segment_is_ascii_digits(segment);
     }
+    if (kind == SL_ROUTE_PARAM_UUID) {
+        return sl_route_segment_is_uuid(segment);
+    }
+    if (kind == SL_ROUTE_PARAM_ALPHA) {
+        return sl_route_segment_is_alpha(segment);
+    }
+    if (kind == SL_ROUTE_PARAM_FLOAT) {
+        return sl_route_segment_is_float(segment);
+    }
 
-    return true;
+    return kind == SL_ROUTE_PARAM_STRING;
 }
 
 static bool sl_route_segment_kind_known(SlRouteSegmentKind kind)
@@ -570,7 +668,9 @@ static bool sl_route_segment_kind_known(SlRouteSegmentKind kind)
 
 static bool sl_route_param_kind_known(SlRouteParamKind kind)
 {
-    return kind == SL_ROUTE_PARAM_STRING || kind == SL_ROUTE_PARAM_INT;
+    return kind == SL_ROUTE_PARAM_STRING || kind == SL_ROUTE_PARAM_INT ||
+           kind == SL_ROUTE_PARAM_UUID || kind == SL_ROUTE_PARAM_ALPHA ||
+           kind == SL_ROUTE_PARAM_FLOAT;
 }
 
 static SlStatus sl_route_pattern_validate_for_match(const SlRoutePattern* pattern,

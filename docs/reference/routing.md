@@ -26,9 +26,15 @@ Plan-supported route patterns follow these rules:
 - no `//`.
 - each segment is either:
   - literal text without `{` or `}`
-  - `{name}` or `{name:str}` or `{name:int}`
+  - `{name}`, `{name:str}`, `{name:int}`, `{name:uuid}`, `{name:alpha}`, or
+    `{name:float}`
 
 Compiler normalization also accepts framework `/:name` segments and converts them to `{name}` in Plan metadata.
+
+Constraints validate the matched segment but do not coerce handler context
+values. `{name:int}` matches ASCII digits. `{name:uuid}` matches canonical
+36-byte UUID text with dashes. `{name:alpha}` matches ASCII letters.
+`{name:float}` matches decimal digits with one dot.
 
 ## Group Rules
 
@@ -50,7 +56,15 @@ Validation:
 
 - endpoint names must be non-empty strings
 - duplicate `method + pattern` is rejected
-- duplicate route names are rejected in compiler extraction
+- duplicate route names are rejected in bootstrap registration and compiler
+  extraction
+- route metadata option `{ name: "..." }` and `.withName("...")` both name the
+  route
+
+Named routes expose `app.urlFor(name, params?, query?)` and handler
+`ctx.urlFor(name, params?, query?)`. Generation encodes path parameters and
+query keys/values, rejects missing or extra route parameters, and works for
+grouped routes after prefix composition.
 
 ## Handler Shape Requirements
 
@@ -71,6 +85,12 @@ Compiler extraction currently enforces:
   body bytes at the transport boundary.
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
   the route table can match the request path. `GET` routes also advertise `HEAD`.
+- Dispatch precedence is deterministic: static/literal segments sort before
+  parameter segments, constrained parameters sort before unconstrained
+  parameters, longer/more-specific patterns sort before shorter ones, and
+  source order breaks remaining ties.
+- Non-root route patterns cannot end in `/`; request matching does not make
+  `/users` and `/users/` equivalent.
 - Static route-table availability depends on emitted complete Plan metadata.
   Dynamic source-input routes execute through the generated JavaScript runtime
   path when V8 is enabled.

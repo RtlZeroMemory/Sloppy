@@ -16,14 +16,6 @@
     const FAST_JSON_MAX_LENGTH = 256;
     const POSTGRES_MAX_POOL_CONNECTIONS = 256;
     const SQLSERVER_MAX_POOL_CONNECTIONS = 256;
-    const MIGRATIONS_TABLE = "_sloppy_migrations";
-    const MIGRATION_HASH_PREFIX = "fnv1a32:";
-    const MIGRATION_PROVIDER_KINDS = Object.freeze({
-        sqlite: true,
-        postgres: true,
-        sqlserver: true,
-    });
-
     function resolveStatus(options, defaultStatus) {
         const status = options?.status ?? defaultStatus;
 
@@ -850,6 +842,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1335,6 +1328,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1593,6 +1587,7 @@ Operation:
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
+                state.transactionActive = false;
                 state.closed = true;
                 try {
                     bridge.close(state.handle);
@@ -1703,10 +1698,340 @@ Operation:
         },
     });
 
+    const MIGRATIONS_TABLE = "_sloppy_migrations";
+    const MIGRATION_HASH_PREFIX = "fnv1a32:";
+    const MIGRATION_PROVIDER_KINDS = Object.freeze({
+        sqlite: true,
+        postgres: true,
+        sqlserver: true,
+    });
+
+    function normalizeDataMigrationOptions(options) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy Migrations options must be a plain object.");
+        }
+        const provider = options.provider;
+        const path = options.path;
+        if (typeof provider !== "string" || provider.length === 0) {
+            throw new TypeError("Sloppy Migrations provider must be a non-empty string.");
+        }
+        if (MIGRATION_PROVIDER_KINDS[provider] !== true) {
+            throw new TypeError("Sloppy Migrations provider must be sqlite, postgres, or sqlserver.");
+        }
+        if (typeof path !== "string" || path.length === 0) {
+            throw new TypeError("Sloppy Migrations path must be a non-empty string.");
+        }
+        const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        const directory = slash < 0 ? "." : path.slice(0, slash);
+        const pattern = slash < 0 ? path : path.slice(slash + 1);
+        if (pattern !== "*.sql") {
+            throw new Error(`sloppy: migration path is unsupported
+
+Provider:
+  ${provider}
+
+Path:
+  ${path}
+
+Fix:
+  Use a project-relative directory glob ending in *.sql, for example migrations/*.sql.`);
+        }
+        return { provider, path, directory };
+    }
+
+    function dataMigrationHash(text) {
+        let hash = 0x811c9dc5;
+        const addByte = (value) => {
+            hash ^= value & 0xff;
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+        };
+        for (let index = 0; index < text.length; index += 1) {
+            const code = text.codePointAt(index);
+            if (code > 0xffff) {
+                index += 1;
+            }
+            if (code <= 0x7f) {
+                addByte(code);
+            } else if (code <= 0x7ff) {
+                addByte(0xc0 | (code >> 6));
+                addByte(0x80 | (code & 0x3f));
+            } else if (code <= 0xffff) {
+                addByte(0xe0 | (code >> 12));
+                addByte(0x80 | ((code >> 6) & 0x3f));
+                addByte(0x80 | (code & 0x3f));
+            } else {
+                addByte(0xf0 | (code >> 18));
+                addByte(0x80 | ((code >> 12) & 0x3f));
+                addByte(0x80 | ((code >> 6) & 0x3f));
+                addByte(0x80 | (code & 0x3f));
+            }
+        }
+        return `${MIGRATION_HASH_PREFIX}${hash.toString(16).padStart(8, "0")}`;
+    }
+
+    function connectionProviderKind(db, operation) {
+        const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
+        if (debug?.kind === "sqlite-connection") {
+            return "sqlite";
+        }
+        if (debug?.kind === "postgres-connection") {
+            return "postgres";
+        }
+        if (debug?.kind === "sqlserver-connection") {
+            return "sqlserver";
+        }
+        throw new TypeError(
+            `Sloppy ${operation} only supports sqlite, postgres, and sqlserver connections created by sloppy/data.`,
+        );
+    }
+
+    function dataMigrationProviderKind(db) {
+        return connectionProviderKind(db, "Migrations");
+    }
+
+    function resolveDataMigrationProviderKind(db, options) {
+        const providerKind = dataMigrationProviderKind(db);
+        if (options.provider !== providerKind) {
+            throw new TypeError(
+                `Sloppy Migrations provider '${options.provider}' does not match connection provider '${providerKind}'.`,
+            );
+        }
+        return providerKind;
+    }
+
+    const DATA_MIGRATION_SQL = Object.freeze({
+        sqlite: Object.freeze({
+            ensure:
+                `create table if not exists ${MIGRATIONS_TABLE} (` +
+                "id integer primary key autoincrement, " +
+                "name text not null unique, " +
+                "hash text not null, " +
+                "appliedAt text not null)",
+            select:
+                `select name, hash, appliedAt as "appliedAt" from ${MIGRATIONS_TABLE} order by id`,
+            insert: `insert into ${MIGRATIONS_TABLE} (name, hash, appliedAt) values (?, ?, ?)`,
+            appliedAt: () => new Date().toISOString(),
+        }),
+        postgres: Object.freeze({
+            ensure:
+                `create table if not exists ${MIGRATIONS_TABLE} (` +
+                "id bigint generated by default as identity primary key, " +
+                "name text not null unique, " +
+                "hash text not null, " +
+                "appliedAt text not null)",
+            select:
+                `select name, hash, appliedAt as "appliedAt" from ${MIGRATIONS_TABLE} order by id`,
+            insert:
+                `insert into ${MIGRATIONS_TABLE} (name, hash, appliedAt) values (` +
+                "$1, $2, to_char(clock_timestamp() at time zone 'UTC', " +
+                `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))`,
+            appliedAt: () => undefined,
+        }),
+        sqlserver: Object.freeze({
+            ensure:
+                "if object_id(N'dbo._sloppy_migrations', N'U') is null create table " +
+                "dbo._sloppy_migrations (id bigint identity(1,1) primary key, " +
+                "name nvarchar(450) not null unique, hash nvarchar(64) not null, " +
+                "appliedAt nvarchar(64) not null)",
+            select: "select name, hash, appliedAt from dbo._sloppy_migrations order by id",
+            insert:
+                "insert into dbo._sloppy_migrations (name, hash, appliedAt) values " +
+                "(?, ?, convert(nvarchar(64), sysutcdatetime(), 127) + N'Z')",
+            appliedAt: () => undefined,
+        }),
+    });
+
+    async function listDataMigrationFiles(options) {
+        let entries;
+        try {
+            entries = await Directory.list(options.directory);
+        } catch (error) {
+            throw new Error(`sloppy: migration directory is missing or unreadable
+
+Provider:
+  ${options.provider}
+
+Path:
+  ${options.path}
+
+Fix:
+  Create the configured migration directory before applying migrations.`, { cause: error });
+        }
+        return entries
+            .filter((entry) => entry.kind === "file" && entry.name.endsWith(".sql"))
+            .map((entry) => entry.name)
+            .sort((left, right) => (left === right ? 0 : left < right ? -1 : 1))
+            .map((name) => ({
+                name,
+                path: options.directory === "." ? name : `${options.directory}/${name}`,
+            }));
+    }
+
+    async function ensureDataMigrationsTable(db, providerKind) {
+        await db.exec(DATA_MIGRATION_SQL[providerKind].ensure, []);
+    }
+
+    async function readDataAppliedMigrations(db, providerKind) {
+        await ensureDataMigrationsTable(db, providerKind);
+        const rows = await db.query(DATA_MIGRATION_SQL[providerKind].select, []);
+        const applied = new Map();
+        for (const row of rows) {
+            applied.set(row.name, row);
+        }
+        return applied;
+    }
+
+    function dataMigrationStatusFor(files, applied) {
+        return files.map((file) => {
+            const appliedRow = applied.get(file.name) ?? null;
+            if (appliedRow === null) {
+                return Object.freeze({ name: file.name, path: file.path, status: "pending" });
+            }
+            if (appliedRow.hash !== file.hash) {
+                return Object.freeze({
+                    name: file.name,
+                    path: file.path,
+                    status: "changed",
+                    appliedHash: appliedRow.hash,
+                    currentHash: file.hash,
+                    appliedAt: appliedRow.appliedAt,
+                });
+            }
+            return Object.freeze({
+                name: file.name,
+                path: file.path,
+                status: "applied",
+                hash: file.hash,
+                appliedAt: appliedRow.appliedAt,
+            });
+        });
+    }
+
+    async function migrationFilesWithContent(options) {
+        const files = await listMigrationFiles(options);
+        const withContent = [];
+        for (const file of files) {
+            let sqlText;
+            try {
+                sqlText = await File.readText(file.path);
+            } catch (error) {
+                throw new Error(
+                    `sloppy: migration file is missing or unreadable
+
+Provider:
+  ${options.provider}
+
+Path:
+  ${file.path}
+
+Fix:
+  Ensure every listed migration file exists and is readable before running migrations.`,
+                    { cause: error },
+                );
+            }
+            withContent.push({
+                ...file,
+                sql: sqlText,
+                hash: migrationHash(sqlText),
+            });
+        }
+        return withContent;
+    }
+
+    function assertMigrationHashNotChanged(record) {
+        if (record.status !== "changed") {
+            return;
+        }
+        throw new Error(`sloppy: applied migration hash changed
+
+Migration:
+  ${record.name}
+
+Applied hash:
+  ${record.appliedHash}
+
+Current hash:
+  ${record.currentHash}
+
+Fix:
+  Create a new migration file instead of editing an already-applied migration.`);
+    }
+
+    async function dataMigrationStatus(db, options) {
+        const checked = normalizeDataMigrationOptions(options);
+        const providerKind = resolveDataMigrationProviderKind(db, checked);
+        const files = await migrationFilesWithContent(checked);
+        const applied = await readDataAppliedMigrations(db, providerKind);
+        const migrations = dataMigrationStatusFor(files, applied);
+        const changed = migrations.some((migration) => migration.status === "changed");
+        const pending = migrations.filter((migration) => migration.status === "pending").length;
+        return Object.freeze({
+            provider: providerKind,
+            path: checked.path,
+            status: changed ? "changed" : pending > 0 ? "pending" : "current",
+            pending,
+            applied: migrations.filter((migration) => migration.status === "applied").length,
+            migrations: Object.freeze(migrations),
+        });
+    }
+
+    async function applyDataMigrations(db, options) {
+        const checked = normalizeDataMigrationOptions(options);
+        const providerKind = resolveDataMigrationProviderKind(db, checked);
+        const dialect = DATA_MIGRATION_SQL[providerKind];
+        const files = await migrationFilesWithContent(checked);
+        const applied = await readDataAppliedMigrations(db, providerKind);
+        const records = dataMigrationStatusFor(files, applied);
+        for (const record of records) {
+            assertMigrationHashNotChanged(record);
+        }
+
+        let appliedCount = 0;
+        for (const file of files) {
+            if (applied.has(file.name)) {
+                continue;
+            }
+            await db.transaction(async (tx) => {
+                await tx.exec(file.sql, []);
+                const appliedAt = dialect.appliedAt();
+                const params = appliedAt === undefined
+                    ? [file.name, file.hash]
+                    : [file.name, file.hash, appliedAt];
+                await tx.exec(dialect.insert, params);
+            });
+            appliedCount += 1;
+        }
+
+        return Object.freeze({
+            provider: providerKind,
+            path: checked.path,
+            applied: appliedCount,
+            skipped: files.length - appliedCount,
+        });
+    }
+
+    async function checkDataProviderHealth(db, options = {}) {
+        void options;
+        const provider = connectionProviderKind(db, "ProviderHealth");
+        await db.queryOne("select 1 as ok", []);
+        return Object.freeze({ provider, ok: true });
+    }
+
+    const DataMigrations = Object.freeze({
+        apply: applyDataMigrations,
+        status: dataMigrationStatus,
+    });
+
+    const DataProviderHealth = Object.freeze({
+        check: checkDataProviderHealth,
+    });
+
     const data = Object.freeze({
         sqlite,
         postgres,
         sqlserver,
+        migrations: DataMigrations,
+        providerHealth: DataProviderHealth,
         values,
     });
 

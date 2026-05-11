@@ -47,8 +47,8 @@ compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Routing | supported | supported | supported | supported | Direct route registration supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; generated CORS preflight routes bind `OPTIONS` in Plan metadata. |
-| Route params | supported | supported | supported | supported | `{name}`, `{name:str}`, and `{name:int}` values are strings in handler context. |
+| Routing | supported | supported | supported | supported | Direct route registration supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; generated CORS preflight routes bind `OPTIONS` in Plan metadata. Dispatch precedence is static before parameter, constrained before unconstrained, longer/more-specific before shorter, then source order. |
+| Route params | supported | supported | supported | supported | `{name}`, `{name:str}`, `{name:int}`, `{name:uuid}`, `{name:alpha}`, and `{name:float}` values are strings in handler context. |
 | Query | supported | supported | supported | supported | Last value wins for repeated keys. |
 | Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` can supply bounded custom headers through `--header`. |
 | Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes/forms/multipart are bounded in memory. |

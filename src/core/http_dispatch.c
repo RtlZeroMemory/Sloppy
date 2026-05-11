@@ -31,6 +31,8 @@ typedef struct SlHttpRouteTableEntry
     SlHttpRouteBinding binding;
     size_t source_order;
     bool has_params;
+    size_t static_segment_count;
+    size_t constrained_param_count;
 } SlHttpRouteTableEntry;
 
 typedef struct SlHttpDispatchContextSeed
@@ -646,8 +648,32 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
 static bool sl_http_route_entry_less(const SlHttpRouteTableEntry* left,
                                      const SlHttpRouteTableEntry* right)
 {
-    if (left->has_params != right->has_params) {
-        return !left->has_params;
+    size_t index = 0U;
+    size_t shared_segments = left->pattern.segment_count < right->pattern.segment_count
+                                 ? left->pattern.segment_count
+                                 : right->pattern.segment_count;
+
+    for (index = 0U; index < shared_segments; index += 1U) {
+        const SlRouteSegment* left_segment = &left->pattern.segments[index];
+        const SlRouteSegment* right_segment = &right->pattern.segments[index];
+        bool left_param = left_segment->kind == SL_ROUTE_SEGMENT_PARAM;
+        bool right_param = right_segment->kind == SL_ROUTE_SEGMENT_PARAM;
+        bool left_constrained = left_param && left_segment->param_kind != SL_ROUTE_PARAM_STRING;
+        bool right_constrained = right_param && right_segment->param_kind != SL_ROUTE_PARAM_STRING;
+
+        if (left_param != right_param) {
+            return !left_param;
+        }
+        if (left_param && left_constrained != right_constrained) {
+            return left_constrained;
+        }
+        if (!left_param && !right_param && !sl_str_equal(left_segment->text, right_segment->text)) {
+            return sl_str_compare(left_segment->text, right_segment->text) < 0;
+        }
+    }
+
+    if (left->pattern.segment_count != right->pattern.segment_count) {
+        return left->pattern.segment_count > right->pattern.segment_count;
     }
 
     return left->source_order < right->source_order;
@@ -1047,6 +1073,19 @@ static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* p
         entries[entry_count].binding.route_index = index;
         entries[entry_count].source_order = index;
         entries[entry_count].has_params = entries[entry_count].binding.pattern->param_count != 0U;
+        for (size_t segment_index = 0U; segment_index < entries[entry_count].pattern.segment_count;
+             segment_index += 1U)
+        {
+            SlRouteSegment* segment = &entries[entry_count].pattern.segments[segment_index];
+            if (segment->kind == SL_ROUTE_SEGMENT_STATIC) {
+                entries[entry_count].static_segment_count += 1U;
+            }
+            else if (segment->kind == SL_ROUTE_SEGMENT_PARAM &&
+                     segment->param_kind != SL_ROUTE_PARAM_STRING)
+            {
+                entries[entry_count].constrained_param_count += 1U;
+            }
+        }
         entry_count += 1U;
     }
 
@@ -1416,6 +1455,95 @@ static bool sl_http_dispatch_path_segment_int(SlStr segment)
     return true;
 }
 
+static bool sl_http_dispatch_path_segment_alpha(SlStr segment)
+{
+    size_t index = 0U;
+
+    if (segment.length == 0U || segment.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < segment.length; index += 1U) {
+        char byte = segment.ptr[index];
+        if (!((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_http_dispatch_path_segment_uuid(SlStr segment)
+{
+    static const size_t dash_positions[] = {8U, 13U, 18U, 23U};
+    size_t dash_index = 0U;
+    size_t index = 0U;
+
+    if (segment.length != 36U || segment.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < segment.length; index += 1U) {
+        char byte = segment.ptr[index];
+        if (dash_index < sizeof(dash_positions) / sizeof(dash_positions[0]) &&
+            index == dash_positions[dash_index])
+        {
+            if (byte != '-') {
+                return false;
+            }
+            dash_index += 1U;
+            continue;
+        }
+        if (!((byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'F') ||
+              (byte >= 'a' && byte <= 'f')))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_http_dispatch_path_segment_float(SlStr segment)
+{
+    size_t index = 0U;
+    bool saw_digit = false;
+    bool saw_dot = false;
+
+    if (segment.length == 0U || segment.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < segment.length; index += 1U) {
+        char byte = segment.ptr[index];
+        if (byte >= '0' && byte <= '9') {
+            saw_digit = true;
+            continue;
+        }
+        if (byte == '.' && !saw_dot) {
+            saw_dot = true;
+            continue;
+        }
+        return false;
+    }
+    return saw_digit && saw_dot;
+}
+
+static bool sl_http_dispatch_path_segment_matches_kind(SlRouteParamKind kind, SlStr segment)
+{
+    if (kind == SL_ROUTE_PARAM_STRING) {
+        return segment.length != 0U;
+    }
+    if (kind == SL_ROUTE_PARAM_INT) {
+        return sl_http_dispatch_path_segment_int(segment);
+    }
+    if (kind == SL_ROUTE_PARAM_UUID) {
+        return sl_http_dispatch_path_segment_uuid(segment);
+    }
+    if (kind == SL_ROUTE_PARAM_ALPHA) {
+        return sl_http_dispatch_path_segment_alpha(segment);
+    }
+    if (kind == SL_ROUTE_PARAM_FLOAT) {
+        return sl_http_dispatch_path_segment_float(segment);
+    }
+    return false;
+}
+
 static bool sl_http_dispatch_pattern_could_match(const SlRoutePattern* pattern, SlStr path)
 {
     size_t pattern_index = 0U;
@@ -1454,13 +1582,8 @@ static bool sl_http_dispatch_pattern_could_match(const SlRoutePattern* pattern, 
             }
         }
         else if (pattern_segment->kind == SL_ROUTE_SEGMENT_PARAM) {
-            if (pattern_segment->param_kind == SL_ROUTE_PARAM_INT &&
-                !sl_http_dispatch_path_segment_int(path_segment))
-            {
-                return false;
-            }
-            if (pattern_segment->param_kind != SL_ROUTE_PARAM_STRING &&
-                pattern_segment->param_kind != SL_ROUTE_PARAM_INT)
+            if (!sl_http_dispatch_path_segment_matches_kind(pattern_segment->param_kind,
+                                                            path_segment))
             {
                 return false;
             }
@@ -1553,7 +1676,7 @@ sl_http_dispatch_next_param_candidate(const SlHttpRouteCandidateBucket* first, s
         *first_index += 1U;
         return first_route;
     }
-    if (first_route->route_index <= generic_route->route_index) {
+    if (first_route <= generic_route) {
         *first_index += 1U;
         return first_route;
     }

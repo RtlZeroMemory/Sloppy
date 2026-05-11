@@ -15,10 +15,25 @@ const ROUTE_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTE_KINDS = new Set(["http", "sse", "websocket"]);
 const PREFLIGHT_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
+const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 
 function validatePattern(pattern) {
     if (typeof pattern !== "string" || pattern.length === 0 || !pattern.startsWith("/")) {
         throw new TypeError("Sloppy app.mapGet pattern must be a non-empty string starting with '/'.");
+    }
+    if (pattern === "/") {
+        return;
+    }
+    if (pattern !== "/" && (pattern.endsWith("/") || pattern.includes("//"))) {
+        throw new TypeError("Sloppy route patterns use strict slashes and must not end with '/' or contain '//'.");
+    }
+    for (const segment of pattern.split("/").slice(1)) {
+        if (segment.length === 0) {
+            throw new TypeError("Sloppy route patterns must not contain empty segments.");
+        }
+        if ((segment.includes("{") || segment.includes("}")) && !ROUTE_PARAM_PATTERN.test(segment)) {
+            throw new TypeError("Sloppy route parameters must be whole segments like {id}, {id:int}, {id:uuid}, {slug:alpha}, or {value:float}.");
+        }
     }
 }
 
@@ -197,6 +212,121 @@ function validateName(name, subject) {
     if (typeof name !== "string" || name.length === 0) {
         throw new TypeError(`Sloppy ${subject} name must be a non-empty string.`);
     }
+}
+
+function routeParamEntries(pattern) {
+    if (pattern === "/") {
+        return [];
+    }
+    return pattern.split("/").slice(1)
+        .map((segment) => ROUTE_PARAM_PATTERN.exec(segment))
+        .filter((match) => match !== null)
+        .map((match) => Object.freeze({ name: match[1], kind: match[2] ?? "str" }));
+}
+
+function encodeQuery(query) {
+    if (query === undefined || query === null) {
+        return "";
+    }
+    if (!isPlainObject(query)) {
+        throw new TypeError("Sloppy urlFor query must be a plain object when provided.");
+    }
+    const pairs = [];
+    for (const [key, value] of Object.entries(query)) {
+        if (value === undefined || value === null) {
+            continue;
+        }
+        const values = Array.isArray(value) ? value : [value];
+        for (const item of values) {
+            if (item !== undefined && item !== null) {
+                pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`);
+            }
+        }
+    }
+    return pairs.length === 0 ? "" : `?${pairs.join("&")}`;
+}
+
+function routeParamValueSatisfies(kind, value) {
+    if (kind === "str") {
+        return true;
+    }
+    if (kind === "int") {
+        return /^[0-9]+$/u.test(value);
+    }
+    if (kind === "uuid") {
+        return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value);
+    }
+    if (kind === "alpha") {
+        return /^[A-Za-z]+$/u.test(value);
+    }
+    if (kind === "float") {
+        return /^(?:[0-9]+\.[0-9]*|\.[0-9]+)$/u.test(value);
+    }
+    return false;
+}
+
+function buildRouteUrl(pattern, params = {}, query = undefined) {
+    if (!isPlainObject(params)) {
+        throw new TypeError("Sloppy urlFor params must be a plain object.");
+    }
+    const used = new Set();
+    const path = pattern === "/" ? "/" : pattern.split("/").map((segment, index) => {
+        if (index === 0) {
+            return "";
+        }
+        const match = ROUTE_PARAM_PATTERN.exec(segment);
+        if (match === null) {
+            return segment;
+        }
+        const name = match[1];
+        if (params[name] === undefined || params[name] === null) {
+            throw new TypeError(`Sloppy urlFor route parameter '${name}' is required.`);
+        }
+        const kind = match[2] ?? "str";
+        const value = String(params[name]);
+        if (!routeParamValueSatisfies(kind, value)) {
+            throw new TypeError(`Sloppy urlFor route parameter '${name}' must satisfy '${kind}'.`);
+        }
+        used.add(name);
+        return encodeURIComponent(value);
+    }).join("/");
+    const extra = Object.keys(params).filter((key) => !used.has(key));
+    if (extra.length !== 0) {
+        throw new TypeError(`Sloppy urlFor received extra route parameter '${extra[0]}'.`);
+    }
+    return `${path}${encodeQuery(query)}`;
+}
+
+function routeSegments(pattern) {
+    return pattern === "/" ? [] : pattern.split("/").slice(1);
+}
+
+function routeSegmentRank(segment) {
+    const match = ROUTE_PARAM_PATTERN.exec(segment);
+    if (match === null) {
+        return 3;
+    }
+    return (match[2] ?? "str") === "str" ? 1 : 2;
+}
+
+function compareRouteSpecificity(left, right) {
+    const leftSegments = routeSegments(left.route.pattern);
+    const rightSegments = routeSegments(right.route.pattern);
+    const shared = Math.min(leftSegments.length, rightSegments.length);
+    for (let index = 0; index < shared; index += 1) {
+        const leftRank = routeSegmentRank(leftSegments[index]);
+        const rightRank = routeSegmentRank(rightSegments[index]);
+        if (leftRank !== rightRank) {
+            return rightRank - leftRank;
+        }
+        if (leftRank === 3 && leftSegments[index] !== rightSegments[index]) {
+            return leftSegments[index] < rightSegments[index] ? -1 : 1;
+        }
+    }
+    if (leftSegments.length !== rightSegments.length) {
+        return rightSegments.length - leftSegments.length;
+    }
+    return left.sourceOrder - right.sourceOrder;
 }
 
 function validateSchema(schema, subject) {
@@ -476,6 +606,7 @@ function createHandlerContext(host, routeInfo) {
         route: {},
         routeName: routeInfo.name ?? "",
         routePattern: routeInfo.pattern,
+        urlFor: routeInfo.urlFor,
         request: createDefaultRequest(routeInfo),
     }, host);
 }
@@ -499,6 +630,9 @@ function decorateProvidedContext(host, context, routeInfo) {
     }
     if (nextContext.routePattern === undefined) {
         nextContext.routePattern = routeInfo.pattern;
+    }
+    if (nextContext.urlFor === undefined) {
+        nextContext.urlFor = routeInfo.urlFor;
     }
     if (nextContext.request === undefined || nextContext.request === null) {
         nextContext.request = createDefaultRequest(routeInfo);
@@ -591,8 +725,25 @@ function snapshotRoute(route) {
         pattern: route.pattern,
         handler: route.handler,
         name: route.name,
+        params: Object.freeze(routeParamEntries(route.pattern)),
         metadata: snapshotMetadata(route.metadata),
     });
+}
+
+function routeSnapshotOrder(routes) {
+    return routes.map((route, index) => Object.freeze({
+        route,
+        sourceOrder: index,
+    })).sort(compareRouteSpecificity).map((entry) => entry.route);
+}
+
+function urlForRoute(routes, name, params = {}, query = undefined) {
+    validateName(name, "route");
+    const route = routes.find((current) => current.name === name);
+    if (route === undefined) {
+        throw new Error(`Sloppy route name '${name}' is not registered.`);
+    }
+    return buildRouteUrl(route.pattern, params, query);
 }
 
 function snapshotMetadata(metadata) {
@@ -623,6 +774,9 @@ function createEndpointBuilder(route, assertAppMutable) {
         withName(name) {
             assertAppMutable();
             validateName(name, "endpoint");
+            if (route.name !== name && route.routeSet.some((current) => current.name === name)) {
+                throw new Error(`Sloppy route name '${name}' is already registered.`);
+            }
 
             route.name = name;
             if (route.routeInfo !== undefined) {
@@ -782,6 +936,16 @@ function registerRoute(
     if (routes.some((route) => route.method === method && route.pattern === args.pattern)) {
         throw new Error(`Sloppy route '${method} ${args.pattern}' is already registered.`);
     }
+    if (args.metadata?.name !== undefined &&
+        (typeof args.metadata.name !== "string" || args.metadata.name.length === 0))
+    {
+        throw new TypeError("Sloppy route name must be a non-empty string.");
+    }
+    if (args.metadata?.name !== undefined &&
+        routes.some((route) => route.name === args.metadata.name))
+    {
+        throw new Error(`Sloppy route name '${args.metadata.name}' is already registered.`);
+    }
 
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
     const metadata = {
@@ -791,7 +955,16 @@ function registerRoute(
         middleware: middlewareMetadata(orderedMiddleware),
         ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
     };
-    const routeInfo = { method, pattern: args.pattern, name: null, auth: metadata.auth, kind };
+    const routeInfo = {
+        method,
+        pattern: args.pattern,
+        name: typeof args.metadata?.name === "string" ? args.metadata.name : null,
+        auth: metadata.auth,
+        kind,
+        urlFor(name, params = {}, query = undefined) {
+            return urlForRoute(routes, name, params, query);
+        },
+    };
     const route = {
         method,
         kind,
@@ -803,8 +976,9 @@ function registerRoute(
             corsPolicy,
             routeInfo,
         ),
-        name: null,
+        name: routeInfo.name,
         routeInfo,
+        routeSet: routes,
         metadata,
     };
 
@@ -890,7 +1064,15 @@ function registerCorsPreflightRoute(
         policy: corsPolicy,
         methods: new Set([method]),
     };
-    const routeInfo = { method: "OPTIONS", pattern, name: null, kind: "http" };
+    const routeInfo = {
+        method: "OPTIONS",
+        pattern,
+        name: null,
+        kind: "http",
+        urlFor(name, params = {}, query = undefined) {
+            return urlForRoute(routes, name, params, query);
+        },
+    };
     routes.push({
         method: "OPTIONS",
         kind: "http",
@@ -904,6 +1086,7 @@ function registerCorsPreflightRoute(
         ),
         name: null,
         routeInfo,
+        routeSet: routes,
         metadata: {
             cors: {
                 ...snapshotCorsPolicy(corsPolicy),
@@ -1178,5 +1361,7 @@ export {
     createRouterGroup,
     normalizeCorsPolicy,
     registerRoute,
+    routeSnapshotOrder,
     snapshotRoute,
+    urlForRoute,
 };

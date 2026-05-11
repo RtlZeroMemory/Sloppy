@@ -80,6 +80,7 @@ After construction, every app exposes:
 | `app.get/post/put/patch/delete(...)` | Register a route                            |
 | `app.mapGet/mapPost/...` | Same as the above; `map*` is the longer name           |
 | `app.group(...)`  | Create a route group; alias `app.mapGroup`                     |
+| `app.urlFor(...)` | Generate a URL for a named route                            |
 | `app.controller(...)`| Register a controller class; alias `app.mapController`      |
 | `app.freeze()`    | Mark the app immutable; further route registration throws      |
 | `app.isFrozen()`  | Check immutability                                             |

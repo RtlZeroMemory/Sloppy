@@ -1868,6 +1868,48 @@ async function flushMicrotasks(count = 6) {
 
 {
     const app = Sloppy.create();
+    app.get("/users/{slug}", () => Results.text("slug")).withName("Users.Slug");
+    app.get("/users/{id:int}", () => Results.text("int")).withName("Users.Get");
+    app.get("/users/me", () => Results.text("me")).withName("Users.Me");
+    app.get("/users/{name:alpha}/profile", () => Results.text("alpha-profile")).withName("Users.Profile");
+
+    assert.deepEqual(app.__getRoutes().map((route) => route.name), [
+        "Users.Slug",
+        "Users.Get",
+        "Users.Me",
+        "Users.Profile",
+    ]);
+
+    const host = createTestHost(app);
+    assert.equal((await host.get("/users/me")).text(), "me");
+    assert.equal((await host.get("/users/123")).text(), "int");
+    assert.equal((await host.get("/users/abc")).text(), "slug");
+    assert.equal((await host.get("/users/abc/profile")).text(), "alpha-profile");
+    assert.equal((await host.get("/users/123/profile")).status, 404);
+    assert.equal((await host.get("/users/")).status, 404);
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    const users = app.group("/users");
+    users.get("/{id:int}", () => Results.text("ok")).withName("Users.Get");
+    app.get("/files/{file}", (ctx) => Results.text(ctx.urlFor("Users.Get", { id: 7 })))
+        .withName("Files.Get");
+
+    assert.equal(app.urlFor("Users.Get", { id: 123 }, { tab: "profile view" }), "/users/123?tab=profile%20view");
+    assertThrowsMessage(() => app.urlFor("Users.Get", { id: "a/b" }), /must satisfy 'int'/);
+    assertThrowsMessage(() => app.urlFor("Users.Get", {}, undefined), /route parameter 'id'/);
+    assertThrowsMessage(() => app.urlFor("Users.Get", { id: 1, extra: true }), /extra route parameter/);
+    assertThrowsMessage(() => app.urlFor("Users.Missing", {}), /not registered/);
+
+    const host = createTestHost(app);
+    assert.equal((await host.get("/files/readme")).text(), "/users/7");
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
     app.post("/json", (ctx) => Results.json({
         body: ctx.request.json(),
         contentType: ctx.request.contentType,

@@ -38,6 +38,7 @@ services and config arguments when the compiled handler declares them.
 | `ctx.routeName`    | string                | Matched route name, when known                     |
 | `ctx.routePattern` | string                | Matched route pattern, when known                  |
 | `ctx.log`          | `Logger`              | Request logger                                     |
+| `ctx.urlFor`       | function              | Generate a URL for a named route                   |
 | `ctx.user`         | `AuthUser`            | Public-alpha/experimental auth user; anonymous by default and authenticated after JWT/API-key auth succeeds |
 | `ctx.services`     | service scope         | App-host/test-host direct field; compiler-generated wrappers use request scopes for `Service<T>` |
 | `ctx.config`       | `ConfigProvider`      | App-host/test-host direct field; compiled `Config<"KEY">` parameters are materialized by generated wrappers |
@@ -45,9 +46,9 @@ services and config arguments when the compiled handler declares them.
 
 ## `ctx.route`
 
-Each entry corresponds to a `{name}` or `{name:int}` parameter in the
-route pattern. Values are always strings, even when the type tag is
-`:int`.
+Each entry corresponds to a route parameter such as `{name}`, `{name:int}`, or
+`{name:uuid}`. Values are always strings, even when the type tag validates a
+numeric shape.
 
 ```ts
 app.get("/users/{id:int}/comments/{slug}", (ctx) => {
@@ -65,6 +66,10 @@ meaning:
 | --- | --- | --- |
 | `ctx.routeName` | string | Route name when the Plan route has one, otherwise `""` |
 | `ctx.routePattern` | string | Matched route pattern, for example `"/users/{id:int}"` |
+
+Use `ctx.urlFor(name, params?, query?)` to generate an application-relative URL
+for a named route from inside a handler. It follows the same encoding and
+validation rules as `app.urlFor(...)`.
 
 ## `ctx.query`
 
