@@ -2417,7 +2417,8 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
         SlEngineResult result = {0};
         SlDiag diag = {0};
         SlStatus status;
-        if (request.header_count != 0U || request.body.length != 0U) {
+        if (options->once_header_count != 0U || options->once_body != NULL ||
+            options->once_body_file != NULL || options->once_json != NULL) {
             sl_cli_write_cstr(stderr,
                               "sloppy run: --once headers and bodies require static route "
                               "metadata for dynamic fallback routes today\n");

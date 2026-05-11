@@ -88,6 +88,8 @@ static bool sl_package_source_root_from_source(char* buffer, size_t capacity,
 {
     const char* cursor = source_path;
     const char* last_separator = NULL;
+    const char* end = NULL;
+    size_t separator_offset = 0U;
     SlStringBuilder builder = {0};
     SlStr view = {0};
 
@@ -106,7 +108,15 @@ static bool sl_package_source_root_from_source(char* buffer, size_t capacity,
     if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity))) {
         return false;
     }
-    for (cursor = source_path; cursor < last_separator; cursor += 1) {
+    separator_offset = (size_t)(last_separator - source_path);
+    end = last_separator;
+    if (separator_offset == 0U ||
+        (separator_offset == 2U && source_path[1] == ':' &&
+         (source_path[2] == '/' || source_path[2] == '\\')))
+    {
+        end = last_separator + 1;
+    }
+    for (cursor = source_path; cursor < end; cursor += 1) {
         if (!sl_status_is_ok(sl_string_builder_append_char(&builder, *cursor))) {
             return false;
         }
@@ -478,7 +488,17 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
     }
     root = yyjson_doc_get_root(doc);
     assets = yyjson_obj_get(root, "assets");
-    if (assets == NULL || !yyjson_is_arr(assets) || yyjson_arr_size(assets) == 0U) {
+    if (assets == NULL) {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+    if (!yyjson_is_arr(assets)) {
+        yyjson_doc_free(doc);
+        sl_cli_write_cstr(stderr,
+                          "sloppy package: dependency graph assets metadata must be an array\n");
+        return 1;
+    }
+    if (yyjson_arr_size(assets) == 0U) {
         yyjson_doc_free(doc);
         return 0;
     }

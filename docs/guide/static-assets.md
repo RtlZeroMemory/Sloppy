@@ -1,5 +1,7 @@
 # Serve Static Assets
 
+Alpha: `app.useStaticFiles` is an experimental build-time API.
+
 Use `app.useStaticFiles` when an app needs to ship fixed files such as CSS,
 client JavaScript, SVGs, images, or plain text.
 
@@ -55,6 +57,6 @@ and repackage after changing files in `public/`.
 
 - Static assets are a build-time snapshot.
 - Only the documented extensions are served.
+- Each asset must be 1 MiB or smaller in the current alpha.
 - Directory listings, range requests, compression negotiation, upload handling,
   and runtime file watching are not implemented.
-

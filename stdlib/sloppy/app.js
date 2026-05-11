@@ -128,7 +128,7 @@ function validateStaticRoot(root) {
     if (root.startsWith("/") || /^[A-Za-z]:[\\/]/.test(root)) {
         throw new TypeError("Sloppy static files root must be project-relative.");
     }
-    const parts = root.split(/[\\/]+/);
+    const parts = root.split(/[\\/]/);
     if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
         throw new TypeError("Sloppy static files root must not contain empty, '.', or '..' path segments.");
     }

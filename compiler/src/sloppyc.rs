@@ -7809,6 +7809,8 @@ fn static_files_root_supported(root: &str) -> bool {
     include_pattern_is_safe(root) && !root.contains('*') && !root.contains('?')
 }
 
+const STATIC_ASSET_INLINE_MAX_BYTES: u64 = 1024 * 1024;
+
 fn static_file_routes_from_options(
     path: &Path,
     source: &str,
@@ -7880,6 +7882,24 @@ fn static_file_routes_from_options(
                 .with_path(&file)
                 .with_span(span)
             })?;
+        let metadata = fs::metadata(&file).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!("failed to read static asset metadata: {error}"),
+            )
+            .with_path(&file)
+            .with_span(span)
+        })?;
+        if metadata.len() > STATIC_ASSET_INLINE_MAX_BYTES {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!(
+                    "app.useStaticFiles asset exceeds the alpha inline limit of {STATIC_ASSET_INLINE_MAX_BYTES} bytes"
+                ),
+            )
+            .with_path(&file)
+            .with_span(span));
+        }
         let bytes = fs::read(&file).map_err(|error| {
             Diagnostic::new(
                 "SLOPPYC_E_STATIC_FILES",
@@ -16276,7 +16296,7 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     useStaticFiles(options) {
       assertOpen();
       if (options === null || typeof options !== "object" || typeof options.requestPath !== "string" || typeof options.root !== "string") { throw new TypeError("Sloppy app.useStaticFiles requires literal requestPath and root options."); }
-      return app;
+      throw new TypeError("Sloppy app.useStaticFiles is not supported for dynamic fallback routes yet.");
     },
     freeze() { frozen = true; return app; },
     __getRoutes() { return routes.slice(); }

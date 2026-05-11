@@ -38,6 +38,8 @@ per file. Supported extensions are:
 
 Each generated response includes a content type and an `ETag` derived from the
 file bytes. Static routes are also recorded in `deps.graph.json` as assets.
+Each asset must be 1 MiB or smaller in the current alpha because generated
+handlers inline the bytes.
 
 ## Alpha Behavior
 
@@ -49,4 +51,3 @@ you rebuild, and does not expose directory listings.
 carry the source assets they were built from. The generated handlers currently
 embed the file bytes too, which keeps `sloppy run .sloppy/package --once ...`
 working outside the original checkout.
-

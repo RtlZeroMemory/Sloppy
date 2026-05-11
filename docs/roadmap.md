@@ -15,7 +15,7 @@ Current Sloppy includes:
 - `sloppy create`, `build`, `run`, `routes`, `deps`, `capabilities`,
   `doctor`, `audit`, `openapi`, and `package`;
 - HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c;
-- build-time static file routes for supported project assets;
+- experimental build-time static file routes for supported project assets;
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;

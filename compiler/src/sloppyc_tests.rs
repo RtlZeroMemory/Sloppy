@@ -1523,6 +1523,67 @@ export default app;
 }
 
 #[test]
+fn web_static_files_reject_assets_over_alpha_inline_limit() {
+    let root = fixture_temp_dir("web-static-files-large-asset");
+    let src_dir = root.join("src");
+    let public_dir = root.join("public");
+    let input = src_dir.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&src_dir).expect("source directory should be created");
+    fs::create_dir_all(&public_dir).expect("public directory should be created");
+    fs::write(
+        public_dir.join("large.txt"),
+        vec![b'x'; super::STATIC_ASSET_INLINE_MAX_BYTES as usize + 1],
+    )
+    .expect("large asset should write");
+    fs::write(
+        &input,
+        r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.useStaticFiles({ requestPath: "/public", root: "public" });
+
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Web),
+        config_dir: Some(root.clone()),
+        ..CompileOptions::default()
+    };
+    let failure =
+        super::build(&input, &out_dir, &options).expect_err("oversized static asset should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_STATIC_FILES");
+    assert!(failure.diagnostic.message.contains("alpha inline limit"));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
+fn dynamic_web_app_js_fails_fast_for_use_static_files() {
+    let root = fixture_temp_dir("dynamic-web-static-files");
+    fs::create_dir_all(root.join("public")).expect("public directory should be created");
+    fs::write(root.join("public/hello.txt"), "hello").expect("asset should write");
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function pathFor(name) { return `/${name}`; }
+app.mapGet(pathFor("health"), () => Results.text("ok"));
+app.useStaticFiles({ requestPath: "/public", root: "public" });
+export default app;
+"#;
+    let app = extract_temp_input(&root, source).expect("dynamic web app should extract");
+    assert_eq!(app.dynamic_routes.len(), 1);
+    let emitted = super::emit_app_js(&app);
+    assert!(emitted
+        .source
+        .contains("Sloppy app.useStaticFiles is not supported for dynamic fallback routes yet."));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
 fn program_mode_marks_each_runtime_stdlib_subpath() {
     let cases = [
         ("sloppy/fs", "File", "stdlib.fs"),
