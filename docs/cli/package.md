@@ -43,6 +43,8 @@ when you need a separate artifact root.
     app.js
     app.js.map
     deps.graph.json   optional, when dependency graph metadata exists
+    assets/
+      <copied dependency graph asset>   optional
     native/
       <copied ffi library>   optional, when mapped native FFI libraries exist
 ```
@@ -60,7 +62,8 @@ records the app kind (`"web"` or `"program"`) and copied artifact paths:
     "plan": "artifacts/app.plan.json",
     "bundle": "artifacts/app.js",
     "sourceMap": "artifacts/app.js.map",
-    "dependencyGraph": "artifacts/deps.graph.json"
+    "dependencyGraph": "artifacts/deps.graph.json",
+    "assets": "artifacts/assets"
   },
   "native": {
     "libraries": [
@@ -88,6 +91,10 @@ signing, and runtime release packaging are handled by the release scripts under
 `dependencyMode: "bundled"` means compatible dependency modules have been
 emitted into the generated artifacts. Packaged apps do not read the original
 source checkout or `node_modules` at run time for bundled modules.
+
+When `deps.graph.json` records assets, `sloppy package` copies those files into
+`artifacts/assets/`. Static files registered with `app.useStaticFiles` are
+recorded as dependency graph assets.
 
 ## Flags
 

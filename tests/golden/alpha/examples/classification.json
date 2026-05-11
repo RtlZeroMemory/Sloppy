@@ -2,6 +2,13 @@
   "examples": [
     {
       "entry": "app.js",
+      "kind": "web",
+      "name": "auth-api",
+      "reason": "compile and tooling coverage for auth metadata; protected runtime requests require header-capable manual testing",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
       "kind": "program-js",
       "name": "codec-base64-hex",
       "reason": "stdlib codec runtime smoke is V8-gated",

@@ -24,7 +24,7 @@ use serde_json::Value;
 
 use crate::diagnostic::Diagnostic;
 pub(crate) use crate::graph::*;
-use crate::hash::sha256_hex;
+use crate::hash::{sha256_bytes_hex, sha256_hex};
 use crate::parser::{source_type_for_path, ParseContext};
 use crate::plan_emit::{dependency_graph_json, emit_dependency_graph, emit_plan};
 use crate::resolver;
@@ -395,6 +395,7 @@ struct AppState {
     modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
     dynamic_routes: Vec<DynamicRoute>,
+    static_asset_routes: Vec<Route>,
     static_strings: StaticStringEnv,
     service_registrations: Vec<ServiceRegistration>,
     capabilities: Vec<DatabaseCapability>,
@@ -457,6 +458,7 @@ impl AppState {
             modules: BTreeMap::new(),
             routes: Vec::new(),
             dynamic_routes: Vec::new(),
+            static_asset_routes: Vec::new(),
             static_strings: StaticStringEnv::default(),
             service_registrations: Vec::new(),
             capabilities: Vec::new(),
@@ -1377,7 +1379,7 @@ fn apply_declared_capabilities(
 
 #[cfg(test)]
 fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
-    extract_with_metrics(path, source, None)
+    extract_web_with_metrics(path, source, None, None)
 }
 
 fn extract_for_options_with_metrics(
@@ -1387,10 +1389,17 @@ fn extract_for_options_with_metrics(
     mut metrics: Option<&mut CompileMetrics>,
 ) -> Result<ExtractedApp, Diagnostic> {
     match options.kind {
-        Some(ProjectKind::Web) => extract_with_metrics(path, source, metrics),
+        Some(ProjectKind::Web) => {
+            extract_web_with_metrics(path, source, options.config_dir.as_deref(), metrics)
+        }
         Some(ProjectKind::Program) => extract_program_with_metrics(path, source, options, metrics),
         None => {
-            match extract_with_metrics(path, source, metrics.as_deref_mut()) {
+            match extract_web_with_metrics(
+                path,
+                source,
+                options.config_dir.as_deref(),
+                metrics.as_deref_mut(),
+            ) {
                 Ok(app) => Ok(app),
                 Err(web_error) => {
                     if source_has_sloppy_web_import(path, source)?
@@ -1423,12 +1432,13 @@ fn web_error_indicates_missing_web_shape(error: &Diagnostic) -> bool {
     )
 }
 
-fn extract_with_metrics(
+fn extract_web_with_metrics(
     path: &Path,
     source: &str,
+    source_root: Option<&Path>,
     metrics: Option<&mut CompileMetrics>,
 ) -> Result<ExtractedApp, Diagnostic> {
-    let mut graph = ModuleGraph::new(path, None);
+    let mut graph = ModuleGraph::new(path, source_root);
     extract_entry(path, source, &mut graph, metrics)
 }
 
@@ -3802,7 +3812,7 @@ fn extract_entry(
 
     for statement in &parsed.program.body {
         if let Statement::ExpressionStatement(statement) = statement {
-            extract_expression_statement(path, source, &source_name, &mut state, statement)?;
+            extract_expression_statement(path, source, &source_name, graph, &mut state, statement)?;
         }
     }
     if let Some(metrics) = metrics.as_mut() {
@@ -3938,7 +3948,10 @@ fn extract_entry(
         .with_path(path));
     }
 
-    if state.routes.is_empty() && state.dynamic_routes.is_empty() {
+    if state.routes.is_empty()
+        && state.dynamic_routes.is_empty()
+        && state.static_asset_routes.is_empty()
+    {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_ROUTE",
             "app must register at least one route",
@@ -3947,6 +3960,7 @@ fn extract_entry(
     }
 
     let app_graph_start = Instant::now();
+    state.routes.append(&mut state.static_asset_routes);
     append_cors_preflight_routes(path, &mut state.routes)?;
 
     let mut route_keys = BTreeSet::new();
@@ -6085,6 +6099,7 @@ fn extract_expression_statement(
     path: &Path,
     source: &str,
     source_name: &str,
+    graph: &mut ModuleGraph,
     state: &mut AppState,
     statement: &ExpressionStatement<'_>,
 ) -> Result<(), Diagnostic> {
@@ -6124,6 +6139,17 @@ fn extract_expression_statement(
     }
 
     if app_use_cors_call(path, &statement.expression, state)? {
+        return Ok(());
+    }
+
+    if app_use_static_files_call(
+        path,
+        source,
+        source_name,
+        graph,
+        &statement.expression,
+        state,
+    )? {
         return Ok(());
     }
 
@@ -7778,6 +7804,503 @@ fn request_logging_options_from_call(
         }
     }
     Ok(options)
+}
+
+#[derive(Debug, Clone)]
+struct StaticFilesOptions {
+    request_path: String,
+    root: String,
+    max_age_seconds: Option<u64>,
+}
+
+struct StaticFilesRouteContext<'a> {
+    path: &'a Path,
+    source: &'a str,
+    source_name: &'a str,
+    span: Span,
+    middleware: &'a [FrameworkMiddleware],
+    cors: Option<&'a CorsPolicy>,
+}
+
+fn app_use_static_files_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    graph: &mut ModuleGraph,
+    expression: &Expression<'_>,
+    state: &mut AppState,
+) -> Result<bool, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(false);
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(false);
+    };
+    if property != "useStaticFiles" || !state.app_vars.contains(receiver) {
+        return Ok(false);
+    }
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles requires one literal options object",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let options = static_files_options_from_call(path, call)?;
+    let context = StaticFilesRouteContext {
+        path,
+        source,
+        source_name,
+        span: call.span,
+        middleware: &state.middleware,
+        cors: state.cors_policy.as_ref(),
+    };
+    let routes = static_file_routes_from_options(&context, graph, &options)?;
+    state.static_asset_routes.extend(routes);
+    Ok(true)
+}
+
+fn static_files_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<StaticFilesOptions, Diagnostic> {
+    let Some(argument) = call.arguments.first() else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles requires one literal options object",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles options must be a literal object",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+
+    let mut request_path = None;
+    let mut root = None;
+    let mut max_age_seconds = None;
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(static_files_options_diagnostic(path, object.span));
+        };
+        if property.kind != PropertyKind::Init || property.method || property.computed {
+            return Err(static_files_options_diagnostic(path, property.span));
+        }
+        let Some(name) = property_key_name(&property.key) else {
+            return Err(static_files_options_diagnostic(path, property.span));
+        };
+        match name {
+            "requestPath" => {
+                let Expression::StringLiteral(value) = &property.value else {
+                    return Err(static_files_options_diagnostic(path, property.value.span()));
+                };
+                request_path = Some(value.value.as_str().to_string());
+            }
+            "root" => {
+                let Expression::StringLiteral(value) = &property.value else {
+                    return Err(static_files_options_diagnostic(path, property.value.span()));
+                };
+                root = Some(value.value.as_str().to_string());
+            }
+            "cache" => {
+                max_age_seconds = static_files_cache_max_age(path, &property.value)?;
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                    format!("unsupported app.useStaticFiles option '{name}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+
+    let request_path = request_path.ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles options must include requestPath",
+        )
+        .with_path(path)
+        .with_span(object.span)
+    })?;
+    let root = root.ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles options must include root",
+        )
+        .with_path(path)
+        .with_span(object.span)
+    })?;
+
+    if !static_files_request_path_supported(&request_path) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles requestPath must be an absolute static route prefix",
+        )
+        .with_path(path)
+        .with_span(object.span)
+        .with_hint("Use a value like \"/public\" without route parameters or a trailing slash."));
+    }
+    if !static_files_root_supported(&root) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles root must be a safe project-relative directory",
+        )
+        .with_path(path)
+        .with_span(object.span)
+        .with_hint(
+            "Use a relative directory like \"public\"; traversal and absolute paths are rejected.",
+        ));
+    }
+
+    Ok(StaticFilesOptions {
+        request_path,
+        root,
+        max_age_seconds,
+    })
+}
+
+fn static_files_options_diagnostic(path: &Path, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+        "app.useStaticFiles options must use simple literal properties",
+    )
+    .with_path(path)
+    .with_span(span)
+}
+
+fn static_files_cache_max_age(
+    path: &Path,
+    expression: &Expression<'_>,
+) -> Result<Option<u64>, Diagnostic> {
+    let Expression::ObjectExpression(object) = expression else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.useStaticFiles cache must be a literal object",
+        )
+        .with_path(path)
+        .with_span(expression.span()));
+    };
+    let mut max_age_seconds = None;
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(static_files_options_diagnostic(path, object.span));
+        };
+        if property.kind != PropertyKind::Init || property.method || property.computed {
+            return Err(static_files_options_diagnostic(path, property.span));
+        }
+        let Some(name) = property_key_name(&property.key) else {
+            return Err(static_files_options_diagnostic(path, property.span));
+        };
+        match name {
+            "maxAgeSeconds" => {
+                let Expression::NumericLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                        "app.useStaticFiles cache.maxAgeSeconds must be a non-negative integer literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                if value.value < 0.0 || value.value.fract() != 0.0 || value.value > u64::MAX as f64
+                {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                        "app.useStaticFiles cache.maxAgeSeconds must be a non-negative integer literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                }
+                max_age_seconds = Some(value.value as u64);
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                    format!("unsupported app.useStaticFiles cache option '{name}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(max_age_seconds)
+}
+
+fn static_files_request_path_supported(request_path: &str) -> bool {
+    request_path == "/"
+        || (route_pattern_supported(request_path)
+            && !request_path.contains('{')
+            && !request_path.contains('}')
+            && !request_path.ends_with('/'))
+}
+
+fn static_files_root_supported(root: &str) -> bool {
+    include_pattern_is_safe(root) && !root.contains('*') && !root.contains('?')
+}
+
+const STATIC_ASSET_INLINE_MAX_BYTES: u64 = 1024 * 1024;
+
+fn static_file_routes_from_options(
+    context: &StaticFilesRouteContext<'_>,
+    graph: &mut ModuleGraph,
+    options: &StaticFilesOptions,
+) -> Result<Vec<Route>, Diagnostic> {
+    let root = graph.entry_dir.join(&options.root);
+    let canonical_root = fs::canonicalize(&root).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_STATIC_FILES",
+            format!("failed to read app.useStaticFiles root: {error}"),
+        )
+        .with_path(&root)
+        .with_span(context.span)
+    })?;
+    if !canonical_root.is_dir() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_STATIC_FILES",
+            "app.useStaticFiles root must be a directory",
+        )
+        .with_path(&root)
+        .with_span(context.span));
+    }
+    if !canonical_root.starts_with(&graph.entry_dir) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_STATIC_FILES",
+            "app.useStaticFiles root must stay inside the project source root",
+        )
+        .with_path(&root)
+        .with_span(context.span));
+    }
+
+    let mut files = Vec::new();
+    collect_static_asset_files(&canonical_root, &canonical_root, &mut files).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_STATIC_FILES",
+            format!("failed to enumerate app.useStaticFiles assets: {error}"),
+        )
+        .with_path(&canonical_root)
+        .with_span(context.span)
+    })?;
+    if files.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_STATIC_FILES",
+            "app.useStaticFiles root contains no supported static assets",
+        )
+        .with_path(&canonical_root)
+        .with_span(context.span));
+    }
+
+    let mut routes = Vec::new();
+    for file in files {
+        let relative = file.strip_prefix(&canonical_root).map_err(|_| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                "app.useStaticFiles asset escaped the configured root",
+            )
+            .with_path(&file)
+            .with_span(context.span)
+        })?;
+        let route_path =
+            static_asset_route_path(&options.request_path, relative).ok_or_else(|| {
+                Diagnostic::new(
+                    "SLOPPYC_E_STATIC_FILES",
+                    "static asset path cannot be represented as a Sloppy alpha route",
+                )
+                .with_path(&file)
+                .with_span(context.span)
+            })?;
+        let metadata = fs::metadata(&file).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!("failed to read static asset metadata: {error}"),
+            )
+            .with_path(&file)
+            .with_span(context.span)
+        })?;
+        if metadata.len() > STATIC_ASSET_INLINE_MAX_BYTES {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!(
+                    "app.useStaticFiles asset exceeds the alpha inline limit of {STATIC_ASSET_INLINE_MAX_BYTES} bytes"
+                ),
+            )
+            .with_path(&file)
+            .with_span(context.span));
+        }
+        let bytes = fs::read(&file).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!("failed to read static asset: {error}"),
+            )
+            .with_path(&file)
+            .with_span(context.span)
+        })?;
+        let content_type = static_asset_content_type(&file).ok_or_else(|| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                "static asset content type is not supported",
+            )
+            .with_path(&file)
+            .with_span(context.span)
+        })?;
+        graph.add_dependency_asset(
+            &file,
+            format!(
+                "app.useStaticFiles:{}:{}",
+                options.request_path, options.root
+            ),
+        );
+        routes.push(static_asset_route(
+            context,
+            route_path,
+            content_type,
+            &bytes,
+            options.max_age_seconds,
+        ));
+    }
+    Ok(routes)
+}
+
+fn collect_static_asset_files(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), std::io::Error> {
+    let mut entries = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_static_asset_files(root, &path, files)?;
+        } else if file_type.is_file() && static_asset_content_type(&path).is_some() {
+            files.push(path);
+        }
+    }
+    files.sort_by_key(|path| resolver::normalized_artifact_id(path, root));
+    Ok(())
+}
+
+fn static_asset_route_path(request_path: &str, relative: &Path) -> Option<String> {
+    let relative = resolver::normalized_artifact_id(relative, Path::new(""));
+    if relative.is_empty()
+        || relative.starts_with('/')
+        || relative.contains("//")
+        || relative.split('/').any(|segment| {
+            segment.is_empty()
+                || segment == "."
+                || segment == ".."
+                || segment.contains('{')
+                || segment.contains('}')
+        })
+    {
+        return None;
+    }
+    let path = if request_path == "/" {
+        format!("/{relative}")
+    } else {
+        format!("{request_path}/{relative}")
+    };
+    route_pattern_supported(&path).then_some(path)
+}
+
+fn static_asset_content_type(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "txt" => Some("text/plain; charset=utf-8"),
+        "json" => Some("application/json; charset=utf-8"),
+        "css" => Some("text/css; charset=utf-8"),
+        "js" | "mjs" => Some("text/javascript; charset=utf-8"),
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        _ => None,
+    }
+}
+
+fn static_asset_route(
+    context: &StaticFilesRouteContext<'_>,
+    route_path: String,
+    content_type: &str,
+    bytes: &[u8],
+    max_age_seconds: Option<u64>,
+) -> Route {
+    let headers = static_asset_headers(bytes, max_age_seconds);
+    let byte_array = bytes
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let handler_source = format!(
+        "function() {{ return Results.bytes(new Uint8Array([{byte_array}]), {{ contentType: {}, headers: {} }}); }}",
+        json_string(content_type),
+        headers,
+    );
+    let handler_source =
+        wrap_handler_with_framework_pipeline(&handler_source, context.middleware, context.cors);
+    Route {
+        method: "GET",
+        framework_path: None,
+        pattern: route_path,
+        name: None,
+        tags: vec!["static".to_string()],
+        health: None,
+        middleware: route_middleware_metadata(context.middleware),
+        auth: None,
+        cors: context.cors.map(cors_policy_metadata),
+        cors_preflight: false,
+        span: context.span,
+        source_path: context.path.to_path_buf(),
+        source_name: context.source_name.to_string(),
+        source: context.source.to_string(),
+        module: None,
+        handler: Handler {
+            source: source_slice(context.source, context.span)
+                .unwrap_or_else(|| "app.useStaticFiles()".to_string()),
+            emitted_source: handler_source,
+            span: context.span,
+            requires_results_import: false,
+            is_async: !context.middleware.is_empty() || context.cors.is_some(),
+            runtime_deferred: false,
+            source_name: context.source_name.to_string(),
+            source_text: context.source.to_string(),
+            source_map_line_offset: 0,
+            source_map_column_offset: 0,
+            bindings: Vec::new(),
+            response: Some(ResponseMetadata {
+                helper: "bytes".to_string(),
+                status: 200,
+                kind: "bytes".to_string(),
+                body_schema: None,
+                source_name: Some(context.source_name.to_string()),
+                source_text: Some(context.source.to_string()),
+                span: Some(context.span),
+                partial: false,
+            }),
+            responses: Vec::new(),
+            effects: Vec::new(),
+        },
+    }
+}
+
+fn static_asset_headers(bytes: &[u8], max_age_seconds: Option<u64>) -> String {
+    let mut headers = serde_json::Map::new();
+    headers.insert(
+        "ETag".to_string(),
+        json!(format!("\"{}\"", sha256_bytes_hex(bytes))),
+    );
+    if let Some(max_age_seconds) = max_age_seconds {
+        headers.insert(
+            "Cache-Control".to_string(),
+            json!(format!("public, max-age={max_age_seconds}")),
+        );
+    }
+    Value::Object(headers).to_string()
 }
 
 fn app_use_middleware_call(
@@ -17523,6 +18046,11 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     mapPut(pattern, handler) { return register("PUT", pattern, handler); },
     mapPatch(pattern, handler) { return register("PATCH", pattern, handler); },
     mapDelete(pattern, handler) { return register("DELETE", pattern, handler); },
+    useStaticFiles(options) {
+      assertOpen();
+      if (options === null || typeof options !== "object" || typeof options.requestPath !== "string" || typeof options.root !== "string") { throw new TypeError("Sloppy app.useStaticFiles requires literal requestPath and root options."); }
+      throw new TypeError("Sloppy app.useStaticFiles is not supported for dynamic fallback routes yet.");
+    },
     freeze() { frozen = true; return app; },
     __getRoutes() { return routes.slice(); }
   };

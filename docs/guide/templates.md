@@ -1,31 +1,38 @@
 # Templates
 
-Sloppy templates are starting points for source-input projects.
+`sloppy create` copies a local starter template. Templates are intentionally
+small: they show supported alpha APIs without implying Node or production
+framework compatibility.
 
 ```sh
 sloppy create my-api --template api
+cd my-api
+sloppy build
+sloppy run .sloppy --once GET /health
 ```
 
-Current public templates are:
+## Built-In Templates
 
 | Template | Use it for |
 | --- | --- |
-| `api` | SQLite-backed API starter with routes, services, provider config, migrations, health, and packaging flow. |
 | `minimal-api` | Smallest web API starter. |
+| `api` | SQLite-backed API starter with routes, services, provider config, migrations, health, static files, and packaging flow. |
 | `program` | Program Mode starter. |
 | `cli` | CLI-style Program Mode starter. |
-| `package-api` | API starter that uses a compatible local pure-JavaScript package. |
+| `package-api` | API starter that uses a compatible local pure-JavaScript package and exercises package/dependency artifact output. |
 | `node-compat` | Program starter using supported Node compatibility shims. |
 
 ## API Template
 
 The `api` template is the default alpha starter for a Sloppy Web Mode backend.
+Useful smoke commands:
 
 ```sh
-sloppy create api my-api
-cd my-api
-sloppy build
 sloppy run .sloppy --once GET /health
+sloppy run .sloppy --once GET /public/hello.txt
+sloppy run .sloppy --once POST /users --json "{\"name\":\"Ada Lovelace\",\"email\":\"ada@example.test\"}"
+sloppy package
+sloppy run .sloppy/package --once GET /public/hello.txt
 ```
 
 The `api` template's `POST /users` route uses `Schema` validation:
@@ -74,3 +81,8 @@ sloppy db migrate .sloppy --provider main
 
 Package output includes the migration file and migration manifest metadata, so
 the same command shape works against `.sloppy/package`.
+
+## Other Templates
+
+Use `program` for route-free Program Mode, `cli` for command-style Program
+Mode, and `node-compat` for explicit partial Node-compatibility experiments.

@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:e0627bec256a37a2063fd83899c966a5302ecc563d89a1f545222d9dbdfa18fa",
+    "hash": "sha256:a7729fb0afa8d03d30d4209bc204b08a602daf8a0761029e7940f6835ef87027",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -645,7 +645,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:aa29aca42054bcaf39505bd0fdad0d863e7db748d629b93501c052acc4f4bcc9",
+    "hash": "sha256:6e30835b98cad356db3d7faa17f870bcf51a7b834a3a2319a88376b590668851",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

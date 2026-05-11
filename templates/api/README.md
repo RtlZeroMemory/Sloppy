@@ -13,6 +13,7 @@ endpoints, and the app package flow.
 - `migrations/` contains first-party SQLite schema migration files.
 - `src/db/` contains runtime migration and repository helpers.
 - `src/models/` contains request and response shapes.
+- `public/` contains static assets served under `/public`.
 - `appsettings*.json` contains runtime configuration.
 - `data/` is where the development SQLite file is created.
 
@@ -32,6 +33,8 @@ sloppy audit .sloppy
 ```sh
 sloppy run .sloppy --once GET /health
 sloppy run .sloppy --once GET /users
+sloppy run .sloppy --once GET /public/hello.txt
+sloppy run .sloppy --once POST /users --json "{\"name\":\"Katherine Johnson\",\"email\":\"katherine@example.test\"}"
 printf "name=Katherine Johnson&email=katherine@example.test" > user.form
 sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file user.form --once POST /users
 ```
@@ -40,7 +43,6 @@ sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --
 Set-Content -Path user.form -Value "name=Katherine Johnson&email=katherine@example.test" -NoNewline
 sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --body-file user.form --once POST /users
 ```
-
 You can also run the development server and send requests with your HTTP
 client:
 
@@ -63,6 +65,7 @@ sloppy package
 sloppy db migrate .sloppy/package --provider main
 sloppy run .sloppy/package --once GET /health
 sloppy run .sloppy/package --once GET /users
+sloppy run .sloppy/package --once GET /public/hello.txt
 ```
 
 The alpha package format contains the compiled Sloppy artifacts. The SQLite

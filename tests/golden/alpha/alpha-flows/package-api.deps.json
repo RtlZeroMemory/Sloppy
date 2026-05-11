@@ -47,7 +47,7 @@
         "resolvedImports": [
           {
             "kind": "package",
-            "resolvedId": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
+            "resolvedId": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
             "specifier": "validator-lite"
           }
         ],
@@ -56,22 +56,22 @@
       {
         "dynamicImports": [],
         "format": "esm",
-        "id": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
+        "id": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
         "imports": [],
         "includedBy": "routes/users.ts",
         "package": "validator-lite",
         "resolvedImports": [],
-        "source": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js"
+        "source": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js"
       }
     ],
     "nodeBuiltins": [],
     "packages": [
       {
-        "entry": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
+        "entry": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/index.js",
         "format": "esm",
         "name": "validator-lite",
-        "packageJson": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/package.json",
-        "root": "//?/<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite",
+        "packageJson": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite/package.json",
+        "root": "<repoRoot>/artifacts/alpha-proof/work/alpha-flows/flow-package-api/fixtures/validator-lite",
         "source": "installed",
         "version": "0.0.0"
       }
