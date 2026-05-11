@@ -55,8 +55,11 @@ function isProblemDetailsDescriptor(value) {
         (value.__sloppyProblemDetails === true || value.__sloppyErrorPolicy === true);
 }
 
-function isConfigReference(value) {
-    return isPlainObject(value) && value.__sloppyConfigReference === true && typeof value.key === "string";
+function isBooleanConfigReference(value) {
+    return isPlainObject(value) &&
+        value.__sloppyConfigReference === true &&
+        value.type === "boolean" &&
+        typeof value.key === "string";
 }
 
 function resolveBooleanOption(value, config, fallback, subject) {
@@ -66,7 +69,7 @@ function resolveBooleanOption(value, config, fallback, subject) {
     if (typeof value === "boolean") {
         return value;
     }
-    if (isConfigReference(value)) {
+    if (isBooleanConfigReference(value)) {
         const defaultValue = value.default === undefined ? fallback : value.default;
         return config.getBool(value.key, defaultValue);
     }
@@ -92,6 +95,10 @@ function normalizeErrorPolicyOptions(options, config) {
         throw new TypeError("Sloppy error detail policy must be never, development, or always.");
     }
 
+    if (options?.missingRoute !== undefined && typeof options.missingRoute !== "boolean") {
+        throw new TypeError("Sloppy app.useErrors missingRoute must be a boolean when provided.");
+    }
+
     const maxBodyBytes = options?.maxBodyBytes ?? DEFAULT_MAX_ERROR_BODY_BYTES;
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0) {
         throw new TypeError("Sloppy app.useErrors maxBodyBytes must be a non-negative integer.");
@@ -99,7 +106,7 @@ function normalizeErrorPolicyOptions(options, config) {
 
     return Object.freeze({
         detail,
-        missingRoute: options?.missingRoute !== false,
+        missingRoute: options?.missingRoute ?? true,
         maxBodyBytes,
     });
 }
@@ -223,7 +230,21 @@ function errorPolicyResult(error, context, policyState, config) {
     if (isValidationError(error)) {
         return validationProblemResult(error, context);
     }
-    const mapped = mappedErrorResult(error, context, policyState);
+    let mapped;
+    try {
+        mapped = mappedErrorResult(error, context, policyState);
+    } catch (mapperError) {
+        logErrorOnce(context, mapperError, 500, "SLOPPY_E_HANDLER_ERROR");
+        return problemResult(
+            500,
+            "Internal Server Error",
+            "SLOPPY_E_HANDLER_ERROR",
+            context,
+            mapperError,
+            policyState.policy,
+            config,
+        );
+    }
     if (mapped !== undefined) {
         const status = Number.isInteger(mapped.status) ? mapped.status : 500;
         logErrorOnce(context, error, status, mapped.body?.code ?? codeForStatus(status));

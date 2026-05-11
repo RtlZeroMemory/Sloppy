@@ -8,6 +8,8 @@ import { Config, Results, Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 
+class NotFoundError extends Error {}
+
 app.useErrors({
   includeDetails: Config.boolean("Errors:IncludeDetails", false),
 });

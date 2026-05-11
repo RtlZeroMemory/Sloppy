@@ -88,13 +88,9 @@ function invokeMiddlewarePipeline(context, middleware, terminal) {
             }
 
             nextCalled = true;
-            try {
-                const downstream = dispatch(nextIndex + 1);
-                downstreamPromise = Promise.resolve(downstream);
-                return downstream;
-            } catch (error) {
-                throw error;
-            }
+            const downstream = dispatch(nextIndex + 1);
+            downstreamPromise = Promise.resolve(downstream);
+            return downstream;
         }
 
         const middlewareReturn = current(context, next);

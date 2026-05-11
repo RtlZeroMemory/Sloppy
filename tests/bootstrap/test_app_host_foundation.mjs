@@ -2577,10 +2577,16 @@ async function flushMicrotasks(count = 6) {
         type: "boolean",
         value: "[redacted]",
     });
-    assertThrowsMessage(() => Config.boolean("", false), /non-empty/);
+    assertThrowsMessage(() => Config.boolean("", false), /Config\.boolean key/);
     assertThrowsMessage(() => Config.boolean("Errors:IncludeDetails", "yes"), /fallback/);
+    assertThrowsMessage(
+        () => Sloppy.create().useErrors({ includeDetails: Config.required("Errors:IncludeDetails") }),
+        /Config\.boolean reference/,
+    );
+    assertThrowsMessage(() => Sloppy.create().useErrors({ missingRoute: "false" }), /missingRoute/);
 
     class NotFoundError extends Error {}
+    class BadMapperError extends Error {}
     const builder = Sloppy.createBuilder();
     builder.config.addObject({ Errors: { IncludeDetails: true } });
     const sink = builder.logging.addMemorySink();
@@ -2605,6 +2611,12 @@ async function flushMicrotasks(count = 6) {
     });
     app.get("/mapped", () => {
         throw new NotFoundError("missing mapped record");
+    });
+    app.mapError(BadMapperError, () => {
+        throw new Error("mapper failed");
+    });
+    app.get("/bad-mapper", () => {
+        throw new BadMapperError("bad mapper source");
     });
     app.post("/validated", async (ctx) => {
         return Results.ok({ value: await ctx.body.validate(schema.object({ name: schema.string().min(3) })) });
@@ -2640,6 +2652,16 @@ async function flushMicrotasks(count = 6) {
         requestId: "req-errors",
     });
 
+    const badMapper = await host.get("/bad-mapper");
+    assert.equal(badMapper.status, 500);
+    assert.deepEqual(await badMapper.json(), {
+        status: 500,
+        title: "Internal Server Error",
+        code: "SLOPPY_E_HANDLER_ERROR",
+        requestId: "req-errors",
+        detail: "mapper failed",
+    });
+
     const validation = await host.post("/validated", { json: { name: "Al" } });
     assert.equal(validation.status, 400);
     assert.equal((await validation.json()).code, "SLOPPY_E_VALIDATION_FAILED");
@@ -2672,7 +2694,18 @@ async function flushMicrotasks(count = 6) {
     const providerText = await provider.text();
     assert.equal(providerText.includes("password=secret"), false);
     assert.equal(JSON.stringify(sink.entries()).includes("password=secret"), false);
-    assert.equal(sink.entries().filter((entry) => entry.message === "request failed").length, 3);
+    assert.equal(sink.entries().filter((entry) => entry.message === "request failed").length, 4);
+    await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.useErrors({ missingRoute: false });
+    const host = createTestHost(app);
+    const response = await host.get("/missing");
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(await response.text(), "Not Found\n");
     await host.close();
 }
 

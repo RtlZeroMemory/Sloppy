@@ -811,7 +811,9 @@ function createTestHost(app) {
             if (match.route === undefined) {
                 return match.methodMismatch
                     ? responseFromText(405, "Method Not Allowed\n")
-                    : responseFromErrorStatus(app, 404, undefined, "Not Found\n");
+                    : policy?.missingRoute === true
+                        ? responseFromErrorStatus(app, 404, undefined, "Not Found\n")
+                        : responseFromText(404, "Not Found\n");
             }
 
             const bodyKind = bodyKindForRequest(headers, bodyBytes);
