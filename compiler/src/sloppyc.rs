@@ -7619,8 +7619,16 @@ fn app_use_static_files_call(
         .with_span(call.span));
     }
     let options = static_files_options_from_call(path, call)?;
-    let routes =
-        static_file_routes_from_options(path, source, source_name, graph, call.span, &options)?;
+    let routes = static_file_routes_from_options(
+        path,
+        source,
+        source_name,
+        graph,
+        call.span,
+        &options,
+        &state.middleware,
+        state.cors_policy.as_ref(),
+    )?;
     state.static_asset_routes.extend(routes);
     Ok(true)
 }
@@ -7818,6 +7826,8 @@ fn static_file_routes_from_options(
     graph: &mut ModuleGraph,
     span: Span,
     options: &StaticFilesOptions,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
 ) -> Result<Vec<Route>, Diagnostic> {
     let root = graph.entry_dir.join(&options.root);
     let canonical_root = fs::canonicalize(&root).map_err(|error| {
@@ -7932,6 +7942,8 @@ fn static_file_routes_from_options(
             content_type,
             &bytes,
             options.max_age_seconds,
+            middleware,
+            cors,
         ));
     }
     Ok(routes)
@@ -8002,6 +8014,8 @@ fn static_asset_route(
     content_type: &str,
     bytes: &[u8],
     max_age_seconds: Option<u64>,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
 ) -> Route {
     let headers = static_asset_headers(bytes, max_age_seconds);
     let byte_array = bytes
@@ -8014,6 +8028,7 @@ fn static_asset_route(
         json_string(content_type),
         headers,
     );
+    let handler_source = wrap_handler_with_framework_pipeline(&handler_source, middleware, cors);
     Route {
         method: "GET",
         framework_path: None,
@@ -8021,8 +8036,8 @@ fn static_asset_route(
         name: None,
         tags: vec!["static".to_string()],
         health: None,
-        middleware: Vec::new(),
-        cors: None,
+        middleware: route_middleware_metadata(middleware),
+        cors: cors.map(cors_policy_metadata),
         cors_preflight: false,
         span,
         source_path: path.to_path_buf(),
@@ -8035,7 +8050,7 @@ fn static_asset_route(
             emitted_source: handler_source,
             span,
             requires_results_import: false,
-            is_async: false,
+            is_async: !middleware.is_empty() || cors.is_some(),
             runtime_deferred: false,
             source_name: source_name.to_string(),
             source_text: source.to_string(),

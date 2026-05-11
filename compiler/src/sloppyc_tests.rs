@@ -1464,6 +1464,12 @@ fn web_static_files_emit_routes_and_dependency_assets_from_config_root() {
         r#"import { Sloppy } from "sloppy";
 
 const app = Sloppy.create();
+app.use((ctx, next) => next());
+app.useCors({
+  origins: ["https://app.example.com"],
+  methods: ["GET"],
+  headers: ["x-demo"]
+});
 app.useStaticFiles({
   requestPath: "/public",
   root: "public",
@@ -1493,12 +1499,32 @@ export default app;
             .unwrap()
             .iter()
             .any(|tag| tag == "static")));
+    let static_route = routes
+        .iter()
+        .find(|route| route["method"] == "GET" && route["pattern"] == "/public/hello.txt")
+        .expect("static route should exist");
+    assert_eq!(
+        static_route["middleware"]
+            .as_array()
+            .expect("static route should carry middleware")
+            .len(),
+        1
+    );
+    assert_eq!(
+        static_route["cors"]["origins"],
+        serde_json::json!(["https://app.example.com"])
+    );
+    assert!(routes.iter().any(|route| route["method"] == "OPTIONS"
+        && route["pattern"] == "/public/hello.txt"
+        && route["cors"]["preflight"] == true));
     assert!(routes
         .iter()
         .any(|route| route["method"] == "GET" && route["pattern"] == "/public/app.js"));
 
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app js should emit");
     assert!(app_js.contains("Results.bytes(new Uint8Array(["));
+    assert!(app_js.contains("__sloppy_run_middleware"));
+    assert!(app_js.contains("__sloppy_cors_preflight"));
     assert!(app_js.contains("\"Cache-Control\":\"public, max-age=60\""));
     assert!(app_js.contains("\"ETag\":\"\\\"sha256:"));
 
