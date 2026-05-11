@@ -30,13 +30,46 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
-import { Results } from "./results.js";
+import { normalizeJsonOptions, Results } from "./results.js";
 import { isValidationError, validationProblem } from "./schema.js";
 
 const DEFAULT_HEALTH_PATH = "/health";
 const DEFAULT_LIVENESS_PATH = "/health/live";
 const DEFAULT_READINESS_PATH = "/health/ready";
 const DEFAULT_MAX_ERROR_BODY_BYTES = 1024 * 1024;
+const DEFAULT_CONTENT_NEGOTIATION = Object.freeze({
+    strictAccept: false,
+});
+
+function normalizeContentNegotiationOptions(options = undefined) {
+    if (options === undefined) {
+        return DEFAULT_CONTENT_NEGOTIATION;
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy content negotiation options must be a plain object.");
+    }
+    const strictAccept = options.strictAccept ?? DEFAULT_CONTENT_NEGOTIATION.strictAccept;
+    if (typeof strictAccept !== "boolean") {
+        throw new TypeError("Sloppy content negotiation strictAccept must be a boolean.");
+    }
+    return Object.freeze({ strictAccept });
+}
+
+function normalizeAppOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            json: normalizeJsonOptions(),
+            contentNegotiation: DEFAULT_CONTENT_NEGOTIATION,
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy.create options must be a plain object.");
+    }
+    return Object.freeze({
+        json: normalizeJsonOptions(options.json),
+        contentNegotiation: normalizeContentNegotiationOptions(options.contentNegotiation),
+    });
+}
 
 function validateProviderDescriptor(provider) {
     if (!isPlainObject(provider) || provider.__sloppyProvider !== true) {
@@ -528,6 +561,8 @@ function createApp(host) {
         policy: null,
         mappings: [],
     };
+    let jsonOptions = host.options.json;
+    let contentNegotiation = host.options.contentNegotiation;
     const authState = createAuthState();
     const routeHost = {
         ...host,
@@ -649,6 +684,30 @@ function createApp(host) {
         useStaticFiles(options) {
             assertAppMutable();
             validateStaticFilesOptions(options);
+            return app;
+        },
+
+        useJson(options) {
+            assertAppMutable();
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy JSON options must be a plain object.");
+            }
+            jsonOptions = normalizeJsonOptions({
+                ...jsonOptions,
+                ...(options ?? {}),
+            });
+            return app;
+        },
+
+        useContentNegotiation(options) {
+            assertAppMutable();
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy content negotiation options must be a plain object.");
+            }
+            contentNegotiation = normalizeContentNegotiationOptions({
+                ...contentNegotiation,
+                ...(options ?? {}),
+            });
             return app;
         },
 
@@ -957,6 +1016,13 @@ function createApp(host) {
             return standardProblemResult(status, context, errorPolicyState, host.config);
         },
 
+        __getSerializationOptions() {
+            return Object.freeze({
+                json: jsonOptions,
+                contentNegotiation,
+            });
+        },
+
         __runInModule(moduleName, callback) {
             assertAppMutable();
 
@@ -977,6 +1043,8 @@ function createApp(host) {
 
 
 function createBuilder() {
+    const options = arguments[0];
+    const appOptions = normalizeAppOptions(options);
     const guard = createMutationGuard("builder");
     const config = createConfigBuilder(guard);
     const logging = createLoggingBuilder(guard);
@@ -1042,6 +1110,7 @@ function createBuilder() {
                 capabilities: createCapabilityProvider(capabilitySnapshot),
                 services: createServiceProvider(serviceSnapshot, createCapabilityProvider(capabilitySnapshot)),
                 moduleDebugRef,
+                options: appOptions,
             }));
 
             for (const state of orderedModules) {
@@ -1066,7 +1135,8 @@ function createBuilder() {
 }
 
 function create() {
-    return createBuilder().build();
+    const options = arguments[0];
+    return createBuilder(options).build();
 }
 
 export const Sloppy = Object.freeze({

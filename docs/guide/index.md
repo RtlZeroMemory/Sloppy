@@ -10,6 +10,7 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [Native FFI](native-ffi.md) — typed, Plan-visible native C ABI calls
 - [TypeScript support](typescript.md) — what the compiler accepts today, what it rejects
 - [Validation](validation.md) — validate JSON request bodies with `Schema`
+- [Content negotiation](content-negotiation.md) — JSON policy, request `Content-Type`, `Accept`, and response media types
 - [Templates](templates.md) — use the built-in project templates
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch

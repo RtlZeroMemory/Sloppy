@@ -110,9 +110,14 @@ app.post("/users", async (ctx) => {
 Invalid JSON and schema failures produce `400 application/problem+json`
 validation problems in the app host.
 
-JSON bodies must declare `application/json` or `application/*+json`. URL-encoded
-forms must declare `application/x-www-form-urlencoded`. Multipart bodies must
-declare `multipart/form-data` with a `boundary` parameter.
+JSON bodies must declare `application/json` or `application/*+json`;
+`ctx.request.json()` and `ctx.body.json()` are unavailable for any other media
+type. URL-encoded forms must declare `application/x-www-form-urlencoded`.
+Multipart bodies must declare `multipart/form-data` with a `boundary`
+parameter. Unsupported request body media types fail with `415 Unsupported
+Media Type` before the handler runs. `request.text()` is the escape hatch for a
+body that has already passed the runtime media-type classifier; for application
+input, prefer `text/plain`.
 
 `request.form()` returns an object with:
 

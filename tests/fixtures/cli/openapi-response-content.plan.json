@@ -47,6 +47,11 @@
       "id": 6,
       "exportName": "__sloppy_handler_6",
       "displayName": "Responses.Empty"
+    },
+    {
+      "id": 7,
+      "exportName": "__sloppy_handler_7",
+      "displayName": "Responses.Stream"
     }
   ],
   "routes": [
@@ -135,6 +140,21 @@
         "kind": "empty",
         "helper": "noContent",
         "status": 204
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/stream",
+      "handlerId": 7,
+      "name": "Responses.Stream",
+      "response": {
+        "kind": "stream",
+        "helper": "stream",
+        "status": 200
       },
       "completeness": {
         "status": "complete",

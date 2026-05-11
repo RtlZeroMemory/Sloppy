@@ -70,6 +70,18 @@
         }
       }
     },
+    "/stream": {
+      "get": {
+        "operationId": "Responses.Stream",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "stream", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } }
+        }
+      }
+    },
     "/text": {
       "get": {
         "operationId": "Responses.Text",

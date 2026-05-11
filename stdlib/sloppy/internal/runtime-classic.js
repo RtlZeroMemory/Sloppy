@@ -36,6 +36,187 @@
         return prototype === Object.prototype || prototype === null;
     }
 
+    const DEFAULT_JSON_OPTIONS = Object.freeze({
+        casing: "preserve",
+        includeNulls: true,
+        dateFormat: "iso8601",
+        bigint: "string",
+        bytes: "base64",
+    });
+
+    function normalizeJsonOptions(options = undefined) {
+        if (options === undefined) {
+            return DEFAULT_JSON_OPTIONS;
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy JSON options must be a plain object.");
+        }
+        const normalized = {
+            casing: options.casing !== undefined
+                ? options.casing
+                : DEFAULT_JSON_OPTIONS.casing,
+            includeNulls: options.includeNulls !== undefined
+                ? options.includeNulls
+                : DEFAULT_JSON_OPTIONS.includeNulls,
+            dateFormat: options.dateFormat !== undefined
+                ? options.dateFormat
+                : DEFAULT_JSON_OPTIONS.dateFormat,
+            bigint: options.bigint !== undefined
+                ? options.bigint
+                : DEFAULT_JSON_OPTIONS.bigint,
+            bytes: options.bytes !== undefined
+                ? options.bytes
+                : DEFAULT_JSON_OPTIONS.bytes,
+        };
+        if (normalized.casing !== "preserve" && normalized.casing !== "camelCase") {
+            throw new TypeError("Sloppy JSON casing must be preserve or camelCase.");
+        }
+        if (typeof normalized.includeNulls !== "boolean") {
+            throw new TypeError("Sloppy JSON includeNulls must be a boolean.");
+        }
+        if (normalized.dateFormat !== "iso8601") {
+            throw new TypeError("Sloppy JSON dateFormat currently supports iso8601.");
+        }
+        if (normalized.bigint !== "string" && normalized.bigint !== "error") {
+            throw new TypeError("Sloppy JSON bigint must be string or error.");
+        }
+        if (normalized.bytes !== "base64" && normalized.bytes !== "array") {
+            throw new TypeError("Sloppy JSON bytes must be base64 or array.");
+        }
+        return Object.freeze(normalized);
+    }
+
+    function jsonKey(key, options) {
+        return options.casing === "camelCase"
+            ? key.replace(/[-_]+([A-Za-z0-9])/gu, (_, ch) => ch.toUpperCase())
+            : key;
+    }
+
+    function base64Encode(bytes) {
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let output = "";
+        for (let index = 0; index < bytes.byteLength; index += 3) {
+            const a = bytes[index];
+            const b = index + 1 < bytes.byteLength ? bytes[index + 1] : 0;
+            const c = index + 2 < bytes.byteLength ? bytes[index + 2] : 0;
+            const combined = (a << 16) | (b << 8) | c;
+            output += alphabet[(combined >> 18) & 63];
+            output += alphabet[(combined >> 12) & 63];
+            output += index + 1 < bytes.byteLength ? alphabet[(combined >> 6) & 63] : "=";
+            output += index + 2 < bytes.byteLength ? alphabet[combined & 63] : "=";
+        }
+        return output;
+    }
+
+    function bytesView(value) {
+        if (value instanceof Uint8Array) {
+            return new Uint8Array(value);
+        }
+        if (value instanceof ArrayBuffer) {
+            return new Uint8Array(value.slice(0));
+        }
+        if (ArrayBuffer.isView(value)) {
+            const storage = value["buf" + "fer"];
+            return new Uint8Array(storage.slice(value.byteOffset, value.byteOffset + value.byteLength));
+        }
+        return undefined;
+    }
+
+    function defineJsonProperty(output, key, value) {
+        Object.defineProperty(output, key, {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+        });
+    }
+
+    function normalizeJsonValue(value, options, seen, path) {
+        if (value === undefined) {
+            return undefined;
+        }
+        if (typeof value === "function" || typeof value === "symbol") {
+            throw new TypeError(`Sloppy JSON cannot serialize ${typeof value} at ${path}.`);
+        }
+        if (value === null || typeof value === "string" || typeof value === "boolean") {
+            return value;
+        }
+        if (typeof value === "number") {
+            if (!Number.isFinite(value)) {
+                throw new TypeError(`Sloppy JSON numbers must be finite at ${path}.`);
+            }
+            return value;
+        }
+        if (typeof value === "bigint") {
+            if (options.bigint === "error") {
+                throw new TypeError(`Sloppy JSON cannot serialize BigInt at ${path}.`);
+            }
+            return value.toString();
+        }
+        if (value instanceof Date) {
+            if (!Number.isFinite(value.getTime())) {
+                throw new TypeError(`Sloppy JSON cannot serialize invalid Date at ${path}.`);
+            }
+            return value.toISOString();
+        }
+        const bytes = bytesView(value);
+        if (bytes !== undefined) {
+            return options.bytes === "array" ? Object.freeze(Array.from(bytes)) : base64Encode(bytes);
+        }
+        if (value !== null && typeof value === "object") {
+            if (seen.has(value)) {
+                throw new TypeError(`Sloppy JSON cannot serialize circular reference at ${path}.`);
+            }
+            seen.add(value);
+            try {
+                if (Array.isArray(value)) {
+                    return Object.freeze(value.map((item, index) => {
+                        const nested = normalizeJsonValue(item, options, seen, `${path}[${index}]`);
+                        return nested === undefined ? null : nested;
+                    }));
+                }
+                const output = {};
+                if (value instanceof Error) {
+                    defineJsonProperty(
+                        output,
+                        "name",
+                        typeof value.name === "string" && value.name.length > 0 ? value.name : "Error",
+                    );
+                    defineJsonProperty(output, "message", String(value.message ?? ""));
+                }
+                for (const [key, nested] of Object.entries(value)) {
+                    if (value instanceof Error && (key === "name" || key === "message" || key === "stack")) {
+                        continue;
+                    }
+                    const normalized = normalizeJsonValue(nested, options, seen, `${path}.${key}`);
+                    if (normalized === undefined || (normalized === null && !options.includeNulls)) {
+                        continue;
+                    }
+                    defineJsonProperty(output, jsonKey(key, options), normalized);
+                }
+                return Object.freeze(output);
+            } finally {
+                seen.delete(value);
+            }
+        }
+        throw new TypeError(`Sloppy JSON cannot serialize ${typeof value} at ${path}.`);
+    }
+
+    function normalizeJsonBody(value, options = undefined) {
+        if (value === undefined) {
+            return null;
+        }
+        return normalizeJsonValue(value, normalizeJsonOptions(options), new Set(), "$");
+    }
+
+    function normalizeJsonDescriptorBody(value, options = undefined) {
+        return value === undefined ? undefined : normalizeJsonBody(value, options);
+    }
+
+    function serializeJson(value, options = undefined) {
+        return JSON.stringify(normalizeJsonBody(value, options));
+    }
+
     const DB_VALUE_MARKER = Symbol("sloppyDbValue");
     const DB_BRIDGE_VALUE_MARKER = "__sloppyDbValue";
     const DB_RESULT_MODES = Object.freeze({
@@ -351,7 +532,7 @@
         let jsonText;
 
         try {
-            jsonText = body === undefined ? "null" : JSON.stringify(body);
+            jsonText = serializeJson(body);
         } catch {
             return undefined;
         }
@@ -785,10 +966,11 @@ Operation:
             return createResult("text", value, TEXT_CONTENT_TYPE, options, 200);
         },
         json(value, options) {
+            const body = normalizeJsonDescriptorBody(value, options?.json);
             const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
             return createResult(
                 "json",
-                value,
+                body,
                 JSON_CONTENT_TYPE,
                 options,
                 200,
@@ -857,10 +1039,11 @@ Operation:
             );
         },
         ok(value, options) {
+            const body = normalizeJsonDescriptorBody(value, options?.json);
             const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
             return createResult(
                 "json",
-                value,
+                body,
                 JSON_CONTENT_TYPE,
                 options,
                 200,
@@ -874,11 +1057,12 @@ Operation:
             }
 
             const mergedOptions = { status: 201, ...options };
+            const body = normalizeJsonDescriptorBody(value, options?.json);
             const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
 
             return createResult(
                 "json",
-                value,
+                body,
                 JSON_CONTENT_TYPE,
                 mergedOptions,
                 201,
@@ -887,7 +1071,13 @@ Operation:
             );
         },
         accepted(value, options) {
-            return createResult("json", value, JSON_CONTENT_TYPE, { status: 202, ...options }, 202);
+            return createResult(
+                "json",
+                normalizeJsonDescriptorBody(value, options?.json),
+                JSON_CONTENT_TYPE,
+                { status: 202, ...options },
+                202,
+            );
         },
         noContent() {
             return NO_CONTENT_RESULT;
@@ -895,7 +1085,7 @@ Operation:
         notFound(valueOrProblem, options) {
             return createResult(
                 "json",
-                valueOrProblem,
+                normalizeJsonDescriptorBody(valueOrProblem, options?.json),
                 JSON_CONTENT_TYPE,
                 { status: 404, ...options },
                 404,
@@ -904,7 +1094,7 @@ Operation:
         badRequest(valueOrProblem, options) {
             return createResult(
                 "json",
-                valueOrProblem,
+                normalizeJsonDescriptorBody(valueOrProblem, options?.json),
                 JSON_CONTENT_TYPE,
                 { status: 400, ...options },
                 400,
@@ -913,7 +1103,7 @@ Operation:
         unauthorized(valueOrProblem, options) {
             return createResult(
                 "json",
-                valueOrProblem,
+                normalizeJsonDescriptorBody(valueOrProblem, options?.json),
                 JSON_CONTENT_TYPE,
                 { status: 401, ...options },
                 401,
@@ -932,7 +1122,7 @@ Operation:
 
             return createResult(
                 "json",
-                value,
+                normalizeJsonDescriptorBody(value, options?.json),
                 JSON_CONTENT_TYPE,
                 { ...options, status: statusCode },
                 statusCode,
@@ -940,9 +1130,10 @@ Operation:
         },
         problem(problemOrMessage, options) {
             const status = resolveStatus(options, 500);
+            const body = normalizeJsonBody(normalizeProblem(problemOrMessage, status), options?.json);
             return createResult(
                 "problem",
-                normalizeProblem(problemOrMessage, status),
+                body,
                 PROBLEM_CONTENT_TYPE,
                 { ...options, status },
                 status,

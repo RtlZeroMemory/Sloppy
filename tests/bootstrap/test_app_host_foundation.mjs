@@ -1852,7 +1852,140 @@ async function flushMicrotasks(count = 6) {
         headers: { "content-type": "application/x-custom" },
         body: "hello",
     })).status, 415);
+    assert.equal((await host.post("/json", {
+        headers: { "content-type": "text/plain" },
+        body: "{\"name\":\"Ada\"}",
+    })).status, 415);
+    assert.equal((await host.post("/form", {
+        headers: { "content-type": "application/json" },
+        body: "{\"name\":\"Ada\"}",
+    })).status, 415);
     await host.close();
+}
+
+{
+    class Profile {
+        constructor() {
+            this.display_name = "Ada";
+            this.empty = null;
+        }
+    }
+
+    const app = Sloppy.create({
+        json: {
+            casing: "camelCase",
+            includeNulls: false,
+            dateFormat: "iso8601",
+            bigint: "string",
+        },
+    });
+    app.get("/json-contract", () => Results.ok({
+        created_at: new Date("2030-01-02T03:04:05.006Z"),
+        count: 9007199254740993n,
+        bytes: new Uint8Array([65, 66, 67]),
+        skipped: undefined,
+        profile: new Profile(),
+        error: Object.assign(new Error("visible message"), { code: "E_TEST" }),
+        list: [undefined, 1n],
+    }));
+    const host = createTestHost(app);
+    const response = await host.get("/json-contract");
+    assert.deepEqual(await response.json(), {
+        createdAt: "2030-01-02T03:04:05.006Z",
+        count: "9007199254740993",
+        bytes: "QUJD",
+        profile: { displayName: "Ada" },
+        error: { name: "Error", message: "visible message", code: "E_TEST" },
+        list: [null, "1"],
+    });
+    await host.close();
+
+    const mutatorApp = Sloppy.create();
+    mutatorApp.useJson({
+        casing: "camelCase",
+        includeNulls: false,
+        dateFormat: "iso8601",
+        bigint: "string",
+        bytes: "array",
+    });
+    mutatorApp.get("/json-contract", () => Results.ok({
+        display_name: "Ada",
+        empty: null,
+        bytes: new Uint8Array([65, 66, 67]),
+    }));
+    mutatorApp.get("/per-result", () => Results.ok({
+        display_name: "Ada",
+        empty: null,
+        bytes: new Uint8Array([65, 66, 67]),
+    }, { json: { casing: "preserve", includeNulls: true, bytes: "base64" } }));
+    mutatorApp.post("/echo", (ctx) => Results.ok(ctx.request.json()));
+    const mutatorHost = createTestHost(mutatorApp);
+    assert.deepEqual(await (await mutatorHost.get("/json-contract")).json(), {
+        displayName: "Ada",
+        bytes: [65, 66, 67],
+    });
+    assert.deepEqual(await (await mutatorHost.get("/per-result")).json(), {
+        display_name: "Ada",
+        empty: null,
+        bytes: "QUJD",
+    });
+    assert.deepEqual(await (await mutatorHost.post("/echo", {
+        json: {
+            request_bytes: new Uint8Array([65, 66, 67]),
+        },
+    })).json(), {
+        requestBytes: [65, 66, 67],
+    });
+    assert.throws(() => mutatorApp.useJson({ casing: "preserve" }), /frozen/);
+    await mutatorHost.close();
+
+    const rejectBigIntApp = Sloppy.create({ json: { bigint: "error" } });
+    rejectBigIntApp.get("/", () => Results.ok({ id: 1n }));
+    const rejectBigIntHost = createTestHost(rejectBigIntApp);
+    await assertRejectsMessage(() => rejectBigIntHost.get("/"), /BigInt/);
+    await assertRejectsMessage(() => rejectBigIntHost.post("/", { json: { id: 1n } }), /BigInt/);
+    await rejectBigIntHost.close();
+
+    const circular = {};
+    circular.self = circular;
+    assertThrowsMessage(() => Results.json(circular), /circular reference/);
+    assertThrowsMessage(() => Results.json({ bad: Number.NaN }), /finite/);
+    assertThrowsMessage(() => Results.json({ bad: Symbol("x") }), /serialize/);
+    assertThrowsMessage(() => Results.json({ id: 1n }, { json: { bigint: "error" } }), /BigInt/);
+    assertThrowsMessage(() => Sloppy.create({ json: { casing: "snake_case" } }), /casing/);
+    assertThrowsMessage(() => Sloppy.create({ json: { bigint: null } }), /bigint/);
+    assertThrowsMessage(() => Sloppy.create().useJson(null), /plain object/);
+}
+
+{
+    const app = Sloppy.create({
+        contentNegotiation: {
+            strictAccept: true,
+        },
+    });
+    app.get("/json", () => Results.ok({ ok: true }));
+    app.get("/text", () => Results.text("ok"));
+    app.get("/problem", () => Results.problem("broken"));
+
+    const host = createTestHost(app);
+    assert.equal((await host.get("/json", { headers: { accept: "application/json" } })).status, 200);
+    assert.equal((await host.get("/text", { headers: { accept: "text/plain" } })).status, 200);
+    assert.equal((await host.get("/json", { headers: { accept: "*/*" } })).status, 200);
+    assert.equal((await host.get("/problem", { headers: { accept: "application/problem+json" } })).status, 500);
+    assert.equal((await host.get("/problem", { headers: { accept: "application/json" } })).status, 406);
+    assert.equal((await host.get("/json", { headers: { accept: "text/plain" } })).status, 406);
+    assert.equal((await host.get("/text", { headers: { accept: "application/xml" } })).status, 406);
+    assert.equal((await host.get("/json", { headers: { accept: "application/json;q=0" } })).status, 406);
+    await host.close();
+
+    assert.throws(() => app.useContentNegotiation({ strictAccept: true }), /frozen/);
+    assertThrowsMessage(() => Sloppy.create().useContentNegotiation([]), /plain object/);
+
+    const fallback = Sloppy.create();
+    fallback.get("/", () => Results.ok({ ok: true }));
+    const fallbackHost = createTestHost(fallback);
+    assert.equal((await fallbackHost.get("/", { headers: { accept: "application/xml" } })).status, 200);
+    await fallbackHost.close();
 }
 
 {
