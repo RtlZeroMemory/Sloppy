@@ -373,7 +373,12 @@ async function verifySessionCookie(value, scheme) {
         return undefined;
     }
     const expected = await Hmac.sha256(scheme.secret, parts[0]);
-    const actual = Base64Url.decode(parts[1], { padding: "optional" });
+    let actual;
+    try {
+        actual = Base64Url.decode(parts[1], { padding: "optional" });
+    } catch {
+        return undefined;
+    }
     if (!constantTimeBytesEquals(expected, actual)) {
         return undefined;
     }
@@ -620,10 +625,11 @@ function cookieSession(options) {
 }
 
 function findSessionScheme(ctx) {
-    const schemes = ctx?.__sloppyHost?.auth?.schemes;
-    const scheme = Array.isArray(schemes)
-        ? schemes.find((entry) => entry.kind === "cookieSession")
-        : undefined;
+    const auth = ctx?.__sloppyHost?.auth;
+    const scheme = auth?.state?.defaultSession ?? auth?.defaultSession ??
+        (Array.isArray(auth?.schemes)
+            ? auth.schemes.find((entry) => entry.kind === "cookieSession")
+            : undefined);
     if (scheme === undefined) {
         throw new TypeError("Sloppy Auth.signIn/signOut requires Auth.cookieSession middleware.");
     }

@@ -6730,10 +6730,20 @@ export default app;
         super::AuthSchemeMetadata::CookieSession {
             name,
             cookie,
+            secure,
+            http_only,
+            same_site,
+            path,
+            max_age_seconds,
             secret_config_key,
         } => {
             assert_eq!(name, "cookieSessionAuth");
             assert_eq!(cookie, "sloppy.session");
+            assert!(*secure);
+            assert!(*http_only);
+            assert_eq!(same_site, "lax");
+            assert_eq!(path, "/");
+            assert_eq!(*max_age_seconds, None);
             assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
         }
         other => panic!("expected cookie session scheme, got {other:?}"),
@@ -6742,8 +6752,8 @@ export default app;
         .expect("plan should emit cookie auth metadata");
     assert!(plan.contains("\"kind\": \"cookieSession\""));
     assert!(plan.contains("\"cookie\": \"sloppy.session\""));
+    assert!(plan.contains("\"configKey\": \"Auth:SessionSecret\""));
     assert!(plan.contains("\"secret\": \"<redacted>\""));
-    assert!(!plan.contains("session-secret"));
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));

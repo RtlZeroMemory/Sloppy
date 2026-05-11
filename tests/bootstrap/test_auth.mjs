@@ -26,6 +26,10 @@ function cookieValue(setCookie) {
     return setCookie.split(";", 1)[0].split("=", 2)[1];
 }
 
+function assertCookieDirective(setCookie, directive) {
+    assert.match(setCookie, new RegExp(`(?:^|;\\s*)${directive}(?:;|$)`));
+}
+
 async function requestJson(host, method, target, options = undefined) {
     const response = await host.request(method, target, options);
     return { response, body: response.text().length === 0 ? null : response.json() };
@@ -183,7 +187,10 @@ try {
     const login = await requestJson(host, "POST", "/login");
     assert.equal(login.response.status, 200);
     const setCookie = login.response.headers.get("set-cookie");
-    assert.match(setCookie, /^sloppy\.session=[^;]+; Path=\/; Max-Age=3600; SameSite=Lax; HttpOnly; Secure$/);
+    assert.match(setCookie, /^sloppy\.session=[^;]+/);
+    for (const directive of ["Path=/", "Max-Age=3600", "SameSite=Lax", "HttpOnly", "Secure"]) {
+        assertCookieDirective(setCookie, directive);
+    }
 
     const session = cookieValue(setCookie);
     const me = await requestJson(host, "GET", "/me", {
@@ -199,12 +206,29 @@ try {
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { cookie: `sloppy.session=${tampered}` },
     })).response.status, 401);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: "sloppy.session=malformed" },
+    })).response.status, 401);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: "sloppy.session=payload.not-base64url" },
+    })).response.status, 401);
 
     const logout = await requestJson(host, "POST", "/logout", {
         headers: { cookie: `sloppy.session=${session}` },
     });
     assert.equal(logout.response.status, 204);
-    assert.match(logout.response.headers.get("set-cookie"), /^sloppy\.session=; Path=\/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; HttpOnly; Secure$/);
+    const logoutCookie = logout.response.headers.get("set-cookie");
+    assert.match(logoutCookie, /^sloppy\.session=/);
+    for (const directive of [
+        "Path=/",
+        "Max-Age=0",
+        "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+        "SameSite=Lax",
+        "HttpOnly",
+        "Secure",
+    ]) {
+        assertCookieDirective(logoutCookie, directive);
+    }
 
     await host.close();
 }

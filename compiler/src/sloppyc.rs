@@ -8388,6 +8388,9 @@ fn app_use_auth_provider_call(
         "jwtBearer" => {
             let issuer = object_string_property_value(options, "issuer").map(str::to_string);
             let audience = object_string_property_value(options, "audience").map(str::to_string);
+            let clock_skew_seconds = object_integer_property_value(options, "clockSkewSeconds")
+                .or_else(|| object_integer_property_value(options, "clockSkew"))
+                .unwrap_or(0);
             let secret_config_key = object_property_expression(options, "secret")
                 .and_then(config_required_key_from_expression)
                 .ok_or_else(|| {
@@ -8411,6 +8414,7 @@ fn app_use_auth_provider_call(
                 name: "bearerAuth".to_string(),
                 issuer,
                 audience,
+                clock_skew_seconds,
                 secret_config_key: Some(secret_config_key),
             });
         }
@@ -8458,6 +8462,16 @@ fn app_use_auth_provider_call(
             let cookie = object_string_property_value(options, "name")
                 .unwrap_or("sloppy.session")
                 .to_string();
+            let secure = object_bool_property_value(options, "secure").unwrap_or(true);
+            let http_only = object_bool_property_value(options, "httpOnly").unwrap_or(true);
+            let same_site = object_string_property_value(options, "sameSite")
+                .unwrap_or("lax")
+                .to_string();
+            let cookie_path = object_string_property_value(options, "path")
+                .unwrap_or("/")
+                .to_string();
+            let max_age_seconds = object_integer_property_value(options, "maxAgeSeconds")
+                .or_else(|| object_integer_property_value(options, "maxAge"));
             let secret_config_key = object_property_expression(options, "secret")
                 .and_then(config_required_key_from_expression)
                 .ok_or_else(|| {
@@ -8480,6 +8494,11 @@ fn app_use_auth_provider_call(
             state.auth.schemes.push(AuthSchemeMetadata::CookieSession {
                 name: "cookieSessionAuth".to_string(),
                 cookie,
+                secure,
+                http_only,
+                same_site,
+                path: cookie_path,
+                max_age_seconds,
                 secret_config_key: Some(secret_config_key),
             });
         }
@@ -9721,12 +9740,14 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     name,
                     issuer,
                     audience,
+                    clock_skew_seconds,
                     secret_config_key,
                 } => json!({
                     "kind": "jwtBearer",
                     "name": name,
                     "issuer": issuer,
                     "audience": audience,
+                    "clockSkewSeconds": clock_skew_seconds,
                     "secretConfigKey": secret_config_key
                 }),
                 AuthSchemeMetadata::ApiKey {
@@ -9742,11 +9763,21 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                 AuthSchemeMetadata::CookieSession {
                     name,
                     cookie,
+                    secure,
+                    http_only,
+                    same_site,
+                    path,
+                    max_age_seconds,
                     secret_config_key,
                 } => json!({
                     "kind": "cookieSession",
                     "name": name,
                     "cookie": cookie,
+                    "secure": secure,
+                    "httpOnly": http_only,
+                    "sameSite": same_site,
+                    "path": path,
+                    "maxAgeSeconds": max_age_seconds,
                     "secretConfigKey": secret_config_key
                 }),
             })
@@ -13092,6 +13123,13 @@ fn object_bool_property_value(
         return Some(value.value);
     }
     None
+}
+
+fn object_integer_property_value(
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    name: &str,
+) -> Option<i64> {
+    object_json_property_value(object, name).and_then(|value| value.as_i64())
 }
 
 fn object_json_property_value(
@@ -17967,12 +18005,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_auth_cookie(ctx, name) { const cookies = ctx && ctx.cookies; if (cookies && typeof cookies.get === \"function\") { return cookies.get(name) ?? undefined; } const value = __sloppy_request_header(ctx, \"cookie\"); if (typeof value !== \"string\") { return undefined; } for (const pair of value.split(\";\")) { const equals = pair.indexOf(\"=\"); if (equals <= 0) { continue; } if (pair.slice(0, equals).trim() === name) { return decodeURIComponent(pair.slice(equals + 1).trim()); } } return undefined; }",
+            "function __sloppy_auth_cookie(ctx, name) { const cookies = ctx && ctx.cookies; if (cookies && typeof cookies.get === \"function\") { return cookies.get(name) ?? undefined; } const value = __sloppy_request_header(ctx, \"cookie\"); if (typeof value !== \"string\") { return undefined; } for (const pair of value.split(\";\")) { const equals = pair.indexOf(\"=\"); if (equals <= 0) { continue; } if (pair.slice(0, equals).trim() === name) { try { return decodeURIComponent(pair.slice(equals + 1).trim()); } catch { return undefined; } } } return undefined; }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_session(ctx, scheme) { const value = __sloppy_auth_cookie(ctx, scheme.cookie); if (typeof value !== \"string\") { return undefined; } const parts = value.split(\".\"); if (parts.length !== 2 || parts.some((part) => part.length === 0)) { return false; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return false; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, parts[0]); const actual = Base64Url.decode(parts[1], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return false; } const payload = __sloppy_auth_json(parts[0]); if (payload === null || typeof payload !== \"object\" || Array.isArray(payload) || payload.claims === null || typeof payload.claims !== \"object\" || Array.isArray(payload.claims)) { return false; } const now = Math.floor(Date.now() / 1000); if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= now)) { return false; } return __sloppy_auth_user(payload.claims, \"cookieSession\"); }",
+            "async function __sloppy_auth_session(ctx, scheme) { const value = __sloppy_auth_cookie(ctx, scheme.cookie); if (typeof value !== \"string\") { return undefined; } const parts = value.split(\".\"); if (parts.length !== 2 || parts.some((part) => part.length === 0)) { return false; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return false; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, parts[0]); let actual; try { actual = Base64Url.decode(parts[1], { padding: \"optional\" }); } catch { return false; } if (!__sloppy_ct_bytes(expected, actual)) { return false; } const payload = __sloppy_auth_json(parts[0]); if (payload === null || typeof payload !== \"object\" || Array.isArray(payload) || payload.claims === null || typeof payload.claims !== \"object\" || Array.isArray(payload.claims)) { return false; } const now = Math.floor(Date.now() / 1000); if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= now)) { return false; } return __sloppy_auth_user(payload.claims, \"cookieSession\"); }",
         );
         push_generated_line(
             &mut output,
@@ -17982,12 +18020,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_sign_in(ctx, claims) { const scheme = __sloppy_auth_session_scheme(); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { throw new TypeError(\"Sloppy Auth.signIn claims must be a plain object.\"); } const copied = { ...claims }; if (copied.claims !== undefined) { if (copied.claims === null || typeof copied.claims !== \"object\" || Array.isArray(copied.claims)) { throw new TypeError(\"Sloppy Auth.signIn claims.claims must be a plain object when provided.\"); } Object.assign(copied, copied.claims); delete copied.claims; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const body = Base64Url.encode(Text.utf8.encode(JSON.stringify({ iat: Math.floor(Date.now() / 1000), claims: copied }))); const signature = await Hmac.sha256(secret, body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.user = __sloppy_auth_user(copied, \"cookieSession\"); return Results.ok({ ok: true }).cookie(scheme.cookie, value, { path: \"/\", secure: true, httpOnly: true, sameSite: \"lax\" }); }",
+            "async function __sloppy_auth_sign_in(ctx, claims) { const scheme = __sloppy_auth_session_scheme(); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { throw new TypeError(\"Sloppy Auth.signIn claims must be a plain object.\"); } const copied = { ...claims }; if (copied.claims !== undefined) { if (copied.claims === null || typeof copied.claims !== \"object\" || Array.isArray(copied.claims)) { throw new TypeError(\"Sloppy Auth.signIn claims.claims must be a plain object when provided.\"); } Object.assign(copied, copied.claims); delete copied.claims; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const current = Math.floor(Date.now() / 1000); const payload = { iat: current, claims: copied }; if (Number.isInteger(scheme.maxAgeSeconds)) { payload.exp = current + scheme.maxAgeSeconds; } const body = Base64Url.encode(Text.utf8.encode(JSON.stringify(payload))); const signature = await Hmac.sha256(secret, body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.user = __sloppy_auth_user(copied, \"cookieSession\"); const options = { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\" }; if (Number.isInteger(scheme.maxAgeSeconds)) { options.maxAgeSeconds = scheme.maxAgeSeconds; } return Results.ok({ ok: true }).cookie(scheme.cookie, value, options); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_auth_sign_out(ctx) { const scheme = __sloppy_auth_session_scheme(); ctx.user = __sloppy_auth_anonymous(); return Results.status(204).cookie(scheme.cookie, \"\", { path: \"/\", secure: true, httpOnly: true, sameSite: \"lax\", maxAgeSeconds: 0, expires: new Date(0) }); }",
+            "function __sloppy_auth_sign_out(ctx) { const scheme = __sloppy_auth_session_scheme(); ctx.user = __sloppy_auth_anonymous(); return Results.status(204).cookie(scheme.cookie, \"\", { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\", maxAgeSeconds: 0, expires: new Date(0) }); }",
         );
         push_generated_line(
             &mut output,
