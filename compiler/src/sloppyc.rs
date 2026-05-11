@@ -344,6 +344,8 @@ type RouteCallParts<'a> = (
     &'a Argument<'a>,
 );
 
+type ExtractedRouteCall<'a> = (&'a str, &'static str, &'static str, String, Handler);
+
 fn schema_names(state: &AppState) -> BTreeSet<String> {
     state.schema_names.clone()
 }
@@ -12549,7 +12551,7 @@ fn route_call<'a>(
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
     static_strings: &StaticStringEnv,
-) -> Result<Option<(&'a str, &'static str, &'static str, String, Handler)>, Diagnostic> {
+) -> Result<Option<ExtractedRouteCall<'a>>, Diagnostic> {
     let Some((receiver, method, kind, pattern, _metadata, handler_arg)) =
         route_call_parts(expression, static_strings)?
     else {
