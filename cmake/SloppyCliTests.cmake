@@ -210,13 +210,13 @@
         "PostgreSQL provider is unavailable(.|\n|\r)*This only matters for apps that use PostgreSQL(.|\n|\r)*optional PostgreSQL provider package"
         "pg-secret-leak" "Sloppy__Providers__postgres__main__connectionString"
         "postgres://user:pg-secret-leak@127.0.0.1:1/sloppy?connect_timeout=1" db status
-        tests/fixtures/cli/db-postgres-missing/.sloppy --provider main)
+        tests/fixtures/cli/db-postgres-missing/compiled --provider main)
     sloppy_add_cli_nonzero_stderr_test(
         sloppy.cli.db_sqlserver_optional_dependency
         "SQL Server provider is unavailable(.|\n|\r)*This only matters for apps that use SQL Server(.|\n|\r)*Microsoft ODBC Driver 17 or 18"
         "sql-secret-leak" "Sloppy__Providers__sqlserver__main__connectionString"
         "Driver={Sloppy Missing Driver For Tests}\\;PWD=sql-secret-leak" db status
-        tests/fixtures/cli/db-sqlserver-missing/.sloppy --provider main)
+        tests/fixtures/cli/db-sqlserver-missing/compiled --provider main)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_partial_json tests/golden/cli/audit-partial-json.json audit --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)
