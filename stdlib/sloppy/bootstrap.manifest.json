@@ -19,6 +19,7 @@
     "sloppy/node/fs.js",
     "sloppy/node/fs/promises.js",
     "sloppy/node/assert.js",
+    "sloppy/node/assert/strict.js",
     "sloppy/node/os.js",
     "sloppy/node/path.js",
     "sloppy/node/process.js",

@@ -49,17 +49,17 @@ async function readFilePromise(path, options = undefined) {
 }
 
 async function writeFilePromise(path, data, options = undefined) {
-    const encoding = normalizeEncoding(options, "node:fs.writeFile");
-    if (typeof data === "string" || encoding === "utf8") {
-        return File.writeText(toSloppyPath(path), String(data));
+    normalizeEncoding(options, "node:fs.writeFile");
+    if (typeof data === "string") {
+        return File.writeText(toSloppyPath(path), data);
     }
     return File.writeBytes(toSloppyPath(path), data);
 }
 
 async function appendFilePromise(path, data, options = undefined) {
-    const encoding = normalizeEncoding(options, "node:fs.appendFile");
-    if (typeof data === "string" || encoding === "utf8") {
-        return File.appendText(toSloppyPath(path), String(data));
+    normalizeEncoding(options, "node:fs.appendFile");
+    if (typeof data === "string") {
+        return File.appendText(toSloppyPath(path), data);
     }
     return File.appendBytes(toSloppyPath(path), data);
 }

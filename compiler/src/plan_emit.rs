@@ -858,6 +858,7 @@ pub(crate) fn emit_plan(
         for builtin in &app.dependency_graph.node_builtins {
             if builtin.status != "unsupported" {
                 let feature_name = match builtin.specifier.as_str() {
+                    "node:assert/strict" => "assert".to_string(),
                     "node:stream/promises" => "stream".to_string(),
                     _ => builtin
                         .specifier

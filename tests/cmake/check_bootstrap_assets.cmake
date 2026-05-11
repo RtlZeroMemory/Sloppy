@@ -20,6 +20,7 @@ set(required_bootstrap_assets
     node/events.js
     node/fs.js
     node/fs/promises.js
+    node/assert/strict.js
     node/os.js
     node/path.js
     node/process.js

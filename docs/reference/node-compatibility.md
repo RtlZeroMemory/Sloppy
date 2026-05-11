@@ -32,7 +32,8 @@ packages unrestricted access to Node internals.
 | `node:os`, `os` | `partial` | `sloppy/node/os` | Minimal platform/environment helpers backed by `sloppy/os` where possible. |
 | `node:process`, `process` | `partial` | `sloppy/node/process` | Module import only: `platform`, `arch`, overlay-writable `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, and `exitCode`. Sloppy does not install a global Node `process` object. |
 | `node:crypto`, `crypto` | `partial` | `sloppy/node/crypto` | `randomBytes`, `randomUUID`, SHA-2 `createHash`, SHA-256 `createHmac`, and `timingSafeEqual` backed by `sloppy/crypto`. Hash/HMAC digest helpers are Promise-shaped because the Sloppy crypto API is async. |
-| `node:assert`, `assert`, `node:assert/strict`, `assert/strict` | `partial` | `sloppy/node/assert` | `ok`, `equal`, `strictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `rejects`, and `AssertionError`. |
+| `node:assert`, `assert` | `partial` | `sloppy/node/assert` | `ok`, loose `equal`, `strictEqual`, JSON-shaped `deepEqual`/`deepStrictEqual`, `throws`, `rejects`, and `AssertionError`. |
+| `node:assert/strict`, `assert/strict` | `partial` | `sloppy/node/assert/strict` | Same small assert subset, with `equal` mapped to `strictEqual`. |
 | `node:stream`, `stream` | `partial` | `sloppy/node/stream` | Small EventEmitter-based subset: `Readable.from`, minimal `Writable`, `PassThrough`, and `pipeline`. No full Node stream backpressure or transform contract. |
 | `node:stream/promises`, `stream/promises` | `partial` | `sloppy/node/stream/promises` | Promise-shaped `pipeline` from the small `node:stream` compatibility subset. |
 

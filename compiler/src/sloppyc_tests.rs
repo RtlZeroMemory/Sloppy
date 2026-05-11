@@ -1200,6 +1200,7 @@ fn program_mode_resolves_expanded_node_compat_shims() {
     fs::write(
         &input,
         r#"import assert from "node:assert";
+import strictAssert from "node:assert/strict";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
@@ -1207,6 +1208,7 @@ import { pipeline } from "node:stream/promises";
 import crypto from "node:crypto";
 export function main() {
   assert.ok(Buffer.isBuffer(Buffer.concat([Buffer.from("a"), Buffer.from("b")])));
+  assert.throws(() => strictAssert.equal(1, "1"), assert.AssertionError);
   return `${process.platform}:${typeof Readable.from}:${typeof pipeline}:${typeof crypto.createHash}`;
 }"#,
     )
@@ -1236,6 +1238,7 @@ export function main() {
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
     for module_id in [
         "sloppy/node/assert",
+        "sloppy/node/assert/strict",
         "sloppy/node/buffer",
         "sloppy/node/crypto",
         "sloppy/node/events",
@@ -1306,8 +1309,11 @@ fn program_mode_json_modules_preserve_default_export_binding() {
     let root = fixture_temp_dir("program-json-default");
     let input = root.join("main.ts");
     let out_dir = root.join(".sloppy");
-    fs::write(root.join("data.json"), r#"{"message":"json-default"}"#)
-        .expect("JSON fixture should write");
+    fs::write(
+        root.join("data.json"),
+        r#"{"message":"json-default","default":"shadow"}"#,
+    )
+    .expect("JSON fixture should write");
     fs::write(
         &input,
         r#"import data from "./data.json"; export function main() { return data.message; }"#,
@@ -1316,8 +1322,10 @@ fn program_mode_json_modules_preserve_default_export_binding() {
 
     super::build(&input, &out_dir, &CompileOptions::new()).expect("program should build");
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app.js should emit");
-    assert!(app_js.contains("module.exports.default = __sloppy_json_module;"));
-    assert!(app_js.contains("Object.prototype.hasOwnProperty.call(__sloppy_default_module"));
+    assert!(app_js.contains("module.exports = {"));
+    assert!(app_js.contains("\"default\":\"shadow\""));
+    assert!(app_js.contains("\"message\":\"json-default\""));
+    assert!(!app_js.contains("module.exports.default = __sloppy_json_module;"));
     assert!(app_js.contains("__sloppy_program_require(\"data.json\")"));
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");

@@ -156,6 +156,7 @@ set(
     workers.js
     index.js
     node/assert.js
+    node/assert/strict.js
     node/buffer.js
     node/crypto.js
     node/events.js
