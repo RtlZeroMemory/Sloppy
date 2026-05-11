@@ -64,10 +64,16 @@ static void test_project_watch_plan_includes_source_config_assets_and_migrations
     expect_root(&plan, "appsettings.Development.json", false);
     expect_root(&plan, "public", true);
     expect_root(&plan, "static", true);
+    expect_root(&plan, "wwwroot", true);
     expect_root(&plan, "templates", true);
+    expect_root(&plan, "views", true);
     expect_root(&plan, "assets", true);
     expect_root(&plan, "plugins", true);
     expect_root(&plan, "db/migrations", true);
+    if (plan.root_count != 12U) {
+        fprintf(stderr, "unexpected project watch root count: %zu\n", plan.root_count);
+        failures += 1;
+    }
 }
 
 static void test_positional_source_uses_source_directory_without_project_config(void)
@@ -82,11 +88,40 @@ static void test_positional_source_uses_source_directory_without_project_config(
 
     expect_root(&plan, "examples/hello", true);
     expect_root(&plan, "sloppy.json", false);
+    expect_root(&plan, "appsettings.json", false);
+    expect_root(&plan, "appsettings.Development.json", false);
+    expect_root(&plan, "public", true);
+    expect_root(&plan, "static", true);
+    expect_root(&plan, "wwwroot", true);
+    expect_root(&plan, "templates", true);
+    expect_root(&plan, "views", true);
+    if (plan.root_count != 9U) {
+        fprintf(stderr, "unexpected positional watch root count: %zu\n", plan.root_count);
+        failures += 1;
+    }
+}
+
+static void test_positional_directory_inputs_are_not_collapsed(void)
+{
+    SlDevWatchPlan plan = {0};
+
+    if (!sl_dev_watch_plan_build(NULL, "examples/hello/", &plan)) {
+        fprintf(stderr, "directory watch plan did not build\n");
+        failures += 1;
+        return;
+    }
+
+    expect_root(&plan, "examples/hello/", true);
+    if (plan.root_count != 9U) {
+        fprintf(stderr, "unexpected directory watch root count: %zu\n", plan.root_count);
+        failures += 1;
+    }
 }
 
 int main(void)
 {
     test_project_watch_plan_includes_source_config_assets_and_migrations();
     test_positional_source_uses_source_directory_without_project_config();
+    test_positional_directory_inputs_are_not_collapsed();
     return failures == 0 ? 0 : 1;
 }

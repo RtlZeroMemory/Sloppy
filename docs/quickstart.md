@@ -114,9 +114,11 @@ the artifacts:
 sloppy run src/main.ts --once GET /hello/Ada
 ```
 
-For a normal edit-refresh loop, use `sloppy dev` from the project directory:
+For a normal edit-refresh loop, use experimental `sloppy dev` from the project
+directory. Its behavior may change while Sloppy is pre-alpha.
 
 ```sh
+# Experimental.
 sloppy dev
 ```
 

@@ -79,6 +79,7 @@ static bool sl_dev_watch_entry_root(char* buffer, size_t capacity, const char* e
 {
     size_t index = 0U;
     size_t last_separator = SIZE_MAX;
+    size_t copy_length = 0U;
 
     if (buffer == NULL || capacity == 0U || entry == NULL || entry[0] == '\0') {
         return false;
@@ -91,13 +92,22 @@ static bool sl_dev_watch_entry_root(char* buffer, size_t capacity, const char* e
     if (last_separator == SIZE_MAX) {
         return sl_dev_watch_copy(buffer, capacity, entry);
     }
+    if (entry[last_separator + 1U] == '\0' ||
+        (last_separator == 2U && entry[1] == ':' && (entry[2] == '\\' || entry[2] == '/')))
+    {
+        return sl_dev_watch_copy(buffer, capacity, entry);
+    }
     if (last_separator == 0U || last_separator >= capacity) {
         return false;
     }
-    for (index = 0U; index < last_separator; index += 1U) {
+    copy_length = last_separator;
+    if (copy_length + 1U > capacity) {
+        return false;
+    }
+    for (index = 0U; index < copy_length; index += 1U) {
         buffer[index] = entry[index];
     }
-    buffer[last_separator] = '\0';
+    buffer[copy_length] = '\0';
     return true;
 }
 

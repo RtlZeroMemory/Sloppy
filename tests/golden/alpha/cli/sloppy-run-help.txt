@@ -1,6 +1,6 @@
 Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib <dir>]
                   [--kind web|program] [--environment Development]
-                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]
+                  [--host 127.0.0.1] [--port <port>] [--once METHOD TARGET]
                   [--header 'Name: value'] [--body text|--body-file path|--json json]
                   [-- <program-args...>]
 

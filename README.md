@@ -95,8 +95,11 @@ sloppy create my-api --template minimal-api
 cd my-api
 sloppy build
 sloppy run .sloppy --once GET /health
+# Experimental.
 sloppy dev
 ```
+
+`sloppy dev` is experimental and may change while Sloppy is pre-alpha.
 
 Windows x64 and Linux x64 are the npm runtime targets for this alpha. macOS and
 arm64 are not published as npm platform packages yet; use source builds there.
@@ -219,7 +222,7 @@ dependency story, native interop, and production-hardening direction.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) - create, build, run, dev-watch, and package a first API
+- [Quickstart](docs/quickstart.md) - create, build, run, experimental dev-watch, and package a first API
 - [Install](docs/install.md) - npm, source builds, and platform notes
 - [Tutorials](docs/tutorials/index.md) - guided app-building path
 - [API](docs/api/index.md) - first-party stdlib and app APIs

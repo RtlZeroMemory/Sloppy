@@ -113,7 +113,7 @@ static bool sl_dev_snapshot_scan_path(SlDevSnapshot* snapshot, SlArena* arena, c
     mark = sl_arena_mark(arena);
     if (!sl_status_is_ok(sl_fs_list_directory(arena, sl_str_from_cstr(path), &list, NULL))) {
         sl_arena_reset_to(arena, mark);
-        return true;
+        return false;
     }
     for (size_t index = 0U; index < list.count; index += 1U) {
         char child[SL_RUN_PATH_MAX_BYTES];

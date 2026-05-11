@@ -239,5 +239,11 @@ void sl_platform_thread_join(SlPlatformThread* thread)
 
 void sl_platform_sleep_ms(uint64_t milliseconds)
 {
-    uv_sleep((unsigned int)milliseconds);
+    uint64_t remaining = milliseconds;
+
+    while (remaining > 0U) {
+        uint32_t chunk = remaining > UINT32_MAX ? UINT32_MAX : (uint32_t)remaining;
+        uv_sleep((unsigned int)chunk);
+        remaining -= chunk;
+    }
 }

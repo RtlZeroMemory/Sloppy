@@ -18,7 +18,7 @@ sloppy --version
 | [`sloppy create`](create.md) | Copy a built-in app template into a new directory        |
 | [`sloppy build`](build.md)   | Compile source into Plan-backed artifacts                |
 | [`sloppy package`](package.md) | Build a directory app package from source artifacts    |
-| [`sloppy dev`](dev.md)       | Build, run, watch, and reload a local web app            |
+| [`sloppy dev`](dev.md)       | Experimental build, run, watch, and reload for a local web app |
 | [`sloppy run`](run.md)       | Run a compiled app or compile-and-run from source        |
 | [`sloppy routes`](routes.md) | List route metadata from a Plan                          |
 | [`sloppy deps`](deps.md)     | Inspect bundled package, module, asset, and Node shim metadata |
@@ -64,7 +64,7 @@ config schema.
 | `--environment`   | `Development`  |
 | `--out` / `outDir`| `.sloppy`      |
 
-`--host` and `--port` apply to `sloppy dev` and `sloppy run`; `sloppy build`
+`--host` and `--port` apply to experimental `sloppy dev` and `sloppy run`; `sloppy build`
 accepts them so they can be baked into the Plan but doesn't open a socket.
 `--environment` selects which `appsettings.{Environment}.json` overlay applies.
 

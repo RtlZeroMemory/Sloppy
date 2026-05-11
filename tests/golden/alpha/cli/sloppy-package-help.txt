@@ -1,6 +1,6 @@
 Usage: sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
                       [--environment Development] [--host 127.0.0.1]
-                      [--port 5173] [--format text|json]
+                      [--port <port>] [--format text|json]
 
 Compiles source input and writes a directory app package under .sloppy/package/ or <out>/package/.
 This is an app artifact package, not a runtime release archive.

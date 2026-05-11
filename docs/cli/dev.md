@@ -1,7 +1,8 @@
-# `sloppy dev`
+# `sloppy dev` (experimental)
 
 Build a web project, start the local development server, and rebuild on
-project file changes.
+project file changes. This command is experimental; behavior and support may
+change while Sloppy is pre-alpha.
 
 ```text
 sloppy dev [source]
@@ -43,7 +44,7 @@ the source directory plus common project inputs.
 | `--env <name>` | `Development` or `sloppy.json` environment | Short alias for `--environment` |
 | `--environment <name>` | `Development` or `sloppy.json` environment | Select appsettings overlay |
 
-`sloppy dev` requires a web Plan. Program Mode projects should use
+`sloppy dev` (experimental) requires a web Plan. Program Mode projects should use
 `sloppy run`.
 
 ## Watched Inputs
@@ -69,9 +70,9 @@ same development HTTP transport used by `sloppy run`.
 
 On a watched change:
 
-1. `sloppy dev` rebuilds the source.
+1. `sloppy dev` (experimental) rebuilds the source.
 2. If the build fails, the previous server keeps running.
-3. If the build succeeds, `sloppy dev` stops the old server and starts the new
+3. If the build succeeds, `sloppy dev` (experimental) stops the old server and starts the new
    artifacts.
 4. If `--openapi` is set, OpenAPI is refreshed after each successful rebuild
    when the Plan supports it.
