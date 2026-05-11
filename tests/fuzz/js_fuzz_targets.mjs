@@ -475,7 +475,11 @@ const targets = Object.freeze({
         maybeThrows(() => Results.problem({ title: "problem", extension: jsonValue(random, 1) }, {
             status: random.pick([400, 500, 99, 1000]),
         }));
-        assert.deepEqual(ProblemDetails.defaults(), { __sloppyProblemDetails: true, detail: "never" });
+        assert.deepEqual(ProblemDetails.defaults(), {
+            __sloppyErrorPolicy: true,
+            __sloppyProblemDetails: true,
+            detail: "never",
+        });
     },
 
     async "worker-queue"(random) {

@@ -260,6 +260,7 @@ foreach(required_pattern IN ITEMS
         "const DETAIL_POLICIES = new Set"
         "function validateDetailPolicy(value)"
         "defaults(options)"
+        "__sloppyErrorPolicy: true"
         "__sloppyProblemDetails: true"
         "detail:"
         "Object.freeze")
@@ -305,6 +306,7 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "function required(key)"
+        "function boolean(key"
         "__sloppyConfigReference: true"
         "[Config reference redacted]"
         "Object.freeze")
@@ -484,13 +486,16 @@ foreach(required_pattern IN ITEMS
         "auth:"
         "build()"
         "create()"
-        "function safeProblemDetails(error, descriptor, config)"
+        "function normalizeErrorPolicyOptions(options, config)"
+        "function errorPolicyResult(error, context, policyState, config)"
         "mapGet(pattern, optionsOrHandler, maybeHandler)"
         "mapPost(pattern, optionsOrHandler, maybeHandler)"
         "mapPut(pattern, optionsOrHandler, maybeHandler)"
         "mapPatch(pattern, optionsOrHandler, maybeHandler)"
         "mapDelete(pattern, optionsOrHandler, maybeHandler)"
         "useCors(policy)"
+        "useErrors(options = undefined)"
+        "mapError(type, mapper)"
         "mapHealthChecks(options)"
         "DEFAULT_LIVENESS_PATH"
         "DEFAULT_READINESS_PATH"
@@ -500,6 +505,7 @@ foreach(required_pattern IN ITEMS
         "isFrozen()"
         "use(provider)"
         "__getRoutes()"
+        "__handleErrorStatus(status, context = undefined)"
         "__debug()"
         "__getModuleGraph()"
         "__getPlanContributions()"

@@ -263,6 +263,7 @@ const properties = Object.freeze({
         assert.equal(problem.contentType, "application/problem+json; charset=utf-8");
 
         assert.deepEqual(ProblemDetails.defaults({ detail: "never" }), {
+            __sloppyErrorPolicy: true,
             __sloppyProblemDetails: true,
             detail: "never",
         });

@@ -61,7 +61,8 @@ lib/sloppy/bootstrap/sloppy/
   assets. Public imports should use `sloppy`.
 - `results.js` provides frozen result descriptor helpers. V8-gated runtime conversion is
   handled by the engine/runtime bridge; response writing belongs to runtime conversion.
-- `problem-details.js` provides `ProblemDetails.defaults(...)` descriptors for safe
+- `app.js` owns `app.useErrors(...)` and `app.mapError(...)`; `problem-details.js`
+  keeps `ProblemDetails.defaults(...)` as the compatibility descriptor for safe
   route-handler error responses.
 - `request-id.js` provides `RequestId.defaults(...)` middleware for app-host request
   IDs, trusted incoming ID admission, and optional response headers.

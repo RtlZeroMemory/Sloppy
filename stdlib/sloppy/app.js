@@ -36,6 +36,7 @@ import { isValidationError, validationProblem } from "./schema.js";
 const DEFAULT_HEALTH_PATH = "/health";
 const DEFAULT_LIVENESS_PATH = "/health/live";
 const DEFAULT_READINESS_PATH = "/health/ready";
+const DEFAULT_MAX_ERROR_BODY_BYTES = 1024 * 1024;
 
 function validateProviderDescriptor(provider) {
     if (!isPlainObject(provider) || provider.__sloppyProvider !== true) {
@@ -50,28 +51,194 @@ function validateProviderDescriptor(provider) {
 }
 
 function isProblemDetailsDescriptor(value) {
-    return isPlainObject(value) && value.__sloppyProblemDetails === true;
+    return isPlainObject(value) &&
+        (value.__sloppyProblemDetails === true || value.__sloppyErrorPolicy === true);
 }
 
-function safeProblemDetails(error, descriptor, config) {
-    const environment = String(config.get("Sloppy:Environment", config.get("Environment", "")));
-    const includeDetail = descriptor.detail === "always" ||
-        (descriptor.detail === "development" && environment.toLowerCase() === "development");
-    const problem = {
-        status: 500,
-        title: "Internal Server Error",
-        code: "SLOPPY_E_HANDLER_ERROR",
-    };
+function isConfigReference(value) {
+    return isPlainObject(value) && value.__sloppyConfigReference === true && typeof value.key === "string";
+}
 
-    if (includeDetail) {
-        problem.detail = String(error?.message ?? error);
+function resolveBooleanOption(value, config, fallback, subject) {
+    if (value === undefined) {
+        return fallback;
+    }
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (isConfigReference(value)) {
+        const defaultValue = value.default === undefined ? fallback : value.default;
+        return config.getBool(value.key, defaultValue);
+    }
+    throw new TypeError(`Sloppy ${subject} must be a boolean or Config.boolean reference.`);
+}
+
+function resolveDetailPolicy(options, config) {
+    if (options?.detail !== undefined) {
+        return options.detail;
+    }
+    return resolveBooleanOption(options?.includeDetails, config, false, "error includeDetails")
+        ? "always"
+        : "never";
+}
+
+function normalizeErrorPolicyOptions(options, config) {
+    if (options !== undefined && !isPlainObject(options)) {
+        throw new TypeError("Sloppy app.useErrors options must be a plain object.");
     }
 
-    return Results.problem(problem, { status: 500 });
+    const detail = resolveDetailPolicy(options, config);
+    if (detail !== "never" && detail !== "development" && detail !== "always") {
+        throw new TypeError("Sloppy error detail policy must be never, development, or always.");
+    }
+
+    const maxBodyBytes = options?.maxBodyBytes ?? DEFAULT_MAX_ERROR_BODY_BYTES;
+    if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0) {
+        throw new TypeError("Sloppy app.useErrors maxBodyBytes must be a non-negative integer.");
+    }
+
+    return Object.freeze({
+        detail,
+        missingRoute: options?.missingRoute !== false,
+        maxBodyBytes,
+    });
 }
 
-function validationProblemResult(error) {
-    return Results.problem(validationProblem(error.issues), { status: 400 });
+function normalizeLegacyProblemDetails(descriptor, config) {
+    return Object.freeze({
+        detail: descriptor.detail ?? "never",
+        missingRoute: false,
+        maxBodyBytes: DEFAULT_MAX_ERROR_BODY_BYTES,
+    });
+}
+
+function shouldIncludeDetails(policy, config) {
+    const environment = String(config.get("Sloppy:Environment", config.get("Environment", "")));
+    return policy.detail === "always" ||
+        (policy.detail === "development" && environment.toLowerCase() === "development");
+}
+
+function problemBody(status, title, code, context, error, policy, config) {
+    const problem = { status, title, code };
+    if (typeof context?.requestId === "string" && context.requestId.length !== 0) {
+        problem.requestId = context.requestId;
+    }
+    if (error !== undefined && shouldIncludeDetails(policy, config)) {
+        problem.detail = String(error?.message ?? error);
+    }
+    return Object.freeze(problem);
+}
+
+function problemResult(status, title, code, context, error, policy, config) {
+    return Results.problem(problemBody(status, title, code, context, error, policy, config), { status });
+}
+
+function validationProblemResult(error, context) {
+    const problem = {
+        ...validationProblem(error.issues),
+    };
+    if (typeof context?.requestId === "string" && context.requestId.length !== 0) {
+        problem.requestId = context.requestId;
+    }
+    return Results.problem(Object.freeze(problem), { status: 400 });
+}
+
+function isProviderError(error) {
+    return error !== null && typeof error === "object" &&
+        (error.__sloppyProviderError === true || /provider|database|sqlite|postgres|sqlserver/iu.test(String(error.name ?? "")));
+}
+
+function statusTitle(status) {
+    switch (status) {
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
+        case 404: return "Not Found";
+        case 413: return "Payload Too Large";
+        case 415: return "Unsupported Media Type";
+        default: return status >= 500 ? "Internal Server Error" : "Request Failed";
+    }
+}
+
+function codeForStatus(status) {
+    switch (status) {
+        case 400: return "SLOPPY_E_BAD_REQUEST";
+        case 401: return "SLOPPY_E_AUTH_UNAUTHORIZED";
+        case 403: return "SLOPPY_E_AUTH_FORBIDDEN";
+        case 404: return "SLOPPY_E_NOT_FOUND";
+        case 413: return "SLOPPY_E_PAYLOAD_TOO_LARGE";
+        case 415: return "SLOPPY_E_UNSUPPORTED_MEDIA_TYPE";
+        default: return "SLOPPY_E_HANDLER_ERROR";
+    }
+}
+
+function logErrorOnce(context, error, status, code) {
+    if (context?.__sloppyErrorLogged === true ||
+        context?.log === undefined ||
+        typeof context.log.error !== "function")
+    {
+        return;
+    }
+    Object.defineProperty(context, "__sloppyErrorLogged", {
+        value: true,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+    });
+    const fields = { status, code };
+    if (typeof context.requestId === "string") {
+        fields.requestId = context.requestId;
+    }
+    if (typeof context.routePattern === "string") {
+        fields.route = context.routePattern;
+        fields.routePattern = context.routePattern;
+    }
+    if (typeof error?.name === "string") {
+        fields.errorName = error.name;
+    }
+    context.log.error("request failed", fields);
+}
+
+function resultFromMapper(mapped, status) {
+    if (mapped?.__sloppyResult === true) {
+        return mapped;
+    }
+    if (isPlainObject(mapped)) {
+        const resolvedStatus = Number.isInteger(mapped.status) ? mapped.status : status;
+        return Results.problem(mapped, { status: resolvedStatus });
+    }
+    throw new TypeError("Sloppy app.mapError mapper must return Results.* or a ProblemDetails object.");
+}
+
+function mappedErrorResult(error, context, policyState) {
+    for (const mapping of policyState.mappings) {
+        if (error instanceof mapping.type) {
+            return resultFromMapper(mapping.mapper(error, context), 500);
+        }
+    }
+    return undefined;
+}
+
+function errorPolicyResult(error, context, policyState, config) {
+    if (isValidationError(error)) {
+        return validationProblemResult(error, context);
+    }
+    const mapped = mappedErrorResult(error, context, policyState);
+    if (mapped !== undefined) {
+        const status = Number.isInteger(mapped.status) ? mapped.status : 500;
+        logErrorOnce(context, error, status, mapped.body?.code ?? codeForStatus(status));
+        return mapped;
+    }
+    if (isProviderError(error)) {
+        logErrorOnce(context, error, 500, "SLOPPY_E_PROVIDER_ERROR");
+        return problemResult(500, "Provider error", "SLOPPY_E_PROVIDER_ERROR", context, undefined, policyState.policy, config);
+    }
+    logErrorOnce(context, error, 500, "SLOPPY_E_HANDLER_ERROR");
+    return problemResult(500, "Internal Server Error", "SLOPPY_E_HANDLER_ERROR", context, error, policyState.policy, config);
+}
+
+function standardProblemResult(status, context, policyState, config) {
+    return problemResult(status, statusTitle(status), codeForStatus(status), context, undefined, policyState.policy, config);
 }
 
 function isWorkerResource(resource) {
@@ -292,19 +459,22 @@ function createApp(host) {
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
     const directModules = new Set();
-    let problemDetails = null;
+    const errorPolicyState = {
+        policy: null,
+        mappings: [],
+    };
     const authState = createAuthState();
     const routeHost = {
         ...host,
         auth: authState,
-        handleError(error) {
-            if (isValidationError(error)) {
-                return validationProblemResult(error);
-            }
-            if (problemDetails === null) {
+        handleError(error, context) {
+            if (errorPolicyState.policy === null) {
+                if (isValidationError(error)) {
+                    return validationProblemResult(error, context);
+                }
                 throw error;
             }
-            return safeProblemDetails(error, problemDetails, host.config);
+            return errorPolicyResult(error, context, errorPolicyState, host.config);
         },
     };
 
@@ -345,7 +515,9 @@ function createApp(host) {
         use(provider) {
             assertAppMutable();
             if (isProblemDetailsDescriptor(provider)) {
-                problemDetails = provider;
+                errorPolicyState.policy = provider.__sloppyProblemDetails === true
+                    ? normalizeLegacyProblemDetails(provider, host.config)
+                    : normalizeErrorPolicyOptions(provider, host.config);
                 return app;
             }
             if (typeof provider === "function") {
@@ -383,6 +555,24 @@ function createApp(host) {
                 token: sqliteProviderToken(provider.name),
                 options,
             });
+        },
+
+        useErrors(options = undefined) {
+            assertAppMutable();
+            errorPolicyState.policy = normalizeErrorPolicyOptions(options, host.config);
+            return app;
+        },
+
+        mapError(type, mapper) {
+            assertAppMutable();
+            if (typeof type !== "function") {
+                throw new TypeError("Sloppy app.mapError type must be an Error constructor.");
+            }
+            if (typeof mapper !== "function") {
+                throw new TypeError("Sloppy app.mapError mapper must be a function.");
+            }
+            errorPolicyState.mappings.push(Object.freeze({ type, mapper }));
+            return app;
         },
 
         useCors(policy) {
@@ -672,7 +862,28 @@ function createApp(host) {
                 capabilities: host.capabilities.list(),
                 auth: snapshotAuthState(authState),
                 workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
+                errors: errorPolicyState.policy === null ? undefined : Object.freeze({
+                    detail: errorPolicyState.policy.detail,
+                    missingRoute: errorPolicyState.policy.missingRoute,
+                    mappings: errorPolicyState.mappings.length,
+                }),
             });
+        },
+
+        __getErrorPolicy() {
+            return errorPolicyState.policy === null ? undefined : Object.freeze({
+                detail: errorPolicyState.policy.detail,
+                missingRoute: errorPolicyState.policy.missingRoute,
+                maxBodyBytes: errorPolicyState.policy.maxBodyBytes,
+                mappings: errorPolicyState.mappings.length,
+            });
+        },
+
+        __handleErrorStatus(status, context = undefined) {
+            if (errorPolicyState.policy === null) {
+                return undefined;
+            }
+            return standardProblemResult(status, context, errorPolicyState, host.config);
         },
 
         __runInModule(moduleName, callback) {

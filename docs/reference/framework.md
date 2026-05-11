@@ -38,6 +38,8 @@ remains an app-host test helper and is not compiler input.
 | `config`, `log`, `services`, `capabilities` | Built providers. |
 | `use(providerOrWorker)` | Accepts worker resources and Sloppy provider descriptors. Current provider kind accepted by app validation: `sqlite`. |
 | `useCors(policy)` | Registers an app-host CORS policy for subsequently registered routes and generated preflight handlers. |
+| `useErrors(options?)` | Enables the app-host error policy for problem responses, typed mappings, status mappings, and safe error logs. |
+| `mapError(type, mapper)` | Registers a typed exception mapper. |
 | `useModule(moduleOrFactory)` | Accepts route-only `Sloppy.module(...)` or named synchronous function modules. |
 | `mapGet/mapPost/mapPut/mapPatch/mapDelete` | Route registration methods. |
 | `get/post/put/patch/delete` | Aliases for `map*`. |
@@ -358,6 +360,23 @@ Options:
 | `detail: "development"` | Include details only in the stdlib app path when `Sloppy:Environment` or `Environment` is `Development`. |
 | `detail: "always"` | Include details in the stdlib app path. Use only for local diagnostics. |
 
+## Error Policy
+
+`app.useErrors(options?)` is the current app-host error policy surface. It maps
+unhandled handler exceptions to `500 application/problem+json`, request
+validation errors to `400`, auth failures to `401` or `403`, and provider-shaped
+errors to redacted `500` provider problems. In `Testing.createHost(app)`, the
+policy also maps missing routes to `404`, oversized bodies to `413`, and
+unsupported media types to `415`.
+
+`app.mapError(ErrorCtor, mapper)` registers a typed mapping. The mapper receives
+`(error, ctx)` and returns either a `Results.*` descriptor or a plain problem
+object.
+
+The policy logs one safe `request failed` event when a logger is available. It
+does not log exception messages, request bodies, headers, provider messages,
+tokens, cookies, or connection strings.
+
 ## Limits
 
 - `app.use(...)` provider validation is currently sqlite-only.
@@ -372,8 +391,9 @@ Options:
   `ctx.requestId` for `sloppy run`.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
 - Handler execution through `sloppy run` requires V8.
-- ProblemDetails currently provides safe global handler-error mapping. Production error
-  policy and exception taxonomy are separate framework areas.
+- `app.useErrors(...)` is app-host behavior in this slice. Compiler/OpenAPI/audit
+  support beyond the compatibility `ProblemDetails.defaults(...)` wrapper is planned
+  separately.
 
 ## App Test Host
 

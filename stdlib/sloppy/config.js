@@ -23,6 +23,30 @@ function required(key) {
     });
 }
 
+function boolean(key, fallback = undefined) {
+    validateConfigReferenceKey(key);
+    if (fallback !== undefined && typeof fallback !== "boolean") {
+        throw new TypeError("Sloppy Config.boolean fallback must be a boolean when provided.");
+    }
+    return Object.freeze({
+        __sloppyConfigReference: true,
+        key,
+        type: "boolean",
+        default: fallback,
+        toString() {
+            return "[Config reference redacted]";
+        },
+        toJSON() {
+            return {
+                key,
+                type: "boolean",
+                value: "[redacted]",
+            };
+        },
+    });
+}
+
 export const Config = Object.freeze({
+    boolean,
     required,
 });

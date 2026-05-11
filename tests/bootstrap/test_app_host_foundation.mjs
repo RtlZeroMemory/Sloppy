@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 
 import {
+    Auth,
     CancelledError,
     CancellationController,
+    Config,
     ConstantTime,
     Deadline,
     Directory,
@@ -2535,6 +2537,7 @@ async function flushMicrotasks(count = 6) {
 {
     const defaults = ProblemDetails.defaults();
     assert.deepEqual(defaults, {
+        __sloppyErrorPolicy: true,
         __sloppyProblemDetails: true,
         detail: "never",
     });
@@ -2566,6 +2569,111 @@ async function flushMicrotasks(count = 6) {
     });
     const response = await app.__getRoutes()[0].handler();
     assert.equal(response.body.detail, "dev detail");
+}
+
+{
+    assert.deepEqual(Config.boolean("Errors:IncludeDetails", false).toJSON(), {
+        key: "Errors:IncludeDetails",
+        type: "boolean",
+        value: "[redacted]",
+    });
+    assertThrowsMessage(() => Config.boolean("", false), /non-empty/);
+    assertThrowsMessage(() => Config.boolean("Errors:IncludeDetails", "yes"), /fallback/);
+
+    class NotFoundError extends Error {}
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({ Errors: { IncludeDetails: true } });
+    const sink = builder.logging.addMemorySink();
+    const app = builder.build();
+    app.useErrors({
+        includeDetails: Config.boolean("Errors:IncludeDetails", false),
+        maxBodyBytes: 64,
+    });
+    app.use(RequestId.defaults({ generator: () => "req-errors" }));
+    app.use(Auth.apiKey({
+        validate: () => ({ sub: "user", roles: [] }),
+    }));
+    app.mapError(NotFoundError, (error, ctx) =>
+        Results.problem({
+            status: 404,
+            title: "Mapped not found",
+            detail: error.message,
+            requestId: ctx.requestId,
+        }, { status: 404 }));
+    app.get("/throw", () => {
+        throw new Error("dev detail visible");
+    });
+    app.get("/mapped", () => {
+        throw new NotFoundError("missing mapped record");
+    });
+    app.post("/validated", async (ctx) => {
+        return Results.ok({ value: await ctx.body.validate(schema.object({ name: schema.string().min(3) })) });
+    });
+    app.get("/auth", () => Results.ok({ ok: true })).requireAuth();
+    app.get("/admin", () => Results.ok({ ok: true })).requireAuth({ role: "admin" });
+    app.post("/body", () => Results.ok({ ok: true }));
+    app.get("/provider", () => {
+        const error = new Error("provider password=secret");
+        error.name = "SloppyProviderError";
+        throw error;
+    });
+
+    const host = createTestHost(app);
+
+    const thrown = await host.get("/throw");
+    assert.equal(thrown.status, 500);
+    assert.equal(thrown.headers.get("x-request-id"), "req-errors");
+    assert.deepEqual(await thrown.json(), {
+        status: 500,
+        title: "Internal Server Error",
+        code: "SLOPPY_E_HANDLER_ERROR",
+        requestId: "req-errors",
+        detail: "dev detail visible",
+    });
+
+    const mapped = await host.get("/mapped");
+    assert.equal(mapped.status, 404);
+    assert.deepEqual(await mapped.json(), {
+        status: 404,
+        title: "Mapped not found",
+        detail: "missing mapped record",
+        requestId: "req-errors",
+    });
+
+    const validation = await host.post("/validated", { json: { name: "Al" } });
+    assert.equal(validation.status, 400);
+    assert.equal((await validation.json()).code, "SLOPPY_E_VALIDATION_FAILED");
+
+    const authMissing = await host.get("/auth");
+    assert.equal(authMissing.status, 401);
+    assert.equal((await authMissing.json()).code, "SLOPPY_E_AUTH_UNAUTHORIZED");
+
+    const authForbidden = await host.get("/admin", { headers: { "x-api-key": "dev" } });
+    assert.equal(authForbidden.status, 403);
+    assert.equal((await authForbidden.json()).code, "SLOPPY_E_AUTH_FORBIDDEN");
+
+    const missingRoute = await host.get("/missing");
+    assert.equal(missingRoute.status, 404);
+    assert.equal((await missingRoute.json()).code, "SLOPPY_E_NOT_FOUND");
+
+    const unsupportedMedia = await host.post("/body", {
+        body: "name=Ada",
+        headers: { "Content-Type": "application/xml" },
+    });
+    assert.equal(unsupportedMedia.status, 415);
+    assert.equal((await unsupportedMedia.json()).code, "SLOPPY_E_UNSUPPORTED_MEDIA_TYPE");
+
+    const tooLarge = await host.post("/body", { text: "x".repeat(65) });
+    assert.equal(tooLarge.status, 413);
+    assert.equal((await tooLarge.json()).code, "SLOPPY_E_PAYLOAD_TOO_LARGE");
+
+    const provider = await host.get("/provider");
+    assert.equal(provider.status, 500);
+    const providerText = await provider.text();
+    assert.equal(providerText.includes("password=secret"), false);
+    assert.equal(JSON.stringify(sink.entries()).includes("password=secret"), false);
+    assert.equal(sink.entries().filter((entry) => entry.message === "request failed").length, 3);
+    await host.close();
 }
 
 {
