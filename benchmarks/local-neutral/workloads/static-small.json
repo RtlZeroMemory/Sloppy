@@ -1,0 +1,8 @@
+{
+  "name": "static-small",
+  "method": "GET",
+  "path": "/public/hello.txt",
+  "description": "Small static text response.",
+  "expectedStatus": 200,
+  "expectedBody": "hello static"
+}

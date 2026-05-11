@@ -1,0 +1,12 @@
+{
+  "name": "json-small",
+  "method": "GET",
+  "path": "/json-small",
+  "description": "Small stable JSON response.",
+  "expectedStatus": 200,
+  "expectedJson": {
+    "ok": true,
+    "message": "hello",
+    "count": 3
+  }
+}

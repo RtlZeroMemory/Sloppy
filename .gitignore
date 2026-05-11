@@ -69,3 +69,7 @@ docs/.vitepress/cache/
 *.7z
 *.tar.gz
 *.tgz
+
+# Local dogfood applications and one-off integration harnesses
+examples/comprehensive-postgres-backend/
+tests/scripts/test_comprehensive_backend_postgres.ps1

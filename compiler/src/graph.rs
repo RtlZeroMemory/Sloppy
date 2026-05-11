@@ -76,6 +76,7 @@ pub(crate) struct Handler {
     pub(crate) response: Option<ResponseMetadata>,
     pub(crate) responses: Vec<ResponseMetadata>,
     pub(crate) effects: Vec<EffectMetadata>,
+    pub(crate) schema_metadata_conflict: bool,
 }
 
 #[derive(Debug, Clone)]

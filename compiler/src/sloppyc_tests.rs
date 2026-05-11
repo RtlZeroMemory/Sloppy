@@ -837,32 +837,98 @@ fn inferred_program_mode_preserves_timing_metrics() {
 }
 
 #[test]
-fn program_mode_rejects_re_export_declarations() {
-    for source in [
-        "export { value } from \"./dep\";\n",
-        "export * from \"./dep\";\n",
-    ] {
-        let root = std::env::temp_dir().join(format!(
-            "sloppyc-program-reexport-{}-{}",
-            std::process::id(),
-            source.len()
-        ));
-        let input = root.join("main.ts");
-        let dep = root.join("dep.ts");
-        let out_dir = root.join(".sloppy");
-        if root.exists() {
-            fs::remove_dir_all(&root).expect("stale program fixture should be removable");
-        }
-        fs::create_dir_all(&root).expect("program fixture directory should be created");
-        fs::write(&input, source).expect("input should write");
-        fs::write(&dep, "export const value = 1;\n").expect("dep should write");
-
-        let error = super::build(&input, &out_dir, &CompileOptions::new())
-            .expect_err("re-export should fail");
-        assert_eq!(error.diagnostic.code, "SLOPPYC_E_UNSUPPORTED_EXPORT");
-
-        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+fn program_mode_supports_re_export_declarations() {
+    let root =
+        std::env::temp_dir().join(format!("sloppyc-program-reexport-{}", std::process::id()));
+    let input = root.join("main.ts");
+    let dep = root.join("dep.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
     }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(
+        &input,
+        r#"export { value as renamed, "string-name" as "external-name" } from "./dep";
+export * from "./dep";
+export * as namespace from "./dep";
+export { type MissingType } from "./types-only";
+"#,
+    )
+    .expect("input should write");
+    fs::write(
+        &dep,
+        r#"export const value = 1;
+const local = 2;
+export { local as "string-name" };
+export default 3;
+"#,
+    )
+    .expect("dep should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new()).expect("re-export should build");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
+    assert!(app_js.contains("__sloppy_program_require(\"dep.ts\")"));
+    assert!(app_js.contains("exports.renamed = __sloppy_reexport_"));
+    assert!(app_js.contains("exports[\"external-name\"] = __sloppy_reexport_"));
+    assert!(app_js.contains("exports[__sloppy_key] = __sloppy_reexport_"));
+    assert!(app_js.contains("exports.namespace = __sloppy_program_require(\"dep.ts\");"));
+    let graph_text =
+        fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
+    let graph: serde_json::Value =
+        serde_json::from_str(&graph_text).expect("dependency graph should parse");
+    let entry = graph["modules"]
+        .as_array()
+        .expect("modules should be an array")
+        .iter()
+        .find(|module| module["id"] == "main.ts")
+        .expect("entry module should be recorded");
+    let resolved_imports = entry["resolvedImports"]
+        .as_array()
+        .expect("resolved imports should be an array");
+    assert!(resolved_imports
+        .iter()
+        .any(|import| import["specifier"] == "./dep"
+            && import["resolvedId"] == "dep.ts"
+            && import["kind"] == "relative"));
+    assert!(!resolved_imports
+        .iter()
+        .any(|import| import["specifier"] == "./types-only"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_supports_sqlite_provider_imports() {
+    let root = std::env::temp_dir().join(format!(
+        "sloppyc-program-provider-import-{}",
+        std::process::id()
+    ));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(
+        &input,
+        r#"import { sqlite } from "sloppy/providers/sqlite";
+export function main() {
+  const provider = sqlite("main", { database: "local.db" });
+  console.log(provider.kind, provider.token, provider.options.database);
+}
+"#,
+    )
+    .expect("input should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("sqlite provider import should build in program mode");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
+    assert!(app_js.contains("__sloppy_program_modules[\"sloppy/providers/sqlite\"]"));
+    assert!(app_js.contains("__sloppy_program_require(\"sloppy/providers/sqlite\")"));
+    assert!(app_js.contains("module.exports={sqlite,Sqlite:sqlite,default:null}"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
 
 #[test]
@@ -4089,6 +4155,146 @@ export default app;
 }
 
 #[test]
+fn typed_framework_handler_sanitizes_context_schema_reference() {
+    let source = r#"import { Sloppy, Results, Schema, RequestContext } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+const CreateUser = Schema.object({ name: Schema.string() });
+const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
+const app = Sloppy.create();
+app.post("/users", async (db: Postgres<"main">, ctx: RequestContext) => {
+  const input = await ctx.body.validate(CreateUser);
+  return Results.created("/users/1", { id: 1, name: input.name });
+}).accepts(CreateUser).returns(User);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed handler schema reference should extract");
+    let body_binding = app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .find(|binding| binding.kind == "body.json")
+        .expect("body schema binding should exist");
+    assert_eq!(body_binding.schema.as_deref(), Some("CreateUser"));
+    assert!(app.routes[0]
+        .handler
+        .bindings
+        .iter()
+        .any(|binding| binding.kind == "context"));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.body.validate(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.validate(CreateUser)"));
+}
+
+#[test]
+fn handler_emits_referenced_top_level_literal_helpers() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const columns = `id, name`;
+const app = Sloppy.create();
+app.get("/users", () => Results.ok({ sql: `select ${columns} from users` }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("top-level literal helper should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("const columns = `id, name`;"));
+    assert!(emitted_js.source.contains("`select ${columns} from users`"));
+}
+
+#[test]
+fn extracts_named_schema_references_inside_schema_dsl() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const User = Schema.object({
+  id: Schema.integer(),
+  name: Schema.string()
+});
+const Users = Schema.array(User);
+const Project = Schema.object({
+  owner: User,
+  members: Users
+});
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([{ id: 1, name: "Ada" }])).returns(Users);
+app.get("/projects/{id:int}", () => Results.ok({ owner: { id: 1, name: "Ada" }, members: [] })).returns(Project);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("named schema references should extract");
+    assert_eq!(app.schemas.len(), 3);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let users_schema = plan["schemas"]
+        .as_array()
+        .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "Users"))
+        .expect("Users schema should exist");
+    assert_eq!(users_schema["definition"]["items"]["kind"], "object");
+    assert_eq!(
+        users_schema["definition"]["items"]["properties"]["name"]["kind"],
+        "string"
+    );
+    let project_schema = plan["schemas"]
+        .as_array()
+        .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "Project"))
+        .expect("Project schema should exist");
+    assert_eq!(
+        project_schema["definition"]["properties"]["owner"]["properties"]["id"]["kind"],
+        "int"
+    );
+    assert_eq!(
+        project_schema["definition"]["properties"]["members"]["items"]["properties"]["name"]
+            ["kind"],
+        "string"
+    );
+    assert_eq!(plan["routes"][0]["response"]["bodySchema"], "Users");
+    assert_eq!(plan["routes"][1]["response"]["bodySchema"], "Project");
+}
+
+#[test]
+fn cyclic_typescript_schema_references_emit_partial_doctor_metadata() {
+    let source = r#"import { Sloppy, Results, Body } from "sloppy";
+type NodeA = { child: NodeB };
+type NodeB = { parent: NodeA };
+const app = Sloppy.create();
+app.post("/nodes", (input: Body<NodeA>) => Results.ok(input));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("cyclic TypeScript-only schema references should not block runnable source");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial schema plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let node_schema = plan["schemas"]
+        .as_array()
+        .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "NodeA"))
+        .expect("NodeA schema should exist");
+    assert_eq!(
+        node_schema["definition"]["properties"]["child"]["properties"]["parent"]["partial"],
+        true
+    );
+    assert!(plan["doctorChecks"]
+        .as_array()
+        .is_some_and(|checks| checks
+            .iter()
+            .any(|check| check["id"] == "schema.reference.partial"
+                && check["schema"] == "NodeA"
+                && check["reason"] == "cycle")));
+}
+
+#[test]
 fn returns_schema_metadata_only_applies_to_json_responses() {
     let source = r#"import { Sloppy, Results, Schema } from "sloppy";
 const User = Schema.object({ id: Schema.integer() });
@@ -4200,7 +4406,7 @@ export default app;
 }
 
 #[test]
-fn rejects_conflicting_fluent_route_schema_metadata() {
+fn conflicting_fluent_route_schema_metadata_marks_partial() {
     let source = r#"import { Sloppy, Results, Schema } from "sloppy";
 const CreateUser = Schema.object({ name: Schema.string() });
 const UpdateUser = Schema.object({ name: Schema.string() });
@@ -4210,9 +4416,64 @@ app.post("/users", async (ctx) =>
 ).accepts(UpdateUser);
 export default app;
 "#;
-    let diagnostic = extract(std::path::Path::new("app.ts"), source)
-        .expect_err("conflicting fluent schema metadata should fail extraction");
-    assert_eq!(diagnostic.code, "SLOPPYC_E_CONFLICTING_ROUTE_SCHEMA");
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("conflicting fluent schema metadata should compile as partial metadata");
+    assert!(app.routes[0].handler.schema_metadata_conflict);
+    assert_eq!(app.routes[0].handler.bindings[0].schema.as_deref(), None);
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["completeness"]["status"], "partial");
+    assert!(plan["routes"][0]["completeness"]["reasons"]
+        .as_array()
+        .is_some_and(|reasons| reasons
+            .iter()
+            .any(|reason| reason["code"] == "schema-metadata-conflict")));
+}
+
+#[test]
+fn conflicting_response_schema_metadata_marks_response_partial() {
+    let source = r#"import { Sloppy, Results, Route, Schema } from "sloppy";
+type UserDto = { id: number, name: string };
+const PublicUser = Schema.object({ id: Schema.integer() });
+const app = Sloppy.create();
+app.get("/users/:id", (id: Route<number>) =>
+  Results.ok<UserDto>({ id, name: "Ada" })
+).returns(PublicUser);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("conflicting response schema metadata should compile as partial metadata");
+    let response = app.routes[0]
+        .handler
+        .response
+        .as_ref()
+        .expect("typed response metadata should be present");
+    assert_eq!(response.body_schema.as_deref(), Some("UserDto"));
+    assert!(response.partial);
+    assert!(app.routes[0].handler.schema_metadata_conflict);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["response"]["partial"], true);
+    assert!(plan["routes"][0]["completeness"]["reasons"]
+        .as_array()
+        .is_some_and(|reasons| reasons
+            .iter()
+            .any(|reason| reason["code"] == "response-metadata-partial")));
 }
 
 #[test]
@@ -6077,6 +6338,22 @@ export default app;
 }
 
 #[test]
+fn root_sloppy_sql_import_emits_data_runtime() {
+    let source = r#"import { Sloppy, Results, sql } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("root sql import should be recognized");
+    assert!(app.uses_data_runtime);
+    assert!(app.uses_sql_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("const { Results, data, sql }"));
+}
+
+#[test]
 fn root_sloppy_import_rejects_net_only_exports() {
     let source = r#"import { Sloppy, Results, TcpClient } from "sloppy";
 const app = Sloppy.create();
@@ -6535,7 +6812,7 @@ export default app;
 }
 
 #[test]
-fn framework_service_registration_rejects_captured_factory_identifiers() {
+fn framework_service_registration_allows_emitted_helper_captures() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 function makeGreeting() {
   return { prefix: "hello" };
@@ -6545,13 +6822,33 @@ app.services.addScoped("GreetingService", () => makeGreeting());
 app.get("/users", () => Results.ok({ ok: true }));
 export default app;
 "#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("captured emitted helper should be available to service factories");
+    assert_eq!(app.service_registrations.len(), 1);
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("function makeGreeting()"));
+    assert!(emitted_js.source.contains(
+        "__sloppy_framework_services.addScoped(\"GreetingService\", () => makeGreeting());"
+    ));
+}
+
+#[test]
+fn framework_service_registration_rejects_unemitted_app_captures() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.services.addSingleton("GreetingService", () => ({
+  greeting: app.config.getString("App:Greeting", "hello")
+}));
+app.get("/users", () => Results.ok({ ok: true }));
+export default app;
+"#;
     let diagnostic = extract(std::path::Path::new("app.ts"), source)
-        .expect_err("captured service factory identifiers should be rejected");
+        .expect_err("unemitted app capture would produce a broken generated bundle");
     assert_eq!(
         diagnostic.code,
         "SLOPPYC_E_UNSUPPORTED_SERVICE_REGISTRATION"
     );
-    assert!(diagnostic.message.contains("makeGreeting"));
+    assert!(diagnostic.message.contains("app"));
 }
 
 #[test]
@@ -6764,6 +7061,38 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));
+}
+
+#[test]
+fn auth_result_helpers_emit_response_metadata() {
+    let source = r#"import { Sloppy, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({
+  name: "sloppy.session",
+  secret: Config.required("Auth:SessionSecret")
+}));
+app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "1", roles: ["admin"] }));
+app.post("/logout", (ctx) => Auth.signOut(ctx));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("auth helpers should extract response metadata");
+    let login = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/login")
+        .and_then(|route| route.handler.response.as_ref())
+        .expect("login response metadata should exist");
+    assert_eq!(login.status, 200);
+    assert_eq!(login.kind, "json");
+    let logout = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/logout")
+        .and_then(|route| route.handler.response.as_ref())
+        .expect("logout response metadata should exist");
+    assert_eq!(logout.status, 204);
+    assert_eq!(logout.kind, "empty");
 }
 
 #[test]
@@ -7345,6 +7674,44 @@ export default app;
     assert_eq!(
         value["routes"][1]["tags"],
         serde_json::json!(["admin", "v1"])
+    );
+}
+
+#[test]
+fn extracts_chained_group_tags_and_auth_requirements() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const secure = app.group("/v1").withTags("v1").requireAuth({ role: "admin" });
+const users = secure.group("/users").withTags("users");
+users.get("/", () => Results.ok([])).withName("Users.List");
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("chained group tags and auth should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].pattern, "/v1/users");
+    assert_eq!(
+        app.routes[0].tags,
+        vec!["v1".to_string(), "users".to_string()]
+    );
+    let auth = app.routes[0].auth.as_ref().expect("auth should inherit");
+    assert!(auth.required);
+    assert_eq!(auth.roles, vec!["admin".to_string()]);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let emitted_plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value =
+        serde_json::from_str(&emitted_plan).expect("plan should be valid json");
+    assert_eq!(value["routes"][0]["auth"]["required"], true);
+    assert_eq!(
+        value["routes"][0]["auth"]["roles"],
+        serde_json::json!(["admin"])
     );
 }
 

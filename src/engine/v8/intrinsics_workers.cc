@@ -242,7 +242,22 @@ const char* workers_v8_payload_codec_source()
 
 bool workers_v8_ensure_payload_codec(v8::Isolate* isolate, v8::Local<v8::Context> context)
 {
+    v8::Local<v8::Value> encode_value;
+    v8::Local<v8::Value> decode_value;
     v8::Local<v8::Value> ignored;
+    if (isolate == nullptr || context.IsEmpty()) {
+        return false;
+    }
+    if (context->Global()
+            ->Get(context, workers_v8_literal(isolate, "__sloppyWorkerEncodePayload"))
+            .ToLocal(&encode_value) &&
+        context->Global()
+            ->Get(context, workers_v8_literal(isolate, "__sloppyWorkerDecodePayload"))
+            .ToLocal(&decode_value) &&
+        encode_value->IsFunction() && decode_value->IsFunction())
+    {
+        return true;
+    }
     return workers_v8_compile_run(isolate, context, "sloppy-worker-payload-codec.js",
                                   workers_v8_payload_codec_source(), &ignored);
 }

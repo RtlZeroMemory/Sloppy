@@ -9,8 +9,8 @@
   "completeness": {
     "reasons": [
       {
-        "code": "partial-route",
-        "message": "one or more routes have partial inferred metadata"
+        "code": "body-schema-missing",
+        "message": "route reads JSON body data without a declared schema"
       }
     ],
     "status": "partial"

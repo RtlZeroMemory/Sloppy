@@ -22,6 +22,7 @@
       "required": true,
       "minimumVersion": "3.25.0",
       "command": "cmake",
+      "versionArguments": ["--version"],
       "versionPattern": "cmake version ([0-9]+\\.[0-9]+\\.[0-9]+)"
     },
     "ninja": {

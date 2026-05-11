@@ -62,6 +62,11 @@ typedef struct SlHttpDispatchTable
     const SlHttpRouteCandidateBucket** param_route_bucket_slots;
     size_t param_route_bucket_slot_count;
     const SlPlan* plan;
+    /*
+     * Runtime-owned dispatch metadata. Callers that manually create this struct must
+     * zero-initialize it and leave this field untouched.
+     */
+    unsigned int runtime_reserved0;
     bool handler_cache_trusted;
 } SlHttpDispatchTable;
 

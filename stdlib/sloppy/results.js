@@ -269,13 +269,41 @@ function isHeaderNameSafe(name) {
     return true;
 }
 
+function headerNameEqualsIgnoreCase(name, expected) {
+    if (name.length !== expected.length) {
+        return false;
+    }
+
+    for (let index = 0; index < expected.length; index += 1) {
+        let actual = name.charCodeAt(index);
+        let wanted = expected.charCodeAt(index);
+        if (actual >= 0x41 && actual <= 0x5A) {
+            actual += 0x20;
+        }
+        if (wanted >= 0x41 && wanted <= 0x5A) {
+            wanted += 0x20;
+        }
+        if (actual !== wanted) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function isManagedResponseHeader(name) {
-    const lowered = name.toLowerCase();
-    return lowered === "connection" ||
-        lowered === "content-type" ||
-        lowered === "content-length" ||
-        lowered === "transfer-encoding" ||
-        lowered === "keep-alive";
+    switch (name.length) {
+    case "connection".length:
+        return headerNameEqualsIgnoreCase(name, "connection") ||
+            headerNameEqualsIgnoreCase(name, "keep-alive");
+    case "content-type".length:
+        return headerNameEqualsIgnoreCase(name, "content-type");
+    case "content-length".length:
+        return headerNameEqualsIgnoreCase(name, "content-length");
+    case "transfer-encoding".length:
+        return headerNameEqualsIgnoreCase(name, "transfer-encoding");
+    default:
+        return false;
+    }
 }
 
 function isHeaderValueSafe(value) {

@@ -2171,6 +2171,34 @@ void sl_v8_append_sqlserver_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_one_callback));
 }
 
+size_t sl_v8_sqlserver_pending_native_activity(SlV8Engine* backend)
+{
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+    size_t pending = 0U;
+    if (backend == nullptr || backend->resources.entries == nullptr) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < backend->resources.capacity; ++index) {
+        SlResourceEntry* entry = &backend->resources.entries[index];
+        if (!entry->occupied || entry->kind != SL_RESOURCE_KIND_SQLSERVER_CONNECTION ||
+            entry->ptr == nullptr)
+        {
+            continue;
+        }
+        auto* resource = static_cast<SqlSrvV8ConnectionResource*>(entry->ptr);
+        for (const SqlSrvV8Connection& connection : resource->connections) {
+            if (connection.request != nullptr) {
+                ++pending;
+            }
+        }
+    }
+    return pending;
+#else
+    (void)backend;
+    return 0U;
+#endif
+}
+
 bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                         v8::Local<v8::Object> data)
 {

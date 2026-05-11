@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "serve": "deno run --allow-net=127.0.0.1 --allow-env server.ts"
+  }
+}
