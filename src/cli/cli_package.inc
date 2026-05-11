@@ -130,6 +130,8 @@ static bool sl_package_source_root_from_source(char* buffer, size_t capacity,
 static int sl_package_create_parent_directory(const char* path)
 {
     char parent[SL_RUN_PATH_MAX_BYTES];
+    SlStringBuilder builder = {0};
+    SlStr parent_view = {0};
     size_t index = 0U;
     size_t last_separator = 0U;
     SlStatus status;
@@ -146,8 +148,18 @@ static int sl_package_create_parent_directory(const char* path)
     if (last_separator == 0U || last_separator >= sizeof(parent)) {
         return 1;
     }
-    memcpy(parent, path, last_separator);
-    parent[last_separator] = '\0';
+    status = sl_string_builder_init_fixed(&builder, parent, sizeof(parent));
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_string_builder_append_str(&builder, sl_str_from_parts(path, last_separator));
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_string_builder_view_with_nul(&builder, &parent_view);
+    if (!sl_status_is_ok(status) || parent_view.ptr != parent) {
+        return 1;
+    }
     status = sl_fs_create_directory(sl_str_from_cstr(parent), true, NULL);
     if (!sl_status_is_ok(status)) {
         sl_cli_write_error_with_value("sloppy package: failed to create asset directory: ",

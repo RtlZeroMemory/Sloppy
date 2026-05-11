@@ -2253,6 +2253,7 @@ static int sl_run_once_read_body_file(SlRunApp* app, const char* path,
                                       SlBytes* out_body)
 {
     SlArena arena = {0};
+    SlByteBuilder builder = {0};
     SlOwnedBytes bytes = {0};
     SlBytes view = {0};
     SlStatus status;
@@ -2281,8 +2282,13 @@ static int sl_run_once_read_body_file(SlRunApp* app, const char* path,
                                       "\n");
         return 1;
     }
-    if (view.length != 0U) {
-        memcpy(body_storage, view.ptr, view.length);
+    status = sl_byte_builder_init_fixed(&builder, body_storage, body_capacity);
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_byte_builder_append_bytes(&builder, view);
+    if (!sl_status_is_ok(status)) {
+        return 1;
     }
     *out_body = sl_bytes_from_parts(body_storage, view.length);
     return 0;
@@ -2341,7 +2347,7 @@ static int sl_run_once_prepare_request(SlRunApp* app, const SlCliOptions* option
     }
 
     if (body_text != NULL) {
-        size_t body_length = strlen(body_text);
+        size_t body_length = sl_str_from_cstr(body_text).length;
         if (body_length > body_capacity) {
             sl_cli_write_cstr(stderr, "sloppy run: --once request body exceeds limit\n");
             return 1;
@@ -2350,15 +2356,15 @@ static int sl_run_once_prepare_request(SlRunApp* app, const SlCliOptions* option
     }
 
     if (body.length != 0U) {
-        int written = 0;
+        SlStr content_length = {0};
         if (sl_run_once_has_header(headers, request->header_count, "Content-Length")) {
             sl_cli_write_cstr(
                 stderr,
                 "sloppy run: --once sets content-length; do not pass a Content-Length header\n");
             return 1;
         }
-        written = snprintf(content_length_storage, content_length_capacity, "%zu", body.length);
-        if (written < 0 || (size_t)written >= content_length_capacity ||
+        if (!sl_status_is_ok(sl_string_format_size(content_length_storage, content_length_capacity,
+                                                   body.length, &content_length)) ||
             sl_run_once_append_header(headers, &request->header_count, "Content-Length",
                                       content_length_storage) != 0)
         {
