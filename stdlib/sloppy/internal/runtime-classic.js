@@ -16,14 +16,6 @@
     const FAST_JSON_MAX_LENGTH = 256;
     const POSTGRES_MAX_POOL_CONNECTIONS = 256;
     const SQLSERVER_MAX_POOL_CONNECTIONS = 256;
-    const MIGRATIONS_TABLE = "_sloppy_migrations";
-    const MIGRATION_HASH_PREFIX = "fnv1a32:";
-    const MIGRATION_PROVIDER_KINDS = Object.freeze({
-        sqlite: true,
-        postgres: true,
-        sqlserver: true,
-    });
-
     function resolveStatus(options, defaultStatus) {
         const status = options?.status ?? defaultStatus;
 
@@ -1714,7 +1706,7 @@ Operation:
         sqlserver: true,
     });
 
-    function normalizeMigrationOptions(options) {
+    function normalizeDataMigrationOptions(options) {
         if (!isPlainObject(options)) {
             throw new TypeError("Sloppy Migrations options must be a plain object.");
         }
@@ -1722,6 +1714,9 @@ Operation:
         const path = options.path;
         if (typeof provider !== "string" || provider.length === 0) {
             throw new TypeError("Sloppy Migrations provider must be a non-empty string.");
+        }
+        if (MIGRATION_PROVIDER_KINDS[provider] !== true) {
+            throw new TypeError("Sloppy Migrations provider must be sqlite, postgres, or sqlserver.");
         }
         if (typeof path !== "string" || path.length === 0) {
             throw new TypeError("Sloppy Migrations path must be a non-empty string.");
@@ -1744,7 +1739,7 @@ Fix:
         return { provider, path, directory };
     }
 
-    function migrationHash(text) {
+    function dataMigrationHash(text) {
         let hash = 0x811c9dc5;
         const addByte = (value) => {
             hash ^= value & 0xff;
@@ -1774,7 +1769,7 @@ Fix:
         return `${MIGRATION_HASH_PREFIX}${hash.toString(16).padStart(8, "0")}`;
     }
 
-    function migrationProviderKind(db) {
+    function connectionProviderKind(db, operation) {
         const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
         if (debug?.kind === "sqlite-connection") {
             return "sqlite";
@@ -1786,13 +1781,17 @@ Fix:
             return "sqlserver";
         }
         throw new TypeError(
-            "Sloppy Migrations only supports sqlite, postgres, and sqlserver connections created by sloppy/data.",
+            `Sloppy ${operation} only supports sqlite, postgres, and sqlserver connections created by sloppy/data.`,
         );
     }
 
-    function resolveMigrationProviderKind(db, options) {
-        const providerKind = migrationProviderKind(db);
-        if (MIGRATION_PROVIDER_KINDS[options.provider] === true && options.provider !== providerKind) {
+    function dataMigrationProviderKind(db) {
+        return connectionProviderKind(db, "Migrations");
+    }
+
+    function resolveDataMigrationProviderKind(db, options) {
+        const providerKind = dataMigrationProviderKind(db);
+        if (options.provider !== providerKind) {
             throw new TypeError(
                 `Sloppy Migrations provider '${options.provider}' does not match connection provider '${providerKind}'.`,
             );
@@ -1800,7 +1799,7 @@ Fix:
         return providerKind;
     }
 
-    const MIGRATION_SQL = Object.freeze({
+    const DATA_MIGRATION_SQL = Object.freeze({
         sqlite: Object.freeze({
             ensure:
                 `create table if not exists ${MIGRATIONS_TABLE} (` +
@@ -1842,7 +1841,7 @@ Fix:
         }),
     });
 
-    async function listMigrationFiles(options) {
+    async function listDataMigrationFiles(options) {
         let entries;
         try {
             entries = await Directory.list(options.directory);
@@ -1868,13 +1867,13 @@ Fix:
             }));
     }
 
-    async function ensureMigrationsTable(db, providerKind) {
-        await db.exec(MIGRATION_SQL[providerKind].ensure, []);
+    async function ensureDataMigrationsTable(db, providerKind) {
+        await db.exec(DATA_MIGRATION_SQL[providerKind].ensure, []);
     }
 
-    async function readAppliedMigrations(db, providerKind) {
-        await ensureMigrationsTable(db, providerKind);
-        const rows = await db.query(MIGRATION_SQL[providerKind].select, []);
+    async function readDataAppliedMigrations(db, providerKind) {
+        await ensureDataMigrationsTable(db, providerKind);
+        const rows = await db.query(DATA_MIGRATION_SQL[providerKind].select, []);
         const applied = new Map();
         for (const row of rows) {
             applied.set(row.name, row);
@@ -1882,7 +1881,7 @@ Fix:
         return applied;
     }
 
-    function migrationStatusFor(files, applied) {
+    function dataMigrationStatusFor(files, applied) {
         return files.map((file) => {
             const appliedRow = applied.get(file.name) ?? null;
             if (appliedRow === null) {
@@ -1958,16 +1957,16 @@ Fix:
   Create a new migration file instead of editing an already-applied migration.`);
     }
 
-    async function migrationStatus(db, options) {
-        const checked = normalizeMigrationOptions(options);
-        const providerKind = resolveMigrationProviderKind(db, checked);
+    async function dataMigrationStatus(db, options) {
+        const checked = normalizeDataMigrationOptions(options);
+        const providerKind = resolveDataMigrationProviderKind(db, checked);
         const files = await migrationFilesWithContent(checked);
-        const applied = await readAppliedMigrations(db, providerKind);
-        const migrations = migrationStatusFor(files, applied);
+        const applied = await readDataAppliedMigrations(db, providerKind);
+        const migrations = dataMigrationStatusFor(files, applied);
         const changed = migrations.some((migration) => migration.status === "changed");
         const pending = migrations.filter((migration) => migration.status === "pending").length;
         return Object.freeze({
-            provider: checked.provider,
+            provider: providerKind,
             path: checked.path,
             status: changed ? "changed" : pending > 0 ? "pending" : "current",
             pending,
@@ -1976,13 +1975,13 @@ Fix:
         });
     }
 
-    async function applyMigrations(db, options) {
-        const checked = normalizeMigrationOptions(options);
-        const providerKind = resolveMigrationProviderKind(db, checked);
-        const dialect = MIGRATION_SQL[providerKind];
+    async function applyDataMigrations(db, options) {
+        const checked = normalizeDataMigrationOptions(options);
+        const providerKind = resolveDataMigrationProviderKind(db, checked);
+        const dialect = DATA_MIGRATION_SQL[providerKind];
         const files = await migrationFilesWithContent(checked);
-        const applied = await readAppliedMigrations(db, providerKind);
-        const records = migrationStatusFor(files, applied);
+        const applied = await readDataAppliedMigrations(db, providerKind);
+        const records = dataMigrationStatusFor(files, applied);
         for (const record of records) {
             assertMigrationHashNotChanged(record);
         }
@@ -2004,35 +2003,35 @@ Fix:
         }
 
         return Object.freeze({
-            provider: checked.provider,
+            provider: providerKind,
             path: checked.path,
             applied: appliedCount,
             skipped: files.length - appliedCount,
         });
     }
 
-    async function checkProviderHealth(db, options = {}) {
+    async function checkDataProviderHealth(db, options = {}) {
         void options;
-        const provider = migrationProviderKind(db);
+        const provider = connectionProviderKind(db, "ProviderHealth");
         await db.queryOne("select 1 as ok", []);
         return Object.freeze({ provider, ok: true });
     }
 
-    const Migrations = Object.freeze({
-        apply: applyMigrations,
-        status: migrationStatus,
+    const DataMigrations = Object.freeze({
+        apply: applyDataMigrations,
+        status: dataMigrationStatus,
     });
 
-    const ProviderHealth = Object.freeze({
-        check: checkProviderHealth,
+    const DataProviderHealth = Object.freeze({
+        check: checkDataProviderHealth,
     });
 
     const data = Object.freeze({
         sqlite,
         postgres,
         sqlserver,
-        migrations: Migrations,
-        providerHealth: ProviderHealth,
+        migrations: DataMigrations,
+        providerHealth: DataProviderHealth,
         values,
     });
 

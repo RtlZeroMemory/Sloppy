@@ -246,6 +246,25 @@ function encodeQuery(query) {
     return pairs.length === 0 ? "" : `?${pairs.join("&")}`;
 }
 
+function routeParamValueSatisfies(kind, value) {
+    if (kind === "str") {
+        return true;
+    }
+    if (kind === "int") {
+        return /^[0-9]+$/u.test(value);
+    }
+    if (kind === "uuid") {
+        return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u.test(value);
+    }
+    if (kind === "alpha") {
+        return /^[A-Za-z]+$/u.test(value);
+    }
+    if (kind === "float") {
+        return /^(?:[0-9]+\.[0-9]*|\.[0-9]+)$/u.test(value);
+    }
+    return false;
+}
+
 function buildRouteUrl(pattern, params = {}, query = undefined) {
     if (!isPlainObject(params)) {
         throw new TypeError("Sloppy urlFor params must be a plain object.");
@@ -263,8 +282,13 @@ function buildRouteUrl(pattern, params = {}, query = undefined) {
         if (params[name] === undefined || params[name] === null) {
             throw new TypeError(`Sloppy urlFor route parameter '${name}' is required.`);
         }
+        const kind = match[2] ?? "str";
+        const value = String(params[name]);
+        if (!routeParamValueSatisfies(kind, value)) {
+            throw new TypeError(`Sloppy urlFor route parameter '${name}' must satisfy '${kind}'.`);
+        }
         used.add(name);
-        return encodeURIComponent(String(params[name]));
+        return encodeURIComponent(value);
     }).join("/");
     const extra = Object.keys(params).filter((key) => !used.has(key));
     if (extra.length !== 0) {

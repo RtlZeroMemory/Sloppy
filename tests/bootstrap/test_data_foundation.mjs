@@ -788,6 +788,11 @@ function createForgedLoweredQuery() {
         provider: "sqlite",
         path: "migrations/*.sql",
     }), /only supports sqlite, postgres, and sqlserver connections/);
+    await assertRejectsMessage(() => data.migrations.status(fakeDb, {
+        provider: "sqltie",
+        path: "migrations/*.sql",
+    }), /provider must be sqlite, postgres, or sqlserver/);
+    await assertRejectsMessage(() => data.providerHealth.check(fakeDb), /Sloppy ProviderHealth only supports/);
 }
 
 {

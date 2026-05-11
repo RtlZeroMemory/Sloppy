@@ -542,8 +542,9 @@ static int test_route_table_orders_constrained_params_before_unconstrained(void)
         return 163;
     }
 
-    if (table.dispatch.route_count != 3U || table.dispatch.routes[0].handler_id != 3U ||
-        table.dispatch.routes[1].handler_id != 2U || table.dispatch.routes[2].handler_id != 1U)
+    if (table.dispatch.route_count != 3U || table.dispatch.routes == NULL ||
+        table.dispatch.routes[0].handler_id != 3U || table.dispatch.routes[1].handler_id != 2U ||
+        table.dispatch.routes[2].handler_id != 1U)
     {
         return 164;
     }
@@ -583,8 +584,9 @@ static int test_route_table_orders_mixed_position_literal_specificity(void)
         return 165;
     }
 
-    if (table.dispatch.route_count != 2U || table.dispatch.routes[0].handler_id != 2U ||
-        table.dispatch.routes[1].handler_id != 1U || table.dispatch.param_route_count != 2U ||
+    if (table.dispatch.route_count != 2U || table.dispatch.routes == NULL ||
+        table.dispatch.routes[0].handler_id != 2U || table.dispatch.routes[1].handler_id != 1U ||
+        table.dispatch.param_route_count != 2U || table.dispatch.param_routes == NULL ||
         table.dispatch.param_routes[0].handler_id != 2U ||
         table.dispatch.param_routes[1].handler_id != 1U)
     {

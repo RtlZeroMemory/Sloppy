@@ -1898,7 +1898,7 @@ async function flushMicrotasks(count = 6) {
         .withName("Files.Get");
 
     assert.equal(app.urlFor("Users.Get", { id: 123 }, { tab: "profile view" }), "/users/123?tab=profile%20view");
-    assert.equal(app.urlFor("Users.Get", { id: "a/b" }), "/users/a%2Fb");
+    assertThrowsMessage(() => app.urlFor("Users.Get", { id: "a/b" }), /must satisfy 'int'/);
     assertThrowsMessage(() => app.urlFor("Users.Get", {}, undefined), /route parameter 'id'/);
     assertThrowsMessage(() => app.urlFor("Users.Get", { id: 1, extra: true }), /extra route parameter/);
     assertThrowsMessage(() => app.urlFor("Users.Missing", {}), /not registered/);
