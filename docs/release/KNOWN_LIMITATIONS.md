@@ -10,9 +10,9 @@ own status.
   `@rtlzeromemory/sloppy-win32-x64`.
 - Linux x64 glibc: public alpha npm platform package
   `@rtlzeromemory/sloppy-linux-x64`.
-- macOS arm64 and macOS x64: source/archive builds only; repo package
-  templates are private/unpublished and are not referenced by the root npm
-  package.
+- macOS arm64 and macOS x64: supported macOS alpha platform packages
+  `@rtlzeromemory/sloppy-darwin-arm64` and
+  `@rtlzeromemory/sloppy-darwin-x64`.
 - Linux arm64 and Windows arm64: no alpha npm platform package.
 
 ## V8 SDK and Runtime

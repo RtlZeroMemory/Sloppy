@@ -75,7 +75,8 @@ Public alpha, pre-production:
   at build time with a diagnostic.
 - OpenAPI is generated from Plan metadata today; security schemes, richer
   response schemas, and full runtime-pipeline modeling are not represented.
-- npm runtime packages for Windows x64 and Linux x64.
-- Cross-platform polish: macOS and arm64 use source/archive paths today.
+- npm runtime packages for Windows x64, Linux x64 glibc, and macOS.
+- Cross-platform polish: Linux arm64 and Windows arm64 use source/archive paths
+  today.
 
 [Quickstart →](../quickstart.md)

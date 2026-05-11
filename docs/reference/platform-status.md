@@ -1,7 +1,7 @@
 # Platform Status Reference
 
-Sloppy is designed to be cross-platform, but the public alpha,
-pre-production package set is still narrow.
+Sloppy is designed to be cross-platform. The public alpha, pre-production
+package set covers Windows x64, Linux x64 glibc, and macOS.
 
 ## npm Platform Packages
 
@@ -9,13 +9,14 @@ pre-production package set is still narrow.
 | --- | --- |
 | Windows x64 | Published alpha npm platform package: `@rtlzeromemory/sloppy-win32-x64`. |
 | Linux x64 glibc | Published alpha npm platform package: `@rtlzeromemory/sloppy-linux-x64`. |
-| macOS arm64 | Source/archive builds only; repo contains a private/unpublished package template. |
-| macOS x64 | Source/archive builds only; repo contains a private/unpublished package template. |
+| macOS arm64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-arm64`. |
+| macOS x64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-x64`. |
 | Linux arm64 | No alpha npm platform package. Use a source build. |
 | Windows arm64 | No alpha npm platform package. Use a source build. |
 
-The root `@rtlzeromemory/sloppy` launcher references only the Windows x64 and
-Linux x64 glibc platform packages in this alpha.
+The root `@rtlzeromemory/sloppy` launcher selects the matching platform package
+for supported alpha package lanes. Linux arm64 and Windows arm64 remain source
+build lanes.
 
 ## Current Emitted Target
 
@@ -27,7 +28,8 @@ Compiler-emitted plans currently target:
 `sloppy run` checks these target fields and rejects unsupported artifact
 targets. Platform package availability and emitted Plan target metadata are
 separate surfaces; this alpha still carries Windows-centered Plan goldens while
-the release package scripts also stage Linux x64 glibc runtime packages.
+the release package scripts also stage Linux x64 glibc and macOS runtime
+packages.
 
 ## Status Table
 
@@ -35,7 +37,7 @@ the release package scripts also stage Linux x64 glibc runtime packages.
 | --- | --- | --- |
 | Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
 | Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
-| macOS local development | Product target, less complete today. | Unix script checks where available. |
+| macOS local development | Supported macOS alpha target. | Unix script checks where available. |
 | Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled test run. |
 | Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Integration checks with configured services. |
 
@@ -60,6 +62,7 @@ Examples from doctor output:
 
 ## Current Limits
 
-- Runtime/provider/package checks are not fully validated on every OS yet.
+- Runtime/provider/package checks are not fully validated on every non-alpha
+  platform yet.
 - Current Plan target enforcement and many checked-in Plan goldens are still
   centered on `windows-x64`.

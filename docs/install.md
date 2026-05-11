@@ -34,20 +34,20 @@ ok
 | --- | --- |
 | Windows x64 | npm platform package with V8-backed handler execution |
 | Linux x64 glibc | npm platform package with V8-backed handler execution |
-| macOS arm64 | source/archive builds only; npm package template is private/unpublished |
-| macOS x64 | source/archive builds only; npm package template is private/unpublished |
+| macOS arm64 | supported macOS alpha lane with V8-backed handler execution |
+| macOS x64 | supported macOS alpha lane with V8-backed handler execution |
 | Linux arm64 | no alpha npm platform package; source build only |
 | Windows arm64 | no alpha npm platform package; source build only |
 
-The root package installs a small launcher plus the matching Windows x64 or
-Linux x64 glibc platform package through npm optional dependencies. It does not
-build native code during install, run `node-gyp`, or download V8 in
-`postinstall`.
+The root package installs a small launcher plus the matching supported
+platform package through npm optional dependencies. It does not build native
+code during install, run `node-gyp`, or download V8 in `postinstall`.
 
 ## Build from source
 
 Use a source build when you are working on Sloppy itself, testing an unpublished
-change, or using a platform without an npm package.
+change, or using Linux arm64, Windows arm64, or another platform without an
+alpha package.
 
 Windows x64:
 

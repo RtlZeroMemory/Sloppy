@@ -125,10 +125,10 @@ sloppy package
 sloppy run .sloppy/package -- --name Ada
 ```
 
-Windows x64 and Linux x64 glibc are the npm runtime targets for this alpha.
-macOS arm64 and macOS x64 package templates exist in the repo but are not
-published npm platform packages. Linux arm64 and Windows arm64 do not have
-alpha npm platform packages yet; use source builds there.
+Windows x64, Linux x64 glibc, and macOS are the runtime targets for this
+alpha. macOS arm64 and macOS x64 are supported macOS lanes. Linux arm64 and
+Windows arm64 do not have alpha npm platform packages yet; use source builds
+there.
 
 More detail: [Install](docs/install.md).
 
@@ -228,8 +228,8 @@ Current limits:
 - The compiler supports a focused source subset. Dynamic web shapes can run
   with partial metadata; unsupported imports/runtime features still fail
   clearly.
-- macOS arm64, macOS x64, Linux arm64, and Windows arm64 package-manager
-  distribution are not part of this alpha.
+- Linux arm64 and Windows arm64 package-manager distribution are not part of
+  this alpha. macOS is supported as a macOS alpha target.
 - PostgreSQL and SQL Server are optional provider features. Their live checks
   need explicit local services and provider dependencies; the Quickstart,
   Program Mode, SQLite, templates, and package support do not.

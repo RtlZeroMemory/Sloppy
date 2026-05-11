@@ -20,8 +20,9 @@ Current Sloppy includes:
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
   schema, and testing;
 - experimental typed, Plan-visible FFI for deliberate C ABI interop;
-- Windows x64 and Linux x64 npm platform packages;
-- source/archive build paths for other platforms.
+- Windows x64, Linux x64 glibc, and macOS npm platform packages;
+- source/archive build paths for Linux arm64, Windows arm64, and other
+  platforms without an alpha package.
 
 ## Near-term alpha work
 

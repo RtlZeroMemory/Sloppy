@@ -79,7 +79,7 @@ app package, and proves the package can run outside the source checkout.
 - CLI: `create`, `build`, `dev`, `run`, `package`, `routes`, `deps`,
   `capabilities`, `doctor`, `audit`, `openapi`, and `db status|migrate`.
 - Runtime: V8-backed web handler execution and Program Mode entrypoint
-  execution on Windows x64 and Linux x64 alpha packages.
+  execution on Windows x64, Linux x64 glibc, and macOS alpha packages.
 - HTTP: HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c.
 - Stdlib: app host, routing, results, services, config, logging, data, workers,
   filesystem, network, OS, time, crypto, codec, and schema.
@@ -101,9 +101,9 @@ APIs and artifacts can change between alpha revisions. Package support is
 limited to compatible installed JavaScript that Sloppy can bundle, and Sloppy is
 not a full Node runtime.
 
-Platform npm packages are currently Windows x64 and Linux x64 glibc. macOS
-arm64, macOS x64, Linux arm64, and Windows arm64 are source-build paths until
-matching alpha packages are available.
+Platform npm packages cover Windows x64, Linux x64 glibc, and macOS. Linux
+arm64 and Windows arm64 are source-build paths until matching alpha packages
+are available.
 
 ## Examples
 

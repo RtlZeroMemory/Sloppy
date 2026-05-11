@@ -47,18 +47,18 @@
       "archiveName": "sloppy-macos-arm64.tar.gz",
       "packageRoot": "sloppy-macos-arm64",
       "packageFormat": "tar.gz",
-      "platformStatus": "experimental",
-      "runtimeUserStatus": "experimental pending hosted package smoke",
-      "v8RuntimeStatus": "macOS arm64 V8 SDK/runtime artifact lane is not available yet"
+      "platformStatus": "supported",
+      "runtimeUserStatus": "supported macOS alpha package lane",
+      "v8RuntimeStatus": "supported when the macOS arm64 package is built with the matching Sloppy-owned V8 runtime"
     },
     {
       "id": "macos-x64",
       "archiveName": "sloppy-macos-x64.tar.gz",
       "packageRoot": "sloppy-macos-x64",
       "packageFormat": "tar.gz",
-      "platformStatus": "source-build only",
-      "runtimeUserStatus": "source-build only unless the optional hosted x64 lane is requested and smoked",
-      "v8RuntimeStatus": "macOS x64 V8 SDK/runtime artifact lane is not available yet"
+      "platformStatus": "supported",
+      "runtimeUserStatus": "supported macOS alpha package lane",
+      "v8RuntimeStatus": "supported when the macOS x64 package is built with the matching Sloppy-owned V8 runtime"
     }
   ],
   "requiredPackageLayout": [
@@ -110,12 +110,11 @@
     "root": "@rtlzeromemory/sloppy",
     "platformPackages": [
       "@rtlzeromemory/sloppy-win32-x64",
-      "@rtlzeromemory/sloppy-linux-x64"
-    ],
-    "deferredPlatformPackages": [
+      "@rtlzeromemory/sloppy-linux-x64",
       "@rtlzeromemory/sloppy-darwin-arm64",
       "@rtlzeromemory/sloppy-darwin-x64"
     ],
+    "deferredPlatformPackages": [],
     "publishTag": "alpha",
     "publishWorkflow": ".github/workflows/npm-publish.yml",
     "publishTrigger": "manual workflow_dispatch",

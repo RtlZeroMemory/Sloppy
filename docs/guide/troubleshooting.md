@@ -54,10 +54,9 @@ diagnostic:
 Sloppy npm platform package is not published for this platform.
 ```
 
-The public alpha npm package currently targets Windows x64 and Linux x64
-glibc. macOS arm64/x64 package templates exist in the repo but are not
-published npm packages. Linux arm64 and Windows arm64 do not have alpha npm
-platform packages. Use a supported npm target or build from source.
+The public alpha npm package targets Windows x64, Linux x64 glibc, and macOS.
+Linux arm64 and Windows arm64 do not have alpha npm platform packages. Use a
+supported npm target or build from source.
 
 ### V8 unavailable
 

@@ -106,7 +106,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
 | Examples and evidence catalog | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
 | Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json`, `sloppy deps --explain` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, full Node HTTP/socket parity, or unrestricted runtime discovery. |
-| Package/install path | n/a | n/a | package layout | experimental | Windows x64 and Linux x64 npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
+| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
 
 ## Current Limits
 
