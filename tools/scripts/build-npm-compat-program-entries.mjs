@@ -2,11 +2,23 @@
 // Adds program-mode entries to the representative npm-compat fixtures so
 // that `sloppy build` and `compile_file` can drive them end-to-end. Idempotent.
 
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const fixturesRoot = join(repoRoot, "tests", "fixtures", "npm-compat");
+
+function readIfPresent(path) {
+    try {
+        return readFileSync(path, "utf8");
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return null;
+        }
+        throw error;
+    }
+}
 
 const sloppyJson = (entry) => JSON.stringify({
     kind: "program",
@@ -71,7 +83,7 @@ for (const entry of entries) {
     const fixtureDir = join(fixturesRoot, entry.fixture);
     const entryPath = join(fixtureDir, entry.relative);
     mkdirSync(dirname(entryPath), { recursive: true });
-    if (existsSync(entryPath) && readFileSync(entryPath, "utf8") === entry.content) {
+    if (readIfPresent(entryPath) === entry.content) {
         skipped++;
     } else {
         writeFileSync(entryPath, entry.content);
@@ -80,7 +92,7 @@ for (const entry of entries) {
 
     const sloppyJsonPath = join(fixtureDir, "sloppy.json");
     const desired = sloppyJson(entry.sloppyEntry ?? entry.relative);
-    if (existsSync(sloppyJsonPath) && readFileSync(sloppyJsonPath, "utf8") === desired) {
+    if (readIfPresent(sloppyJsonPath) === desired) {
         skipped++;
     } else {
         writeFileSync(sloppyJsonPath, desired);

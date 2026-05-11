@@ -94,7 +94,7 @@ foreach(fixture IN LISTS representatives)
     if(SLOPPY_EXPECT_RUN_SUCCESS)
         execute_process(
             COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}"
-                    "${SLOPPY_CLI}" run "${outside_dir}/package" --once
+                    "${SLOPPY_CLI}" run "${outside_dir}/package"
             TIMEOUT 60
             RESULT_VARIABLE run_result
             OUTPUT_VARIABLE run_stdout

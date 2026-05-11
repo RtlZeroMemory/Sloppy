@@ -20,7 +20,7 @@ tested in CI; it is **not** an installation of npm packages from a registry.
 
 ## Layout
 
-```
+```text
 tests/fixtures/npm-compat/
   matrix.json                 -- machine-readable matrix
   <fixture>/                  -- one directory per matrix entry

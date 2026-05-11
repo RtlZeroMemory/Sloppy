@@ -9,10 +9,11 @@
 // The script writes files only if their contents differ. It does not delete
 // existing fixtures so that hand-authored examples stay intact.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const fixturesRoot = join(repoRoot, "tests", "fixtures", "npm-compat");
 
 const fixtures = [
@@ -661,11 +662,11 @@ for (const fixture of fixtures) {
     const fullPath = join(fixturesRoot, fixture.path);
     mkdirSync(dirname(fullPath), { recursive: true });
     let current = null;
-    if (existsSync(fullPath)) {
-        try {
-            current = readFileSync(fullPath, "utf8");
-        } catch {
-            current = null;
+    try {
+        current = readFileSync(fullPath, "utf8");
+    } catch (error) {
+        if (error?.code !== "ENOENT") {
+            throw error;
         }
     }
     if (current === fixture.content) {
