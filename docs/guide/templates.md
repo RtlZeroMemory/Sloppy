@@ -2,13 +2,22 @@
 
 Sloppy templates are starting points for source-input projects.
 
-The built-in API templates are:
+```sh
+sloppy create my-api --template api
+```
+
+Current public templates are:
 
 | Template | Use it for |
 | --- | --- |
-| `minimal-api` | A small route-only API. |
-| `api` | A multi-file API layout with route modules and configuration. |
-| `package-api` | An API intended to exercise package/dependency artifact output. |
+| `api` | SQLite-backed API starter with routes, services, provider config, migrations, health, and packaging flow. |
+| `minimal-api` | Smallest web API starter. |
+| `program` | Program Mode starter. |
+| `cli` | CLI-style Program Mode starter. |
+| `package-api` | API starter that uses a compatible local pure-JavaScript package. |
+| `node-compat` | Program starter using supported Node compatibility shims. |
+
+## Authentication
 
 Auth is available from any API template:
 
@@ -23,6 +32,24 @@ app.use(Auth.jwtBearer({
 ```
 
 Auth setup in templates is public-alpha/experimental. There is no dedicated
-auth template yet. Add the auth setup to the generated `app.js` or route
+auth template yet. Add the auth setup to the generated app file or route
 module, then add the corresponding `Auth:*` keys to `appsettings.json` or your
 deployment configuration.
+
+## API Template Migrations
+
+The `api` template includes:
+
+- `migrations/0001_create_users.sql`
+- `sloppy.json` migration metadata for provider `main`
+- runtime migration usage through `Migrations.apply(...)`
+
+Build and apply the template database schema:
+
+```sh
+sloppy build
+sloppy db migrate .sloppy --provider main
+```
+
+Package output includes the migration file and migration manifest metadata, so
+the same command shape works against `.sloppy/package`.

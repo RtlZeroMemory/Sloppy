@@ -94,6 +94,32 @@ if(NOT EXISTS "${project_dir}/.gitignore")
     message(FATAL_ERROR "sloppy create --no-git did not copy .gitignore")
 endif()
 
+set(invalid_migration_glob_dir "${work_dir}/invalid-migration-glob")
+file(MAKE_DIRECTORY "${invalid_migration_glob_dir}")
+file(WRITE "${invalid_migration_glob_dir}/sloppy.json" [=[{
+  "entry": "src/main.ts",
+  "migrations": {
+    "main": {
+      "provider": "sqlite",
+      "path": "migrations/main.sql"
+    }
+  }
+}
+]=])
+execute_process(
+    COMMAND "${SLOPPY_CLI}" package
+    WORKING_DIRECTORY "${invalid_migration_glob_dir}"
+    TIMEOUT 60
+    RESULT_VARIABLE invalid_migration_glob_result
+    OUTPUT_VARIABLE invalid_migration_glob_stdout
+    ERROR_VARIABLE invalid_migration_glob_stderr)
+if(invalid_migration_glob_result EQUAL 0)
+    message(FATAL_ERROR "sloppy package unexpectedly accepted a non-glob migration path")
+endif()
+if(NOT invalid_migration_glob_stderr MATCHES "directory glob ending in \\*\\.sql")
+    message(FATAL_ERROR "sloppy package invalid migration path failure did not explain the glob contract\nstdout:\n${invalid_migration_glob_stdout}\nstderr:\n${invalid_migration_glob_stderr}")
+endif()
+
 execute_process(
     COMMAND "${SLOPPY_CLI}" create "bad name" --template minimal-api
     WORKING_DIRECTORY "${work_dir}"
@@ -157,7 +183,7 @@ endif()
 if(NOT default_create_stdout MATCHES "\"template\":\"api\"")
     message(FATAL_ERROR "sloppy create default did not use api template\nstdout:\n${default_create_stdout}")
 endif()
-foreach(expected_default IN ITEMS README.md package.json sloppy.json appsettings.json appsettings.Development.json data/.gitkeep src/main.ts src/routes/users.ts src/services/usersService.ts src/db/usersRepository.ts)
+foreach(expected_default IN ITEMS README.md package.json sloppy.json appsettings.json appsettings.Development.json data/.gitkeep migrations/0001_create_users.sql src/main.ts src/routes/users.ts src/services/usersService.ts src/db/usersRepository.ts)
     if(NOT EXISTS "${default_project_dir}/${expected_default}")
         message(FATAL_ERROR "sloppy create default api template did not copy ${expected_default}")
     endif()
@@ -270,6 +296,13 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         if(NOT public_capabilities_stdout MATCHES "data.main")
             message(FATAL_ERROR "api template capabilities did not include SQLite provider metadata\nstdout:\n${public_capabilities_stdout}")
         endif()
+        assert_sloppy_command_success("api template db status pending" "${public_project_dir}" "pending" db status .sloppy --provider main)
+        assert_sloppy_command_success("api template db status json pending with token" "${public_project_dir}" "\"status\":\"pending\"" db status .sloppy --provider data.main --format json)
+        assert_sloppy_command_success("api template db status absolute target from outside project" "${work_dir}" "pending" db status "${public_project_dir}/.sloppy" --provider main)
+        assert_sloppy_command_success("api template db migrate" "${public_project_dir}" "applied" db migrate .sloppy --provider main)
+        assert_sloppy_command_success("api template db status applied" "${public_project_dir}" "applied" db status .sloppy --provider main)
+        assert_sloppy_command_success("api template db status json current with token" "${public_project_dir}" "\"status\":\"current\"" db status .sloppy --provider data.main --format json)
+        assert_sloppy_command_success("api template db status absolute target applied from outside project" "${work_dir}" "applied" db status "${public_project_dir}/.sloppy" --provider main)
     endif()
     if(public_template STREQUAL "package-api" OR public_template STREQUAL "node-compat")
         execute_process(
@@ -301,6 +334,20 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
     endif()
     if(NOT EXISTS "${public_project_dir}/.sloppy/package/manifest.json")
         message(FATAL_ERROR "${public_template} template package did not create manifest")
+    endif()
+    if(public_template STREQUAL "api")
+        if(NOT EXISTS "${public_project_dir}/.sloppy/package/migrations/0001_create_users.sql")
+            message(FATAL_ERROR "api template package did not copy migrations/0001_create_users.sql")
+        endif()
+        file(READ "${public_project_dir}/.sloppy/package/manifest.json" api_package_manifest)
+        if(NOT api_package_manifest MATCHES "\"migrations\"")
+            message(FATAL_ERROR "api template package manifest did not include migrations metadata\n${api_package_manifest}")
+        endif()
+        file(MAKE_DIRECTORY "${public_project_dir}/.sloppy/package/data")
+        file(COPY_FILE "${public_project_dir}/data/app.db" "${public_project_dir}/.sloppy/package/data/app.db")
+        assert_sloppy_command_success("api template package db status" "${public_project_dir}" "applied" db status .sloppy/package --provider main)
+        assert_sloppy_command_success("api template package db status with token" "${public_project_dir}" "applied" db status .sloppy/package --provider data.main)
+        assert_sloppy_command_success("api template package db status absolute target from outside project" "${work_dir}" "applied" db status "${public_project_dir}/.sloppy/package" --provider main)
     endif()
     if(SLOPPY_ENABLE_V8)
         if(public_template STREQUAL "api")

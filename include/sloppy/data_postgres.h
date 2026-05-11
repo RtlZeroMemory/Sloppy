@@ -195,6 +195,8 @@ SlStatus sl_postgres_close(SlPostgresConnection* connection);
 SlStatus sl_postgres_exec(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
                           const SlPostgresParam* params, size_t param_count,
                           SlPostgresExecResult* out_result, SlDiag* out_diag);
+SlStatus sl_postgres_exec_batch(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
+                                SlPostgresExecResult* out_result, SlDiag* out_diag);
 SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
                            const SlPostgresParam* params, size_t param_count,
                            const SlPostgresQueryOptions* options, SlPostgresResult* out_result,
@@ -211,6 +213,8 @@ SlStatus sl_postgres_transaction_rollback(SlArena* arena, SlPostgresTransaction*
 SlStatus sl_postgres_transaction_exec(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,
                                       const SlPostgresParam* params, size_t param_count,
                                       SlPostgresExecResult* out_result, SlDiag* out_diag);
+SlStatus sl_postgres_transaction_exec_batch(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,
+                                            SlPostgresExecResult* out_result, SlDiag* out_diag);
 SlStatus sl_postgres_transaction_query(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,
                                        const SlPostgresParam* params, size_t param_count,
                                        const SlPostgresQueryOptions* options,

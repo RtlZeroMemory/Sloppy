@@ -214,6 +214,8 @@ SlStatus sl_sqlserver_close(SlSqlServerConnection* connection);
 SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
                            const SlSqlServerParam* params, size_t param_count,
                            SlSqlServerExecResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlserver_exec_batch(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
+                                 SlSqlServerExecResult* out_result, SlDiag* out_diag);
 SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, SlStr sql,
                             const SlSqlServerParam* params, size_t param_count,
                             const SlSqlServerQueryOptions* options, SlSqlServerResult* out_result,
@@ -230,6 +232,8 @@ SlStatus sl_sqlserver_transaction_rollback(SlArena* arena, SlSqlServerTransactio
 SlStatus sl_sqlserver_transaction_exec(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
                                        const SlSqlServerParam* params, size_t param_count,
                                        SlSqlServerExecResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlserver_transaction_exec_batch(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
+                                             SlSqlServerExecResult* out_result, SlDiag* out_diag);
 SlStatus sl_sqlserver_transaction_query(SlArena* arena, SlSqlServerTransaction* tx, SlStr sql,
                                         const SlSqlServerParam* params, size_t param_count,
                                         const SlSqlServerQueryOptions* options,

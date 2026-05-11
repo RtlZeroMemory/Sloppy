@@ -1,5 +1,14 @@
 {
   "entry": "src/main.ts",
   "outDir": ".sloppy",
-  "environment": "Development"
+  "environment": "Development",
+  "capabilities": {
+    "fs": true
+  },
+  "migrations": {
+    "main": {
+      "provider": "sqlite",
+      "path": "migrations/*.sql"
+    }
+  }
 }

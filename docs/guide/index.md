@@ -9,6 +9,9 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [TypeScript support](typescript.md) — what the compiler accepts today, what it rejects
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
+- [Database migrations](migrations.md) — configure, apply, package, and inspect schema migrations
+- [PostgreSQL](postgres.md) — live-provider setup boundaries and health checks
+- [SQL Server](sqlserver.md) — ODBC setup boundaries and health checks
 - [Authentication](auth.md) — experimental route protection with JWT bearer tokens, API keys, roles, and policies
 - [Request logging](request-logging.md) — add request IDs and structured request logs
 - [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers

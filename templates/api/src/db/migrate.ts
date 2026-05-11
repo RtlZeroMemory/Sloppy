@@ -1,8 +1,9 @@
-import { createUsersTableSql, seedUsers } from "./schema.ts";
+import { Migrations } from "sloppy/data";
+import { seedUsers } from "./schema.ts";
 
 export async function migrateUsers(db) {
+    await Migrations.apply(db, { provider: "main", path: "migrations/*.sql" });
     await db.transaction(async (tx) => {
-        await tx.exec(createUsersTableSql, []);
         for (const user of seedUsers) {
             await tx.exec(
                 "insert or ignore into users (id, name, email) values (?, ?, ?)",

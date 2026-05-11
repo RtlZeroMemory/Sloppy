@@ -3,7 +3,7 @@ export { Auth } from "./auth.js";
 export { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text } from "./codec.js";
 export { Config } from "./config.js";
 export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } from "./crypto.js";
-export { data, sql } from "./data.js";
+export { data, Migrations, ProviderHealth, sql } from "./data.js";
 export { t, unsafeFfi } from "./ffi.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export {

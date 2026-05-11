@@ -18,7 +18,6 @@
 #include <string.h>
 #include <yyjson.h>
 
-#define SL_SLOPPYRC_FILE "sloppy.json"
 #define SL_SLOPPYRC_MAX_BYTES 8192U
 #define SL_SLOPPYRC_FILE_READ_SCRATCH_BYTES 65536U
 #define SL_SLOPPYRC_FILE_READ_ARENA_BYTES                                                          \
@@ -110,6 +109,18 @@ static bool sl_sloppyrc_entry_path_is_safe(const char* path)
     }
 
     return true;
+}
+
+static bool sl_sloppyrc_migration_path_is_sql_glob(const char* path)
+{
+    SlStr text = {0};
+
+    if (path == NULL) {
+        return false;
+    }
+    text = sl_str_from_cstr(path);
+    return sl_str_ends_with(text, SL_STR_LITERAL("/*.sql")) ||
+           sl_str_ends_with(text, SL_STR_LITERAL("\\*.sql"));
 }
 
 static int sl_sloppyrc_read_file(const char* path, unsigned char* buffer, size_t capacity,
@@ -225,6 +236,7 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("environment")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("kind")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("capabilities")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("migrations")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("moduleInclude")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("assetInclude")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("ffiLibraries")))
@@ -232,7 +244,7 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
-                "environment, kind, capabilities, moduleInclude, assetInclude, and "
+                "environment, kind, capabilities, migrations, moduleInclude, assetInclude, and "
                 "ffiLibraries\n");
             return 1;
         }
@@ -459,7 +471,89 @@ static int sl_sloppyrc_read_ffi_libraries(yyjson_val* root, SlSloppyRunConfig* o
     return 0;
 }
 
-int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
+static bool sl_sloppyrc_provider_supported(SlStr provider)
+{
+    return sl_str_equal(provider, SL_STR_LITERAL("sqlite")) ||
+           sl_str_equal(provider, SL_STR_LITERAL("postgres")) ||
+           sl_str_equal(provider, SL_STR_LITERAL("sqlserver"));
+}
+
+static int sl_sloppyrc_read_migrations(yyjson_val* root, SlSloppyRunConfig* out,
+                                       const char* command_name)
+{
+    yyjson_val* migrations = yyjson_obj_get(root, "migrations");
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+
+    if (migrations == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(migrations)) {
+        sl_sloppyrc_write_command_message(
+            command_name,
+            "invalid sloppy.json: migrations must be an object of provider names to configs\n");
+        return 1;
+    }
+
+    iter = yyjson_obj_iter_with(migrations);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        yyjson_val* value = yyjson_obj_iter_get_val(key);
+        yyjson_val* provider_value = NULL;
+        yyjson_val* path_value = NULL;
+        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+        SlSloppyMigrationConfig* migration = NULL;
+
+        if (out->migration_count >= SL_SLOPPYRC_MAX_MIGRATIONS || name.length == 0U ||
+            name.length >= SL_SLOPPYRC_MIGRATION_NAME_MAX_BYTES ||
+            !sl_status_is_ok(sl_str_validate_no_nul(name)))
+        {
+            sl_sloppyrc_write_command_message(command_name,
+                                              "invalid sloppy.json: invalid migrations entry\n");
+            return 1;
+        }
+        if (value == NULL || !yyjson_is_obj(value)) {
+            sl_sloppyrc_write_command_message(
+                command_name, "invalid sloppy.json: each migrations entry must be an object\n");
+            return 1;
+        }
+        provider_value = yyjson_obj_get(value, "provider");
+        path_value = yyjson_obj_get(value, "path");
+        if (provider_value == NULL || !yyjson_is_str(provider_value) ||
+            yyjson_get_len(provider_value) == 0U || path_value == NULL ||
+            !yyjson_is_str(path_value) || yyjson_get_len(path_value) == 0U)
+        {
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: migrations entries require provider and path strings\n");
+            return 1;
+        }
+
+        migration = &out->migrations[out->migration_count];
+        for (size_t index = 0U; index < name.length; index += 1U) {
+            migration->name[index] = name.ptr[index];
+        }
+        migration->name[name.length] = '\0';
+        if (!sl_sloppyrc_copy_json_string(migration->provider, sizeof(migration->provider),
+                                          provider_value) ||
+            !sl_sloppyrc_provider_supported(sl_str_from_cstr(migration->provider)) ||
+            !sl_sloppyrc_copy_json_string(migration->path, sizeof(migration->path), path_value) ||
+            !sl_sloppyrc_entry_path_is_safe(migration->path) ||
+            !sl_sloppyrc_migration_path_is_sql_glob(migration->path))
+        {
+            sl_sloppyrc_write_command_message(
+                command_name,
+                "invalid sloppy.json: migrations provider must be sqlite, postgres, or sqlserver "
+                "and path must be a project-relative directory glob ending in *.sql\n");
+            return 1;
+        }
+        out->migration_count += 1U;
+    }
+
+    return 0;
+}
+
+int sl_sloppyrc_load_path_for_command(SlSloppyRunConfig* out, const char* path,
+                                      const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
     SlBytes json = {0};
@@ -468,14 +562,12 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
     yyjson_val* root = NULL;
     int result = 1;
 
-    if (out == NULL) {
+    if (out == NULL || path == NULL || path[0] == '\0') {
         return 1;
     }
     *out = (SlSloppyRunConfig){0};
 
-    if (sl_sloppyrc_read_file(SL_SLOPPYRC_FILE, json_storage, sizeof(json_storage), &json,
-                              command_name) != 0)
-    {
+    if (sl_sloppyrc_read_file(path, json_storage, sizeof(json_storage), &json, command_name) != 0) {
         return 1;
     }
 
@@ -515,6 +607,7 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
         sl_sloppyrc_read_include_array(root, "assetInclude", out->asset_includes,
                                        &out->asset_include_count, SL_SLOPPYRC_MAX_ASSET_INCLUDES,
                                        command_name) == 0 &&
+        sl_sloppyrc_read_migrations(root, out, command_name) == 0 &&
         sl_sloppyrc_read_ffi_libraries(root, out, command_name) == 0)
     {
         if (strcmp(out->kind, "web") != 0 && strcmp(out->kind, "program") != 0) {
@@ -533,6 +626,11 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
 
     yyjson_doc_free(doc);
     return result;
+}
+
+int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
+{
+    return sl_sloppyrc_load_path_for_command(out, SL_SLOPPYRC_FILE, command_name);
 }
 
 int sl_sloppyrc_load(SlSloppyRunConfig* out)
