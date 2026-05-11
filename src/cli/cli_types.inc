@@ -254,6 +254,10 @@ typedef struct SlCliOptions
     bool out_explicit;
     bool create_force;
     bool create_no_git;
+    bool dev_watch;
+    bool dev_watch_explicit;
+    bool dev_clear;
+    bool dev_openapi;
     bool program_args_explicit;
     bool help;
 } SlCliOptions;

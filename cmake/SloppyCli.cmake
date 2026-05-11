@@ -1,4 +1,4 @@
-add_executable(sloppy src/main.c src/cli/sloppyrc.c)
+add_executable(sloppy src/main.c src/cli/sloppyrc.c src/cli/dev_watch_plan.c)
 target_link_libraries(sloppy PRIVATE sloppy_core)
 target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src")

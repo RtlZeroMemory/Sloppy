@@ -11,6 +11,8 @@ Usage:
   sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]
                  [--environment Development] [--host 127.0.0.1] [--port <port>]
                  [--format text|json]
+  sloppy dev [source.js|source.mjs|source.ts] [--host 127.0.0.1] [--port 5173]
+             [--watch|--no-watch] [--clear] [--openapi] [--env Development]
   sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts <dir>] [--stdlib <dir>]
              [--kind web|program] [--environment Development] [--host 127.0.0.1] [--port <port>]
              [--once METHOD TARGET] [--header 'Name: value'] [--body text]

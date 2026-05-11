@@ -537,6 +537,7 @@ async function runCliArea() {
             ["sloppy-create-help", [sloppy, ["create", "--help"]]],
             ["sloppy-build-help", [sloppy, ["build", "--help"]]],
             ["sloppy-run-help", [sloppy, ["run", "--help"]]],
+            ["sloppy-dev-help", [sloppy, ["dev", "--help"]]],
             ["sloppy-package-help", [sloppy, ["package", "--help"]]],
             ["sloppy-routes-help", [sloppy, ["routes", "--help"]]],
             ["sloppy-capabilities-help", [sloppy, ["capabilities", "--help"]]],

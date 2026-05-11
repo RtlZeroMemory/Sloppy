@@ -1,0 +1,7 @@
+Usage: sloppy dev [source.js|source.mjs|source.ts]
+                  [--host 127.0.0.1] [--port 5173]
+                  [--watch|--no-watch] [--clear] [--openapi]
+                  [--env Development] [--environment Development]
+
+Builds the current project, starts the development HTTP server, and watches source/config/static/template/migration inputs by default.
+On rebuild failure, the previous server keeps running when one is active.

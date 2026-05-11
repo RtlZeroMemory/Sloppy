@@ -114,6 +114,18 @@ the artifacts:
 sloppy run src/main.ts --once GET /hello/Ada
 ```
 
+For a normal edit-refresh loop, use experimental `sloppy dev` from the project
+directory. Its behavior may change while Sloppy is pre-alpha.
+
+```sh
+# Experimental.
+sloppy dev
+```
+
+It builds once, starts the local server, watches source/config/static/template
+inputs, and restarts the server after successful rebuilds. If a rebuild fails,
+the previous server keeps running while the diagnostic is printed.
+
 ## 6. Package the app
 
 ```sh
@@ -167,4 +179,4 @@ sloppy run .sloppy --host 0.0.0.0 --port 8080
 - [API: results](api/results.md) — every `Results.*` helper
 - [Guide: project layout](guide/project-layout.md) — `sloppy.json`, env config, `appsettings.json`
 - [Guide: Program Mode](guide/program-mode.md) — console tools and packaged programs
-- [CLI: create](cli/create.md), [build](cli/build.md), [run](cli/run.md), and [package](cli/package.md) — every flag
+- [CLI: create](cli/create.md), [build](cli/build.md), [dev](cli/dev.md), [run](cli/run.md), and [package](cli/package.md) — every flag
