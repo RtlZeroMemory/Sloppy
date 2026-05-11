@@ -564,6 +564,15 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
         sl_cli_write_cstr(out, "]");
     }
     sl_cli_openapi_emit_security(out, metadata, route, &first);
+    if (!sl_cli_span_empty(route->kind) && !sl_cli_span_equal_cstr(route->kind, "http")) {
+        sl_cli_openapi_emit_field_prefix(out, &first);
+        sl_cli_write_cstr(out, "\"x-slop-realtime\": { \"kind\": ");
+        sl_cli_json_escape(out, route->kind);
+        sl_cli_write_cstr(out, " }");
+        sl_cli_openapi_emit_field_prefix(out, &first);
+        sl_cli_write_cstr(out, "\"x-slop-transport\": ");
+        sl_cli_json_escape(out, route->kind);
+    }
     if (!sl_cli_span_empty(route->source_path)) {
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"x-slop-source\": { \"path\": ");

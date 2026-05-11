@@ -143,6 +143,9 @@ pub(crate) fn emit_plan(
                     "column": column
                 }
             });
+            if route.kind != "http" {
+                route_json["kind"] = json!(route.kind);
+            }
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
@@ -925,6 +928,16 @@ pub(crate) fn emit_plan(
     if app.uses_health {
         value["strongPlan"]["evidence"]["health"] = json!(true);
         value["features"]["health"] = json!(true);
+    }
+    if app.uses_realtime_runtime {
+        required_features.push("runtime.realtime".to_string());
+        value["strongPlan"]["evidence"]["realtime"] = json!(true);
+        value["features"]["realtime"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "app.realtime.metadata",
+            "status": "warn",
+            "message": "realtime route metadata is Plan-visible; WebSocket upgrade execution is partial in this alpha"
+        }));
     }
     if !auth_schemes.is_empty() || !auth_policies.is_empty() {
         value["auth"] = json!({

@@ -8,6 +8,17 @@ app.get("/users/{id:int}", (ctx) => {
 });
 ```
 
+SSE and WebSocket route handlers use the same `ctx` as ordinary routes. The
+realtime stream/socket object is the second handler argument. SSE exposes the
+current bounded stream helper; WebSocket handler execution is experimental and
+partial until native upgrade/runtime support lands.
+
+```ts
+app.sse("/events", async (ctx, stream) => {
+    stream.event("ready", { path: ctx.request.path });
+});
+```
+
 `ctx` carries everything Sloppy knows about the current request. The
 bootstrap app-host/test-host path adds app-level objects directly on the
 context. The native/V8 run path exposes the request, route/query metadata,

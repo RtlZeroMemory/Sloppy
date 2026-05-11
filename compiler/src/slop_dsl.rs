@@ -21,6 +21,7 @@ impl RouteMethod {
     pub fn from_property(property: &str) -> Option<Self> {
         match property {
             "mapGet" | "get" => Some(Self::Get),
+            "sse" | "ws" => Some(Self::Get),
             "mapPost" | "post" => Some(Self::Post),
             "mapPut" | "put" => Some(Self::Put),
             "mapPatch" | "patch" => Some(Self::Patch),
@@ -56,6 +57,14 @@ pub fn slop_factory_call(expression: &Expression<'_>) -> Option<SlopFactory> {
 
 pub fn route_method_from_property(property: &str) -> Option<&'static str> {
     RouteMethod::from_property(property).map(RouteMethod::as_plan_method)
+}
+
+pub fn route_kind_from_property(property: &str) -> Option<&'static str> {
+    match property {
+        "sse" => Some("sse"),
+        "ws" => Some("websocket"),
+        _ => RouteMethod::from_property(property).map(|_| "http"),
+    }
 }
 
 pub fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
@@ -147,7 +156,14 @@ mod tests {
     fn recognizes_route_methods_and_helpers() {
         assert_eq!(route_method_from_property("get"), Some("GET"));
         assert_eq!(route_method_from_property("mapDelete"), Some("DELETE"));
+        assert_eq!(route_method_from_property("sse"), Some("GET"));
+        assert_eq!(route_method_from_property("ws"), Some("GET"));
         assert_eq!(route_method_from_property("connect"), None);
+
+        assert_eq!(route_kind_from_property("get"), Some("http"));
+        assert_eq!(route_kind_from_property("sse"), Some("sse"));
+        assert_eq!(route_kind_from_property("ws"), Some("websocket"));
+        assert_eq!(route_kind_from_property("connect"), None);
     }
 
     #[test]

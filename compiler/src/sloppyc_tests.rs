@@ -1953,6 +1953,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_net_runtime: false,
         uses_os_runtime: false,
         uses_http_client_runtime: false,
+        uses_realtime_runtime: false,
         uses_workers_runtime: false,
         uses_ffi_runtime: false,
         ffi: Vec::new(),
@@ -7407,6 +7408,115 @@ fn success_fixture_expected_outputs_stay_current() {
             "{fixture_name} app.js.map"
         );
     }
+}
+
+#[test]
+fn realtime_routes_emit_kind_metadata_and_runtime_wrappers() {
+    let source = r#"
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.sse("/events", async (ctx, stream) => {
+    await stream.event("ready", { ok: true });
+}).requireAuth();
+const group = app.group("/live");
+group.ws("/ws", async (ctx, socket) => {
+    await socket.sendJson({ ok: true });
+});
+export default app;
+"#;
+    let path = std::path::Path::new("realtime.js");
+    let app = extract(path, source).expect("realtime app should extract");
+    assert_eq!(app.routes.len(), 2);
+    assert_eq!(app.routes[0].method, "GET");
+    assert_eq!(app.routes[0].kind, "sse");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("Realtime.sse("));
+    assert_eq!(app.routes[1].pattern, "/live/ws");
+    assert_eq!(app.routes[1].kind, "websocket");
+    assert!(app.routes[1]
+        .handler
+        .emitted_source
+        .starts_with("Realtime.websocket("));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Results, Realtime"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
+    assert_eq!(value["routes"][0]["kind"], "sse");
+    assert_eq!(value["routes"][1]["kind"], "websocket");
+    assert_eq!(value["features"]["realtime"], true);
+    assert!(value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array")
+        .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn realtime_root_import_emits_runtime_export_for_ordinary_routes() {
+    let source = r#"
+import { Sloppy, Results, Realtime } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/debug", () => Results.text("ok"));
+export default app;
+"#;
+    let path = std::path::Path::new("realtime-debug.js");
+    let app = extract(path, source).expect("realtime import app should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].kind, "http");
+    assert!(app.uses_realtime_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Results, Realtime"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
+    assert_eq!(value["features"]["realtime"], true);
+    assert!(value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array")
+        .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn realtime_provider_routes_keep_async_cleanup_wrapper() {
+    let source = r#"
+import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.sse("/events", async (ctx, stream) => stream.send(await db.query("select id from users", [])));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("realtime-provider.js"), source)
+        .expect("provider-backed realtime app should extract");
+
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].kind, "sse");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("async function(ctx)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("return await (Realtime.sse("));
 }
 
 #[test]

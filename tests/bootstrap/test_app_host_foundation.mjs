@@ -21,6 +21,7 @@ import {
     Password,
     ProblemDetails,
     Random,
+    Realtime,
     RequestId,
     RequestLogging,
     Router,
@@ -29,6 +30,7 @@ import {
     Secret,
     Sloppy,
     Testing,
+    Text,
     Time,
     TimerDisposedError,
     TimeoutError,
@@ -1147,6 +1149,104 @@ async function flushMicrotasks(count = 6) {
 }
 
 {
+    const decodeChunks = (chunks) => chunks.map((chunk) => Text.utf8.decode(chunk)).join("");
+
+    const app = Sloppy.create();
+    app.sse("/events", async (ctx, stream) => {
+        await stream.event("ready", { ok: true }, { id: "1", retry: 1000 });
+        stream.comment("tick");
+        stream.heartbeat();
+        await stream.send("plain\ntext");
+    }).withName("Events");
+
+    const route = app.__getRoutes()[0];
+    assert.equal(route.method, "GET");
+    assert.equal(route.kind, "sse");
+    assert.equal(route.metadata.realtime.kind, "sse");
+    const response = await route.handler();
+    assert.equal(response.kind, "stream");
+    assert.equal(response.contentType, "text/event-stream");
+    assert.equal(response.headers["Cache-Control"], "no-cache");
+    assert.equal(response.headers["X-Slop-Realtime"], "sse");
+    assert.equal(decodeChunks(response.chunks), [
+        "event: ready",
+        "id: 1",
+        "retry: 1000",
+        "data: {\"ok\":true}",
+        "",
+        ": tick",
+        "",
+        ": heartbeat",
+        "",
+        "data: plain",
+        "data: text",
+        "",
+        "",
+    ].join("\n"));
+
+    const grouped = Sloppy.create();
+    grouped.group("/live").requireAuth().sse("/me", async (ctx, stream) => {
+        await stream.event("user", { sub: ctx.user.sub });
+    });
+    const missingAuth = await grouped.__getRoutes()[0].handler();
+    assert.equal(missingAuth.status, 401);
+
+    const wsApp = Sloppy.create();
+    wsApp.ws("/ws", async () => {});
+    const wsRoute = wsApp.__getRoutes()[0];
+    assert.equal(wsRoute.method, "GET");
+    assert.equal(wsRoute.kind, "websocket");
+    assert.equal(wsRoute.metadata.realtime.kind, "websocket");
+    const unavailable = await wsRoute.handler();
+    assert.equal(unavailable.status, 501);
+    assert.equal(unavailable.body.code, "SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE");
+
+    const protectedWs = Sloppy.create();
+    protectedWs.ws("/admin/ws", async () => {}).requireAuth({ role: "admin" });
+    const protectedMissingAuth = await protectedWs.__getRoutes()[0].handler();
+    assert.equal(protectedMissingAuth.status, 401);
+
+    const hub = Realtime.hub("notifications");
+    const first = hub.register("a");
+    const second = hub.register("b");
+    first.join("admins");
+    second.join("admins");
+    await hub.group("admins").sendJson({ type: "tick" });
+    await hub.broadcastText("hello");
+    assert.equal(hub.connection("a").close(1001, "shutdown"), true);
+    assert.equal(hub.connection("a").sendText("late"), false);
+    assert.deepEqual(hub.__debug().connections.map((connection) => connection.messages), [
+        [{ type: "json", json: { type: "tick" } }, { type: "text", text: "hello" }],
+    ]);
+    assert.equal(hub.unregister("a"), false);
+    assert.deepEqual(hub.__debug().groups[0].connections, ["b"]);
+    const payload = { type: "snapshot", nested: { count: 1 } };
+    await hub.connection("b").sendJson(payload);
+    payload.nested.count = 2;
+    const snapshot = hub.__debug().connections[0].messages.at(-1);
+    assert.equal(snapshot.json.nested.count, 1);
+    assert.throws(() => {
+        snapshot.json.nested.count = 3;
+    }, TypeError);
+
+    const generatedHub = Realtime.hub("generated");
+    const generatedFirst = generatedHub.register();
+    generatedFirst.close();
+    const generatedSecond = generatedHub.register();
+    assert.notEqual(generatedFirst.id, generatedSecond.id);
+
+    await assertRejectsMessage(
+        () => Realtime.sse(async (ctx, stream) => stream.event("bad name", "x"))({}),
+        /event names/,
+    );
+    const queueLimited = await Realtime.sse(async (ctx, stream) => {
+        stream.send("a");
+        stream.send("b");
+    }, { maxQueuedEvents: 1 })({});
+    assert.equal(decodeChunks(queueLimited.chunks), "data: a\n\ndata: b\n\n");
+}
+
+{
     function requestHeaders(values) {
         return {
             get(name) {
@@ -1179,6 +1279,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(routes.length, 3);
     assert.equal(getItems.metadata.cors.credentials, true);
     assert.deepEqual(getItems.metadata.cors.origins, ["https://app.example"]);
+    assert.equal(preflight.kind, "http");
     assert.equal(preflight.metadata.cors.preflight, true);
 
     const actual = getItems.handler({

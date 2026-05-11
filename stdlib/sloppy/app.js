@@ -31,6 +31,7 @@ import {
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
 import { normalizeJsonOptions, Results } from "./results.js";
+import { createSseRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
 import { isValidationError, validationProblem } from "./schema.js";
 
 const DEFAULT_HEALTH_PATH = "/health";
@@ -915,6 +916,46 @@ function createApp(host) {
 
         delete(pattern, optionsOrHandler, maybeHandler) {
             return app.mapDelete(pattern, optionsOrHandler, maybeHandler);
+        },
+
+        sse(pattern, optionsOrHandler, maybeHandler) {
+            const handler = typeof optionsOrHandler === "function" && maybeHandler === undefined
+                ? createSseRouteHandler(optionsOrHandler)
+                : createSseRouteHandler(maybeHandler);
+            return registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                pattern,
+                typeof optionsOrHandler === "function" ? handler : optionsOrHandler,
+                typeof optionsOrHandler === "function" ? undefined : handler,
+                undefined,
+                middleware,
+                corsPolicy,
+                "sse",
+            );
+        },
+
+        ws(pattern, optionsOrHandler, maybeHandler) {
+            const handler = typeof optionsOrHandler === "function" && maybeHandler === undefined
+                ? createWebSocketRouteHandler(optionsOrHandler)
+                : createWebSocketRouteHandler(maybeHandler);
+            return registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                pattern,
+                typeof optionsOrHandler === "function" ? handler : optionsOrHandler,
+                typeof optionsOrHandler === "function" ? undefined : handler,
+                undefined,
+                middleware,
+                corsPolicy,
+                "websocket",
+            );
         },
 
         mapGroup(prefix) {

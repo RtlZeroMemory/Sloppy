@@ -3,4 +3,4 @@
    |
 5 | app.mapHead("/", () => Results.text("Hello"));
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Supported compiler methods are mapGet, mapPost, mapPut, mapPatch, and mapDelete.
+hint: Supported compiler methods are mapGet, mapPost, mapPut, mapPatch, mapDelete, sse, and ws.

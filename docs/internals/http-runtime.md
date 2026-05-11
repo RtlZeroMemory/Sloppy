@@ -76,6 +76,12 @@ stream into `SlHttpRequestLifecycle`. `:method`, `:scheme`, `:authority`,
 response descriptor is translated back into HTTP/2 HEADERS/DATA frames by the
 HTTP/2 dispatcher; handlers do not see a different API.
 
+Realtime routes currently stay inside this route/response model. SSE handlers
+return bounded `Results.stream` descriptors with `text/event-stream` metadata.
+WebSocket route registrations are Plan-visible, but the native HTTP upgrade
+execution path is not implemented and generated handlers return `501`
+unavailable.
+
 ## Route table
 
 Built once at startup from validated Plan routes. Entries are sorted in
@@ -275,7 +281,11 @@ connection draining) is the responsibility of an in-front reverse proxy.
 
 ## Not implemented
 
-- HTTP/3, gRPC, WebTransport, WebSockets, SSE.
+- HTTP/3, gRPC, WebTransport.
+- Native WebSocket upgrade/runtime execution. WebSocket route intent is
+  Plan-visible, but the runtime returns the alpha unavailable response.
+- SSE is experimental/alpha and currently uses bounded response-stream
+  descriptors, not transport backpressure.
 - Experimental/planned direct streaming request bodies are not exposed to handlers.
 - Experimental response streaming is currently represented as bounded chunks
   before serialization, not transport backpressure; the model may change.

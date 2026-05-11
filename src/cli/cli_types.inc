@@ -19,6 +19,7 @@ typedef struct SlCliSpan
 typedef struct SlCliRoute
 {
     SlCliSpan method;
+    SlCliSpan kind;
     SlCliSpan pattern;
     SlHandlerId handler_id;
     SlCliSpan name;

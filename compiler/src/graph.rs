@@ -30,6 +30,7 @@ impl ProjectKind {
 #[derive(Debug, Clone)]
 pub(crate) struct Route {
     pub(crate) method: &'static str,
+    pub(crate) kind: &'static str,
     pub(crate) pattern: String,
     pub(crate) framework_path: Option<String>,
     pub(crate) name: Option<String>,
@@ -151,6 +152,7 @@ pub(crate) struct AppGraph {
     pub(crate) uses_net_runtime: bool,
     pub(crate) uses_os_runtime: bool,
     pub(crate) uses_http_client_runtime: bool,
+    pub(crate) uses_realtime_runtime: bool,
     pub(crate) uses_workers_runtime: bool,
     pub(crate) uses_ffi_runtime: bool,
     pub(crate) ffi: Vec<FfiLibraryMetadata>,

@@ -1,2 +1,2 @@
-ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME
-0      GET     /users/{id:int}      1        complete          input.js:6:1  -  200/json/json  Users.Get
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME
+0      GET     http         /users/{id:int}      1        complete          input.js:6:1  -  200/json/json  Users.Get

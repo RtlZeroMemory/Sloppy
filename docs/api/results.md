@@ -92,6 +92,10 @@ The current runtime collects chunks before serializing the response. It is a
 streaming response API shape, not yet socket backpressure or incremental file
 send.
 
+`Realtime.sse(...)` uses this bounded stream descriptor path and sets
+`text/event-stream` headers for SSE frames. It does not yet add socket
+backpressure or live incremental flush guarantees beyond `Results.stream`.
+
 ## No-content
 
 ```ts

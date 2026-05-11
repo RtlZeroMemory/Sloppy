@@ -5,12 +5,14 @@ import {
     normalizeAuthRequirement,
     snapshotAuthRequirement,
 } from "../auth.js";
+import { createSseRouteHandler, createWebSocketRouteHandler } from "../realtime.js";
 import { Results } from "../results.js";
 import { isSchema } from "../schema.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
 import { isPlainObject } from "./shared.js";
 
 const ROUTE_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const ROUTE_KINDS = new Set(["http", "sse", "websocket"]);
 const PREFLIGHT_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 
@@ -585,6 +587,7 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
 function snapshotRoute(route) {
     return Object.freeze({
         method: route.method,
+        kind: route.kind,
         pattern: route.pattern,
         handler: route.handler,
         name: route.name,
@@ -759,12 +762,16 @@ function registerRoute(
     metadataBase,
     middleware = [],
     corsPolicy = null,
+    kind = "http",
 ) {
     const args = normalizeMapArguments(pattern, optionsOrHandler, maybeHandler);
 
     assertAppMutable();
     validatePattern(args.pattern);
     validateHandler(args.handler);
+    if (!ROUTE_KINDS.has(kind)) {
+        throw new TypeError("Sloppy route kind is not supported by bootstrap registration.");
+    }
     if (!ROUTE_METHODS.has(method)) {
         throw new TypeError("Sloppy route method is not supported by bootstrap registration.");
     }
@@ -779,13 +786,15 @@ function registerRoute(
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
     const metadata = {
         ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
+        ...((kind === "http") ? {} : { realtime: { kind } }),
         ...((currentModule !== null) ? { module: currentModule } : {}),
         middleware: middlewareMetadata(orderedMiddleware),
         ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
     };
-    const routeInfo = { method, pattern: args.pattern, name: null, auth: metadata.auth };
+    const routeInfo = { method, pattern: args.pattern, name: null, auth: metadata.auth, kind };
     const route = {
         method,
+        kind,
         pattern: args.pattern,
         handler: createRouteHandler(
             host,
@@ -865,12 +874,13 @@ function registerCorsPreflightRoute(
             throw new Error(`Sloppy CORS preflight route '${pattern}' already has a different policy.`);
         }
         existing.metadata.cors.state.methods.add(method);
+        existing.kind = "http";
         existing.handler = createRouteHandler(
             host,
             createCorsPreflightHandler(existing.metadata.cors.state),
             middleware,
             null,
-            existing.routeInfo ?? { method: "OPTIONS", pattern, name: existing.name ?? null },
+            existing.routeInfo ?? { method: "OPTIONS", pattern, name: existing.name ?? null, kind: "http" },
         );
         existing.metadata.middleware = middlewareMetadata(middleware);
         return;
@@ -880,9 +890,10 @@ function registerCorsPreflightRoute(
         policy: corsPolicy,
         methods: new Set([method]),
     };
-    const routeInfo = { method: "OPTIONS", pattern, name: null };
+    const routeInfo = { method: "OPTIONS", pattern, name: null, kind: "http" };
     routes.push({
         method: "OPTIONS",
+        kind: "http",
         pattern,
         handler: createRouteHandler(
             host,
@@ -1034,9 +1045,19 @@ function createRouteGroup(
     };
     const groupMiddleware = [];
 
-    function createMapMethod(method) {
+    function createMapMethod(method, kind = "http") {
         return function mapRoute(pattern, optionsOrHandler, maybeHandler) {
             const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            const mappedOptionsOrHandler = kind === "sse" && typeof optionsOrHandler === "function"
+                ? createSseRouteHandler(optionsOrHandler)
+                : kind === "websocket" && typeof optionsOrHandler === "function"
+                    ? createWebSocketRouteHandler(optionsOrHandler)
+                    : optionsOrHandler;
+            const mappedMaybeHandler = kind === "sse" && typeof optionsOrHandler !== "function"
+                ? createSseRouteHandler(maybeHandler)
+                : kind === "websocket" && typeof optionsOrHandler !== "function"
+                    ? createWebSocketRouteHandler(maybeHandler)
+                    : maybeHandler;
             return registerRoute(
                 routes,
                 host,
@@ -1044,8 +1065,8 @@ function createRouteGroup(
                 getCurrentModule(),
                 method,
                 fullPattern,
-                optionsOrHandler,
-                maybeHandler,
+                mappedOptionsOrHandler,
+                mappedMaybeHandler,
                 {
                     prefix: groupMetadata.prefix,
                     tags: groupMetadata.tags,
@@ -1054,6 +1075,7 @@ function createRouteGroup(
                 },
                 [...getInheritedMiddleware(), ...groupMiddleware],
                 getCorsPolicy(),
+                kind,
             );
         };
     }
@@ -1106,6 +1128,8 @@ function createRouteGroup(
         put: createMapMethod("PUT"),
         patch: createMapMethod("PATCH"),
         delete: createMapMethod("DELETE"),
+        sse: createMapMethod("GET", "sse"),
+        ws: createMapMethod("GET", "websocket"),
         group(childPrefix) {
             assertAppMutable();
             const child = createRouteGroup(
