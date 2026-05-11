@@ -1167,6 +1167,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(response.kind, "stream");
     assert.equal(response.contentType, "text/event-stream");
     assert.equal(response.headers["Cache-Control"], "no-cache");
+    assert.equal(response.headers["X-Slop-Realtime"], "sse");
     assert.equal(decodeChunks(response.chunks), [
         "event: ready",
         "id: 1",
@@ -1196,13 +1197,13 @@ async function flushMicrotasks(count = 6) {
     assert.equal(wsRoute.method, "GET");
     assert.equal(wsRoute.kind, "websocket");
     assert.equal(wsRoute.metadata.realtime.kind, "websocket");
-    const unavailable = wsRoute.handler();
+    const unavailable = await wsRoute.handler();
     assert.equal(unavailable.status, 501);
     assert.equal(unavailable.body.code, "SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE");
 
     const protectedWs = Sloppy.create();
     protectedWs.ws("/admin/ws", async () => {}).requireAuth({ role: "admin" });
-    const protectedMissingAuth = protectedWs.__getRoutes()[0].handler();
+    const protectedMissingAuth = await protectedWs.__getRoutes()[0].handler();
     assert.equal(protectedMissingAuth.status, 401);
 
     const hub = Realtime.hub("notifications");
@@ -1212,26 +1213,37 @@ async function flushMicrotasks(count = 6) {
     second.join("admins");
     await hub.group("admins").sendJson({ type: "tick" });
     await hub.broadcastText("hello");
-    hub.connection("a").close(1001, "shutdown");
+    assert.equal(hub.connection("a").close(1001, "shutdown"), true);
+    assert.equal(hub.connection("a").sendText("late"), false);
     assert.deepEqual(hub.__debug().connections.map((connection) => connection.messages), [
         [{ type: "json", json: { type: "tick" } }, { type: "text", text: "hello" }],
-        [{ type: "json", json: { type: "tick" } }, { type: "text", text: "hello" }],
     ]);
-    assert.equal(hub.__debug().connections[0].closed, true);
-    assert.equal(hub.unregister("a"), true);
+    assert.equal(hub.unregister("a"), false);
     assert.deepEqual(hub.__debug().groups[0].connections, ["b"]);
+    const payload = { type: "snapshot", nested: { count: 1 } };
+    await hub.connection("b").sendJson(payload);
+    payload.nested.count = 2;
+    const snapshot = hub.__debug().connections[0].messages.at(-1);
+    assert.equal(snapshot.json.nested.count, 1);
+    assert.throws(() => {
+        snapshot.json.nested.count = 3;
+    }, TypeError);
+
+    const generatedHub = Realtime.hub("generated");
+    const generatedFirst = generatedHub.register();
+    generatedFirst.close();
+    const generatedSecond = generatedHub.register();
+    assert.notEqual(generatedFirst.id, generatedSecond.id);
 
     await assertRejectsMessage(
         () => Realtime.sse(async (ctx, stream) => stream.event("bad name", "x"))({}),
         /event names/,
     );
-    await assertRejectsMessage(
-        () => Realtime.sse(async (ctx, stream) => {
-            stream.send("a");
-            stream.send("b");
-        }, { maxQueuedEvents: 1 })({}),
-        /bounded write queue/,
-    );
+    const queueLimited = await Realtime.sse(async (ctx, stream) => {
+        stream.send("a");
+        stream.send("b");
+    }, { maxQueuedEvents: 1 })({});
+    assert.equal(decodeChunks(queueLimited.chunks), "data: a\n\ndata: b\n\n");
 }
 
 {
@@ -1267,6 +1279,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(routes.length, 3);
     assert.equal(getItems.metadata.cors.credentials, true);
     assert.deepEqual(getItems.metadata.cors.origins, ["https://app.example"]);
+    assert.equal(preflight.kind, "http");
     assert.equal(preflight.metadata.cors.preflight, true);
 
     const actual = getItems.handler({

@@ -874,12 +874,13 @@ function registerCorsPreflightRoute(
             throw new Error(`Sloppy CORS preflight route '${pattern}' already has a different policy.`);
         }
         existing.metadata.cors.state.methods.add(method);
+        existing.kind = "http";
         existing.handler = createRouteHandler(
             host,
             createCorsPreflightHandler(existing.metadata.cors.state),
             middleware,
             null,
-            existing.routeInfo ?? { method: "OPTIONS", pattern, name: existing.name ?? null },
+            existing.routeInfo ?? { method: "OPTIONS", pattern, name: existing.name ?? null, kind: "http" },
         );
         existing.metadata.middleware = middlewareMetadata(middleware);
         return;
@@ -889,9 +890,10 @@ function registerCorsPreflightRoute(
         policy: corsPolicy,
         methods: new Set([method]),
     };
-    const routeInfo = { method: "OPTIONS", pattern, name: null };
+    const routeInfo = { method: "OPTIONS", pattern, name: null, kind: "http" };
     routes.push({
         method: "OPTIONS",
+        kind: "http",
         pattern,
         handler: createRouteHandler(
             host,

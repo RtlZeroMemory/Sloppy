@@ -48,10 +48,10 @@ Wraps a handler in a `Results.stream(...)` descriptor with:
 - `Cache-Control: no-cache`
 - `X-Slop-Realtime: sse`
 
-`options.maxQueuedEvents` bounds the number of frames written by one handler
-invocation. The default is `64`. The current runtime still collects bounded
-stream chunks before response serialization; this is an API and metadata shape,
-not a production push transport with socket backpressure.
+`options.maxQueuedEvents` bounds queued frame writes for one handler invocation.
+The default is `64`. The current runtime still collects bounded stream chunks
+before response serialization; this is an API and metadata shape, not a
+production push transport with socket backpressure.
 
 ## SSE Stream
 

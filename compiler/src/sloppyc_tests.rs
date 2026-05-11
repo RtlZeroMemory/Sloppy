@@ -7454,7 +7454,10 @@ export default app;
     assert_eq!(value["routes"][0]["kind"], "sse");
     assert_eq!(value["routes"][1]["kind"], "websocket");
     assert_eq!(value["features"]["realtime"], true);
-    assert_eq!(value["requiredFeatures"][0], "runtime.realtime");
+    assert!(value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array")
+        .contains(&serde_json::json!("runtime.realtime")));
 }
 
 #[test]
@@ -7483,7 +7486,37 @@ export default app;
     .expect("plan should emit");
     let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
     assert_eq!(value["features"]["realtime"], true);
-    assert_eq!(value["requiredFeatures"][0], "runtime.realtime");
+    assert!(value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should be an array")
+        .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn realtime_provider_routes_keep_async_cleanup_wrapper() {
+    let source = r#"
+import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.sse("/events", async (ctx, stream) => stream.send(await db.query("select id from users", [])));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("realtime-provider.js"), source)
+        .expect("provider-backed realtime app should extract");
+
+    assert_eq!(app.routes.len(), 1);
+    assert_eq!(app.routes[0].kind, "sse");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("async function(ctx)"));
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("return await (Realtime.sse("));
 }
 
 #[test]

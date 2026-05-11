@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text } from "../../stdlib/sloppy/index.js";
 
 const ascii = (value) => new Uint8Array(Array.from(value).map((char) => char.charCodeAt(0)));
+const decodeChunks = (chunks) => chunks.map((chunk) => Text.utf8.decode(chunk)).join("");
 
 function assertBytes(actual, expected) {
     assert.deepEqual(Array.from(actual), Array.from(expected));
@@ -322,6 +323,23 @@ try {
     const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
     runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
     assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));
+    const runtimeSse = await globalThis.__sloppy_runtime.Realtime.sse(async (ctx, stream) => {
+        stream.event("ready", { ok: true }, { id: "1", retry: 1000, comment: "connected" });
+    })({});
+    assert.equal(
+        decodeChunks(runtimeSse.chunks),
+        ": connected\nevent: ready\nid: 1\nretry: 1000\ndata: {\"ok\":true}\n\n",
+    );
+    const runtimeHub = globalThis.__sloppy_runtime.Realtime.hub("runtime");
+    const runtimeFirst = runtimeHub.register();
+    runtimeFirst.sendJson({ nested: { value: 1 } });
+    const runtimeSnapshot = runtimeHub.__debug().connections[0].messages[0];
+    assert.throws(() => {
+        runtimeSnapshot.json.nested.value = 2;
+    }, TypeError);
+    runtimeFirst.close();
+    const runtimeSecond = runtimeHub.register();
+    assert.notEqual(runtimeFirst.id, runtimeSecond.id);
     assertCodecError(
         () => globalThis.__sloppy_runtime.Binary.writer({ initialCapacity: 2 ** 40 }),
         "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE",

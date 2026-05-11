@@ -9911,6 +9911,37 @@ Reason:
             let queued = 0;
             const maxQueuedEvents = options?.maxQueuedEvents ?? 64;
             return Results.stream(async (writer) => {
+                function fieldText(value, field) {
+                    const text = String(value);
+                    if (/[\r\n]/u.test(text)) {
+                        throw new TypeError(`Sloppy SSE ${field} must not contain CR or LF.`);
+                    }
+                    return text;
+                }
+                function frame(data, frameOptions = undefined) {
+                    const text = typeof data === "string" ? data : JSON.stringify(data);
+                    const lines = [];
+                    if (frameOptions?.comment !== undefined) {
+                        lines.push(`: ${fieldText(frameOptions.comment, "comment")}`);
+                    }
+                    if (frameOptions?.event !== undefined) {
+                        lines.push(`event: ${fieldText(frameOptions.event, "event")}`);
+                    }
+                    if (frameOptions?.id !== undefined) {
+                        lines.push(`id: ${fieldText(frameOptions.id, "id")}`);
+                    }
+                    if (frameOptions?.retry !== undefined) {
+                        if (!Number.isInteger(frameOptions.retry) || frameOptions.retry < 0) {
+                            throw new TypeError("Sloppy SSE retry must be a non-negative integer.");
+                        }
+                        lines.push(`retry: ${frameOptions.retry}`);
+                    }
+                    for (const line of String(text).split("\n")) {
+                        lines.push(`data: ${line}`);
+                    }
+                    lines.push("", "");
+                    return lines.join("\n");
+                }
                 function write(frame) {
                     if (closed) {
                         throw new TypeError("Sloppy SSE stream is closed.");
@@ -9919,33 +9950,40 @@ Reason:
                         throw new TypeError("Sloppy SSE bounded write queue is full.");
                     }
                     queued += 1;
-                    writer.writeText(frame);
+                    try {
+                        writer.writeText(frame);
+                    } finally {
+                        queued -= 1;
+                    }
                 }
                 const stream = Object.freeze({
                     send(data) {
-                        const text = typeof data === "string" ? data : JSON.stringify(data);
-                        write(`${String(text).split("\n").map((line) => `data: ${line}`).join("\n")}\n\n`);
+                        write(frame(data));
                     },
-                    event(name, data) {
+                    event(name, data, eventOptions = undefined) {
                         if (typeof name !== "string" || name.length === 0 || !/^[A-Za-z0-9_.:-]+$/u.test(name)) {
                             throw new TypeError("Sloppy SSE event names must be non-empty token strings.");
                         }
-                        const text = typeof data === "string" ? data : JSON.stringify(data);
-                        write(`event: ${name}\n${String(text).split("\n").map((line) => `data: ${line}`).join("\n")}\n\n`);
+                        write(frame(data, { ...(eventOptions ?? {}), event: name }));
                     },
                     comment(text) {
-                        write(`: ${String(text)}\n\n`);
+                        write(`: ${fieldText(text, "comment")}\n\n`);
                     },
                     heartbeat() {
                         write(": heartbeat\n\n");
                     },
                     close() {
+                        if (closed) {
+                            return;
+                        }
                         closed = true;
                         writer.close();
                     },
                 });
                 await handler(ctx, stream);
-                stream.close();
+                if (!closed) {
+                    stream.close();
+                }
             }, {
                 contentType: "text/event-stream",
                 headers: {
@@ -9980,6 +10018,28 @@ Reason:
         }
         const connections = new Map();
         const groups = new Map();
+        let nextConnectionId = 1;
+        function deepFreeze(value) {
+            if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+                return value;
+            }
+            for (const child of Object.values(value)) {
+                deepFreeze(child);
+            }
+            return Object.freeze(value);
+        }
+        function snapshotJson(value) {
+            if (value === undefined) {
+                return undefined;
+            }
+            return deepFreeze(JSON.parse(JSON.stringify(value)));
+        }
+        function snapshotMessage(message) {
+            if (message.type === "json") {
+                return deepFreeze({ type: "json", json: snapshotJson(message.json) });
+            }
+            return deepFreeze({ type: message.type, text: message.text });
+        }
         function ensureGroup(groupName) {
             if (typeof groupName !== "string" || groupName.length === 0) {
                 throw new TypeError("Sloppy realtime group name must be a non-empty string.");
@@ -9995,25 +10055,29 @@ Reason:
             const client = connections.get(id);
             return Object.freeze({
                 sendText(text) {
-                    if (client === undefined) {
+                    if (client === undefined || client.closed) {
                         return false;
                     }
-                    client.messages.push({ type: "text", text: String(text) });
+                    client.messages.push(deepFreeze({ type: "text", text: String(text) }));
                     return true;
                 },
                 sendJson(value) {
-                    if (client === undefined) {
+                    if (client === undefined || client.closed) {
                         return false;
                     }
-                    client.messages.push({ type: "json", json: value });
+                    client.messages.push(deepFreeze({ type: "json", json: snapshotJson(value) }));
                     return true;
                 },
                 close(code = 1000, reason = "") {
-                    if (client === undefined) {
+                    if (client === undefined || client.closed) {
                         return false;
                     }
                     client.closed = true;
                     client.close = { code, reason: String(reason) };
+                    for (const groupName of client.groups) {
+                        groups.get(groupName)?.delete(id);
+                    }
+                    connections.delete(id);
                     return true;
                 },
             });
@@ -10037,7 +10101,7 @@ Reason:
                 return __sloppyRealtimeWebSocket(handler);
             },
             register(id = undefined) {
-                const connectionId = id ?? `${name}:${connections.size + 1}`;
+                const connectionId = id ?? `${name}:${nextConnectionId++}`;
                 if (connections.has(connectionId)) {
                     throw new Error(`Sloppy realtime connection '${connectionId}' is already registered.`);
                 }
@@ -10054,14 +10118,30 @@ Reason:
                         client.groups.delete(groupName);
                     },
                     sendText(text) {
-                        client.messages.push({ type: "text", text: String(text) });
+                        if (client.closed || connections.get(connectionId) !== client) {
+                            return false;
+                        }
+                        client.messages.push(deepFreeze({ type: "text", text: String(text) }));
+                        return true;
                     },
                     sendJson(value) {
-                        client.messages.push({ type: "json", json: value });
+                        if (client.closed || connections.get(connectionId) !== client) {
+                            return false;
+                        }
+                        client.messages.push(deepFreeze({ type: "json", json: snapshotJson(value) }));
+                        return true;
                     },
                     close(code = 1000, reason = "") {
+                        if (client.closed || connections.get(connectionId) !== client) {
+                            return false;
+                        }
                         client.closed = true;
                         client.close = { code, reason: String(reason) };
+                        for (const groupName of client.groups) {
+                            groups.get(groupName)?.delete(connectionId);
+                        }
+                        connections.delete(connectionId);
+                        return true;
                     },
                 });
             },
@@ -10087,7 +10167,7 @@ Reason:
                         return sendTo(members, "json", value);
                     },
                     close(code = 1001, reason = "server shutdown") {
-                        for (const id of members) {
+                        for (const id of [...members]) {
                             connection(id).close(code, reason);
                         }
                     },
@@ -10104,7 +10184,7 @@ Reason:
                     connections: Object.freeze([...connections.values()].map((client) => Object.freeze({
                         id: client.id,
                         groups: Object.freeze([...client.groups]),
-                        messages: Object.freeze([...client.messages]),
+                        messages: Object.freeze(client.messages.map(snapshotMessage)),
                         closed: client.closed,
                         close: client.close,
                     }))),

@@ -347,6 +347,7 @@ static int sl_cli_parse_dynamic_routes(yyjson_val* root, SlCliMetadata* metadata
         if (sl_cli_span_empty(route.pattern)) {
             route.pattern = sl_cli_span_cstr("<dynamic>");
         }
+        route.kind = sl_cli_span_cstr("-");
         route.completeness = sl_cli_span_cstr("dynamic");
         route.dynamic_metadata = true;
         metadata_value = yyjson_obj_get(value, "metadata");

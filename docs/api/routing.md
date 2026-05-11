@@ -28,10 +28,11 @@ app.ws(pattern, handler)
 `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and `mapDelete` are aliases — same
 behavior, longer name.
 
-`sse` and `ws` register `GET` routes with realtime metadata. `sse` wraps the
-handler in the current bounded server-sent events stream shape. `ws` records
-WebSocket route intent and returns the current `501` unavailable response until
-native upgrade execution exists. See [Realtime](realtime.md).
+`sse` and `ws` are experimental alpha helpers that register `GET` routes with
+realtime metadata. `sse` wraps the handler in the current bounded server-sent
+events stream shape. `ws` records WebSocket route intent and returns the current
+`501` unavailable response until native upgrade execution exists. The API shape
+is unstable and may change. See [Realtime](realtime.md).
 
 `HEAD` and `OPTIONS` are not directly registrable verbs. Incoming `HEAD`
 requests match the corresponding `GET` route and return the same headers
@@ -146,7 +147,7 @@ const internal = app.group("/internal").requireAuth();
 internal.get("/status", handler);
 ```
 
-Groups also expose `sse` and `ws`:
+Groups also expose the experimental `sse` and `ws` helpers:
 
 ```ts
 const live = app.group("/live").requireAuth();

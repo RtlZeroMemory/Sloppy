@@ -84,7 +84,11 @@ function createSseStream(userHandler, options = undefined) {
                     throw new TypeError("Sloppy SSE bounded write queue is full.");
                 }
                 queued += 1;
-                writer.writeText(frame);
+                try {
+                    writer.writeText(frame);
+                } finally {
+                    queued -= 1;
+                }
             }
 
             const stream = Object.freeze({
@@ -102,13 +106,18 @@ function createSseStream(userHandler, options = undefined) {
                     writeFrame(": heartbeat\n\n");
                 },
                 close() {
+                    if (closed) {
+                        return;
+                    }
                     closed = true;
                     writer.close();
                 },
             });
 
             await userHandler(ctx, stream);
-            stream.close();
+            if (!closed) {
+                stream.close();
+            }
         }, {
             contentType: "text/event-stream",
             headers: {
@@ -140,6 +149,31 @@ function createHub(name) {
     }
     const connections = new Map();
     const groups = new Map();
+    let nextConnectionId = 1;
+
+    function deepFreeze(value) {
+        if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+            return value;
+        }
+        for (const child of Object.values(value)) {
+            deepFreeze(child);
+        }
+        return Object.freeze(value);
+    }
+
+    function snapshotJson(value) {
+        if (value === undefined) {
+            return undefined;
+        }
+        return deepFreeze(JSON.parse(JSON.stringify(value)));
+    }
+
+    function snapshotMessage(message) {
+        if (message.type === "json") {
+            return deepFreeze({ type: "json", json: snapshotJson(message.json) });
+        }
+        return deepFreeze({ type: message.type, text: message.text });
+    }
 
     function ensureGroup(groupName) {
         if (typeof groupName !== "string" || groupName.length === 0) {
@@ -157,25 +191,26 @@ function createHub(name) {
         const client = connections.get(id);
         return Object.freeze({
             sendText(text) {
-                if (client === undefined) {
+                if (client === undefined || client.closed) {
                     return false;
                 }
-                client.messages.push({ type: "text", text: String(text) });
+                client.messages.push(deepFreeze({ type: "text", text: String(text) }));
                 return true;
             },
             sendJson(value) {
-                if (client === undefined) {
+                if (client === undefined || client.closed) {
                     return false;
                 }
-                client.messages.push({ type: "json", json: value });
+                client.messages.push(deepFreeze({ type: "json", json: snapshotJson(value) }));
                 return true;
             },
             close(code = 1000, reason = "") {
-                if (client === undefined) {
+                if (client === undefined || client.closed) {
                     return false;
                 }
                 client.closed = true;
                 client.close = { code, reason: String(reason) };
+                hub.unregister(id);
                 return true;
             },
         });
@@ -201,7 +236,7 @@ function createHub(name) {
             return createUnavailableWebSocketHandler();
         },
         register(id = undefined) {
-            const connectionId = id ?? `${name}:${connections.size + 1}`;
+            const connectionId = id ?? `${name}:${nextConnectionId++}`;
             if (connections.has(connectionId)) {
                 throw new Error(`Sloppy realtime connection '${connectionId}' is already registered.`);
             }
@@ -218,14 +253,27 @@ function createHub(name) {
                     client.groups.delete(groupName);
                 },
                 sendText(text) {
-                    client.messages.push({ type: "text", text: String(text) });
+                    if (client.closed || connections.get(connectionId) !== client) {
+                        return false;
+                    }
+                    client.messages.push(deepFreeze({ type: "text", text: String(text) }));
+                    return true;
                 },
                 sendJson(value) {
-                    client.messages.push({ type: "json", json: value });
+                    if (client.closed || connections.get(connectionId) !== client) {
+                        return false;
+                    }
+                    client.messages.push(deepFreeze({ type: "json", json: snapshotJson(value) }));
+                    return true;
                 },
                 close(code = 1000, reason = "") {
+                    if (client.closed || connections.get(connectionId) !== client) {
+                        return false;
+                    }
                     client.closed = true;
                     client.close = { code, reason: String(reason) };
+                    hub.unregister(connectionId);
+                    return true;
                 },
             });
         },
@@ -251,7 +299,7 @@ function createHub(name) {
                     return sendTo(members, "json", value);
                 },
                 close(code = 1001, reason = "server shutdown") {
-                    for (const id of members) {
+                    for (const id of [...members]) {
                         connection(id).close(code, reason);
                     }
                 },
@@ -268,7 +316,7 @@ function createHub(name) {
                 connections: Object.freeze([...connections.values()].map((client) => Object.freeze({
                     id: client.id,
                     groups: Object.freeze([...client.groups]),
-                    messages: Object.freeze([...client.messages]),
+                    messages: Object.freeze(client.messages.map(snapshotMessage)),
                     closed: client.closed,
                     close: client.close,
                 }))),

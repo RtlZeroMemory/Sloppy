@@ -167,9 +167,14 @@ static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
 
 static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_auth)
 {
+    SlCliSpan kind = route->kind;
+
+    if (sl_cli_span_empty(kind)) {
+        kind = sl_cli_span_cstr("-");
+    }
     printf("%-5zu  %-6.*s  %-11.*s  %-19.*s  %-7u  %-8.*s  %-6.*s  ", route->source_order,
-           (int)route->method.length, route->method.ptr, (int)route->kind.length,
-           route->kind.ptr, (int)route->pattern.length, route->pattern.ptr, route->handler_id,
+           (int)route->method.length, route->method.ptr, (int)kind.length,
+           kind.ptr, (int)route->pattern.length, route->pattern.ptr, route->handler_id,
            (int)route->completeness.length,
            route->completeness.ptr, (int)route->module.length, route->module.ptr);
     if (!sl_cli_span_empty(route->source_path)) {

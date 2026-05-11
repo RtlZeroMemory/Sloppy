@@ -6323,13 +6323,7 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
-    if kind == "sse" {
-        handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
-        handler.is_async = false;
-    } else if kind == "websocket" {
-        handler.emitted_source = format!("Realtime.websocket({})", handler.emitted_source);
-        handler.is_async = false;
-    }
+    wrap_realtime_handler(&mut handler, kind);
     apply_route_schema_metadata(
         path,
         statement.span,
@@ -12248,14 +12242,7 @@ fn extract_module_function_routes(
                         statement.span,
                     ));
                 };
-                if kind == "sse" {
-                    handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
-                    handler.is_async = false;
-                } else if kind == "websocket" {
-                    handler.emitted_source =
-                        format!("Realtime.websocket({})", handler.emitted_source);
-                    handler.is_async = false;
-                }
+                wrap_realtime_handler(&mut handler, kind);
 
                 let referenced_helper_sources =
                     helper_sources_referenced_by_handler(&handler.emitted_source, &helper_sources);
@@ -12539,6 +12526,20 @@ fn providers_used_by_effects(
         .filter(|(_, binding)| tokens.contains(binding.token.as_str()))
         .map(|(name, binding)| (name.clone(), binding.clone()))
         .collect()
+}
+
+fn wrap_realtime_handler(handler: &mut Handler, kind: &str) {
+    match kind {
+        "sse" => {
+            handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
+            handler.is_async = true;
+        }
+        "websocket" => {
+            handler.emitted_source = format!("Realtime.websocket({})", handler.emitted_source);
+            handler.is_async = true;
+        }
+        _ => {}
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

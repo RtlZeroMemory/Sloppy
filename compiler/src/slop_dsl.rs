@@ -156,7 +156,14 @@ mod tests {
     fn recognizes_route_methods_and_helpers() {
         assert_eq!(route_method_from_property("get"), Some("GET"));
         assert_eq!(route_method_from_property("mapDelete"), Some("DELETE"));
+        assert_eq!(route_method_from_property("sse"), Some("GET"));
+        assert_eq!(route_method_from_property("ws"), Some("GET"));
         assert_eq!(route_method_from_property("connect"), None);
+
+        assert_eq!(route_kind_from_property("get"), Some("http"));
+        assert_eq!(route_kind_from_property("sse"), Some("sse"));
+        assert_eq!(route_kind_from_property("ws"), Some("websocket"));
+        assert_eq!(route_kind_from_property("connect"), None);
     }
 
     #[test]

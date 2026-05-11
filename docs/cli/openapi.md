@@ -101,9 +101,10 @@ directly model:
   declared).
 - `x-slop-openapi-policy` — top-level metadata about how the document
   was produced, including whether dynamic route metadata was omitted.
-- `x-slop-realtime` / `x-slop-transport` — realtime route metadata for SSE
-  and WebSocket-intent routes. WebSocket operations still represent the current
-  unavailable runtime path unless native upgrade execution is added later.
+- `x-slop-realtime` / `x-slop-transport` (experimental) — realtime route
+  metadata for SSE and WebSocket-intent routes. WebSocket operations still
+  represent the current unavailable runtime path unless native upgrade
+  execution is added later.
 
 These fields are stable across builds for a given source/compiler pair,
 suitable for diffing.
