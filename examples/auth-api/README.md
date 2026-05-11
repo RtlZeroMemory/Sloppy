@@ -1,7 +1,7 @@
 # Auth API
 
-Small source-input example for Sloppy JWT bearer, API key, roles, policies, and
-Plan/OpenAPI auth metadata.
+Small source-input example for Sloppy JWT bearer, signed session cookies, API
+keys, roles, policies, and Plan/OpenAPI auth metadata.
 
 Build from this directory:
 
@@ -11,9 +11,9 @@ sloppy routes .sloppy
 sloppy openapi .sloppy --output openapi.json
 ```
 
-`appsettings.json` uses placeholder secrets. Replace them locally or inject
-real values through your deployment configuration. Do not commit real auth
-secrets.
+`appsettings.json` declares sample JWT, session, and API-key secret keys for
+local builds. Provide deployment values through environment-specific
+configuration. Do not commit real auth secrets.
 
 Runtime handler execution requires a V8-enabled Sloppy build. `sloppy run
 --once` is useful for public routes, but it does not provide a convenient

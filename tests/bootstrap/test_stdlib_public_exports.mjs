@@ -112,6 +112,9 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 assert.equal(RootHttpClient, HttpClient);
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");
+assert.equal(typeof Auth.cookieSession, "function");
+assert.equal(typeof Auth.signIn, "function");
+assert.equal(typeof Auth.signOut, "function");
 assert.equal(typeof Auth.constantTimeEquals, "function");
 assert.equal(Auth.constantTimeEquals("same", "same"), true);
 assert.equal(Auth.constantTimeEquals("same", "diff"), false);

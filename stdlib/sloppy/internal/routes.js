@@ -457,8 +457,15 @@ function createDefaultRequest(routeInfo) {
     });
 }
 
+function attachHostMarker(context, host) {
+    Object.defineProperty(context, "__sloppyHost", {
+        value: host,
+    });
+    return context;
+}
+
 function createHandlerContext(host, routeInfo) {
-    return {
+    return attachHostMarker({
         services: host.services.createScope(),
         capabilities: host.capabilities,
         config: host.config,
@@ -468,7 +475,7 @@ function createHandlerContext(host, routeInfo) {
         routeName: routeInfo.name ?? "",
         routePattern: routeInfo.pattern,
         request: createDefaultRequest(routeInfo),
-    };
+    }, host);
 }
 
 function decorateProvidedContext(host, context, routeInfo) {
@@ -480,6 +487,7 @@ function decorateProvidedContext(host, context, routeInfo) {
     nextContext.log ??= host.log;
     nextContext.capabilities ??= host.capabilities;
     nextContext.user ??= anonymousUser();
+    attachHostMarker(nextContext, host);
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};
@@ -924,10 +932,12 @@ function createControllerHandler(host, Controller, action, routeInfo) {
             : decorateProvidedContext(host, context, routeInfo);
         let ownsServices = context === undefined || context === null;
         if (ctx.services === undefined || ctx.services === null) {
-            ctx = Object.freeze({
+            const nextContext = {
                 ...ctx,
                 services: host.services.createScope(),
-            });
+            };
+            attachHostMarker(nextContext, host);
+            ctx = Object.freeze(nextContext);
             ownsServices = true;
         }
         const services = ctx.services;

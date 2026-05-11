@@ -308,12 +308,23 @@ pub(crate) enum AuthSchemeMetadata {
         name: String,
         issuer: Option<String>,
         audience: Option<String>,
+        clock_skew_seconds: i64,
         secret_config_key: Option<String>,
     },
     ApiKey {
         name: String,
         header: String,
         config_key: Option<String>,
+    },
+    CookieSession {
+        name: String,
+        cookie: String,
+        secure: bool,
+        http_only: bool,
+        same_site: String,
+        path: String,
+        max_age_seconds: Option<i64>,
+        secret_config_key: Option<String>,
     },
 }
 

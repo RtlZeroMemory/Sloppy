@@ -673,6 +673,7 @@ pub(crate) fn emit_plan(
                 name,
                 issuer,
                 audience,
+                clock_skew_seconds,
                 secret_config_key,
             } => json!({
                 "kind": "jwtBearer",
@@ -682,6 +683,7 @@ pub(crate) fn emit_plan(
                 "algorithm": "HS256",
                 "issuer": issuer,
                 "audience": audience,
+                "clockSkewSeconds": clock_skew_seconds,
                 "secretConfigKey": secret_config_key,
                 "secret": "<redacted>"
             }),
@@ -695,6 +697,28 @@ pub(crate) fn emit_plan(
                 "in": "header",
                 "header": header,
                 "configKey": config_key,
+                "secret": "<redacted>"
+            }),
+            AuthSchemeMetadata::CookieSession {
+                name,
+                cookie,
+                secure,
+                http_only,
+                same_site,
+                path,
+                max_age_seconds,
+                secret_config_key,
+            } => json!({
+                "kind": "cookieSession",
+                "name": name,
+                "in": "cookie",
+                "cookie": cookie,
+                "secure": secure,
+                "httpOnly": http_only,
+                "sameSite": same_site,
+                "path": path,
+                "maxAgeSeconds": max_age_seconds,
+                "configKey": secret_config_key,
                 "secret": "<redacted>"
             }),
         })

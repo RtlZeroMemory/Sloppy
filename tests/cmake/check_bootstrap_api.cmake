@@ -292,7 +292,11 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "function jwtBearer(options)"
         "function apiKey(options)"
+        "function cookieSession(options)"
+        "function signIn(ctx, claims"
+        "function signOut(ctx"
         "function verifyJwt(token, scheme)"
+        "function verifySessionCookie(value, scheme)"
         "SLOPPY_E_AUTH_UNAUTHORIZED"
         "SLOPPY_E_AUTH_FORBIDDEN"
         "SLOPPY_E_AUTH_INVALID_TOKEN"

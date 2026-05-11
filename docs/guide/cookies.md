@@ -40,5 +40,21 @@ Each `.cookie(...)` call appends a separate `Set-Cookie` header. Cookie names
 must be valid HTTP token names. Values and attributes are validated before the
 descriptor reaches the native response writer.
 
-Cookie signing, encryption, rotation, and session storage are application
-logic. Sloppy only moves cookie values through the request/response surface.
+## Signed Auth Sessions
+
+For Sloppy auth sessions, prefer `Auth.cookieSession(...)` instead of hand
+rolling cookie signing:
+
+```ts
+app.use(Auth.cookieSession({
+    secret: Config.required("Auth:SessionSecret"),
+}));
+```
+
+`Auth.signIn(ctx, claims)` sets a signed session cookie. `Auth.signOut(ctx)`
+clears it. The default auth-session cookie flags are `Secure`, `HttpOnly`,
+`SameSite=Lax`, and `Path=/`.
+
+General-purpose cookie signing, encryption, rotation, and durable session
+storage are still application logic. Sloppy's built-in auth session stores the
+signed claims payload in the cookie.

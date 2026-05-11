@@ -738,6 +738,11 @@ static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metad
                 sl_cli_write_cstr(out, ": { \"type\": \"http\", \"scheme\": \"bearer\", "
                                        "\"bearerFormat\": \"JWT\" }");
             }
+            else if (sl_cli_span_equal_cstr(scheme->kind, "cookieSession")) {
+                sl_cli_write_cstr(out, ": { \"type\": \"apiKey\", \"in\": \"cookie\", \"name\": ");
+                sl_cli_json_escape(out, scheme->cookie);
+                sl_cli_write_cstr(out, " }");
+            }
             else {
                 sl_cli_write_cstr(out, ": { \"type\": \"apiKey\", \"in\": \"header\", \"name\": ");
                 sl_cli_json_escape(out, scheme->header);

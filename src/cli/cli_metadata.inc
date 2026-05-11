@@ -787,6 +787,7 @@ static int sl_cli_parse_auth_metadata(yyjson_val* root, SlCliMetadata* metadata)
             scheme.kind = sl_cli_json_span(value, "kind");
             scheme.name = sl_cli_json_span(value, "name");
             scheme.header = sl_cli_json_span(value, "header");
+            scheme.cookie = sl_cli_json_span(value, "cookie");
             metadata->auth_schemes[metadata->auth_scheme_count] = scheme;
             metadata->auth_scheme_count += 1U;
         }

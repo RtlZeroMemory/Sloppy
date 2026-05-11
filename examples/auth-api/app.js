@@ -8,11 +8,25 @@ app.use(Auth.jwtBearer({
     secret: Config.required("Auth:JwtSecret"),
 }));
 
+app.use(Auth.cookieSession({
+    name: "sloppy.session",
+    secret: Config.required("Auth:SessionSecret"),
+}));
+
 app.get("/public", () => Results.ok({ ok: true }));
+
+app.post("/login", (ctx) => Auth.signIn(ctx, {
+    sub: "user-1",
+    roles: ["user"],
+    claims: { email: "ada@example.com" },
+}));
+
+app.post("/logout", (ctx) => Auth.signOut(ctx));
 
 app.get("/me", (ctx) => Results.ok({
     subject: ctx.user.sub,
     roles: ctx.user.roles,
+    scheme: ctx.user.scheme,
 })).requireAuth();
 
 app.get("/admin", () => Results.ok({ ok: true }))
