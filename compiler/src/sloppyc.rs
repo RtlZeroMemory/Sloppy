@@ -7593,6 +7593,15 @@ struct StaticFilesOptions {
     max_age_seconds: Option<u64>,
 }
 
+struct StaticFilesRouteContext<'a> {
+    path: &'a Path,
+    source: &'a str,
+    source_name: &'a str,
+    span: Span,
+    middleware: &'a [FrameworkMiddleware],
+    cors: Option<&'a CorsPolicy>,
+}
+
 fn app_use_static_files_call(
     path: &Path,
     source: &str,
@@ -7619,16 +7628,15 @@ fn app_use_static_files_call(
         .with_span(call.span));
     }
     let options = static_files_options_from_call(path, call)?;
-    let routes = static_file_routes_from_options(
+    let context = StaticFilesRouteContext {
         path,
         source,
         source_name,
-        graph,
-        call.span,
-        &options,
-        &state.middleware,
-        state.cors_policy.as_ref(),
-    )?;
+        span: call.span,
+        middleware: &state.middleware,
+        cors: state.cors_policy.as_ref(),
+    };
+    let routes = static_file_routes_from_options(&context, graph, &options)?;
     state.static_asset_routes.extend(routes);
     Ok(true)
 }
@@ -7820,14 +7828,9 @@ fn static_files_root_supported(root: &str) -> bool {
 const STATIC_ASSET_INLINE_MAX_BYTES: u64 = 1024 * 1024;
 
 fn static_file_routes_from_options(
-    path: &Path,
-    source: &str,
-    source_name: &str,
+    context: &StaticFilesRouteContext<'_>,
     graph: &mut ModuleGraph,
-    span: Span,
     options: &StaticFilesOptions,
-    middleware: &[FrameworkMiddleware],
-    cors: Option<&CorsPolicy>,
 ) -> Result<Vec<Route>, Diagnostic> {
     let root = graph.entry_dir.join(&options.root);
     let canonical_root = fs::canonicalize(&root).map_err(|error| {
@@ -7836,7 +7839,7 @@ fn static_file_routes_from_options(
             format!("failed to read app.useStaticFiles root: {error}"),
         )
         .with_path(&root)
-        .with_span(span)
+        .with_span(context.span)
     })?;
     if !canonical_root.is_dir() {
         return Err(Diagnostic::new(
@@ -7844,7 +7847,7 @@ fn static_file_routes_from_options(
             "app.useStaticFiles root must be a directory",
         )
         .with_path(&root)
-        .with_span(span));
+        .with_span(context.span));
     }
     if !canonical_root.starts_with(&graph.entry_dir) {
         return Err(Diagnostic::new(
@@ -7852,7 +7855,7 @@ fn static_file_routes_from_options(
             "app.useStaticFiles root must stay inside the project source root",
         )
         .with_path(&root)
-        .with_span(span));
+        .with_span(context.span));
     }
 
     let mut files = Vec::new();
@@ -7862,7 +7865,7 @@ fn static_file_routes_from_options(
             format!("failed to enumerate app.useStaticFiles assets: {error}"),
         )
         .with_path(&canonical_root)
-        .with_span(span)
+        .with_span(context.span)
     })?;
     if files.is_empty() {
         return Err(Diagnostic::new(
@@ -7870,7 +7873,7 @@ fn static_file_routes_from_options(
             "app.useStaticFiles root contains no supported static assets",
         )
         .with_path(&canonical_root)
-        .with_span(span));
+        .with_span(context.span));
     }
 
     let mut routes = Vec::new();
@@ -7881,7 +7884,7 @@ fn static_file_routes_from_options(
                 "app.useStaticFiles asset escaped the configured root",
             )
             .with_path(&file)
-            .with_span(span)
+            .with_span(context.span)
         })?;
         let route_path =
             static_asset_route_path(&options.request_path, relative).ok_or_else(|| {
@@ -7890,7 +7893,7 @@ fn static_file_routes_from_options(
                     "static asset path cannot be represented as a Sloppy alpha route",
                 )
                 .with_path(&file)
-                .with_span(span)
+                .with_span(context.span)
             })?;
         let metadata = fs::metadata(&file).map_err(|error| {
             Diagnostic::new(
@@ -7898,7 +7901,7 @@ fn static_file_routes_from_options(
                 format!("failed to read static asset metadata: {error}"),
             )
             .with_path(&file)
-            .with_span(span)
+            .with_span(context.span)
         })?;
         if metadata.len() > STATIC_ASSET_INLINE_MAX_BYTES {
             return Err(Diagnostic::new(
@@ -7908,7 +7911,7 @@ fn static_file_routes_from_options(
                 ),
             )
             .with_path(&file)
-            .with_span(span));
+            .with_span(context.span));
         }
         let bytes = fs::read(&file).map_err(|error| {
             Diagnostic::new(
@@ -7916,7 +7919,7 @@ fn static_file_routes_from_options(
                 format!("failed to read static asset: {error}"),
             )
             .with_path(&file)
-            .with_span(span)
+            .with_span(context.span)
         })?;
         let content_type = static_asset_content_type(&file).ok_or_else(|| {
             Diagnostic::new(
@@ -7924,7 +7927,7 @@ fn static_file_routes_from_options(
                 "static asset content type is not supported",
             )
             .with_path(&file)
-            .with_span(span)
+            .with_span(context.span)
         })?;
         graph.add_dependency_asset(
             &file,
@@ -7934,16 +7937,11 @@ fn static_file_routes_from_options(
             ),
         );
         routes.push(static_asset_route(
-            path,
-            source,
-            source_name,
-            span,
+            context,
             route_path,
             content_type,
             &bytes,
             options.max_age_seconds,
-            middleware,
-            cors,
         ));
     }
     Ok(routes)
@@ -8006,16 +8004,11 @@ fn static_asset_content_type(path: &Path) -> Option<&'static str> {
 }
 
 fn static_asset_route(
-    path: &Path,
-    source: &str,
-    source_name: &str,
-    span: Span,
+    context: &StaticFilesRouteContext<'_>,
     route_path: String,
     content_type: &str,
     bytes: &[u8],
     max_age_seconds: Option<u64>,
-    middleware: &[FrameworkMiddleware],
-    cors: Option<&CorsPolicy>,
 ) -> Route {
     let headers = static_asset_headers(bytes, max_age_seconds);
     let byte_array = bytes
@@ -8028,7 +8021,8 @@ fn static_asset_route(
         json_string(content_type),
         headers,
     );
-    let handler_source = wrap_handler_with_framework_pipeline(&handler_source, middleware, cors);
+    let handler_source =
+        wrap_handler_with_framework_pipeline(&handler_source, context.middleware, context.cors);
     Route {
         method: "GET",
         framework_path: None,
@@ -8036,24 +8030,24 @@ fn static_asset_route(
         name: None,
         tags: vec!["static".to_string()],
         health: None,
-        middleware: route_middleware_metadata(middleware),
-        cors: cors.map(cors_policy_metadata),
+        middleware: route_middleware_metadata(context.middleware),
+        cors: context.cors.map(cors_policy_metadata),
         cors_preflight: false,
-        span,
-        source_path: path.to_path_buf(),
-        source_name: source_name.to_string(),
-        source: source.to_string(),
+        span: context.span,
+        source_path: context.path.to_path_buf(),
+        source_name: context.source_name.to_string(),
+        source: context.source.to_string(),
         module: None,
         handler: Handler {
-            source: source_slice(source, span)
+            source: source_slice(context.source, context.span)
                 .unwrap_or_else(|| "app.useStaticFiles()".to_string()),
             emitted_source: handler_source,
-            span,
+            span: context.span,
             requires_results_import: false,
-            is_async: !middleware.is_empty() || cors.is_some(),
+            is_async: !context.middleware.is_empty() || context.cors.is_some(),
             runtime_deferred: false,
-            source_name: source_name.to_string(),
-            source_text: source.to_string(),
+            source_name: context.source_name.to_string(),
+            source_text: context.source.to_string(),
             source_map_line_offset: 0,
             source_map_column_offset: 0,
             bindings: Vec::new(),
@@ -8062,9 +8056,9 @@ fn static_asset_route(
                 status: 200,
                 kind: "bytes".to_string(),
                 body_schema: None,
-                source_name: Some(source_name.to_string()),
-                source_text: Some(source.to_string()),
-                span: Some(span),
+                source_name: Some(context.source_name.to_string()),
+                source_text: Some(context.source.to_string()),
+                span: Some(context.span),
                 partial: false,
             }),
             responses: Vec::new(),
