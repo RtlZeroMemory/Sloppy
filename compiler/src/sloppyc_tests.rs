@@ -4048,7 +4048,7 @@ export default app;
         Some("User")
     );
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(emitted_js.source.contains("ctx.body.validate(undefined)"));
     assert!(!emitted_js.source.contains("ctx.body.validate(CreateUser)"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
@@ -4224,7 +4224,7 @@ export default app;
     let app = extract(std::path::Path::new("app.ts"), source)
         .expect("default and pattern modifiers should extract");
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+    assert!(emitted_js.source.contains("ctx.body.validate(undefined)"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -4245,7 +4245,7 @@ export default app;
 }
 
 #[test]
-fn body_validate_undefined_still_sanitizes_to_body_json() {
+fn body_validate_undefined_keeps_validate_facade() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 app.post("/users", (ctx) => Results.json({ body: ctx.body.validate(undefined) }));
@@ -4254,8 +4254,7 @@ export default app;
     let app = extract(std::path::Path::new("app.ts"), source)
         .expect("validate(undefined) should remain a supported sanitizer path");
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
-    assert!(!emitted_js.source.contains("ctx.body.validate(undefined)"));
+    assert!(emitted_js.source.contains("ctx.body.validate(undefined)"));
 }
 
 #[test]

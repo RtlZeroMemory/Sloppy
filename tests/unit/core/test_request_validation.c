@@ -46,6 +46,13 @@ static size_t bytes_count(SlBytes bytes, const char* needle)
     return count;
 }
 
+static bool validation_problem_has_issue_shape(SlBytes bytes)
+{
+    return bytes_contains(bytes, "\"code\":\"SLOPPY_E_VALIDATION_FAILED\"") &&
+           bytes_contains(bytes, "\"errors\":[") && bytes_contains(bytes, "\"path\":") &&
+           bytes_contains(bytes, "\"code\":") && bytes_contains(bytes, "\"message\":");
+}
+
 static SlPlan empty_plan(void)
 {
     SlPlan plan = {0};
@@ -145,6 +152,7 @@ static int test_body_schema_metadata_failures_publish_problem_details(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "JSON body schema metadata is missing."))
     {
         return 11;
@@ -159,6 +167,7 @@ static int test_body_schema_metadata_failures_publish_problem_details(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "JSON body schema is not available at runtime."))
     {
         return 12;
@@ -250,6 +259,7 @@ static int test_scalar_bindings_coerce_route_query_and_header_values(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "\"includeDeleted\"") ||
         !bytes_contains(result.response.body, "Expected a boolean value."))
     {
@@ -291,6 +301,7 @@ static int test_issue_cap_truncates_without_failure(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         bytes_count(result.response.body, "Query parameter is required.") == 0U ||
         bytes_contains(result.response.body, "\"q9\""))
     {
@@ -300,17 +311,19 @@ static int test_issue_cap_truncates_without_failure(void)
     return 0;
 }
 
-static int test_body_schema_validates_required_and_literal_contracts(void)
+static int test_body_schema_validates_required_literal_and_email_contracts(void)
 {
     unsigned char arena_storage[16384];
     SlArena arena = {0};
-    SlPlanSchemaProperty properties[2];
+    SlPlanSchemaProperty properties[3];
     SlPlanSchemaNode name_schema = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode email_schema = {.kind = SL_PLAN_SCHEMA_STRING,
+                                     .validation = sl_str_from_cstr("email")};
     SlPlanSchemaNode kind_schema = {.kind = SL_PLAN_SCHEMA_LITERAL,
                                     .literal_kind = SL_PLAN_SCHEMA_LITERAL_STRING,
                                     .literal_string = sl_str_from_cstr("user")};
     SlPlanSchemaNode body_schema = {
-        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 2U};
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 3U};
     SlPlanSchema schema = {.name = sl_str_from_cstr("CreateUser"), .definition = body_schema};
     SlPlan plan = empty_plan();
     SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
@@ -324,6 +337,8 @@ static int test_body_schema_validates_required_and_literal_contracts(void)
     properties[0] =
         (SlPlanSchemaProperty){.name = sl_str_from_cstr("name"), .schema = &name_schema};
     properties[1] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("email"), .schema = &email_schema};
+    properties[2] =
         (SlPlanSchemaProperty){.name = sl_str_from_cstr("kind"), .schema = &kind_schema};
     plan.schemas = &schema;
     plan.schema_count = 1U;
@@ -334,16 +349,24 @@ static int test_body_schema_validates_required_and_literal_contracts(void)
         return 40;
     }
 
-    request.body = sl_bytes_from_parts((const unsigned char*)"{\"kind\":\"admin\"}",
-                                       sizeof("{\"kind\":\"admin\"}") - 1U);
+    request.body =
+        sl_bytes_from_parts((const unsigned char*)"{\"email\":\"not-an-email\",\"kind\":\"admin\"}",
+                            sizeof("{\"email\":\"not-an-email\",\"kind\":\"admin\"}") - 1U);
     if (expect_status(
             sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "\"body.name\"") ||
         !bytes_contains(result.response.body, "Field is required.") ||
+        !bytes_contains(result.response.body, "\"body.email\"") ||
+        !bytes_contains(result.response.body, "\"string.email\"") ||
+        !bytes_contains(result.response.body, "Expected an email address.") ||
         !bytes_contains(result.response.body, "\"body.kind\"") ||
-        !bytes_contains(result.response.body, "Expected the declared literal value."))
+        !bytes_contains(result.response.body, "Expected the declared literal value.") ||
+        bytes_contains(result.response.body, "admin") ||
+        bytes_contains(result.response.body, "not-an-email"))
     {
         return 41;
     }
@@ -351,8 +374,9 @@ static int test_body_schema_validates_required_and_literal_contracts(void)
     sl_arena_reset(&arena);
     result = (SlEngineResult){0};
     diag = (SlDiag){0};
-    request.body = sl_bytes_from_parts((const unsigned char*)"{\"name\":\"Ada\",\"kind\":\"user\"}",
-                                       sizeof("{\"name\":\"Ada\",\"kind\":\"user\"}") - 1U);
+    request.body = sl_bytes_from_parts(
+        (const unsigned char*)"{\"name\":\"Ada\",\"email\":\"ada@example.test\",\"kind\":\"user\"}",
+        sizeof("{\"name\":\"Ada\",\"email\":\"ada@example.test\",\"kind\":\"user\"}") - 1U);
     if (expect_status(
             sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
             SL_STATUS_OK) != 0 ||
@@ -437,6 +461,7 @@ static int test_nested_optional_and_nullable_shapes_validate_precisely(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "\"body.profile.displayName\"") ||
         !bytes_contains(result.response.body, "Field is required."))
     {
@@ -476,6 +501,7 @@ static int test_malformed_json_body_fails_closed(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
         diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
         !bytes_contains(result.response.body, "Expected a valid JSON request body."))
     {
         return 51;
@@ -491,7 +517,7 @@ int main(void)
                             test_header_lookup_is_case_insensitive_and_success_is_silent,
                             test_scalar_bindings_coerce_route_query_and_header_values,
                             test_issue_cap_truncates_without_failure,
-                            test_body_schema_validates_required_and_literal_contracts,
+                            test_body_schema_validates_required_literal_and_email_contracts,
                             test_nested_optional_and_nullable_shapes_validate_precisely,
                             test_malformed_json_body_fails_closed};
     size_t index = 0U;

@@ -23,6 +23,7 @@
 typedef struct SlRequestValidationIssue
 {
     SlStr path;
+    SlStr code;
     SlStr message;
 } SlRequestValidationIssue;
 
@@ -74,8 +75,8 @@ static SlStatus sl_request_validation_copy_str(SlArena* arena, SlStr src, SlStr*
     return sl_str_copy_view_to_arena(arena, src, out);
 }
 
-static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state, SlStr path,
-                                                SlStr message)
+static SlStatus sl_request_validation_add_issue_code(SlRequestValidationState* state, SlStr path,
+                                                     SlStr code, SlStr message)
 {
     SlRequestValidationIssue* issue = NULL;
     SlStatus status;
@@ -98,7 +99,19 @@ static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state,
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_request_validation_copy_str(state->arena, code, &issue->code);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     return sl_request_validation_copy_str(state->arena, message, &issue->message);
+}
+
+static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state, SlStr path,
+                                                SlStr message)
+{
+    return sl_request_validation_add_issue_code(
+        state, path, sl_request_validation_literal("validation", sizeof("validation") - 1U),
+        message);
 }
 
 static SlStatus sl_request_validation_append_json_escaped(SlStringBuilder* builder, SlStr text)
@@ -177,7 +190,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
 
     status = sl_string_builder_append_cstr(
         &builder, "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
-                  "failed\",\"status\":400,\"errors\":{");
+                  "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[");
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -195,11 +208,23 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
                 return status;
             }
         }
+        status = sl_string_builder_append_cstr(&builder, "{\"path\":");
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         status = sl_request_validation_append_json_escaped(&builder, issue->path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_string_builder_append_cstr(&builder, ":[");
+        status = sl_string_builder_append_cstr(&builder, ",\"code\":");
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_request_validation_append_json_escaped(&builder, issue->code);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_cstr(&builder, ",\"message\":");
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -207,13 +232,13 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_string_builder_append_char(&builder, ']');
+        status = sl_string_builder_append_char(&builder, '}');
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
 
-    status = sl_string_builder_append_cstr(&builder, "}}\n");
+    status = sl_string_builder_append_cstr(&builder, "]}\n");
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -451,24 +476,24 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
                                                       SlStr path)
 {
     if (schema->has_min && schema->min_value >= 0 && value.length < (size_t)schema->min_value) {
-        return sl_request_validation_add_issue(
-            state, path,
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("string.min", sizeof("string.min") - 1U),
             sl_request_validation_literal("Expected a longer string.",
                                           sizeof("Expected a longer string.") - 1U));
     }
     if (sl_str_equal(schema->validation, sl_str_from_cstr("email")) &&
         !sl_request_validation_email_like(value))
     {
-        return sl_request_validation_add_issue(
-            state, path,
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("string.email", sizeof("string.email") - 1U),
             sl_request_validation_literal("Expected an email address.",
                                           sizeof("Expected an email address.") - 1U));
     }
     if (sl_str_equal(schema->validation, sl_str_from_cstr("uuid")) &&
         !sl_request_validation_uuid_like(value))
     {
-        return sl_request_validation_add_issue(
-            state, path,
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("string.uuid", sizeof("string.uuid") - 1U),
             sl_request_validation_literal("Expected a UUID string.",
                                           sizeof("Expected a UUID string.") - 1U));
     }
@@ -483,8 +508,8 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
     SlStatus status;
 
     if (!yyjson_is_obj(value)) {
-        return sl_request_validation_add_issue(
-            state, path,
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
             sl_request_validation_literal("Expected an object.",
                                           sizeof("Expected an object.") - 1U));
     }
@@ -503,8 +528,9 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
         }
         if (child == NULL) {
             if (!property->schema->optional) {
-                status = sl_request_validation_add_issue(
+                status = sl_request_validation_add_issue_code(
                     state, child_path,
+                    sl_request_validation_literal("required", sizeof("required") - 1U),
                     sl_request_validation_literal("Field is required.",
                                                   sizeof("Field is required.") - 1U));
                 if (!sl_status_is_ok(status)) {
@@ -515,8 +541,9 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
         }
         if (yyjson_is_null(child)) {
             if (!property->schema->nullable) {
-                status = sl_request_validation_add_issue(
+                status = sl_request_validation_add_issue_code(
                     state, child_path,
+                    sl_request_validation_literal("required", sizeof("required") - 1U),
                     sl_request_validation_literal("Field is required.",
                                                   sizeof("Field is required.") - 1U));
                 if (!sl_status_is_ok(status)) {
@@ -545,8 +572,8 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
     SlStatus status;
 
     if (!yyjson_is_arr(value)) {
-        return sl_request_validation_add_issue(
-            state, path,
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
             sl_request_validation_literal("Expected an array.", sizeof("Expected an array.") - 1U));
     }
     if (schema->items == NULL) {
@@ -604,8 +631,8 @@ static SlStatus sl_request_validation_validate_literal_union(SlRequestValidation
         }
     }
 
-    return sl_request_validation_add_issue(
-        state, path,
+    return sl_request_validation_add_issue_code(
+        state, path, sl_request_validation_literal("enum", sizeof("enum") - 1U),
         sl_request_validation_literal("Expected one of the declared literal values.",
                                       sizeof("Expected one of the declared literal values.") - 1U));
 }
@@ -643,8 +670,8 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
         return sl_request_validation_validate_object(state, schema, value, path, depth);
     case SL_PLAN_SCHEMA_STRING:
         if (!yyjson_is_str(value)) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a string.",
                                               sizeof("Expected a string.") - 1U));
         }
@@ -652,30 +679,30 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
             state, schema, sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value)), path);
     case SL_PLAN_SCHEMA_NUMBER:
         if (!yyjson_is_num(value)) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a finite number.",
                                               sizeof("Expected a finite number.") - 1U));
         }
         return sl_status_ok();
     case SL_PLAN_SCHEMA_INT:
         if (!yyjson_is_int(value)) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected an integer.",
                                               sizeof("Expected an integer.") - 1U));
         }
         if (schema->has_min && yyjson_get_sint(value) < schema->min_value) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
                 sl_request_validation_literal("Expected a larger integer.",
                                               sizeof("Expected a larger integer.") - 1U));
         }
         return sl_status_ok();
     case SL_PLAN_SCHEMA_BOOLEAN:
         if (!yyjson_is_bool(value)) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a boolean.",
                                               sizeof("Expected a boolean.") - 1U));
         }
@@ -686,8 +713,8 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
         return sl_request_validation_validate_literal_union(state, schema, value, path);
     case SL_PLAN_SCHEMA_LITERAL:
         if (!sl_request_validation_literal_matches(schema, value)) {
-            return sl_request_validation_add_issue(
-                state, path,
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("literal", sizeof("literal") - 1U),
                 sl_request_validation_literal("Expected the declared literal value.",
                                               sizeof("Expected the declared literal value.") - 1U));
         }
@@ -840,16 +867,18 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
     SlStatus status;
 
     if (sl_str_is_empty(binding->schema)) {
-        return sl_request_validation_add_issue(
+        return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
+            sl_request_validation_literal("schema.missing", sizeof("schema.missing") - 1U),
             sl_request_validation_literal("JSON body schema metadata is missing.",
                                           sizeof("JSON body schema metadata is missing.") - 1U));
     }
 
     schema = sl_request_validation_find_schema(plan, binding->schema);
     if (schema == NULL) {
-        return sl_request_validation_add_issue(
+        return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
+            sl_request_validation_literal("schema.unavailable", sizeof("schema.unavailable") - 1U),
             sl_request_validation_literal("JSON body schema is not available at runtime.",
                                           sizeof("JSON body schema is not available at runtime.") -
                                               1U));
@@ -858,8 +887,9 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
     if (context->request == NULL || context->request->body.ptr == NULL ||
         context->request->body.length == 0U || context->body_kind != SL_HTTP_REQUEST_BODY_JSON)
     {
-        return sl_request_validation_add_issue(
+        return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
+            sl_request_validation_literal("body.required", sizeof("body.required") - 1U),
             sl_request_validation_literal("Expected a JSON request body.",
                                           sizeof("Expected a JSON request body.") - 1U));
     }
@@ -867,8 +897,9 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
     doc = yyjson_read_opts((char*)context->request->body.ptr, context->request->body.length, 0U,
                            NULL, &error);
     if (doc == NULL) {
-        return sl_request_validation_add_issue(
+        return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
+            sl_request_validation_literal("json.malformed", sizeof("json.malformed") - 1U),
             sl_request_validation_literal("Expected a valid JSON request body.",
                                           sizeof("Expected a valid JSON request body.") - 1U));
     }

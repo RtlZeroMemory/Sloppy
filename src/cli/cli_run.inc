@@ -2123,8 +2123,13 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
     if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT && diag.code == SL_DIAG_MALFORMED_JSON)
     {
         return sl_run_write_response_with_options(
-            response, response_capacity, 400U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Malformed JSON\n"), suppress_body);
+            response, response_capacity, 400U, "application/problem+json",
+            sl_str_from_cstr(
+                "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
+                "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[{"
+                "\"path\":\"body\",\"code\":\"json.malformed\",\"message\":\"Expected a valid "
+                "JSON request body.\"}]}\n"),
+            suppress_body);
     }
 
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
