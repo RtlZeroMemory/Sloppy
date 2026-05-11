@@ -3845,6 +3845,28 @@ export default app;
 }
 
 #[test]
+fn returns_schema_metadata_only_applies_to_json_responses() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const User = Schema.object({ id: Schema.integer() });
+const app = Sloppy.create();
+app.get("/users", () => Results.text("ok")).returns(User);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("returns metadata should extract for non-json handlers");
+    let response = app.routes[0]
+        .handler
+        .response
+        .as_ref()
+        .expect("text response should remain primary metadata");
+    assert_eq!(response.kind, "text");
+    assert_eq!(response.body_schema, None);
+    assert!(app.routes[0].handler.responses.iter().any(|response| {
+        response.kind == "json" && response.body_schema.as_deref() == Some("User")
+    }));
+}
+
+#[test]
 fn rejects_unresolved_fluent_route_schema_metadata() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
@@ -3866,6 +3888,71 @@ export default app;
     let diagnostic = extract(std::path::Path::new("app.ts"), source)
         .expect_err("unresolved body validation schema should fail extraction");
     assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA");
+}
+
+#[test]
+fn rejects_unresolved_body_validate_schema_metadata_in_control_flow() {
+    let fixtures = [
+        (
+            "while body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  while (ctx.request.method) {
+    return Results.ok({ body: ctx.body.validate(CreateUser) });
+  }
+  return Results.ok({});
+});
+export default app;
+"#,
+        ),
+        (
+            "switch body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  switch (ctx.request.method) {
+    case "POST":
+      return Results.ok({ body: ctx.body.validate(CreateUser) });
+    default:
+      return Results.ok({});
+  }
+});
+export default app;
+"#,
+        ),
+        (
+            "try body",
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => {
+  try {
+    return Results.ok({ body: ctx.body.validate(CreateUser) });
+  } catch {
+    return Results.ok({});
+  }
+});
+export default app;
+"#,
+        ),
+        (
+            "nested call argument",
+            r#"import { Sloppy, Results } from "sloppy";
+function wrap(value) { return value; }
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.ok({ body: wrap(ctx.body.validate(CreateUser)) }));
+export default app;
+"#,
+        ),
+    ];
+
+    for (name, source) in fixtures {
+        let diagnostic = match extract(std::path::Path::new("app.ts"), source) {
+            Ok(_) => panic!("{name} should fail on unresolved body validation schema"),
+            Err(diagnostic) => diagnostic,
+        };
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNRESOLVED_SCHEMA", "{name}");
+    }
 }
 
 #[test]

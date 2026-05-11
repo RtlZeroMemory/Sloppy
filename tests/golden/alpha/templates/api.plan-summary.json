@@ -5,6 +5,11 @@
       "kind": "database",
       "provider": "data.main",
       "token": "data.main"
+    },
+    {
+      "access": "readwrite",
+      "kind": "filesystem",
+      "token": "fs"
     }
   ],
   "completeness": null,
@@ -41,7 +46,9 @@
     }
   ],
   "kind": "web",
-  "requiredFeatures": [],
+  "requiredFeatures": [
+    "stdlib.fs"
+  ],
   "routes": [
     {
       "handlerId": 1,

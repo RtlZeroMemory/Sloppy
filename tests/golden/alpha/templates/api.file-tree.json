@@ -4,6 +4,7 @@
   "appsettings.Development.json",
   "appsettings.json",
   "data/.gitkeep",
+  "migrations/0001_create_users.sql",
   "package.json",
   "sloppy.json",
   "src/config.ts",

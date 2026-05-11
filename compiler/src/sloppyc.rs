@@ -8943,11 +8943,6 @@ fn app_map_controller_call(
             responses: Vec::new(),
             effects: Vec::new(),
         };
-        let auth = fluent_metadata.auth.or(route_metadata.auth);
-        if let Some(requirement) = &auth {
-            handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
-            handler.is_async = true;
-        }
         apply_route_schema_metadata(
             path,
             statement.span,
@@ -8955,6 +8950,11 @@ fn app_map_controller_call(
             &fluent_metadata,
             &mut handler,
         )?;
+        let auth = fluent_metadata.auth.or(route_metadata.auth);
+        if let Some(requirement) = &auth {
+            handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
+            handler.is_async = true;
+        }
         handler.emitted_source = wrap_handler_with_framework_pipeline(
             &handler.emitted_source,
             &state.middleware,
@@ -12192,8 +12192,10 @@ fn apply_route_schema_metadata(
         validate_route_schema_reference(path, span, schema, schema_names)?;
         let mut applied = false;
         if let Some(response) = &mut handler.response {
-            apply_response_schema(path, span, &mut response.body_schema, schema)?;
-            applied = true;
+            if response.kind == "json" {
+                apply_response_schema(path, span, &mut response.body_schema, schema)?;
+                applied = true;
+            }
         }
         for response in &mut handler.responses {
             if response.kind == "json" {
@@ -12212,7 +12214,9 @@ fn apply_route_schema_metadata(
                 span: Some(span),
                 partial: false,
             };
-            handler.response = Some(response.clone());
+            if handler.response.is_none() {
+                handler.response = Some(response.clone());
+            }
             handler.responses.push(response);
         }
     }
@@ -12957,7 +12961,141 @@ fn unresolved_body_validate_schema_in_statement(
             ctx_name,
             schema_names,
         ),
+        Statement::DoWhileStatement(statement) => {
+            unresolved_body_validate_schema_in_statement(&statement.body, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_expression(
+                        &statement.test,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Statement::WhileStatement(statement) => {
+            unresolved_body_validate_schema_in_expression(&statement.test, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_statement(
+                        &statement.body,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Statement::ForStatement(statement) => statement
+            .init
+            .as_ref()
+            .and_then(|init| {
+                unresolved_body_validate_schema_in_for_init(init, ctx_name, schema_names)
+            })
+            .or_else(|| {
+                statement.test.as_ref().and_then(|test| {
+                    unresolved_body_validate_schema_in_expression(test, ctx_name, schema_names)
+                })
+            })
+            .or_else(|| {
+                statement.update.as_ref().and_then(|update| {
+                    unresolved_body_validate_schema_in_expression(update, ctx_name, schema_names)
+                })
+            })
+            .or_else(|| {
+                unresolved_body_validate_schema_in_statement(
+                    &statement.body,
+                    ctx_name,
+                    schema_names,
+                )
+            }),
+        Statement::ForInStatement(statement) => {
+            unresolved_body_validate_schema_in_expression(&statement.right, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_statement(
+                        &statement.body,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Statement::ForOfStatement(statement) => {
+            unresolved_body_validate_schema_in_expression(&statement.right, ctx_name, schema_names)
+                .or_else(|| {
+                    unresolved_body_validate_schema_in_statement(
+                        &statement.body,
+                        ctx_name,
+                        schema_names,
+                    )
+                })
+        }
+        Statement::SwitchStatement(statement) => unresolved_body_validate_schema_in_expression(
+            &statement.discriminant,
+            ctx_name,
+            schema_names,
+        )
+        .or_else(|| {
+            statement.cases.iter().find_map(|case| {
+                case.test
+                    .as_ref()
+                    .and_then(|test| {
+                        unresolved_body_validate_schema_in_expression(test, ctx_name, schema_names)
+                    })
+                    .or_else(|| {
+                        case.consequent.iter().find_map(|statement| {
+                            unresolved_body_validate_schema_in_statement(
+                                statement,
+                                ctx_name,
+                                schema_names,
+                            )
+                        })
+                    })
+            })
+        }),
+        Statement::TryStatement(statement) => statement
+            .block
+            .body
+            .iter()
+            .find_map(|statement| {
+                unresolved_body_validate_schema_in_statement(statement, ctx_name, schema_names)
+            })
+            .or_else(|| {
+                statement.handler.as_ref().and_then(|handler| {
+                    handler.body.body.iter().find_map(|statement| {
+                        unresolved_body_validate_schema_in_statement(
+                            statement,
+                            ctx_name,
+                            schema_names,
+                        )
+                    })
+                })
+            })
+            .or_else(|| {
+                statement.finalizer.as_ref().and_then(|finalizer| {
+                    finalizer.body.iter().find_map(|statement| {
+                        unresolved_body_validate_schema_in_statement(
+                            statement,
+                            ctx_name,
+                            schema_names,
+                        )
+                    })
+                })
+            }),
         _ => None,
+    }
+}
+
+fn unresolved_body_validate_schema_in_for_init(
+    init: &ForStatementInit<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<(String, Span)> {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().find_map(|declarator| {
+                declarator.init.as_ref().and_then(|init| {
+                    unresolved_body_validate_schema_in_expression(init, ctx_name, schema_names)
+                })
+            })
+        }
+        _ => init.as_expression().and_then(|expression| {
+            unresolved_body_validate_schema_in_expression(expression, ctx_name, schema_names)
+        }),
     }
 }
 
@@ -12969,22 +13107,6 @@ fn unresolved_body_validate_schema_in_expression(
     match expression {
         Expression::CallExpression(call) => {
             unresolved_body_validate_schema_in_call(call, ctx_name, schema_names)
-                .or_else(|| {
-                    unresolved_body_validate_schema_in_expression(
-                        &call.callee,
-                        ctx_name,
-                        schema_names,
-                    )
-                })
-                .or_else(|| {
-                    call.arguments.iter().find_map(|argument| {
-                        unresolved_body_validate_schema_in_argument(
-                            argument,
-                            ctx_name,
-                            schema_names,
-                        )
-                    })
-                })
         }
         Expression::AwaitExpression(expression) => unresolved_body_validate_schema_in_expression(
             &expression.argument,
@@ -13111,18 +13233,26 @@ fn unresolved_body_validate_schema_in_call(
     ctx_name: &str,
     schema_names: &BTreeSet<String>,
 ) -> Option<(String, Span)> {
-    let chain = static_member_chain(&call.callee)?;
-    if chain.len() != 3 || chain[0] != ctx_name || chain[1] != "body" || chain[2] != "validate" {
-        return None;
+    if let Some(chain) = static_member_chain(&call.callee) {
+        if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" && chain[2] == "validate"
+        {
+            let Some(Argument::Identifier(identifier)) = call.arguments.first() else {
+                return None;
+            };
+            let schema = identifier.name.as_str();
+            if schema == "undefined" {
+                return None;
+            }
+            return (!schema_names.contains(schema)).then(|| (schema.to_string(), identifier.span));
+        }
     }
-    let Argument::Identifier(identifier) = call.arguments.first()? else {
-        return None;
-    };
-    let schema = identifier.name.as_str();
-    if schema == "undefined" {
-        return None;
-    }
-    (!schema_names.contains(schema)).then(|| (schema.to_string(), identifier.span))
+    unresolved_body_validate_schema_in_expression(&call.callee, ctx_name, schema_names).or_else(
+        || {
+            call.arguments.iter().find_map(|argument| {
+                unresolved_body_validate_schema_in_argument(argument, ctx_name, schema_names)
+            })
+        },
+    )
 }
 
 fn arrow_requires_results_import(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
