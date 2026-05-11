@@ -1,4 +1,10 @@
 import { defineFunctionModuleName } from "./modules.js";
+import {
+    anonymousUser,
+    authorizeRoute,
+    normalizeAuthRequirement,
+    snapshotAuthRequirement,
+} from "../auth.js";
 import { Results } from "../results.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
 import { isPlainObject } from "./shared.js";
@@ -445,6 +451,7 @@ function createHandlerContext(host, routeInfo) {
         capabilities: host.capabilities,
         config: host.config,
         log: host.log,
+        user: anonymousUser(),
         route: {},
         routeName: routeInfo.name ?? "",
         routePattern: routeInfo.pattern,
@@ -460,6 +467,7 @@ function decorateProvidedContext(host, context, routeInfo) {
     nextContext.config ??= host.config;
     nextContext.log ??= host.log;
     nextContext.capabilities ??= host.capabilities;
+    nextContext.user ??= anonymousUser();
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};
@@ -487,6 +495,14 @@ function decorateProvidedContext(host, context, routeInfo) {
 }
 
 function createRouteHandler(host, handler, middleware = [], corsPolicy = null, routeInfo) {
+    function invokeHandler(ctx) {
+        const denied = authorizeRoute(ctx, routeInfo.auth, host.auth);
+        if (denied !== undefined) {
+            return denied;
+        }
+        return handler(ctx);
+    }
+
     return function routeHandler(context) {
         if (context !== undefined && context !== null) {
             const providedContext = decorateProvidedContext(host, context, routeInfo);
@@ -494,7 +510,7 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
                 const result = invokeMiddlewarePipeline(
                     providedContext,
                     middleware,
-                    () => handler(providedContext),
+                    () => invokeHandler(providedContext),
                 );
                 if (result !== null && typeof result === "object" && typeof result.then === "function") {
                     return Promise.resolve(result).then(
@@ -513,7 +529,7 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
             const result = invokeMiddlewarePipeline(
                 ownedContext,
                 middleware,
-                () => handler(ownedContext),
+                () => invokeHandler(ownedContext),
             );
             if (result !== null && typeof result === "object" && typeof result.then === "function") {
                 return Promise.resolve(result).then(
@@ -572,6 +588,9 @@ function snapshotMetadata(metadata) {
             exposedHeaders: Object.freeze([...(cors.exposedHeaders ?? [])]),
         });
     }
+    if (snapshot.auth !== undefined) {
+        snapshot.auth = snapshotAuthRequirement(snapshot.auth);
+    }
 
     return Object.freeze(snapshot);
 }
@@ -585,6 +604,15 @@ function createEndpointBuilder(route, assertAppMutable) {
             route.name = name;
             if (route.routeInfo !== undefined) {
                 route.routeInfo.name = name;
+            }
+            return endpoint;
+        },
+        requireAuth(options = undefined) {
+            assertAppMutable();
+            const requirement = normalizeAuthRequirement(options);
+            route.metadata.auth = requirement;
+            if (route.routeInfo !== undefined) {
+                route.routeInfo.auth = requirement;
             }
             return endpoint;
         },
@@ -652,6 +680,7 @@ function mergeRouteMetadata(groupMetadata, routeMetadata) {
         tags,
         groupName: groupMetadata.name,
         groupPrefix: groupMetadata.prefix,
+        ...(groupMetadata.auth === undefined ? {} : { auth: groupMetadata.auth }),
     };
 }
 
@@ -704,7 +733,13 @@ function registerRoute(
     }
 
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
-    const routeInfo = { method, pattern: args.pattern, name: null };
+    const metadata = {
+        ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
+        ...((currentModule !== null) ? { module: currentModule } : {}),
+        middleware: middlewareMetadata(orderedMiddleware),
+        ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
+    };
+    const routeInfo = { method, pattern: args.pattern, name: null, auth: metadata.auth };
     const route = {
         method,
         pattern: args.pattern,
@@ -717,12 +752,7 @@ function registerRoute(
         ),
         name: null,
         routeInfo,
-        metadata: {
-            ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
-            ...((currentModule !== null) ? { module: currentModule } : {}),
-            middleware: middlewareMetadata(orderedMiddleware),
-            ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
-        },
+        metadata,
     };
 
     routes.push(route);
@@ -954,6 +984,7 @@ function createRouteGroup(
         prefix: normalizeGroupPrefix(prefix),
         tags: [],
         name: null,
+        auth: undefined,
     };
     const groupMiddleware = [];
 
@@ -973,6 +1004,7 @@ function createRouteGroup(
                     prefix: groupMetadata.prefix,
                     tags: groupMetadata.tags,
                     name: groupMetadata.name,
+                    auth: groupMetadata.auth,
                 },
                 [...getInheritedMiddleware(), ...groupMiddleware],
                 getCorsPolicy(),
@@ -1012,6 +1044,12 @@ function createRouteGroup(
             return group;
         },
 
+        requireAuth(options = undefined) {
+            assertAppMutable();
+            groupMetadata.auth = normalizeAuthRequirement(options);
+            return group;
+        },
+
         mapGet: createMapMethod("GET"),
         mapPost: createMapMethod("POST"),
         mapPut: createMapMethod("PUT"),
@@ -1024,7 +1062,7 @@ function createRouteGroup(
         delete: createMapMethod("DELETE"),
         group(childPrefix) {
             assertAppMutable();
-            return createRouteGroup(
+            const child = createRouteGroup(
                 routes,
                 host,
                 assertAppMutable,
@@ -1034,6 +1072,10 @@ function createRouteGroup(
                 nextMiddlewareSequence,
                 getCorsPolicy,
             );
+            if (groupMetadata.auth !== undefined) {
+                child.requireAuth(groupMetadata.auth);
+            }
+            return child;
         },
     };
 

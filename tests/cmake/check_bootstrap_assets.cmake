@@ -1,8 +1,10 @@
 set(required_bootstrap_assets
     README.md
     app.js
+    auth.js
     bootstrap.manifest.json
     codec.js
+    config.js
     crypto.js
     data.js
     fs.js

@@ -23,7 +23,9 @@ typedef enum SlHttpRequestBodyKind
     SL_HTTP_REQUEST_BODY_NONE = 0,
     SL_HTTP_REQUEST_BODY_JSON = 1,
     SL_HTTP_REQUEST_BODY_TEXT = 2,
-    SL_HTTP_REQUEST_BODY_BYTES = 3
+    SL_HTTP_REQUEST_BODY_BYTES = 3,
+    SL_HTTP_REQUEST_BODY_FORM = 4,
+    SL_HTTP_REQUEST_BODY_MULTIPART = 5
 } SlHttpRequestBodyKind;
 
 typedef struct SlHttpQueryParam

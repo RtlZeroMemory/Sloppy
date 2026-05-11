@@ -78,6 +78,11 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                 "SLOPPY_AUDIT_ROUTE_COMPLETENESS", "route Plan completeness is not complete",
                 "routes", findings, errors);
         }
+        if (metadata->routes[outer].auth_required && metadata->auth_scheme_count == 0U) {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_AUTH_SCHEME_MISSING",
+                              "protected route has no auth scheme metadata", "auth", findings,
+                              errors);
+        }
         if (metadata->routes[outer].binding_count > 0U) {
             size_t binding = 0U;
             for (binding = 0U; binding < metadata->routes[outer].binding_count; binding += 1U) {

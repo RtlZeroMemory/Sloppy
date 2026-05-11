@@ -141,8 +141,10 @@ set(
     SLOPPY_BOOTSTRAP_ASSETS
     README.md
     app.js
+    auth.js
     bootstrap.manifest.json
     codec.js
+    config.js
     data.js
     ffi.js
     fs.js

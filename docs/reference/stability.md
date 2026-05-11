@@ -50,12 +50,14 @@ compiler refuses the input rather than emitting a partial Plan.
 | Routing | supported | supported | supported | supported | Direct route registration supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; generated CORS preflight routes bind `OPTIONS` in Plan metadata. |
 | Route params | supported | supported | supported | supported | `{name}`, `{name:str}`, and `{name:int}` values are strings in handler context. |
 | Query | supported | supported | supported | supported | Last value wins for repeated keys. |
-| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` cannot supply custom headers. |
-| Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes are bounded in memory. |
-| Results helpers | supported | supported subset | supported | supported | `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`, `badRequest`, `problem`, `status`, `html`, and `bytes` have compiler/runtime coverage where fixtures exercise them. |
+| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` can supply custom headers through `--header`. |
+| Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes/forms/multipart are bounded in memory. |
+| Cookies | supported | supported metadata for `ctx.cookies.get(...)` | supported | supported | Cookie signing/session state is application-owned. |
+| Results helpers | supported | supported subset | supported | supported | `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`, `badRequest`, `unauthorized`, `problem`, `status`, `html`, `bytes`, and bounded `stream` have compiler/runtime coverage where fixtures exercise them; streaming/backpressure remains non-production. |
 | ProblemDetails | supported | supported as literal `ProblemDetails.defaults(...)` | supported | supported | Safe handler-error mapping. |
 | Middleware | supported | supported static subset | supported | supported | Inline/top-level middleware is emitted into generated handlers; dynamic lookup and unsupported captures fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`. |
 | CORS | supported | supported static subset | supported | supported | Literal `app.useCors({...})` policies emit response wrapping, Plan metadata, and generated `OPTIONS` preflight routes; dynamic policies fail with `SLOPPYC_E_UNSUPPORTED_CORS`. |
+| Auth | supported | supported static subset | supported | supported with V8 stdlib crypto/codec/os features | JWT bearer is HS256-only; API keys use header validation; route/group `requireAuth`, roles, claims, policies, Plan metadata, and OpenAPI security schemes are covered. OIDC discovery, JWKS, asymmetric JWT algorithms, OAuth flows, refresh tokens, session cookies, and user management are not included. |
 | Health | supported | supported for literal static shapes | supported | supported | Compiler emits aggregate/live/ready handlers and health metadata. |
 | Services | supported | supported for literal registrations and `Service<T>` | supported | supported through generated wrappers | App-host exposes `ctx.services`; native base context does not. |
 | Config/defaults/secrets | supported | supported for config metadata and `Config<"KEY">` defaults | supported | supported | Secret values are not persisted in Plan metadata. |
@@ -66,10 +68,10 @@ compiler refuses the input rather than emitting a partial Plan.
 | Typed bindings | test-host supported | supported | supported | supported | `Route`, `Query`, `Header`, `Body`, `RequestContext`, `Service`, `Config`, provider markers, and `WorkQueue`. |
 | Compiler source input | n/a | supported subset | emits Plan, bundle, source map | supported with V8 for execution | Not a full TypeScript type checker or npm resolver. |
 | Program Mode | n/a | supported route-free subset | emits `kind: "program"` Plan and generated entrypoint | supported with V8 | `main(args, ctx)`, default function entrypoints, top-level-only modules, console stdout/stderr, numeric exit codes, stdlib imports, compatible bundled packages, and packaged runs are covered. No full Node globals, native addons, or raw terminal API. |
-| OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
+| OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Route, response, validation, and auth security metadata are emitted from the Plan-supported subset. Full runtime-pipeline semantics remain outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
-| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
+| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` can add headers and body bytes for artifact/package smoke tests. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes. Not a runtime release archive. |
 | CLI `routes` | n/a | Plan-derived | metadata-only | no V8 required | Reads route metadata from Plan. |

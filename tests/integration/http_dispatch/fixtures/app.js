@@ -77,3 +77,49 @@ globalThis.__sloppy_register_handler(8, async function () {
     }, { status: 500 });
   }
 });
+
+globalThis.__sloppy_register_handler(9, function (ctx) {
+  return Results.json({
+    session: ctx.cookies.get("session"),
+    theme: ctx.cookies.get("theme"),
+    missing: ctx.cookies.get("missing"),
+  });
+});
+
+globalThis.__sloppy_register_handler(10, function () {
+  return Results.ok({ ok: true })
+    .cookie("session", "abc", { httpOnly: true, secure: true, sameSite: "Strict", path: "/" })
+    .cookie("theme", "dark");
+});
+
+globalThis.__sloppy_register_handler(11, function (ctx) {
+  const form = ctx.request.form();
+  return Results.json({
+    name: form.get("name"),
+    repeated: form.get("repeated"),
+    entries: Array.from(form.entries()),
+  });
+});
+
+globalThis.__sloppy_register_handler(12, function (ctx) {
+  const form = ctx.request.multipart();
+  const file = form.file("avatar");
+  return Results.json({
+    title: form.get("title"),
+    file: {
+      fieldName: file.fieldName,
+      name: file.name,
+      contentType: file.contentType,
+      size: file.size,
+      text: file.text(),
+      bytes: Array.from(file.bytes()),
+    },
+  });
+});
+
+globalThis.__sloppy_register_handler(13, async function () {
+  return Results.stream(async (writer) => {
+    writer.writeText("hello ");
+    writer.writeBytes(new Uint8Array([119, 111, 114, 108, 100]));
+  }, { contentType: "text/plain; charset=utf-8" });
+});

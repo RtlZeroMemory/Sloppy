@@ -918,6 +918,9 @@ static SlStatus sl_request_validation_validate_binding(SlRequestValidationState*
         return sl_request_validation_validate_named_scalar(state, binding, value);
     case SL_PLAN_REQUEST_BINDING_BODY_JSON:
         return sl_request_validation_validate_body(state, plan, binding, context);
+    case SL_PLAN_REQUEST_BINDING_BODY_FORM:
+    case SL_PLAN_REQUEST_BINDING_BODY_MULTIPART:
+    case SL_PLAN_REQUEST_BINDING_COOKIE:
     case SL_PLAN_REQUEST_BINDING_CONTEXT:
     case SL_PLAN_REQUEST_BINDING_INJECTION:
     case SL_PLAN_REQUEST_BINDING_UNKNOWN:
