@@ -21,6 +21,7 @@ services and config arguments when the compiled handler declares them.
 | `ctx.route`        | object                | Route parameters                                   |
 | `ctx.query`        | object                | Decoded query parameters as strings                |
 | `ctx.request`      | `RequestInfo`         | Method, path, headers, body helpers                |
+| `ctx.cookies`      | cookie bag            | Request cookies, last value wins                   |
 | `ctx.signal`       | cancellation signal   | `aborted` flag plus `throwIfAborted()`             |
 | `ctx.deadline`     | deadline              | Per-request deadline metadata                      |
 | `ctx.routeName`    | string                | Matched route name, when known                     |
@@ -77,6 +78,8 @@ today — use the body for structured input.
 | `request.headers.entries()`  | iterable  | Deterministic header list                        |
 | `request.text()`             | string    | Body as text (for `text/plain`); synchronous     |
 | `request.json()`             | unknown   | Parsed JSON body; synchronous                    |
+| `request.form()`             | form data | Parsed `application/x-www-form-urlencoded` body  |
+| `request.multipart()`        | form data | Parsed `multipart/form-data` fields and files    |
 | `request.bytes()`            | Uint8Array | Raw body bytes; synchronous                     |
 
 The body helpers are synchronous — the runtime has the full body in
@@ -92,7 +95,51 @@ app.post("/users", (ctx) => {
 });
 ```
 
-JSON bodies must declare `application/json` or `application/*+json`.
+JSON bodies must declare `application/json` or `application/*+json`. URL-encoded
+forms must declare `application/x-www-form-urlencoded`. Multipart bodies must
+declare `multipart/form-data` with a `boundary` parameter.
+
+`request.form()` returns an object with:
+
+| Member | Notes |
+| --- | --- |
+| `form.get(name)` | Last value for the field, or `null` |
+| `form.entries()` | Iterable `[name, value]` pairs in request order |
+| `form.file(name)` | Last uploaded file for the field, or `null` |
+
+`request.multipart()` returns the same shape. Text parts are available through
+`get()` and uploaded files through `file()`:
+
+```ts
+app.post("/profile", (ctx) => {
+    const form = ctx.request.multipart();
+    const avatar = form.file("avatar");
+
+    return Results.ok({
+        displayName: form.get("displayName"),
+        avatarName: avatar?.name ?? null,
+        avatarBytes: avatar?.size ?? 0,
+    });
+});
+```
+
+Uploaded file objects expose `fieldName`, `name`, `contentType`, `size`,
+`bytes()`, `text()`, and `saveTo(path)`. Bodies are still bounded and buffered
+in memory before the handler runs.
+
+## `ctx.cookies`
+
+`ctx.cookies.get(name)` returns the decoded request cookie value or `null`:
+
+```ts
+app.get("/me", (ctx) => {
+    const session = ctx.cookies.get("session");
+    return session ? Results.ok({ session }) : Results.unauthorized();
+});
+```
+
+Cookie names must be valid HTTP token names. Repeated cookie names use
+last-wins lookup.
 
 The runtime rejects malformed bodies, oversized bodies, unsupported
 transfer encodings, and unsupported media types before the handler
@@ -181,6 +228,7 @@ compiled artifact needs those values. See [logging](logging.md).
 
 ## Current limits
 
-- A streaming response writer.
-- Multipart / form-data and file uploads.
-- Cookies as a first-class field.
+- Request bodies are bounded and buffered before the handler runs.
+- Multipart parsing covers ordinary text fields and in-memory file parts; it is
+  not a streaming upload parser.
+- Cookie signing, encryption, and session storage are application concerns.

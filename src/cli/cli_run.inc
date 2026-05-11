@@ -2150,13 +2150,55 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
                                              dispatch_storage, sizeof(dispatch_storage));
 }
 
-static int sl_run_once(SlRunApp* app, const char* method, const char* target)
+static bool sl_run_once_has_header(const SlHttpHeader* headers, size_t header_count,
+                                   const char* name)
+{
+    size_t index = 0U;
+    SlStr needle = sl_str_from_cstr(name);
+
+    for (index = 0U; index < header_count; index += 1U) {
+        if (sl_str_equal_ci_ascii(headers[index].name, needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_run_once_parse_header(const char* text, SlHttpHeader* out)
+{
+    const char* colon = NULL;
+    const char* value = NULL;
+
+    if (text == NULL || out == NULL) {
+        return false;
+    }
+    colon = strchr(text, ':');
+    if (colon == NULL || colon == text) {
+        return false;
+    }
+    value = colon + 1;
+    while (*value == ' ' || *value == '\t') {
+        value += 1;
+    }
+    out->name = sl_str_from_parts(text, (size_t)(colon - text));
+    out->value = sl_str_from_cstr(value);
+    return true;
+}
+
+static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
 {
     unsigned char request_storage[SL_RUN_ARENA_BYTES];
+    unsigned char body_storage[SL_HTTP_DEFAULT_MAX_BODY_LENGTH];
     SlArena request_arena = {0};
     SlHttpRequestHead request = {0};
+    SlHttpHeader headers[SL_HTTP_DEFAULT_MAX_HEADERS];
+    size_t header_count = 0U;
+    SlBytes body = {0};
     char response[SL_RUN_RESPONSE_MAX_BYTES];
     int response_length;
+    const char* method = options == NULL ? NULL : options->once_method;
+    const char* target = options == NULL ? NULL : options->once_target;
+    size_t index = 0U;
 
     if (target == NULL || target[0] != '/') {
         sl_cli_write_cstr(stderr, "sloppy run: --once target must start with /\n");
@@ -2175,6 +2217,50 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
                           "sloppy run: --once method is unsupported by the bounded parser\n");
         return 1;
     }
+
+    for (index = 0U; index < options->once_header_count; index += 1U) {
+        if (header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many --header entries\n");
+            return 1;
+        }
+        if (!sl_run_once_parse_header(options->once_headers[index], &headers[header_count])) {
+            sl_cli_write_cstr(stderr, "sloppy run: --header requires 'Name: value'\n");
+            return 1;
+        }
+        header_count += 1U;
+    }
+
+    if (options->once_body_file != NULL) {
+        if (sl_run_read_file(app, options->once_body_file, body_storage, sizeof(body_storage),
+                             &body) != 0)
+        {
+            return 1;
+        }
+        request.body = body;
+        if (!sl_run_once_has_header(headers, header_count, "Content-Length")) {
+            static char content_length[32];
+            SlStringBuilder length_builder;
+            SlStr content_length_view = {0};
+            if (header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy run: --body-file needs room for Content-Length\n");
+                return 1;
+            }
+            if (!sl_status_is_ok(sl_string_builder_init_fixed(&length_builder, content_length,
+                                                              sizeof(content_length))) ||
+                !sl_status_is_ok(sl_string_builder_append_size(&length_builder, body.length)) ||
+                !sl_status_is_ok(
+                    sl_string_builder_view_with_nul(&length_builder, &content_length_view)))
+            {
+                sl_cli_write_cstr(stderr, "sloppy run: --body-file length is too large\n");
+                return 1;
+            }
+            headers[header_count++] =
+                (SlHttpHeader){sl_str_from_cstr("Content-Length"), content_length_view};
+        }
+    }
+    request.headers = headers;
+    request.header_count = header_count;
 
     if (app->has_dynamic_routes) {
         char eval_source[SL_RUN_RESPONSE_MAX_BYTES];
@@ -3435,7 +3521,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
             result = 1;
         }
         else {
-            result = sl_run_once(app, options->once_method, options->once_target);
+            result = sl_run_once(app, options);
         }
     }
     else if (options->program_args_explicit) {

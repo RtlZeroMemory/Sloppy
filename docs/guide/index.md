@@ -14,6 +14,8 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [SQL Server](sqlserver.md) — ODBC setup boundaries and health checks
 - [Templates](templates.md) — built-in starters and API template migrations
 - [Request logging](request-logging.md) — add request IDs and structured request logs
+- [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
+- [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files
 - [Examples](examples.md) — curated index of `/examples` worth running
 - [Troubleshooting](troubleshooting.md) — common errors and how to read them
 

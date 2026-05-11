@@ -50,9 +50,10 @@ compiler refuses the input rather than emitting a partial Plan.
 | Routing | supported | supported | supported | supported | Direct route registration supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; generated CORS preflight routes bind `OPTIONS` in Plan metadata. |
 | Route params | supported | supported | supported | supported | `{name}`, `{name:str}`, and `{name:int}` values are strings in handler context. |
 | Query | supported | supported | supported | supported | Last value wins for repeated keys. |
-| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` cannot supply custom headers. |
-| Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes are bounded in memory. |
-| Results helpers | supported | supported subset | supported | supported | `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`, `badRequest`, `problem`, `status`, `html`, and `bytes` have compiler/runtime coverage where fixtures exercise them. |
+| Headers | supported | supported through typed/header metadata and request context | supported | supported | `--once` can supply custom headers through `--header`. |
+| Body helpers | supported | supported through body metadata and generated wrappers | supported | supported | JSON/text/bytes/forms/multipart are bounded in memory. |
+| Cookies | supported | supported metadata for `ctx.cookies.get(...)` | supported | supported | Cookie signing/session state is application-owned. |
+| Results helpers | supported | supported subset | supported | supported | `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`, `badRequest`, `unauthorized`, `problem`, `status`, `html`, `bytes`, and bounded `stream` have compiler/runtime coverage where fixtures exercise them; streaming/backpressure remains non-production. |
 | ProblemDetails | supported | supported as literal `ProblemDetails.defaults(...)` | supported | supported | Safe handler-error mapping. |
 | Middleware | supported | supported static subset | supported | supported | Inline/top-level middleware is emitted into generated handlers; dynamic lookup and unsupported captures fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`. |
 | CORS | supported | supported static subset | supported | supported | Literal `app.useCors({...})` policies emit response wrapping, Plan metadata, and generated `OPTIONS` preflight routes; dynamic policies fail with `SLOPPYC_E_UNSUPPORTED_CORS`. |
@@ -69,7 +70,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | OpenAPI | metadata consumer | Plan-derived | metadata-only | CLI only | Security schemes and full runtime-pipeline semantics are outside current output. |
 | CLI `build` | n/a | supported | emits artifacts | no V8 required | Deterministic for the same source, config inputs, compiler, and CLI overrides. |
 | Compiler timings | n/a | supported dev flag | timing JSON only | n/a | `sloppyc build --timings-json` is local contributor tooling for phase/counter evidence, not a product API or public performance claim. |
-| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` creates a minimal synthetic request. |
+| CLI `run` | n/a | supported source/project handoff | validates artifacts | V8 required for handlers | `--once` can add headers and body bytes for artifact/package smoke tests. |
 | CLI `create` | n/a | n/a | copies templates | no V8 required | Built-in templates include `api`, `minimal-api`, `program`, `cli`, `package-api`, and `node-compat`. |
 | CLI `package` | n/a | supported source/project handoff | emits app package directory | no V8 required | Creates a local app package under `.sloppy/package/` by default; local FFI libraries configured through `ffiLibraries` are copied with package manifest hashes. Not a runtime release archive. |
 | CLI `db` | n/a | Plan and `sloppy.json` migration metadata | reads package manifest migrations | no V8 required; PostgreSQL/SQL Server need live provider config | `status` and `migrate` work for SQLite, PostgreSQL, and SQL Server artifacts/packages. PostgreSQL and SQL Server require connection-string configuration and a reachable service. |

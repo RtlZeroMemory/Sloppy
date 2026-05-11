@@ -8,6 +8,8 @@ __sloppy_framework_services.addSingleton("queue.emails", () => WorkQueue.create(
 const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","connectionStringKey":"Sloppy:Providers:postgres:main:connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","connectionStringKey":"Sloppy:Providers:sqlserver:search:connectionString","providerKind":"sqlserver"}]]);
 function __sloppy_framework_arg(ctx, scope, binding) {
   if (binding.kind === "body.json") { return ctx.request.json(); }
+  if (binding.kind === "body.form") { return ctx.request.form(); }
+  if (binding.kind === "body.multipart") { return ctx.request.multipart(); }
   if (binding.kind === "context") { return ctx; }
   if (binding.kind === "injection") { return __sloppy_framework_injection(scope, binding); }
   if (binding.kind === "config") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }

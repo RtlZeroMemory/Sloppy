@@ -1772,6 +1772,29 @@ async function flushMicrotasks(count = 6) {
     app.post("/bytes", (ctx) => Results.bytes(ctx.request.bytes()));
     app.post("/body-json", (ctx) => Results.json(ctx.request.body.json()));
     app.post("/body-text", (ctx) => Results.text(ctx.request.body.text()));
+    app.post("/form", (ctx) => {
+        const form = ctx.request.form();
+        return Results.json({
+            name: form.get("name"),
+            repeated: form.get("repeated"),
+            entries: Array.from(form.entries()),
+        });
+    });
+    app.post("/multipart", (ctx) => {
+        const form = ctx.request.multipart();
+        const file = form.file("avatar");
+        return Results.json({
+            title: form.get("title"),
+            file: {
+                fieldName: file.fieldName,
+                name: file.name,
+                contentType: file.contentType,
+                size: file.size,
+                text: file.text(),
+                bytes: Array.from(file.bytes()),
+            },
+        });
+    });
 
     const host = createTestHost(app);
     assert.deepEqual(await (await host.post("/json", { json: { name: "Ada" } })).json(), {
@@ -1788,6 +1811,36 @@ async function flushMicrotasks(count = 6) {
     );
     assert.deepEqual(await (await host.post("/body-json", { json: { ok: true } })).json(), { ok: true });
     assert.equal(await (await host.post("/body-text", { text: "body text" })).text(), "body text");
+    assert.deepEqual(await (await host.post("/form", {
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "name=Ada+Lovelace&repeated=one&repeated=two",
+    })).json(), {
+        name: "Ada Lovelace",
+        repeated: "two",
+        entries: [["name", "Ada Lovelace"], ["repeated", "one"], ["repeated", "two"]],
+    });
+    assert.deepEqual(await (await host.post("/multipart", {
+        headers: { "content-type": "multipart/form-data; boundary=BOUNDARY" },
+        body: "--BOUNDARY\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\navatar\r\n--BOUNDARY\r\nContent-Disposition: form-data; name=\"avatar\"; filename=\"ada.txt\"\r\nContent-Type: text/plain\r\n\r\nAda\r\n--BOUNDARY--\r\n",
+    })).json(), {
+        title: "avatar",
+        file: {
+            fieldName: "avatar",
+            name: "ada.txt",
+            contentType: "text/plain",
+            size: 3,
+            text: "Ada",
+            bytes: [65, 100, 97],
+        },
+    });
+    assert.equal((await host.post("/multipart", {
+        headers: { "content-type": "multipart/form-data" },
+        body: "--BROKEN\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\navatar\r\n",
+    })).status, 400);
+    assert.equal((await host.post("/multipart", {
+        headers: { "content-type": "multipart/form-data; boundary=" },
+        body: "x",
+    })).status, 400);
     assert.equal((await host.post("/json", {
         headers: { "content-type": "application/json" },
         body: "{",
@@ -1812,6 +1865,15 @@ async function flushMicrotasks(count = 6) {
     app.get("/no-content", () => Results.noContent());
     app.get("/not-found", () => Results.notFound({ missing: true }));
     app.get("/bad-request", () => Results.badRequest({ bad: true }));
+    app.get("/unauthorized", () => Results.unauthorized({ auth: false }));
+    app.get("/cookie", (ctx) => Results.ok({ session: ctx.cookies.get("session") }).cookie("seen", "yes", { httpOnly: true }));
+    app.get("/cookies", () => Results.ok({ ok: true })
+        .cookie("first", "one")
+        .cookie("second", "two", { expires: new Date("2030-01-01T00:00:00Z") }));
+    app.get("/stream", () => Results.stream(async (writer) => {
+        writer.writeText("hello ");
+        writer.writeBytes(new Uint8Array([119, 111, 114, 108, 100]));
+    }, { contentType: "text/plain; charset=utf-8" }));
     app.get("/problem", () => Results.problem("broken"));
 
     const host = createTestHost(app);
@@ -1835,6 +1897,18 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(Array.from(await (await host.get("/no-content")).bytes()), []);
     assert.equal((await host.get("/not-found")).status, 404);
     assert.equal((await host.get("/bad-request")).status, 400);
+    assert.equal((await host.get("/unauthorized")).status, 401);
+    const cookie = await host.get("/cookie", { headers: { cookie: "session=abc%20123" } });
+    assert.equal(cookie.headers.get("set-cookie"), "seen=yes; HttpOnly");
+    assert.deepEqual(await cookie.json(), { session: "abc 123" });
+    const cookies = await host.get("/cookies");
+    assert.deepEqual(Array.from(cookies.headers.entries()).filter(([name]) => name === "set-cookie"), [
+        ["set-cookie", "first=one"],
+        ["set-cookie", "second=two; Expires=Tue, 01 Jan 2030 00:00:00 GMT"],
+    ]);
+    const stream = await host.get("/stream");
+    assert.equal(stream.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(await stream.text(), "hello world");
     assert.equal((await host.get("/problem")).headers.get("content-type"), "application/problem+json; charset=utf-8");
     await host.close();
 }
@@ -2115,6 +2189,12 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(Results.json({ ok: true }, { headers: { "x-test": "1" } }).headers, {
         "x-test": "1",
     });
+    const streamCookieResult = (await Results.stream(async (writer) => {
+        writer.writeText("x");
+    })).cookie("seen", "yes");
+    assert.equal(streamCookieResult.kind, "stream");
+    assert.deepEqual(Array.from(streamCookieResult.chunks[0]), [120]);
+    assert.deepEqual(streamCookieResult.setCookies, ["seen=yes"]);
     {
         const protoHeaders = {};
         Object.defineProperty(protoHeaders, "__proto__", {
@@ -2137,6 +2217,26 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => Results.ok("bad", { headers: { "Content-Type": "text/plain" } }), /safe unmanaged/);
     assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": 1 } }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.ok("bad", { headers: { "x-test": "a\r\nb" } }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.ok("bad", { setCookies: [1] }), /setCookies entries/);
+    assertThrowsMessage(() => Results.ok("bad", { setCookies: ["a\r\nb"] }), /safe HTTP header value/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("bad", "\uD800"), /cookie value/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { path: "/; Secure" }), /cookie path/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { domain: "example.test; HttpOnly" }), /cookie domain/);
+    assertThrowsMessage(() => Results.ok("bad").cookie("safe", "ok", { expires: "Wed, 01 Jan 2030 00:00:00 GMT; Secure" }), /cookie expires/);
+    await assertRejectsMessage(
+        () => Results.stream(async (writer) => {
+            writer.writeBytes(new Uint8Array(65537));
+        }),
+        /bounded stream limit/,
+    );
+    await assertRejectsMessage(
+        () => Results.stream(async (writer) => {
+            writer.writeBytes(new Uint8Array(65536));
+            writer.writeBytes(new Uint8Array(65536));
+            writer.writeText("x");
+        }),
+        /bounded stream limit/,
+    );
     assertThrowsMessage(() => Results.created("/users/1\r\nx: y", { id: 1 }), /safe HTTP header value/);
     assertThrowsMessage(() => Results.bytes([1, 2, 3]), /binary data or a typed array view/);
     assertThrowsMessage(() => Results.bytes(new Uint8Array([1]), { contentType: "" }), /contentType/);
