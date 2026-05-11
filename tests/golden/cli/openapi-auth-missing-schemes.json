@@ -23,5 +23,23 @@
         }
       }
     }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
   }
 }
