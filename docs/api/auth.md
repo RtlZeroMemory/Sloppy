@@ -1,7 +1,8 @@
 # Auth
 
 Sloppy auth is an experimental app-host and compiler-visible API for protecting
-routes with JWT bearer tokens, API keys, roles, claims, and named policies.
+routes with JWT bearer tokens, API keys, signed session cookies, roles,
+claims, and named policies.
 
 ```ts
 import { Sloppy, Results, Auth, Config } from "sloppy";
@@ -29,13 +30,48 @@ Registers a JWT bearer provider for `Authorization: Bearer <token>`.
 | `issuer` | `string?` | Expected `iss` claim. |
 | `audience` | `string?` | Expected `aud` claim. Array audiences are accepted when one entry matches. |
 | `secret` | `string \| Config.required(...)` | HS256 signing secret. Use config references for app secrets. Compiler extraction requires `Config.required(...)`. |
+| `clockSkewSeconds` | `number?` | Integer leeway for `exp`, `nbf`, and future `iat` checks. Defaults to `0`. |
 
 JWT support is intentionally small for alpha:
 
 - supported algorithm: `HS256`;
-- supported validation: `iss`, `aud`, `exp`, `nbf`, `iat`, and `sub`;
+- supported validation: `iss`, `aud`, `exp`, `nbf`, future `iat`, and `sub`;
 - rejected algorithms: `none` and anything other than `HS256`;
-- not included: OIDC discovery, JWKS, asymmetric algorithms, refresh tokens, or session management.
+- not included: OIDC discovery, JWKS, asymmetric algorithms, refresh tokens, or OAuth flows.
+
+### `Auth.cookieSession(options)`
+
+Registers signed cookie-session auth. The cookie payload is signed with HMAC
+SHA-256 using the configured secret. Tampered cookies are rejected.
+
+```ts
+app.use(Auth.cookieSession({
+  name: "sloppy.session",
+  secret: Config.required("Auth:SessionSecret"),
+}));
+
+app.post("/login", (ctx) => Auth.signIn(ctx, {
+  sub: "user-1",
+  roles: ["user"],
+  claims: { email: "ada@example.com" },
+}));
+
+app.post("/logout", (ctx) => Auth.signOut(ctx));
+```
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `name` | `string?` | Cookie name. Defaults to `sloppy.session`. |
+| `secret` | `string \| Config.required(...)` | Session signing secret. Compiler extraction requires `Config.required(...)`. |
+| `secure` | `boolean?` | Defaults to `true`. |
+| `httpOnly` | `boolean?` | Defaults to `true`. |
+| `sameSite` | `"lax" \| "strict" \| "none"?` | Defaults to `lax`. |
+| `path` | `string?` | Defaults to `/`. |
+| `maxAgeSeconds` | `number?` | Adds session expiry and `Max-Age` when set. |
+
+`Auth.signIn(ctx, claims)` returns `200` with `Set-Cookie`. `Auth.signOut(ctx)`
+returns `204` and clears the cookie. Session secrets are not written to Plan
+metadata.
 
 ### `Auth.apiKey(options)`
 
@@ -108,7 +144,7 @@ Every request context has `ctx.user`.
 | `name` | `string` | Optional display name. |
 | `roles` | `string[]` | Role list from claims or provider output. |
 | `claims` | `object` | Full claims object. |
-| `scheme` | `string` | `jwtBearer`, `apiKey`, or empty for anonymous users. |
+| `scheme` | `string` | `jwtBearer`, `apiKey`, `cookieSession`, or empty for anonymous users. |
 | `hasRole(role)` | `function` | Role helper. |
 | `hasClaim(name, value?)` | `function` | Claim helper. |
 
@@ -131,7 +167,7 @@ The compiler emits:
 - protected route requirements;
 - policy names;
 - config requirements for `Config.required(...)`;
-- OpenAPI `bearerAuth` and `apiKeyAuth` security schemes;
+- OpenAPI `bearerAuth`, `apiKeyAuth`, and `cookieSessionAuth` security schemes;
 - per-route OpenAPI security requirements.
 
 Secrets are never written to Plan JSON. Config keys may appear so `sloppy

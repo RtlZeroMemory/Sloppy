@@ -6710,6 +6710,46 @@ export default app;
 }
 
 #[test]
+fn static_cookie_session_auth_metadata_extracts_without_secret_values() {
+    let source = r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({
+  name: "sloppy.session",
+  secret: Config.required("Auth:SessionSecret"),
+  secure: true,
+  httpOnly: true,
+  sameSite: "lax"
+}));
+app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("cookie session auth metadata should extract");
+    assert_eq!(app.auth.schemes.len(), 1);
+    match &app.auth.schemes[0] {
+        super::AuthSchemeMetadata::CookieSession {
+            name,
+            cookie,
+            secret_config_key,
+        } => {
+            assert_eq!(name, "cookieSessionAuth");
+            assert_eq!(cookie, "sloppy.session");
+            assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
+        }
+        other => panic!("expected cookie session scheme, got {other:?}"),
+    }
+    let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
+        .expect("plan should emit cookie auth metadata");
+    assert!(plan.contains("\"kind\": \"cookieSession\""));
+    assert!(plan.contains("\"cookie\": \"sloppy.session\""));
+    assert!(plan.contains("\"secret\": \"<redacted>\""));
+    assert!(!plan.contains("session-secret"));
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("__sloppy_auth_session"));
+    assert!(emitted_js.source.contains("cookieSession"));
+}
+
+#[test]
 fn controller_routes_apply_fluent_schema_metadata() {
     let source = r#"import { Sloppy, Results, Schema } from "sloppy";
 const CreateUser = Schema.object({ name: Schema.string() });

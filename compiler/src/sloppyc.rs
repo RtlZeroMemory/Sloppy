@@ -4075,20 +4075,22 @@ fn extract_entry(
         uses_fs_runtime: state.fs_imported,
         uses_crypto_runtime: state.crypto_imported
             || graph.uses_crypto_runtime
-            || state
-                .auth
-                .schemes
-                .iter()
-                .any(|scheme| matches!(scheme, AuthSchemeMetadata::JwtBearer { .. })),
+            || state.auth.schemes.iter().any(|scheme| {
+                matches!(
+                    scheme,
+                    AuthSchemeMetadata::JwtBearer { .. } | AuthSchemeMetadata::CookieSession { .. }
+                )
+            }),
         noncrypto_hash_security_context_visible: state.noncrypto_hash_security_context_visible
             || graph.noncrypto_hash_security_context_visible,
         uses_codec_runtime: state.codec_imported
             || graph.uses_codec_runtime
-            || state
-                .auth
-                .schemes
-                .iter()
-                .any(|scheme| matches!(scheme, AuthSchemeMetadata::JwtBearer { .. })),
+            || state.auth.schemes.iter().any(|scheme| {
+                matches!(
+                    scheme,
+                    AuthSchemeMetadata::JwtBearer { .. } | AuthSchemeMetadata::CookieSession { .. }
+                )
+            }),
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
@@ -8452,6 +8454,35 @@ fn app_use_auth_provider_call(
                 config_key: Some(config_key.clone()),
             });
         }
+        "cookieSession" => {
+            let cookie = object_string_property_value(options, "name")
+                .unwrap_or("sloppy.session")
+                .to_string();
+            let secret_config_key = object_property_expression(options, "secret")
+                .and_then(config_required_key_from_expression)
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "Auth.cookieSession requires secret: Config.required(\"...\") for compiler extraction",
+                    )
+                    .with_path(path)
+                    .with_span(call.span)
+                })?
+                .to_string();
+            state.config_reads.push(config_required_read(
+                &secret_config_key,
+                "secret",
+                true,
+                source,
+                source_name,
+                call.span,
+            ));
+            state.auth.schemes.push(AuthSchemeMetadata::CookieSession {
+                name: "cookieSessionAuth".to_string(),
+                cookie,
+                secret_config_key: Some(secret_config_key),
+            });
+        }
         _ => {}
     }
     Ok(true)
@@ -8549,7 +8580,7 @@ fn auth_provider_argument<'a>(
     };
     let (receiver, property) = static_member_name(&call.callee)?;
     if receiver != "Auth"
-        || !matches!(property, "jwtBearer" | "apiKey")
+        || !matches!(property, "jwtBearer" | "apiKey" | "cookieSession")
         || call.arguments.len() != 1
     {
         return None;
@@ -9707,6 +9738,16 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     "name": name,
                     "header": header,
                     "configKey": config_key
+                }),
+                AuthSchemeMetadata::CookieSession {
+                    name,
+                    cookie,
+                    secret_config_key,
+                } => json!({
+                    "kind": "cookieSession",
+                    "name": name,
+                    "cookie": cookie,
+                    "secretConfigKey": secret_config_key
                 }),
             })
             .collect::<Vec<_>>(),
@@ -16686,12 +16727,17 @@ fn result_call<'a>(expression: &'a Expression<'a>) -> Option<&'a CallExpression<
         return None;
     };
     if static_member_name(&call.callee).is_some_and(|(object, property)| {
-        object == "Results" && results_helper_is_supported(property)
+        (object == "Results" && results_helper_is_supported(property))
+            || (object == "Auth" && auth_result_helper_is_supported(property))
     }) {
         Some(call)
     } else {
         None
     }
+}
+
+fn auth_result_helper_is_supported(property: &str) -> bool {
+    matches!(property, "signIn" | "signOut")
 }
 
 fn results_helper_is_supported(property: &str) -> bool {
@@ -16722,6 +16768,14 @@ fn results_call_arguments_are_supported(
     let Some((object, property)) = static_member_name(&call.callee) else {
         return false;
     };
+    if object == "Auth" {
+        return auth_result_call_arguments_are_supported(
+            call,
+            property,
+            allowed_roots,
+            schema_names,
+        );
+    }
     if object != "Results" {
         return false;
     }
@@ -16763,6 +16817,58 @@ fn results_call_arguments_are_supported(
         && call.arguments.iter().all(|argument| {
             argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
         })
+}
+
+fn auth_result_call_arguments_are_supported(
+    call: &CallExpression<'_>,
+    property: &str,
+    allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
+    match property {
+        "signIn" => {
+            call.arguments.len() == 2
+                && call.arguments.first().is_some_and(|argument| {
+                    argument_is_allowed_root_identifier(argument, allowed_roots)
+                })
+                && call.arguments.get(1).is_some_and(|argument| {
+                    argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+                })
+        }
+        "signOut" => {
+            call.arguments.len() == 1
+                && call.arguments.first().is_some_and(|argument| {
+                    argument_is_allowed_root_identifier(argument, allowed_roots)
+                })
+        }
+        _ => false,
+    }
+}
+
+fn argument_is_allowed_root_identifier(
+    argument: &Argument<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    match argument {
+        Argument::Identifier(identifier) => allowed_roots.contains(identifier.name.as_str()),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_allowed_root_identifier(&parenthesized.expression, allowed_roots)
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_allowed_root_identifier(
+    expression: &Expression<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    match expression {
+        Expression::Identifier(identifier) => allowed_roots.contains(identifier.name.as_str()),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_allowed_root_identifier(&parenthesized.expression, allowed_roots)
+        }
+        _ => false,
+    }
 }
 
 fn argument_is_stream_writer_callback(
@@ -17355,7 +17461,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .handler
             .emitted_source
             .contains("__sloppy_require_auth")
-    });
+    }) || !app.auth.schemes.is_empty();
     let needs_framework_environment = app.routes.iter().any(|route| {
         route.handler.bindings.iter().any(|binding| {
             binding.kind == "config"
@@ -17856,12 +17962,42 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return undefined; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); const now = Math.floor(Date.now() / 1000); if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\"); }",
+            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return undefined; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { return undefined; } const now = Math.floor(Date.now() / 1000); const skew = Number.isInteger(scheme.clockSkewSeconds) ? scheme.clockSkewSeconds : 0; if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now - skew)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now + skew)) { return undefined; } if (claims.iat !== undefined && (!Number.isFinite(claims.iat) || claims.iat > now + skew)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\"); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } if (typeof scheme.configKey !== \"string\" || scheme.configKey.length === 0) { return false; } const expected = Environment.get(scheme.configKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\"); return true; } } return false; }",
+            "function __sloppy_auth_cookie(ctx, name) { const cookies = ctx && ctx.cookies; if (cookies && typeof cookies.get === \"function\") { return cookies.get(name) ?? undefined; } const value = __sloppy_request_header(ctx, \"cookie\"); if (typeof value !== \"string\") { return undefined; } for (const pair of value.split(\";\")) { const equals = pair.indexOf(\"=\"); if (equals <= 0) { continue; } if (pair.slice(0, equals).trim() === name) { return decodeURIComponent(pair.slice(equals + 1).trim()); } } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_auth_session(ctx, scheme) { const value = __sloppy_auth_cookie(ctx, scheme.cookie); if (typeof value !== \"string\") { return undefined; } const parts = value.split(\".\"); if (parts.length !== 2 || parts.some((part) => part.length === 0)) { return false; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return false; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, parts[0]); const actual = Base64Url.decode(parts[1], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return false; } const payload = __sloppy_auth_json(parts[0]); if (payload === null || typeof payload !== \"object\" || Array.isArray(payload) || payload.claims === null || typeof payload.claims !== \"object\" || Array.isArray(payload.claims)) { return false; } const now = Math.floor(Date.now() / 1000); if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= now)) { return false; } return __sloppy_auth_user(payload.claims, \"cookieSession\"); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_session_scheme() { const scheme = __sloppy_auth_schemes.find((entry) => entry.kind === \"cookieSession\"); if (scheme === undefined) { throw new TypeError(\"Sloppy Auth.signIn/signOut requires Auth.cookieSession middleware.\"); } return scheme; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_auth_sign_in(ctx, claims) { const scheme = __sloppy_auth_session_scheme(); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { throw new TypeError(\"Sloppy Auth.signIn claims must be a plain object.\"); } const copied = { ...claims }; if (copied.claims !== undefined) { if (copied.claims === null || typeof copied.claims !== \"object\" || Array.isArray(copied.claims)) { throw new TypeError(\"Sloppy Auth.signIn claims.claims must be a plain object when provided.\"); } Object.assign(copied, copied.claims); delete copied.claims; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const body = Base64Url.encode(Text.utf8.encode(JSON.stringify({ iat: Math.floor(Date.now() / 1000), claims: copied }))); const signature = await Hmac.sha256(secret, body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.user = __sloppy_auth_user(copied, \"cookieSession\"); return Results.ok({ ok: true }).cookie(scheme.cookie, value, { path: \"/\", secure: true, httpOnly: true, sameSite: \"lax\" }); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_sign_out(ctx) { const scheme = __sloppy_auth_session_scheme(); ctx.user = __sloppy_auth_anonymous(); return Results.status(204).cookie(scheme.cookie, \"\", { path: \"/\", secure: true, httpOnly: true, sameSite: \"lax\", maxAgeSeconds: 0, expires: new Date(0) }); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const Auth = Object.freeze({ signIn: __sloppy_auth_sign_in, signOut: __sloppy_auth_sign_out });",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"cookieSession\") { const user = await __sloppy_auth_session(ctx, scheme); if (user === undefined) { continue; } if (user === false) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } if (typeof scheme.configKey !== \"string\" || scheme.configKey.length === 0) { return false; } const expected = Environment.get(scheme.configKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\"); return true; } } return false; }",
         );
         push_generated_line(
             &mut output,

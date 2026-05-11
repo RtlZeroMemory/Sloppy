@@ -125,6 +125,7 @@ typedef struct SlCliAuthScheme
     SlCliSpan kind;
     SlCliSpan name;
     SlCliSpan header;
+    SlCliSpan cookie;
 } SlCliAuthScheme;
 
 typedef struct SlCliFfiFunction

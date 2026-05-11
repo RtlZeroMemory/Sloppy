@@ -315,6 +315,11 @@ pub(crate) enum AuthSchemeMetadata {
         header: String,
         config_key: Option<String>,
     },
+    CookieSession {
+        name: String,
+        cookie: String,
+        secret_config_key: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]

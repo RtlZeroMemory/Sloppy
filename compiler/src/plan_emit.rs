@@ -697,6 +697,18 @@ pub(crate) fn emit_plan(
                 "configKey": config_key,
                 "secret": "<redacted>"
             }),
+            AuthSchemeMetadata::CookieSession {
+                name,
+                cookie,
+                secret_config_key,
+            } => json!({
+                "kind": "cookieSession",
+                "name": name,
+                "in": "cookie",
+                "cookie": cookie,
+                "configKey": secret_config_key,
+                "secret": "<redacted>"
+            }),
         })
         .collect::<Vec<_>>();
     let auth_policies = app

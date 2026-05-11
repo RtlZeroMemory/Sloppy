@@ -22,6 +22,10 @@ function jwt(secret, claims, header = { alg: "HS256", typ: "JWT" }) {
     return `${signingInput}.${Base64Url.encode(new Uint8Array(signature))}`;
 }
 
+function cookieValue(setCookie) {
+    return setCookie.split(";", 1)[0].split("=", 2)[1];
+}
+
 async function requestJson(host, method, target, options = undefined) {
     const response = await host.request(method, target, options);
     return { response, body: response.text().length === 0 ? null : response.json() };
@@ -72,6 +76,19 @@ try {
         sub: "user-1",
         exp: 1_699_999_999,
     });
+    const barelyExpired = jwt("test-secret", {
+        iss: "sloppy.local",
+        aud: "api",
+        sub: "user-1",
+        exp: 1_699_999_995,
+    });
+    const futureIssued = jwt("test-secret", {
+        iss: "sloppy.local",
+        aud: "api",
+        sub: "user-1",
+        iat: 1_700_000_601,
+        exp: 1_700_000_700,
+    });
     const noAdmin = jwt("test-secret", {
         iss: "sloppy.local",
         aud: "api",
@@ -84,6 +101,12 @@ try {
     assert.equal((await requestJson(host, "GET", "/me")).response.status, 401);
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${expired}` },
+    })).response.status, 401);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { Authorization: `Bearer ${futureIssued}` },
+    })).response.status, 401);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { Authorization: `Bearer ${jwt("test-secret", { sub: "user-1" }, { alg: "none", typ: "JWT" })}` },
     })).response.status, 401);
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { Authorization: `Bearer ${jwt("test-secret", ["not-object"])}` },
@@ -104,6 +127,84 @@ try {
     assert.equal((await requestJson(host, "GET", "/ops", {
         headers: { Authorization: `Bearer ${valid}` },
     })).response.status, 200);
+
+    await host.close();
+
+    const skewBuilder = Sloppy.createBuilder();
+    skewBuilder.config.addObject({
+        Auth: {
+            JwtSecret: "test-secret",
+        },
+    });
+    const skewApp = skewBuilder.build();
+    skewApp.use(Auth.jwtBearer({
+        audience: "api",
+        secret: Config.required("Auth:JwtSecret"),
+        clock: () => 1_700_000_000_000,
+        clockSkewSeconds: 10,
+    }));
+    skewApp.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+    const skewHost = Testing.createHost(skewApp);
+    assert.equal((await requestJson(skewHost, "GET", "/me", {
+        headers: { Authorization: `Bearer ${barelyExpired}` },
+    })).response.status, 200);
+    await skewHost.close();
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({
+        Auth: {
+            SessionSecret: "session-secret",
+        },
+    });
+    const app = builder.build();
+    app.use(Auth.cookieSession({
+        secret: Config.required("Auth:SessionSecret"),
+        clock: () => 1_700_000_000_000,
+        maxAgeSeconds: 3600,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, {
+        sub: "user-1",
+        roles: ["user"],
+        claims: { email: "ada@example.com" },
+    }));
+    app.post("/logout", (ctx) => Auth.signOut(ctx));
+    app.get("/me", (ctx) => Results.ok({
+        subject: ctx.user.sub,
+        roles: ctx.user.roles,
+        email: ctx.user.claims.email,
+        scheme: ctx.user.scheme,
+    })).requireAuth();
+
+    const host = Testing.createHost(app);
+    assert.equal((await requestJson(host, "GET", "/me")).response.status, 401);
+
+    const login = await requestJson(host, "POST", "/login");
+    assert.equal(login.response.status, 200);
+    const setCookie = login.response.headers.get("set-cookie");
+    assert.match(setCookie, /^sloppy\.session=[^;]+; Path=\/; Max-Age=3600; SameSite=Lax; HttpOnly; Secure$/);
+
+    const session = cookieValue(setCookie);
+    const me = await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    });
+    assert.equal(me.response.status, 200);
+    assert.equal(me.body.subject, "user-1");
+    assert.deepEqual(me.body.roles, ["user"]);
+    assert.equal(me.body.email, "ada@example.com");
+    assert.equal(me.body.scheme, "cookieSession");
+
+    const tampered = `${session.slice(0, -1)}${session.endsWith("A") ? "B" : "A"}`;
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${tampered}` },
+    })).response.status, 401);
+
+    const logout = await requestJson(host, "POST", "/logout", {
+        headers: { cookie: `sloppy.session=${session}` },
+    });
+    assert.equal(logout.response.status, 204);
+    assert.match(logout.response.headers.get("set-cookie"), /^sloppy\.session=; Path=\/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; HttpOnly; Secure$/);
 
     await host.close();
 }

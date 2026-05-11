@@ -480,6 +480,9 @@ function decorateProvidedContext(host, context, routeInfo) {
     nextContext.log ??= host.log;
     nextContext.capabilities ??= host.capabilities;
     nextContext.user ??= anonymousUser();
+    Object.defineProperty(nextContext, "__sloppyHost", {
+        value: host,
+    });
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};

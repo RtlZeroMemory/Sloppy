@@ -5,6 +5,8 @@ import { Results } from "./results.js";
 const AUTH_HEADER = "authorization";
 const JWT_SCHEME = "bearerAuth";
 const API_KEY_SCHEME = "apiKeyAuth";
+const COOKIE_SESSION_SCHEME = "cookieSessionAuth";
+const DEFAULT_SESSION_COOKIE = "sloppy.session";
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const STANDARD_JWT_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti", "name", "role", "roles"]);
 
@@ -46,6 +48,26 @@ function stringOption(value, subject, required = true) {
     }
     if (typeof value !== "string" || value.length === 0) {
         throw new TypeError(`Sloppy ${subject} must be a non-empty string.`);
+    }
+    return value;
+}
+
+function booleanOption(value, subject, defaultValue) {
+    if (value === undefined) {
+        return defaultValue;
+    }
+    if (typeof value !== "boolean") {
+        throw new TypeError(`Sloppy ${subject} must be a boolean.`);
+    }
+    return value;
+}
+
+function integerOption(value, subject, defaultValue = undefined) {
+    if (value === undefined) {
+        return defaultValue;
+    }
+    if (!Number.isInteger(value)) {
+        throw new TypeError(`Sloppy ${subject} must be an integer.`);
     }
     return value;
 }
@@ -201,14 +223,17 @@ async function verifyJwt(token, scheme) {
     if (!audienceMatches(scheme.audience, claims.aud)) {
         throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT audience is invalid.");
     }
-    if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= current)) {
+    if (claims.exp !== undefined && (!Number.isFinite(claims.exp) ||
+            claims.exp <= current - scheme.clockSkewSeconds)) {
         throw new Error("SLOPPY_E_AUTH_EXPIRED_TOKEN: JWT is expired.");
     }
-    if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > current)) {
+    if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) ||
+            claims.nbf > current + scheme.clockSkewSeconds)) {
         throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT is not active yet.");
     }
-    if (claims.iat !== undefined && !Number.isFinite(claims.iat)) {
-        throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT iat must be numeric seconds.");
+    if (claims.iat !== undefined && (!Number.isFinite(claims.iat) ||
+            claims.iat > current + scheme.clockSkewSeconds)) {
+        throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT iat must be numeric seconds not in the future.");
     }
     if (claims.sub !== undefined && typeof claims.sub !== "string") {
         throw new Error("SLOPPY_E_AUTH_INVALID_TOKEN: JWT sub must be a string when present.");
@@ -290,6 +315,97 @@ async function apiKeyMiddleware(ctx, next, scheme) {
     return next();
 }
 
+function sessionCookieValue(ctx, name) {
+    const cookies = ctx?.cookies;
+    if (cookies === undefined || cookies === null || typeof cookies.get !== "function") {
+        return undefined;
+    }
+    return cookies.get(name) ?? undefined;
+}
+
+function normalizeSessionClaims(claims) {
+    if (!isPlainObject(claims)) {
+        throw new TypeError("Sloppy Auth.signIn claims must be a plain object.");
+    }
+    const copied = { ...claims };
+    if (copied.sub !== undefined && typeof copied.sub !== "string") {
+        throw new TypeError("Sloppy Auth.signIn sub must be a string when provided.");
+    }
+    if (copied.roles !== undefined && (!Array.isArray(copied.roles) ||
+            !copied.roles.every((role) => typeof role === "string"))) {
+        throw new TypeError("Sloppy Auth.signIn roles must be an array of strings when provided.");
+    }
+    if (copied.claims !== undefined) {
+        if (!isPlainObject(copied.claims)) {
+            throw new TypeError("Sloppy Auth.signIn claims.claims must be a plain object when provided.");
+        }
+        Object.assign(copied, copied.claims);
+        delete copied.claims;
+    }
+    return copied;
+}
+
+function sessionCookieOptions(scheme, overrides = undefined) {
+    if (overrides !== undefined && !isPlainObject(overrides)) {
+        throw new TypeError("Sloppy Auth session cookie options must be a plain object.");
+    }
+    return Object.freeze({
+        path: overrides?.path ?? scheme.path,
+        secure: overrides?.secure ?? scheme.secure,
+        httpOnly: overrides?.httpOnly ?? scheme.httpOnly,
+        sameSite: overrides?.sameSite ?? scheme.sameSite,
+        ...(overrides?.maxAgeSeconds !== undefined || scheme.maxAgeSeconds !== undefined
+            ? { maxAgeSeconds: overrides?.maxAgeSeconds ?? scheme.maxAgeSeconds }
+            : {}),
+        ...(overrides?.expires !== undefined ? { expires: overrides.expires } : {}),
+    });
+}
+
+async function signSessionPayload(scheme, payload) {
+    const body = Base64Url.encode(Text.utf8.encode(JSON.stringify(payload)));
+    const signature = await Hmac.sha256(scheme.secret, body);
+    return `${body}.${Base64Url.encode(signature)}`;
+}
+
+async function verifySessionCookie(value, scheme) {
+    const parts = String(value).split(".");
+    if (parts.length !== 2 || parts.some((part) => part.length === 0)) {
+        return undefined;
+    }
+    const expected = await Hmac.sha256(scheme.secret, parts[0]);
+    const actual = Base64Url.decode(parts[1], { padding: "optional" });
+    if (!constantTimeBytesEquals(expected, actual)) {
+        return undefined;
+    }
+    let payload;
+    try {
+        payload = JSON.parse(Text.utf8.decode(Base64Url.decode(parts[0], { padding: "optional" })));
+    } catch {
+        return undefined;
+    }
+    if (!isPlainObject(payload) || !isPlainObject(payload.claims)) {
+        return undefined;
+    }
+    const current = nowSeconds(scheme.clock);
+    if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= current)) {
+        return undefined;
+    }
+    return userFromClaims(payload.claims, "cookieSession");
+}
+
+async function cookieSessionMiddleware(ctx, next, scheme) {
+    const value = sessionCookieValue(ctx, scheme.name);
+    if (value === undefined) {
+        return next();
+    }
+    const user = await verifySessionCookie(value, scheme);
+    if (user === undefined) {
+        return unauthorized();
+    }
+    ctx.user = user;
+    return next();
+}
+
 export function createAuthState() {
     return {
         schemes: [],
@@ -304,6 +420,13 @@ function snapshotScheme(scheme) {
             name: JWT_SCHEME,
             issuer: scheme.issuer,
             audience: scheme.audience,
+        });
+    }
+    if (scheme.kind === "cookieSession") {
+        return Object.freeze({
+            kind: scheme.kind,
+            name: COOKIE_SESSION_SCHEME,
+            cookie: scheme.name,
         });
     }
     return Object.freeze({
@@ -332,9 +455,26 @@ export function registerAuthProvider(state, provider, config) {
             audience: provider.audience,
             secret: secretString(provider.secret, config, "JWT bearer"),
             clock: provider.clock,
+            clockSkewSeconds: provider.clockSkewSeconds,
         });
         state.schemes.push(scheme);
         return (ctx, next) => jwtMiddleware(ctx, next, scheme);
+    }
+    if (provider.kind === "cookieSession") {
+        const scheme = Object.freeze({
+            kind: "cookieSession",
+            name: provider.name,
+            secret: secretString(provider.secret, config, "cookie session"),
+            secure: provider.secure,
+            httpOnly: provider.httpOnly,
+            sameSite: provider.sameSite,
+            path: provider.path,
+            maxAgeSeconds: provider.maxAgeSeconds,
+            clock: provider.clock,
+        });
+        state.schemes.push(scheme);
+        state.defaultSession = scheme;
+        return (ctx, next) => cookieSessionMiddleware(ctx, next, scheme);
     }
     if (provider.kind === "apiKey") {
         const scheme = Object.freeze({
@@ -439,7 +579,79 @@ function jwtBearer(options) {
         audience: stringOption(options.audience, "JWT audience", false),
         secret: options.secret,
         clock: options.clock,
+        clockSkewSeconds: integerOption(options.clockSkewSeconds ?? options.clockSkew, "JWT clockSkewSeconds", 0),
     });
+}
+
+function normalizeSameSiteOption(value) {
+    if (value === undefined) {
+        return "lax";
+    }
+    if (typeof value !== "string") {
+        throw new TypeError("Sloppy Auth.cookieSession sameSite must be lax, strict, or none.");
+    }
+    const lowered = value.toLowerCase();
+    if (lowered !== "lax" && lowered !== "strict" && lowered !== "none") {
+        throw new TypeError("Sloppy Auth.cookieSession sameSite must be lax, strict, or none.");
+    }
+    return lowered;
+}
+
+function cookieSession(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy Auth.cookieSession options must be a plain object.");
+    }
+    const name = options.name ?? DEFAULT_SESSION_COOKIE;
+    if (typeof name !== "string" || !HEADER_TOKEN_PATTERN.test(name)) {
+        throw new TypeError("Sloppy Auth.cookieSession name must be a safe HTTP token.");
+    }
+    return Object.freeze({
+        __sloppyAuth: true,
+        kind: "cookieSession",
+        name,
+        secret: options.secret,
+        secure: booleanOption(options.secure, "Auth.cookieSession secure", true),
+        httpOnly: booleanOption(options.httpOnly, "Auth.cookieSession httpOnly", true),
+        sameSite: normalizeSameSiteOption(options.sameSite),
+        path: stringOption(options.path ?? "/", "Auth.cookieSession path"),
+        maxAgeSeconds: integerOption(options.maxAgeSeconds ?? options.maxAge, "Auth.cookieSession maxAgeSeconds"),
+        clock: options.clock,
+    });
+}
+
+function findSessionScheme(ctx) {
+    const schemes = ctx?.__sloppyHost?.auth?.schemes;
+    const scheme = Array.isArray(schemes)
+        ? schemes.find((entry) => entry.kind === "cookieSession")
+        : undefined;
+    if (scheme === undefined) {
+        throw new TypeError("Sloppy Auth.signIn/signOut requires Auth.cookieSession middleware.");
+    }
+    return scheme;
+}
+
+async function signIn(ctx, claims, options = undefined) {
+    const scheme = findSessionScheme(ctx);
+    const sessionClaims = normalizeSessionClaims(claims);
+    const current = nowSeconds(scheme.clock);
+    const payload = {
+        iat: current,
+        ...(scheme.maxAgeSeconds === undefined ? {} : { exp: current + scheme.maxAgeSeconds }),
+        claims: sessionClaims,
+    };
+    const value = await signSessionPayload(scheme, payload);
+    ctx.user = userFromClaims(sessionClaims, "cookieSession");
+    return Results.ok({ ok: true }).cookie(scheme.name, value, sessionCookieOptions(scheme, options));
+}
+
+function signOut(ctx, options = undefined) {
+    const scheme = findSessionScheme(ctx);
+    ctx.user = anonymousUser();
+    return Results.status(204).cookie(
+        scheme.name,
+        "",
+        sessionCookieOptions(scheme, { ...options, maxAgeSeconds: 0, expires: new Date(0) }),
+    );
 }
 
 function apiKey(options) {
@@ -514,5 +726,8 @@ function apiKeyValidatorUsesOnlyConfigKey(validate, configKey) {
 export const Auth = Object.freeze({
     jwtBearer,
     apiKey,
+    cookieSession,
+    signIn,
+    signOut,
     constantTimeEquals: constantTimeStringEquals,
 });

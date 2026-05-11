@@ -1,7 +1,7 @@
 # Add Authentication To An API
 
-This guide shows a small API protected with JWT bearer tokens, API keys, and a
-named authorization policy.
+This guide shows a small API protected with JWT bearer tokens, signed session
+cookies, API keys, and a named authorization policy.
 
 Auth is public-alpha/experimental in this pre-alpha runtime.
 
@@ -13,6 +13,7 @@ Keep auth secrets in application configuration, not source code.
 {
   "Auth": {
     "JwtSecret": "replace-in-your-environment",
+    "SessionSecret": "replace-in-your-environment",
     "ApiKey": "replace-in-your-environment"
   }
 }
@@ -43,6 +44,27 @@ app.get("/me", (ctx) => Results.ok({
 Requests to `/me` now need `Authorization: Bearer <jwt>`. The token must be
 HS256-signed with the configured secret and match the configured issuer and
 audience.
+
+## Add Cookie Sessions
+
+```ts
+app.use(Auth.cookieSession({
+  name: "sloppy.session",
+  secret: Config.required("Auth:SessionSecret"),
+}));
+
+app.post("/login", (ctx) => Auth.signIn(ctx, {
+  sub: "user-1",
+  roles: ["user"],
+  claims: { email: "ada@example.com" },
+}));
+
+app.post("/logout", (ctx) => Auth.signOut(ctx));
+```
+
+Session cookies are signed and default to `Secure`, `HttpOnly`,
+`SameSite=Lax`, and `Path=/`. `Auth.signOut(ctx)` clears the cookie.
+Tampered session cookies are rejected with `401`.
 
 ## Require Roles
 
@@ -108,15 +130,15 @@ When the compiler can see static auth setup, the Plan records auth schemes,
 route requirements, policy names, and required config keys. It does not record
 secret values.
 
-`sloppy openapi --plan .sloppy/app.plan.json` emits `bearerAuth` and
-`apiKeyAuth` security schemes for protected routes.
+`sloppy openapi --plan .sloppy/app.plan.json` emits `bearerAuth`,
+`apiKeyAuth`, and `cookieSessionAuth` security schemes for protected routes.
 
 `sloppy audit --plan .sloppy/app.plan.json` warns when a protected route has no
 auth scheme metadata.
 
 ## Current Limits
 
-- JWT support is HS256 only.
-- OIDC discovery, JWKS, OAuth flows, and session cookies are not implemented.
+- JWT support is HS256 only. `none` and unsupported algorithms are rejected.
+- OIDC discovery, JWKS, asymmetric JWT algorithms, and OAuth flows are not implemented.
 - `sloppy run --once` has a minimal synthetic request path and is not the best
   interface for manual auth-header testing.
