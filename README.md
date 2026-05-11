@@ -1,4 +1,4 @@
-![Sloppy logo](docs/public/logo.svg)
+<img src="docs/public/logo.svg" alt="Sloppy logo" width="120" />
 
 # Sloppy
 
