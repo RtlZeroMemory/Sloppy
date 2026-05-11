@@ -98,6 +98,10 @@ function trimTrailingSlash(value) {
     return text.replace(/\/+$/g, "");
 }
 
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function joinPath(...parts) {
     let output = "";
     for (const raw of parts) {
@@ -301,8 +305,15 @@ function normalizeText(value) {
             text = text.split(form).join(token);
         }
     }
+    text = text.replace(/\\+/g, "/");
+    text = text.replace(/\/+\?\/+(?=<(?:repoRoot|tempRoot)>)/g, "");
     if (workRoot.startsWith(trimTrailingSlash(repoRoot))) {
         text = text.split(`<repoRoot>/${relativePath(repoRoot, workRoot)}`).join("<repoRoot>/artifacts/alpha-proof/work");
+    }
+    const workLeaf = basename(workRoot);
+    if (workLeaf) {
+        const tempWorkRootPattern = new RegExp(`/*<tempRoot>[^\\s"']*/alpha-proof/${escapeRegExp(workLeaf)}(?=/|$)`, "g");
+        text = text.replace(tempWorkRootPattern, "<repoRoot>/artifacts/alpha-proof/work");
     }
     text = text.replace(/[A-Z]:[\\/][^\s"']+/g, (match) => {
         if (match.includes(".sloppy") || match.includes("artifacts") || match.includes("compiler")) {
@@ -311,7 +322,6 @@ function normalizeText(value) {
         return "<path>";
     });
     text = text.replace(/\/tmp\/[^\s"']+/g, "<temp-path>");
-    text = text.replace(/\\+/g, "/");
     text = text.replace(/\bport [0-9]{2,5}\b/gi, "port <port>");
     text = text.replace(/\b127\.0\.0\.1:[0-9]{2,5}\b/g, "127.0.0.1:<port>");
     text = text.replace(/\b[0-9]+(?:\.[0-9]+)?ms\b/g, "<duration>");
