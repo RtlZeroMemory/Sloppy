@@ -58,9 +58,11 @@ artifacts/
 logs/
 node_modules/
 # Hand-authored compatibility fixtures intentionally mirror a node_modules
-# layout so the resolver test can exercise installed-package shapes.
+# layout so the resolver and runtime tests can exercise installed-package shapes.
 !tests/fixtures/npm-compat/**/node_modules/
 !tests/fixtures/npm-compat/**/node_modules/**
+!tests/fixtures/npm-runtime/**/node_modules/
+!tests/fixtures/npm-runtime/**/node_modules/**
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 *.log

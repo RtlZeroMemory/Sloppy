@@ -29,7 +29,7 @@ packages unrestricted access to Node internals.
 | `node:constants`, `constants` | `partial` | `sloppy/node/constants` | Small file-mode constants used by pure-JS feature detection. |
 | `node:util`, `util` | `partial` | `sloppy/node/util` | Minimal `inspect`, `format`, `promisify`, `callbackify`, `inherits`, and type helpers. |
 | `node:timers`, `timers` | `partial` | `sloppy/node/timers` | Maps to available global timers where present; missing timer globals fail clearly. |
-| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Callback helpers and `promises` backed by `sloppy/fs`. Watchers and sync Node APIs are not implemented. |
+| `node:fs`, `fs` | `partial` | `sloppy/node/fs` | Callback helpers and `promises` backed by `sloppy/fs`. The sync subset (`readFileSync`, `existsSync`, `statSync`) consults the sealed bundled asset map and throws `SLOPPY_E_NODE_SYNC_FS_UNSEALED` for paths outside that policy; watchers and arbitrary sync filesystem APIs are not implemented. |
 | `node:fs/promises`, `fs/promises` | `partial` | `sloppy/node/fs/promises` | `readFile`, `writeFile`, `appendFile`, `copyFile`, `rename`, `stat`, `mkdir`, `readdir`, `rm`, `unlink`, `access`, `readlink`, and `symlink` where Sloppy filesystem policy allows them. `lstat`, `mkdtemp`, and `realpath` throw explicit unsupported errors until matching runtime primitives exist. |
 | `node:os`, `os` | `partial` | `sloppy/node/os` | Minimal platform/environment helpers backed by `sloppy/os` where possible. |
 | `node:process`, `process` | `partial` | `sloppy/node/process` | `platform`, `arch`, overlay-writable `env`, `cwd()`, `argv`, `nextTick`, Sloppy `version`/`versions`, `exitCode`, monotonic `hrtime`/`uptime`, EventEmitter-style `on`/`addListener`/`removeListener`/`emit`, `browser: false`, and minimal stdio objects. |
@@ -103,3 +103,34 @@ test walks the matrix on every test run. The matrix is the regression baseline
 for currently tested package shapes; shapes outside the matrix are not
 implicit non-regressions for users. Add a fixture plus matrix entry alongside
 any change that broadens resolver behavior.
+
+The resolver matrix proves package shapes resolve.
+
+## Package Runtime Behavior Matrix
+
+The runtime behaviors Sloppy currently tests are committed at
+`tests/fixtures/npm-runtime/` with its own `matrix.json` index. Each runtime
+fixture is built, packaged, copied outside the source checkout, and re-run
+under V8. The matrix asserts the documented stdout for `supported` fixtures
+and the documented stderr substring for `stubbed` and `negative-runtime`
+fixtures.
+
+The runtime matrix proves selected package behaviors execute after packaging.
+
+| Group | Fixtures | Notes |
+| --- | --- | --- |
+| `cjs` | 3 | `module.exports = fn`, `exports.foo`/`module.exports.bar` mutation, `exports = ...` rebind no-op. |
+| `interop` | 2 | CJS `require("./data.json")`, ESM app default-imports a CJS package. |
+| `exports` | 2 | `import` and `require` branches of the same `exports` object, observed through ESM import and `createRequire`. |
+| `self-reference` | 1 | Package imports itself by declared name; identity preserved through `createRequire`. |
+| `imports` | 1 | Package `imports` `#alias` resolves at runtime. |
+| `module` | 2 | `node:module` `createRequire` for sealed JSON and subpath, `require.resolve` against the sealed graph, and `__dirname`/`__filename` based on sealed module IDs. |
+| `buffer` | 1 | `Buffer.from` for utf8/base64/hex, `Buffer.concat`, `Buffer.byteLength`. |
+| `crypto` | 1 | `createHash("sha256")`, `randomBytes`, `timingSafeEqual`. |
+| `stream` | 1 | `Readable.from` and `PassThrough` only; backpressure and Transform are out of scope. |
+| `zlib` | 1 | Async callback `gzip` and `gunzip` round-trip. |
+| `fs` | 1 | Sync `fs.readFileSync`/`existsSync`/`statSync` against the sealed bundled asset map (currently `stubbed` pending compile-time asset baking). |
+| `negative` | 7 | Native addon rejection, unsupported `node:` builtin, computed `require` without `moduleInclude`, missing package asset, `createRequire`/`require.resolve` on unknown package, sync `fs` outside sealed policy. |
+
+The runtime matrix and the resolver matrix are complementary; neither implies
+the other.

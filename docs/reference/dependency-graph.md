@@ -210,13 +210,26 @@ review while `--format json` remains the full-fidelity machine-readable graph.
 The text summary breaks down Node compatibility shim statuses by
 `supported`/`partial`/`stubbed`/`unsupported` and findings by severity.
 
-## Compatibility Matrix
+## Compatibility Matrices
 
-A committed compatibility matrix lives at `tests/fixtures/npm-compat/`. Each
-fixture describes a package shape (CJS/ESM main, package `type`, `exports`
+Sloppy commits two complementary matrices.
+
+The **resolver matrix** at `tests/fixtures/npm-compat/` describes package
+shapes (CJS/ESM main, package `type`, `exports`
 string/object/subpath/extensionless/pattern/nested conditions, `imports`
 aliases and patterns, self-reference, JSON require, optional dependency
 metadata, peer dependency metadata, native addon, unsupported Node builtin,
-and dynamic require), and the resolver test exercises each entry. The matrix
-is the regression baseline for currently tested package shapes; shapes not in
-the matrix are not implicit non-regressions for users.
+and dynamic require). The resolver test exercises each entry. The resolver
+matrix proves package shapes resolve.
+
+The **runtime matrix** at `tests/fixtures/npm-runtime/` describes package
+runtime behaviors (CJS module semantics, ESM/CJS interop, `createRequire` and
+`require.resolve` against the sealed graph, `__dirname`/`__filename`, package
+self-reference, `imports` aliases, `import`/`require` exports conditions, and
+selected `node:` builtin behavior including Buffer, crypto, stream, zlib, and
+the sealed sync `fs` subset). Each fixture is built, packaged, copied outside
+the source checkout, and re-run under V8 (when V8 is enabled). The runtime
+matrix proves selected package behaviors execute after packaging.
+
+Both matrices are regression baselines for currently tested cases; cases not
+in either matrix are not implicit non-regressions for users.

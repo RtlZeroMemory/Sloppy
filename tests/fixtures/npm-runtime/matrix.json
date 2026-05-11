@@ -1,0 +1,225 @@
+{
+    "schema": "sloppy.npm-runtime-matrix.v1",
+    "fixtures": [
+        {
+            "name": "cjs-module-exports-function",
+            "group": "cjs",
+            "status": "supported",
+            "summary": "CJS package sets module.exports to a callable; ESM/TS app default-imports and calls it.",
+            "entry": "src/main.ts",
+            "package": "module-exports-fn",
+            "expectedStdout": "module-exports-fn: hello sloppy\n"
+        },
+        {
+            "name": "cjs-exports-mutation",
+            "group": "cjs",
+            "status": "supported",
+            "summary": "CJS package mutates exports.foo and module.exports.bar; app reads both via default and namespace.",
+            "entry": "src/main.ts",
+            "package": "exports-mut",
+            "expectedStdout": "foo=foo-value bar=bar-value\n"
+        },
+        {
+            "name": "cjs-exports-rebind-negative",
+            "group": "cjs",
+            "status": "partial",
+            "summary": "Bare assignment `exports = ...` inside a CJS module body does not replace module.exports (Node semantics). The shadowing rebind is observable as a no-op; module.exports retains its original-or-mutated value.",
+            "entry": "src/main.ts",
+            "package": "exports-rebind",
+            "expectedStdout": "rebind: keeps original keys=[\"sticky\"]\n"
+        },
+        {
+            "name": "cjs-requires-json-runtime",
+            "group": "interop",
+            "status": "supported",
+            "summary": "CJS package require()s a sibling JSON file and re-exports its data; app reads the value through the package default.",
+            "entry": "src/main.ts",
+            "package": "json-loader",
+            "expectedStdout": "config: name=sloppy version=1.2.3\n"
+        },
+        {
+            "name": "esm-imports-cjs-default-runtime",
+            "group": "interop",
+            "status": "supported",
+            "summary": "ESM app imports a CJS package by default; default-binding is the CJS module.exports value.",
+            "entry": "src/main.ts",
+            "package": "cjs-default-target",
+            "expectedStdout": "default(): from-cjs-default 7\n"
+        },
+        {
+            "name": "esm-imports-cjs-named-runtime",
+            "group": "interop",
+            "status": "partial",
+            "summary": "ESM app imports named bindings from a CJS package. Named bindings work when the CJS module assigns to module.exports.<name> with statically analyzable identifiers; computed property names are not lifted to named bindings.",
+            "entry": "src/main.ts",
+            "package": "cjs-named-target",
+            "expectedStdout": "named: alpha=A beta=B\n"
+        },
+        {
+            "name": "package-self-reference-runtime",
+            "group": "self-reference",
+            "status": "supported",
+            "summary": "Package imports itself by its declared name and the resolved entry is the same module that consumers see; identity is preserved through createRequire.",
+            "entry": "src/main.ts",
+            "package": "self-ref-pkg",
+            "expectedStdout": "self-ref: identity=true tag=root\n"
+        },
+        {
+            "name": "imports-alias-runtime",
+            "group": "imports",
+            "status": "supported",
+            "summary": "Package declares an `imports` map with a `#internal` alias; the package's own modules can require/import the alias and resolve to the documented file at runtime.",
+            "entry": "src/main.ts",
+            "package": "alias-pkg",
+            "expectedStdout": "alias: name=internal value=42\n"
+        },
+        {
+            "name": "exports-import-require-dual-runtime-esm",
+            "group": "exports",
+            "status": "supported",
+            "summary": "Package declares `exports: { '.': { import: ..., require: ... } }`. ESM app must observe the `import` branch entry.",
+            "entry": "src/main.ts",
+            "package": "ir-dual",
+            "expectedStdout": "dual: chose=import value=esm-branch\n"
+        },
+        {
+            "name": "exports-import-require-dual-runtime-cjs",
+            "group": "exports",
+            "status": "supported",
+            "summary": "Same package, accessed through createRequire under Program Mode. The CJS-path branch must observe the `require` entry.",
+            "entry": "src/main.ts",
+            "package": "ir-dual",
+            "expectedStdout": "dual: chose=require value=cjs-branch\n"
+        },
+        {
+            "name": "module-create-require-runtime",
+            "group": "module",
+            "status": "supported",
+            "summary": "App uses `createRequire` from `node:module` to require a sibling JSON file and a sealed package subpath, and to call `require.resolve` for a sealed module.",
+            "entry": "src/main.ts",
+            "package": "subpath-pkg",
+            "expectedStdout": "createRequire: json.kind=runtime-fixture subpath=value resolveOk=true\n"
+        },
+        {
+            "name": "dirname-filename-runtime",
+            "group": "module",
+            "status": "supported",
+            "summary": "CJS package observes __dirname and __filename and re-exports tail-segment matches; behavior is preserved after packaging outside the checkout. Reading sibling assets via fs.readFileSync is exercised by the fs-sync fixture.",
+            "entry": "src/main.ts",
+            "package": "dirname-pkg",
+            "expectedStdout": "dirname: filenameEndsWith=index.js dirnameEndsWith=dirname-pkg\n"
+        },
+        {
+            "name": "fs-sync-package-asset-runtime",
+            "group": "fs",
+            "status": "stubbed",
+            "summary": "CJS package uses `fs.readFileSync`, `fs.existsSync`, and `fs.statSync` to read a sibling asset. The shim is wired against `globalThis.__sloppy_program_assets`; until the compiler bakes sealed package assets into that map, sync reads throw `SLOPPY_E_NODE_SYNC_FS_UNSEALED`. The fixture asserts the documented diagnostic until asset baking lands.",
+            "entry": "src/main.ts",
+            "package": "fs-sync-pkg",
+            "expectedStderrSubstring": "SLOPPY_E_NODE_SYNC_FS_UNSEALED"
+        },
+        {
+            "name": "buffer-runtime",
+            "group": "buffer",
+            "status": "supported",
+            "summary": "Exercises Buffer.from for utf8, base64, and hex; Buffer.concat; Buffer.byteLength.",
+            "entry": "src/main.ts",
+            "package": "buffer-probe",
+            "expectedStdout": "buffer: utf8=hello byteLen=5 hex=68656c6c6f base64=aGVsbG8= concat=abcdef\n"
+        },
+        {
+            "name": "crypto-runtime",
+            "group": "crypto",
+            "status": "supported",
+            "summary": "Exercises crypto.createHash(sha256).update().digest('hex'), crypto.randomBytes(length), and crypto.timingSafeEqual.",
+            "entry": "src/main.ts",
+            "package": "crypto-probe",
+            "expectedStdout": "crypto: sha256=2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824 randomLen=16 timingEq=true\n"
+        },
+        {
+            "name": "stream-runtime",
+            "group": "stream",
+            "status": "supported",
+            "summary": "Exercises Readable.from over an array and PassThrough, draining to text. Stream backpressure and Transform are out of scope and not asserted.",
+            "entry": "src/main.ts",
+            "package": "stream-probe",
+            "expectedStdout": "stream: readable=alpha,beta,gamma passThrough=hello-stream\n"
+        },
+        {
+            "name": "zlib-runtime",
+            "group": "zlib",
+            "status": "stubbed",
+            "summary": "Exercises async node:zlib.gzip and gunzip via the callback API. Sync zlib APIs and deflate/inflate are documented unsupported.",
+            "entry": "src/main.ts",
+            "package": "zlib-probe",
+            "expectedStdout": "zlib: roundTripText=hello-zlib gzipLengthOk=true\n"
+        }
+    ],
+    "negative": [
+        {
+            "name": "neg-native-addon",
+            "group": "negative",
+            "status": "negative-build",
+            "summary": "App imports a package with a `.node` main; compiler must reject as native addon.",
+            "entry": "src/main.ts",
+            "package": "native-addon-pkg",
+            "expectedDiagnostic": "SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED",
+            "expectedDiagnosticSubstring": "native-addon-pkg"
+        },
+        {
+            "name": "neg-child-process",
+            "group": "negative",
+            "status": "negative-build",
+            "summary": "App imports `node:child_process`; compiler must reject as unsupported Node builtin.",
+            "entry": "src/main.ts",
+            "package": null,
+            "expectedDiagnostic": "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
+            "expectedDiagnosticSubstring": "node:child_process"
+        },
+        {
+            "name": "neg-computed-require-unsealed",
+            "group": "negative",
+            "status": "negative-runtime",
+            "summary": "App calls require() with a computed specifier that is not covered by `moduleInclude`; runtime throws SLOPPY_E_MODULE_NOT_FOUND.",
+            "entry": "src/main.ts",
+            "package": "dyn-target-pkg",
+            "expectedStderrSubstring": "SLOPPY_E_MODULE_NOT_FOUND"
+        },
+        {
+            "name": "neg-missing-package-asset",
+            "group": "negative",
+            "status": "negative-runtime",
+            "summary": "App requests a packaged asset that is not declared via assetInclude/package.json files; sync read throws SLOPPY_E_NODE_SYNC_FS_UNSEALED.",
+            "entry": "src/main.ts",
+            "package": "missing-asset-pkg",
+            "expectedStderrSubstring": "SLOPPY_E_NODE_SYNC_FS_UNSEALED"
+        },
+        {
+            "name": "neg-create-require-unknown",
+            "group": "negative",
+            "status": "negative-runtime",
+            "summary": "createRequire(import.meta.url) then require(\"no-such-pkg\") for a package that is not in the sealed graph; runtime throws SLOPPY_E_MODULE_NOT_FOUND.",
+            "entry": "src/main.ts",
+            "package": null,
+            "expectedStderrSubstring": "SLOPPY_E_MODULE_NOT_FOUND"
+        },
+        {
+            "name": "neg-require-resolve-unknown",
+            "group": "negative",
+            "status": "negative-runtime",
+            "summary": "createRequire(import.meta.url).resolve(\"no-such-pkg\"); runtime throws SLOPPY_E_MODULE_NOT_FOUND.",
+            "entry": "src/main.ts",
+            "package": null,
+            "expectedStderrSubstring": "SLOPPY_E_MODULE_NOT_FOUND"
+        },
+        {
+            "name": "neg-fs-sync-outside-policy",
+            "group": "negative",
+            "status": "negative-runtime",
+            "summary": "fs.readFileSync against a path outside the sealed package asset policy; runtime throws SLOPPY_E_NODE_SYNC_FS_UNSEALED.",
+            "entry": "src/main.ts",
+            "package": null,
+            "expectedStderrSubstring": "SLOPPY_E_NODE_SYNC_FS_UNSEALED"
+        }
+    ]
+}
