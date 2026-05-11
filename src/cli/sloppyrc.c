@@ -18,7 +18,6 @@
 #include <string.h>
 #include <yyjson.h>
 
-#define SL_SLOPPYRC_FILE "sloppy.json"
 #define SL_SLOPPYRC_MAX_BYTES 8192U
 #define SL_SLOPPYRC_FILE_READ_SCRATCH_BYTES 65536U
 #define SL_SLOPPYRC_FILE_READ_ARENA_BYTES                                                          \
@@ -540,7 +539,8 @@ static int sl_sloppyrc_read_migrations(yyjson_val* root, SlSloppyRunConfig* out,
     return 0;
 }
 
-int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
+int sl_sloppyrc_load_path_for_command(SlSloppyRunConfig* out, const char* path,
+                                      const char* command_name)
 {
     unsigned char json_storage[SL_SLOPPYRC_MAX_BYTES];
     SlBytes json = {0};
@@ -549,14 +549,12 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
     yyjson_val* root = NULL;
     int result = 1;
 
-    if (out == NULL) {
+    if (out == NULL || path == NULL || path[0] == '\0') {
         return 1;
     }
     *out = (SlSloppyRunConfig){0};
 
-    if (sl_sloppyrc_read_file(SL_SLOPPYRC_FILE, json_storage, sizeof(json_storage), &json,
-                              command_name) != 0)
-    {
+    if (sl_sloppyrc_read_file(path, json_storage, sizeof(json_storage), &json, command_name) != 0) {
         return 1;
     }
 
@@ -615,6 +613,11 @@ int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_nam
 
     yyjson_doc_free(doc);
     return result;
+}
+
+int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name)
+{
+    return sl_sloppyrc_load_path_for_command(out, SL_SLOPPYRC_FILE, command_name);
 }
 
 int sl_sloppyrc_load(SlSloppyRunConfig* out)

@@ -41,6 +41,11 @@ const PLACEHOLDER_STYLES = Object.freeze({
 });
 const MIGRATIONS_TABLE = "_sloppy_migrations";
 const MIGRATION_HASH_PREFIX = "fnv1a32:";
+const MIGRATION_PROVIDER_KINDS = Object.freeze({
+    sqlite: true,
+    postgres: true,
+    sqlserver: true,
+});
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -174,13 +179,28 @@ function migrationHash(text) {
 
 function migrationProviderKind(db) {
     const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
+    if (debug?.kind === "sqlite-connection") {
+        return "sqlite";
+    }
     if (debug?.kind === "postgres-connection") {
         return "postgres";
     }
     if (debug?.kind === "sqlserver-connection") {
         return "sqlserver";
     }
-    return "sqlite";
+    throw new TypeError(
+        "Sloppy Migrations only supports sqlite, postgres, and sqlserver connections created by sloppy/data.",
+    );
+}
+
+function resolveMigrationProviderKind(db, options) {
+    const providerKind = migrationProviderKind(db);
+    if (MIGRATION_PROVIDER_KINDS[options.provider] === true && options.provider !== providerKind) {
+        throw new TypeError(
+            `Sloppy Migrations provider '${options.provider}' does not match connection provider '${providerKind}'.`,
+        );
+    }
+    return providerKind;
 }
 
 const MIGRATION_SQL = Object.freeze({
@@ -244,7 +264,7 @@ Fix:
     return entries
         .filter((entry) => entry.kind === "file" && entry.name.endsWith(".sql"))
         .map((entry) => entry.name)
-        .sort((left, right) => left.localeCompare(right))
+        .sort((left, right) => (left === right ? 0 : left < right ? -1 : 1))
         .map((name) => ({
             name,
             path: options.directory === "." ? name : `${options.directory}/${name}`,
@@ -326,7 +346,7 @@ Fix:
 
 async function migrationStatus(db, options) {
     const checked = normalizeMigrationOptions(options);
-    const providerKind = migrationProviderKind(db);
+    const providerKind = resolveMigrationProviderKind(db, checked);
     const files = await migrationFilesWithContent(checked);
     const applied = await readAppliedMigrations(db, providerKind);
     const migrations = migrationStatusFor(files, applied);
@@ -344,7 +364,7 @@ async function migrationStatus(db, options) {
 
 async function applyMigrations(db, options) {
     const checked = normalizeMigrationOptions(options);
-    const providerKind = migrationProviderKind(db);
+    const providerKind = resolveMigrationProviderKind(db, checked);
     const dialect = MIGRATION_SQL[providerKind];
     const files = await migrationFilesWithContent(checked);
     const applied = await readAppliedMigrations(db, providerKind);

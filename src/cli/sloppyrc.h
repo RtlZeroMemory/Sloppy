@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+#define SL_SLOPPYRC_FILE "sloppy.json"
 #define SL_SLOPPYRC_PATH_MAX_BYTES 1024U
 #define SL_SLOPPYRC_ENVIRONMENT_MAX_BYTES 128U
 #define SL_SLOPPYRC_KIND_MAX_BYTES 16U
@@ -54,6 +55,8 @@ typedef struct SlSloppyRunConfig
 
 int sl_sloppyrc_load(SlSloppyRunConfig* out);
 int sl_sloppyrc_load_for_command(SlSloppyRunConfig* out, const char* command_name);
+int sl_sloppyrc_load_path_for_command(SlSloppyRunConfig* out, const char* path,
+                                      const char* command_name);
 
 #ifdef __cplusplus
 }

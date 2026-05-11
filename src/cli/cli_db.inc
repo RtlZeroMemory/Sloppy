@@ -136,9 +136,51 @@ static bool sl_db_resolve_target(const SlCliOptions* options, char* plan_path, s
         return true;
     }
     if (sl_cli_directory_has_plan(target)) {
-        if (!sl_cli_join_leaf(plan_path, plan_capacity, target, "app.plan.json") ||
-            !sl_cli_copy_cstr(base_path, base_capacity, "."))
-        {
+        SlStr target_view = sl_str_from_cstr(target);
+        size_t length = target_view.length;
+        size_t last_separator = SIZE_MAX;
+        size_t base_length = 0U;
+        SlStringBuilder base_builder = {0};
+        SlStr base_view = {0};
+
+        while (length > 0U && (target[length - 1U] == '/' || target[length - 1U] == '\\')) {
+            length -= 1U;
+        }
+        for (size_t index = 0U; index < length; index += 1U) {
+            if (target[index] == '/' || target[index] == '\\') {
+                last_separator = index;
+            }
+        }
+        if (last_separator == SIZE_MAX) {
+            if (!sl_cli_join_leaf(plan_path, plan_capacity, target, "app.plan.json") ||
+                !sl_cli_copy_cstr(base_path, base_capacity, "."))
+            {
+                return false;
+            }
+        }
+        else {
+            base_length = last_separator;
+            if (last_separator == 0U || (last_separator == 2U && target[1] == ':' &&
+                                         (target[2] == '/' || target[2] == '\\')))
+            {
+                base_length = last_separator + 1U;
+            }
+            if (!sl_cli_join_leaf(plan_path, plan_capacity, target, "app.plan.json") ||
+                base_length + 1U > base_capacity)
+            {
+                return false;
+            }
+            if (!sl_status_is_ok(
+                    sl_string_builder_init_fixed(&base_builder, base_path, base_capacity)) ||
+                !sl_status_is_ok(sl_string_builder_append_str(
+                    &base_builder, sl_str_from_parts(target, base_length))) ||
+                !sl_status_is_ok(sl_string_builder_view_with_nul(&base_builder, &base_view)) ||
+                base_view.ptr != base_path)
+            {
+                return false;
+            }
+        }
+        if (base_path[0] == '\0') {
             return false;
         }
         *out_package = false;
@@ -207,10 +249,14 @@ static bool sl_db_manifest_migration_config(const char* manifest_path, const cha
     return found;
 }
 
-static bool sl_db_project_migration_config(const char* provider_name, SlCliDbMigrationConfig* out)
+static bool sl_db_project_migration_config(const char* base_path, const char* provider_name,
+                                           SlCliDbMigrationConfig* out)
 {
     SlSloppyRunConfig config = {0};
-    if (sl_sloppyrc_load_for_command(&config, "sloppy db") != 0) {
+    char config_path[SL_RUN_PATH_MAX_BYTES];
+    if (!sl_cli_join_leaf(config_path, sizeof(config_path), base_path, SL_SLOPPYRC_FILE) ||
+        sl_sloppyrc_load_path_for_command(&config, config_path, "sloppy db") != 0)
+    {
         return false;
     }
     for (size_t index = 0U; index < config.migration_count; index += 1U) {
@@ -245,7 +291,7 @@ static bool sl_db_load_migration_config(const SlCliOptions* options, const char*
         }
         return true;
     }
-    return sl_db_project_migration_config(migration_provider, out);
+    return sl_db_project_migration_config(base_path, migration_provider, out);
 }
 
 static SlCliDbProviderKind sl_db_provider_kind(const SlCliProvider* provider,
@@ -692,6 +738,72 @@ static int sl_db_load_applied_sqlserver(SlArena* arena, SlSqlServerConnection* c
     return 0;
 }
 
+static bool sl_db_sqlserver_batch_has_sql(const char* sql, size_t length)
+{
+    for (size_t index = 0U; index < length; index += 1U) {
+        char ch = sql[index];
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_db_sqlserver_is_go_line(const char* sql, size_t start, size_t end)
+{
+    while (start < end && (sql[start] == ' ' || sql[start] == '\t' || sql[start] == '\r')) {
+        start += 1U;
+    }
+    while (end > start && (sql[end - 1U] == ' ' || sql[end - 1U] == '\t' || sql[end - 1U] == '\r'))
+    {
+        end -= 1U;
+    }
+    if (end - start != 2U) {
+        return false;
+    }
+    return (sql[start] == 'G' || sql[start] == 'g') &&
+           (sql[start + 1U] == 'O' || sql[start + 1U] == 'o');
+}
+
+static SlStatus sl_db_sqlserver_exec_migration_batches(SlArena* arena, SlSqlServerTransaction* tx,
+                                                       SlStr sql, SlSqlServerExecResult* result)
+{
+    const char* text = sql.ptr;
+    size_t batch_start = 0U;
+    size_t line_start = 0U;
+
+    if (text == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (size_t index = 0U; index <= sql.length; index += 1U) {
+        bool at_end = index == sql.length;
+        bool at_line_end = at_end || text[index] == '\n';
+        if (!at_line_end) {
+            continue;
+        }
+        if (sl_db_sqlserver_is_go_line(text, line_start, index)) {
+            size_t batch_length = line_start - batch_start;
+            if (sl_db_sqlserver_batch_has_sql(text + batch_start, batch_length)) {
+                SlStatus status = sl_sqlserver_transaction_exec_batch(
+                    arena, tx, sl_str_from_parts(text + batch_start, batch_length), result, NULL);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+            }
+            batch_start = at_end ? index : index + 1U;
+        }
+        line_start = at_end ? index : index + 1U;
+    }
+    if (batch_start < sql.length &&
+        sl_db_sqlserver_batch_has_sql(text + batch_start, sql.length - batch_start))
+    {
+        return sl_sqlserver_transaction_exec_batch(
+            arena, tx, sl_str_from_parts(text + batch_start, sql.length - batch_start), result,
+            NULL);
+    }
+    return sl_status_ok();
+}
+
 static int sl_db_apply_file_sqlserver(SlArena* arena, SlSqlServerConnection* connection,
                                       const SlCliDbMigrationFile* file)
 {
@@ -714,8 +826,8 @@ static int sl_db_apply_file_sqlserver(SlArena* arena, SlSqlServerConnection* con
         sl_cli_write_cstr(stderr, "sloppy db: failed to begin SQL Server migration transaction\n");
         return 1;
     }
-    status = sl_sqlserver_transaction_exec_batch(
-        arena, &tx, sl_str_from_parts((const char*)bytes.ptr, bytes.length), &result, NULL);
+    status = sl_db_sqlserver_exec_migration_batches(
+        arena, &tx, sl_str_from_parts((const char*)bytes.ptr, bytes.length), &result);
     if (!sl_status_is_ok(status)) {
         sl_sqlserver_transaction_rollback(arena, &tx, NULL);
         sl_cli_write_error_with_value(
@@ -857,7 +969,26 @@ static int sl_cli_command_db(const SlCliOptions* options)
 
     if (provider_kind == SL_CLI_DB_PROVIDER_SQLITE) {
         SlSqliteOpenOptions open_options = {0};
-        open_options.path = sl_cli_span_str(provider->database);
+        char sqlite_database_path[SL_RUN_PATH_MAX_BYTES];
+        const char* sqlite_database_base_path = package_target ? "." : base_path;
+        if (sl_cli_span_equal_cstr(provider->database, ":memory:") ||
+            sl_run_path_span_is_absolute(provider->database))
+        {
+            if (!sl_db_copy_span(sqlite_database_path, sizeof(sqlite_database_path),
+                                 provider->database))
+            {
+                yyjson_doc_free(doc);
+                return 1;
+            }
+        }
+        else if (!sl_run_join_path(sqlite_database_path, sizeof(sqlite_database_path),
+                                   sqlite_database_base_path, provider->database))
+        {
+            sl_cli_write_cstr(stderr, "sloppy db: SQLite database path is too long\n");
+            yyjson_doc_free(doc);
+            return 1;
+        }
+        open_options.path = sl_str_from_cstr(sqlite_database_path);
         open_options.access = SL_SQLITE_ACCESS_READWRITE;
         if (!sl_status_is_ok(sl_sqlite_open(&arena, &open_options, &sqlite_connection, NULL))) {
             sl_cli_write_cstr(stderr, "sloppy db: failed to open SQLite database\n");

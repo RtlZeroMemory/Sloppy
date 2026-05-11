@@ -271,9 +271,11 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
         assert_sloppy_command_success("api template db status pending" "${public_project_dir}" "pending" db status .sloppy --provider main)
         assert_sloppy_command_success("api template db status json pending with token" "${public_project_dir}" "\"status\":\"pending\"" db status .sloppy --provider data.main --format json)
+        assert_sloppy_command_success("api template db status absolute target from outside project" "${work_dir}" "pending" db status "${public_project_dir}/.sloppy" --provider main)
         assert_sloppy_command_success("api template db migrate" "${public_project_dir}" "applied" db migrate .sloppy --provider main)
         assert_sloppy_command_success("api template db status applied" "${public_project_dir}" "applied" db status .sloppy --provider main)
         assert_sloppy_command_success("api template db status json current with token" "${public_project_dir}" "\"status\":\"current\"" db status .sloppy --provider data.main --format json)
+        assert_sloppy_command_success("api template db status absolute target applied from outside project" "${work_dir}" "applied" db status "${public_project_dir}/.sloppy" --provider main)
     endif()
     if(public_template STREQUAL "package-api" OR public_template STREQUAL "node-compat")
         execute_process(
