@@ -1,7 +1,9 @@
 //! Deterministic `app.plan.json` emission from the internal AppGraph.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use oxc_span::Span;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::diagnostic::Diagnostic;
 use crate::graph::{
@@ -31,6 +33,138 @@ fn completeness_json(completeness: &Completeness) -> Value {
     })
 }
 
+#[derive(Debug, Default)]
+struct SchemaReferenceResolution {
+    partial_references: BTreeSet<String>,
+}
+
+impl SchemaReferenceResolution {
+    fn mark_partial(&mut self, schema_name: &str, reference: Option<&str>, reason: &'static str) {
+        let reference = reference.unwrap_or("<missing>");
+        self.partial_references
+            .insert(format!("{schema_name}:{reference}:{reason}"));
+    }
+
+    fn doctor_checks(&self) -> Vec<Value> {
+        self.partial_references
+            .iter()
+            .map(|finding| {
+                let mut parts = finding.splitn(3, ':');
+                let schema = parts.next().unwrap_or("<unknown>");
+                let reference = parts.next().unwrap_or("<unknown>");
+                let reason = parts.next().unwrap_or("unknown");
+                json!({
+                    "id": "schema.reference.partial",
+                    "status": "warn",
+                    "message": format!(
+                        "Schema '{schema}' contains a '{reference}' reference that could not be fully resolved ({reason}); runtime-safe schema metadata was emitted as partial."
+                    ),
+                    "schema": schema,
+                    "reference": reference,
+                    "reason": reason
+                })
+            })
+            .collect()
+    }
+}
+
+fn schema_definition_map(app: &ExtractedApp) -> BTreeMap<String, Value> {
+    app.schemas
+        .iter()
+        .map(|schema| (schema.name.clone(), schema.definition.clone()))
+        .collect()
+}
+
+fn partial_schema_reference(name: Option<&str>, reason: &'static str) -> Value {
+    let mut value = json!({
+        "kind": "object",
+        "properties": {},
+        "partial": true,
+        "partialReason": reason
+    });
+    if let Some(name) = name {
+        value["reference"] = json!(name);
+    }
+    value
+}
+
+fn apply_schema_reference_overrides(reference: &Map<String, Value>, resolved: &mut Value) {
+    let Value::Object(target) = resolved else {
+        return;
+    };
+    for (key, value) in reference {
+        if key == "kind" || key == "name" {
+            continue;
+        }
+        target.insert(key.clone(), value.clone());
+    }
+}
+
+fn resolve_schema_references(
+    schema_name: &str,
+    value: &Value,
+    definitions: &BTreeMap<String, Value>,
+    stack: &mut BTreeSet<String>,
+    resolution: &mut SchemaReferenceResolution,
+) -> Value {
+    match value {
+        Value::Object(object) => {
+            if object.get("kind").and_then(Value::as_str) == Some("ref") {
+                let reference = object.get("name").and_then(Value::as_str);
+                let Some(reference_name) = reference else {
+                    resolution.mark_partial(schema_name, None, "missing-name");
+                    return partial_schema_reference(None, "missing-name");
+                };
+                if stack.contains(reference_name) {
+                    resolution.mark_partial(schema_name, Some(reference_name), "cycle");
+                    return partial_schema_reference(Some(reference_name), "cycle");
+                }
+                let Some(definition) = definitions.get(reference_name) else {
+                    resolution.mark_partial(schema_name, Some(reference_name), "unresolved");
+                    return partial_schema_reference(Some(reference_name), "unresolved");
+                };
+                stack.insert(reference_name.to_string());
+                let mut resolved = resolve_schema_references(
+                    schema_name,
+                    definition,
+                    definitions,
+                    stack,
+                    resolution,
+                );
+                stack.remove(reference_name);
+                apply_schema_reference_overrides(object, &mut resolved);
+                return resolved;
+            }
+
+            let resolved = object
+                .iter()
+                .map(|(key, child)| {
+                    (
+                        key.clone(),
+                        resolve_schema_references(
+                            schema_name,
+                            child,
+                            definitions,
+                            stack,
+                            resolution,
+                        ),
+                    )
+                })
+                .collect();
+            Value::Object(resolved)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|child| {
+                    resolve_schema_references(schema_name, child, definitions, stack, resolution)
+                })
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
 pub(crate) fn emit_plan(
     app: &ExtractedApp,
     bundle_hash: &str,
@@ -55,6 +189,11 @@ pub(crate) fn emit_plan(
         .map(|route| {
             route_completeness(&RouteCompletenessInput {
                 has_response_metadata: route.handler.response.is_some(),
+                partial_response_metadata: route
+                    .handler
+                    .response
+                    .as_ref()
+                    .is_some_and(|response| response.partial),
                 body_json_without_schema: route
                     .handler
                     .bindings
@@ -68,6 +207,7 @@ pub(crate) fn emit_plan(
                     })
                 }),
                 runtime_only: route.handler.runtime_deferred,
+                schema_metadata_conflict: route.handler.schema_metadata_conflict,
             })
         })
         .collect::<Vec<_>>();
@@ -568,14 +708,24 @@ pub(crate) fn emit_plan(
         configuration_json
     });
 
+    let schema_definitions = schema_definition_map(app);
+    let mut schema_reference_resolution = SchemaReferenceResolution::default();
     let schemas = app
         .schemas
         .iter()
         .map(|schema| {
             let (line, column) = line_column(&schema.source, schema.span.start);
+            let mut stack = BTreeSet::from([schema.name.clone()]);
+            let definition = resolve_schema_references(
+                &schema.name,
+                &schema.definition,
+                &schema_definitions,
+                &mut stack,
+                &mut schema_reference_resolution,
+            );
             json!({
                 "name": schema.name,
-                "definition": schema.definition,
+                "definition": definition,
                 "source": {
                     "path": schema.source_name,
                     "line": line,
@@ -843,6 +993,7 @@ pub(crate) fn emit_plan(
 
     let mut required_features = Vec::new();
     let mut doctor_checks = Vec::new();
+    doctor_checks.extend(schema_reference_resolution.doctor_checks());
     if app.kind == ProjectKind::Program {
         doctor_checks.push(json!({
             "id": "program.metadata",

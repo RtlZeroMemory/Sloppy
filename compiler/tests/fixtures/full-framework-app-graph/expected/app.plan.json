@@ -19,8 +19,13 @@
   ],
   "compilerVersion": "sloppyc-0.8.0",
   "completeness": {
-    "reasons": [],
-    "status": "complete"
+    "reasons": [
+      {
+        "code": "partial-route",
+        "message": "one or more routes have partial inferred metadata"
+      }
+    ],
+    "status": "partial"
   },
   "configReads": [
     {
@@ -1190,10 +1195,14 @@
       }
     },
     {
-      "bindings": [],
       "completeness": {
-        "reasons": [],
-        "status": "complete"
+        "reasons": [
+          {
+            "code": "response-metadata-partial",
+            "message": "route response metadata is partial"
+          }
+        ],
+        "status": "partial"
       },
       "cors": {
         "credentials": true,

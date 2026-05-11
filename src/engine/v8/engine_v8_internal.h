@@ -322,9 +322,11 @@ void sl_v8_append_sqlite_external_references(std::vector<intptr_t>* refs);
 bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);
 void sl_v8_append_postgres_external_references(std::vector<intptr_t>* refs);
+size_t sl_v8_postgres_pending_native_activity(SlV8Engine* backend);
 bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                         v8::Local<v8::Object> data);
 void sl_v8_append_sqlserver_external_references(std::vector<intptr_t>* refs);
+size_t sl_v8_sqlserver_pending_native_activity(SlV8Engine* backend);
 
 bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     const SlHttpRequestContext* request_context,

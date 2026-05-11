@@ -14,16 +14,21 @@ pub(crate) struct TypedHandlerSource {
     pub source_map_column_offset: usize,
 }
 
-pub(crate) fn typed_arrow_handler_source(
+pub(crate) fn typed_arrow_handler_source_with_replacements(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     source: &str,
     bindings: &[RequestBinding],
+    replacements: &[(Span, &'static str)],
 ) -> Option<TypedHandlerSource> {
     let handler_source = source_slice(source, function.span)?;
     let mut erase_spans = Vec::new();
     collect_arrow_erase_spans(function, &mut erase_spans);
-    let executable_source =
-        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
+    let executable_source = edit_source_spans(
+        &handler_source,
+        function.span.start,
+        &erase_spans,
+        replacements,
+    )?;
     let wrapper = wrapper_source(&executable_source, bindings);
     Some(TypedHandlerSource {
         original_source: handler_source,
@@ -33,16 +38,21 @@ pub(crate) fn typed_arrow_handler_source(
     })
 }
 
-pub(crate) fn typed_function_handler_source(
+pub(crate) fn typed_function_handler_source_with_replacements(
     function: &oxc_ast::ast::Function<'_>,
     source: &str,
     bindings: &[RequestBinding],
+    replacements: &[(Span, &'static str)],
 ) -> Option<TypedHandlerSource> {
     let handler_source = source_slice(source, function.span)?;
     let mut erase_spans = Vec::new();
     collect_function_erase_spans(function, &mut erase_spans);
-    let executable_source =
-        erase_spans_from_source(&handler_source, function.span.start, &erase_spans)?;
+    let executable_source = edit_source_spans(
+        &handler_source,
+        function.span.start,
+        &erase_spans,
+        replacements,
+    )?;
     let wrapper = wrapper_source(&executable_source, bindings);
     Some(TypedHandlerSource {
         original_source: handler_source,
@@ -426,21 +436,42 @@ fn collect_tagged_template_erase_spans(
     collect_template_literal_erase_spans(&expression.quasi, erase_spans);
 }
 
-fn erase_spans_from_source(
+fn edit_source_spans(
     handler_source: &str,
     handler_start: u32,
-    spans: &[Span],
+    erase_spans: &[Span],
+    replacements: &[(Span, &'static str)],
 ) -> Option<String> {
+    enum Edit {
+        Erase(Span),
+        Replace(Span, &'static str),
+    }
+
     let mut output = handler_source.to_string();
-    let mut spans = spans.to_vec();
-    spans.sort_by_key(|span| std::cmp::Reverse(span.start));
-    for span in spans {
+    let mut edits = Vec::new();
+    edits.extend(erase_spans.iter().copied().map(Edit::Erase));
+    edits.extend(
+        replacements
+            .iter()
+            .copied()
+            .map(|(span, replacement)| Edit::Replace(span, replacement)),
+    );
+    edits.sort_by_key(|edit| {
+        std::cmp::Reverse(match edit {
+            Edit::Erase(span) | Edit::Replace(span, _) => span.start,
+        })
+    });
+    for edit in edits {
+        let (span, replacement) = match edit {
+            Edit::Erase(span) => (span, ""),
+            Edit::Replace(span, replacement) => (span, replacement),
+        };
         let start = usize::try_from(span.start.checked_sub(handler_start)?).ok()?;
         let end = usize::try_from(span.end.checked_sub(handler_start)?).ok()?;
         if end > output.len() || start > end {
             return None;
         }
-        output.replace_range(start..end, "");
+        output.replace_range(start..end, replacement);
     }
     Some(output)
 }

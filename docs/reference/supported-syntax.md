@@ -25,8 +25,9 @@ These imports must be named and unaliased in the current compiler subset.
 
 Compiler-recognized modules:
 
-- `"sloppy"`
-- `"sloppy/data"` (`sql`)
+- `"sloppy"` (`Sloppy`, `Results`, framework metadata types, `data`, `sql`,
+  `Migrations`, `ProviderHealth`)
+- `"sloppy/data"` (`sql`, `Migrations`, `ProviderHealth`)
 - `"sloppy/providers/sqlite"` (`sqlite`, `Sqlite`)
 - `"sloppy/providers/postgres"` (`Postgres`)
 - `"sloppy/providers/sqlserver"` (`SqlServer`)
@@ -35,7 +36,8 @@ Compiler-recognized modules:
 - installed pure-JavaScript package imports in Program Mode
 - supported Node shim specifiers such as `node:path` in Program Mode
 
-Unsupported specifiers/import names fail with:
+Unsupported specifiers/import names fail with a diagnostic that points at the
+import. The most common ones are:
 
 - `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`
 - `SLOPPYC_E_UNSUPPORTED_IMPORT`
@@ -99,20 +101,39 @@ stderr. Returning an integer from `0` through `255` sets the process exit code.
 Throwing, rejecting, or returning an out-of-range exit code exits non-zero with
 a diagnostic.
 
-Program Mode accepts static relative imports, installed pure-JavaScript package
-imports, CommonJS/JSON modules, the documented Sloppy stdlib subpaths, and the
-explicit Node compatibility registry. Type-only imports do not emit runtime
-stdlib features. String-literal dynamic imports are resolved at build time.
-Computed dynamic imports are limited to modules sealed into the graph with
+Program Mode accepts static relative imports, installed pure-JavaScript npm
+packages, CommonJS/JSON modules, the documented Sloppy stdlib subpaths, and the
+Node APIs that already have Sloppy compatibility shims. It also accepts
+`sloppy/providers/sqlite` as a bundled Program Mode module. That lets CLI tools
+create or inspect SQLite provider descriptors without pretending they are web
+apps.
+
+Type-only imports are erased and do not turn on runtime features. Dynamic
+`import("literal")` calls are resolved at build time. Computed dynamic imports
+work only for modules you explicitly seal into the artifact graph with
 `moduleInclude`.
 
-Remote imports, native Node addons, unsupported Node builtins, unsupported
-package export shapes, and Sloppy provider imports are rejected with
-diagnostics.
+Some imports are still rejected because Sloppy cannot run them yet, not because
+the TypeScript syntax is invalid:
 
-Program Mode does not support re-export declarations yet. Use an import plus a
-local export instead of `export { value } from "./dep"` or `export * from
-"./dep"`.
+- Remote URL imports, such as `import "https://example.com/mod.ts"`, are not
+  fetched during build. Sloppy currently builds from local files and installed
+  packages so the artifact graph is repeatable.
+- Node native addons, such as packages that load `.node` binaries through
+  `node-gyp`, are not supported by the Sloppy runtime. Pure JavaScript package
+  entries can work; compiled Node ABI modules cannot.
+- Node builtins are supported only when the compatibility registry has a shim
+  for that module. Unsupported builtins fail clearly instead of being replaced
+  with a fake object.
+- Package `exports` shapes outside Sloppy's resolver subset are rejected until
+  the resolver knows how to choose a compatible entry.
+- Provider modules need a Program Mode stdlib surface. Today that includes
+  `sloppy/providers/sqlite`; other provider modules remain web/compiler
+  metadata only.
+
+Program Mode supports local exports, source re-exports such as
+`export { value } from "./dep"`, export-all declarations, and namespace
+re-exports such as `export * as dep from "./dep"`.
 
 ### Package and compatibility diagnostics
 
@@ -123,8 +144,10 @@ Representative dependency diagnostics:
 - `SLOPPYC_E_NATIVE_ADDON_UNSUPPORTED`
 - `SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN`
 
-Node compatibility shims are modules, not full Node globals. Import
-`node:process` or `node:buffer` explicitly when the partial shim is supported.
+Node compatibility is intentionally incremental. A supported shim means Sloppy
+has a local module for that Node API; it does not mean every Node global or every
+edge case from Node itself exists. Import `node:process` or `node:buffer`
+explicitly when that partial shim is supported.
 
 ### Stdlib subpath imports
 
@@ -187,6 +210,7 @@ Supported route metadata:
 - `app.get("/path", handler).withName("Name")`
 - `app.get("/path", { name: "Name", tags: ["tag"] }, handler)`
 - `app.group("/prefix").withTags("tag")`
+- `app.group("/prefix").withTags("tag").requireAuth(...)`
 - `app.mapHealthChecks(...)` with literal paths and literal check metadata
 - top-level `app.use(fn)` and `group.use(fn)` middleware with inline or
   top-level static functions;
@@ -219,6 +243,14 @@ metadata extraction diagnostics:
 - `SLOPPYC_W_PARTIAL_ROUTE_METADATA`
 - `SLOPPYC_W_DYNAMIC_RESPONSE_METADATA`
 
+Schema metadata supports local `Schema.*` declarations, concrete TypeScript
+aliases/interfaces, `.accepts(...)`, `.returns(...)`, `ctx.body.validate(...)`,
+and named schema references such as `Schema.array(User)` or object fields that
+refer to another local schema. Plan emission resolves schema references into
+runtime-supported schema JSON. If a reference graph cannot be fully resolved,
+the compiler emits partial runtime-safe metadata and a `schema.reference.partial`
+doctor check instead of blocking otherwise runnable source.
+
 Health checks must be inline functions that do not capture module-level locals.
 Captured values fail with `SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`.
 
@@ -248,7 +280,10 @@ Literal service registrations are supported on both `app.services` and
 - `addScoped("Token", () => value)`
 - `addTransient("Token", () => value)`
 
-Factories must be inline functions that do not capture unsupported identifiers.
+Factories must be inline functions. They may reference their scope parameter,
+local values, JavaScript globals, and compiler-emitted top-level helper
+functions. They may not capture the extracted `app` object or arbitrary
+top-level state that the generated artifact cannot preserve.
 
 `Config<"KEY">` typed parameters read the environment value first. When the
 source also contains a literal `app.config.getString("KEY", "default")` default,

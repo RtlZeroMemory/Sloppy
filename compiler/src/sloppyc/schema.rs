@@ -6,19 +6,21 @@ pub(super) fn schema_declaration(
     source_name: &str,
     name: &str,
     expression: &Expression<'_>,
+    known_schema_names: &BTreeSet<String>,
 ) -> Result<Option<SchemaMetadata>, Diagnostic> {
     if !expression_mentions_schema(expression) {
         return Ok(None);
     }
-    let definition = schema_definition(expression).ok_or_else(|| {
-        Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_SCHEMA",
-            "schema declarations must use the supported schema DSL",
-        )
-        .with_path(path)
-        .with_span(expression.span())
-        .with_hint("Use schema.object/string/int/number/bool/array with literal object fields.")
-    })?;
+    let definition =
+        schema_definition(expression, known_schema_names, Some(name)).ok_or_else(|| {
+            Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_SCHEMA",
+                "schema declarations must use the supported schema DSL",
+            )
+            .with_path(path)
+            .with_span(expression.span())
+            .with_hint("Use schema.object/string/int/number/bool/array with literal object fields.")
+        })?;
     Ok(Some(SchemaMetadata {
         name: name.to_string(),
         definition,
@@ -486,17 +488,35 @@ pub(super) fn ts_signature_span(signature: &TSSignature<'_>) -> Span {
     }
 }
 
-pub(super) fn schema_definition(expression: &Expression<'_>) -> Option<Value> {
+pub(super) fn schema_definition(
+    expression: &Expression<'_>,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Option<Value> {
     match expression {
-        Expression::CallExpression(call) => schema_definition_call(call),
-        Expression::ParenthesizedExpression(parenthesized) => {
-            schema_definition(&parenthesized.expression)
+        Expression::CallExpression(call) => {
+            schema_definition_call(call, known_schema_names, current_schema_name)
         }
+        Expression::Identifier(identifier)
+            if current_schema_name != Some(identifier.name.as_str())
+                && known_schema_names.contains(identifier.name.as_str()) =>
+        {
+            Some(json!({ "kind": "ref", "name": identifier.name.as_str() }))
+        }
+        Expression::ParenthesizedExpression(parenthesized) => schema_definition(
+            &parenthesized.expression,
+            known_schema_names,
+            current_schema_name,
+        ),
         _ => None,
     }
 }
 
-pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
+pub(super) fn schema_definition_call(
+    call: &CallExpression<'_>,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Option<Value> {
     if let Expression::StaticMemberExpression(member) = &call.callee {
         let property = member.property.name.as_str();
         if matches!(
@@ -512,7 +532,8 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                 | "uuid"
                 | "pattern"
         ) {
-            let mut base = schema_definition(&member.object)?;
+            let mut base =
+                schema_definition(&member.object, known_schema_names, current_schema_name)?;
             if property == "optional" {
                 if !call.arguments.is_empty() {
                     return None;
@@ -598,10 +619,9 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
             Some(json!({ "kind": kind }))
         }
         "array" if call.arguments.len() == 1 => {
-            let inner = call
-                .arguments
-                .first()
-                .and_then(argument_schema_definition)?;
+            let inner = call.arguments.first().and_then(|argument| {
+                argument_schema_definition(argument, known_schema_names, current_schema_name)
+            })?;
             Some(json!({ "kind": "array", "items": inner }))
         }
         "object" if call.arguments.len() == 1 => {
@@ -621,7 +641,8 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
                     return None;
                 }
                 let key = property_key_string(&property.key)?;
-                let value = schema_definition(&property.value)?;
+                let value =
+                    schema_definition(&property.value, known_schema_names, current_schema_name)?;
                 properties.insert(key, value);
             }
             Some(json!({ "kind": "object", "properties": properties }))
@@ -651,12 +672,26 @@ pub(super) fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value>
     }
 }
 
-pub(super) fn argument_schema_definition(argument: &Argument<'_>) -> Option<Value> {
+pub(super) fn argument_schema_definition(
+    argument: &Argument<'_>,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Option<Value> {
     match argument {
-        Argument::CallExpression(call) => schema_definition_call(call),
-        Argument::ParenthesizedExpression(parenthesized) => {
-            schema_definition(&parenthesized.expression)
+        Argument::CallExpression(call) => {
+            schema_definition_call(call, known_schema_names, current_schema_name)
         }
+        Argument::Identifier(identifier)
+            if current_schema_name != Some(identifier.name.as_str())
+                && known_schema_names.contains(identifier.name.as_str()) =>
+        {
+            Some(json!({ "kind": "ref", "name": identifier.name.as_str() }))
+        }
+        Argument::ParenthesizedExpression(parenthesized) => schema_definition(
+            &parenthesized.expression,
+            known_schema_names,
+            current_schema_name,
+        ),
         _ => None,
     }
 }

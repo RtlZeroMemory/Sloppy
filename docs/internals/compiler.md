@@ -109,19 +109,35 @@ Import validation is file-local. The entry file must import `Sloppy` from
 `Results.*`; registering a child function module does not require the entry file
 to import `Results`.
 
-Program Mode parses the entry and supported module graph with Oxc. It resolves
-relative modules, npm specifiers for installed pure-JavaScript packages from
-`node_modules`, a package.json subset, CommonJS/JSON modules, string-literal
-dynamic import() calls, computed dynamic import() calls over `moduleInclude`
-graphs, and the explicit Node compatibility registry. It rejects remote
-imports, native addons, unsupported package export shapes, unsupported Node
-builtins, and unsupported Sloppy provider imports with diagnostics. It
-preserves opaque metadata instead of claiming route or OpenAPI structure. It
-uses Oxc transform support to strip supported TypeScript syntax, then rewrites
-supported module syntax into the generated artifact bundle. The emitted entry
-wrapper supplies Program arguments/context, installs the Program console while
-top-level code and the entrypoint run, and converts numeric returns into CLI
-exit codes.
+Program Mode is the path for CLI tools, scripts, and other route-free programs.
+It uses Oxc to parse the entry file, follows the supported module graph, strips
+TypeScript syntax, and rewrites supported ESM/CommonJS shapes into one sealed
+artifact bundle. The generated wrapper supplies `main(args, ctx)`, installs the
+Sloppy Program console while top-level code and the entrypoint run, and turns
+integer returns into process exit codes.
+
+The resolver accepts local relative modules, installed pure-JavaScript packages
+from `node_modules`, Sloppy's supported package.json subset, CommonJS/JSON
+modules, string-literal dynamic imports, computed dynamic imports over
+`moduleInclude`, source re-exports, `export *`/namespace re-exports,
+`sloppy/providers/sqlite`, and Node APIs that have explicit Sloppy compatibility
+shims.
+
+When Program Mode rejects an import, the reason should be concrete:
+
+- Remote URL imports are not fetched. The compiler currently builds from local,
+  repeatable inputs.
+- Node native addons are not loadable because Sloppy does not implement Node's
+  native addon ABI.
+- Unsupported Node builtins mean the compatibility registry has no shim for that
+  module yet.
+- Unsupported package `exports` shapes mean the resolver cannot yet choose a
+  compatible package entry.
+- Provider modules without a Program Mode stdlib surface are not available to
+  route-free programs yet.
+
+Program Mode keeps Plan metadata opaque instead of claiming route, handler, or
+OpenAPI structure that does not exist for CLI tools.
 
 `sloppy build` and source-input `sloppy run` invoke `sloppyc` as a separate
 process. The native CLI/runtime consume only the emitted artifacts and command
@@ -143,6 +159,12 @@ results; they do not link to the compiler library.
   dependency graph entries instead.
 - Dynamic web route shapes that remain runnable emit `SLOPPYC_W_DYNAMIC_ROUTE`
   findings and partial/dynamic Plan metadata instead of fatal diagnostics.
+- Schema references are resolved during Plan emission into schema kinds the
+  native runtime can parse. Cyclic or otherwise unresolved schema-reference
+  metadata is downgraded to partial runtime-safe metadata with a doctor check.
+- Conflicting static schema evidence, such as a typed response and mismatched
+  fluent `.returns(...)` metadata, marks route/response metadata partial instead
+  of rejecting otherwise runnable source.
 - Generated provider bridges remain honest about runtime support. Static
   non-SQLite provider handles fail with `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - Compiler performance evidence comes from local benchmark reports and timing
