@@ -83,6 +83,17 @@ app.get("/users", handler).withName("Users.List");
 
 `withName(...)` returns the same registration object so you can chain.
 
+Use `requireAuth(...)` to protect a route:
+
+```ts
+app.get("/admin", handler)
+  .requireAuth({ role: "admin" });
+```
+
+Route auth requirements are public-alpha/experimental.
+
+See [Auth](auth.md) for JWT bearer, API keys, roles, claims, and policies.
+
 ## Route groups
 
 `app.group("/prefix")` returns a group object with the same verb methods. Use
@@ -109,6 +120,12 @@ users.get("/", listUsers); // → /v1/users
 ```
 
 Group tags merge with route tags. Group names propagate to route metadata.
+Groups can also require auth for every child route:
+
+```ts
+const internal = app.group("/internal").requireAuth();
+internal.get("/status", handler);
+```
 
 ## Controllers
 

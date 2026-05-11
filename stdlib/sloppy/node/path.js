@@ -57,21 +57,22 @@ function isAbsolute(input) {
     return String(input || "").startsWith("/");
 }
 
+const sep = "/";
+const delimiter = ":";
+
 const posix = Object.freeze({
     basename,
-    delimiter: ":",
+    delimiter,
     dirname,
     extname,
     isAbsolute,
     join,
     normalize,
     resolve,
-    sep: "/",
+    sep,
 });
 
 const win32 = posix;
 
 export { basename, delimiter, dirname, extname, isAbsolute, join, normalize, posix, resolve, sep, win32 };
-export const sep = "/";
-export const delimiter = ":";
 export default posix;

@@ -42,6 +42,8 @@
         sloppy_add_conformance_compile_test(
             conformance.request_context.compile_artifacts request-context
             examples/request-context/app.js)
+        sloppy_add_conformance_compile_test(conformance.auth_api.compile_artifacts auth-api
+                                            examples/auth-api/app.js)
         sloppy_add_conformance_compile_test(
             conformance.http_methods.compile_artifacts http-methods
             compiler/tests/fixtures/http-methods/input.js)
@@ -133,6 +135,9 @@
             examples.prealpha_control_plane.tooling prealpha-control-plane
             examples/prealpha-control-plane/src/main.js "prealpha-control-plane.db"
             "Projects.List" "data.main" "\"findings\"" "x-slop-capabilities")
+        sloppy_add_example_tooling_test(
+            examples.auth_api.tooling auth-api examples/auth-api/app.js "bearerAuth"
+            "auth:role:admin" "" "\"findings\"" "securitySchemes")
         sloppy_add_framework_compile_example_tests()
     endif()
 

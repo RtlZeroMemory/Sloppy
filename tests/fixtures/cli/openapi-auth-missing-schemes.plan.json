@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-openapi-auth-missing-schemes-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-openapi-auth-missing-schemes-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Protected.Index"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/protected",
+      "handlerId": 1,
+      "name": "Protected.Index",
+      "auth": {
+        "required": true
+      }
+    }
+  ]
+}
