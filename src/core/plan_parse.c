@@ -1264,8 +1264,17 @@ static SlPlanRequestBindingKind sl_plan_parse_binding_kind(SlStr kind)
     if (sl_str_equal(kind, sl_str_from_cstr("body.json"))) {
         return SL_PLAN_REQUEST_BINDING_BODY_JSON;
     }
+    if (sl_str_equal(kind, sl_str_from_cstr("body.form"))) {
+        return SL_PLAN_REQUEST_BINDING_BODY_FORM;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("body.multipart"))) {
+        return SL_PLAN_REQUEST_BINDING_BODY_MULTIPART;
+    }
     if (sl_str_equal(kind, sl_str_from_cstr("header"))) {
         return SL_PLAN_REQUEST_BINDING_HEADER;
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("cookie"))) {
+        return SL_PLAN_REQUEST_BINDING_COOKIE;
     }
     if (sl_str_equal(kind, sl_str_from_cstr("context"))) {
         return SL_PLAN_REQUEST_BINDING_CONTEXT;

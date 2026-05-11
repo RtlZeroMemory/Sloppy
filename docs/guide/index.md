@@ -10,6 +10,8 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
 - [Request logging](request-logging.md) — add request IDs and structured request logs
+- [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
+- [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files
 - [Examples](examples.md) — curated index of `/examples` worth running
 - [Troubleshooting](troubleshooting.md) — common errors and how to read them
 

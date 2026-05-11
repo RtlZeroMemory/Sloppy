@@ -974,7 +974,7 @@ static int test_route_binding_kind_must_be_supported(void)
         "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
         "\"displayName\":\"Users.Get\"}],"
         "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/users/{id}\",\"handlerId\":1,"
-        "\"bindings\":[{\"kind\":\"cookie\",\"name\":\"session\"}]}]}",
+        "\"bindings\":[{\"kind\":\"unsupported\",\"name\":\"session\"}]}]}",
         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "unsupported route binding kind");
 }
 

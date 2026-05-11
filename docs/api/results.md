@@ -22,6 +22,7 @@ Every helper is on the `Results` namespace.
 | `Results.accepted(value, options?)` | 202    | `application/json; charset=utf-8` |
 | `Results.notFound(value?, options?)`| 404    | `application/json; charset=utf-8` |
 | `Results.badRequest(value?, opts?)` | 400    | `application/json; charset=utf-8` |
+| `Results.unauthorized(value?, opts?)` | 401  | `application/json; charset=utf-8` |
 
 ```ts
 return Results.ok({ id: 1, name: "Ada" });
@@ -41,9 +42,23 @@ object.
 | `Results.json(value, options?)` | 200    | `application/json; charset=utf-8` |
 | `Results.html(body, options?)`  | 200    | `text/html; charset=utf-8`      |
 | `Results.bytes(body, options?)` | 200    | `application/octet-stream`      |
+| `Results.stream(writer, options?)` | 200 | `application/octet-stream` by default |
 
 `body` for `text` and `html` is a string. For `bytes`, it's a `Uint8Array`
 (or any `BufferSource`).
+
+`Results.stream(async writer => { ... })` builds a bounded stream descriptor:
+
+```ts
+return Results.stream(async (writer) => {
+    writer.writeText("hello ");
+    writer.writeBytes(new Uint8Array([119, 111, 114, 108, 100]));
+}, { contentType: "text/plain; charset=utf-8" });
+```
+
+The current runtime collects chunks before serializing the response. It is a
+streaming response API shape, not yet socket backpressure or incremental file
+send.
 
 ## No-content
 
@@ -131,6 +146,23 @@ return Results.ok(data, {
   instead. Invalid names or values throw a `TypeError`.
 - `contentType` — override the helper's default `Content-Type`. The runtime
   still adds `; charset=utf-8` for textual content where appropriate.
+
+Every descriptor also has `.cookie(name, value, options?)`:
+
+```ts
+return Results.ok({ ok: true })
+    .cookie("session", sessionId, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "Strict",
+        path: "/",
+        maxAge: 3600,
+    });
+```
+
+Cookie options are `path`, `domain`, `maxAge`, `expires`, `httpOnly`,
+`secure`, and `sameSite` (`"Strict"`, `"Lax"`, or `"None"`). Each call appends
+a separate `Set-Cookie` header.
 
 ## Async handlers
 

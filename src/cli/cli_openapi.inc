@@ -150,7 +150,10 @@ static bool sl_cli_openapi_route_has_validation(const SlCliRoute* route)
         return true;
     }
     for (index = 0U; index < route->binding_count; index += 1U) {
-        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "body.json")) {
+        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "body.json") ||
+            sl_cli_span_equal_cstr(route->binding_kinds[index], "body.form") ||
+            sl_cli_span_equal_cstr(route->binding_kinds[index], "body.multipart"))
+        {
             return true;
         }
         if ((sl_cli_span_equal_cstr(route->binding_kinds[index], "query") ||
@@ -206,6 +209,13 @@ static void sl_cli_openapi_parameters(FILE* file, const SlCliRoute* route)
         else if (sl_cli_span_equal_cstr(route->binding_kinds[index], "header")) {
             sl_cli_openapi_emit_parameter(file, route->binding_names[index],
                                           sl_cli_span_cstr("header"), route->binding_schemas[index],
+                                          false, &first);
+        }
+        else if (sl_cli_span_equal_cstr(route->binding_kinds[index], "cookie") &&
+                 !sl_cli_span_empty(route->binding_names[index]))
+        {
+            sl_cli_openapi_emit_parameter(file, route->binding_names[index],
+                                          sl_cli_span_cstr("cookie"), sl_cli_span_cstr("string"),
                                           false, &first);
         }
     }
@@ -282,6 +292,24 @@ static void sl_cli_openapi_emit_request_body(FILE* out, const SlCliMetadata* met
     size_t index = 0U;
 
     for (index = 0U; index < route->binding_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "body.form")) {
+            sl_cli_write_cstr(out, ",\n        \"requestBody\": {\n"
+                                   "          \"required\": true,\n"
+                                   "          \"content\": { "
+                                   "\"application/x-www-form-urlencoded\": { \"schema\": "
+                                   "{ \"type\": \"object\", \"additionalProperties\": "
+                                   "{ \"type\": \"string\" } } } }\n        }");
+            return;
+        }
+        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "body.multipart")) {
+            sl_cli_write_cstr(out, ",\n        \"requestBody\": {\n"
+                                   "          \"required\": true,\n"
+                                   "          \"content\": { "
+                                   "\"multipart/form-data\": { \"schema\": "
+                                   "{ \"type\": \"object\", \"additionalProperties\": true } } }"
+                                   "\n        }");
+            return;
+        }
         if (!sl_cli_span_equal_cstr(route->binding_kinds[index], "body.json")) {
             continue;
         }
@@ -318,6 +346,9 @@ static SlCliSpan sl_cli_openapi_content_type_for_response_kind(SlCliSpan kind)
     if (sl_cli_span_equal_cstr(kind, "bytes")) {
         return sl_cli_span_cstr("application/octet-stream");
     }
+    if (sl_cli_span_equal_cstr(kind, "stream")) {
+        return sl_cli_span_cstr("application/octet-stream");
+    }
     return (SlCliSpan){0};
 }
 
@@ -343,7 +374,7 @@ static void sl_cli_openapi_emit_response_schema(FILE* out, SlCliSpan kind)
         sl_cli_write_cstr(out, "{ \"type\": \"string\" }");
         return;
     }
-    if (sl_cli_span_equal_cstr(kind, "bytes")) {
+    if (sl_cli_span_equal_cstr(kind, "bytes") || sl_cli_span_equal_cstr(kind, "stream")) {
         sl_cli_write_cstr(out, "{ \"type\": \"string\", \"format\": \"binary\" }");
         return;
     }

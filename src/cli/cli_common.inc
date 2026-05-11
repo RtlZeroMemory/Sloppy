@@ -358,7 +358,8 @@ static void sl_cli_print_help(void)
     printf("Usage:\n");
     printf("  sloppy --help\n");
     printf("  sloppy --version\n");
-    printf("  sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
+    printf("  sloppy create <name> [--template "
+           "api|minimal-api|program|cli|package-api|node-compat] [--force]\n");
     printf("                       [--no-git] [--format text|json]\n");
     printf("  sloppy build [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("               [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
@@ -370,7 +371,8 @@ static void sl_cli_print_help(void)
            "<dir>] [--stdlib <dir>]\n");
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
            "[--port 5173]\n");
-    printf("             [--once METHOD TARGET] [-- <program-args...>]\n");
+    printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body-file <path>]\n");
+    printf("             [-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
@@ -409,6 +411,7 @@ static void sl_cli_print_command_help(const char* command)
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
         printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
+        printf("                  [--header 'Name: value'] [--body-file <path>]\n");
         printf("                  [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
@@ -439,14 +442,16 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "create") == 0) {
-        printf("Usage: sloppy create <name> [--template api|minimal-api|program|cli|package-api|node-compat]\n");
+        printf("Usage: sloppy create <name> [--template "
+               "api|minimal-api|program|cli|package-api|node-compat]\n");
         printf("                     [--force] [--no-git] [--format text|json]\n");
         printf("\n");
         printf("Copies a built-in project template into a new local app directory.\n");
         printf("Default template: api.\n");
         printf("\n");
         printf("Templates:\n");
-        printf("  api          SQLite-backed backend starter with routes, services, config, and packaging flow\n");
+        printf("  api          SQLite-backed backend starter with routes, services, config, and "
+               "packaging flow\n");
         printf("  minimal-api  Tiny API for the smallest possible first run\n");
         printf("  program      Small Program Mode starter\n");
         printf("  cli          Practical CLI-style Program Mode starter\n");
@@ -641,6 +646,39 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
             return -1;
         }
         out->port_explicit = true;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--header") == 0) {
+        const char* header = NULL;
+        const char* colon = NULL;
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --header requires 'Name: value'\n");
+            return -1;
+        }
+        header = argv[*index + 1];
+        colon = strchr(header, ':');
+        if (header[0] == '\0' || colon == NULL || colon == header) {
+            sl_cli_write_cstr(stderr, "sloppy run: --header requires 'Name: value'\n");
+            return -1;
+        }
+        if (out->once_header_count >= SL_HTTP_DEFAULT_MAX_HEADERS) {
+            sl_cli_write_cstr(stderr, "sloppy run: too many --header values\n");
+            return -1;
+        }
+        out->once_headers[out->once_header_count] = header;
+        out->once_header_count += 1U;
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--body-file") == 0) {
+        if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
+            sl_cli_write_cstr(stderr, "sloppy run: --body-file requires a path\n");
+            return -1;
+        }
+        out->once_body_file = argv[*index + 1];
         *index += 2;
         return 1;
     }

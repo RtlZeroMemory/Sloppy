@@ -1,8 +1,13 @@
+import { Text } from "./codec.js";
+
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const BYTES_CONTENT_TYPE = "application/octet-stream";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
+const STREAM_CONTENT_TYPE = "application/octet-stream";
+const STREAM_MAX_CHUNK_BYTES = 65536;
+const STREAM_MAX_TOTAL_BYTES = 131072;
 const FAST_RESULT_KIND = "__sloppyFastResult";
 const FAST_JSON_TEXT = "__sloppyJsonText";
 const FAST_TEXT_OK = 1;
@@ -91,6 +96,19 @@ function assertHeaderValueSafe(value, label) {
     }
 }
 
+function assertCookieAttributeValueSafe(value, label) {
+    assertHeaderValueSafe(value, label);
+    if (value.includes(";")) {
+        throw new TypeError(`Sloppy Results ${label} must not contain ';'.`);
+    }
+}
+
+function assertCookieValueSafe(value, label) {
+    if (typeof value !== "string" || /[\x00-\x20\x7F;,]/u.test(value)) {
+        throw new TypeError(`Sloppy Results ${label} must be a safe Set-Cookie value.`);
+    }
+}
+
 function copyHeaders(options) {
     const headers = options?.headers;
 
@@ -117,6 +135,25 @@ function copyHeaders(options) {
     }
 
     return Object.freeze(copied);
+}
+
+function copySetCookies(options) {
+    const setCookies = options?.setCookies;
+
+    if (setCookies === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(setCookies)) {
+        throw new TypeError("Sloppy Results setCookies must be an array when provided.");
+    }
+
+    return Object.freeze(setCookies.map((value) => {
+        if (typeof value !== "string") {
+            throw new TypeError("Sloppy Results setCookies entries must be strings.");
+        }
+        assertHeaderValueSafe(value, "Set-Cookie");
+        return value;
+    }));
 }
 
 function copyBytes(value) {
@@ -165,6 +202,7 @@ function maybeFastJsonText(body) {
 }
 
 function createResult(kind, body, contentType, options, extra, fast) {
+    const setCookies = copySetCookies(options);
     const descriptor = {
         __sloppyResult: true,
         kind,
@@ -173,6 +211,10 @@ function createResult(kind, body, contentType, options, extra, fast) {
         headers: copyHeaders(options),
         ...extra,
     };
+
+    if (setCookies !== undefined) {
+        descriptor.setCookies = setCookies;
+    }
 
     if (body !== undefined) {
         descriptor.body = body;
@@ -189,7 +231,110 @@ function createResult(kind, body, contentType, options, extra, fast) {
         }
     }
 
+    Object.defineProperty(descriptor, "cookie", {
+        value(name, value, cookieOptions) {
+            return withCookie(descriptor, name, value, cookieOptions);
+        },
+    });
+
     return Object.freeze(descriptor);
+}
+
+function encodeCookieValue(value) {
+    try {
+        return encodeURIComponent(String(value));
+    } catch {
+        throw new TypeError("Sloppy Results cookie value must be safe.");
+    }
+}
+
+function normalizeSameSite(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (typeof value !== "string") {
+        throw new TypeError("Sloppy Results cookie sameSite must be lax, strict, or none.");
+    }
+    const lowered = value.toLowerCase();
+    if (lowered === "lax") {
+        return "Lax";
+    }
+    if (lowered === "strict") {
+        return "Strict";
+    }
+    if (lowered === "none") {
+        return "None";
+    }
+    throw new TypeError("Sloppy Results cookie sameSite must be lax, strict, or none.");
+}
+
+function buildSetCookie(name, value, options = undefined) {
+    if (typeof name !== "string" || !isHeaderNameSafe(name)) {
+        throw new TypeError("Sloppy Results cookie name must be a safe HTTP token.");
+    }
+    if (options !== undefined && !isPlainObject(options)) {
+        throw new TypeError("Sloppy Results cookie options must be a plain object.");
+    }
+
+    const encodedValue = encodeCookieValue(value);
+    assertCookieValueSafe(encodedValue, "cookie value");
+    const parts = [`${name}=${encodedValue}`];
+
+    if (options?.path !== undefined) {
+        assertCookieAttributeValueSafe(options.path, "cookie path");
+        parts.push(`Path=${options.path}`);
+    }
+    if (options?.domain !== undefined) {
+        assertCookieAttributeValueSafe(options.domain, "cookie domain");
+        parts.push(`Domain=${options.domain}`);
+    }
+    const maxAgeSeconds = options?.maxAgeSeconds ?? options?.maxAge;
+    if (maxAgeSeconds !== undefined) {
+        if (!Number.isInteger(maxAgeSeconds)) {
+            throw new TypeError("Sloppy Results cookie maxAgeSeconds must be an integer.");
+        }
+        parts.push(`Max-Age=${maxAgeSeconds}`);
+    }
+    if (options?.expires !== undefined) {
+        const expires = options.expires instanceof Date ? options.expires.toUTCString() : String(options.expires);
+        assertCookieAttributeValueSafe(expires, "cookie expires");
+        parts.push(`Expires=${expires}`);
+    }
+    const sameSite = normalizeSameSite(options?.sameSite);
+    if (sameSite !== undefined) {
+        parts.push(`SameSite=${sameSite}`);
+    }
+    if (options?.httpOnly === true) {
+        parts.push("HttpOnly");
+    }
+    if (options?.secure === true) {
+        parts.push("Secure");
+    }
+
+    return parts.join("; ");
+}
+
+function withCookie(descriptor, name, value, options) {
+    const existing = Array.isArray(descriptor.setCookies) ? descriptor.setCookies : [];
+    const setCookies = Object.freeze([...existing, buildSetCookie(name, value, options)]);
+    const extra = {};
+    if (descriptor.location !== undefined) {
+        extra.location = descriptor.location;
+    }
+    if (descriptor.chunks !== undefined) {
+        extra.chunks = Object.freeze([...descriptor.chunks]);
+    }
+    return createResult(
+        descriptor.kind,
+        descriptor.body,
+        descriptor.contentType,
+        {
+            status: descriptor.status,
+            headers: descriptor.headers,
+            setCookies,
+        },
+        Object.keys(extra).length === 0 ? undefined : extra,
+    );
 }
 
 const TEXT_OK_RESULT = createResult("text", "ok", TEXT_CONTENT_TYPE, undefined, undefined, {
@@ -252,6 +397,54 @@ function bytes(body, options) {
     return createResult("bytes", copyBytes(body), resolveContentType(options, BYTES_CONTENT_TYPE), options);
 }
 
+async function stream(callback, options) {
+    if (typeof callback !== "function") {
+        throw new TypeError("Sloppy Results.stream callback must be a function.");
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    let closed = false;
+    function appendChunk(chunk) {
+        if (chunk.byteLength > STREAM_MAX_CHUNK_BYTES) {
+            throw new TypeError("Sloppy Results.stream chunk exceeds the bounded stream limit.");
+        }
+        if (totalBytes + chunk.byteLength > STREAM_MAX_TOTAL_BYTES) {
+            throw new TypeError("Sloppy Results.stream body exceeds the bounded stream limit.");
+        }
+        totalBytes += chunk.byteLength;
+        chunks.push(chunk);
+    }
+    const writer = Object.freeze({
+        writeText(text) {
+            if (closed) {
+                throw new TypeError("Sloppy stream writer is closed.");
+            }
+            appendChunk(Text.utf8.encode(String(text)));
+        },
+        writeBytes(bytes) {
+            if (closed) {
+                throw new TypeError("Sloppy stream writer is closed.");
+            }
+            appendChunk(copyBytes(bytes));
+        },
+        close() {
+            closed = true;
+        },
+    });
+    try {
+        await callback(writer);
+    } finally {
+        closed = true;
+    }
+    return createResult(
+        "stream",
+        Object.freeze(chunks),
+        resolveContentType(options, STREAM_CONTENT_TYPE),
+        options,
+        { chunks: Object.freeze(chunks) },
+    );
+}
+
 function ok(value, options) {
     const jsonText = options === undefined ? maybeFastJsonText(value) : undefined;
     return createResult(
@@ -299,6 +492,10 @@ function badRequest(valueOrProblem, options) {
     return createResult("json", valueOrProblem, JSON_CONTENT_TYPE, { status: 400, ...options });
 }
 
+function unauthorized(valueOrProblem, options) {
+    return createResult("json", valueOrProblem, JSON_CONTENT_TYPE, { status: 401, ...options });
+}
+
 function status(statusCode, value, options) {
     if (value === undefined) {
         return createResult("empty", undefined, undefined, { ...options, status: statusCode });
@@ -324,10 +521,12 @@ export const Results = Object.freeze({
     noContent,
     notFound,
     badRequest,
+    unauthorized,
     status,
     problem,
     text,
     json,
     html,
     bytes,
+    stream,
 });
