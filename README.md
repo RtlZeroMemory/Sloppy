@@ -227,14 +227,6 @@ Current limits:
 - Sloppy is not a full Node runtime. Node compatibility is partial and grows
   through explicit shims backed by Sloppy Core APIs; importable stubs do not
   imply full HTTP, socket, or native-addon support.
-- The compiler supports a focused source subset. Dynamic web shapes can run
-  with partial metadata; unsupported imports/runtime features still fail
-  clearly.
-- Linux arm64 and Windows arm64 package-manager distribution are not part of
-  this alpha. macOS is supported as a macOS alpha target.
-- PostgreSQL and SQL Server are optional provider features. Their live checks
-  need explicit local services and provider dependencies; the Quickstart,
-  Program Mode, SQLite, templates, and package support do not.
 
 See [Roadmap](docs/roadmap.md) and the
 [Node compatibility roadmap](docs/roadmap/node-compatibility.md) for the
