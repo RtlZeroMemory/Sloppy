@@ -1,5 +1,6 @@
 #include "sloppy/platform_crash.h"
 
+#include <stdlib.h>
 #include <unistd.h>
 
 void sl_platform_disable_interactive_crash_ui(void) {}
