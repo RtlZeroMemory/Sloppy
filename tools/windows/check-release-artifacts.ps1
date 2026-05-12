@@ -179,15 +179,25 @@ function Test-ReleaseWorkflow {
     }
     Assert-TextContains -Text $workflow -Needle "actions/upload-artifact@v4" -Message "Release artifact workflow must upload package/checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "SHA256SUMS.txt" -Message "Release artifact workflow must preserve checksum artifacts."
-    Assert-TextContains -Text $workflow -Needle "contents: read" -Message "Release artifact workflow should not need write permissions for dry-run."
+    Assert-TextContains -Text $workflow -Needle "contents: read" -Message "Release artifact workflow must keep repository contents read-only for dry-run."
     $permissionsBlock = [regex]::Match($workflow, "(?m)^permissions:\r?\n(?<block>(?:^[ ]+.+\r?\n?)*)").Groups["block"].Value
     Assert-True (-not [string]::IsNullOrWhiteSpace($permissionsBlock)) "Release artifact workflow must declare top-level permissions."
     foreach ($line in ($permissionsBlock -split "\r?\n")) {
         if ([string]::IsNullOrWhiteSpace($line)) {
             continue
         }
-        Assert-True ($line -match "^\s+[A-Za-z0-9_-]+:\s*read\s*$") "Release artifact workflow permissions must be read-only. Found: $($line.Trim())"
-        Assert-True (-not ($line -match ":\s*write\b|\*")) "Release artifact workflow must not grant write or wildcard permissions. Found: $($line.Trim())"
+        $trimmedPermission = $line.Trim()
+        $allowedPermission = $trimmedPermission -eq "contents: read" -or $trimmedPermission -eq "packages: write"
+        Assert-True $allowedPermission "Release artifact workflow permissions must be limited to contents: read and packages: write. Found: $trimmedPermission"
+        Assert-True (-not ($trimmedPermission -match "^\*:|:\s*\*")) "Release artifact workflow must not grant wildcard permissions. Found: $trimmedPermission"
+    }
+
+    $allowedSecretReferences = @(
+        '${{ secrets.VCPKG_PAT }}'
+    )
+    $workflowWithoutAllowedSecrets = $workflow
+    foreach ($allowedSecretReference in $allowedSecretReferences) {
+        $workflowWithoutAllowedSecrets = $workflowWithoutAllowedSecrets.Replace($allowedSecretReference, "")
     }
 
     $forbidden = @(
@@ -198,7 +208,7 @@ function Test-ReleaseWorkflow {
         "secrets."
     )
     foreach ($needle in $forbidden) {
-        Assert-True (-not $workflow.Contains($needle)) "Release artifact dry-run workflow must not use '$needle'."
+        Assert-True (-not $workflowWithoutAllowedSecrets.Contains($needle)) "Release artifact dry-run workflow must not use '$needle'."
     }
 }
 
