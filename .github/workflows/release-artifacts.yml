@@ -770,6 +770,7 @@ jobs:
             exit 1
           fi
           test -f "$PWD/.sdeps/v8/macos-x64/share/sloppy-v8-sdk.json"
+          SLOPPY_V8_ROOT="$PWD/.sdeps/v8/macos-x64" tools/unix/resolve-v8-sdk.sh --mode REQUIRED
           echo "SLOPPY_V8_ROOT=$PWD/.sdeps/v8/macos-x64" >> "$GITHUB_ENV"
 
       - name: Release artifact dry-run
