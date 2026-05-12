@@ -569,7 +569,7 @@ static bool sl_package_append_migrations_manifest(SlStringBuilder* builder, cons
 static int sl_package_write_manifest(const char* package_dir, const char* artifact_dir_name,
                                      const char* config_dir, const SlRunApp* app,
                                      const SlSloppyRunConfig* project_config,
-                                     bool has_dependency_graph, bool has_assets)
+                                     bool has_dependency_graph, bool has_assets, bool has_openapi)
 {
     char manifest_path[SL_RUN_PATH_MAX_BYTES];
     unsigned char manifest_storage[SL_PACKAGE_MANIFEST_BYTES];
@@ -623,6 +623,10 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
               sl_string_builder_append_cstr(&builder, ",\n    \"dependencyGraph\": ")) ||
           !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
                                                     sl_cli_span_cstr("deps.graph.json")))) ||
+        (has_openapi &&
+         (!sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"openapi\": ")) ||
+          !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
+                                                    sl_cli_span_cstr("openapi.json")))) ||
         (has_assets &&
          (!sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"assets\": ")) ||
           !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
@@ -815,8 +819,10 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
 {
     char artifacts_dir[SL_RUN_PATH_MAX_BYTES];
     char dependency_graph_path[SL_RUN_PATH_MAX_BYTES];
+    char openapi_path[SL_RUN_PATH_MAX_BYTES];
     bool has_dependency_graph = false;
     bool has_assets = false;
+    bool has_openapi = false;
     SlStatus status;
 
     if (out_dir == NULL || package_dir == NULL || app == NULL) {
@@ -876,6 +882,18 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         }
     }
 
+    if (sl_run_artifact_file_path(openapi_path, sizeof(openapi_path), out_dir, "openapi.json") &&
+        sl_cli_path_is_file(openapi_path))
+    {
+        if (sl_package_copy_artifact_leaf(out_dir, artifacts_dir,
+                                          sl_cli_span_cstr("openapi.json")) != 0)
+        {
+            sl_package_cleanup_partial(package_dir);
+            return 1;
+        }
+        has_openapi = true;
+    }
+
     if (sl_package_copy_native_libraries(package_dir, config_dir, app, project_config) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
@@ -886,7 +904,7 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
     }
 
     if (sl_package_write_manifest(package_dir, "artifacts", config_dir, app, project_config,
-                                  has_dependency_graph, has_assets) != 0)
+                                  has_dependency_graph, has_assets, has_openapi) != 0)
     {
         sl_package_cleanup_partial(package_dir);
         return 1;

@@ -332,8 +332,21 @@
         sloppy.cli.openapi_missing_schema_json tests/golden/cli/openapi-missing-schema.json openapi
         --plan tests/fixtures/cli/openapi-missing-schema.plan.json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_summary tests/golden/cli/openapi-summary.txt openapi --plan
+        tests/fixtures/cli/openapi-missing-schema.plan.json --summary)
+    sloppy_add_cli_golden_test(
         sloppy.cli.openapi_response_content_json tests/golden/cli/openapi-response-content.json
         openapi --plan tests/fixtures/cli/openapi-response-content.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_strict_complete_json tests/golden/cli/openapi-response-content.json
+        openapi --plan tests/fixtures/cli/openapi-response-content.plan.json --strict)
+    add_test(
+        NAME sloppy.cli.openapi_strict_missing_schema
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=openapi;--plan;tests/fixtures/cli/openapi-missing-schema.plan.json;--strict"
+            "-DSLOPPY_EXPECTED_ERROR=--strict requires complete route contracts" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
 
     add_test(
         NAME sloppy.cli.openapi_too_many_route_tags

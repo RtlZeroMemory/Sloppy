@@ -25,6 +25,23 @@ typedef struct SlCliRoute
     SlCliSpan name;
     SlCliSpan module;
     SlCliSpan capability;
+    SlCliSpan summary;
+    SlCliSpan description;
+    bool deprecated;
+    SlCliSpan deprecated_reason;
+    SlCliSpan consumes[SL_CLI_MAX_ROUTE_TAGS];
+    size_t consume_count;
+    SlCliSpan produces[SL_CLI_MAX_ROUTE_TAGS];
+    size_t produce_count;
+    SlCliSpan header_names[SL_CLI_MAX_ROUTE_BINDINGS];
+    SlCliSpan header_schemas[SL_CLI_MAX_ROUTE_BINDINGS];
+    SlCliSpan header_descriptions[SL_CLI_MAX_ROUTE_BINDINGS];
+    bool header_required[SL_CLI_MAX_ROUTE_BINDINGS];
+    size_t header_count;
+    SlCliSpan query_schema;
+    SlCliSpan params_schema;
+    SlCliSpan openapi_override;
+    yyjson_val* openapi_override_value;
     SlCliSpan tags[SL_CLI_MAX_ROUTE_TAGS];
     size_t tag_count;
     bool auth_required;
@@ -180,6 +197,11 @@ typedef struct SlCliSchemaProperty
     SlCliSpan format;
     SlCliSpan item_kind;
     bool optional;
+    bool nullable;
+    bool has_min;
+    bool has_max;
+    double min_value;
+    double max_value;
 } SlCliSchemaProperty;
 
 typedef struct SlCliSchema
@@ -190,6 +212,11 @@ typedef struct SlCliSchema
     SlCliSpan source_path;
     uint64_t source_line;
     uint64_t source_column;
+    bool nullable;
+    bool has_min;
+    bool has_max;
+    double min_value;
+    double max_value;
     SlCliSchemaProperty properties[SL_CLI_MAX_SCHEMA_PROPERTIES];
     size_t property_count;
 } SlCliSchema;
@@ -308,5 +335,9 @@ typedef struct SlCliOptions
     bool dispatch_details;
     bool diagnostics_json;
     bool doctor_report;
+    bool openapi_strict;
+    bool openapi_summary;
+    bool openapi_fail_on_partial;
+    bool openapi_pretty;
     bool help;
 } SlCliOptions;

@@ -77,7 +77,7 @@ unconstrained parameters, longer/more-specific patterns beat shorter ones,
 and source order breaks remaining ties. Duplicate `method + pattern`
 registrations are rejected. Duplicate route names are rejected.
 
-## Options object
+## Contract metadata
 
 Route methods accept an options object as the second argument:
 
@@ -85,9 +85,9 @@ Route methods accept an options object as the second argument:
 app.get("/users", { name: "Users.List", tags: ["users"] }, handler);
 ```
 
-The options accepted today are `name` and `tags`. They show up in
-`sloppy routes` output, OpenAPI metadata, and compiled/native execution
-metadata when the compiler can prove the route shape.
+The options accepted today are `name`, `tags`, `summary`, `description`, and
+`deprecated`. They show up in `sloppy routes` output, OpenAPI metadata, and
+compiled/native execution metadata when the compiler can prove the route shape.
 
 The fluent form is equivalent:
 
@@ -95,16 +95,39 @@ The fluent form is equivalent:
 app.get("/users", handler).withName("Users.List");
 ```
 
-`withName(...)` returns the same registration object so you can chain.
-`accepts(schema)` records a JSON request body schema, and `returns(schema)`
-records the default JSON response schema:
+Route builders return the same registration object so you can chain contract
+metadata:
 
 ```ts
 app.post("/users", createUser)
     .accepts(CreateUser)
-    .returns(User)
-    .withName("Users.Create");
+    .returns(201, User, { description: "User created" })
+    .returns(400, ProblemDetails)
+    .name("Users.Create")
+    .summary("Create user")
+    .description("Creates a user account.")
+    .tags("Users")
+    .produces("application/json")
+    .consumes("application/json");
 ```
+
+Supported fluent contract methods are:
+
+| Method | Purpose |
+| ------ | ------- |
+| `.name(operationId)` / `.withName(operationId)` | OpenAPI operation ID and route name |
+| `.summary(text)` | Short operation summary |
+| `.description(text)` | Longer operation description |
+| `.tags(...tags)` / `.withTags(...tags)` | OpenAPI tags and route inspection tags |
+| `.deprecated(reasonOrBool?)` | Marks the operation deprecated, with an optional reason |
+| `.accepts(schema, options?)` | JSON request body schema and optional content metadata |
+| `.returns(status, schema?, options?)` | Response status, schema, description, and content metadata |
+| `.produces(mediaType)` / `.consumes(mediaType)` | Response/request media type hints |
+| `.header(name, schema, options?)` | Header parameter contract |
+| `.query(schemaOrObject, options?)` | Query parameter object contract |
+| `.params(schemaOrObject, options?)` | Route parameter object contract |
+| `.requireAuth(...)` / `.requiresAuth(...)` / `.security(...)` / `.authorize(policy)` | Route security metadata |
+| `.openapi(object)` | Static JSON-compatible override for advanced OpenAPI fields |
 
 The app host stores this metadata in route snapshots. The compiler also uses
 static schema identifiers in these fluent calls for Plan and OpenAPI metadata.
@@ -114,6 +137,11 @@ carry native preencoded JSON response metadata. Supported `.returns(...)`
 response schemas can use the bounded native JSON response writer; unsupported
 JSON shapes are still visible as generic/fallback modes in
 `sloppy routes --dispatch`.
+
+Invalid contract metadata fails early. Status codes must be OpenAPI HTTP status
+codes, media types must be valid `type/subtype` tokens, and compiler-visible
+schema references must name declared Sloppy schemas. When metadata is dynamic,
+Sloppy reports partial OpenAPI instead of guessing.
 
 ## URL generation
 

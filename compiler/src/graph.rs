@@ -35,6 +35,15 @@ pub(crate) struct Route {
     pub(crate) framework_path: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) tags: Vec<String>,
+    pub(crate) summary: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) deprecated: Option<String>,
+    pub(crate) consumes: Vec<String>,
+    pub(crate) produces: Vec<String>,
+    pub(crate) headers: Vec<RouteContractParameter>,
+    pub(crate) query_schema: Option<String>,
+    pub(crate) params_schema: Option<String>,
+    pub(crate) openapi_override: Option<Value>,
     pub(crate) health: Option<HealthRouteMetadata>,
     pub(crate) middleware: Vec<RouteMiddlewareMetadata>,
     pub(crate) auth: Option<AuthRequirementMetadata>,
@@ -372,6 +381,14 @@ pub(crate) struct CorsPolicyMetadata {
     pub(crate) exposed_headers: Vec<String>,
     pub(crate) credentials: bool,
     pub(crate) max_age_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RouteContractParameter {
+    pub(crate) name: String,
+    pub(crate) schema: String,
+    pub(crate) required: bool,
+    pub(crate) description: Option<String>,
 }
 
 #[derive(Debug, Clone)]

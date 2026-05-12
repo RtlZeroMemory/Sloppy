@@ -5,8 +5,13 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "complete",
+    "routesTotal": 7,
+    "routesIncluded": 7,
+    "routesOmitted": 0,
+    "operationsComplete": 7,
+    "operationsPartial": 0,
+    "missing": [],
     "optimizations": "reported-only"
   },
   "paths": {

@@ -82,6 +82,7 @@ After construction, every app exposes:
 | `app.group(...)`  | Create a route group; alias `app.mapGroup`                     |
 | `app.urlFor(...)` | Generate a URL for a named route                            |
 | `app.controller(...)`| Register a controller class; alias `app.mapController`      |
+| `app.docs(...)`      | Register first-party OpenAPI JSON and Swagger UI routes     |
 | `app.freeze()`    | Mark the app immutable; further route registration throws      |
 | `app.isFrozen()`  | Check immutability                                             |
 
@@ -92,6 +93,28 @@ For tests, build the app normally and pass it to `TestHost.create(app)`.
 Use `TestHost.fromArtifacts(...)` or `TestHost.fromPackage(...)` when the
 test must exercise compiled artifacts and the native runtime path. See
 [TestHost](testhost.md).
+
+## OpenAPI docs
+
+`app.docs(options?)` registers two `GET` routes:
+
+- `openapiPath`, default `/openapi.json`, returns the app's OpenAPI document.
+- `path`, default `/docs`, returns an embedded Swagger UI page that loads that
+  document without CDN or npm middleware.
+
+```ts
+app.docs({
+    title: "Users API",
+    path: "/docs",
+    openapiPath: "/openapi.json",
+    requireAuth: { policy: "Docs.Read" },
+});
+```
+
+The docs routes are normal route-table entries named `Docs.OpenApi` and
+`Docs.Ui`. Use `requireAuth` when the generated contract should not be public.
+The compiler records these routes in the Plan so `sloppy routes`, `doctor`,
+`audit`, `openapi`, and package flows can see them.
 
 ## Modules
 

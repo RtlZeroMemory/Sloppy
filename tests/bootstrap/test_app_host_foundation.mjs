@@ -1043,7 +1043,17 @@ async function flushMicrotasks(count = 6) {
 
     users.mapGet("{id:int}", { query: querySchema }, ({ route }) => {
         return Results.ok({ id: route.id ?? "demo" });
-    }).withName("Users.Get");
+    })
+        .withName("Users.Get")
+        .summary("Get a user")
+        .description("Returns one user by id.")
+        .returns(200, querySchema, { contentType: "application/json" })
+        .consumes("application/json")
+        .produces("application/json")
+        .header("x-request-id", schema.string(), { required: true, description: "Request id" })
+        .query(querySchema)
+        .params(schema.object({ id: schema.number() }))
+        .openapi({ "x-test": true });
 
     const beforeFreeze = app.__getRoutes();
     assert.equal(beforeFreeze.length, 2);
@@ -1059,7 +1069,15 @@ async function flushMicrotasks(count = 6) {
     assert.equal(beforeFreeze[1].metadata.groupName, "Users");
     assert.equal(beforeFreeze[1].metadata.groupPrefix, "/users");
     assert.deepEqual(beforeFreeze[1].metadata.middleware, { count: 0 });
-    assert.equal(beforeFreeze[1].metadata.query, querySchema);
+    assert.equal(beforeFreeze[1].metadata.query.schema, querySchema.metadata);
+    assert.equal(beforeFreeze[1].metadata.summary, "Get a user");
+    assert.equal(beforeFreeze[1].metadata.description, "Returns one user by id.");
+    assert.equal(beforeFreeze[1].metadata.responses[0].status, 200);
+    assert.equal(beforeFreeze[1].metadata.produces[0], "application/json");
+    assert.equal(beforeFreeze[1].metadata.consumes[0], "application/json");
+    assert.equal(beforeFreeze[1].metadata.headers[0].name, "x-request-id");
+    assert.equal(beforeFreeze[1].metadata.headers[0].required, true);
+    assert.equal(beforeFreeze[1].metadata.openapi["x-test"], true);
     assert.deepEqual(beforeFreeze[1].handler().body, { id: "demo" });
 
     assert.equal(app.isFrozen(), false);
@@ -1079,6 +1097,22 @@ async function flushMicrotasks(count = 6) {
     assert.equal(singletonDisposals, 1);
     assertThrowsMessage(() => app.services.get("message"), /provider is disposed/);
     assertThrowsMessage(() => app.services.tryGet("message"), /provider is disposed/);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    const app = builder.build();
+    app.mapGet("/health", () => Results.ok({ ok: true })).withName("Health.Get");
+    app.docs({ title: "Docs <Test>", path: "/docs", openapiPath: "/openapi.json" });
+
+    const docsRoutes = app.__getRoutes();
+    assert.equal(docsRoutes.length, 3);
+    assert.equal(docsRoutes[1].pattern, "/openapi.json");
+    assert.equal(docsRoutes[1].metadata.docsInternal, true);
+    assert.equal(docsRoutes[2].pattern, "/docs");
+    assert.equal(docsRoutes[2].handler().kind, "html");
+    assert.equal(docsRoutes[2].handler().body.includes("Docs &lt;Test&gt;"), true);
+    assertThrowsMessage(() => app.docs(), /already registered/);
 }
 
 {

@@ -4264,6 +4264,85 @@ export default app;
 }
 
 #[test]
+fn extracts_openapi_route_contract_metadata() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({ name: Schema.string().min(1) });
+const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
+const Query = Schema.object({ expand: Schema.string().optional() });
+const Params = Schema.object({ id: Schema.integer() });
+const Header = Schema.string();
+const app = Sloppy.create();
+app.post("/users/{id:int}", () => Results.created("/users/1", { id: 1, name: "Ada" }))
+  .name("Users.Create")
+  .summary("Create user")
+  .description("Creates a user account.")
+  .tags("Users", "Admin")
+  .accepts(CreateUser)
+  .returns(201, User, { description: "User created" })
+  .produces("application/json")
+  .consumes("application/json")
+  .header("x-request-id", Header, { required: true, description: "Request id" })
+  .query(Query)
+  .params(Params)
+  .authorize("Users.Write")
+  .openapi({ "x-audit": "enabled" });
+app.docs({ title: "Users API", requireAuth: { policy: "Docs.Read" } });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("OpenAPI route metadata should extract");
+    let route = &app.routes[0];
+    assert_eq!(route.name.as_deref(), Some("Users.Create"));
+    assert_eq!(route.summary.as_deref(), Some("Create user"));
+    assert_eq!(
+        route.description.as_deref(),
+        Some("Creates a user account.")
+    );
+    assert_eq!(route.tags, vec!["Users".to_string(), "Admin".to_string()]);
+    assert_eq!(route.consumes, vec!["application/json".to_string()]);
+    assert_eq!(route.produces, vec!["application/json".to_string()]);
+    assert_eq!(route.headers[0].name, "x-request-id");
+    assert_eq!(route.headers[0].schema, "Header");
+    assert_eq!(route.query_schema.as_deref(), Some("Query"));
+    assert_eq!(route.params_schema.as_deref(), Some("Params"));
+    assert_eq!(
+        route.auth.as_ref().and_then(|auth| auth.policy.as_deref()),
+        Some("Users.Write")
+    );
+    assert_eq!(
+        route
+            .openapi_override
+            .as_ref()
+            .and_then(|value| value.get("x-audit"))
+            .and_then(|value| value.as_str()),
+        Some("enabled")
+    );
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Docs.Ui")));
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Docs.OpenApi")));
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let route = &plan["routes"][0];
+    assert_eq!(route["summary"], "Create user");
+    assert_eq!(route["querySchema"], "Query");
+    assert_eq!(route["paramsSchema"], "Params");
+    assert_eq!(route["headers"][0]["name"], "x-request-id");
+    assert_eq!(route["openapi"]["x-audit"], "enabled");
+}
+
+#[test]
 fn typed_framework_handler_sanitizes_context_schema_reference() {
     let source = r#"import { Sloppy, Results, Schema, RequestContext } from "sloppy";
 import { Postgres } from "sloppy/providers/postgres";

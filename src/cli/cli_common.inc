@@ -515,7 +515,7 @@ static void sl_cli_print_command_help(const char* command)
     }
     if (strcmp(command, "openapi") == 0) {
         printf("Usage: sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
-               "[--output <path>]\n");
+               "[--output <path>] [--strict|--fail-on-partial] [--summary] [--pretty]\n");
         return;
     }
     sl_cli_print_help();
@@ -1193,6 +1193,30 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
 
     if (strcmp(argv[*index], "--report") == 0 && strcmp(out->command, "doctor") == 0) {
         out->doctor_report = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "openapi") == 0 && strcmp(argv[*index], "--strict") == 0) {
+        out->openapi_strict = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "openapi") == 0 && strcmp(argv[*index], "--summary") == 0) {
+        out->openapi_summary = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "openapi") == 0 && strcmp(argv[*index], "--fail-on-partial") == 0) {
+        out->openapi_fail_on_partial = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(out->command, "openapi") == 0 && strcmp(argv[*index], "--pretty") == 0) {
+        out->openapi_pretty = true;
         *index += 1;
         return 1;
     }
