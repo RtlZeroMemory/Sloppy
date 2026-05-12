@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:45243e1a3e6126a1d15f2fa843aeef55c50aa30f6e01b5679b94dfbe564e1bf8",
+    "hash": "sha256:88f0e3115d47d76012ca4b9405d924af71c9817943ff52efd129d56831afd490",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -233,6 +233,7 @@
     "metadataInference": true,
     "nativeEndpointDispatch": true,
     "nativeJsonDispatch": true,
+    "ops": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -325,6 +326,50 @@
       }
     }
   ],
+  "ops": {
+    "health": {
+      "enabled": true,
+      "endpoints": [
+        {
+          "checks": [
+            "database",
+            "scheduler"
+          ],
+          "kind": "aggregate",
+          "method": "GET",
+          "name": "Health",
+          "path": "/status"
+        },
+        {
+          "checks": [
+            "scheduler"
+          ],
+          "kind": "liveness",
+          "method": "GET",
+          "name": "Health.Liveness",
+          "path": "/status/live"
+        },
+        {
+          "checks": [
+            "database"
+          ],
+          "kind": "readiness",
+          "method": "GET",
+          "name": "Health.Readiness",
+          "path": "/status/ready"
+        }
+      ]
+    },
+    "management": {
+      "enabled": false,
+      "endpoints": [],
+      "requiresProtection": false
+    },
+    "metrics": {
+      "json": false,
+      "prometheus": false
+    }
+  },
   "requiredFeatures": [
     "stdlib.os"
   ],
@@ -1195,6 +1240,7 @@
       "ffi": false,
       "health": true,
       "nativeJsonDispatch": true,
+      "ops": true,
       "os": true,
       "providers": true,
       "routeDispatch": true,

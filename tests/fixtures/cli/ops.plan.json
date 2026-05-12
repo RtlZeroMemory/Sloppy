@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "kind": "web",
+  "compilerVersion": "test",
+  "runtimeMinimumVersion": "test",
+  "stdlibVersion": "test",
+  "handlers": [
+    { "id": 1, "displayName": "Management.Health" },
+    { "id": 2, "displayName": "Management.Live" },
+    { "id": 3, "displayName": "Management.Ready" },
+    { "id": 4, "displayName": "Management.Startup" },
+    { "id": 5, "displayName": "Management.Metrics" },
+    { "id": 6, "displayName": "Management.MetricsJson" }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/health",
+      "handlerId": 1,
+      "name": "Management.Health",
+      "health": { "kind": "aggregate", "checks": ["self", "runtime", "memory"] },
+      "response": { "kind": "json", "helper": "ok", "status": 200 },
+      "completeness": { "status": "complete" }
+    },
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/live",
+      "handlerId": 2,
+      "name": "Management.Live",
+      "health": { "kind": "liveness", "checks": ["self"] },
+      "response": { "kind": "json", "helper": "ok", "status": 200 },
+      "completeness": { "status": "complete" }
+    },
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/ready",
+      "handlerId": 3,
+      "name": "Management.Ready",
+      "health": { "kind": "readiness", "checks": ["self", "runtime"] },
+      "response": { "kind": "json", "helper": "ok", "status": 200 },
+      "completeness": { "status": "complete" }
+    },
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/startup",
+      "handlerId": 4,
+      "name": "Management.Startup",
+      "health": { "kind": "startup", "checks": ["self", "runtime"] },
+      "response": { "kind": "json", "helper": "ok", "status": 200 },
+      "completeness": { "status": "complete" }
+    },
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/metrics",
+      "handlerId": 5,
+      "name": "Management.Metrics",
+      "response": { "kind": "text", "helper": "text", "status": 200 },
+      "completeness": { "status": "complete" }
+    },
+    {
+      "method": "GET",
+      "pattern": "/_sloppy/metrics.json",
+      "handlerId": 6,
+      "name": "Management.MetricsJson",
+      "response": { "kind": "json", "helper": "json", "status": 200 },
+      "completeness": { "status": "complete" }
+    }
+  ],
+  "completeness": { "status": "complete" },
+  "doctorChecks": [
+    {
+      "id": "ops.management.protection",
+      "status": "warn",
+      "message": "management endpoints are exposed; protect detailed health, metrics, info, and runtime routes before exposing them outside a trusted network"
+    }
+  ]
+}

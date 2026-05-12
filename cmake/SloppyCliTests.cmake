@@ -54,6 +54,18 @@
         sloppy.cli.routes_dispatch_json tests/golden/cli/routes-dispatch-json.json routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json --dispatch)
     sloppy_add_cli_golden_test(
+        sloppy.cli.health_text tests/golden/cli/health-text.txt health --plan
+        tests/fixtures/cli/ops.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.health_json tests/golden/cli/health-json.json health --plan
+        tests/fixtures/cli/ops.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.metrics_text tests/golden/cli/metrics-text.txt metrics --plan
+        tests/fixtures/cli/ops.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.metrics_json tests/golden/cli/metrics-json.json metrics --plan
+        tests/fixtures/cli/ops.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.capabilities_users_text tests/golden/cli/capabilities-users-text.txt
         capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
         --format text)

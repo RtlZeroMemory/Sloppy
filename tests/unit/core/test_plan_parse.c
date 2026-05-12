@@ -997,6 +997,46 @@ static int test_legacy_route_without_json_metadata_normalizes_json_modes(void)
     return 0;
 }
 
+static int test_route_health_metadata_parses(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    const SlPlanRoute* route = NULL;
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Management.Ready\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/_sloppy/ready\",\"handlerId\":1,"
+        "\"health\":{\"kind\":\"readiness\",\"checks\":[\"self\",\"runtime\"]}}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 27;
+    }
+    if (plan.route_count != 1U) {
+        return 28;
+    }
+    route = &plan.routes[0];
+    if (!sl_str_equal(route->health_kind, sl_str_from_cstr("readiness"))) {
+        return 29;
+    }
+    if (route->health_check_count != 2U) {
+        return 30;
+    }
+    if (!sl_str_equal(route->health_checks[0], sl_str_from_cstr("self"))) {
+        return 31;
+    }
+    if (!sl_str_equal(route->health_checks[1], sl_str_from_cstr("runtime"))) {
+        return 32;
+    }
+    return 0;
+}
+
 static int test_empty_bindings_marks_route_metadata_available(void)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
@@ -1484,6 +1524,12 @@ int main(void)
         fprintf(stderr,
                 "test_legacy_route_without_json_metadata_normalizes_json_modes failed: %d\n",
                 result);
+        return result;
+    }
+
+    result = test_route_health_metadata_parses();
+    if (result != 0) {
+        fprintf(stderr, "test_route_health_metadata_parses failed: %d\n", result);
         return result;
     }
 

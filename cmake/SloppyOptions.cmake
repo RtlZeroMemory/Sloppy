@@ -148,6 +148,8 @@ set(
     data.js
     ffi.js
     fs.js
+    health.js
+    metrics.js
     crypto.js
     net.js
     os.js

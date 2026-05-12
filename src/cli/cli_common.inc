@@ -29,6 +29,7 @@ static bool sl_cli_command_accepts_artifacts_plan(const char* command)
 {
     return command != NULL &&
            (strcmp(command, "routes") == 0 || strcmp(command, "capabilities") == 0 ||
+            strcmp(command, "health") == 0 || strcmp(command, "metrics") == 0 ||
             strcmp(command, "deps") == 0 || strcmp(command, "doctor") == 0 ||
             strcmp(command, "audit") == 0 || strcmp(command, "openapi") == 0);
 }
@@ -37,6 +38,7 @@ static bool sl_cli_command_requires_metadata_plan(const char* command)
 {
     return command != NULL &&
            (strcmp(command, "routes") == 0 || strcmp(command, "capabilities") == 0 ||
+            strcmp(command, "health") == 0 || strcmp(command, "metrics") == 0 ||
             strcmp(command, "deps") == 0 || strcmp(command, "audit") == 0 ||
             strcmp(command, "openapi") == 0);
 }
@@ -378,6 +380,10 @@ static void sl_cli_print_help(void)
            "[-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json] [--dispatch]\n");
+    printf("  sloppy health [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
+    printf("  sloppy metrics [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
+           "text|json]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
            "[--format text|json]\n");
     printf("  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
@@ -397,6 +403,16 @@ static void sl_cli_print_command_help(const char* command)
     if (strcmp(command, "routes") == 0) {
         printf("Usage: sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
                "[--format text|json] [--dispatch]\n");
+        return;
+    }
+    if (strcmp(command, "health") == 0) {
+        printf("Usage: sloppy health [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "metrics") == 0) {
+        printf("Usage: sloppy metrics [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
+               "[--format text|json]\n");
         return;
     }
     if (strcmp(command, "capabilities") == 0) {

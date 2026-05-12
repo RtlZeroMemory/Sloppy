@@ -17,7 +17,9 @@ configuration, services, validation, or data access.
 - [Middleware](middleware.md) — `app.use(fn)`, `group.use(fn)`, pipeline order
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
 - [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, `ctx.user`
-- [Health checks](health.md) — `app.mapHealthChecks(options?)`, liveness/readiness
+- [Health checks](health.md) — `Health`, `app.health()`, liveness/readiness/startup
+- [Metrics](metrics.md) — counters, gauges, histograms, JSON snapshots, Prometheus output
+- [Management](management.md) — opt-in actuator-style backend endpoints
 - [Errors](errors.md) — `app.useErrors(...)`, typed mappings, safe logging
 - [ProblemDetails](problem-details.md) — problem response descriptor options
 - [Request IDs](request-id.md) — request ID middleware and response header behavior

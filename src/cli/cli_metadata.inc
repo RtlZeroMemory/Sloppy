@@ -233,6 +233,46 @@ static int sl_cli_parse_route_responses(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* health = yyjson_obj_get(value, "health");
+    yyjson_val* checks = NULL;
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (health == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(health)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route health must be an object\n");
+        return 1;
+    }
+    route->health_kind = sl_cli_json_span(health, "kind");
+    checks = yyjson_obj_get(health, "checks");
+    if (checks == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(checks)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health checks must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(checks, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            continue;
+        }
+        if (route->health_check_count >= SL_CLI_MAX_ROUTE_HEALTH_CHECKS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route health checks in metadata\n");
+            return 1;
+        }
+        route->health_checks[route->health_check_count] =
+            (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        route->health_check_count += 1U;
+    }
+    return 0;
+}
+
 static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* completeness = yyjson_obj_get(value, "completeness");
@@ -247,6 +287,9 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
     }
     if (sl_cli_parse_route_responses(value, route) != 0) {
+        return 1;
+    }
+    if (sl_cli_parse_route_health(value, route) != 0) {
         return 1;
     }
     if (route->response_count == 0U && !sl_cli_span_empty(route->response_kind)) {

@@ -9,8 +9,10 @@ import {
     Base64Url,
     CancellationController,
     Deadline,
+    Health,
     Hex,
     HttpClient,
+    Metrics,
     ProblemDetails,
     Realtime,
     Results,
@@ -40,12 +42,13 @@ export const DEFAULT_JS_TARGETS = Object.freeze([
     "worker-queue",
     "h2-client-options",
     "stdlib-import-shapes",
+    "ops-health-metrics",
 ]);
 
 const SECRET_MARKER = "SECRET_JS_FUZZ_SHOULD_NOT_APPEAR";
 const HTTP_METHODS = Object.freeze(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const STD_LIB_EXPORTS = Object.freeze({
-    root: ["Sloppy", "Results", "ProblemDetails", "HttpClient", "WorkQueue", "Time", "Deadline"],
+    root: ["Sloppy", "Results", "ProblemDetails", "HttpClient", "WorkQueue", "Time", "Deadline", "Health", "Metrics"],
     codec: ["Base64", "Base64Url", "Hex", "Text", "Binary", "Checksums", "Compression"],
     time: ["Time", "Deadline", "CancellationController", "TimeoutError", "CancelledError"],
     net: ["HttpClient", "TcpClient", "TcpListener", "TcpConnection", "LocalEndpoint", "NetworkAddress"],
@@ -734,6 +737,34 @@ const targets = Object.freeze({
         assertBytesEqual(Base64Url.decode(Base64Url.encode(bytes), { padding: "forbidden" }), bytes);
         assertBytesEqual(Hex.decode(Hex.encode(bytes)), bytes);
         assert.equal(Text.utf8.decode(Text.utf8.encode(textFromPrng(random, 16)), { fatal: true }).length >= 0, true);
+    },
+
+    async "ops-health-metrics"(random) {
+        const metrics = Metrics.createRegistry({ maxLabelSetsPerMetric: 4 });
+        const counter = metrics.counter(`fuzz.metric.${random.int(100)}`);
+        const histogram = metrics.histogram("fuzz.duration.ms", { buckets: [1, 5, 10, 50] });
+        for (let index = 0; index < 8; index += 1) {
+            counter.inc(1, {
+                route: random.pick(["/users/{id}", "/orders/{id}", "/health"]),
+                code: String(200 + random.int(5)),
+            });
+            histogram.observe(random.int(100), { route: "/users/{id}" });
+        }
+        const health = Health.createRegistry();
+        health
+            .check("self", Health.self(), { tags: ["live", "ready"], critical: true })
+            .check("custom", () => ({
+                status: random.pick(["healthy", "degraded", "unhealthy"]),
+                data: {
+                    token: SECRET_MARKER,
+                    value: textFromPrng(random, 16),
+                },
+            }), { tags: ["ready"], critical: random.bool(), cacheMs: random.int(5) });
+        const result = await health.evaluate(random.pick(["health", "live", "ready", "startup"]));
+        const prometheus = metrics.renderPrometheus();
+        assert.equal(JSON.stringify(result).includes(SECRET_MARKER), false);
+        assert(["healthy", "degraded", "unhealthy"].includes(result.status));
+        assert.equal(prometheus.includes("fuzz_metric_"), true);
     },
 });
 

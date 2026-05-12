@@ -56,6 +56,7 @@
 #define SL_CLI_MAX_ROUTE_EFFECTS 16U
 #define SL_CLI_MAX_ROUTE_TAGS 16U
 #define SL_CLI_MAX_ROUTE_RESPONSES 16U
+#define SL_CLI_MAX_ROUTE_HEALTH_CHECKS 32U
 #define SL_CLI_MAX_ROUTE_AUTH_ROLES 8U
 #define SL_CLI_MAX_ROUTE_AUTH_CLAIMS 8U
 #define SL_CLI_MAX_AUTH_SCHEMES 8U
@@ -120,6 +121,7 @@
 #include "cli/cli_lookup.inc"
 #include "cli/cli_db.inc"
 #include "cli/cli_routes.inc"
+#include "cli/cli_ops.inc"
 #include "cli/cli_deps.inc"
 #include "cli/cli_doctor.inc"
 #include "cli/cli_audit.inc"
@@ -151,6 +153,12 @@ int main(int argc, char** argv)
 
     if (strcmp(options.command, "routes") == 0) {
         return sl_cli_command_routes(&options);
+    }
+    if (strcmp(options.command, "health") == 0) {
+        return sl_cli_command_health(&options);
+    }
+    if (strcmp(options.command, "metrics") == 0) {
+        return sl_cli_command_metrics(&options);
     }
     if (strcmp(options.command, "capabilities") == 0) {
         return sl_cli_command_capabilities(&options);

@@ -322,7 +322,7 @@ foreach(required_pattern IN ITEMS
         "function matchRoutePattern(pattern, path)"
         "function createHeadersLike(entries)"
         "function normalizeRequestBody(options, headerEntries)"
-        "function createContext(app, method, targetParts, headers, route, bodyKind, bodyBytes)"
+        "function createContext(app, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes)"
         "request(method, target, options = undefined)"
         "get(target, options)"
         "post(target, options)"
@@ -499,6 +499,8 @@ foreach(required_pattern IN ITEMS
         "useCors(policy)"
         "useErrors(options = undefined)"
         "mapError(type, mapper)"
+        "health()"
+        "management(options = undefined)"
         "mapHealthChecks(options)"
         "DEFAULT_LIVENESS_PATH"
         "DEFAULT_READINESS_PATH"
@@ -519,7 +521,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "export { Testing }")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "export { Testing }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

@@ -16,6 +16,13 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
 });
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 
+function nowMs() {
+    if (globalThis.performance !== undefined && typeof globalThis.performance.now === "function") {
+        return globalThis.performance.now();
+    }
+    return Date.now();
+}
+
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return false;
@@ -636,14 +643,16 @@ function signalObject() {
     });
 }
 
-function createContext(app, method, targetParts, headers, route, bodyKind, bodyBytes) {
+function createContext(app, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
     return Object.freeze({
         services: app.services.createScope(),
         capabilities: app.capabilities,
         config: app.config,
         log: app.log,
+        metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         route,
+        routePattern: matchedRoute?.pattern ?? null,
         query: parseQuery(targetParts.queryString),
         request,
         body: request.body,
@@ -656,6 +665,12 @@ function createContext(app, method, targetParts, headers, route, bodyKind, bodyB
         }),
         signal: signalObject(),
         deadline: null,
+        lifecycle: typeof app.__getLifecycle === "function"
+            ? app.__getLifecycle()
+            : Object.freeze({
+                startupComplete: true,
+                shuttingDown: false,
+            }),
     });
 }
 
@@ -873,6 +888,30 @@ function createTestHost(app) {
     let closePromise = undefined;
     let drainWaiters = [];
 
+    function metrics() {
+        return typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined;
+    }
+
+    function recordHttpMetric(metricRegistry, labels, response, durationMs, requestBytes) {
+        if (metricRegistry === undefined) {
+            return;
+        }
+        const responseBytes = response.bytes().byteLength;
+        metricRegistry.counter("http.requests.total", { description: "HTTP requests processed by the app host." }).inc(labels);
+        metricRegistry.counter("http.route.hits", { description: "HTTP route hits by route pattern." }).inc(labels);
+        metricRegistry.counter("http.request.bytes", { description: "HTTP request body bytes processed by the app host." }).inc(labels, requestBytes);
+        metricRegistry.counter("http.response.bytes", { description: "HTTP response body bytes written by the app host." }).inc(labels, responseBytes);
+        metricRegistry.histogram("http.request.duration.ms", { description: "HTTP request duration in milliseconds." }).observe(labels, durationMs);
+        metricRegistry.counter("http.status.total", { description: "HTTP responses by status code and class." }).inc({
+            ...labels,
+            status: String(response.status),
+            statusClass: `${Math.trunc(response.status / 100)}xx`,
+        });
+        if (response.status >= 500) {
+            metricRegistry.counter("http.errors.total", { description: "HTTP responses with 5xx status." }).inc(labels);
+        }
+    }
+
     function finishRequest() {
         activeRequests -= 1;
         if (closed && activeRequests === 0) {
@@ -937,21 +976,33 @@ function createTestHost(app) {
                 return responseFromErrorStatus(app, 415, undefined, "Unsupported Media Type\n");
             }
 
-            const context = createContext(app, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes);
+            const context = createContext(app, normalizedMethod, targetParts, headers, match.params, match.route, bodyKind, bodyBytes);
+            const metricRegistry = metrics();
+            const metricLabels = Object.freeze({
+                method: normalizedMethod,
+                route: match.route.pattern,
+            });
+            metricRegistry?.gauge("http.requests.active", { description: "HTTP requests currently active in the app host." }).inc(metricLabels);
+            const started = nowMs();
             try {
                 try {
-                    return negotiatedResponse(
+                    const response = negotiatedResponse(
                         responseFromResultWithOptions(await match.route.handler(context), serializationOptions),
                         headers,
                         serializationOptions,
                     );
+                    recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                    return response;
                 } catch (error) {
                     if (isUnsupportedMediaHelperError(error)) {
-                        return responseFromText(415, "Unsupported Media Type\n");
+                        const response = responseFromText(415, "Unsupported Media Type\n");
+                        recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                        return response;
                     }
                     throw error;
                 }
             } finally {
+                metricRegistry?.gauge("http.requests.active").dec(metricLabels);
                 await context.services.dispose();
             }
         } finally {
@@ -982,6 +1033,9 @@ function createTestHost(app) {
         async close() {
             if (closePromise !== undefined) {
                 return closePromise;
+            }
+            if (typeof app.__beginShutdown === "function") {
+                app.__beginShutdown();
             }
             closed = true;
             closePromise = (async () => {

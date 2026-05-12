@@ -120,6 +120,10 @@
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         add_test(NAME bootstrap.stdlib.auth
                  COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_auth.mjs")
+        add_test(NAME bootstrap.stdlib.ops_management
+                 COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_ops_management.mjs")
+        add_test(NAME bootstrap.stdlib.ops_properties
+                 COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_ops_properties.mjs")
         add_test(
             NAME bootstrap.stdlib.codec_properties
             COMMAND "${NODE_EXECUTABLE}"
@@ -149,7 +153,8 @@
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.auth bootstrap.stdlib.property
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.auth
+            bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties

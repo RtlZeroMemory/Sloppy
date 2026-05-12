@@ -60,6 +60,8 @@
             conformance.prealpha_control_plane.compile_artifacts prealpha-control-plane
             examples/prealpha-control-plane/src/main.js)
         sloppy_add_conformance_compile_test(
+            conformance.ops_compiler.compile_artifacts ops-compiler examples/ops-compiler/app.js)
+        sloppy_add_conformance_compile_test(
             conformance.source_map.compile_artifacts source-map
             compiler/tests/fixtures/source-map/input.js)
         sloppy_add_conformance_compile_test(
@@ -138,6 +140,10 @@
         sloppy_add_example_tooling_test(
             examples.auth_api.tooling auth-api examples/auth-api/app.js "bearerAuth"
             "auth:role:admin" "" "\"findings\"" "securitySchemes")
+        sloppy_add_example_tooling_test(
+            examples.ops_compiler.tooling ops-compiler examples/ops-compiler/app.js
+            "\"ops\"" "Management.Metrics" "" "SLOPPY_AUDIT_OPS_MANAGEMENT_EXPOSED"
+            "/_sloppy/metrics")
         sloppy_add_framework_compile_example_tests()
     endif()
 

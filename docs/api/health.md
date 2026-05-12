@@ -1,107 +1,113 @@
-# Health checks
+# Health
 
-`app.mapHealthChecks(options?)` installs three GET routes — aggregate,
-liveness, and readiness — that report the app's health.
+`Health` provides first-party liveness, readiness, startup, and detailed health
+checks for the bootstrap app host.
 
 ```ts
-import { Sloppy } from "sloppy";
+import { Health, Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 
-app.mapHealthChecks({
-    checks: [
-        {
-            name: "database",
-            check: async (ctx) => Boolean(await ctx.services.get("db").ping()),
-            readiness: true,
-        },
-        {
-            name: "shard-leader",
-            check: () => Boolean(globalThis.__shardLeader),
-            liveness: true,
-            readiness: false,
-        },
-    ],
-});
+app.health()
+    .check("self", Health.self(), { tags: ["live", "ready", "startup"] })
+    .check("db", Health.data(db), { tags: ["ready"], timeoutMs: 1000, critical: true })
+    .check("disk", Health.disk({ path: "./data", minFreeBytes: 500_000_000 }), {
+        tags: ["ready", "health"],
+        critical: false,
+        cacheMs: 5000,
+    })
+    .expose({
+        live: "/live",
+        ready: "/ready",
+        startup: "/startup",
+        health: "/health",
+    });
 ```
 
-Three routes get installed in one shot:
+## Result Model
 
-| Path                                | Mode       | Runs                                          |
-| ----------------------------------- | ---------- | --------------------------------------------- |
-| `/health`                           | aggregate  | every check, regardless of liveness/readiness |
-| `/health/live`                      | liveness   | only checks with `liveness: true`             |
-| `/health/ready`                     | readiness  | only checks with `readiness: true` (default)  |
+Every check returns one of:
 
-If any of the three paths is already registered, `mapHealthChecks` throws
-before installing any route — partial registration cannot leave the app in
-a half-configured state.
+- `healthy`
+- `degraded`
+- `unhealthy`
 
-## Default paths
+Top-level aggregation is:
 
-```ts
-app.mapHealthChecks();              // /health, /health/live, /health/ready
-app.mapHealthChecks("/_status");    // override aggregate path only
-app.mapHealthChecks({ path: "/_health", livenessPath: "/_alive", readinessPath: "/_ready" });
-```
+- any critical `unhealthy` check makes the response `unhealthy`;
+- any non-critical `unhealthy` check makes the response `degraded`;
+- any `degraded` check makes the response `degraded`;
+- otherwise the response is `healthy`.
 
-The three paths must be distinct. Without overrides, the defaults are
-`/health`, `/health/live`, `/health/ready`.
-
-## Check definitions
-
-A check is either a function or a `{ name, check, liveness?, readiness? }`
-object.
-
-```ts
-function database() { /* ... */ }
-function shardLeader() { /* ... */ }
-
-app.mapHealthChecks({
-    checks: [
-        database,                                         // name = "database", readiness only
-        { name: "leader", check: shardLeader, liveness: true, readiness: false },
-    ],
-});
-```
-
-- A bare function: name is `function.name` (or `check-N` for anonymous), runs
-  during readiness and aggregate.
-- An object: `name` and `check` are required; `liveness` and `readiness` are
-  booleans (defaults: `liveness: false`, `readiness: true`). At least one
-  must be true.
-
-A check function can return:
-
-- `true` / `false` — explicit health.
-- `{ ok: boolean }` — explicit health.
-- `undefined` or anything else — treated as healthy.
-
-A thrown or rejected check is unhealthy.
-
-## Response shape
+The response contains deterministic JSON:
 
 ```json
 {
-  "status": "healthy",
-  "checks": [
-    { "name": "database", "status": "healthy" }
-  ]
+  "status": "degraded",
+  "durationMs": 13,
+  "checkedAtUtc": "2026-05-12T00:00:00.000Z",
+  "checks": {
+    "db": {
+      "name": "db",
+      "status": "healthy",
+      "durationMs": 4,
+      "checkedAtUtc": "2026-05-12T00:00:00.000Z",
+      "tags": ["ready"],
+      "critical": true,
+      "cached": false,
+      "timeoutMs": 1000
+    }
+  },
+  "summary": {
+    "healthy": 1,
+    "degraded": 0,
+    "unhealthy": 0
+  }
 }
 ```
 
-`200 application/json` when every check passed. `503 application/json` when
-any check returned `false`, `{ ok: false }`, or threw — body shape is the
-same.
+Health output redacts secret-looking keys such as `password`, `secret`, `token`,
+`cookie`, `authorization`, `apiKey`, and `connectionString`.
 
-For compiler input, health-check functions must be inline and must not capture
-module-level locals. Captured values are rejected with
-`SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS` so generated health handlers do not depend
-on hidden closure state.
+## Built-In Checks
 
-## Status
+`Health.self()` reports that the process is alive.
 
-Health-check routes run in the bootstrap app-host handler path. `sloppyc`
-also extracts literal `app.mapHealthChecks(...)` calls for emitted artifacts:
-it generates aggregate, liveness, and readiness GET handlers and emits
-Plan-level health metadata with endpoint kind and selected check names.
+`Health.runtime()` reports the app-host runtime state and fails when the request
+context says startup is incomplete or shutdown has started.
+
+`Health.config(requiredKeys)` checks that required config keys are present. It
+reports key names only, not values.
+
+`Health.data(provider)` calls `ProviderHealth.check(provider)`, which runs a
+bounded provider `select 1` probe through the existing data provider facade.
+
+`Health.jobs(resource)` reports queue or scheduler state from a resource with a
+`state` snapshot. Missing scheduler resources produce a degraded result.
+
+`Health.disk({ path, minFreeBytes })` checks path accessibility and free bytes
+when the platform supports `statfs`.
+
+`Health.memory({ degradedRssBytes, unhealthyRssBytes })` checks process memory
+when the host exposes `process.memoryUsage()`.
+
+`Health.http(url, options)` and `Health.tcp(host, port, options)` provide
+bounded HTTP and TCP dependency probes.
+
+## Endpoint Semantics
+
+`app.health().expose()` registers four GET endpoints:
+
+| Endpoint | Mode | Default checks |
+| --- | --- | --- |
+| `/live` | liveness | checks tagged `live` |
+| `/ready` | readiness | checks tagged `ready` |
+| `/startup` | startup | checks tagged `startup` |
+| `/health` | detailed | all checks |
+
+`healthy` returns HTTP `200`. `degraded` returns HTTP `200` by default.
+`unhealthy` returns HTTP `503`.
+
+`app.mapHealthChecks()` is still supported for the earlier lightweight
+`/health`, `/health/live`, and `/health/ready` compatibility API. New code should
+use `app.health()`.

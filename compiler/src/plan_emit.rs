@@ -1479,6 +1479,82 @@ pub(crate) fn emit_plan_with_route_artifact(
     let mut required_features = Vec::new();
     let mut doctor_checks = Vec::new();
     doctor_checks.extend(schema_reference_resolution.doctor_checks());
+    let health_endpoints = app
+        .routes
+        .iter()
+        .filter_map(|route| {
+            route.health.as_ref().map(|health| {
+                json!({
+                    "method": route.method,
+                    "path": route.pattern,
+                    "name": route.name,
+                    "kind": health.kind,
+                    "checks": health.checks
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let management_endpoints = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("Management."))
+        })
+        .map(|route| {
+            json!({
+                "method": route.method,
+                "path": route.pattern,
+                "name": route.name
+            })
+        })
+        .collect::<Vec<_>>();
+    if !health_endpoints.is_empty() || !management_endpoints.is_empty() {
+        value["ops"] = json!({
+            "health": {
+                "enabled": !health_endpoints.is_empty(),
+                "endpoints": health_endpoints
+            },
+            "management": {
+                "enabled": !management_endpoints.is_empty(),
+                "endpoints": management_endpoints,
+                "requiresProtection": !management_endpoints.is_empty()
+            },
+            "metrics": {
+                "prometheus": app.routes.iter().any(|route| route.name.as_deref() == Some("Management.Metrics")),
+                "json": app.routes.iter().any(|route| route.name.as_deref() == Some("Management.MetricsJson"))
+            }
+        });
+        value["strongPlan"]["evidence"]["ops"] = json!(true);
+        value["features"]["ops"] = json!(true);
+    }
+    if app.routes.iter().any(|route| {
+        route
+            .name
+            .as_deref()
+            .is_some_and(|name| name.starts_with("Management."))
+    }) {
+        value["features"]["management"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "ops.management.protection",
+            "status": "warn",
+            "message": "management endpoints are exposed; protect detailed health, metrics, info, and runtime routes before exposing them outside a trusted network"
+        }));
+    }
+    if app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Management.Metrics"))
+    {
+        value["features"]["metrics"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "ops.metrics.prometheus",
+            "status": "info",
+            "message": "Prometheus metrics endpoint is Plan-visible and package-safe"
+        }));
+    }
     if app.kind == ProjectKind::Program {
         doctor_checks.push(json!({
             "id": "program.metadata",

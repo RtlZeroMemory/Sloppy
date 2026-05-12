@@ -181,6 +181,17 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         sl_cli_json_escape(stdout, route->dynamic_reason);
         printf(" }");
     }
+    if (!sl_cli_span_empty(route->health_kind)) {
+        size_t check = 0U;
+        printf(", \"health\": { \"kind\": ");
+        sl_cli_json_escape(stdout, route->health_kind);
+        printf(", \"checks\": [");
+        for (check = 0U; check < route->health_check_count; check += 1U) {
+            printf("%s", check == 0U ? "" : ", ");
+            sl_cli_json_escape(stdout, route->health_checks[check]);
+        }
+        printf("] }");
+    }
     sl_cli_routes_emit_json_constraints(route->pattern);
     sl_cli_routes_emit_json_bindings(route);
     printf(", \"jsonRequest\": { \"mode\": ");

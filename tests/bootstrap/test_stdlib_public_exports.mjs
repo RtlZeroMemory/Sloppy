@@ -66,6 +66,8 @@ import {
     Auth,
     BackgroundService as RootBackgroundService,
     Config,
+    Health,
+    Metrics,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     unsafeFfi as RootUnsafeFfi,
@@ -120,6 +122,8 @@ assert.equal(Auth.constantTimeEquals("same", "same"), true);
 assert.equal(Auth.constantTimeEquals("same", "diff"), false);
 assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
+assert.equal(typeof Health.createRegistry, "function");
+assert.equal(typeof Metrics.createRegistry, "function");
 assert.equal(RootBackgroundService, BackgroundService);
 assert.equal(RootFfiTypes, t);
 assert.equal(RootUnsafeFfi, unsafeFfi);

@@ -88,6 +88,7 @@
     sloppy_add_c_unit_test(core_layout_contract core.layout.contract tests/unit/core/test_layout.c)
     sloppy_add_c_unit_test(core_logging_structured core.logging.structured
                            tests/unit/core/test_logging.c)
+    sloppy_add_c_unit_test(core_ops_metrics core.ops_metrics tests/unit/core/test_ops_metrics.c)
     sloppy_add_c_unit_test(core_platform_thread core.platform.thread
                            tests/unit/core/test_platform_thread.c)
     add_test(NAME stress.logging.structured COMMAND $<TARGET_FILE:core_logging_structured> --stress)
@@ -426,6 +427,13 @@
     set_tests_properties(
         benchmarks.sloppy_bench.logging_smoke_json
         PROPERTIES PASS_REGULAR_EXPRESSION "\"name\": \"logging.enabled.five_fields\"")
+
+    add_test(
+        NAME benchmarks.sloppy_bench.ops_metrics_smoke_json
+        COMMAND sloppy_bench --smoke --format json --bench ops.metrics.counter.inc)
+    set_tests_properties(
+        benchmarks.sloppy_bench.ops_metrics_smoke_json
+        PROPERTIES PASS_REGULAR_EXPRESSION "\"name\": \"ops.metrics.counter.inc\"")
 
     if(SLOPPY_ENABLE_V8)
         add_test(

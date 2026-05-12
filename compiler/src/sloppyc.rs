@@ -65,6 +65,7 @@ const WORKER_EXPORTS: &[&str] = &[
 const DEFAULT_HEALTH_PATH: &str = "/health";
 const DEFAULT_LIVENESS_PATH: &str = "/health/live";
 const DEFAULT_READINESS_PATH: &str = "/health/ready";
+const DEFAULT_MANAGEMENT_PATH: &str = "/_sloppy";
 
 mod configuration;
 use configuration::*;
@@ -268,6 +269,7 @@ struct HealthOptions {
     path: String,
     liveness_path: String,
     readiness_path: String,
+    startup_path: Option<String>,
     checks: Vec<HealthCheck>,
 }
 
@@ -277,6 +279,18 @@ struct HealthCheck {
     check_source: String,
     liveness: bool,
     readiness: bool,
+    startup: bool,
+    critical: bool,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ManagementOptions {
+    path: String,
+    health: bool,
+    metrics: bool,
+    info: bool,
+    runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -6152,6 +6166,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "ProblemDetails"
             | "RequestId"
             | "RequestLogging"
+            | "Health"
+            | "Metrics"
             | "Testing"
             | "data"
             | "sql"
@@ -6548,6 +6564,22 @@ fn extract_expression_statement(
         app_map_health_checks_call(path, source, source_name, &statement.expression, state)?
     {
         state.uses_health = true;
+        state.routes.extend(routes);
+        return Ok(());
+    }
+
+    if let Some(routes) =
+        app_health_expose_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.uses_health = true;
+        state.routes.extend(routes);
+        return Ok(());
+    }
+
+    if let Some(routes) =
+        app_management_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.uses_health = state.uses_health || routes.iter().any(|route| route.health.is_some());
         state.routes.extend(routes);
         return Ok(());
     }
@@ -10376,6 +10408,505 @@ fn app_map_health_checks_call(
     )?))
 }
 
+fn app_health_expose_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<Route>>, Diagnostic> {
+    let Expression::CallExpression(expose_call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_expression(&expose_call.callee) else {
+        return Ok(None);
+    };
+    if property != "expose" {
+        return Ok(None);
+    }
+    if expose_call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().expose accepts at most one literal options argument",
+        )
+        .with_path(path)
+        .with_span(expose_call.span));
+    }
+
+    let mut options = health_expose_options_from_call(path, expose_call)?;
+    let Some(checks) = health_check_chain_from_expression(path, source, receiver, state)? else {
+        return Ok(None);
+    };
+    options.checks = checks;
+    Ok(Some(health_routes_from_options(
+        path,
+        source,
+        source_name,
+        expose_call.span,
+        &options,
+        &state.middleware,
+        state.cors_policy.as_ref(),
+    )?))
+}
+
+fn app_management_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<Route>>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    if property != "management" || !state.app_vars.contains(receiver) {
+        return Ok(None);
+    }
+    if call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            "app.management accepts at most one literal options argument",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let options = management_options_from_call(path, call)?;
+    Ok(Some(management_routes_from_options(
+        path,
+        source,
+        source_name,
+        call.span,
+        &options,
+        &state.middleware,
+        state.cors_policy.as_ref(),
+    )?))
+}
+
+fn health_expose_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<HealthOptions, Diagnostic> {
+    let mut options = HealthOptions {
+        path: DEFAULT_HEALTH_PATH.to_string(),
+        liveness_path: "/live".to_string(),
+        readiness_path: "/ready".to_string(),
+        startup_path: Some("/startup".to_string()),
+        checks: Vec::new(),
+    };
+
+    let Some(argument) = call.arguments.first() else {
+        health_paths_are_distinct(path, call.span, &options)?;
+        return Ok(options);
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().expose options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        if property.computed
+            || property.shorthand
+            || property.method
+            || property.kind != PropertyKind::Init
+        {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose options must use simple literal properties",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose option names must be literal",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        match key {
+            "health" => {
+                options.path =
+                    health_path_from_expression(path, &property.value, "health", property.span)?;
+            }
+            "live" | "liveness" | "livenessPath" => {
+                options.liveness_path =
+                    health_path_from_expression(path, &property.value, "liveness", property.span)?;
+            }
+            "ready" | "readiness" | "readinessPath" => {
+                options.readiness_path =
+                    health_path_from_expression(path, &property.value, "readiness", property.span)?;
+            }
+            "startup" | "startupPath" => {
+                options.startup_path = Some(health_path_from_expression(
+                    path,
+                    &property.value,
+                    "startup",
+                    property.span,
+                )?);
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!("unsupported health expose option '{key}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    health_paths_are_distinct(path, object.span, &options)?;
+    Ok(options)
+}
+
+fn health_check_chain_from_expression(
+    path: &Path,
+    source: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<HealthCheck>>, Diagnostic> {
+    let mut checks = Vec::new();
+    let mut current = expression;
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return Ok(None);
+        };
+        let Some((receiver, property)) = static_member_expression(&call.callee) else {
+            return Ok(None);
+        };
+        match property {
+            "check" => {
+                checks.push(health_check_from_chain_call(path, source, call)?);
+                current = receiver;
+            }
+            "health" => {
+                if !call.arguments.is_empty() {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "app.health does not accept compiler-visible arguments",
+                    )
+                    .with_path(path)
+                    .with_span(call.span));
+                }
+                let Some((root_receiver, root_property)) = static_member_name(&call.callee) else {
+                    return Ok(None);
+                };
+                if root_property != "health" || !state.app_vars.contains(root_receiver) {
+                    return Ok(None);
+                }
+                checks.reverse();
+                return Ok(Some(checks));
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
+fn health_check_from_chain_call(
+    path: &Path,
+    source: &str,
+    call: &CallExpression<'_>,
+) -> Result<HealthCheck, Diagnostic> {
+    if !(2..=3).contains(&call.arguments.len()) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().check requires a name, check function, and optional literal options",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let Some(name) = call.arguments.first().and_then(string_argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check name must be a string literal",
+        )
+        .with_path(path)
+        .with_span(
+            call.arguments
+                .first()
+                .and_then(argument_span)
+                .unwrap_or(call.span),
+        ));
+    };
+    if name.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check name must be non-empty",
+        )
+        .with_path(path)
+        .with_span(
+            call.arguments
+                .first()
+                .and_then(argument_span)
+                .unwrap_or(call.span),
+        ));
+    }
+
+    let Some(check_argument) = call.arguments.get(1) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check requires a check callback or built-in check",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    let check_source = health_chain_check_source(path, source, check_argument)?;
+    let mut tags = Vec::new();
+    let mut critical = true;
+    if let Some(options_argument) = call.arguments.get(2) {
+        let Some(object) = object_argument(options_argument) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health check options must be an object literal",
+            )
+            .with_path(path)
+            .with_span(argument_span(options_argument).unwrap_or(call.span)));
+        };
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check options do not support spread properties",
+                )
+                .with_path(path)
+                .with_span(object.span));
+            };
+            if property.computed
+                || property.shorthand
+                || property.method
+                || property.kind != PropertyKind::Init
+            {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check options must use simple literal properties",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+            let Some(key) = property_key_name(&property.key) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check option names must be literal",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            };
+            match key {
+                "tags" => {
+                    tags = route_tags_from_expression(&property.value)
+                        .map_err(|diagnostic| diagnostic.with_path(path))?;
+                }
+                "critical" => {
+                    let Expression::BooleanLiteral(value) = &property.value else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                            "health check critical flag must be a boolean literal",
+                        )
+                        .with_path(path)
+                        .with_span(property.value.span()));
+                    };
+                    critical = value.value;
+                }
+                "timeoutMs" | "cacheMs" | "degradedIsUnhealthy" => {}
+                _ => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        format!("unsupported health check option '{key}'"),
+                    )
+                    .with_path(path)
+                    .with_span(property.span));
+                }
+            }
+        }
+    }
+
+    Ok(HealthCheck {
+        name: name.to_string(),
+        check_source,
+        liveness: tags.iter().any(|tag| tag == "live"),
+        readiness: tags.iter().any(|tag| tag == "ready"),
+        startup: tags.iter().any(|tag| tag == "startup"),
+        critical,
+        tags,
+    })
+}
+
+fn health_chain_check_source(
+    path: &Path,
+    source: &str,
+    argument: &Argument<'_>,
+) -> Result<String, Diagnostic> {
+    match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            health_check_arrow_source(path, source, function)
+        }
+        Argument::FunctionExpression(function) => {
+            health_check_function_source(path, source, function, false)
+        }
+        Argument::CallExpression(call) => {
+            let Some((receiver, property)) = static_member_name(&call.callee) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "compiler-visible built-in health checks must use Health.*()",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            };
+            if receiver != "Health" || !call.arguments.is_empty() {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "compiler-visible built-in health checks support only zero-argument Health.self(), Health.runtime(), Health.memory(), and Health.openApi()",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
+            match property {
+                "self" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                "runtime" => Ok("(ctx) => ((ctx && ctx.lifecycle && ctx.lifecycle.shuttingDown) ? { status: \"unhealthy\", errorCode: \"SLOPPY_HEALTH_SHUTTING_DOWN\" } : { status: \"healthy\" })".to_string()),
+                "memory" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                "openApi" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                _ => Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!("unsupported compiler-visible built-in health check Health.{property}()"),
+                )
+                .with_path(path)
+                .with_span(call.span)),
+            }
+        }
+        _ => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check must be an inline function or supported Health.*() built-in",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or_default())),
+    }
+}
+
+fn management_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<ManagementOptions, Diagnostic> {
+    let mut options = ManagementOptions {
+        path: DEFAULT_MANAGEMENT_PATH.to_string(),
+        health: true,
+        metrics: true,
+        info: true,
+        runtime: true,
+    };
+    let Some(argument) = call.arguments.first() else {
+        return Ok(options);
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            "app.management options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        if property.computed
+            || property.shorthand
+            || property.method
+            || property.kind != PropertyKind::Init
+        {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management options must use simple literal properties",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management option names must be literal",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        match key {
+            "path" => {
+                options.path = health_path_from_expression(
+                    path,
+                    &property.value,
+                    "management",
+                    property.span,
+                )?;
+            }
+            "health" => {
+                options.health = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "metrics" => {
+                options.metrics = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "info" => {
+                options.info = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "runtime" => {
+                options.runtime = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "protect" => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                    "compiler-visible app.management does not support protect hooks; use the bootstrap app host for protected management endpoints",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                    format!("unsupported management option '{key}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn literal_bool_option(
+    path: &Path,
+    expression: &Expression<'_>,
+    span: Span,
+    name: &str,
+) -> Result<bool, Diagnostic> {
+    let Expression::BooleanLiteral(value) = expression else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            format!("management option '{name}' must be a boolean literal"),
+        )
+        .with_path(path)
+        .with_span(span));
+    };
+    Ok(value.value)
+}
+
 fn health_options_from_call(
     path: &Path,
     source: &str,
@@ -10385,6 +10916,7 @@ fn health_options_from_call(
         path: DEFAULT_HEALTH_PATH.to_string(),
         liveness_path: DEFAULT_LIVENESS_PATH.to_string(),
         readiness_path: DEFAULT_READINESS_PATH.to_string(),
+        startup_path: None,
         checks: Vec::new(),
     };
 
@@ -10452,6 +10984,14 @@ fn health_options_from_call(
                 options.readiness_path =
                     health_path_from_expression(path, &property.value, "readiness", property.span)?;
             }
+            "startupPath" => {
+                options.startup_path = Some(health_path_from_expression(
+                    path,
+                    &property.value,
+                    "startup",
+                    property.span,
+                )?);
+            }
             "checks" => {
                 options.checks = health_checks_from_expression(path, source, &property.value)?;
             }
@@ -10518,10 +11058,14 @@ fn health_paths_are_distinct(
     if !seen.insert(options.path.clone())
         || !seen.insert(options.liveness_path.clone())
         || !seen.insert(options.readiness_path.clone())
+        || options
+            .startup_path
+            .as_ref()
+            .is_some_and(|startup_path| !seen.insert(startup_path.clone()))
     {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
-            "health, liveness, and readiness paths must be distinct",
+            "health, liveness, readiness, and startup paths must be distinct",
         )
         .with_path(path)
         .with_span(span));
@@ -10565,6 +11109,9 @@ fn health_check_from_array_element(
             check_source: health_check_arrow_source(path, source, function)?,
             liveness: false,
             readiness: true,
+            startup: false,
+            critical: true,
+            tags: Vec::new(),
         }),
         ArrayExpressionElement::FunctionExpression(function) => {
             let name = function
@@ -10578,6 +11125,9 @@ fn health_check_from_array_element(
                 check_source: health_check_function_source(path, source, function, false)?,
                 liveness: false,
                 readiness: true,
+                startup: false,
+                critical: true,
+                tags: Vec::new(),
             })
         }
         ArrayExpressionElement::ObjectExpression(object) => {
@@ -10601,6 +11151,9 @@ fn health_check_from_object(
     let mut check_source = None;
     let mut liveness = false;
     let mut readiness = true;
+    let mut startup = false;
+    let mut critical = true;
+    let mut tags = Vec::new();
 
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
@@ -10686,6 +11239,35 @@ fn health_check_from_object(
                 };
                 readiness = value.value;
             }
+            "startup" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check startup flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                startup = value.value;
+            }
+            "critical" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check critical flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                critical = value.value;
+            }
+            "tags" => {
+                tags = route_tags_from_expression(&property.value)
+                    .map_err(|diagnostic| diagnostic.with_path(path))?;
+                liveness |= tags.iter().any(|tag| tag == "live");
+                readiness |= tags.iter().any(|tag| tag == "ready");
+                startup |= tags.iter().any(|tag| tag == "startup");
+            }
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
@@ -10713,10 +11295,10 @@ fn health_check_from_object(
         .with_path(path)
         .with_span(object.span));
     };
-    if !liveness && !readiness {
+    if !liveness && !readiness && !startup {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
-            "health check must target readiness or liveness",
+            "health check must target readiness, liveness, or startup",
         )
         .with_path(path)
         .with_span(object.span));
@@ -10727,6 +11309,9 @@ fn health_check_from_object(
         check_source,
         liveness,
         readiness,
+        startup,
+        critical,
+        tags,
     })
 }
 
@@ -10902,7 +11487,7 @@ fn health_routes_from_options(
     middleware: &[FrameworkMiddleware],
     cors: Option<&CorsPolicy>,
 ) -> Result<Vec<Route>, Diagnostic> {
-    Ok(vec![
+    let mut routes = vec![
         health_route(
             path,
             source,
@@ -10953,7 +11538,229 @@ fn health_routes_from_options(
             middleware,
             cors,
         )?,
-    ])
+    ];
+    if let Some(startup_path) = &options.startup_path {
+        routes.push(health_route(
+            path,
+            source,
+            source_name,
+            span,
+            HealthRouteSpec {
+                framework_path: startup_path,
+                name: "Health.Startup",
+                kind: "startup",
+                checks: options
+                    .checks
+                    .iter()
+                    .filter(|check| check.startup)
+                    .collect(),
+            },
+            middleware,
+            cors,
+        )?);
+    }
+    Ok(routes)
+}
+
+fn management_routes_from_options(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    span: Span,
+    options: &ManagementOptions,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
+) -> Result<Vec<Route>, Diagnostic> {
+    let mut routes = Vec::new();
+    let ops_context = OpsRouteContext {
+        path,
+        source,
+        source_name,
+        span,
+        middleware,
+        cors,
+    };
+    if options.health {
+        let health_options = HealthOptions {
+            path: join_route_patterns(&options.path, "health"),
+            liveness_path: join_route_patterns(&options.path, "live"),
+            readiness_path: join_route_patterns(&options.path, "ready"),
+            startup_path: Some(join_route_patterns(&options.path, "startup")),
+            checks: vec![
+                HealthCheck {
+                    name: "self".to_string(),
+                    check_source: "() => ({ status: \"healthy\" })".to_string(),
+                    liveness: true,
+                    readiness: true,
+                    startup: true,
+                    critical: true,
+                    tags: vec![
+                        "live".to_string(),
+                        "ready".to_string(),
+                        "startup".to_string(),
+                    ],
+                },
+                HealthCheck {
+                    name: "runtime".to_string(),
+                    check_source: "(ctx) => ((ctx && ctx.lifecycle && ctx.lifecycle.shuttingDown) ? { status: \"unhealthy\", errorCode: \"SLOPPY_HEALTH_SHUTTING_DOWN\" } : { status: \"healthy\" })".to_string(),
+                    liveness: false,
+                    readiness: true,
+                    startup: true,
+                    critical: true,
+                    tags: vec!["ready".to_string(), "startup".to_string()],
+                },
+                HealthCheck {
+                    name: "memory".to_string(),
+                    check_source: "() => ({ status: \"healthy\" })".to_string(),
+                    liveness: false,
+                    readiness: false,
+                    startup: false,
+                    critical: false,
+                    tags: vec!["health".to_string()],
+                },
+            ],
+        };
+        routes.extend(management_health_routes(
+            path,
+            source,
+            source_name,
+            span,
+            &health_options,
+            middleware,
+            cors,
+        )?);
+    }
+    if options.metrics {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "metrics"),
+            "Management.Metrics",
+            "function() { return Results.text(\"# HELP sloppy_management_info Static management endpoint metadata\\n# TYPE sloppy_management_info gauge\\nsloppy_management_info 1\\n\", { contentType: \"text/plain; version=0.0.4; charset=utf-8\" }); }",
+            "text",
+            200,
+        )?);
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "metrics.json"),
+            "Management.MetricsJson",
+            "function() { return Results.json({ counters: {}, gauges: { sloppy_management_info: { value: 1, labels: {} } }, histograms: {} }); }",
+            "json",
+            200,
+        )?);
+    }
+    if options.info {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "info"),
+            "Management.Info",
+            "function() { return Results.json({ app: { name: \"sloppy-app\" }, runtime: { name: \"sloppy\" }, management: { safe: true } }); }",
+            "json",
+            200,
+        )?);
+    }
+    if options.runtime {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "runtime"),
+            "Management.Runtime",
+            "function() { return Results.json({ lifecycle: { startupComplete: true, shuttingDown: false }, diagnostics: { count: 0 }, management: { safe: true } }); }",
+            "json",
+            200,
+        )?);
+    }
+    Ok(routes)
+}
+
+fn management_health_routes(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    span: Span,
+    options: &HealthOptions,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
+) -> Result<Vec<Route>, Diagnostic> {
+    let mut routes =
+        health_routes_from_options(path, source, source_name, span, options, middleware, cors)?;
+    for route in &mut routes {
+        route.name = match route.health.as_ref().map(|health| health.kind) {
+            Some("aggregate") => Some("Management.Health".to_string()),
+            Some("liveness") => Some("Management.Live".to_string()),
+            Some("readiness") => Some("Management.Ready".to_string()),
+            Some("startup") => Some("Management.Startup".to_string()),
+            _ => route.name.clone(),
+        };
+    }
+    Ok(routes)
+}
+
+struct OpsRouteContext<'a> {
+    path: &'a Path,
+    source: &'a str,
+    source_name: &'a str,
+    span: Span,
+    middleware: &'a [FrameworkMiddleware],
+    cors: Option<&'a CorsPolicy>,
+}
+
+fn ops_route(
+    context: &OpsRouteContext<'_>,
+    framework_path: &str,
+    name: &str,
+    handler_source: &str,
+    response_kind: &str,
+    status: u16,
+) -> Result<Route, Diagnostic> {
+    let normalized_pattern = normalize_framework_route_pattern(framework_path);
+    let response = ResponseMetadata {
+        helper: response_kind.to_string(),
+        status,
+        kind: response_kind.to_string(),
+        body_schema: None,
+        native_body: None,
+        source_name: Some(context.source_name.to_string()),
+        source_text: Some(context.source.to_string()),
+        span: Some(context.span),
+        partial: false,
+    };
+    let emitted_source =
+        wrap_handler_with_framework_pipeline(handler_source, context.middleware, context.cors);
+    Ok(Route {
+        method: "GET",
+        kind: "http",
+        framework_path: (normalized_pattern != framework_path).then(|| framework_path.to_string()),
+        pattern: normalized_pattern,
+        name: Some(name.to_string()),
+        tags: Vec::new(),
+        health: None,
+        middleware: route_middleware_metadata(context.middleware),
+        auth: None,
+        cors: context.cors.map(cors_policy_metadata),
+        cors_preflight: false,
+        span: context.span,
+        source_path: context.path.to_path_buf(),
+        source_name: context.source_name.to_string(),
+        source: context.source.to_string(),
+        module: None,
+        handler: Handler {
+            source: source_slice(context.source, context.span)
+                .unwrap_or_else(|| "app.management()".to_string()),
+            emitted_source,
+            span: context.span,
+            requires_results_import: false,
+            is_async: false,
+            runtime_deferred: false,
+            source_name: context.source_name.to_string(),
+            source_text: context.source.to_string(),
+            source_map_line_offset: 0,
+            source_map_column_offset: 0,
+            bindings: Vec::new(),
+            response: Some(response.clone()),
+            responses: vec![response],
+            effects: Vec::new(),
+            schema_metadata_conflict: false,
+        },
+    })
 }
 
 fn health_route(
@@ -11045,12 +11852,17 @@ fn health_handler_source(checks: Vec<&HealthCheck>) -> String {
         .iter()
         .map(|check| {
             let name = serde_json::to_string(&check.name).unwrap_or_else(|_| "\"\"".to_string());
-            format!("{{ name: {name}, check: {} }}", check.check_source)
+            let critical = if check.critical { "true" } else { "false" };
+            let tags = serde_json::to_string(&check.tags).unwrap_or_else(|_| "[]".to_string());
+            format!(
+                "{{ name: {name}, check: {}, critical: {critical}, tags: {tags} }}",
+                check.check_source
+            )
         })
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "async function(ctx) {{ const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_ok = true; for (const __sloppy_health_check of __sloppy_health_checks) {{ try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); const __sloppy_check_ok = __sloppy_health_value === undefined ? true : (typeof __sloppy_health_value === \"boolean\" ? __sloppy_health_value : (__sloppy_health_value && typeof __sloppy_health_value === \"object\" && typeof __sloppy_health_value.ok === \"boolean\" ? __sloppy_health_value.ok : true)); __sloppy_health_ok = __sloppy_health_ok && __sloppy_check_ok; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_ok ? \"healthy\" : \"unhealthy\" }}); }} catch {{ __sloppy_health_ok = false; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: \"unhealthy\" }}); }} }} const __sloppy_health_body = {{ status: __sloppy_health_ok ? \"healthy\" : \"unhealthy\", checks: __sloppy_health_results }}; return __sloppy_health_ok ? Results.ok(__sloppy_health_body) : Results.status(503, __sloppy_health_body); }}"
+        "async function(ctx) {{ const __sloppy_health_started = Date.now(); const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_status = \"healthy\"; for (const __sloppy_health_check of __sloppy_health_checks) {{ const __sloppy_check_started = Date.now(); try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); let __sloppy_check_status = \"healthy\"; if (__sloppy_health_value === false) __sloppy_check_status = \"unhealthy\"; else if (__sloppy_health_value && typeof __sloppy_health_value === \"object\") {{ if (__sloppy_health_value.status === \"degraded\" || __sloppy_health_value.status === \"unhealthy\") __sloppy_check_status = __sloppy_health_value.status; else if (__sloppy_health_value.ok === false) __sloppy_check_status = \"unhealthy\"; }} if (__sloppy_check_status === \"unhealthy\") __sloppy_health_status = \"unhealthy\"; else if (__sloppy_check_status === \"degraded\" && __sloppy_health_status === \"healthy\") __sloppy_health_status = \"degraded\"; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_status, critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} catch {{ __sloppy_health_status = \"unhealthy\"; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: \"unhealthy\", critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} }} const __sloppy_health_body = {{ status: __sloppy_health_status, durationMs: Date.now() - __sloppy_health_started, checkedAtUtc: new Date().toISOString(), checks: __sloppy_health_results }}; return __sloppy_health_status === \"unhealthy\" ? Results.status(503, __sloppy_health_body) : Results.ok(__sloppy_health_body); }}"
     )
 }
 
@@ -12598,6 +13410,32 @@ fn extract_module_function_routes(
                     routes.extend(health_routes);
                     continue;
                 }
+                if let Some(mut health_routes) = app_health_expose_call(
+                    path,
+                    source,
+                    source_name,
+                    &statement.expression,
+                    &module_app_state,
+                )? {
+                    for route in &mut health_routes {
+                        route.module = Some(module_name.to_string());
+                    }
+                    routes.extend(health_routes);
+                    continue;
+                }
+                if let Some(mut management_routes) = app_management_call(
+                    path,
+                    source,
+                    source_name,
+                    &statement.expression,
+                    &module_app_state,
+                )? {
+                    for route in &mut management_routes {
+                        route.module = Some(module_name.to_string());
+                    }
+                    routes.extend(management_routes);
+                    continue;
+                }
                 let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let static_strings = StaticStringEnv::default();
@@ -13491,6 +14329,15 @@ fn with_argument_span(diagnostic: Diagnostic, argument: &Argument<'_>) -> Diagno
 
 fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
     crate::slop_dsl::static_member_name(expression)
+}
+
+fn static_member_expression<'a>(
+    expression: &'a Expression<'a>,
+) -> Option<(&'a Expression<'a>, &'a str)> {
+    let Expression::StaticMemberExpression(member) = expression else {
+        return None;
+    };
+    Some((&member.object, member.property.name.as_str()))
 }
 
 fn static_member_chain<'a>(expression: &'a Expression<'a>) -> Option<Vec<&'a str>> {

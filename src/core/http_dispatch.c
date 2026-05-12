@@ -18,6 +18,8 @@
 
 #include "sloppy/breadcrumbs.h"
 #include "sloppy/http_context.h"
+#include "sloppy/ops_metrics.h"
+#include "sloppy/platform_time.h"
 #include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
 
@@ -3481,13 +3483,218 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     return status;
 }
 
+static SlStr sl_http_dispatch_metrics_mode_name(SlHttpRouteDispatchMode mode)
+{
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC) {
+        return sl_str_from_cstr("classic");
+    }
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE) {
+        return sl_str_from_cstr("validate");
+    }
+    return sl_str_from_cstr("compiled");
+}
+
+static SlStr sl_http_dispatch_metrics_status_class(uint16_t status)
+{
+    if (status >= 500U) {
+        return sl_str_from_cstr("5xx");
+    }
+    if (status >= 400U) {
+        return sl_str_from_cstr("4xx");
+    }
+    if (status >= 300U) {
+        return sl_str_from_cstr("3xx");
+    }
+    if (status >= 200U) {
+        return sl_str_from_cstr("2xx");
+    }
+    return sl_str_from_cstr("1xx");
+}
+
+static uint16_t sl_http_dispatch_metrics_status_from_result(SlStatus status,
+                                                            const SlEngineResult* result)
+{
+    if (sl_status_is_ok(status)) {
+        if (result != NULL && result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+            return result->response.status;
+        }
+        if (result != NULL && result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT) {
+            return 200U;
+        }
+        return 204U;
+    }
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+        return 404U;
+    }
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
+        return 405U;
+    }
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        return 413U;
+    }
+    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
+        return 400U;
+    }
+    if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
+        return 503U;
+    }
+    return 500U;
+}
+
+static void sl_http_dispatch_ignore_metric_status(SlStatus status)
+{
+    if (!sl_status_is_ok(status)) {
+        return;
+    }
+}
+
+static void sl_http_dispatch_record_metrics(SlOpsMetricsRegistry* metrics, SlStr route_pattern,
+                                            SlHttpRouteDispatchMode mode, SlStatus status,
+                                            const SlHttpRequestHead* request,
+                                            const SlEngineResult* result, uint64_t elapsed_ns,
+                                            bool native_json_validation)
+{
+    char status_code_buffer[SL_STRING_FORMAT_U64_CAPACITY];
+    SlStr status_code = sl_str_empty();
+    uint16_t http_status = sl_http_dispatch_metrics_status_from_result(status, result);
+    SlOpsMetricLabel route_labels[2];
+    SlOpsMetricLabel status_labels[3];
+    double elapsed_ms = (double)elapsed_ns / 1000000.0;
+    static const double duration_ms_buckets[] = {1.0,   5.0,   10.0,   25.0,   50.0,  100.0,
+                                                 250.0, 500.0, 1000.0, 2500.0, 5000.0};
+    static const double dispatch_ns_buckets[] = {1000.0,    5000.0,    10000.0,  25000.0,
+                                                 50000.0,   100000.0,  250000.0, 500000.0,
+                                                 1000000.0, 2500000.0, 5000000.0};
+
+    if (metrics == NULL) {
+        return;
+    }
+
+    if (sl_str_is_empty(route_pattern)) {
+        route_pattern = sl_str_from_cstr("unmatched");
+    }
+    route_labels[0] = (SlOpsMetricLabel){sl_str_from_cstr("route"), route_pattern};
+    route_labels[1] =
+        (SlOpsMetricLabel){sl_str_from_cstr("dispatch"), sl_http_dispatch_metrics_mode_name(mode)};
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+        metrics, sl_str_from_cstr("http.requests.total"), route_labels, 2U, 1.0));
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+        metrics, sl_str_from_cstr("http.route.hits"), route_labels, 2U, 1.0));
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_histogram_observe(
+        metrics, sl_str_from_cstr("http.request.duration.ms"), route_labels, 2U,
+        duration_ms_buckets, sizeof(duration_ms_buckets) / sizeof(duration_ms_buckets[0]),
+        elapsed_ms));
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_histogram_observe(
+        metrics, sl_str_from_cstr("routing.dispatch.duration.ns"), route_labels, 2U,
+        dispatch_ns_buckets, sizeof(dispatch_ns_buckets) / sizeof(dispatch_ns_buckets[0]),
+        (double)elapsed_ns));
+    if (request != NULL) {
+        sl_http_dispatch_ignore_metric_status(
+            sl_ops_metrics_counter_inc(metrics, sl_str_from_cstr("http.request.bytes"),
+                                       route_labels, 2U, (double)request->body.length));
+    }
+    if (result != NULL && result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        sl_http_dispatch_ignore_metric_status(
+            sl_ops_metrics_counter_inc(metrics, sl_str_from_cstr("http.response.bytes"),
+                                       route_labels, 2U, (double)result->response.body.length));
+    }
+    if (!sl_status_is_ok(sl_string_format_u64(status_code_buffer, sizeof(status_code_buffer),
+                                              http_status, &status_code)))
+    {
+        status_code = sl_str_from_cstr("0");
+    }
+    status_labels[0] = route_labels[0];
+    status_labels[1] = (SlOpsMetricLabel){sl_str_from_cstr("status"), status_code};
+    status_labels[2] = (SlOpsMetricLabel){sl_str_from_cstr("class"),
+                                          sl_http_dispatch_metrics_status_class(http_status)};
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+        metrics, sl_str_from_cstr("http.status.total"), status_labels, 3U, 1.0));
+    if (http_status >= 500U) {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("http.errors.total"), route_labels, 2U, 1.0));
+    }
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC) {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("routing.classic.hits"), route_labels, 2U, 1.0));
+    }
+    else {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("routing.compiled.hits"), route_labels, 2U, 1.0));
+    }
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE && !sl_status_is_ok(status)) {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("routing.validate.mismatches"), route_labels, 2U, 1.0));
+    }
+    if (native_json_validation) {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("json.native.request.hits"), route_labels, 2U, 1.0));
+    }
+    else if (request != NULL && request->body.length != 0U) {
+        sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
+            metrics, sl_str_from_cstr("json.generic.request.hits"), route_labels, 2U, 1.0));
+    }
+}
+
+static SlStatus sl_http_dispatch_request_recorded(SlArena* arena, SlEngine* engine,
+                                                  const SlPlan* plan,
+                                                  const SlHttpDispatchTable* dispatch_table,
+                                                  const SlHttpRequestHead* request,
+                                                  const SlHttpDispatchContextSeed* seed,
+                                                  SlEngineResult* out_result, SlDiag* out_diag)
+{
+    SlOpsMetricsRegistry* metrics = dispatch_table == NULL ? NULL : dispatch_table->metrics;
+    const SlHttpRouteBinding* binding = NULL;
+    const SlPlanRoute* validation_route = NULL;
+    bool method_mismatch = false;
+    SlStr route_pattern = sl_str_from_cstr("unmatched");
+    uint64_t start_ns = 0U;
+    uint64_t end_ns = 0U;
+    SlStatus status;
+    SlStatus metric_status;
+    bool native_json_validation = false;
+
+    if (metrics == NULL) {
+        return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, seed,
+                                             out_result, out_diag);
+    }
+
+    sl_http_dispatch_ignore_metric_status(sl_platform_monotonic_time_ns(&start_ns));
+    sl_http_dispatch_ignore_metric_status(
+        sl_ops_metrics_gauge_add(metrics, sl_str_from_cstr("http.requests.active"), NULL, 0U, 1.0));
+    if (request != NULL && sl_http_dispatch_request_method_runnable(request->method) &&
+        request->path.length != 0U && request->path.ptr != NULL && request->path.ptr[0] == '/')
+    {
+        metric_status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding,
+                                                    &method_mismatch, NULL, NULL);
+        if (sl_status_is_ok(metric_status) && binding != NULL && binding->pattern != NULL) {
+            route_pattern = binding->pattern->source;
+            validation_route = sl_http_dispatch_find_validation_route(plan, binding);
+            native_json_validation =
+                sl_http_dispatch_route_uses_native_json_validation(validation_route);
+        }
+        else if (method_mismatch) {
+            route_pattern = sl_str_from_cstr("method_mismatch");
+        }
+    }
+
+    status = sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, seed,
+                                           out_result, out_diag);
+    sl_http_dispatch_ignore_metric_status(sl_ops_metrics_gauge_add(
+        metrics, sl_str_from_cstr("http.requests.active"), NULL, 0U, -1.0));
+    sl_http_dispatch_ignore_metric_status(sl_platform_monotonic_time_ns(&end_ns));
+    sl_http_dispatch_record_metrics(
+        metrics, route_pattern, dispatch_table->dispatch_mode, status, request, out_result,
+        end_ns >= start_ns ? end_ns - start_ns : 0U, native_json_validation);
+    return status;
+}
+
 SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                        const SlHttpDispatchTable* dispatch_table,
                                        const SlHttpRequestHead* request, SlEngineResult* out_result,
                                        SlDiag* out_diag)
 {
-    return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, NULL,
-                                         out_result, out_diag);
+    return sl_http_dispatch_request_recorded(arena, engine, plan, dispatch_table, request, NULL,
+                                             out_result, out_diag);
 }
 
 SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, const SlPlan* plan,
@@ -3498,8 +3705,8 @@ SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, co
     SlHttpDispatchContextSeed seed = {0};
 
     if (request == NULL) {
-        return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, NULL, NULL,
-                                             out_result, out_diag);
+        return sl_http_dispatch_request_recorded(arena, engine, plan, dispatch_table, NULL, NULL,
+                                                 out_result, out_diag);
     }
 
     seed.request_id = request->id;
@@ -3511,6 +3718,6 @@ SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, co
                                ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
                                : request->connection->backend->options.parse.max_body_length;
     seed.cancellation = &request->cancellation;
-    return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, &request->head, &seed,
-                                         out_result, out_diag);
+    return sl_http_dispatch_request_recorded(arena, engine, plan, dispatch_table, &request->head,
+                                             &seed, out_result, out_diag);
 }

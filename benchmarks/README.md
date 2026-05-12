@@ -270,6 +270,15 @@ optimization decisions. Advanced SIMD presets such as `windows-avx2` must be nam
 measured reports. These are not allocation-rate, parser-throughput, SIMD-performance, or
 public performance statements.
 
+Operations benchmarks cover native metrics overhead:
+
+- `ops.metrics.counter.inc` increments one counter with a stable route-pattern label.
+- `ops.metrics.histogram.observe` records one histogram observation with fixed buckets.
+- `ops.metrics.prometheus.render_64` renders Prometheus text for 64 counter series.
+
+These rows measure the native registry and renderer only. They do not include sockets,
+transport parsing, JavaScript handlers, provider I/O, or external Prometheus scraping.
+
 The local runtime engine uses semantically equivalent HTTP workloads where practical:
 
 - `http`: `/health`, small JSON, route parameter JSON, query decode, and small JSON

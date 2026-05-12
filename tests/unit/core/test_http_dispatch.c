@@ -143,6 +143,12 @@ static int expect_body_contains(SlBytes body, const char* expected)
     return 1;
 }
 
+static bool str_contains(SlStr text, const char* expected)
+{
+    return expect_body_contains(sl_bytes_from_parts((const unsigned char*)text.ptr, text.length),
+                                expected) == 0;
+}
+
 static SlBytes bytes_from_cstr(const char* text)
 {
     SlStr str = sl_str_from_cstr(text);
@@ -3489,6 +3495,65 @@ static int test_compiled_and_classic_dispatch_agree_in_validate_mode(void)
     return 0;
 }
 
+static int test_dispatch_records_native_metrics_by_route_pattern(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlOpsMetricsRegistry* metrics = NULL;
+    SlPlanHandler handler = {.id = 1U, .export_name = sl_str_from_cstr("__sloppy_handler")};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStringBuilder prom = {0};
+    SlStatus status;
+    int result_code = 0;
+
+    set_native_text_route(&route, "GET", "/users/{id}", 1U, "ok");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &metrics), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        result_code = 182;
+        goto cleanup;
+    }
+    table.dispatch.metrics = metrics;
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&prom, &arena, 2048U, 32768U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_prometheus(metrics, &prom), SL_STATUS_OK) != 0)
+    {
+        result_code = 183;
+        goto cleanup;
+    }
+    if (!str_contains(sl_string_builder_view(&prom), "http_requests_total") ||
+        !str_contains(sl_string_builder_view(&prom), "route=\"/users/{id}\"") ||
+        str_contains(sl_string_builder_view(&prom), "/users/42") ||
+        !str_contains(sl_string_builder_view(&prom), "http_status_total") ||
+        !str_contains(sl_string_builder_view(&prom), "routing_compiled_hits"))
+    {
+        result_code = 184;
+        goto cleanup;
+    }
+
+cleanup:
+    sl_engine_destroy(engine);
+    return result_code;
+}
+
 static int test_named_route_url_generation_validates_param_set(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -3632,6 +3697,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
         HTTP_DISPATCH_TEST(test_compiled_and_classic_dispatch_agree_in_validate_mode),
+        HTTP_DISPATCH_TEST(test_dispatch_records_native_metrics_by_route_pattern),
         HTTP_DISPATCH_TEST(test_named_route_url_generation_validates_param_set),
     };
     size_t index = 0U;

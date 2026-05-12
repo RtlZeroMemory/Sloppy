@@ -18,7 +18,7 @@ extern "C" {
 
 #define SL_PLAN_VERSION_1 UINT32_C(1)
 #define SL_PLAN_CURRENT_VERSION SL_PLAN_VERSION_1
-#define SL_PLAN_INTERNAL_ABI_VERSION UINT32_C(2)
+#define SL_PLAN_INTERNAL_ABI_VERSION UINT32_C(3)
 
 #define SL_PLAN_TARGET_PLATFORM_WINDOWS_X64 "windows-x64"
 #define SL_PLAN_TARGET_PLATFORM_LINUX_X64 "linux-x64"
@@ -155,6 +155,9 @@ typedef struct SlPlanRoute
     SlStr native_response_kind;
     SlStr native_response_body;
     SlStr native_response_content_type;
+    SlStr health_kind;
+    const SlStr* health_checks;
+    size_t health_check_count;
     SlPlanJsonRequestPlan json_request;
     SlPlanJsonResponsePlan json_response;
     SlHandlerId handler_id;
