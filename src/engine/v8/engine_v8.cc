@@ -1708,7 +1708,10 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->filesystem_policy = options == nullptr ? nullptr : options->filesystem_policy;
-    backend->os_policy = options == nullptr ? nullptr : options->os_policy;
+    backend->has_os_policy = options != nullptr && options->os_policy != nullptr;
+    if (backend->has_os_policy) {
+        backend->os_policy = *options->os_policy;
+    }
     backend->logging = options == nullptr ? nullptr : options->logging;
     backend->ffi_library_overrides = options == nullptr ? nullptr : options->ffi_library_overrides;
     backend->ffi_library_override_count =

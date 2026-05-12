@@ -228,7 +228,8 @@ struct SlV8Engine
     const SlPlan* plan = nullptr;
     const SlCapabilityRegistry* capabilities = nullptr;
     const SlFsPolicy* filesystem_policy = nullptr;
-    const SlOsPolicy* os_policy = nullptr;
+    bool has_os_policy = false;
+    SlOsPolicy os_policy = {};
     SlLogRuntime* logging = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};

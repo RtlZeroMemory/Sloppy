@@ -56,12 +56,12 @@
 
     function validateWorkerOptions(options, operation) {
         if (options === undefined || options === null) {
-            return {};
+            return Object.freeze({});
         }
         if (!isPlainObject(options)) {
             throw new TypeError(`${operation} options must be a plain object.`);
         }
-        return options;
+        return Object.freeze({ ...options });
     }
 
     const DEFAULT_JSON_OPTIONS = Object.freeze({
@@ -4971,6 +4971,12 @@ Reason:
         "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT",
     ]);
 
+    const COMPRESSION_BRIDGE_ERROR_MESSAGES = Object.freeze({
+        SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE: "Compression backend unavailable.",
+        SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED: "Decompression output limit exceeded.",
+        SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: "Compressed stream is corrupt.",
+    });
+
     function normalizeCompressionError(error) {
         if (error instanceof CodecError) {
             return error;
@@ -4978,7 +4984,10 @@ Reason:
         const message = typeof error?.message === "string" ? error.message : String(error);
         const match = /\b(SLOPPY_E_CODEC_[A-Z_]+)\b(?::\s*)?(.*)$/u.exec(message);
         if (match !== null && COMPRESSION_BRIDGE_ERROR_CODES.has(match[1])) {
-            const normalized = codecError(match[1], match[2] || "Compression backend failed.");
+            const normalized = codecError(
+                match[1],
+                COMPRESSION_BRIDGE_ERROR_MESSAGES[match[1]] ?? "Compression backend failed.",
+            );
             normalized.cause = error;
             return normalized;
         }

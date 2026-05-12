@@ -273,7 +273,12 @@ try {
     assertBytes(compressed.slice(0, 4), fakeGzipPrefix);
     assertBytes(await Compression.gunzip(compressed), arbitraryBytes);
     await assertRejectsCodecError(() => Compression.gunzip(compressed, { maxOutputBytes: 1 }), "SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED");
-    await assertRejectsCodecError(() => Compression.gunzip(new Uint8Array([1, 2, 3])), "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT");
+    await assert.rejects(() => Compression.gunzip(new Uint8Array([1, 2, 3])), (error) => {
+        assert.equal(error.code, "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT");
+        assert.match(error.message, /Compressed stream is corrupt\./);
+        assert.equal(error.cause?.message, "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: fake corrupt gzip input");
+        return true;
+    });
     await assert.rejects(() => Compression.gzip(new Uint8Array(2 ** 20 + 1)), TypeError);
     await assert.rejects(() => Compression.gzip(arbitraryBytes, { level: 10 }), TypeError);
     await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 2 ** 40 }), TypeError);

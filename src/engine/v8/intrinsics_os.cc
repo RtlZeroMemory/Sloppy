@@ -108,14 +108,25 @@ SlStatus os_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::St
 
 const SlOsPolicy* os_v8_active_policy(SlV8Engine* backend, SlOsPolicy* fallback)
 {
-    if (backend != nullptr && backend->os_policy != nullptr) {
-        return backend->os_policy;
+    if (backend != nullptr && backend->has_os_policy) {
+        return &backend->os_policy;
     }
     if (fallback == nullptr) {
         return nullptr;
     }
     *fallback = sl_os_development_policy();
     return fallback;
+}
+
+void os_v8_snapshot_active_policy(SlV8Engine* backend, SlV8OsRequest* request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    SlOsPolicy fallback = {};
+    const SlOsPolicy* active = os_v8_active_policy(backend, &fallback);
+    request->fallback_policy = active == nullptr ? sl_os_development_policy() : *active;
+    request->os_policy = &request->fallback_policy;
 }
 
 SlStatus os_v8_key(v8::Isolate* isolate, const char* name, v8::Local<v8::String>* out)
@@ -1167,7 +1178,7 @@ void os_v8_process_run_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     request->backend = backend;
-    request->os_policy = os_v8_active_policy(backend, &request->fallback_policy);
+    os_v8_snapshot_active_policy(backend, request.get());
     request->operation = OsV8Operation::Run;
     request->resolver.Reset(isolate, resolver);
     os_v8_submit_request(isolate, context, resolver, request);
@@ -1206,7 +1217,7 @@ void os_v8_process_start_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         return;
     }
     request->backend = backend;
-    request->os_policy = os_v8_active_policy(backend, &request->fallback_policy);
+    os_v8_snapshot_active_policy(backend, request.get());
     request->operation = OsV8Operation::Start;
     request->resolver.Reset(isolate, resolver);
     os_v8_submit_request(isolate, context, resolver, request);
@@ -1516,7 +1527,7 @@ void os_v8_process_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args
     v8::Isolate* isolate = args.GetIsolate();
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
-    unsigned char storage[65536];
+    std::vector<unsigned char> storage;
     SlArena arena = {};
     SlOsProcessInfo info = {};
     SlOsPolicy policy = {};
@@ -1526,7 +1537,14 @@ void os_v8_process_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args
     v8::Local<v8::Array> argv;
     v8::Local<v8::String> key;
 
-    if (!sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage))) ||
+    try {
+        storage.resize(kOsV8DefaultArenaBytes);
+    } catch (...) {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, storage.data(), storage.size())) ||
         !sl_status_is_ok(sl_os_process_info(&arena, active_policy, &info, nullptr)))
     {
         os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
