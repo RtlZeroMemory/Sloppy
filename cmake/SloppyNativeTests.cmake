@@ -190,6 +190,7 @@
         conformance.http.default_dispatch PROPERTIES LABELS "conformance;http")
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
+    sloppy_add_c_unit_test(core_json_profile core.json_profile tests/unit/core/test_json_profile.c)
     sloppy_add_c_unit_test(core_json_writer core.json_writer tests/unit/core/test_json_writer.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
     sloppy_add_c_unit_test(

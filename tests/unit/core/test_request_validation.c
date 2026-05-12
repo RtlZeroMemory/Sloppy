@@ -1,6 +1,9 @@
 #include "sloppy/request_validation.h"
 
+#include "sloppy/json_profile.h"
+
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int expect_true(bool condition)
@@ -68,6 +71,73 @@ static SlHttpRequestContext request_context(SlHttpRequestHead* request)
     context.protocol = sl_str_from_cstr("http/1.1");
     context.scheme = sl_str_from_cstr("http");
     return context;
+}
+
+static void enable_json_profile_for_process(void)
+{
+#if defined(_WIN32)
+    _putenv_s("SLOPPY_JSON_PROFILE", "1");
+#else
+    setenv("SLOPPY_JSON_PROFILE", "1", 1);
+#endif
+}
+
+static int test_valid_native_body_profile_does_not_render_paths(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena = {0};
+    SlPlanSchemaProperty properties[1];
+    SlPlanSchemaNode name_schema = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode body_schema = {
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 1U};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("CreateUser"), .definition = body_schema};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("CreateUser")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .schema = sl_str_from_cstr("CreateUser"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlJsonProfileSnapshot snapshot = {0};
+
+    enable_json_profile_for_process();
+    properties[0] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("name"), .schema = &name_schema};
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+    context.request_schema = &schema;
+    request.body = sl_bytes_from_parts((const unsigned char*)"{\"name\":\"Ada\"}",
+                                       sizeof("{\"name\":\"Ada\"}") - 1U);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 1;
+    }
+
+    sl_json_profile_reset("valid_native_body_profile", 1U);
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        return 2;
+    }
+    sl_json_profile_snapshot(&snapshot);
+    if (!sl_json_profile_snapshot_has_data(&snapshot) ||
+        snapshot.counters[SL_JSON_PROFILE_COUNTER_PATHS_RENDERED] != 0U ||
+        snapshot.counters[SL_JSON_PROFILE_COUNTER_ISSUES_EMITTED] != 0U)
+    {
+        return 3;
+    }
+
+    return 0;
 }
 
 static int test_no_bindings_and_invalid_arguments_are_output_atomic(void)
@@ -471,6 +541,140 @@ static int test_nested_optional_and_nullable_shapes_validate_precisely(void)
     return 0;
 }
 
+static int test_nested_unknown_and_array_item_paths_are_precise(void)
+{
+    unsigned char arena_storage[32768];
+    SlArena arena = {0};
+    SlPlanSchemaProperty root_properties[1];
+    SlPlanSchemaProperty profile_properties[2];
+    SlPlanSchemaNode display_name = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode tag_item = {.kind = SL_PLAN_SCHEMA_INT};
+    SlPlanSchemaNode tags = {.kind = SL_PLAN_SCHEMA_ARRAY, .items = &tag_item};
+    SlPlanSchemaNode profile = {
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = profile_properties, .property_count = 2U};
+    SlPlanSchemaNode body_schema = {
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = root_properties, .property_count = 1U};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("ProfileUpdate"), .definition = body_schema};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("ProfileUpdate")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .unknown_fields = SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT,
+                             .schema = sl_str_from_cstr("ProfileUpdate"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    profile_properties[0] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("displayName"), .schema = &display_name};
+    profile_properties[1] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("tags"), .schema = &tags};
+    root_properties[0] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("profile"), .schema = &profile};
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 70;
+    }
+
+    request.body = sl_bytes_from_parts(
+        (const unsigned char*)"{\"profile\":{\"displayName\":\"Ada\",\"extra\":true}}",
+        sizeof("{\"profile\":{\"displayName\":\"Ada\",\"extra\":true}}") - 1U);
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        !validation_problem_has_issue_shape(result.response.body) ||
+        !bytes_contains(result.response.body, "\"body.profile.extra\"") ||
+        !bytes_contains(result.response.body, "\"unknown\""))
+    {
+        return 71;
+    }
+
+    sl_arena_reset(&arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    request.body = sl_bytes_from_parts(
+        (const unsigned char*)"{\"profile\":{\"displayName\":\"Ada\",\"tags\":[1,"
+                              "\"SECRET_PAYLOAD_SHOULD_NOT_APPEAR\"]}}",
+        sizeof("{\"profile\":{\"displayName\":\"Ada\",\"tags\":[1,"
+               "\"SECRET_PAYLOAD_SHOULD_NOT_APPEAR\"]}}") -
+            1U);
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        !validation_problem_has_issue_shape(result.response.body) ||
+        !bytes_contains(result.response.body, "\"body.profile.tags[1]\"") ||
+        !bytes_contains(result.response.body, "Expected an integer.") ||
+        bytes_contains(result.response.body, "SECRET_PAYLOAD_SHOULD_NOT_APPEAR"))
+    {
+        return 72;
+    }
+
+    return 0;
+}
+
+static int test_large_object_required_field_fallback_handles_more_than_64_properties(void)
+{
+    unsigned char arena_storage[32768];
+    SlArena arena = {0};
+    SlPlanSchemaProperty properties[65];
+    SlPlanSchemaNode optional_string = {.kind = SL_PLAN_SCHEMA_STRING, .optional = true};
+    SlPlanSchemaNode required_string = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode body_schema = {
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 65U};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("LargeShape"), .definition = body_schema};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("LargeShape")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .schema = sl_str_from_cstr("LargeShape"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    for (size_t index = 0U; index < 64U; index += 1U) {
+        properties[index] =
+            (SlPlanSchemaProperty){.name = sl_str_from_cstr("unused"), .schema = &optional_string};
+    }
+    properties[64] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("p64"), .schema = &required_string};
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+    request.body = sl_bytes_from_parts((const unsigned char*)"{\"p64\":\"ok\"}",
+                                       sizeof("{\"p64\":\"ok\"}") - 1U);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 80;
+    }
+
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        return 81;
+    }
+
+    return 0;
+}
+
 static int test_malformed_json_body_fails_closed(void)
 {
     unsigned char arena_storage[8192];
@@ -591,15 +795,19 @@ static int test_native_json_constraints_apply_max_bounds_and_unknown_field_polic
 
 int main(void)
 {
-    int (*tests[])(void) = {test_no_bindings_and_invalid_arguments_are_output_atomic,
-                            test_body_schema_metadata_failures_publish_problem_details,
-                            test_header_lookup_is_case_insensitive_and_success_is_silent,
-                            test_scalar_bindings_coerce_route_query_and_header_values,
-                            test_issue_cap_truncates_without_failure,
-                            test_body_schema_validates_required_literal_and_email_contracts,
-                            test_nested_optional_and_nullable_shapes_validate_precisely,
-                            test_malformed_json_body_fails_closed,
-                            test_native_json_constraints_apply_max_bounds_and_unknown_field_policy};
+    int (*tests[])(void) = {
+        test_valid_native_body_profile_does_not_render_paths,
+        test_no_bindings_and_invalid_arguments_are_output_atomic,
+        test_body_schema_metadata_failures_publish_problem_details,
+        test_header_lookup_is_case_insensitive_and_success_is_silent,
+        test_scalar_bindings_coerce_route_query_and_header_values,
+        test_issue_cap_truncates_without_failure,
+        test_body_schema_validates_required_literal_and_email_contracts,
+        test_nested_optional_and_nullable_shapes_validate_precisely,
+        test_nested_unknown_and_array_item_paths_are_precise,
+        test_large_object_required_field_fallback_handles_more_than_64_properties,
+        test_malformed_json_body_fails_closed,
+        test_native_json_constraints_apply_max_bounds_and_unknown_field_policy};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {

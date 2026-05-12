@@ -1,9 +1,11 @@
 #include "sloppy/json_profile.h"
 
 #include "sloppy/alloc.h"
+#include "sloppy/platform_thread.h"
 #include "sloppy/platform_time.h"
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,13 +13,31 @@ typedef struct SlJsonProfileState
 {
     bool initialized;
     bool enabled;
-    const char* scenario;
+    char scenario[SL_JSON_PROFILE_SCENARIO_CAPACITY];
     uint64_t iterations;
     SlJsonProfilePhaseStats phases[SL_JSON_PROFILE_PHASE_COUNT];
     uint64_t counters[SL_JSON_PROFILE_COUNTER_COUNT];
 } SlJsonProfileState;
 
 static SlJsonProfileState g_sl_json_profile;
+
+static void sl_json_profile_copy_scenario(char* out, size_t out_capacity, const char* scenario)
+{
+    size_t index = 0U;
+
+    if (out == NULL || out_capacity == 0U) {
+        return;
+    }
+    if (scenario == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    while (index + 1U < out_capacity && scenario[index] != '\0') {
+        out[index] = scenario[index];
+        index += 1U;
+    }
+    out[index] = '\0';
+}
 
 static const char* sl_json_profile_phase_name(SlJsonProfilePhase phase)
 {
@@ -69,7 +89,7 @@ static const char* sl_json_profile_counter_name(SlJsonProfileCounter counter)
     return (unsigned int)counter < SL_JSON_PROFILE_COUNTER_COUNT ? names[counter] : "unknown";
 }
 
-static void sl_json_profile_init_once(void)
+static void sl_json_profile_init_once_locked(void)
 {
     const char* value = NULL;
 #if defined(_WIN32)
@@ -98,30 +118,42 @@ static void sl_json_profile_init_once(void)
 
 bool sl_json_profile_enabled(void)
 {
-    sl_json_profile_init_once();
-    return g_sl_json_profile.enabled;
+    bool enabled = false;
+
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
+    enabled = g_sl_json_profile.enabled;
+    sl_platform_global_mutex_unlock();
+    return enabled;
 }
 
 void sl_json_profile_reset(const char* scenario, uint64_t iterations)
 {
-    bool enabled = sl_json_profile_enabled();
+    bool enabled = false;
 
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
+    enabled = g_sl_json_profile.enabled;
     g_sl_json_profile = (SlJsonProfileState){0};
     g_sl_json_profile.initialized = true;
     g_sl_json_profile.enabled = enabled;
-    g_sl_json_profile.scenario = scenario;
+    sl_json_profile_copy_scenario(g_sl_json_profile.scenario, sizeof(g_sl_json_profile.scenario),
+                                  scenario);
     g_sl_json_profile.iterations = iterations;
+    sl_platform_global_mutex_unlock();
 }
 
 uint64_t sl_json_profile_phase_begin(SlJsonProfilePhase phase)
 {
     uint64_t now_ns = 0U;
+    bool enabled = false;
 
     (void)phase;
-    if (!g_sl_json_profile.initialized) {
-        sl_json_profile_init_once();
-    }
-    if (!g_sl_json_profile.enabled) {
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
+    enabled = g_sl_json_profile.enabled;
+    sl_platform_global_mutex_unlock();
+    if (!enabled) {
         return 0U;
     }
     if (!sl_status_is_ok(sl_platform_monotonic_time_ns(&now_ns))) {
@@ -136,13 +168,15 @@ void sl_json_profile_phase_end(SlJsonProfilePhase phase, uint64_t start_ns)
     uint64_t elapsed_ns = 0U;
     SlJsonProfilePhaseStats* stats = NULL;
 
-    if (!g_sl_json_profile.initialized) {
-        sl_json_profile_init_once();
-    }
-    if (!g_sl_json_profile.enabled || start_ns == 0U ||
-        (unsigned int)phase >= SL_JSON_PROFILE_PHASE_COUNT ||
+    if (start_ns == 0U || (unsigned int)phase >= SL_JSON_PROFILE_PHASE_COUNT ||
         !sl_status_is_ok(sl_platform_monotonic_time_ns(&end_ns)))
     {
+        return;
+    }
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
+    if (!g_sl_json_profile.enabled) {
+        sl_platform_global_mutex_unlock();
         return;
     }
     elapsed_ns = end_ns >= start_ns ? end_ns - start_ns : 0U;
@@ -155,21 +189,24 @@ void sl_json_profile_phase_end(SlJsonProfilePhase phase, uint64_t start_ns)
     if (elapsed_ns > stats->max_ns) {
         stats->max_ns = elapsed_ns;
     }
+    sl_platform_global_mutex_unlock();
 }
 
 void sl_json_profile_counter_add(SlJsonProfileCounter counter, uint64_t amount)
 {
-    if (!g_sl_json_profile.initialized) {
-        sl_json_profile_init_once();
-    }
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
     if (!g_sl_json_profile.enabled || (unsigned int)counter >= SL_JSON_PROFILE_COUNTER_COUNT) {
+        sl_platform_global_mutex_unlock();
         return;
     }
     if (UINT64_MAX - g_sl_json_profile.counters[counter] < amount) {
         g_sl_json_profile.counters[counter] = UINT64_MAX;
+        sl_platform_global_mutex_unlock();
         return;
     }
     g_sl_json_profile.counters[counter] += amount;
+    sl_platform_global_mutex_unlock();
 }
 
 void sl_json_profile_snapshot(SlJsonProfileSnapshot* out_snapshot)
@@ -178,14 +215,17 @@ void sl_json_profile_snapshot(SlJsonProfileSnapshot* out_snapshot)
         return;
     }
     *out_snapshot = (SlJsonProfileSnapshot){0};
-    if (!g_sl_json_profile.initialized) {
-        sl_json_profile_init_once();
-    }
+    sl_platform_global_mutex_lock();
+    sl_json_profile_init_once_locked();
     if (!g_sl_json_profile.enabled) {
+        sl_platform_global_mutex_unlock();
         return;
     }
     out_snapshot->enabled = true;
-    out_snapshot->scenario = g_sl_json_profile.scenario;
+    sl_json_profile_copy_scenario(out_snapshot->scenario_storage,
+                                  sizeof(out_snapshot->scenario_storage),
+                                  g_sl_json_profile.scenario);
+    out_snapshot->scenario = out_snapshot->scenario_storage;
     out_snapshot->iterations = g_sl_json_profile.iterations;
     for (size_t index = 0U; index < SL_JSON_PROFILE_PHASE_COUNT; index += 1U) {
         out_snapshot->phases[index] = g_sl_json_profile.phases[index];
@@ -193,6 +233,7 @@ void sl_json_profile_snapshot(SlJsonProfileSnapshot* out_snapshot)
     for (size_t index = 0U; index < SL_JSON_PROFILE_COUNTER_COUNT; index += 1U) {
         out_snapshot->counters[index] = g_sl_json_profile.counters[index];
     }
+    sl_platform_global_mutex_unlock();
 }
 
 bool sl_json_profile_snapshot_has_data(const SlJsonProfileSnapshot* snapshot)
@@ -208,6 +249,49 @@ static void sl_json_profile_indent(FILE* out, unsigned int indent)
     }
 }
 
+static void sl_json_profile_fprint_string(FILE* out, const char* text)
+{
+    fputc('"', out);
+    if (text != NULL) {
+        for (size_t index = 0U; text[index] != '\0'; index += 1U) {
+            unsigned char ch = (unsigned char)text[index];
+
+            switch (ch) {
+            case '"':
+                fputs("\\\"", out);
+                break;
+            case '\\':
+                fputs("\\\\", out);
+                break;
+            case '\b':
+                fputs("\\b", out);
+                break;
+            case '\f':
+                fputs("\\f", out);
+                break;
+            case '\n':
+                fputs("\\n", out);
+                break;
+            case '\r':
+                fputs("\\r", out);
+                break;
+            case '\t':
+                fputs("\\t", out);
+                break;
+            default:
+                if (ch < 0x20U) {
+                    fprintf(out, "\\u%04x", (unsigned int)ch);
+                }
+                else {
+                    fputc((int)ch, out);
+                }
+                break;
+            }
+        }
+    }
+    fputc('"', out);
+}
+
 void sl_json_profile_fprint_json(FILE* out, const SlJsonProfileSnapshot* snapshot,
                                  unsigned int indent)
 {
@@ -220,7 +304,9 @@ void sl_json_profile_fprint_json(FILE* out, const SlJsonProfileSnapshot* snapsho
     sl_json_profile_indent(out, indent);
     fputs("{\n", out);
     sl_json_profile_indent(out, indent + 2U);
-    fprintf(out, "\"scenario\": \"%s\",\n", snapshot->scenario == NULL ? "" : snapshot->scenario);
+    fputs("\"scenario\": ", out);
+    sl_json_profile_fprint_string(out, snapshot->scenario);
+    fputs(",\n", out);
     sl_json_profile_indent(out, indent + 2U);
     fprintf(out, "\"iterations\": %" PRIu64 ",\n", snapshot->iterations);
     sl_json_profile_indent(out, indent + 2U);

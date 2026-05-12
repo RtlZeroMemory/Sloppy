@@ -3,6 +3,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/json_profile.h"
 
+#include <math.h>
 #include <stdbool.h>
 
 static SlStatus sl_json_writer_reserve(SlJsonWriter* writer, size_t additional)
@@ -187,8 +188,13 @@ SlStatus sl_json_writer_write_f64(SlJsonWriter* writer, double value)
 {
     char buffer[SL_STRING_FORMAT_F64_CAPACITY];
     SlStr formatted = {0};
-    SlStatus status = sl_string_format_f64(buffer, sizeof(buffer), value, &formatted);
+    SlStatus status;
 
+    if (!isfinite(value)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_string_format_f64(buffer, sizeof(buffer), value, &formatted);
     if (!sl_status_is_ok(status)) {
         return status;
     }

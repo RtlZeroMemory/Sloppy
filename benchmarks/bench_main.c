@@ -309,7 +309,9 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
     out_result->chunks_processed = definition->chunks_per_iteration * measured_iterations;
     out_result->backpressure_count = definition->backpressure_per_iteration * measured_iterations;
     sl_bench_apply_json_counters(definition, out_result);
-    sl_json_profile_snapshot(&out_result->json_profile);
+    if (sl_json_profile_enabled() && sl_bench_streq(definition->category, "json")) {
+        sl_json_profile_snapshot(&out_result->json_profile);
+    }
     if (out_result->elapsed_ns != 0U) {
         double seconds = (double)out_result->elapsed_ns / 1000000000.0;
 

@@ -3287,15 +3287,20 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
     size_t index = 0U;
     uint64_t iteration_start =
         sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION);
+    auto finish_iteration = [&]() {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION, iteration_start);
+    };
     SlStatus status;
 
     if (!value->IsObject() || value->IsArray()) {
+        finish_iteration();
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     object = value.As<v8::Object>();
 
     status = sl_string_builder_append_char(builder, '{');
     if (!sl_status_is_ok(status)) {
+        finish_iteration();
         return status;
     }
     for (index = 0U; index < schema->property_count; index += 1U) {
@@ -3329,6 +3334,7 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
         if (emitted != 0U) {
             status = sl_string_builder_append_char(builder, ',');
             if (!sl_status_is_ok(status)) {
+                finish_iteration();
                 return status;
             }
         }
@@ -3349,7 +3355,7 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
         sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_RESPONSE_FIELDS_WRITTEN, 1U);
     }
     status = sl_string_builder_append_char(builder, '}');
-    sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION, iteration_start);
+    finish_iteration();
     return status;
 }
 

@@ -74,6 +74,8 @@ typedef enum SlJsonProfileCounter
     SL_JSON_PROFILE_COUNTER_COUNT = 24
 } SlJsonProfileCounter;
 
+#define SL_JSON_PROFILE_SCENARIO_CAPACITY 256U
+
 typedef struct SlJsonProfilePhaseStats
 {
     uint64_t total_ns;
@@ -85,13 +87,22 @@ typedef struct SlJsonProfilePhaseStats
 typedef struct SlJsonProfileSnapshot
 {
     bool enabled;
+    /*
+     * `scenario` points at this snapshot's `scenario_storage`. NULL reset scenarios become an
+     * empty string. Names longer than the storage capacity are truncated and remain valid JSON.
+     */
     const char* scenario;
+    char scenario_storage[SL_JSON_PROFILE_SCENARIO_CAPACITY];
     uint64_t iterations;
     SlJsonProfilePhaseStats phases[SL_JSON_PROFILE_PHASE_COUNT];
     uint64_t counters[SL_JSON_PROFILE_COUNTER_COUNT];
 } SlJsonProfileSnapshot;
 
 bool sl_json_profile_enabled(void);
+/*
+ * Resets the process-wide profiler for one measured scenario. `scenario` may be NULL; the profiler
+ * copies a bounded display name, so caller-owned memory only needs to live for this call.
+ */
 void sl_json_profile_reset(const char* scenario, uint64_t iterations);
 uint64_t sl_json_profile_phase_begin(SlJsonProfilePhase phase);
 void sl_json_profile_phase_end(SlJsonProfilePhase phase, uint64_t start_ns);

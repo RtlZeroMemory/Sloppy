@@ -180,6 +180,7 @@ set(
     tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
+    tests/unit/core/test_json_profile.c
     tests/unit/core/test_json_writer.c
     tests/unit/core/test_route.c
     tests/unit/core/test_route_artifact.c

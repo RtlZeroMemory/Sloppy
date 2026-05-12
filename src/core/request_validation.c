@@ -404,22 +404,32 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
         }
         status = sl_string_builder_append_cstr(&builder, ",\"code\":");
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_request_validation_append_json_escaped(&builder, issue->code);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_string_builder_append_cstr(&builder, ",\"message\":");
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_request_validation_append_json_escaped(&builder, issue->message);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_string_builder_append_char(&builder, '}');
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
     }
@@ -1230,12 +1240,17 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
                                           sizeof("JSON body schema metadata is missing.") - 1U));
     }
 
-    if (context->request_schema != NULL &&
-        sl_str_equal(context->request_schema->name, binding->schema))
-    {
-        schema = context->request_schema;
+    if (context->request_schema != NULL && (plan->schema_count == 0U || plan->schemas != NULL)) {
+        for (size_t schema_index = 0U; schema_index < plan->schema_count; schema_index += 1U) {
+            if (&plan->schemas[schema_index] == context->request_schema &&
+                sl_str_equal(plan->schemas[schema_index].name, binding->schema))
+            {
+                schema = &plan->schemas[schema_index];
+                break;
+            }
+        }
     }
-    else {
+    if (schema == NULL) {
         schema = sl_request_validation_find_schema(state, plan, binding->schema);
     }
     if (schema == NULL) {
