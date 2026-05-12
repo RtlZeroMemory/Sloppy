@@ -248,6 +248,17 @@
                              PROPERTIES LABELS "source-input;program-mode;node_compat;package;deps")
 
         add_test(
+            NAME sloppy.npm_compat.representative_fixtures
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_EXPECT_RUN_SUCCESS=${SLOPPY_ENABLE_V8}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_npm_compat_representatives.cmake")
+        set_tests_properties(sloppy.npm_compat.representative_fixtures
+                             PROPERTIES LABELS "source-input;program-mode;npm_compat;package;deps")
+
+        add_test(
             NAME sloppy.build.missing_project_config
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

@@ -1,0 +1,8 @@
+{
+    "name": "imports-unsupported-pkg",
+    "version": "1.0.0",
+    "type": "module",
+    "imports": {
+        "#missing": "./not-installed-target"
+    }
+}

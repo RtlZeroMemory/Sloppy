@@ -207,3 +207,16 @@ It is not a formal guarantee that every native package shape is recognized.
 dependency graph summary. `sloppy deps` prints the graph directly.
 `sloppy deps .sloppy --explain` adds a text compatibility summary for package
 review while `--format json` remains the full-fidelity machine-readable graph.
+The text summary breaks down Node compatibility shim statuses by
+`supported`/`partial`/`stubbed`/`unsupported` and findings by severity.
+
+## Compatibility Matrix
+
+A committed compatibility matrix lives at `tests/fixtures/npm-compat/`. Each
+fixture describes a package shape (CJS/ESM main, package `type`, `exports`
+string/object/subpath/extensionless/pattern/nested conditions, `imports`
+aliases and patterns, self-reference, JSON require, optional dependency
+metadata, peer dependency metadata, native addon, unsupported Node builtin,
+and dynamic require), and the resolver test exercises each entry. The matrix
+is the regression baseline for currently tested package shapes; shapes not in
+the matrix are not implicit non-regressions for users.

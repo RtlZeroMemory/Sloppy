@@ -87,7 +87,9 @@ Condition order is:
   `default`
 
 Unsupported package export shapes fail with
-`SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`.
+`SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED`. The diagnostic identifies the package,
+the offending `exports`/`imports` field, the subpath that was requested, and
+the reason resolution failed.
 
 ## CommonJS And JSON
 
@@ -167,3 +169,23 @@ summary for package review.
 
 Real installed packages work when their JavaScript and runtime API usage are
 compatible with Sloppy's loader and shims.
+
+## Compatibility Gauntlet
+
+The compiler exercises a committed package compatibility matrix at
+`tests/fixtures/npm-compat/`. Each fixture is a tiny hand-authored package
+shape (CommonJS main, ESM main, `type` module/commonjs, scoped, `exports`
+string/object/subpath/extensionless/pattern/nested-conditions, `imports`
+aliases and patterns, self-reference, JSON require, optional dependencies,
+peer dependency metadata, native addon, unsupported Node builtin, etc.). The
+resolver test walks `matrix.json` and asserts that each shape resolves to the
+documented outcome. The matrix is the regression baseline for currently tested
+package shapes — shapes outside the matrix are not implicit non-regressions;
+add a new fixture before claiming support for a new shape.
+
+There is also an optional ad-hoc smoke script at
+`tools/scripts/npm-compat-smoke.mjs` that installs a curated list of small
+pure-JavaScript packages from the npm registry and reports whether
+`sloppy build` accepts them. The smoke script is not part of normal CI, does
+not gate release, and does not promote packages to officially supported
+status.

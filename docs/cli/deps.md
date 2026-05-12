@@ -45,8 +45,16 @@ Findings (0)
 
 Compatibility explanation
   Packages bundled: 1
+  Bundled modules: 4
+  Packaged assets: 1
   Node compatibility shims used: 1
+    supported=1  partial=0  stubbed=0  unsupported=0
   Compatibility findings: 0
+  Shim statuses:
+    Node shim matrix (1)
+      node:path  supported -> sloppy/node/path
+  No dependency compatibility findings were recorded.
+  Package graph is sealed for outside-checkout use.
 ```
 
 ## JSON Output

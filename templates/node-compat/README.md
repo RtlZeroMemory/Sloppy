@@ -23,6 +23,12 @@ compatibility modules explicitly in source. Bundled package programs may receive
 temporary `global`, `process`, and `Buffer` compatibility globals while the
 program entry runs.
 
+Pure-JavaScript npm packages that fit the documented exports/imports
+resolution shapes (see `tests/fixtures/npm-compat/matrix.json`) can be bundled
+alongside this template; native addons, dynamic `require` without
+`moduleInclude`, and unsupported Node builtins are rejected with explicit
+diagnostics.
+
 ```sh
 sloppy build
 sloppy deps .sloppy --explain
