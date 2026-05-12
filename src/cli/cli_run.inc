@@ -9,6 +9,7 @@ typedef struct SlRunApp
     unsigned char plan_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char package_manifest_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char route_artifact_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char file_read_storage[SL_RUN_FILE_READ_ARENA_BYTES];
@@ -27,6 +28,7 @@ typedef struct SlRunApp
     SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlBytes source_map_bytes;
+    SlBytes route_artifact_bytes;
     SlEngine* engine;
     SlLogRuntime* logging;
     SlLogSink* logging_console_sink;
@@ -1308,7 +1310,8 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
         return 1;
     }
     app->has_dynamic_routes =
-        sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\""));
+        sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\": [")) ||
+        sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\":["));
 
     parse_options.source_name = sl_str_from_cstr(plan_path);
     status = sl_plan_parse_json(&app->plan_arena, json, &parse_options, &app->plan, &diag);
@@ -1360,13 +1363,19 @@ static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capa
         return status;
     }
 
-    status = sl_checked_mul_size(plan->route_count, 3U, &addend);
+    status = sl_checked_mul_size(plan->route_count, 6U, &addend);
     if (!sl_status_is_ok(status)) {
         return status;
     }
     status = sl_checked_add_size(capacity, addend, &capacity);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (plan->has_route_dispatch_artifact) {
+        status = sl_checked_add_size(capacity, 3U, &capacity);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
     for (size_t index = 0U; index < plan->route_count; index += 1U) {
         status = sl_checked_mul_size(plan->routes[index].binding_count, 4U, &addend);
@@ -1557,8 +1566,20 @@ static int sl_run_prepare_routes(SlRunApp* app)
         return 1;
     }
 
-    if (app->has_dynamic_routes) {
+    if (app->has_dynamic_routes && app->plan.route_count == 0U) {
         return 0;
+    }
+
+    if (app->plan.has_route_dispatch_artifact) {
+        SlRouteArtifactSummary summary = {0};
+        status = sl_route_artifact_validate(&app->engine_arena, app->route_artifact_bytes,
+                                            app->plan.route_dispatch_artifact.hash, &app->plan,
+                                            &summary, &diag);
+        if (!sl_status_is_ok(status)) {
+            sl_run_print_diag("sloppy run: invalid route dispatch artifact: ", &app->engine_arena,
+                              &diag);
+            return 1;
+        }
     }
 
     status = sl_http_route_table_build(&app->route_arena, &app->plan, &app->route_table, &diag);
@@ -1574,6 +1595,33 @@ static int sl_run_prepare_routes(SlRunApp* app)
     }
 
     return 0;
+}
+
+static int sl_run_load_route_artifact(SlRunApp* app, const char* artifacts_path,
+                                      const char* command_name)
+{
+    char route_artifact_path[SL_RUN_PATH_MAX_BYTES];
+
+    if (app == NULL || artifacts_path == NULL || command_name == NULL) {
+        return 1;
+    }
+    if (!app->plan.has_route_dispatch_artifact) {
+        return 0;
+    }
+    if (!sl_str_equal(app->plan.route_dispatch_artifact.kind, sl_str_from_cstr("slrt"))) {
+        sl_run_write_command_message(command_name,
+                                     "unsupported route dispatch artifact kind in app.plan.json\n");
+        return 1;
+    }
+    if (!sl_run_join_path(route_artifact_path, sizeof(route_artifact_path), artifacts_path,
+                          sl_run_str_span(app->plan.route_dispatch_artifact.path)))
+    {
+        sl_run_write_command_message(command_name,
+                                     "invalid route dispatch artifact path in app.plan.json\n");
+        return 1;
+    }
+    return sl_run_read_file(app, route_artifact_path, app->route_artifact_storage,
+                            sizeof(app->route_artifact_storage), &app->route_artifact_bytes);
 }
 
 static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
@@ -1741,6 +1789,11 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
     if (sl_run_load_plan(app, plan_path) != 0 ||
         (app->plan.kind == SL_PLAN_KIND_WEB && sl_run_validate_startup(app) != 0) ||
         sl_run_intern_plan_metadata(app) != 0 || sl_run_init_capability_registry(app) != 0)
+    {
+        return 1;
+    }
+    if (app->plan.kind == SL_PLAN_KIND_WEB &&
+        sl_run_load_route_artifact(app, artifacts_path, command_name) != 0)
     {
         return 1;
     }
@@ -2058,6 +2111,74 @@ static SlStatus sl_run_dispatch_transport_status(SlStatus status, const SlDiag* 
                : sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
+static int sl_run_write_dispatch_failure_response(SlRunApp* app, SlArena* dispatch_arena,
+                                                  const SlHttpRequestHead* request, char* response,
+                                                  size_t response_capacity, SlStatus status,
+                                                  const SlDiag* diag, bool suppress_body)
+{
+    if (app == NULL || dispatch_arena == NULL || request == NULL || response == NULL ||
+        diag == NULL)
+    {
+        return -1;
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
+    {
+        return sl_run_write_method_not_allowed_response(app, dispatch_arena, request, response,
+                                                        response_capacity, suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 501U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Request body framing is not supported\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
+        diag->code == SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 413U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Payload Too Large\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 415U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Unsupported Media Type\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT &&
+        diag->code == SL_DIAG_MALFORMED_JSON)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 400U, "application/problem+json",
+            sl_str_from_cstr(
+                "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
+                "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[{"
+                "\"path\":\"body\",\"code\":\"json.malformed\",\"message\":\"Expected a valid "
+                "JSON request body.\"}]}\n"),
+            suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+        diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
+        return sl_run_write_response_with_options(response, response_capacity, 404U,
+                                                  "text/plain; charset=utf-8",
+                                                  sl_str_from_cstr("Not Found\n"), suppress_body);
+    }
+
+    return sl_run_write_response_with_options(
+        response, response_capacity, 500U, "text/plain; charset=utf-8",
+        sl_str_from_cstr("Sloppy handler failed\n"), suppress_body);
+}
+
 static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestHead* request,
                                              char* response, size_t response_capacity,
                                              unsigned char* dispatch_storage,
@@ -2092,61 +2213,8 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         }
     }
 
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
-    {
-        return sl_run_write_method_not_allowed_response(app, &dispatch_arena, request, response,
-                                                        response_capacity, suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 501U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Request body framing is not supported\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
-        diag.code == SL_DIAG_HTTP_BODY_LIMIT)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 413U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Payload Too Large\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 415U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Unsupported Media Type\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT && diag.code == SL_DIAG_MALFORMED_JSON)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 400U, "application/problem+json",
-            sl_str_from_cstr(
-                "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
-                "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[{"
-                "\"path\":\"body\",\"code\":\"json.malformed\",\"message\":\"Expected a valid "
-                "JSON request body.\"}]}\n"),
-            suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
-        diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
-    {
-        return sl_run_write_response_with_options(response, response_capacity, 404U,
-                                                  "text/plain; charset=utf-8",
-                                                  sl_str_from_cstr("Not Found\n"), suppress_body);
-    }
-
-    (void)diag;
-    return sl_run_write_response_with_options(
-        response, response_capacity, 500U, "text/plain; charset=utf-8",
-        sl_str_from_cstr("Sloppy handler failed\n"), suppress_body);
+    return sl_run_write_dispatch_failure_response(app, &dispatch_arena, request, response,
+                                                  response_capacity, status, &diag, suppress_body);
 }
 
 static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
@@ -2160,11 +2228,10 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
 
 static bool sl_run_once_header_name_char(char ch)
 {
-    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-           (ch >= '0' && ch <= '9') || ch == '!' || ch == '#' || ch == '$' ||
-           ch == '%' || ch == '&' || ch == '\'' || ch == '*' || ch == '+' ||
-           ch == '-' || ch == '.' || ch == '^' || ch == '_' || ch == '`' ||
-           ch == '|' || ch == '~';
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+           ch == '!' || ch == '#' || ch == '$' || ch == '%' || ch == '&' || ch == '\'' ||
+           ch == '*' || ch == '+' || ch == '-' || ch == '.' || ch == '^' || ch == '_' ||
+           ch == '`' || ch == '|' || ch == '~';
 }
 
 static bool sl_run_once_header_has_crlf(SlStr value)
@@ -2246,8 +2313,8 @@ static bool sl_run_once_has_header(const SlHttpHeader* headers, size_t header_co
     return false;
 }
 
-static int sl_run_once_append_header(SlHttpHeader* headers, size_t* header_count,
-                                     const char* name, const char* value)
+static int sl_run_once_append_header(SlHttpHeader* headers, size_t* header_count, const char* name,
+                                     const char* value)
 {
     if (headers == NULL || header_count == NULL || name == NULL || value == NULL) {
         return 1;
@@ -2262,9 +2329,8 @@ static int sl_run_once_append_header(SlHttpHeader* headers, size_t* header_count
     return 0;
 }
 
-static int sl_run_once_read_body_file(SlRunApp* app, const char* path,
-                                      unsigned char* body_storage, size_t body_capacity,
-                                      SlBytes* out_body)
+static int sl_run_once_read_body_file(SlRunApp* app, const char* path, unsigned char* body_storage,
+                                      size_t body_capacity, SlBytes* out_body)
 {
     SlArena arena = {0};
     SlByteBuilder builder = {0};
@@ -2326,8 +2392,8 @@ static int sl_run_once_prepare_request(SlRunApp* app, const SlCliOptions* option
 
     for (index = 0U; index < options->once_header_count; index += 1U) {
         if (request->header_count >= header_capacity ||
-            sl_run_once_parse_header(options->once_headers[index], &headers[request->header_count]) !=
-                0)
+            sl_run_once_parse_header(options->once_headers[index],
+                                     &headers[request->header_count]) != 0)
         {
             sl_cli_write_cstr(stderr, "sloppy run: --header requires a valid name:value header\n");
             return 1;
@@ -2422,26 +2488,79 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
         return 1;
     }
 
-    if (sl_run_once_prepare_request(app, options, &request, headers,
-                                    sizeof(headers) / sizeof(headers[0]), body_storage,
-                                    sizeof(body_storage), content_length_storage,
-                                    sizeof(content_length_storage)) != 0)
+    if (sl_run_once_prepare_request(
+            app, options, &request, headers, sizeof(headers) / sizeof(headers[0]), body_storage,
+            sizeof(body_storage), content_length_storage, sizeof(content_length_storage)) != 0)
     {
         return 1;
     }
 
     if (app->has_dynamic_routes) {
         char eval_source[SL_RUN_RESPONSE_MAX_BYTES];
+        unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
+        SlArena dispatch_arena = {0};
+        SlHttpResponse native_response = {0};
+        SlHttpResponseWriteOptions write_options = {0};
+        SlBytes native_response_bytes = {0};
         SlStringBuilder builder;
         SlStr eval_view = {0};
         SlEngineResult result = {0};
         SlDiag diag = {0};
         SlStatus status;
+
+        if (app->route_table.route_count != 0U) {
+            if (!sl_status_is_ok(
+                    sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage))))
+            {
+                return 1;
+            }
+            status = sl_run_dispatch_response_with_storage(app, &request, NULL, &dispatch_arena,
+                                                           &native_response, &diag);
+            if (sl_status_is_ok(status)) {
+                write_options.suppress_body = request.method == SL_HTTP_METHOD_HEAD;
+                status = sl_http_response_write_with_options(
+                    &native_response, &write_options, (unsigned char*)response, sizeof(response),
+                    &native_response_bytes);
+                if (!sl_status_is_ok(status) ||
+                    native_response_bytes.length > (size_t)SL_RUN_RESPONSE_MAX_BYTES)
+                {
+                    sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+                    return 1;
+                }
+                if (native_response_bytes.length != 0U &&
+                    fwrite(response, 1U, native_response_bytes.length, stdout) !=
+                        native_response_bytes.length)
+                {
+                    sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+                    return 1;
+                }
+                return 0;
+            }
+            if (!(sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+                  diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND))
+            {
+                response_length = sl_run_write_dispatch_failure_response(
+                    app, &dispatch_arena, &request, response, sizeof(response), status, &diag,
+                    request.method == SL_HTTP_METHOD_HEAD);
+                if (response_length < 0) {
+                    sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+                    return 1;
+                }
+                if (response_length != 0 && fwrite(response, 1U, (size_t)response_length, stdout) !=
+                                                (size_t)response_length)
+                {
+                    sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+                    return 1;
+                }
+                return 0;
+            }
+        }
+
         if (options->once_header_count != 0U || options->once_body != NULL ||
-            options->once_body_file != NULL || options->once_json != NULL) {
-            sl_cli_write_cstr(stderr,
-                              "sloppy run: --once headers and bodies require static route "
-                              "metadata for dynamic fallback routes today\n");
+            options->once_body_file != NULL || options->once_json != NULL)
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: --once headers and bodies require static route "
+                                      "metadata for dynamic fallback routes today\n");
             return 1;
         }
         if (strchr(method, '"') != NULL || strchr(method, '\\') != NULL ||

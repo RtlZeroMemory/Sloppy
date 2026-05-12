@@ -28,6 +28,7 @@
 #include "sloppy/platform_process.h"
 #include "sloppy/platform_thread.h"
 #include "sloppy/route.h"
+#include "sloppy/route_artifact.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 

@@ -98,6 +98,18 @@ strict trailing-slash behavior.
 The table is read-only at request time; a registered route never
 disappears or moves.
 
+Current web Plans also emit `routeDispatch` metadata and a `routes.slrt` route
+artifact for this table. `sloppy run` validates the artifact hash, checksum,
+section bounds, route strings, handler IDs, and execution-kind codes before the
+Plan-backed route table is used. The table is materialized from `app.plan.json`
+route metadata after artifact validation. Exact static routes are indexed by
+method and path. Parameter routes are matched through a method-specific native
+segment trie, with first-static-segment candidate buckets retained as an
+internal fallback for partial or manually constructed tables. Provably static
+`Results.text`, `Results.json`, and `Results.ok` literal handlers can return a
+native no-JS response, and named Plan routes can generate native URLs with
+percent-encoded path parameters.
+
 ## Body / content-type policy
 
 `request_validation.c` enforces, before any handler runs:

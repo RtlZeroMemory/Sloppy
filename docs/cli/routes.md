@@ -3,9 +3,9 @@
 List the routes a Plan declares. Read-only; doesn't enter V8.
 
 ```sh
-sloppy routes <artifacts-dir|plan.json> [--format text|json]
-sloppy routes --plan <path> [--format text|json]
-sloppy routes --artifacts <dir> [--format text|json]
+sloppy routes <artifacts-dir|plan.json> [--format text|json] [--dispatch]
+sloppy routes --plan <path> [--format text|json] [--dispatch]
+sloppy routes --artifacts <dir> [--format text|json] [--dispatch]
 ```
 
 Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
@@ -60,6 +60,25 @@ native upgrade execution in this alpha.
 
 For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
 array. Text output says no route metadata is expected for a program Plan.
+
+## Dispatch Details
+
+Pass `--dispatch` to include the compiler/runtime dispatch contract. Current
+alpha builds emit `native-compiled`: Plan-backed native dispatch with
+`routes.slrt` integrity validation. The compiler writes `routes.slrt`, the Plan
+records its hash, and the runtime validates the artifact before building an
+exact static-path hash table plus a method-specific segment trie from
+`app.plan.json` route metadata. Candidate buckets remain an internal fallback
+for partial or manually constructed dispatch tables.
+
+```sh
+sloppy routes .sloppy --dispatch
+sloppy routes .sloppy --dispatch --format json
+```
+
+The dispatch block reports route and endpoint counts, exact static paths,
+parameter routes, candidate bucket count, segment-trie node count, fallback
+availability, native no-JS endpoints, and native URL generation status.
 
 ## Use cases
 

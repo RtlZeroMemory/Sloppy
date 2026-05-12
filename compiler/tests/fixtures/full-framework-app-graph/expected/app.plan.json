@@ -236,6 +236,7 @@
     "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -408,6 +409,41 @@
   "requiredFeatures": [
     "stdlib.os"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:e51f156132cc916e88fa88316f1fc09380766f2817c3847ae44a1aa88dbdb311",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 12,
+      "parameterCandidateBuckets": 2,
+      "segmentTrieNodes": 8,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 14,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 1
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 2,
+    "routeCount": 14,
+    "staticRoutes": 12,
+    "urlGeneration": true,
+    "urlWriters": 8,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -436,6 +472,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "effects": [
         {
@@ -495,6 +538,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 71,
@@ -507,6 +551,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -625,6 +670,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
       "injections": [
         {
@@ -684,6 +736,7 @@
           "bodySchema": null,
           "helper": "created",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 6,
@@ -696,6 +749,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -787,6 +841,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 3,
       "injections": [
         {
@@ -839,6 +900,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 20,
@@ -851,6 +913,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 42,
@@ -863,6 +926,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -899,6 +963,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 4,
       "health": {
@@ -950,6 +1021,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -962,6 +1034,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -974,6 +1047,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1005,6 +1079,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 5,
       "health": {
@@ -1055,6 +1136,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1067,6 +1149,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1079,6 +1162,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1110,6 +1194,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 6,
       "health": {
@@ -1160,6 +1251,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1172,6 +1264,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1184,6 +1277,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1219,6 +1313,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 7,
       "method": "GET",
@@ -1274,14 +1375,28 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 8,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 8,
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
+      "nativeResponse": {
+        "body": "pong",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/status/ping",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "pong",
         "status": 200
       },
       "responses": [
@@ -1289,6 +1404,7 @@
           "bodySchema": null,
           "helper": "text",
           "kind": "text",
+          "nativeBody": "pong",
           "partial": false,
           "source": {
             "column": 29,
@@ -1301,6 +1417,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1335,6 +1452,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 9,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 9,
       "method": "OPTIONS",
@@ -1379,6 +1503,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1386,6 +1511,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1417,6 +1543,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 10,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 10,
       "method": "OPTIONS",
@@ -1461,6 +1594,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1468,6 +1602,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1499,6 +1634,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 11,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
       },
       "handlerId": 11,
       "method": "OPTIONS",
@@ -1543,6 +1685,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1550,6 +1693,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1581,6 +1725,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 12,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 12,
       "method": "OPTIONS",
@@ -1625,6 +1776,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1632,6 +1784,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1663,6 +1816,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 13,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 13,
       "method": "OPTIONS",
@@ -1707,6 +1867,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1714,6 +1875,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1745,6 +1907,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 14,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 14,
       "method": "OPTIONS",
@@ -1789,6 +1958,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1796,6 +1966,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1918,6 +2089,7 @@
       "health": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

@@ -12,6 +12,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Logging runtime](logging.md) — structured events, redaction, queues, sinks
 - [V8 bridge](v8-bridge.md) — boundaries, ownership rules, isolation
 - [HTTP runtime](http-runtime.md) — parser, transport, dispatch
+- [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata
 - [Async runtime](async-runtime.md) — owner-thread model, cancellation
 - [Provider runtime](provider-runtime.md) — provider executor and bridges
 - [Memory model](memory-model.md) — arenas, lifetimes, ownership

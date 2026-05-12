@@ -61,6 +61,10 @@ is route matching, request context materialization, middleware order, result
 conversion, ProblemDetails, CORS, health checks, or request service cleanup.
 Use `sloppy run --once` for compiled artifacts, native dispatch, V8 execution,
 generated typed bindings, package layout, and provider bridge behavior.
+For native endpoint dispatch metadata, pair compiler Plan assertions with
+`sloppy routes --dispatch` / `sloppy doctor --dispatch` CLI coverage, and keep
+counters such as route artifact gaps, native no-JS endpoints, and native URL
+writers accurate.
 
 The dogfood control-plane coverage deliberately uses both. The app-host test
 imports `examples/prealpha-control-plane/src/routes/*.js` and checks bodies,

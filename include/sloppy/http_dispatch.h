@@ -42,12 +42,26 @@ typedef struct SlHttpRouteCandidateBucket
     size_t route_count;
 } SlHttpRouteCandidateBucket;
 
+typedef struct SlHttpRouteTrieRoot SlHttpRouteTrieRoot;
+typedef struct SlHttpRouteTrieNode SlHttpRouteTrieNode;
+typedef struct SlHttpRouteTrieEdge SlHttpRouteTrieEdge;
+
+typedef enum SlHttpRouteDispatchMode
+{
+    SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED = 0,
+    SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC = 1,
+    SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE = 2
+} SlHttpRouteDispatchMode;
+
 /*
  * Borrowed route binding table.
  *
  * `routes` must point to `route_count` entries when `route_count` is nonzero. The table
- * does not own route patterns or plan handlers, and it is intentionally separate from
- * SlPlan until a future plan routes section is implemented.
+ * does not own route patterns or plan handlers. This header is public for in-repo tests and
+ * alpha tooling.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze. External code
+ * must not persist or binary-share this layout.
  */
 typedef struct SlHttpDispatchTable
 {
@@ -61,7 +75,14 @@ typedef struct SlHttpDispatchTable
     size_t param_route_bucket_count;
     const SlHttpRouteCandidateBucket** param_route_bucket_slots;
     size_t param_route_bucket_slot_count;
+    const SlHttpRouteTrieRoot* param_route_trie_roots;
+    size_t param_route_trie_root_count;
+    const SlHttpRouteTrieNode* param_route_trie_nodes;
+    size_t param_route_trie_node_count;
+    const SlHttpRouteTrieEdge* param_route_trie_edges;
+    size_t param_route_trie_edge_count;
     const SlPlan* plan;
+    SlHttpRouteDispatchMode dispatch_mode;
     /*
      * Runtime-owned dispatch metadata. Callers that manually create this struct must
      * zero-initialize it and leave this field untouched.
@@ -102,6 +123,18 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
 SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
                                                 const SlHttpDispatchTable* dispatch_table,
                                                 SlStr path, SlStr* out_allow);
+
+/*
+ * Generates a path for a named Plan route from native dispatch metadata.
+ *
+ * `params` supplies path parameter values by name. Values are percent-encoded for path
+ * segments before insertion. The generated path is arena-owned. Unknown route names,
+ * missing parameters, constraint mismatches, and unnamed routes fail without falling back to
+ * JavaScript.
+ */
+SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable* dispatch_table,
+                                       SlStr route_name, const SlRouteParam* params,
+                                       size_t param_count, SlStr* out_url);
 
 /*
  * Dispatches one parsed in-memory HTTP request head to a Sloppy Plan handler ID.

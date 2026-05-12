@@ -1,0 +1,19 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "warn", "message": "V8 bridge disabled in this build; V8 runtime tests not run" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "package release status requires package smoke" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "ok", "message": "route metadata present" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
+    { "id": "route.dispatch.mode", "status": "ok", "message": "native-compiled" },
+    { "id": "route.dispatch.contract", "status": "ok", "message": "Plan-backed native dispatch with routes.slrt integrity validation" },
+    { "id": "route.dispatch.artifact", "status": "ok", "message": "sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733" },
+    { "id": "route.dispatch.fallback", "status": "ok", "message": "classic dispatch fallback is available" },
+    { "id": "route.dispatch.segment-trie", "status": "ok", "message": "parameter routes advertise native segment-trie nodes" },
+    { "id": "app.plan.completeness", "status": "ok", "message": "Plan completeness is complete" },
+    { "id": "optimization.native-json-candidate", "status": "ok", "message": "route has response metadata for future native JSON analysis" }
+  ]
+}

@@ -7678,6 +7678,63 @@ export default app;
 }
 
 #[test]
+fn emits_route_dispatch_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/health", () => Results.json({ ok: true })).withName("Health.Get");
+app.get("/users/{id:int}", (ctx) => Results.json({ id: ctx.route.id })).withName("Users.Get");
+app.get("/{tenant}/users/{id:int}", (ctx) => Results.text(ctx.route.tenant)).withName("Tenant.Users.Get");
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("static and parameter routes should extract");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
+
+    assert_eq!(value["features"]["nativeEndpointDispatch"], true);
+    assert_eq!(value["strongPlan"]["evidence"]["routeDispatch"], true);
+    assert_eq!(value["routeDispatch"]["mode"], "native-compiled");
+    assert_eq!(value["routeDispatch"]["artifact"]["kind"], "slrt");
+    assert_eq!(value["routeDispatch"]["artifact"]["path"], "routes.slrt");
+    assert!(value["routeDispatch"]["artifact"]["hash"]
+        .as_str()
+        .expect("route artifact hash should be a string")
+        .starts_with("sha256:"));
+    assert_eq!(value["routeDispatch"]["routeCount"], 3);
+    assert_eq!(value["routeDispatch"]["staticRoutes"], 1);
+    assert_eq!(value["routeDispatch"]["parameterRoutes"], 2);
+    assert_eq!(
+        value["routeDispatch"]["dispatchStats"]["parameterCandidateBuckets"],
+        2
+    );
+    assert_eq!(
+        value["routeDispatch"]["dispatchStats"]["constraints"],
+        serde_json::json!(["int"])
+    );
+    assert_eq!(
+        value["routeDispatch"]["dispatchStats"]["segmentTrieNodes"],
+        6
+    );
+    assert_eq!(
+        value["routes"][0]["dispatch"]["strategy"],
+        "exact-static-hash"
+    );
+    assert_eq!(value["routes"][1]["dispatch"]["strategy"], "segment-trie");
+    assert_eq!(
+        value["routes"][1]["dispatch"]["executionKind"],
+        "v8-handler"
+    );
+    assert_eq!(value["routes"][2]["dispatch"]["strategy"], "segment-trie");
+}
+
+#[test]
 fn extracts_chained_group_tags_and_auth_requirements() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();

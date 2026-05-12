@@ -231,6 +231,7 @@
     "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -326,6 +327,41 @@
   "requiredFeatures": [
     "stdlib.os"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:3638d798583f94d48c2d6cebe17a0c129a3ca2463a63943d6949227ab4fe5aa9",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 6,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 4,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 7,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 1,
+    "routeCount": 7,
+    "staticRoutes": 6,
+    "urlGeneration": true,
+    "urlWriters": 7,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -338,6 +374,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "effects": [
         {
@@ -368,6 +411,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 71,
@@ -380,6 +424,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -482,6 +527,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
       "injections": [
         {
@@ -512,6 +564,7 @@
           "bodySchema": null,
           "helper": "created",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 6,
@@ -524,6 +577,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -599,6 +653,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 3,
       "injections": [
         {
@@ -622,6 +683,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 20,
@@ -634,6 +696,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 42,
@@ -646,6 +709,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -666,6 +730,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 4,
       "health": {
@@ -688,6 +759,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -700,6 +772,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -712,6 +785,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -727,6 +801,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 5,
       "health": {
@@ -748,6 +829,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -760,6 +842,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -772,6 +855,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -787,6 +871,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 6,
       "health": {
@@ -808,6 +899,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -820,6 +912,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -832,6 +925,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -848,14 +942,28 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 7,
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
+      "nativeResponse": {
+        "body": "pong",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/status/ping",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "pong",
         "status": 200
       },
       "responses": [
@@ -863,6 +971,7 @@
           "bodySchema": null,
           "helper": "text",
           "kind": "text",
+          "nativeBody": "pong",
           "partial": false,
           "source": {
             "column": 29,
@@ -875,6 +984,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1000,6 +1110,7 @@
       "health": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

@@ -76,15 +76,32 @@ typedef struct SlPlanHandler
     SlStr display_name;
 } SlPlanHandler;
 
+/*
+ * Parsed Plan route metadata. Plan structs are exposed for Sloppy's current in-repo C
+ * runtime boundary.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
+ */
 typedef struct SlPlanRoute
 {
-    SlStr method;
-    SlStr pattern;
-    SlHandlerId handler_id;
-    SlStr name;
     const struct SlPlanRequestBinding* bindings;
     size_t binding_count;
+    SlStr method;
+    SlStr pattern;
+    SlStr name;
+    SlStr native_response_kind;
+    SlStr native_response_body;
+    SlStr native_response_content_type;
+    SlHandlerId handler_id;
+    uint16_t native_response_status;
 } SlPlanRoute;
+
+typedef struct SlPlanRouteDispatchArtifact
+{
+    SlStr kind;
+    SlStr path;
+    SlStr hash;
+} SlPlanRouteDispatchArtifact;
 
 typedef enum SlPlanRequestBindingKind
 {
@@ -275,6 +292,9 @@ typedef struct SlPlanFfiStruct
     size_t field_count;
 } SlPlanFfiStruct;
 
+/*
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
+ */
 typedef struct SlPlan
 {
     uint32_t version;
@@ -289,6 +309,8 @@ typedef struct SlPlan
     size_t handler_count;
     const SlPlanRoute* routes;
     size_t route_count;
+    SlPlanRouteDispatchArtifact route_dispatch_artifact;
+    bool has_route_dispatch_artifact;
     const SlPlanSchema* schemas;
     size_t schema_count;
     const SlPlanDataProvider* data_providers;

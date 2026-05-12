@@ -1,0 +1,51 @@
+{
+  "assets": [],
+  "compatibilityFindings": [],
+  "modules": [
+    {
+      "dynamicImports": [],
+      "format": "esm",
+      "id": "input.ts",
+      "imports": [
+        "./modules/health"
+      ],
+      "resolvedImports": [
+        {
+          "kind": "relative",
+          "resolvedId": "modules/health.ts",
+          "specifier": "./modules/health"
+        }
+      ],
+      "source": "input.ts"
+    },
+    {
+      "dynamicImports": [],
+      "format": "esm",
+      "id": "modules/health.ts",
+      "imports": [],
+      "includedBy": "input.ts",
+      "resolvedImports": [],
+      "source": "modules/health.ts"
+    }
+  ],
+  "nodeBuiltins": [],
+  "packages": [],
+  "resolver": {
+    "conditions": [
+      "sloppy",
+      "import",
+      "require",
+      "node",
+      "development",
+      "production",
+      "default"
+    ],
+    "profiles": [
+      "sloppy-stdlib",
+      "relative-source",
+      "installed-packages",
+      "node-compat-shims"
+    ]
+  },
+  "schemaVersion": 1
+}

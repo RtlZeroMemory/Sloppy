@@ -215,6 +215,7 @@
     "capabilities": true,
     "dataProviders": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true,
@@ -250,6 +251,39 @@
     "stdlib.os",
     "stdlib.workers"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:f45e3920042c1d939697368d2933ead2f7e8145c3dbb52099efeb2f874883d39",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 3,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 2,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 1,
+    "routeCount": 2,
+    "staticRoutes": 1,
+    "urlGeneration": true,
+    "urlWriters": 0,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -341,6 +375,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 1,
       "injections": [
@@ -474,6 +515,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "frameworkPath": "/users/:id",
       "handlerId": 2,
       "injections": [
@@ -499,6 +547,7 @@
           "bodySchema": "UserDto",
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 17,
@@ -511,6 +560,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 36,
@@ -663,6 +713,7 @@
       "ffi": false,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true,
       "workers": true

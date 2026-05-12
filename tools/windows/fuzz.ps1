@@ -20,6 +20,7 @@ $NativeTargets = @{
     "plan" = @{ CTest = "fuzz\.plan_parse\.seed_replay"; Corpus = "plan"; Exe = "fuzz_plan_parse_libfuzzer.exe" }
     "route-pattern" = @{ CTest = "fuzz\.route_pattern\.seed_replay"; Corpus = "route-pattern"; Exe = "fuzz_route_pattern_libfuzzer.exe" }
     "http-request" = @{ CTest = "fuzz\.http_request\.seed_replay"; Corpus = "http-request"; Exe = "fuzz_http_request_libfuzzer.exe" }
+    "http-route-dispatch" = @{ CTest = "fuzz\.http_route_dispatch\.seed_replay"; Corpus = "http-route-dispatch"; Exe = "fuzz_http_route_dispatch_libfuzzer.exe" }
     "http-query" = @{ CTest = "fuzz\.http_query\.seed_replay"; Corpus = "http-query"; Exe = "fuzz_http_query_libfuzzer.exe" }
     "http2-frame" = @{ CTest = "fuzz\.http2_frame\.seed_replay"; Corpus = "http2-frame"; Exe = "fuzz_http2_frame_libfuzzer.exe" }
     "http2-hpack" = @{ CTest = "fuzz\.http2_hpack\.seed_replay"; Corpus = "http2-hpack"; Exe = "fuzz_http2_hpack_libfuzzer.exe" }

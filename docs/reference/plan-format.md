@@ -49,6 +49,8 @@ The compiler can emit route metadata for the supported source subset:
 - Compiler-inferred metadata for typed handlers, including route/body/query/header
   bindings, context bindings, provider/queue injection requirements, schema definitions,
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
+- `routeDispatch` metadata for the native in-memory dispatch table generated
+  from Plan routes at runtime.
 
 The native runtime validates route metadata, builds a deterministic route table, and
 dispatches supported requests through V8 when the runtime is V8-enabled. For typed-handler
@@ -70,6 +72,62 @@ all route metadata is inferred. Unknown dynamic registrations appear in
 `dynamicRoutes[]`, and app-level metadata records route completeness counts.
 OpenAPI emitters include representable known routes and mark the document as a
 partial Plan-supported subset.
+
+## Route Dispatch
+
+Web Plans emit a top-level `routeDispatch` object:
+
+```json
+{
+  "routeDispatch": {
+    "version": 1,
+    "mode": "native-compiled",
+    "artifact": {
+      "kind": "slrt",
+      "path": "routes.slrt",
+      "hash": "sha256:..."
+    },
+    "routeCount": 2,
+    "endpointCount": 2,
+    "staticRoutes": 1,
+    "parameterRoutes": 1,
+    "catchAllRoutes": 0,
+    "nativeNoJsEndpoints": 1,
+    "urlGeneration": true,
+    "urlWriters": 1,
+    "dispatchStats": {
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 3,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ],
+      "constraints": ["int"]
+    },
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    }
+  }
+}
+```
+
+`native-compiled` is a runtime optimization path, not a public route API. It
+means Plan-backed native dispatch with `routes.slrt` integrity validation. The
+native runtime validates `routes.slrt`, then builds an
+exact-path hash index plus a method-specific segment trie from `app.plan.json`
+route metadata. It preserves `HEAD` and `405` behavior, dispatches dynamic
+handlers through the current V8 handler path, and executes provably static
+literal `Results.text`, `Results.json`, and `Results.ok` handlers as native
+responses. Candidate buckets remain as an internal fallback for partial or
+manually constructed dispatch tables.
+
+Named routes contribute native URL writers. The writer count is reported as
+`urlWriters`; generated URLs percent-encode path parameter values and validate
+the generated path through the native matcher.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

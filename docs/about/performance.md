@@ -35,11 +35,16 @@ and V8 type probes should stay as ordinary `if` checks unless measurements show
 otherwise.
 
 Generated static HTTP routes are indexed by method and path. Parameterized
-routes are bucketed by method and first static segment, with an indexed bucket
-lookup so misses do not scale with the total number of parameter buckets before
-candidate patterns are checked. Valid HTTP/1.1 error responses, including 404
-route misses, remain eligible for keep-alive instead of forcing a reconnect per
-miss.
+routes use a method-specific native segment trie, with the older first-static
+segment buckets retained as an internal fallback shape. Valid HTTP/1.1 error
+responses, including 404 route misses, remain eligible for keep-alive instead
+of forcing a reconnect per miss.
+
+The compiler exposes this as `routeDispatch.mode: native-compiled` in Plan
+metadata and emits a `routes.slrt` binary route artifact. `sloppy run` validates
+the artifact before materializing the runtime table from `app.plan.json`.
+Native no-JS static responses and native URL writers are reported by their Plan
+counters; those are structure evidence, not benchmark results.
 
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup

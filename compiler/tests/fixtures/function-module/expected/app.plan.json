@@ -197,6 +197,7 @@
     "dataProviders": true,
     "dependencyGraph": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -233,6 +234,39 @@
       }
     }
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:cbe61e0a661b0daea612047bb3d55d78a59154b95e5a97b47712ed9258bb772c",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 2,
+      "parameterCandidateBuckets": 0,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 2,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 0,
+    "routeCount": 2,
+    "staticRoutes": 2,
+    "urlGeneration": true,
+    "urlWriters": 0,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [],
@@ -240,13 +274,27 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 1,
       "method": "GET",
       "name": null,
+      "nativeResponse": {
+        "body": "ok",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/health",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "ok",
         "status": 200
       },
       "source": {
@@ -260,6 +308,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "effects": [
         {
@@ -324,6 +379,7 @@
       "effects": true,
       "ffi": false,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

@@ -7,10 +7,13 @@ use serde_json::{json, Map, Value};
 
 use crate::diagnostic::Diagnostic;
 use crate::graph::{
-    route_parameter_names, AuthSchemeMetadata, ConfigurationPackageEntry, DependencyGraph,
-    ExtractedApp, ProjectKind,
+    route_parameter_names, route_pattern_has_params, AuthSchemeMetadata, ConfigurationPackageEntry,
+    DependencyGraph, ExtractedApp, ProjectKind,
 };
 use crate::hash::sha256_hex;
+use crate::route_artifact::{
+    route_execution_kind, RouteDispatchArtifactMetadata, RouteExecutionKind,
+};
 use crate::source::line_column;
 use crate::validation::{
     plan_completeness, route_completeness, Completeness, CompletenessReason, RouteCompletenessInput,
@@ -30,6 +33,163 @@ fn completeness_json(completeness: &Completeness) -> Value {
                 })
             })
             .collect::<Vec<_>>()
+    })
+}
+
+fn route_pattern_leading_static_segment(pattern: &str) -> Option<&str> {
+    let segment = pattern
+        .split('/')
+        .skip(1)
+        .find(|segment| !segment.is_empty())?;
+    (!segment.starts_with('{')).then_some(segment)
+}
+
+fn route_pattern_constraint_names(pattern: &str) -> Vec<String> {
+    pattern
+        .split('/')
+        .skip(1)
+        .filter_map(|segment| {
+            if !(segment.starts_with('{') && segment.ends_with('}')) {
+                return None;
+            }
+            let inner = &segment[1..segment.len() - 1];
+            let (_, constraint) = inner.split_once(':')?;
+            Some(constraint.to_string())
+        })
+        .collect()
+}
+
+fn route_pattern_segment_trie_key(segment: &str) -> String {
+    if segment.starts_with('{') && segment.ends_with('}') {
+        let inner = &segment[1..segment.len() - 1];
+        let constraint = inner.split_once(':').map(|(_, ty)| ty).unwrap_or("str");
+        return format!("p:{constraint}");
+    }
+    format!("s:{segment}")
+}
+
+fn route_dispatch_segment_trie_nodes(app: &ExtractedApp) -> usize {
+    let mut prefixes = BTreeSet::<Vec<String>>::new();
+
+    for route in app
+        .routes
+        .iter()
+        .filter(|route| route_pattern_has_params(&route.pattern))
+    {
+        let mut prefix = vec![format!("m:{}", route.method)];
+        prefixes.insert(prefix.clone());
+        for segment in route
+            .pattern
+            .split('/')
+            .skip(1)
+            .filter(|segment| !segment.is_empty())
+        {
+            prefix.push(route_pattern_segment_trie_key(segment));
+            prefixes.insert(prefix.clone());
+        }
+    }
+
+    prefixes.len()
+}
+
+fn route_dispatch_json(
+    app: &ExtractedApp,
+    route_completeness_values: &[Completeness],
+    route_artifact: Option<&RouteDispatchArtifactMetadata>,
+) -> Value {
+    let static_routes = app
+        .routes
+        .iter()
+        .filter(|route| !route_pattern_has_params(&route.pattern))
+        .count();
+    let parameter_routes = app.routes.len().saturating_sub(static_routes);
+    let segment_trie_nodes = route_dispatch_segment_trie_nodes(app);
+    let parameter_candidate_buckets = app
+        .routes
+        .iter()
+        .filter(|route| route_pattern_has_params(&route.pattern))
+        .map(|route| {
+            (
+                route.method,
+                route_pattern_leading_static_segment(&route.pattern)
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    let partial_routes = route_completeness_values
+        .iter()
+        .filter(|route| route.status.as_str() != "complete")
+        .count();
+    let constraints = app
+        .routes
+        .iter()
+        .flat_map(|route| route_pattern_constraint_names(&route.pattern))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let native_no_js_endpoints = app
+        .routes
+        .iter()
+        .filter(|route| {
+            let response_kind = route
+                .handler
+                .response
+                .as_ref()
+                .map(|response| response.kind.as_str());
+            let native_body = route
+                .handler
+                .response
+                .as_ref()
+                .and_then(|response| response.native_body.as_deref());
+            route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler
+        })
+        .count();
+    let artifact = route_artifact.map_or_else(
+        || {
+            json!({
+                "kind": "none",
+                "reason": "route dispatch artifact metadata was not supplied by this Plan emission call"
+            })
+        },
+        |artifact| {
+            json!({
+                "kind": "slrt",
+                "path": artifact.path,
+                "hash": artifact.hash
+            })
+        },
+    );
+
+    json!({
+        "version": 1,
+        "mode": if route_artifact.is_some() { "native-compiled" } else { "native-compiled-in-memory" },
+        "artifact": artifact,
+        "routeCount": app.routes.len(),
+        "endpointCount": app.routes.len(),
+        "staticRoutes": static_routes,
+        "parameterRoutes": parameter_routes,
+        "catchAllRoutes": 0,
+        "nativeNoJsEndpoints": native_no_js_endpoints,
+        "urlGeneration": true,
+        "urlWriters": app.routes.iter().filter(|route| route.name.is_some()).count(),
+        "dispatchStats": {
+            "exactStaticPaths": static_routes,
+            "parameterCandidateBuckets": parameter_candidate_buckets,
+            "segmentTrieNodes": segment_trie_nodes,
+            "staticEdgeStrategies": [
+                "open-addressed-exact-hash",
+                "segment-trie",
+                "first-static-segment-bucket-fallback"
+            ],
+            "constraints": constraints
+        },
+        "fallback": {
+            "classicAvailable": true,
+            "dynamicRoutes": app.dynamic_routes.len(),
+            "partialRoutes": partial_routes
+        }
     })
 }
 
@@ -174,10 +334,33 @@ fn resolve_schema_references(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn emit_plan(
     app: &ExtractedApp,
     bundle_hash: &str,
     source_map_hash: &str,
+) -> Result<String, Diagnostic> {
+    let route_artifact = crate::route_artifact::emit_route_artifact(app)?;
+    let route_artifact_metadata =
+        route_artifact
+            .as_ref()
+            .map(|bytes| RouteDispatchArtifactMetadata {
+                path: crate::route_artifact::ROUTE_ARTIFACT_PATH.to_string(),
+                hash: crate::hash::sha256_bytes_hex(bytes),
+            });
+    emit_plan_with_route_artifact(
+        app,
+        bundle_hash,
+        source_map_hash,
+        route_artifact_metadata.as_ref(),
+    )
+}
+
+pub(crate) fn emit_plan_with_route_artifact(
+    app: &ExtractedApp,
+    bundle_hash: &str,
+    source_map_hash: &str,
+    route_artifact: Option<&RouteDispatchArtifactMetadata>,
 ) -> Result<String, Diagnostic> {
     if app.kind == ProjectKind::Program && !app.routes.is_empty() {
         return Err(Diagnostic::new(
@@ -450,6 +633,19 @@ pub(crate) fn emit_plan(
                     if response.partial {
                         response_json["partial"] = json!(true);
                     }
+                    if let Some(native_body) = &response.native_body {
+                        response_json["nativeBody"] = json!(native_body);
+                        route_json["nativeResponse"] = json!({
+                            "kind": response.kind,
+                            "status": response.status,
+                            "body": native_body,
+                            "contentType": if response.kind == "json" {
+                                "application/json"
+                            } else {
+                                "text/plain; charset=utf-8"
+                            }
+                        });
+                    }
                     route_json["response"] = response_json;
                 }
                 if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
@@ -463,6 +659,7 @@ pub(crate) fn emit_plan(
                                 "status": response.status,
                                 "kind": response.kind,
                                 "bodySchema": response.body_schema,
+                                "nativeBody": response.native_body,
                                 "partial": response.partial
                             });
                             if let (Some(source_name), Some(source_text), Some(span)) =
@@ -498,6 +695,24 @@ pub(crate) fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
+            let response_kind = route.handler.response.as_ref().map(|response| response.kind.as_str());
+            let native_body = route
+                .handler
+                .response
+                .as_ref()
+                .and_then(|response| response.native_body.as_deref());
+            let execution_kind = route_execution_kind(response_kind, native_body);
+            route_json["dispatch"] = json!({
+                "endpointId": id,
+                "mode": if route_artifact.is_some() { "native-compiled" } else { "native-compiled-in-memory" },
+                "strategy": if route_pattern_has_params(&route.pattern) {
+                    "segment-trie"
+                } else {
+                    "exact-static-hash"
+                },
+                "specializable": true,
+                "executionKind": execution_kind.as_plan_str()
+            });
             route_json["completeness"] = completeness_json(completeness);
             route_json
         })
@@ -959,6 +1174,12 @@ pub(crate) fn emit_plan(
     }
     if !dynamic_findings.is_empty() {
         value["findings"] = json!(dynamic_findings);
+    }
+    if app.kind == ProjectKind::Web {
+        value["routeDispatch"] =
+            route_dispatch_json(app, &route_completeness_values, route_artifact);
+        value["features"]["nativeEndpointDispatch"] = json!(true);
+        value["strongPlan"]["evidence"]["routeDispatch"] = json!(true);
     }
     if app.kind == ProjectKind::Web && !app.dynamic_routes.is_empty() {
         let complete_count = route_completeness_values

@@ -110,9 +110,8 @@ static bool sl_package_source_root_from_source(char* buffer, size_t capacity,
     }
     separator_offset = (size_t)(last_separator - source_path);
     end = last_separator;
-    if (separator_offset == 0U ||
-        (separator_offset == 2U && source_path[1] == ':' &&
-         (source_path[2] == '/' || source_path[2] == '\\')))
+    if (separator_offset == 0U || (separator_offset == 2U && source_path[1] == ':' &&
+                                   (source_path[2] == '/' || source_path[2] == '\\')))
     {
         end = last_separator + 1;
     }
@@ -162,8 +161,8 @@ static int sl_package_create_parent_directory(const char* path)
     }
     status = sl_fs_create_directory(sl_str_from_cstr(parent), true, NULL);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy package: failed to create asset directory: ",
-                                      parent, "\n");
+        sl_cli_write_error_with_value("sloppy package: failed to create asset directory: ", parent,
+                                      "\n");
         return 1;
     }
     return 0;
@@ -614,6 +613,11 @@ static int sl_package_write_manifest(const char* package_dir, const char* artifa
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"sourceMap\": ")) ||
         !sl_package_append_artifact_manifest_path(&builder, artifact_dir_name,
                                                   sl_run_str_span(app->plan.source_map.path)) ||
+        (app->plan.has_route_dispatch_artifact &&
+         (!sl_status_is_ok(sl_string_builder_append_cstr(&builder, ",\n    \"routeDispatch\": ")) ||
+          !sl_package_append_artifact_manifest_path(
+              &builder, artifact_dir_name,
+              sl_run_str_span(app->plan.route_dispatch_artifact.path)))) ||
         (has_dependency_graph &&
          (!sl_status_is_ok(
               sl_string_builder_append_cstr(&builder, ",\n    \"dependencyGraph\": ")) ||
@@ -697,8 +701,7 @@ static int sl_package_prepare_clean_directory(const char* package_dir)
 }
 
 static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
-                                             const char* asset_root_dir,
-                                             const char* package_dir,
+                                             const char* asset_root_dir, const char* package_dir,
                                              bool* out_has_assets)
 {
     static unsigned char graph_storage[SL_CLI_FILE_MAX_BYTES];
@@ -722,8 +725,7 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
         return 0;
     }
     if (sl_read_file_with_messages(dependency_graph_path, graph_storage, sizeof(graph_storage),
-                                   &graph_bytes,
-                                   "sloppy package: missing dependency graph: ",
+                                   &graph_bytes, "sloppy package: missing dependency graph: ",
                                    "sloppy package: dependency graph is too large: ",
                                    "sloppy package: failed to read dependency graph: ") != 0)
     {
@@ -731,8 +733,8 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
     }
     doc = yyjson_read_opts((char*)graph_bytes.ptr, graph_bytes.length, 0U, NULL, &error);
     if (doc == NULL) {
-        sl_cli_write_error_with_value("sloppy package: malformed dependency graph: ",
-                                      dependency_graph_path, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy package: malformed dependency graph: ", dependency_graph_path, "\n");
         return 1;
     }
     root = yyjson_doc_get_root(doc);
@@ -751,8 +753,7 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
         yyjson_doc_free(doc);
         return 0;
     }
-    if (!sl_run_artifact_file_path(assets_dir, sizeof(assets_dir), package_dir,
-                                   "artifacts/assets"))
+    if (!sl_run_artifact_file_path(assets_dir, sizeof(assets_dir), package_dir, "artifacts/assets"))
     {
         yyjson_doc_free(doc);
         sl_cli_write_cstr(stderr, "sloppy package: assets path is too long\n");
@@ -761,8 +762,8 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
     status = sl_fs_create_directory(sl_str_from_cstr(assets_dir), true, NULL);
     if (!sl_status_is_ok(status)) {
         yyjson_doc_free(doc);
-        sl_cli_write_error_with_value("sloppy package: failed to create assets directory: ",
-                                      assets_dir, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy package: failed to create assets directory: ", assets_dir, "\n");
         return 1;
     }
 
@@ -778,7 +779,8 @@ static int sl_package_copy_dependency_assets(const char* dependency_graph_path,
         if (path == NULL || path_length == 0U || !sl_run_relative_artifact_path_is_safe(path_span))
         {
             yyjson_doc_free(doc);
-            sl_cli_write_cstr(stderr, "sloppy package: dependency graph contains unsafe asset path\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy package: dependency graph contains unsafe asset path\n");
             return 1;
         }
         if (!sl_run_join_path(source_path, sizeof(source_path), asset_root_dir, path_span) ||
@@ -842,6 +844,14 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
                                       sl_run_str_span(app->plan.bundle.path)) != 0 ||
         sl_package_copy_artifact_leaf(out_dir, artifacts_dir,
                                       sl_run_str_span(app->plan.source_map.path)) != 0)
+    {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+
+    if (app->plan.has_route_dispatch_artifact &&
+        sl_package_copy_artifact_leaf(out_dir, artifacts_dir,
+                                      sl_run_str_span(app->plan.route_dispatch_artifact.path)) != 0)
     {
         sl_package_cleanup_partial(package_dir);
         return 1;

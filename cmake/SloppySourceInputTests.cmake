@@ -536,6 +536,16 @@
                              PROPERTIES LABELS "source-input")
     endif()
 
+    add_test(
+        NAME sloppy.run.tampered_route_artifact_rejected
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_tampered_route_artifact.cmake")
+    set_tests_properties(
+        sloppy.run.tampered_route_artifact_rejected
+        PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" LABELS "runtime-artifact;route;dispatch")
+
     if(NOT SLOPPY_ENABLE_V8)
         add_test(
             NAME sloppy.run.v8_disabled_is_clear

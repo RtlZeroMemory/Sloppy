@@ -18,6 +18,7 @@ Current targets:
 | `fuzz_plan_parse` | Plan parser accepts valid JSON, rejects malformed input with stable diagnostics, and never crashes on arbitrary bytes. |
 | `fuzz_route_pattern` | Route parser/matcher handles invalid patterns, parameter routes, and embedded NUL bytes without memory errors. |
 | `fuzz_http_request` | HTTP request parser handles malformed heads, bounded limits, and partial/malformed bytes without crashes. |
+| `fuzz_http_route_dispatch` | Native HTTP dispatch table seed replay covers exact routes, parameter segment-trie routes, constraints, method mismatch, and Allow-header generation without crashes. |
 | `fuzz_http_query` | HTTP query parsing handles repeated keys, percent decoding, invalid escapes, and capacity limits without crashes. |
 | `fuzz_http2_frame` | HTTP/2 frame parsing handles invalid lengths, SETTINGS, WINDOW_UPDATE, CONTINUATION, DATA-before-headers, and GOAWAY edge seeds. |
 | `fuzz_http2_hpack` | HPACK/header validation handles invalid indexes, pseudo-header order, duplicate pseudo-headers, and uppercase regular headers. |
@@ -26,6 +27,12 @@ Current targets:
 | `fuzz_memory_primitives` | Arena, checked-size, string/byte scan, and builder helpers preserve invariants for deterministic memory seeds. |
 | `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, schema validation, JSON serialization, request media/body parsing, realtime metadata, worker queues, and stdlib import shapes. |
 | `run_property_tests.mjs` | Bootstrap stdlib properties for codec, Results/ProblemDetails, time, HttpClient option validation, workers, logging, and config. |
+
+`fuzz_http_route_dispatch` seeds use a method byte followed by the request path.
+The harness maps the first byte with `byte % 6`: `0` means GET, `1` HEAD, `2`
+POST, `3` PUT, `4` DELETE, and `5` OPTIONS for the committed ASCII-digit seeds.
+Do not add path-only seeds for verb-specific coverage; a leading `/` maps to
+OPTIONS because `/` is ASCII 47 and `47 % 6 == 5`.
 
 Default seed replay:
 

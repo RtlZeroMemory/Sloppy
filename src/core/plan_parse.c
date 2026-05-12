@@ -1412,6 +1412,71 @@ static SlStatus sl_plan_parse_route_bindings(SlPlanParseContext* ctx, yyjson_val
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_route_native_response(SlPlanParseContext* ctx, yyjson_val* route,
+                                                    SlPlanRoute* out)
+{
+    yyjson_val* native = NULL;
+    yyjson_val* status = NULL;
+    uint64_t status_value = 0U;
+    SlStatus parse_status;
+
+    if (ctx == NULL || route == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    native = yyjson_obj_get(route, "nativeResponse");
+    if (native == NULL || yyjson_is_null(native)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(native)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan route native response",
+                                  sizeof("invalid app plan route native response") - 1U),
+            sl_plan_parse_literal("routes[].nativeResponse must be a JSON object",
+                                  sizeof("routes[].nativeResponse must be a JSON object") - 1U));
+    }
+
+    parse_status =
+        sl_plan_parse_require_string(ctx, native, "kind", true, &out->native_response_kind);
+    if (!sl_status_is_ok(parse_status)) {
+        return parse_status;
+    }
+    parse_status =
+        sl_plan_parse_require_string(ctx, native, "body", false, &out->native_response_body);
+    if (!sl_status_is_ok(parse_status)) {
+        return parse_status;
+    }
+    parse_status = sl_plan_parse_require_string(ctx, native, "contentType", true,
+                                                &out->native_response_content_type);
+    if (!sl_status_is_ok(parse_status)) {
+        return parse_status;
+    }
+    status = yyjson_obj_get(native, "status");
+    if (status == NULL || !yyjson_is_uint(status)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan route native response",
+                                  sizeof("invalid app plan route native response") - 1U),
+            sl_plan_parse_literal("routes[].nativeResponse.status must be an integer HTTP status",
+                                  sizeof("routes[].nativeResponse.status must be an integer HTTP "
+                                         "status") -
+                                      1U));
+    }
+    status_value = yyjson_get_uint(status);
+    if (status_value < 100U || status_value > 599U) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan route native response status",
+                                  sizeof("invalid app plan route native response status") - 1U),
+            sl_plan_parse_literal("native response status must be between 100 and 599",
+                                  sizeof("native response status must be between 100 and 599") -
+                                      1U));
+    }
+    out->native_response_status = (uint16_t)status_value;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_route_middleware(SlPlanParseContext* ctx, yyjson_val* route,
                                                bool* out_has_middleware)
 {
@@ -1458,6 +1523,9 @@ static SlStatus sl_plan_route_add_context_binding(SlPlanParseContext* ctx, SlPla
                                        _Alignof(SlPlanRequestBinding), (void**)&parsed);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (parsed == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     for (index = 0U; index < existing_count; index += 1U) {
         parsed[index] = route->bindings[index];
@@ -1538,6 +1606,10 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
     }
 
     status = sl_plan_parse_route_bindings(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_native_response(ctx, value, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1623,6 +1695,62 @@ static SlStatus sl_plan_parse_routes(SlPlanParseContext* ctx, yyjson_val* root, 
                                   sizeof("non-empty route names must be unique") - 1U));
     }
 
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_route_dispatch(SlPlanParseContext* ctx, yyjson_val* root, SlPlan* out)
+{
+    yyjson_val* dispatch = NULL;
+    yyjson_val* artifact = NULL;
+    SlStr kind = {0};
+    SlStatus status;
+
+    if (ctx == NULL || root == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    dispatch = yyjson_obj_get(root, "routeDispatch");
+    if (dispatch == NULL || yyjson_is_null(dispatch)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(dispatch)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid routeDispatch metadata",
+                                  sizeof("invalid routeDispatch metadata") - 1U),
+            sl_plan_parse_literal("routeDispatch must be a JSON object",
+                                  sizeof("routeDispatch must be a JSON object") - 1U));
+    }
+    artifact = yyjson_obj_get(dispatch, "artifact");
+    if (artifact == NULL || yyjson_is_null(artifact)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(artifact)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid routeDispatch artifact metadata",
+                                  sizeof("invalid routeDispatch artifact metadata") - 1U),
+            sl_plan_parse_literal("routeDispatch.artifact must be a JSON object",
+                                  sizeof("routeDispatch.artifact must be a JSON object") - 1U));
+    }
+    status = sl_plan_parse_require_string(ctx, artifact, "kind", true, &kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out->route_dispatch_artifact.kind = kind;
+    if (sl_str_equal(kind, sl_str_from_cstr("slrt"))) {
+        status = sl_plan_parse_require_string(ctx, artifact, "path", true,
+                                              &out->route_dispatch_artifact.path);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_parse_require_string(ctx, artifact, "hash", true,
+                                              &out->route_dispatch_artifact.hash);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        out->has_route_dispatch_artifact = true;
+    }
     return sl_status_ok();
 }
 
@@ -2551,6 +2679,11 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_routes(ctx, root, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_route_dispatch(ctx, root, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

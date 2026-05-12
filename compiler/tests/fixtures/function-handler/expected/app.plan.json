@@ -76,6 +76,7 @@
     "capabilities": false,
     "dataProviders": false,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -94,6 +95,39 @@
   ],
   "kind": "web",
   "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:f95ea220983efa7a6fb9566c205d2e32c2a600aff785423bbc50465680e180e4",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 0,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 1,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 0,
+    "routeCount": 1,
+    "staticRoutes": 1,
+    "urlGeneration": true,
+    "urlWriters": 0,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [],
@@ -101,13 +135,27 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 1,
       "method": "GET",
       "name": null,
+      "nativeResponse": {
+        "body": "Hello from a function handler",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/function",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "Hello from a function handler",
         "status": 200
       },
       "source": {
@@ -143,6 +191,7 @@
       "effects": false,
       "ffi": false,
       "providers": false,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

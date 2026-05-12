@@ -126,6 +126,7 @@
     "capabilities": true,
     "dataProviders": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -144,6 +145,39 @@
   ],
   "kind": "web",
   "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:a8adfb477689c574605c58a9f338dae0995c88186e067890b869f5bebf26ec67",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 0,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 1,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 0,
+    "routeCount": 1,
+    "staticRoutes": 1,
+    "urlGeneration": true,
+    "urlWriters": 0,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [],
@@ -151,13 +185,27 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 1,
       "method": "GET",
       "name": null,
+      "nativeResponse": {
+        "body": "{\"ok\":true}",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
       "pattern": "/users",
       "response": {
         "helper": "json",
         "kind": "json",
+        "nativeBody": "{\"ok\":true}",
         "status": 200
       },
       "source": {
@@ -193,6 +241,7 @@
       "effects": false,
       "ffi": false,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

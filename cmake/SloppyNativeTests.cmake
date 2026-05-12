@@ -189,6 +189,8 @@
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
+    sloppy_add_c_unit_test(
+        core_route_artifact core.route.artifact tests/unit/core/test_route_artifact.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(
@@ -284,6 +286,9 @@
         fuzz_seed_http_request fuzz.http_request.seed_replay tests/fuzz/fuzz_http_request.c
         http-request)
     sloppy_add_fuzz_seed_replay(
+        fuzz_seed_http_route_dispatch fuzz.http_route_dispatch.seed_replay
+        tests/fuzz/fuzz_http_route_dispatch.c http-route-dispatch)
+    sloppy_add_fuzz_seed_replay(
         fuzz_seed_http_query fuzz.http_query.seed_replay tests/fuzz/fuzz_http_query.c http-query)
     sloppy_add_fuzz_seed_replay(
         fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
@@ -297,6 +302,8 @@
     sloppy_add_libfuzzer_target(fuzz_http2_hpack_libfuzzer tests/fuzz/fuzz_http2_hpack.c)
     sloppy_add_libfuzzer_target(fuzz_http2_session_libfuzzer tests/fuzz/fuzz_http2_session.c)
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
+    sloppy_add_libfuzzer_target(
+        fuzz_http_route_dispatch_libfuzzer tests/fuzz/fuzz_http_route_dispatch.c)
     sloppy_add_libfuzzer_target(fuzz_http_query_libfuzzer tests/fuzz/fuzz_http_query.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)

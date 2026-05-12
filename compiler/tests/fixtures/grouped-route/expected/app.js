@@ -6,3 +6,5 @@ const { Results } = __sloppyRuntime;
 
 globalThis.__sloppy_handler_1 = () => Results.json({ ok: true });
 globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);
+globalThis.__sloppy_handler_2 = () => Results.text("tenant");
+globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);

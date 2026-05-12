@@ -398,6 +398,7 @@ pub(crate) struct ResponseMetadata {
     pub(crate) status: u16,
     pub(crate) kind: String,
     pub(crate) body_schema: Option<String>,
+    pub(crate) native_body: Option<String>,
     pub(crate) source_name: Option<String>,
     pub(crate) source_text: Option<String>,
     pub(crate) span: Option<Span>,
@@ -586,4 +587,29 @@ pub(crate) fn route_parameter_names(pattern: &str) -> BTreeSet<String> {
         }
     }
     names
+}
+
+pub(crate) fn route_pattern_has_params(pattern: &str) -> bool {
+    route_pattern_param_count(pattern) != 0
+}
+
+pub(crate) fn route_pattern_param_count(pattern: &str) -> usize {
+    pattern
+        .split('/')
+        .skip(1)
+        .filter(|segment| segment.starts_with('{') && segment.ends_with('}'))
+        .count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{route_pattern_has_params, route_pattern_param_count};
+
+    #[test]
+    fn route_pattern_params_require_complete_braced_segments() {
+        assert!(!route_pattern_has_params("/users/{id"));
+        assert_eq!(route_pattern_param_count("/users/{id"), 0);
+        assert!(route_pattern_has_params("/orgs/{org}/users/{id:int}"));
+        assert_eq!(route_pattern_param_count("/orgs/{org}/users/{id:int}"), 2);
+    }
 }

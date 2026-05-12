@@ -1,0 +1,17 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[ok] engine.v8: V8 bridge compiled; runtime success still requires V8 tests
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: package release status requires package smoke
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[ok] app.plan.routes: route metadata present
+[warn] app.plan.providers: provider metadata not present
+[warn] app.plan.capabilities: capability metadata not present
+[ok] route.dispatch.mode: native-compiled
+[ok] route.dispatch.contract: Plan-backed native dispatch with routes.slrt integrity validation
+[ok] route.dispatch.artifact: sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733
+[ok] route.dispatch.fallback: classic dispatch fallback is available
+[ok] route.dispatch.segment-trie: parameter routes advertise native segment-trie nodes
+[ok] app.plan.completeness: Plan completeness is complete
+[ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis
