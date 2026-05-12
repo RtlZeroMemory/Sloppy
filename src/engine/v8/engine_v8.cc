@@ -401,10 +401,20 @@ std::string sl_v8_env_string(const char* name)
     if (name == nullptr) {
         return dir;
     }
+#ifdef _WIN32
+    size_t required = 0U;
+    if (getenv_s(&required, nullptr, 0U, name) == 0 && required > 1U) {
+        dir.resize(required - 1U);
+        if (getenv_s(&required, dir.data(), required, name) != 0) {
+            dir.clear();
+        }
+    }
+#else
     const char* value = std::getenv(name);
     if (value != nullptr) {
         dir = value;
     }
+#endif
     return dir;
 }
 

@@ -36,7 +36,7 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 concurrency:
   group: release-artifacts-${{ github.ref }}
@@ -45,10 +45,7 @@ concurrency:
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
   VCPKG_CACHE_VERSION: v3
-  VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/RtlZeroMemory/index.json,readwrite"
-  NUGET_FEED_URL: "https://nuget.pkg.github.com/RtlZeroMemory/index.json"
-  NUGET_USERNAME: "RtlZeroMemory"
-  NUGET_PAT: ${{ secrets.VCPKG_PAT }}
+  VCPKG_BINARY_SOURCES: "default,readwrite"
   CMAKE_BUILD_PARALLEL_LEVEL: 4
 
 jobs:
