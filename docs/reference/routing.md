@@ -83,8 +83,8 @@ Compiler extraction currently enforces:
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
 - Static Plan routes use the native in-memory endpoint dispatch table. Exact
   static paths are indexed by method and full path. Parameter routes are grouped
-  by method and first static segment before the route-pattern matcher checks
-  candidates.
+  into a method-specific segment trie that enforces the supported native route
+  constraints during lookup.
 - Incoming `HEAD` matches the corresponding `GET` route and suppresses response
   body bytes at the transport boundary.
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
@@ -101,6 +101,9 @@ Compiler extraction currently enforces:
 - Dynamic or partial route metadata does not block known static routes from
   using native dispatch metadata. The Plan `routeDispatch.fallback` section
   records dynamic and partial fallback counts.
+- `SLOPPY_ROUTE_DISPATCH=classic` forces the linear matcher for diagnostics.
+  `SLOPPY_ROUTE_DISPATCH=validate` compares the compiled and linear matchers and
+  fails if they disagree.
 - CORS-enabled routes synthesize `OPTIONS` preflight route entries in the
   app-host route table and in compiler-emitted Plan metadata for static CORS
   policies.

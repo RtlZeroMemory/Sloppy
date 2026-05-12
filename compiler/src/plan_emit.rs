@@ -62,6 +62,39 @@ fn route_pattern_constraint_names(pattern: &str) -> Vec<String> {
         .collect()
 }
 
+fn route_pattern_segment_trie_key(segment: &str) -> String {
+    if segment.starts_with('{') && segment.ends_with('}') {
+        let inner = &segment[1..segment.len() - 1];
+        let constraint = inner.split_once(':').map(|(_, ty)| ty).unwrap_or("str");
+        return format!("p:{constraint}");
+    }
+    format!("s:{segment}")
+}
+
+fn route_dispatch_segment_trie_nodes(app: &ExtractedApp) -> usize {
+    let mut prefixes = BTreeSet::<Vec<String>>::new();
+
+    for route in app
+        .routes
+        .iter()
+        .filter(|route| route_pattern_has_params(&route.pattern))
+    {
+        let mut prefix = vec![format!("m:{}", route.method)];
+        prefixes.insert(prefix.clone());
+        for segment in route
+            .pattern
+            .split('/')
+            .skip(1)
+            .filter(|segment| !segment.is_empty())
+        {
+            prefix.push(route_pattern_segment_trie_key(segment));
+            prefixes.insert(prefix.clone());
+        }
+    }
+
+    prefixes.len()
+}
+
 fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Completeness]) -> Value {
     let static_routes = app
         .routes
@@ -69,6 +102,7 @@ fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Complete
         .filter(|route| !route_pattern_has_params(&route.pattern))
         .count();
     let parameter_routes = app.routes.len().saturating_sub(static_routes);
+    let segment_trie_nodes = route_dispatch_segment_trie_nodes(app);
     let parameter_candidate_buckets = app
         .routes
         .iter()
@@ -112,10 +146,11 @@ fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Complete
         "dispatchStats": {
             "exactStaticPaths": static_routes,
             "parameterCandidateBuckets": parameter_candidate_buckets,
-            "segmentTrieNodes": 0,
+            "segmentTrieNodes": segment_trie_nodes,
             "staticEdgeStrategies": [
                 "open-addressed-exact-hash",
-                "first-static-segment-bucket"
+                "segment-trie",
+                "first-static-segment-bucket-fallback"
             ],
             "constraints": constraints
         },
@@ -596,7 +631,7 @@ pub(crate) fn emit_plan(
                 "endpointId": id,
                 "mode": "native-compiled-in-memory",
                 "strategy": if route_pattern_has_params(&route.pattern) {
-                    "parameter-candidate-bucket"
+                    "segment-trie"
                 } else {
                     "exact-static-hash"
                 },

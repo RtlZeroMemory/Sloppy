@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define TEST_ARENA_SIZE 65536U
@@ -45,6 +46,18 @@ static int expect_format_complete(int written, size_t capacity)
 static int expect_str_equal(SlStr actual, const char* expected)
 {
     return expect_true(sl_str_equal(actual, sl_str_from_cstr(expected)));
+}
+
+static int set_test_env_value(const char* key, const char* value)
+{
+#ifdef _WIN32
+    return _putenv_s(key, value == NULL ? "" : value);
+#else
+    if (value == NULL || value[0] == '\0') {
+        return unsetenv(key);
+    }
+    return setenv(key, value, 1);
+#endif
 }
 
 static int expect_body_contains(SlBytes body, const char* expected)
@@ -594,6 +607,146 @@ static int test_route_table_orders_mixed_position_literal_specificity(void)
     }
 
     return expect_true(diag.code == SL_DIAG_NONE);
+}
+
+static int test_route_table_param_trie_matches_shared_prefix_and_constraints(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handlers[2] = {0};
+    SlPlanRoute routes[2] = {0};
+    SlPlan plan = {0};
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead valid_request = {0};
+    SlHttpRequestHead invalid_request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    handlers[0].id = 1U;
+    handlers[0].export_name = sl_str_from_cstr("__sloppy_handler_1");
+    handlers[0].display_name = sl_str_from_cstr("Org.Users.Show");
+    handlers[1].id = 2U;
+    handlers[1].export_name = sl_str_from_cstr("__sloppy_handler_2");
+    handlers[1].display_name = sl_str_from_cstr("Org.Settings");
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/orgs/{org}/users/{id:int}");
+    routes[0].handler_id = 1U;
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/orgs/{org}/settings");
+    routes[1].handler_id = 2U;
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.handlers = handlers;
+    plan.handler_count = 2U;
+    plan.routes = routes;
+    plan.route_count = 2U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /orgs/acme/users/42 HTTP/1.1\r\nHost: example\r\n\r\n",
+                      &valid_request) != 0 ||
+        parse_request(&arena, "GET /orgs/acme/users/nope HTTP/1.1\r\nHost: example\r\n\r\n",
+                      &invalid_request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 167;
+    }
+
+    if (table.dispatch.param_route_trie_roots == NULL ||
+        table.dispatch.param_route_trie_root_count != 1U ||
+        table.dispatch.param_route_trie_nodes == NULL ||
+        table.dispatch.param_route_trie_node_count == 0U ||
+        table.dispatch.param_route_trie_edges == NULL ||
+        table.dispatch.param_route_trie_edge_count == 0U)
+    {
+        sl_engine_destroy(engine);
+        return 168;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &valid_request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 169;
+    }
+
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &invalid_request, &result, &diag),
+                      SL_STATUS_OUT_OF_RANGE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
+        sl_engine_destroy(engine);
+        return 170;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_route_dispatch_env_classic_and_validate_modes(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    const char* modes[] = {"classic", "validate"};
+    size_t mode_index = 0U;
+    int result_code = 0;
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/users/{id:int}");
+    route.handler_id = 1U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        set_test_env_value("SLOPPY_ROUTE_DISPATCH", "");
+        return 171;
+    }
+
+    for (mode_index = 0U; mode_index < sizeof(modes) / sizeof(modes[0]); mode_index += 1U) {
+        SlEngineResult result = {0};
+        diag = (SlDiag){0};
+        if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", modes[mode_index]) != 0) {
+            result_code = 172;
+            break;
+        }
+        if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                        &request, &result, &diag),
+                          SL_STATUS_UNSUPPORTED) != 0 ||
+            result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+        {
+            result_code = 173;
+            break;
+        }
+    }
+
+    if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", "") != 0 && result_code == 0) {
+        result_code = 174;
+    }
+    sl_engine_destroy(engine);
+    return result_code;
 }
 
 static int test_route_table_param_buckets_report_method_mismatch(void)
@@ -2421,6 +2574,8 @@ int main(void)
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_preserve_specificity_order),
         HTTP_DISPATCH_TEST(test_route_table_orders_constrained_params_before_unconstrained),
         HTTP_DISPATCH_TEST(test_route_table_orders_mixed_position_literal_specificity),
+        HTTP_DISPATCH_TEST(test_route_table_param_trie_matches_shared_prefix_and_constraints),
+        HTTP_DISPATCH_TEST(test_route_dispatch_env_classic_and_validate_modes),
         HTTP_DISPATCH_TEST(test_route_table_param_buckets_report_method_mismatch),
         HTTP_DISPATCH_TEST(test_parameter_first_route_reaches_bucket),
         HTTP_DISPATCH_TEST(test_large_param_bucket_miss_uses_indexed_lookup),

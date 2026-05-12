@@ -65,8 +65,10 @@ array. Text output says no route metadata is expected for a program Plan.
 
 Pass `--dispatch` to include the compiler/runtime dispatch contract. Current
 alpha builds emit `native-compiled-in-memory`: the runtime compiles Plan routes
-into an exact static-path hash table plus parameter-route candidate buckets at
-startup. No `routes.slrt` binary artifact is emitted yet.
+into an exact static-path hash table plus a method-specific segment trie for
+parameter routes at startup. Candidate buckets remain an internal fallback for
+partial or manually constructed dispatch tables. No `routes.slrt` binary
+artifact is emitted yet.
 
 ```sh
 sloppy routes .sloppy --dispatch
@@ -74,10 +76,10 @@ sloppy routes .sloppy --dispatch --format json
 ```
 
 The dispatch block reports route and endpoint counts, exact static paths,
-parameter routes, candidate bucket count, fallback availability, and deferred
-items such as segment-trie nodes, native no-JS endpoints, and URL generation.
-Those deferred counters stay `0` until the runtime implements and uses those
-paths.
+parameter routes, candidate bucket count, segment-trie node count, fallback
+availability, and deferred items such as native no-JS endpoints and URL
+generation. Deferred counters stay `0` until the runtime implements and uses
+those paths.
 
 ## Use cases
 

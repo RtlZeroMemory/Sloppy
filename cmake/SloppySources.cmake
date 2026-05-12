@@ -189,6 +189,7 @@ set(
     tests/fuzz/fuzz_http2_session.c
     tests/fuzz/fuzz_http_query.c
     tests/fuzz/fuzz_http_request.c
+    tests/fuzz/fuzz_http_route_dispatch.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
     benchmarks/bench_main.c

@@ -11,7 +11,7 @@ Sloppy Doctor
 [ok] route.dispatch.mode: native-compiled-in-memory
 [warn] route.dispatch.artifact: SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup.
 [ok] route.dispatch.fallback: classic dispatch fallback is available
-[warn] route.dispatch.segment-trie: parameter routes use candidate buckets; segment trie is deferred
+[ok] route.dispatch.segment-trie: parameter routes advertise native segment-trie nodes
 [warn] route.dispatch.no-js: native no-JS endpoint execution is not advertised
 [ok] app.plan.completeness: Plan completeness is complete
 [ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis

@@ -11,7 +11,7 @@
     { "id": "route.dispatch.mode", "status": "ok", "message": "native-compiled-in-memory" },
     { "id": "route.dispatch.artifact", "status": "warn", "message": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup." },
     { "id": "route.dispatch.fallback", "status": "ok", "message": "classic dispatch fallback is available" },
-    { "id": "route.dispatch.segment-trie", "status": "warn", "message": "parameter routes use candidate buckets; segment trie is deferred" },
+    { "id": "route.dispatch.segment-trie", "status": "ok", "message": "parameter routes advertise native segment-trie nodes" },
     { "id": "route.dispatch.no-js", "status": "warn", "message": "native no-JS endpoint execution is not advertised" },
     { "id": "app.plan.completeness", "status": "ok", "message": "Plan completeness is complete" },
     { "id": "optimization.native-json-candidate", "status": "ok", "message": "route has response metadata for future native JSON analysis" }

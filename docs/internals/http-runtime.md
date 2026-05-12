@@ -101,9 +101,10 @@ disappears or moves.
 Current web Plans also emit `routeDispatch` metadata for this native in-memory
 table. The runtime uses the in-memory table, not a `routes.slrt` binary artifact
 yet. Exact static routes are indexed by method and path. Parameter routes are
-bucketed by method and first static segment before candidate patterns are
-checked. Segment-trie dispatch, native no-JS endpoint execution, and native URL
-writer tables are deferred and are reported as zero in Plan/CLI metadata.
+matched through a method-specific native segment trie, with first-static-segment
+candidate buckets retained as an internal fallback for partial or manually
+constructed tables. Native no-JS endpoint execution and native URL writer tables
+are deferred and are reported as zero in Plan/CLI metadata.
 
 ## Body / content-type policy
 

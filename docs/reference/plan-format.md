@@ -96,10 +96,11 @@ Web Plans emit a top-level `routeDispatch` object:
     "dispatchStats": {
       "exactStaticPaths": 1,
       "parameterCandidateBuckets": 1,
-      "segmentTrieNodes": 0,
+      "segmentTrieNodes": 3,
       "staticEdgeStrategies": [
         "open-addressed-exact-hash",
-        "first-static-segment-bucket"
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
       ],
       "constraints": ["int"]
     },
@@ -114,12 +115,14 @@ Web Plans emit a top-level `routeDispatch` object:
 
 `native-compiled-in-memory` is a runtime optimization path, not a public route
 API. The native runtime still validates Plan routes, builds an exact-path hash
-index plus parameter candidate buckets, preserves `HEAD` and `405` behavior,
-and dispatches handlers through the current V8 handler path.
+index plus a method-specific segment trie for parameter routes, preserves
+`HEAD` and `405` behavior, and dispatches handlers through the current V8
+handler path. Candidate buckets remain as an internal fallback for partial or
+manually constructed dispatch tables.
 
-`routes.slrt`, segment trie nodes, native no-JS endpoint execution, and native
-URL writers are not emitted by this Plan version. Their counters stay zero so
-tooling can distinguish implemented behavior from future optimization work.
+`routes.slrt`, native no-JS endpoint execution, and native URL writers are not
+emitted by this Plan version. Their counters stay zero so tooling can
+distinguish implemented behavior from future optimization work.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

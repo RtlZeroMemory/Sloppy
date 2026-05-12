@@ -18,6 +18,7 @@ Current targets:
 | `fuzz_plan_parse` | Plan parser accepts valid JSON, rejects malformed input with stable diagnostics, and never crashes on arbitrary bytes. |
 | `fuzz_route_pattern` | Route parser/matcher handles invalid patterns, parameter routes, and embedded NUL bytes without memory errors. |
 | `fuzz_http_request` | HTTP request parser handles malformed heads, bounded limits, and partial/malformed bytes without crashes. |
+| `fuzz_http_route_dispatch` | Native HTTP dispatch table seed replay covers exact routes, parameter segment-trie routes, constraints, method mismatch, and Allow-header generation without crashes. |
 | `fuzz_http_query` | HTTP query parsing handles repeated keys, percent decoding, invalid escapes, and capacity limits without crashes. |
 | `fuzz_http2_frame` | HTTP/2 frame parsing handles invalid lengths, SETTINGS, WINDOW_UPDATE, CONTINUATION, DATA-before-headers, and GOAWAY edge seeds. |
 | `fuzz_http2_hpack` | HPACK/header validation handles invalid indexes, pseudo-header order, duplicate pseudo-headers, and uppercase regular headers. |

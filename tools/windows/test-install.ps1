@@ -9,6 +9,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-ProcessArgumentString {
+    param(
+        [string[]]$Arguments
+    )
+
+    $quoted = foreach ($argument in $Arguments) {
+        '"' + ($argument -replace '"', '\"') + '"'
+    }
+    return ($quoted -join " ")
+}
+
 function Invoke-Captured {
     param(
         [string]$File,
@@ -23,8 +34,12 @@ function Invoke-Captured {
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.UseShellExecute = $false
-    foreach ($argument in $Arguments) {
-        $startInfo.ArgumentList.Add($argument)
+    if ($null -ne $startInfo.ArgumentList) {
+        foreach ($argument in $Arguments) {
+            $startInfo.ArgumentList.Add($argument)
+        }
+    } else {
+        $startInfo.Arguments = ConvertTo-ProcessArgumentString -Arguments $Arguments
     }
 
     $process = [System.Diagnostics.Process]::new()

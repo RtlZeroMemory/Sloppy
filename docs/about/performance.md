@@ -21,17 +21,15 @@ The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
 Generated static HTTP routes are indexed by method and path. Parameterized
-routes are bucketed by method and first static segment, with an indexed bucket
-lookup so misses do not scale with the total number of parameter buckets before
-candidate patterns are checked. Valid HTTP/1.1 error responses, including 404
-route misses, remain eligible for keep-alive instead of forcing a reconnect per
-miss.
+routes use a method-specific native segment trie, with the older first-static
+segment buckets retained as an internal fallback shape. Valid HTTP/1.1 error
+responses, including 404 route misses, remain eligible for keep-alive instead
+of forcing a reconnect per miss.
 
 The compiler exposes this as `routeDispatch.mode:
 native-compiled-in-memory` in Plan metadata. It is current runtime structure
-evidence, not a benchmark result. The binary `routes.slrt` artifact, segment
-trie, native no-JS endpoints, and native URL writers are not claimed by the
-current counters.
+evidence, not a benchmark result. The binary `routes.slrt` artifact, native
+no-JS endpoints, and native URL writers are not claimed by the current counters.
 
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup

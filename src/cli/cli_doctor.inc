@@ -498,11 +498,14 @@ static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlAre
             ? sl_cli_span_cstr("classic dispatch fallback is available")
             : sl_cli_span_cstr("classic dispatch fallback is not advertised"),
         emitted);
-    if (dispatch->segment_trie_nodes == 0U && dispatch->parameter_routes > 0U) {
+    if (dispatch->parameter_routes > 0U) {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("route.dispatch.segment-trie"),
-            sl_cli_span_cstr("warn"),
-            sl_cli_span_cstr("parameter routes use candidate buckets; segment trie is deferred"),
+            dispatch->segment_trie_nodes == 0U ? sl_cli_span_cstr("warn")
+                                                : sl_cli_span_cstr("ok"),
+            dispatch->segment_trie_nodes == 0U
+                ? sl_cli_span_cstr("parameter routes do not advertise segment-trie nodes")
+                : sl_cli_span_cstr("parameter routes advertise native segment-trie nodes"),
             emitted);
     }
     if (dispatch->native_no_js_endpoints == 0U) {

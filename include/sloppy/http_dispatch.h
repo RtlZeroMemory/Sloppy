@@ -42,6 +42,10 @@ typedef struct SlHttpRouteCandidateBucket
     size_t route_count;
 } SlHttpRouteCandidateBucket;
 
+typedef struct SlHttpRouteTrieRoot SlHttpRouteTrieRoot;
+typedef struct SlHttpRouteTrieNode SlHttpRouteTrieNode;
+typedef struct SlHttpRouteTrieEdge SlHttpRouteTrieEdge;
+
 /*
  * Borrowed route binding table.
  *
@@ -61,6 +65,12 @@ typedef struct SlHttpDispatchTable
     size_t param_route_bucket_count;
     const SlHttpRouteCandidateBucket** param_route_bucket_slots;
     size_t param_route_bucket_slot_count;
+    const SlHttpRouteTrieRoot* param_route_trie_roots;
+    size_t param_route_trie_root_count;
+    const SlHttpRouteTrieNode* param_route_trie_nodes;
+    size_t param_route_trie_node_count;
+    const SlHttpRouteTrieEdge* param_route_trie_edges;
+    size_t param_route_trie_edge_count;
     const SlPlan* plan;
     /*
      * Runtime-owned dispatch metadata. Callers that manually create this struct must

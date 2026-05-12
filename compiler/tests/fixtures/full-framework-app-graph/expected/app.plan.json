@@ -421,10 +421,11 @@
       ],
       "exactStaticPaths": 12,
       "parameterCandidateBuckets": 2,
-      "segmentTrieNodes": 0,
+      "segmentTrieNodes": 8,
       "staticEdgeStrategies": [
         "open-addressed-exact-hash",
-        "first-static-segment-bucket"
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
       ]
     },
     "endpointCount": 14,
@@ -839,7 +840,7 @@
         "executionKind": "v8-handler",
         "mode": "native-compiled-in-memory",
         "specializable": true,
-        "strategy": "parameter-candidate-bucket"
+        "strategy": "segment-trie"
       },
       "handlerId": 3,
       "injections": [
@@ -1608,7 +1609,7 @@
         "executionKind": "v8-handler",
         "mode": "native-compiled-in-memory",
         "specializable": true,
-        "strategy": "parameter-candidate-bucket"
+        "strategy": "segment-trie"
       },
       "handlerId": 11,
       "method": "OPTIONS",

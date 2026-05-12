@@ -108,7 +108,8 @@
       "segmentTrieNodes": 0,
       "staticEdgeStrategies": [
         "open-addressed-exact-hash",
-        "first-static-segment-bucket"
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
       ]
     },
     "endpointCount": 1,

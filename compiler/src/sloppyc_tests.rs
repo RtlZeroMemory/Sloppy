@@ -7709,13 +7709,14 @@ export default app;
         serde_json::json!(["int"])
     );
     assert_eq!(
+        value["routeDispatch"]["dispatchStats"]["segmentTrieNodes"],
+        3
+    );
+    assert_eq!(
         value["routes"][0]["dispatch"]["strategy"],
         "exact-static-hash"
     );
-    assert_eq!(
-        value["routes"][1]["dispatch"]["strategy"],
-        "parameter-candidate-bucket"
-    );
+    assert_eq!(value["routes"][1]["dispatch"]["strategy"], "segment-trie");
     assert_eq!(
         value["routes"][1]["dispatch"]["executionKind"],
         "v8-handler"
