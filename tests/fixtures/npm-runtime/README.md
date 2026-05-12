@@ -9,7 +9,7 @@ checkout, and run again.
 
 ## Scope
 
-- CommonJS module semantics (`module.exports = fn`, `exports.foo = ...`).
+- CommonJS module semantics (callable default exports and named export mutation).
 - ESM/CJS interop at runtime (default and, where supported, named imports
   across module systems).
 - `node:module` `createRequire` and `require.resolve` against the sealed

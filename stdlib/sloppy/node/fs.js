@@ -168,13 +168,13 @@ function decodeSealedAssetText(entry) {
 
 function decodeSealedAssetBytes(entry) {
     if (entry instanceof Uint8Array) {
-        return entry;
+        return entry.slice();
     }
     if (entry && typeof entry === "object" && entry.bytes instanceof Uint8Array) {
-        return entry.bytes;
+        return entry.bytes.slice();
     }
     if (entry && typeof entry === "object" && typeof entry.base64 === "string") {
-        return bytesFromBase64(entry.base64);
+        return bytesFromBase64(entry.base64).slice();
     }
     if (typeof entry === "string") {
         return Text.utf8.encode(entry);
@@ -199,7 +199,7 @@ function readFileSync(path, options = undefined) {
     if (bytes === undefined) {
         throw unsealedSyncError("readFileSync", path);
     }
-    return bytes;
+    return bytes.slice();
 }
 
 function existsSync(path) {

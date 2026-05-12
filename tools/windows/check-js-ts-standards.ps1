@@ -55,10 +55,6 @@ function Test-ExcludedPath {
         return $true
     }
 
-    if ($RelativePath.StartsWith("tests/fixtures/npm-runtime/", [System.StringComparison]::OrdinalIgnoreCase)) {
-        return $true
-    }
-
     return $false
 }
 

@@ -329,6 +329,8 @@ while(idx LESS neg_runtime_len)
                 "${fixture}: sloppy build failed but the fixture expects a runtime error.\nstdout:\n${${fixture}_build_stdout}\nstderr:\n${${fixture}_build_stderr}"
         )
     endif()
+    assert_build_artifacts("${fixture}" "${target_dir}")
+
     run_sloppy("${fixture}" package)
     if(NOT ${fixture}_package_result EQUAL 0)
         message(
@@ -336,6 +338,8 @@ while(idx LESS neg_runtime_len)
                 "${fixture}: sloppy package failed but the fixture expects a runtime error.\nstdout:\n${${fixture}_package_stdout}\nstderr:\n${${fixture}_package_stderr}"
         )
     endif()
+    assert_package_artifacts("${fixture}" "${target_dir}")
+    assert_no_source_path_leak("${fixture}" "${target_dir}")
 
     set(outside_dir "${work_dir}/${fixture}-outside")
     file(REMOVE_RECURSE "${outside_dir}")

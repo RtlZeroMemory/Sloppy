@@ -5,7 +5,7 @@
             "name": "cjs-module-exports-function",
             "group": "cjs",
             "status": "supported",
-            "summary": "CJS package sets module.exports to a callable; ESM/TS app default-imports and calls it.",
+            "summary": "CJS package sets its exported value to a callable; ESM/TS app default-imports and calls it.",
             "entry": "src/main.ts",
             "package": "module-exports-fn",
             "expectedStdout": "module-exports-fn: hello sloppy\n"
@@ -14,7 +14,7 @@
             "name": "cjs-exports-mutation",
             "group": "cjs",
             "status": "supported",
-            "summary": "CJS package mutates exports.foo and module.exports.bar; app reads both via default and namespace.",
+            "summary": "CJS package mutates named and default export properties; app reads both via default and namespace.",
             "entry": "src/main.ts",
             "package": "exports-mut",
             "expectedStdout": "foo=foo-value bar=bar-value\n"
@@ -23,7 +23,7 @@
             "name": "cjs-exports-rebind-negative",
             "group": "cjs",
             "status": "partial",
-            "summary": "Bare assignment `exports = ...` inside a CJS module body does not replace module.exports (Node semantics). The shadowing rebind is observable as a no-op; module.exports retains its original-or-mutated value.",
+            "summary": "Bare assignment to the CJS exports alias does not replace the module's exported object (Node semantics). The shadowing rebind is observable as a no-op; the exported object retains its original-or-mutated value.",
             "entry": "src/main.ts",
             "package": "exports-rebind",
             "expectedStdout": "rebind: keeps original keys=[\"sticky\"]\n"
@@ -41,7 +41,7 @@
             "name": "esm-imports-cjs-default-runtime",
             "group": "interop",
             "status": "supported",
-            "summary": "ESM app imports a CJS package by default; default-binding is the CJS module.exports value.",
+            "summary": "ESM app imports a CJS package by default; default-binding is the CJS exported value.",
             "entry": "src/main.ts",
             "package": "cjs-default-target",
             "expectedStdout": "default(): from-cjs-default 7\n"
@@ -50,7 +50,7 @@
             "name": "esm-imports-cjs-named-runtime",
             "group": "interop",
             "status": "partial",
-            "summary": "ESM app imports named bindings from a CJS package. Named bindings work when the CJS module assigns to module.exports.<name> with statically analyzable identifiers; computed property names are not lifted to named bindings.",
+            "summary": "ESM app imports named bindings from a CJS package. Named bindings work when the CJS module assigns statically analyzable export property names; computed property names are not lifted to named bindings.",
             "entry": "src/main.ts",
             "package": "cjs-named-target",
             "expectedStdout": "named: alpha=A beta=B\n"
@@ -148,7 +148,7 @@
         {
             "name": "zlib-runtime",
             "group": "zlib",
-            "status": "stubbed",
+            "status": "supported",
             "summary": "Exercises async node:zlib.gzip and gunzip via the callback API. Sync zlib APIs and deflate/inflate are documented unsupported.",
             "entry": "src/main.ts",
             "package": "zlib-probe",
