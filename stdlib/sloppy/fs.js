@@ -36,9 +36,9 @@ Reason:
     return bridge;
 }
 
-function validatePath(path, operation) {
+function validatePath(path, operationLabel) {
     if (typeof path !== "string" || path.length === 0 || path.includes("\0")) {
-        throw new TypeError(`Sloppy File.${operation} path must be a non-empty string without NUL.`);
+        throw new TypeError(`${operationLabel} path must be a non-empty string without NUL.`);
     }
     return path;
 }
@@ -294,7 +294,7 @@ function applyTimeOptions(createPromise, options, operation) {
 const File = Object.freeze({
     readText(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("readText").readText(validatePath(path, "readText")),
+            () => nativeFsBridge("readText").readText(validatePath(path, "Sloppy File.readText")),
             options,
             "File.readText",
         );
@@ -302,7 +302,7 @@ const File = Object.freeze({
 
     readBytes(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("readBytes").readBytes(validatePath(path, "readBytes")),
+            () => nativeFsBridge("readBytes").readBytes(validatePath(path, "Sloppy File.readBytes")),
             options,
             "File.readBytes",
         );
@@ -318,13 +318,13 @@ const File = Object.freeze({
         }
         if (shouldAtomic(options)) {
             return applyTimeOptions(
-                () => nativeFsBridge("atomicWriteText").atomicWriteText(validatePath(path, "writeText"), text),
+                () => nativeFsBridge("atomicWriteText").atomicWriteText(validatePath(path, "Sloppy File.writeText"), text),
                 options,
                 "File.writeText",
             );
         }
         return applyTimeOptions(
-            () => nativeFsBridge("writeText").writeText(validatePath(path, "writeText"), text),
+            () => nativeFsBridge("writeText").writeText(validatePath(path, "Sloppy File.writeText"), text),
             options,
             "File.writeText",
         );
@@ -334,14 +334,14 @@ const File = Object.freeze({
         const checked = validateBytes(bytes, "writeBytes");
         if (shouldAtomic(options)) {
             return applyTimeOptions(
-                () => nativeFsBridge("atomicWriteBytes").atomicWriteBytes(validatePath(path, "writeBytes"), checked),
+                () => nativeFsBridge("atomicWriteBytes").atomicWriteBytes(validatePath(path, "Sloppy File.writeBytes"), checked),
                 options,
                 "File.writeBytes",
             );
         }
         return applyTimeOptions(
             () => nativeFsBridge("writeBytes").writeBytes(
-                validatePath(path, "writeBytes"),
+                validatePath(path, "Sloppy File.writeBytes"),
                 checked,
             ),
             options,
@@ -358,7 +358,7 @@ const File = Object.freeze({
             throw new TypeError("Sloppy File.appendText text must be a string.");
         }
         return applyTimeOptions(
-            () => nativeFsBridge("appendText").appendText(validatePath(path, "appendText"), text),
+            () => nativeFsBridge("appendText").appendText(validatePath(path, "Sloppy File.appendText"), text),
             options,
             "File.appendText",
         );
@@ -367,7 +367,7 @@ const File = Object.freeze({
     appendBytes(path, bytes, options) {
         return applyTimeOptions(
             () => nativeFsBridge("appendBytes").appendBytes(
-                validatePath(path, "appendBytes"),
+                validatePath(path, "Sloppy File.appendBytes"),
                 validateBytes(bytes, "appendBytes"),
             ),
             options,
@@ -377,7 +377,7 @@ const File = Object.freeze({
 
     exists(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("exists").exists(validatePath(path, "exists")),
+            () => nativeFsBridge("exists").exists(validatePath(path, "Sloppy File.exists")),
             options,
             "File.exists",
         );
@@ -385,7 +385,7 @@ const File = Object.freeze({
 
     stat(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("stat").stat(validatePath(path, "stat")),
+            () => nativeFsBridge("stat").stat(validatePath(path, "Sloppy File.stat")),
             options,
             "File.stat",
         );
@@ -394,8 +394,8 @@ const File = Object.freeze({
     copy(fromPath, toPath, options) {
         return applyTimeOptions(
             () => nativeFsBridge("copy").copy(
-                validatePath(fromPath, "copy"),
-                validatePath(toPath, "copy"),
+                validatePath(fromPath, "Sloppy File.copy"),
+                validatePath(toPath, "Sloppy File.copy"),
                 validateCopyMoveOptions(options),
             ),
             options,
@@ -406,8 +406,8 @@ const File = Object.freeze({
     move(fromPath, toPath, options) {
         return applyTimeOptions(
             () => nativeFsBridge("move").move(
-                validatePath(fromPath, "move"),
-                validatePath(toPath, "move"),
+                validatePath(fromPath, "Sloppy File.move"),
+                validatePath(toPath, "Sloppy File.move"),
                 validateCopyMoveOptions(options),
             ),
             options,
@@ -417,7 +417,7 @@ const File = Object.freeze({
 
     delete(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("delete").delete(validatePath(path, "delete")),
+            () => nativeFsBridge("delete").delete(validatePath(path, "Sloppy File.delete")),
             options,
             "File.delete",
         );
@@ -427,7 +427,7 @@ const File = Object.freeze({
         const checked = validateOpenOptions(options);
         const id = await applyTimeOptions(
             () => nativeFsBridge("openHandle").openHandle(
-                validatePath(path, "open"),
+                validatePath(path, "Sloppy File.open"),
                 checked.access,
                 checked.create,
             ),
@@ -440,7 +440,7 @@ const File = Object.freeze({
     async watch(path, options) {
         const checked = validateWatchOptions(options, false);
         const id = await applyTimeOptions(
-            () => nativeFsBridge("watch").watch(validatePath(path, "watch"), false, checked),
+            () => nativeFsBridge("watch").watch(validatePath(path, "Sloppy File.watch"), false, checked),
             options,
             "File.watch",
         );
@@ -454,8 +454,8 @@ const File = Object.freeze({
         }
         return applyTimeOptions(
             () => nativeFsBridge("symlink").symlink(
-                validatePath(targetPath, "createSymlink"),
-                validatePath(linkPath, "createSymlink"),
+                validatePath(targetPath, "Sloppy File.createSymlink"),
+                validatePath(linkPath, "Sloppy File.createSymlink"),
                 directory,
             ),
             options,
@@ -465,7 +465,7 @@ const File = Object.freeze({
 
     readLink(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("readLink").readLink(validatePath(path, "readLink")),
+            () => nativeFsBridge("readLink").readLink(validatePath(path, "Sloppy File.readLink")),
             options,
             "File.readLink",
         );
@@ -474,7 +474,7 @@ const File = Object.freeze({
     createTemp(directory, options) {
         const prefix = validateTempPrefix(options, "Sloppy File.createTemp");
         return applyTimeOptions(
-            () => nativeFsBridge("tempFile").tempFile(validatePath(directory, "createTemp"), prefix),
+            () => nativeFsBridge("tempFile").tempFile(validatePath(directory, "Sloppy File.createTemp"), prefix),
             options,
             "File.createTemp",
         );
@@ -499,7 +499,7 @@ const Directory = Object.freeze({
         const checked = validateRecursiveOptions(options);
         return applyTimeOptions(
             () => nativeFsBridge("directoryCreate").directoryCreate(
-                validatePath(path, "create"),
+                validatePath(path, "Sloppy Directory.create"),
                 checked.recursive,
             ),
             options,
@@ -509,7 +509,7 @@ const Directory = Object.freeze({
 
     list(path, options) {
         return applyTimeOptions(
-            () => nativeFsBridge("directoryList").directoryList(validatePath(path, "list")),
+            () => nativeFsBridge("directoryList").directoryList(validatePath(path, "Sloppy Directory.list")),
             options,
             "Directory.list",
         );
@@ -542,7 +542,7 @@ const Directory = Object.freeze({
         const checked = validateRecursiveOptions(options);
         return applyTimeOptions(
             () => nativeFsBridge("directoryDelete").directoryDelete(
-                validatePath(path, "delete"),
+                validatePath(path, "Sloppy Directory.delete"),
                 checked.recursive,
             ),
             options,
@@ -559,7 +559,7 @@ const Directory = Object.freeze({
         const prefix = validateTempPrefix(options, "Sloppy Directory.createTemp");
         return applyTimeOptions(
             () => nativeFsBridge("tempDirectory").tempDirectory(
-                validatePath(directory, "createTemp"),
+                validatePath(directory, "Sloppy Directory.createTemp"),
                 prefix,
             ),
             options,
@@ -570,7 +570,7 @@ const Directory = Object.freeze({
     async watch(path, options) {
         const checked = validateWatchOptions(options, true);
         const id = await applyTimeOptions(
-            () => nativeFsBridge("watch").watch(validatePath(path, "watch"), true, checked),
+            () => nativeFsBridge("watch").watch(validatePath(path, "Sloppy Directory.watch"), true, checked),
             options,
             "Directory.watch",
         );
@@ -580,7 +580,7 @@ const Directory = Object.freeze({
 
 const Path = Object.freeze({
     classify(path) {
-        validatePath(path, "classify");
+        validatePath(path, "Sloppy Path.classify");
         if (/^\.[\\/]/.test(path)) {
             return "project-relative";
         }

@@ -759,7 +759,10 @@ async function flushMicrotasks(count = 6) {
         );
         assert.equal(readCalls, 0);
 
-        assert.throws(() => Path.classify("bad\0path"), TypeError);
+        assert.throws(
+            () => Path.classify("bad\0path"),
+            /Sloppy Path\.classify path must be a non-empty string without NUL\./,
+        );
         assert.throws(() => File.readText("data:/bad\0path"), TypeError);
         assert.throws(() => File.createTemp("data:/", { prefix: "bad\0prefix" }), TypeError);
         assert.throws(() => Directory.createTemp("data:/", { prefix: "bad\0prefix" }), TypeError);

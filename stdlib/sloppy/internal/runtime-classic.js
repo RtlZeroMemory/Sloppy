@@ -5139,7 +5139,7 @@ Reason:
         const signal = options.signal;
         const remainingMs = codecDeadlineRemainingMs(options.deadline, operation);
         if (!codecIsCancellationSignal(signal) && remainingMs === Infinity) {
-            return promise.catch((error) => Promise.reject(normalizeCompressionError(error)));
+            return promise;
         }
         return new Promise((resolve, reject) => {
             let finished = false;
@@ -5173,7 +5173,7 @@ Reason:
                     finish(resolve, value);
                 },
                 (error) => {
-                    finish(reject, normalizeCompressionError(error));
+                    finish(reject, error);
                 },
             );
             function cleanupAll() {
@@ -5193,8 +5193,9 @@ Reason:
             if (bytes.byteLength > MAX_COMPRESSION_INPUT_BYTES) {
                 throw new TypeError(`${operation} input exceeds the ${MAX_COMPRESSION_INPUT_BYTES} byte inline compression limit.`);
             }
-            const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then((result) =>
-                normalizeCompressionResult(result, operation),
+            const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then(
+                (result) => normalizeCompressionResult(result, operation),
+                (error) => Promise.reject(normalizeCompressionError(error)),
             );
             return raceCompressionTerminal(promise, options ?? {}, operation);
         } catch (error) {
@@ -5238,7 +5239,10 @@ Reason:
                 inputBytes.set(chunk, offset);
                 offset += chunk.byteLength;
             }
-            const output = await raceCompressionTerminal(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed, operation);
+            const nativeOutput = Promise.resolve(invoke(inputBytes, parsed.codecOptions)).catch((error) =>
+                Promise.reject(normalizeCompressionError(error)),
+            );
+            const output = await raceCompressionTerminal(nativeOutput, parsed, operation);
             checkCompressionTerminalOptions(parsed, operation);
             terminal = true;
             yield output;
@@ -10088,6 +10092,7 @@ Reason:
                 __sloppyWorkerResource: "backgroundService",
                 name,
                 state: "created",
+                failure: undefined,
                 start() {
                     if (service.state !== "created") {
                         return service;
