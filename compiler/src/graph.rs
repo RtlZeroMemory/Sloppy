@@ -330,6 +330,10 @@ pub(crate) enum AuthSchemeMetadata {
         same_site: String,
         path: String,
         max_age_seconds: Option<i64>,
+        store: Option<String>,
+        idle_timeout_ms: Option<i64>,
+        absolute_timeout_ms: Option<i64>,
+        rotation: bool,
         secret_config_key: Option<String>,
     },
 }
@@ -343,6 +347,9 @@ pub(crate) struct AuthPolicyMetadata {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AuthRequirementMetadata {
     pub(crate) required: bool,
+    pub(crate) allow_anonymous: bool,
+    pub(crate) schemes: Vec<String>,
+    pub(crate) scopes: Vec<String>,
     pub(crate) roles: Vec<String>,
     pub(crate) claims: Vec<String>,
     pub(crate) policy: Option<String>,

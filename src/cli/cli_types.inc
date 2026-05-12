@@ -28,6 +28,11 @@ typedef struct SlCliRoute
     SlCliSpan tags[SL_CLI_MAX_ROUTE_TAGS];
     size_t tag_count;
     bool auth_required;
+    bool auth_allow_anonymous;
+    SlCliSpan auth_schemes[SL_CLI_MAX_ROUTE_AUTH_SCHEMES];
+    size_t auth_scheme_count;
+    SlCliSpan auth_scopes[SL_CLI_MAX_ROUTE_AUTH_SCOPES];
+    size_t auth_scope_count;
     SlCliSpan auth_roles[SL_CLI_MAX_ROUTE_AUTH_ROLES];
     size_t auth_role_count;
     SlCliSpan auth_claims[SL_CLI_MAX_ROUTE_AUTH_CLAIMS];
@@ -135,6 +140,7 @@ typedef struct SlCliAuthScheme
     SlCliSpan name;
     SlCliSpan header;
     SlCliSpan cookie;
+    SlCliSpan store;
 } SlCliAuthScheme;
 
 typedef struct SlCliFfiFunction

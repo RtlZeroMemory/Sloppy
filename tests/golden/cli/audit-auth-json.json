@@ -1,0 +1,9 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_SCHEMES_VISIBLE", "message": "auth scheme metadata is Plan-visible without secret values", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_POLICIES_VISIBLE", "message": "auth policy names are Plan-visible", "path": "auth" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_AUTH_MEMORY_SESSION_STORE", "message": "cookie session uses in-memory session store metadata", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_PROTECTED_ROUTES", "message": "protected route auth metadata is Plan-visible", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_ANONYMOUS_ROUTES", "message": "anonymous route auth metadata is Plan-visible", "path": "auth" }
+  ]
+}

@@ -1372,6 +1372,16 @@ async function flushMicrotasks(count = 6) {
     assert.equal(wildcard.headers["Access-Control-Allow-Origin"], "*");
     assert.equal(wildcard.headers.Vary, undefined);
 
+    const aliasApp = Sloppy.create();
+    aliasApp.cors({ origins: ["https://alias.example"] });
+    aliasApp.get("/alias", () => Results.ok({ ok: true }));
+    const alias = aliasApp.__getRoutes()[0].handler({
+        request: {
+            headers: requestHeaders({ Origin: "https://alias.example" }),
+        },
+    });
+    assert.equal(alias.headers["Access-Control-Allow-Origin"], "https://alias.example");
+
     assertThrowsMessage(() => Sloppy.create().useCors({}), /origins/);
     assertThrowsMessage(() => Sloppy.create().useCors({ origins: "*", credentials: true }), /credentials/);
     assertThrowsMessage(() => Sloppy.create().useCors({ origins: "https://app.example", headers: ["bad header"] }), /HTTP token/);

@@ -7,6 +7,7 @@ import * as Stdlib from "../../stdlib/sloppy/index.js";
 import {
     Base64,
     Base64Url,
+    Auth,
     CancellationController,
     Deadline,
     Hex,
@@ -40,6 +41,7 @@ export const DEFAULT_JS_TARGETS = Object.freeze([
     "worker-queue",
     "h2-client-options",
     "stdlib-import-shapes",
+    "auth-parsers",
 ]);
 
 const SECRET_MARKER = "SECRET_JS_FUZZ_SHOULD_NOT_APPEAR";
@@ -310,6 +312,43 @@ const targets = Object.freeze({
                 routes: random.bool() ? contributions.routes : jsonValue(random, 1),
             },
         });
+    },
+
+    async "auth-parsers"(random) {
+        const app = Sloppy.create();
+        app.use(Auth.apiKey({
+            authorizationScheme: "ApiKey",
+            keys: [{ id: "fuzz", key: "secret", scopes: ["fuzz:read"] }],
+            maxLength: 16,
+        }));
+        app.get("/secure", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+        const host = Testing.createHost(app);
+        const header = random.pick([
+            "ApiKey secret",
+            "Bearer secret",
+            `ApiKey ${textFromPrng(random, 24)}`,
+            "ApiKey secret, ApiKey other",
+            "ApiKey secret\r\nx: y",
+            "",
+        ]);
+        try {
+            const result = await maybeRejects(() => host.get("/secure", {
+                headers: { authorization: header },
+            }));
+            if (result.ok) {
+                assert([200, 401].includes(result.value.status));
+                assert.equal(result.value.text().includes(SECRET_MARKER), false);
+            }
+        } finally {
+            await host.close();
+        }
+        maybeThrows(() => Auth.jwtBearer({ jwksUri: textFromPrng(random, 64) || "https://example.invalid/jwks" }));
+        maybeThrows(() => Auth.cookieSession({
+            secret: "secret",
+            store: random.bool() ? Auth.sessionStore.memory({ maxEntries: 2 }) : undefined,
+            idleTimeoutMs: random.bool() ? 1 + random.int(1000) : undefined,
+            absoluteTimeoutMs: random.bool() ? 1 + random.int(1000) : undefined,
+        }));
     },
 
     headers(random) {

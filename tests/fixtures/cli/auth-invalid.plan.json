@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-auth-invalid-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-auth-invalid-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Admin.Report"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/admin/report",
+      "handlerId": 1,
+      "name": "Admin.Report",
+      "auth": {
+        "required": true,
+        "schemes": ["missingScheme"],
+        "policy": "Missing.Policy"
+      }
+    }
+  ],
+  "auth": {
+    "schemes": [
+      {
+        "kind": "jwtBearer",
+        "name": "jwt"
+      }
+    ],
+    "policies": ["Known.Policy"]
+  }
+}

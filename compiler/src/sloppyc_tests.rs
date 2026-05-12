@@ -7034,7 +7034,11 @@ app.use(Auth.cookieSession({
   secret: Config.required("Auth:SessionSecret"),
   secure: true,
   httpOnly: true,
-  sameSite: "lax"
+  sameSite: "lax",
+  store: Auth.sessionStore.memory(),
+  idleTimeoutMs: 30000,
+  absoluteTimeoutMs: 60000,
+  rotation: true
 }));
 app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
 export default app;
@@ -7051,6 +7055,10 @@ export default app;
             same_site,
             path,
             max_age_seconds,
+            store,
+            idle_timeout_ms,
+            absolute_timeout_ms,
+            rotation,
             secret_config_key,
         } => {
             assert_eq!(name, "cookieSessionAuth");
@@ -7060,6 +7068,10 @@ export default app;
             assert_eq!(same_site, "lax");
             assert_eq!(path, "/");
             assert_eq!(*max_age_seconds, None);
+            assert_eq!(store.as_deref(), Some("memory"));
+            assert_eq!(*idle_timeout_ms, Some(30000));
+            assert_eq!(*absolute_timeout_ms, Some(60000));
+            assert!(*rotation);
             assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
         }
         other => panic!("expected cookie session scheme, got {other:?}"),
@@ -7073,6 +7085,76 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));
+    assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
+    assert!(emitted_js.source.contains("__sloppy_auth_rotate_session"));
+    assert!(emitted_js
+        .source
+        .contains("return await __sloppy_auth_rotate_session(ctx, await terminal());"));
+}
+
+#[test]
+fn static_auth_route_aliases_emit_schemes_scopes_and_anonymous_metadata() {
+    let source = r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.jwtBearer({ secret: Config.required("Auth:JwtSecret") }));
+app.auth.addPolicy("ops", (user) => true);
+app.get("/me", () => Results.ok({ ok: true }))
+  .requiresAuth("bearerAuth")
+  .requiresScope("users:read")
+  .requiresRole("admin")
+  .authorize("ops");
+app.get("/public", () => Results.ok({ ok: true })).allowAnonymous();
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("auth route aliases should extract");
+    let protected = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/me")
+        .expect("protected route should exist")
+        .auth
+        .as_ref()
+        .expect("protected route auth should extract");
+    assert!(protected.required);
+    assert_eq!(protected.schemes, vec!["bearerAuth"]);
+    assert_eq!(protected.scopes, vec!["users:read"]);
+    assert_eq!(protected.roles, vec!["admin"]);
+    assert_eq!(protected.policy.as_deref(), Some("ops"));
+    let public = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/public")
+        .expect("public route should exist")
+        .auth
+        .as_ref()
+        .expect("anonymous route auth should extract");
+    assert!(!public.required);
+    assert!(public.allow_anonymous);
+    let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
+        .expect("plan should emit auth route metadata");
+    let plan: serde_json::Value =
+        serde_json::from_str(&plan).expect("plan output should be valid JSON");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("plan routes should be an array");
+    let protected = routes
+        .iter()
+        .find(|route| route["pattern"] == "/me")
+        .expect("protected route should be emitted");
+    assert_eq!(
+        protected["auth"]["schemes"],
+        serde_json::json!(["bearerAuth"])
+    );
+    assert_eq!(
+        protected["auth"]["scopes"],
+        serde_json::json!(["users:read"])
+    );
+    let public = routes
+        .iter()
+        .find(|route| route["pattern"] == "/public")
+        .expect("public route should be emitted");
+    assert_eq!(public["auth"]["allowAnonymous"], serde_json::json!(true));
 }
 
 #[test]

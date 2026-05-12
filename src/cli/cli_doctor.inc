@@ -446,24 +446,102 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                                     const SlCliMetadata* metadata, bool* emitted)
 {
     bool has_protected_routes = false;
-    size_t index = 0U;
+    bool has_anonymous_routes = false;
+    size_t route_index = 0U;
 
-    for (index = 0U; index < metadata->route_count; index += 1U) {
-        if (metadata->routes[index].auth_required) {
+    for (route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
+        const SlCliRoute* route = &metadata->routes[route_index];
+        if (route->auth_required) {
             has_protected_routes = true;
-            break;
+        }
+        if (route->auth_allow_anonymous) {
+            has_anonymous_routes = true;
         }
     }
-    if (!has_protected_routes && metadata->auth_scheme_count == 0U) {
+    if (!has_protected_routes && !has_anonymous_routes && metadata->auth_scheme_count == 0U &&
+        metadata->auth_policy_count == 0U)
+    {
         return;
     }
-    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.metadata"),
-                       metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok")
-                                                        : sl_cli_span_cstr("warn"),
-                       metadata->auth_scheme_count > 0U
-                           ? sl_cli_span_cstr("auth scheme metadata is Plan-visible")
-                           : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
-                       emitted);
+    if (metadata->auth_scheme_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("app.auth.schemes"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("auth scheme metadata is Plan-visible without secret values"),
+            emitted);
+    }
+    if (metadata->auth_policy_count > 0U) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.policies"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("auth policy names are Plan-visible"), emitted);
+    }
+    for (size_t auth_index = 0U; auth_index < metadata->auth_scheme_count; auth_index += 1U) {
+        const SlCliAuthScheme* scheme = &metadata->auth_schemes[auth_index];
+        if (sl_cli_span_equal_cstr(scheme->kind, "cookieSession") &&
+            sl_cli_span_equal_cstr(scheme->store, "memory"))
+        {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("app.auth.session-store"),
+                sl_cli_span_cstr("warn"),
+                sl_cli_span_cstr("cookie session uses in-memory session store metadata"),
+                emitted);
+        }
+    }
+    if (has_protected_routes) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("app.auth.protected-routes"),
+            metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+            metadata->auth_scheme_count > 0U
+                ? sl_cli_span_cstr("protected route auth metadata is Plan-visible")
+                : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
+            emitted);
+    }
+    if (has_anonymous_routes) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.anonymous-routes"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("anonymous route auth metadata is Plan-visible"),
+                           emitted);
+    }
+    for (route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
+        const SlCliRoute* route = &metadata->routes[route_index];
+        for (size_t scheme_index = 0U; scheme_index < route->auth_scheme_count; scheme_index += 1U)
+        {
+            bool found = false;
+            for (size_t auth_index = 0U; auth_index < metadata->auth_scheme_count; auth_index += 1U)
+            {
+                if (sl_cli_span_equal(route->auth_schemes[scheme_index],
+                                      metadata->auth_schemes[auth_index].name))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("app.auth.route-scheme"),
+                    sl_cli_span_cstr("error"),
+                    sl_cli_span_cstr("route references an auth scheme that is not configured"),
+                    emitted);
+            }
+        }
+        if (!sl_cli_span_empty(route->auth_policy)) {
+            bool found = false;
+            for (size_t policy_index = 0U; policy_index < metadata->auth_policy_count;
+                 policy_index += 1U)
+            {
+                if (sl_cli_span_equal(route->auth_policy, metadata->auth_policies[policy_index])) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("app.auth.route-policy"),
+                    sl_cli_span_cstr("error"),
+                    sl_cli_span_cstr("route references an auth policy that is not configured"),
+                    emitted);
+            }
+        }
+    }
 }
 
 static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlArena* arena,

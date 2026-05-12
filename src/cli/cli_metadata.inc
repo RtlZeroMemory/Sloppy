@@ -174,6 +174,7 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* auth = yyjson_obj_get(value, "auth");
     yyjson_val* required = NULL;
+    yyjson_val* allow_anonymous = NULL;
 
     if (auth == NULL) {
         return 0;
@@ -184,7 +185,20 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
     }
     required = yyjson_obj_get(auth, "required");
     route->auth_required = required == NULL || yyjson_get_bool(required);
+    allow_anonymous = yyjson_obj_get(auth, "allowAnonymous");
+    route->auth_allow_anonymous = allow_anonymous != NULL && yyjson_get_bool(allow_anonymous);
     route->auth_policy = sl_cli_json_span(auth, "policy");
+    if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "schemes"), route->auth_schemes,
+                                      &route->auth_scheme_count, SL_CLI_MAX_ROUTE_AUTH_SCHEMES) !=
+        0)
+    {
+        return 1;
+    }
+    if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "scopes"), route->auth_scopes,
+                                      &route->auth_scope_count, SL_CLI_MAX_ROUTE_AUTH_SCOPES) != 0)
+    {
+        return 1;
+    }
     if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "roles"), route->auth_roles,
                                       &route->auth_role_count, SL_CLI_MAX_ROUTE_AUTH_ROLES) != 0)
     {
@@ -824,6 +838,7 @@ static int sl_cli_parse_auth_metadata(yyjson_val* root, SlCliMetadata* metadata)
             scheme.name = sl_cli_json_span(value, "name");
             scheme.header = sl_cli_json_span(value, "header");
             scheme.cookie = sl_cli_json_span(value, "cookie");
+            scheme.store = sl_cli_json_span(value, "store");
             metadata->auth_schemes[metadata->auth_scheme_count] = scheme;
             metadata->auth_scheme_count += 1U;
         }

@@ -5,6 +5,7 @@ import {
 import {
     createAuthState,
     isAuthProviderDescriptor,
+    normalizeAuthPolicy,
     registerAuthProvider,
     snapshotAuthState,
 } from "./auth.js";
@@ -55,6 +56,52 @@ function normalizeContentNegotiationOptions(options = undefined) {
         throw new TypeError("Sloppy content negotiation strictAccept must be a boolean.");
     }
     return Object.freeze({ strictAccept });
+}
+
+function normalizeSecurityHeadersOptions(options = undefined) {
+    if (options !== undefined && !isPlainObject(options)) {
+        throw new TypeError("Sloppy securityHeaders options must be a plain object.");
+    }
+    const frameOptions = options?.frameOptions ?? "deny";
+    if (frameOptions !== false && frameOptions !== "deny" && frameOptions !== "sameorigin") {
+        throw new TypeError("Sloppy securityHeaders frameOptions must be deny, sameorigin, or false.");
+    }
+    const headers = {
+        ...(options?.contentTypeOptions === false ? {} : { "X-Content-Type-Options": "nosniff" }),
+        ...(frameOptions === false ? {} : { "X-Frame-Options": frameOptions === "deny" ? "DENY" : "SAMEORIGIN" }),
+        "Referrer-Policy": options?.referrerPolicy ?? "no-referrer",
+    };
+    if (options?.contentSecurityPolicy !== undefined) {
+        if (typeof options.contentSecurityPolicy !== "string" || options.contentSecurityPolicy.length === 0) {
+            throw new TypeError("Sloppy securityHeaders contentSecurityPolicy must be a non-empty string.");
+        }
+        headers["Content-Security-Policy"] = options.contentSecurityPolicy;
+    }
+    if (options?.permissionsPolicy !== undefined) {
+        if (typeof options.permissionsPolicy !== "string" || options.permissionsPolicy.length === 0) {
+            throw new TypeError("Sloppy securityHeaders permissionsPolicy must be a non-empty string.");
+        }
+        headers["Permissions-Policy"] = options.permissionsPolicy;
+    }
+    return Object.freeze({
+        headers: Object.freeze(headers),
+        hsts: options?.hsts === true,
+    });
+}
+
+function securityHeadersMiddleware(policy) {
+    return async function sloppySecurityHeaders(ctx, next) {
+        const result = await next();
+        const existing = isPlainObject(result?.headers) ? result.headers : {};
+        const headers = { ...policy.headers, ...existing };
+        if (policy.hsts && ctx?.connection?.secure === true && headers["Strict-Transport-Security"] === undefined) {
+            headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        }
+        return Object.freeze({
+            ...result,
+            headers: Object.freeze(headers),
+        });
+    };
 }
 
 function normalizeAppOptions(options = undefined) {
@@ -603,13 +650,10 @@ function createApp(host) {
                 if (typeof name !== "string" || name.length === 0) {
                     throw new TypeError("Sloppy auth policy name must be a non-empty string.");
                 }
-                if (typeof policy !== "function") {
-                    throw new TypeError("Sloppy auth policy must be a function.");
-                }
                 if (authState.policies.has(name)) {
                     throw new TypeError(`Sloppy auth policy '${name}' is already registered.`);
                 }
-                authState.policies.set(name, policy);
+                authState.policies.set(name, normalizeAuthPolicy(policy));
                 return app.auth;
             },
         }),
@@ -681,6 +725,23 @@ function createApp(host) {
             assertAppMutable();
             corsPolicy = normalizeCorsPolicy(policy);
             return app;
+        },
+
+        cors(policy) {
+            return app.useCors(policy);
+        },
+
+        securityHeaders(options = undefined) {
+            assertAppMutable();
+            middleware.push({
+                fn: securityHeadersMiddleware(normalizeSecurityHeadersOptions(options)),
+                sequence: nextMiddlewareSequence(),
+            });
+            return app;
+        },
+
+        useSecurityHeaders(options = undefined) {
+            return app.securityHeaders(options);
         },
 
         useStaticFiles(options) {

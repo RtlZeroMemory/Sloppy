@@ -151,9 +151,28 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
            (unsigned long long)route->source_column);
     printf(", \"completeness\": ");
     sl_cli_json_escape(stdout, route->completeness);
-    if (route->auth_required) {
+    if (route->auth_required || route->auth_allow_anonymous) {
         size_t item = 0U;
-        printf(", \"auth\": { \"required\": true");
+        printf(", \"auth\": { \"required\": %s", route->auth_required ? "true" : "false");
+        if (route->auth_allow_anonymous) {
+            printf(", \"allowAnonymous\": true");
+        }
+        if (route->auth_scheme_count > 0U) {
+            printf(", \"schemes\": [");
+            for (item = 0U; item < route->auth_scheme_count; item += 1U) {
+                printf("%s", item == 0U ? "" : ", ");
+                sl_cli_json_escape(stdout, route->auth_schemes[item]);
+            }
+            printf("]");
+        }
+        if (route->auth_scope_count > 0U) {
+            printf(", \"scopes\": [");
+            for (item = 0U; item < route->auth_scope_count; item += 1U) {
+                printf("%s", item == 0U ? "" : ", ");
+                sl_cli_json_escape(stdout, route->auth_scopes[item]);
+            }
+            printf("]");
+        }
         if (route->auth_role_count > 0U) {
             printf(", \"roles\": [");
             for (item = 0U; item < route->auth_role_count; item += 1U) {
@@ -286,8 +305,12 @@ static void sl_cli_routes_emit_text_json(const SlCliRoute* route)
 
 static void sl_cli_routes_emit_text_auth(const SlCliRoute* route)
 {
-    if (!route->auth_required) {
+    if (!route->auth_required && !route->auth_allow_anonymous) {
         printf("-");
+        return;
+    }
+    if (route->auth_allow_anonymous) {
+        printf("anonymous");
         return;
     }
     printf("auth");
@@ -297,6 +320,12 @@ static void sl_cli_routes_emit_text_auth(const SlCliRoute* route)
     else if (route->auth_role_count > 0U) {
         printf(":role:%.*s", (int)route->auth_roles[0].length, route->auth_roles[0].ptr);
     }
+    else if (route->auth_scope_count > 0U) {
+        printf(":scope:%.*s", (int)route->auth_scopes[0].length, route->auth_scopes[0].ptr);
+    }
+    else if (route->auth_scheme_count > 0U) {
+        printf(":scheme:%.*s", (int)route->auth_schemes[0].length, route->auth_schemes[0].ptr);
+    }
 }
 
 static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
@@ -304,7 +333,7 @@ static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
     size_t index = 0U;
 
     for (index = 0U; index < metadata->route_count; index += 1U) {
-        if (metadata->routes[index].auth_required) {
+        if (metadata->routes[index].auth_required || metadata->routes[index].auth_allow_anonymous) {
             return true;
         }
     }

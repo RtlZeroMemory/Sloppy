@@ -1,6 +1,7 @@
 import { defineFunctionModuleName } from "./modules.js";
 import {
     anonymousUser,
+    authorizePolicy,
     authorizeRoute,
     normalizeAuthRequirement,
     snapshotAuthRequirement,
@@ -596,8 +597,89 @@ function attachHostMarker(context, host) {
     return context;
 }
 
+function stringPolicyName(policy) {
+    if (typeof policy !== "string" || policy.length === 0) {
+        throw new TypeError("Sloppy ctx.authorize policy must be a non-empty string.");
+    }
+    return policy;
+}
+
+function attachAuthHelpers(context) {
+    if (context.auth !== undefined) {
+        return context;
+    }
+    const helpers = Object.freeze({
+        get user() {
+            return context.user;
+        },
+        requireUser() {
+            if (context.user?.authenticated !== true) {
+                throw new Error("SLOPPY_E_AUTH_MISSING_CREDENTIALS: authenticated user is required.");
+            }
+            return context.user;
+        },
+        hasScope(scope) {
+            return context.user?.hasScope(scope) === true;
+        },
+        hasRole(role) {
+            return context.user?.hasRole(role) === true;
+        },
+        hasClaim(name, value = undefined) {
+            return context.user?.hasClaim(name, value) === true;
+        },
+        async authorize(policy, resource = undefined) {
+            const name = typeof policy === "string" ? policy : stringPolicyName(policy);
+            const denied = authorizePolicy(context.__sloppyHost?.auth, name, context.user, context, resource);
+            const result = denied !== null && typeof denied === "object" && typeof denied.then === "function"
+                ? await denied
+                : denied;
+            return result === undefined;
+        },
+    });
+    Object.defineProperties(context, {
+        auth: {
+            value: helpers,
+            enumerable: true,
+            configurable: true,
+        },
+        claims: {
+            get() {
+                return context.user?.claims ?? {};
+            },
+            enumerable: true,
+            configurable: true,
+        },
+        requireUser: {
+            value: helpers.requireUser,
+            enumerable: true,
+            configurable: true,
+        },
+        hasScope: {
+            value: helpers.hasScope,
+            enumerable: true,
+            configurable: true,
+        },
+        hasRole: {
+            value: helpers.hasRole,
+            enumerable: true,
+            configurable: true,
+        },
+        hasClaim: {
+            value: helpers.hasClaim,
+            enumerable: true,
+            configurable: true,
+        },
+        authorize: {
+            value: helpers.authorize,
+            enumerable: true,
+            configurable: true,
+        },
+    });
+    return context;
+}
+
 function createHandlerContext(host, routeInfo) {
-    return attachHostMarker({
+    return attachAuthHelpers(attachHostMarker({
         services: host.services.createScope(),
         capabilities: host.capabilities,
         config: host.config,
@@ -608,7 +690,7 @@ function createHandlerContext(host, routeInfo) {
         routePattern: routeInfo.pattern,
         urlFor: routeInfo.urlFor,
         request: createDefaultRequest(routeInfo),
-    }, host);
+    }, host));
 }
 
 function decorateProvidedContext(host, context, routeInfo) {
@@ -620,7 +702,7 @@ function decorateProvidedContext(host, context, routeInfo) {
     nextContext.log ??= host.log;
     nextContext.capabilities ??= host.capabilities;
     nextContext.user ??= anonymousUser();
-    attachHostMarker(nextContext, host);
+    attachAuthHelpers(attachHostMarker(nextContext, host));
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};
@@ -653,6 +735,14 @@ function decorateProvidedContext(host, context, routeInfo) {
 function createRouteHandler(host, handler, middleware = [], corsPolicy = null, routeInfo) {
     function invokeHandler(ctx) {
         const denied = authorizeRoute(ctx, routeInfo.auth, host.auth);
+        if (denied !== null && typeof denied === "object" && typeof denied.then === "function") {
+            return Promise.resolve(denied).then((resolved) => {
+                if (resolved !== undefined) {
+                    return resolved;
+                }
+                return handler(ctx);
+            });
+        }
         if (denied !== undefined) {
             return denied;
         }
@@ -770,6 +860,45 @@ function snapshotMetadata(metadata) {
 }
 
 function createEndpointBuilder(route, assertAppMutable) {
+    function setAuthRequirement(requirement) {
+        route.metadata.auth = requirement;
+        if (route.routeInfo !== undefined) {
+            route.routeInfo.auth = requirement;
+        }
+    }
+
+    function mergeAuthRequirement(extra) {
+        const current = route.metadata.auth?.required === true ? route.metadata.auth : { required: true };
+        setAuthRequirement(Object.freeze({
+            ...current,
+            ...extra,
+            schemes: Object.freeze([
+                ...new Set([
+                    ...((current.schemes === undefined) ? [] : current.schemes),
+                    ...((extra.schemes === undefined) ? [] : extra.schemes),
+                ]),
+            ]),
+            scopes: Object.freeze([
+                ...new Set([
+                    ...((current.scopes === undefined) ? [] : current.scopes),
+                    ...((extra.scopes === undefined) ? [] : extra.scopes),
+                ]),
+            ]),
+            roles: Object.freeze([
+                ...new Set([
+                    ...((current.roles === undefined) ? [] : current.roles),
+                    ...((extra.roles === undefined) ? [] : extra.roles),
+                ]),
+            ]),
+            claims: Object.freeze([
+                ...new Set([
+                    ...((current.claims === undefined) ? [] : current.claims),
+                    ...((extra.claims === undefined) ? [] : extra.claims),
+                ]),
+            ]),
+        }));
+    }
+
     const endpoint = {
         withName(name) {
             assertAppMutable();
@@ -787,10 +916,30 @@ function createEndpointBuilder(route, assertAppMutable) {
         requireAuth(options = undefined) {
             assertAppMutable();
             const requirement = normalizeAuthRequirement(options);
-            route.metadata.auth = requirement;
-            if (route.routeInfo !== undefined) {
-                route.routeInfo.auth = requirement;
-            }
+            setAuthRequirement(requirement);
+            return endpoint;
+        },
+        requiresAuth(options = undefined) {
+            return endpoint.requireAuth(options);
+        },
+        allowAnonymous() {
+            assertAppMutable();
+            setAuthRequirement(Object.freeze({ required: false, allowAnonymous: true }));
+            return endpoint;
+        },
+        authorize(policy) {
+            assertAppMutable();
+            mergeAuthRequirement({ policy });
+            return endpoint;
+        },
+        requiresScope(...scopes) {
+            assertAppMutable();
+            mergeAuthRequirement({ scopes: Object.freeze(scopes) });
+            return endpoint;
+        },
+        requiresRole(...roles) {
+            assertAppMutable();
+            mergeAuthRequirement({ roles: Object.freeze(roles) });
             return endpoint;
         },
         accepts(schema) {
@@ -881,7 +1030,9 @@ function mergeRouteMetadata(groupMetadata, routeMetadata) {
         tags,
         groupName: groupMetadata.name,
         groupPrefix: groupMetadata.prefix,
-        ...(groupMetadata.auth === undefined ? {} : { auth: groupMetadata.auth }),
+        ...(routeMetadata?.auth !== undefined
+            ? { auth: routeMetadata.auth }
+            : groupMetadata.auth === undefined ? {} : { auth: groupMetadata.auth }),
     };
 }
 
@@ -1298,6 +1449,14 @@ function createRouteGroup(
         requireAuth(options = undefined) {
             assertAppMutable();
             groupMetadata.auth = normalizeAuthRequirement(options);
+            return group;
+        },
+        requiresAuth(options = undefined) {
+            return group.requireAuth(options);
+        },
+        allowAnonymous() {
+            assertAppMutable();
+            groupMetadata.auth = Object.freeze({ required: false, allowAnonymous: true });
             return group;
         },
 

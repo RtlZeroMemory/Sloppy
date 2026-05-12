@@ -1,7 +1,7 @@
 # Auth
 
 Sloppy auth is an experimental app-host and compiler-visible API for protecting
-routes with JWT bearer tokens, API keys, signed session cookies, roles,
+routes with JWT bearer tokens, API keys, signed session cookies, scopes, roles,
 claims, and named policies.
 
 ```ts
@@ -21,6 +21,36 @@ app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub }))
 
 ## Providers
 
+### `Auth.configure(options)`
+
+Registers multiple named schemes at once and sets the default scheme name used
+by route metadata.
+
+```ts
+app.use(Auth.configure({
+  defaultScheme: "jwt",
+  schemes: {
+    jwt: Auth.jwtBearer({ secret: Config.required("Auth:JwtSecret") }),
+    apiKey: Auth.apiKey({ configKey: "Auth:ApiKey" }),
+    session: Auth.cookieSession({
+      secret: Config.required("Auth:SessionSecret"),
+      csrf: true,
+    }),
+  },
+}));
+```
+
+Routes can require the configured scheme name:
+
+```ts
+app.get("/me", handler).requiresAuth("jwt");
+```
+
+The `defaultScheme` controls bare `.requiresAuth()` checks. A route without an
+explicit scheme accepts only the configured default scheme. A route with
+`.requiresAuth("apiKey")` accepts the named `apiKey` scheme even when another
+scheme is the default.
+
 ### `Auth.jwtBearer(options)`
 
 Registers a JWT bearer provider for `Authorization: Bearer <token>`.
@@ -30,14 +60,16 @@ Registers a JWT bearer provider for `Authorization: Bearer <token>`.
 | `issuer` | `string?` | Expected `iss` claim. |
 | `audience` | `string?` | Expected `aud` claim. Array audiences are accepted when one entry matches. |
 | `secret` | `string \| Config.required(...)` | HS256 signing secret. Use config references for app secrets. Compiler extraction requires `Config.required(...)`. |
+| `algorithms` | `string \| string[]?` | Algorithm allowlist. Defaults to `HS256`. `RS256` is supported only with static JWK keys and WebCrypto availability. |
+| `keys` | `object[]?` | Static key list for `kid` lookup. HS256 entries use `secret`; RS256 entries use a public JWK. |
 | `clockSkewSeconds` | `number?` | Integer leeway for `exp`, `nbf`, and future `iat` checks. Defaults to `0`. |
 
-JWT support is intentionally small for alpha:
-
-- supported algorithm: `HS256`;
-- supported validation: `iss`, `aud`, `exp`, `nbf`, future `iat`, and `sub`;
-- rejected algorithms: `none` and anything other than `HS256`;
-- not included: OIDC discovery, JWKS, asymmetric algorithms, refresh tokens, or OAuth flows.
+JWT validation rejects malformed compact tokens, `alg: "none"`, algorithms not
+in the allowlist, invalid signatures, expired tokens, future `nbf`, future
+`iat`, wrong issuer, and wrong audience. Static `kid` lookup is supported from
+`keys` / local JWKS-shaped `jwks.keys`. Remote JWKS options such as `jwksUri`
+fail closed with a configuration error; configure static keys for
+compiler-visible apps.
 
 ### `Auth.cookieSession(options)`
 
@@ -68,6 +100,7 @@ app.post("/logout", (ctx) => Auth.signOut(ctx));
 | `sameSite` | `"lax" \| "strict" \| "none"?` | Defaults to `lax`. |
 | `path` | `string?` | Defaults to `/`. |
 | `maxAgeSeconds` | `number?` | Adds session expiry and `Max-Age` when set. |
+| `csrf` | `boolean \| object?` | Enables double-submit CSRF for unsafe methods. |
 
 `Auth.signIn(ctx, claims)` returns `200` with `Set-Cookie`. `Auth.signOut(ctx)`
 returns `204` and clears the cookie. Session secrets are not written to Plan
@@ -89,6 +122,8 @@ app.use(Auth.apiKey({
 | `header` | `string` | Header to read. Defaults to `x-api-key`. |
 | `validate` | `(key, helpers) => boolean \| object \| Promise<boolean \| object>` | Return `true` for the default API-key user or a claims object for a custom user. |
 | `configKey` | `string` | Config key for direct API-key comparison when no custom validator is needed. Compiler extraction requires either this or exactly one literal `Config.required(...)` reference in `validate`. |
+| `keys` | `object[]?` | Static test/dev key entries. Prefer `hash: "sha256:<hex>"` over plaintext `key`. |
+| `authorizationScheme` | `string?` | Optional `Authorization: <scheme> <key>` reader. Query-string keys are not read. |
 
 When the validator is the direct `key === Config.required("...")` shape, Sloppy
 treats that key as the config-backed API key and compares it without writing
@@ -98,7 +133,8 @@ present. They receive `helpers.expectedKey` for the resolved config value and
 
 ## Route Authorization
 
-`requireAuth(options?)` is available on route builders:
+`requireAuth(options?)` / `requiresAuth(options?)` are available on route
+builders:
 
 ```ts
 app.get("/admin", () => Results.ok({ ok: true }))
@@ -108,10 +144,25 @@ app.get("/admin", () => Results.ok({ ok: true }))
 | Option | Type | Behavior |
 | --- | --- | --- |
 | omitted | | Any authenticated user may call the route. |
+| `"scheme"` | `string` | User must authenticate with the named scheme. |
+| `scheme` / `schemes` | `string \| string[]` | User must authenticate with one of the listed schemes. |
+| `scope` / `scopes` | `string \| string[]` | User must have every listed scope. |
 | `role` | `string` | User must have the role. |
 | `roles` | `string[]` | User must have at least one role. |
 | `claim` | `string` | User must have the claim. |
 | `policy` | `string` | Named policy must return `true`. |
+
+Builder aliases compose with `requiresAuth()`:
+
+```ts
+app.get("/jobs", handler)
+  .requiresAuth("apiKey")
+  .requiresScope("jobs:write")
+  .requiresRole("worker")
+  .authorize("InternalJobs");
+
+app.get("/status", handler).allowAnonymous();
+```
 
 Groups can require auth for every child route:
 
@@ -122,7 +173,7 @@ internal.get("/status", () => Results.ok({ ok: true }));
 
 ## Policies
 
-Policies are named functions:
+Policies can be named functions or builder descriptors:
 
 ```ts
 app.auth.addPolicy("admin-or-ops", (user) =>
@@ -131,6 +182,22 @@ app.auth.addPolicy("admin-or-ops", (user) =>
 
 app.get("/ops", () => Results.ok({ ok: true }))
   .requireAuth({ policy: "admin-or-ops" });
+```
+
+```ts
+app.auth.addPolicy("Users.Read", Auth.policy((policy) =>
+  policy
+    .requireAuthenticated()
+    .requireScope("users:read")
+    .requireRole("admin")
+    .requireClaim("tenant", "alpha"),
+));
+```
+
+Handlers can run resource checks:
+
+```ts
+const allowed = await ctx.authorize("Users.Read", userRecord);
 ```
 
 ## `ctx.user`
@@ -143,10 +210,17 @@ Every request context has `ctx.user`.
 | `sub` | `string` | Subject. Empty for anonymous users. |
 | `name` | `string` | Optional display name. |
 | `roles` | `string[]` | Role list from claims or provider output. |
+| `scopes` | `string[]` | Scope list from `scope`, `scp`, or `scopes` claims. |
 | `claims` | `object` | Full claims object. |
-| `scheme` | `string` | `jwtBearer`, `apiKey`, `cookieSession`, or empty for anonymous users. |
+| `scheme` | `string` | Compatibility-facing provider principal scheme such as `jwtBearer`, `apiKey`, `cookieSession`, or a configured scheme name. |
+| `authScheme` | `string` | Configured scheme name used by route requirements. Matches `scheme` for directly installed providers. |
 | `hasRole(role)` | `function` | Role helper. |
+| `hasScope(scope)` | `function` | Scope helper. |
 | `hasClaim(name, value?)` | `function` | Claim helper. |
+
+The request context also exposes `ctx.auth`, `ctx.claims`, `ctx.requireUser()`,
+`ctx.hasScope(...)`, `ctx.hasRole(...)`, `ctx.hasClaim(...)`, and
+`ctx.authorize(policy, resource?)`.
 
 ## Responses
 
@@ -165,6 +239,7 @@ The compiler emits:
 
 - configured auth schemes without secret values;
 - protected route requirements;
+- route schemes and scopes;
 - policy names;
 - config requirements for `Config.required(...)`;
 - OpenAPI `bearerAuth`, `apiKeyAuth`, and `cookieSessionAuth` security schemes;

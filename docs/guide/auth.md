@@ -52,6 +52,10 @@ audience.
 app.use(Auth.cookieSession({
   name: "sloppy.session",
   secret: Config.required("Auth:SessionSecret"),
+  store: Auth.sessionStore.memory({ maxEntries: 4096 }),
+  idleTimeoutMs: 30 * 60_000,
+  absoluteTimeoutMs: 24 * 60 * 60_000,
+  csrf: true,
 }));
 
 app.post("/login", (ctx) => Auth.signIn(ctx, {
@@ -63,8 +67,10 @@ app.post("/login", (ctx) => Auth.signIn(ctx, {
 app.post("/logout", (ctx) => Auth.signOut(ctx));
 ```
 
-Session cookies are signed and default to `Secure`, `HttpOnly`,
-`SameSite=Lax`, and `Path=/`. `Auth.signOut(ctx)` clears the cookie.
+Store-backed session cookies contain a signed opaque session ID. The store keeps
+claims, idle expiry, absolute expiry, revocation state, and CSRF metadata.
+Session cookies default to `Secure`, `HttpOnly`, `SameSite=Lax`, and `Path=/`.
+`Auth.signOut(ctx)` revokes the active stored session and clears the cookie.
 Tampered session cookies are rejected with `401`.
 
 ## Require Roles
@@ -112,7 +118,20 @@ app.get("/ops", () => Results.ok({ ok: true }))
   .requireAuth({ policy: "admin-or-ops" });
 ```
 
-Policies receive `ctx.user` and may inspect roles and claims.
+Policies receive `ctx.user` and may inspect roles and claims. Builder policies
+are available for common requirements:
+
+```ts
+app.auth.addPolicy("users-read", Auth.policy((policy) =>
+  policy.requireAuthenticated().requireScope("users:read"),
+));
+```
+
+Handlers can also authorize a resource:
+
+```ts
+const allowed = await ctx.authorize("users-read", record);
+```
 
 ## Protect A Route Group
 
@@ -131,16 +150,15 @@ When the compiler can see static auth setup, the Plan records auth schemes,
 route requirements, policy names, and required config keys. It does not record
 secret values.
 
-`sloppy openapi --plan .sloppy/app.plan.json` emits `bearerAuth`,
-`apiKeyAuth`, and `cookieSessionAuth` security schemes for protected routes.
+`sloppy openapi --plan .sloppy/app.plan.json` emits JWT bearer, API-key, and
+cookie-session security schemes for protected routes.
 
 `sloppy audit --plan .sloppy/app.plan.json` warns when a protected route has no
 auth scheme metadata.
 
-## Current Limits
+## Notes
 
-- JWT support is HS256 only. `none` and unsupported algorithms are rejected.
-- OIDC discovery, JWKS, asymmetric JWT algorithms, OAuth flows, refresh tokens,
-  and user database management are not included.
-- `sloppy run --once` has a minimal synthetic request path and is not the best
-  interface for manual auth-header testing.
+JWT bearer auth supports HS256 and static-key RS256 validation. Remote JWKS
+configuration fails closed; use static `keys` or `jwks.keys` for compiler-visible
+apps. `sloppy run --once` has a minimal synthetic request path and is not the
+best interface for manual auth-header testing.

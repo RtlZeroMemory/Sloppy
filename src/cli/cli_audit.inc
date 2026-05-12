@@ -36,6 +36,89 @@ static void sl_cli_audit_emit(const SlCliOptions* options, const char* severity,
     }
 }
 
+static bool sl_cli_audit_auth_scheme_known(const SlCliMetadata* metadata, SlCliSpan name)
+{
+    for (size_t index = 0U; index < metadata->auth_scheme_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->auth_schemes[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_cli_audit_auth_policy_known(const SlCliMetadata* metadata, SlCliSpan name)
+{
+    for (size_t index = 0U; index < metadata->auth_policy_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->auth_policies[index], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_cli_audit_auth_metadata(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                       size_t* findings, size_t* errors)
+{
+    bool has_protected_route = false;
+    bool has_anonymous_route = false;
+
+    if (metadata->auth_scheme_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_AUTH_SCHEMES_VISIBLE",
+                          "auth scheme metadata is Plan-visible without secret values", "auth",
+                          findings, errors);
+    }
+    if (metadata->auth_policy_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_AUTH_POLICIES_VISIBLE",
+                          "auth policy names are Plan-visible", "auth", findings, errors);
+    }
+    for (size_t auth_index = 0U; auth_index < metadata->auth_scheme_count; auth_index += 1U) {
+        const SlCliAuthScheme* scheme = &metadata->auth_schemes[auth_index];
+        if (sl_cli_span_equal_cstr(scheme->kind, "cookieSession") &&
+            sl_cli_span_equal_cstr(scheme->store, "memory"))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_AUTH_MEMORY_SESSION_STORE",
+                              "cookie session uses in-memory session store metadata", "auth",
+                              findings, errors);
+        }
+    }
+    for (size_t route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
+        const SlCliRoute* route = &metadata->routes[route_index];
+        has_protected_route = has_protected_route || route->auth_required;
+        has_anonymous_route = has_anonymous_route || route->auth_allow_anonymous;
+        if (route->auth_required && metadata->auth_scheme_count == 0U) {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_AUTH_SCHEME_MISSING",
+                              "protected route has no auth scheme metadata", "auth", findings,
+                              errors);
+        }
+        for (size_t scheme_index = 0U; scheme_index < route->auth_scheme_count; scheme_index += 1U)
+        {
+            if (!sl_cli_audit_auth_scheme_known(metadata, route->auth_schemes[scheme_index])) {
+                sl_cli_audit_emit(
+                    options, "error", "SLOPPY_AUDIT_AUTH_ROUTE_SCHEME_UNKNOWN",
+                    "protected route references an auth scheme that is not configured", "auth",
+                    findings, errors);
+            }
+        }
+        if (!sl_cli_span_empty(route->auth_policy) &&
+            !sl_cli_audit_auth_policy_known(metadata, route->auth_policy))
+        {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_AUTH_POLICY_MISSING",
+                              "protected route references an auth policy that is not configured",
+                              "auth", findings, errors);
+        }
+    }
+    if (has_protected_route) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_AUTH_PROTECTED_ROUTES",
+                          "protected route auth metadata is Plan-visible", "auth", findings,
+                          errors);
+    }
+    if (has_anonymous_route) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_AUTH_ANONYMOUS_ROUTES",
+                          "anonymous route auth metadata is Plan-visible", "auth", findings,
+                          errors);
+    }
+}
+
 static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata* metadata,
                                 size_t* findings, size_t* errors)
 {
@@ -77,11 +160,6 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                                                                                         : "warn",
                 "SLOPPY_AUDIT_ROUTE_COMPLETENESS", "route Plan completeness is not complete",
                 "routes", findings, errors);
-        }
-        if (metadata->routes[outer].auth_required && metadata->auth_scheme_count == 0U) {
-            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_AUTH_SCHEME_MISSING",
-                              "protected route has no auth scheme metadata", "auth", findings,
-                              errors);
         }
         if (metadata->routes[outer].binding_count > 0U) {
             size_t binding = 0U;
@@ -595,6 +673,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
                           "Plan completeness is invalid", "completeness", &findings, &errors);
     }
     sl_cli_audit_routes(options, metadata, &findings, &errors);
+    sl_cli_audit_auth_metadata(options, metadata, &findings, &errors);
     sl_cli_audit_modules(options, metadata, &findings, &errors);
     sl_cli_audit_providers(options, metadata, &findings, &errors);
     sl_cli_audit_capabilities(options, metadata, &findings, &errors);
