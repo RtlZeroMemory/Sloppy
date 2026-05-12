@@ -51,6 +51,14 @@ Current generated coercion checks include:
 
 Coercion failures throw `TypeError` from generated runtime wrapper.
 
+For `Body<T>` parameters backed by compiler-visible `ctx.body.validate(...)`,
+`.accepts(...)`, or route body-schema metadata, compiled/native runs validate
+the JSON body before the generated wrapper calls `ctx.request.json()`. The V8
+bridge marks that validation as complete and materializes one JavaScript body
+value for `ctx.request.json()`/`ctx.request.body.json()` when the handler
+declares a body parameter. Routes without schema metadata use the generic body
+helper path.
+
 ## Parameter-Shape Limits (typed handlers)
 
 Rejected shapes include:

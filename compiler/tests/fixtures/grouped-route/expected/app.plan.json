@@ -77,6 +77,7 @@
     "dataProviders": false,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -132,6 +133,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 0,
+        "native": 1
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 2,
     "parameterRoutes": 2,
@@ -156,6 +170,16 @@
         "strategy": "segment-trie"
       },
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
       "method": "GET",
       "name": "Users.Get",
       "nativeResponse": {
@@ -191,6 +215,15 @@
         "strategy": "segment-trie"
       },
       "handlerId": 2,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Tenant.Users.Get",
       "nativeResponse": {
@@ -238,6 +271,7 @@
       "capabilities": false,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": false,
       "routeDispatch": true,
       "routes": true,

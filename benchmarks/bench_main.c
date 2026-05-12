@@ -148,7 +148,7 @@ static const SlBenchDefinition* sl_bench_definition_group(size_t group_index, si
     }
 
     if (group_index == 2U) {
-        return sl_bench_logging_definitions(out_count);
+        return sl_bench_json_dispatch_definitions(out_count);
     }
 
     if (group_index == 3U) {
@@ -156,14 +156,18 @@ static const SlBenchDefinition* sl_bench_definition_group(size_t group_index, si
     }
 
     if (group_index == 4U) {
-        return sl_bench_memory_definitions(out_count);
+        return sl_bench_logging_definitions(out_count);
     }
 
     if (group_index == 5U) {
-        return sl_bench_stream_definitions(out_count);
+        return sl_bench_memory_definitions(out_count);
     }
 
     if (group_index == 6U) {
+        return sl_bench_stream_definitions(out_count);
+    }
+
+    if (group_index == 7U) {
         return sl_bench_v8_bridge_definitions(out_count);
     }
 
@@ -188,7 +192,7 @@ static void sl_bench_list(const SlBenchOptions* options)
 {
     size_t group;
 
-    for (group = 0U; group < 7U; group += 1U) {
+    for (group = 0U; group < 8U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);
@@ -214,6 +218,38 @@ static uint64_t sl_bench_iterations(uint64_t configured, bool smoke)
     }
 
     return configured < 10U ? configured : 10U;
+}
+
+static void sl_bench_apply_json_counters(const SlBenchDefinition* definition, SlBenchResult* result)
+{
+    if (definition == NULL || result == NULL || !sl_bench_streq(definition->category, "json")) {
+        return;
+    }
+
+    result->rows_processed = result->iterations;
+    if (strstr(definition->name, ".native") != NULL) {
+        result->native_hits = result->iterations;
+    }
+    if (strstr(definition->name, ".generic") != NULL ||
+        strstr(definition->name, "fallback") != NULL)
+    {
+        result->generic_fallback_count = result->iterations;
+    }
+    if (strstr(definition->name, "materialize") != NULL) {
+        result->materialization_count = result->iterations;
+    }
+    if (strstr(definition->name, "native_schema.serialize") != NULL ||
+        strstr(definition->name, "native_schema.http_response_write") != NULL)
+    {
+        result->schema_response_native_hits = result->iterations;
+    }
+    if (strstr(definition->name, "materialize_once") != NULL) {
+        result->duplicate_validation_skipped_count = result->iterations;
+    }
+    if (strstr(definition->name, "reject") != NULL || strstr(definition->name, "malformed") != NULL)
+    {
+        result->reject_count = result->iterations;
+    }
 }
 
 static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDefinition* definition,
@@ -268,6 +304,7 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
     out_result->bytes_processed = definition->bytes_per_iteration * measured_iterations;
     out_result->chunks_processed = definition->chunks_per_iteration * measured_iterations;
     out_result->backpressure_count = definition->backpressure_per_iteration * measured_iterations;
+    sl_bench_apply_json_counters(definition, out_result);
     if (out_result->elapsed_ns != 0U) {
         double seconds = (double)out_result->elapsed_ns / 1000000000.0;
 
@@ -276,6 +313,8 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
         out_result->chunks_per_second = out_result->chunks_processed == 0U
                                             ? 0.0
                                             : (double)out_result->chunks_processed / seconds;
+        out_result->rows_per_second =
+            out_result->rows_processed == 0U ? 0.0 : (double)out_result->rows_processed / seconds;
     }
     return sl_status_ok();
 }
@@ -297,8 +336,30 @@ static void sl_bench_print_text_result(const SlBenchResult* result)
     if (result->chunks_processed != 0U) {
         printf(" chunks/sec=%.2f", result->chunks_per_second);
     }
+    if (result->rows_processed != 0U) {
+        printf(" rows/sec=%.2f", result->rows_per_second);
+    }
     if (result->backpressure_count != 0U) {
         printf(" backpressure=%" PRIu64, result->backpressure_count);
+    }
+    if (result->native_hits != 0U) {
+        printf(" native=%" PRIu64, result->native_hits);
+    }
+    if (result->generic_fallback_count != 0U) {
+        printf(" fallback=%" PRIu64, result->generic_fallback_count);
+    }
+    if (result->materialization_count != 0U) {
+        printf(" materialize=%" PRIu64, result->materialization_count);
+    }
+    if (result->reject_count != 0U) {
+        printf(" rejects=%" PRIu64, result->reject_count);
+    }
+    if (result->schema_response_native_hits != 0U) {
+        printf(" schema_response_native=%" PRIu64, result->schema_response_native_hits);
+    }
+    if (result->duplicate_validation_skipped_count != 0U) {
+        printf(" duplicate_validation_skipped=%" PRIu64,
+               result->duplicate_validation_skipped_count);
     }
     printf(" checksum=%" PRIu64 "\n", result->checksum);
 }
@@ -352,10 +413,20 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
     printf("      \"nsPerOp\": %.2f,\n", result->ns_per_op);
     printf("      \"bytesProcessed\": %" PRIu64 ",\n", result->bytes_processed);
     printf("      \"chunksProcessed\": %" PRIu64 ",\n", result->chunks_processed);
+    printf("      \"rowsProcessed\": %" PRIu64 ",\n", result->rows_processed);
     printf("      \"bytesPerSecond\": %.2f,\n", result->bytes_per_second);
     printf("      \"chunksPerSecond\": %.2f,\n", result->chunks_per_second);
+    printf("      \"rowsPerSecond\": %.2f,\n", result->rows_per_second);
     printf("      \"checksum\": %" PRIu64 ",\n", result->checksum);
     printf("      \"backpressureCount\": %" PRIu64 ",\n", result->backpressure_count);
+    printf("      \"nativeHits\": %" PRIu64 ",\n", result->native_hits);
+    printf("      \"genericFallbackCount\": %" PRIu64 ",\n", result->generic_fallback_count);
+    printf("      \"materializationCount\": %" PRIu64 ",\n", result->materialization_count);
+    printf("      \"rejectCount\": %" PRIu64 ",\n", result->reject_count);
+    printf("      \"schemaResponseNativeHits\": %" PRIu64 ",\n",
+           result->schema_response_native_hits);
+    printf("      \"duplicateValidationSkippedCount\": %" PRIu64 ",\n",
+           result->duplicate_validation_skipped_count);
     printf("      \"note\": ");
     sl_bench_print_json_string(result->note);
     printf("\n");
@@ -384,7 +455,7 @@ static int sl_bench_run(const SlBenchOptions* options)
         sl_bench_print_json_header(options);
     }
 
-    for (group = 0U; group < 7U; group += 1U) {
+    for (group = 0U; group < 8U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);

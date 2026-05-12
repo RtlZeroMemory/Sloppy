@@ -33,7 +33,7 @@ src/core/
   http2_session.c        SETTINGS, streams, HPACK, flow-control session
   http2_mapping.c        pseudo-header validation and request lifecycle build
   http2_dispatch.c       stream-to-handler dispatch and response submission
-  request_validation.c   body/content-type/limit gates
+  request_validation.c   body/content-type/limit gates + Plan-backed request validation
   route.c                pattern parser + match
 src/platform/libuv/
   http_transport_libuv.c connection + read/write driven by libuv
@@ -52,7 +52,8 @@ sl_http_request_parse              http.c
 sl_http_dispatch_dispatch          http_dispatch.c
    │  route_table lookup (literal-before-param, source order)
    │  method match
-   │  request_validation.c: body kind, JSON validity, body size
+   │  request_validation.c: body kind, JSON media type, body size
+   │  Plan jsonRequest: schema-backed native JSON validation/reject when present
    ▼
 build SlHttpContext                http_context.c
    │  route params, query (last-wins), headers, body helpers
@@ -114,8 +115,9 @@ method and path. Parameter routes are matched through a method-specific native
 segment trie, with first-static-segment candidate buckets retained as an
 internal fallback for partial or manually constructed tables. Provably static
 `Results.text`, `Results.json`, and `Results.ok` literal handlers can return a
-native no-JS response, and named Plan routes can generate native URLs with
-percent-encoded path parameters.
+native no-JS response. Static JSON bodies are represented as preencoded native
+response descriptors and written by the common response writer. Named Plan
+routes can generate native URLs with percent-encoded path parameters.
 
 ## Body / content-type policy
 
@@ -129,6 +131,7 @@ percent-encoded path parameters.
 | Body exceeds configured limit                   | 413    |
 | `Expect` header present                         | 417    |
 | Malformed JSON for `application/[*+]json`       | 400    |
+| Schema-known JSON body fails native validation  | 400    |
 
 Supported request media types today are `application/json`,
 `application/*+json`, `text/plain`, and `application/octet-stream`.
@@ -141,6 +144,20 @@ The runtime owns the body — the parser allocates it inside the per-request
 arena. Native code can adapt that bounded body to `SlReadableStream` for
 internal streaming consumers. JS body helpers (`request.text()`,
 `request.json()`) return copies into V8-owned storage.
+
+For routes with `jsonRequest.mode: "native-schema"`, the dispatcher lets
+`request_validation.c` perform one JSON parse and schema validation pass before
+the handler boundary. The validator enforces the route's Plan schema,
+unknown-field policy, route JSON body/depth/string/array limits, and supported
+schema bounds. Failures produce `400 application/problem+json` without entering
+V8 and without echoing raw request values. Required schema-backed JSON body
+routes reject missing or empty bodies before JavaScript. The effective body
+limit is route `jsonRequest.maxBodyBytes` when non-zero, otherwise the
+transport/seed limit when non-zero, otherwise the default HTTP body limit.
+When the JavaScript handler still needs the body, generated wrappers omit
+duplicate schema validation and the V8 bridge marks the body as native
+validated while materializing one cached JavaScript JSON value. Lazy projected
+body slots are not implemented; routes must not claim projected mode.
 
 Incoming `HEAD` requests match the corresponding `GET` route. Dispatch
 still executes the handler so validation and metadata stay identical to
@@ -185,7 +202,9 @@ Server-wide limits are read from Plan-emitted server config:
 - `max-requests-per-connection` — optional keep-alive cap; `0` disables the cap
 
 These are baked into the Plan from `appsettings.{Environment}.json` /
-the env layer. Per-route limits are not surfaced today.
+the env layer. Route-level JSON request plans can additionally carry JSON body,
+depth, string, and array limits for native body validation. General per-route
+server limits outside JSON validation are not surfaced today.
 
 Queued HTTP/1 dispatch still runs on the runtime owner thread. It is a loop
 fairness boundary, not a worker-thread or isolate-pool boundary; V8 entry keeps
@@ -220,6 +239,14 @@ HEAD metadata, and rejects non-empty `204`/`304` stream bodies. The libuv
 transport uses Core readable streams for bounded stream descriptors and emits
 HTTP/1.1 chunked frames under `max-pending-write-bytes` and
 `max-response-bytes`.
+
+Native static JSON responses use the fixed-response path with preencoded JSON
+bytes. Supported schema-backed dynamic JSON responses use the bounded native
+JSON response writer for objects, arrays, nested objects, strings, finite
+numbers, integers, booleans, nulls, nullable values, and optional object fields.
+Unsupported schema shapes remain explicit fallback. Live incremental JSON writer
+state is future work; bounded response descriptors and Core streams are the
+current native output surfaces.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.
@@ -283,6 +310,10 @@ connection draining) is the responsibility of an in-front reverse proxy.
   request line decoding, header parsing, body framing.
 - **Dispatch tests** under `tests/integration/http_dispatch/` exercise
   the full Plan-backed dispatch path with synthetic requests.
+- **Request validation tests** cover schema-backed JSON validation, malformed
+  input, bounds, unknown fields, and safe problem details.
+- **Fuzz targets** include native JSON request validation and JSON response
+  writer seed replay.
 - **Conformance** runs `--once` requests through the real CLI for
   golden response checking.
 - **Transport tests** exercise the running libuv listener, keep-alive,

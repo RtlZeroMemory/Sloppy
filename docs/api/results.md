@@ -46,6 +46,15 @@ JSON payloads use Sloppy's alpha JSON policy before response bytes are emitted:
 - Class instances serialize their enumerable own properties.
 - `Error` objects serialize as `{ name, message }` plus enumerable safe fields; stack is not included.
 
+For compiled/native artifacts, literal/static `Results.json(...)` and
+`Results.ok(...)` values can be emitted as native static JSON response metadata.
+Those routes bypass JavaScript at request time and the native response writer
+copies the preencoded JSON bytes with deterministic `Content-Type` and
+`Content-Length` handling. Dynamic handler return values still use the generic
+JSON serializer unless the Plan records a supported native response mode.
+Routes with response metadata that cannot be written natively carry an explicit
+`jsonResponse.fallbackReason` in the Plan and in `sloppy routes --dispatch`.
+
 Use app-level JSON options when you need the small supported policy switches:
 
 ```ts
@@ -94,6 +103,10 @@ returns. The native response writer validates that descriptor, computes
 `HEAD` responses. The HTTP/1.1 transport lowers the descriptor into a Core
 readable stream and emits bounded chunked frames with pending-write and response
 caps.
+
+Native JSON responses use the same HTTP response writer as other fixed
+responses. Current native static JSON writing is bounded and preencoded; live
+incremental JSON writer state is not exposed as a public streaming surface.
 
 The public JS surface is still a descriptor builder, not live handler push,
 incremental file send, WHATWG Streams, or Node streams.

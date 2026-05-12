@@ -57,6 +57,16 @@ integrity validation: the compiler emitted `routes.slrt`, the Plan recorded its
 hash, and the runtime validated it before building the native dispatch table
 from `app.plan.json`.
 
+Doctor also reports route JSON readiness when dispatch metadata is available:
+
+- schema-backed native request route counts
+- native JSON response route counts
+- aggregate JSON fallback counts
+- per-route body JSON bindings without schema metadata
+- per-route request and response fallback reasons, including route identity
+
+These warnings keep generic paths visible instead of silent.
+
 With `--report`, doctor writes `.sloppy/reports/doctor-report.json` and
 breadcrumb JSONL. The report is local evidence for the command invocation and
 is not uploaded.

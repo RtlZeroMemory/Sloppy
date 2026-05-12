@@ -113,6 +113,16 @@ static void sl_cli_routes_emit_json_dispatch(const SlCliRouteDispatch* dispatch)
            (unsigned long long)dispatch->exact_static_paths,
            (unsigned long long)dispatch->parameter_candidate_buckets,
            (unsigned long long)dispatch->segment_trie_nodes);
+    printf("\"json\": { \"request\": { \"native\": %llu, \"generic\": %llu, "
+           "\"fallback\": %llu, \"materialized\": %llu }, \"response\": { \"native\": %llu, "
+           "\"generic\": %llu, \"fallback\": %llu } }, ",
+           (unsigned long long)dispatch->json_request_native_routes,
+           (unsigned long long)dispatch->json_request_generic_routes,
+           (unsigned long long)dispatch->json_request_fallback_routes,
+           (unsigned long long)dispatch->json_request_materialized_routes,
+           (unsigned long long)dispatch->json_response_native_routes,
+           (unsigned long long)dispatch->json_response_generic_routes,
+           (unsigned long long)dispatch->json_response_fallback_routes);
     printf("\"fallback\": { \"classicAvailable\": %s, \"dynamicRoutes\": %llu, "
            "\"partialRoutes\": %llu } }",
            dispatch->classic_fallback_available ? "true" : "false",
@@ -173,6 +183,32 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
     }
     sl_cli_routes_emit_json_constraints(route->pattern);
     sl_cli_routes_emit_json_bindings(route);
+    printf(", \"jsonRequest\": { \"mode\": ");
+    sl_cli_json_escape(stdout, route->json_request_mode);
+    printf(", \"materialization\": ");
+    sl_cli_json_escape(stdout, route->json_request_materialization);
+    if (!sl_cli_span_empty(route->json_request_schema)) {
+        printf(", \"schema\": ");
+        sl_cli_json_escape(stdout, route->json_request_schema);
+    }
+    if (!sl_cli_span_empty(route->json_request_fallback)) {
+        printf(", \"fallbackReason\": ");
+        sl_cli_json_escape(stdout, route->json_request_fallback);
+    }
+    printf(" }");
+    printf(", \"jsonResponse\": { \"mode\": ");
+    sl_cli_json_escape(stdout, route->json_response_mode);
+    printf(", \"writer\": ");
+    sl_cli_json_escape(stdout, route->json_response_writer);
+    if (!sl_cli_span_empty(route->json_response_schema)) {
+        printf(", \"schema\": ");
+        sl_cli_json_escape(stdout, route->json_response_schema);
+    }
+    if (!sl_cli_span_empty(route->json_response_fallback)) {
+        printf(", \"fallbackReason\": ");
+        sl_cli_json_escape(stdout, route->json_response_fallback);
+    }
+    printf(" }");
     printf(", \"response\": ");
     sl_cli_routes_emit_json_response_value(route->response_kind, route->response_helper,
                                            route->response_status, route->response_body_schemas[0]);
@@ -220,6 +256,32 @@ static void sl_cli_routes_emit_text_response(const SlCliRoute* route)
         return;
     }
     printf("unknown");
+}
+
+static void sl_cli_routes_emit_text_json(const SlCliRoute* route)
+{
+    SlCliSpan request_mode = sl_cli_span_empty(route->json_request_mode) ? sl_cli_span_cstr("none")
+                                                                         : route->json_request_mode;
+    SlCliSpan materialization = sl_cli_span_empty(route->json_request_materialization)
+                                    ? sl_cli_span_cstr("none")
+                                    : route->json_request_materialization;
+    SlCliSpan response_mode = sl_cli_span_empty(route->json_response_mode)
+                                  ? sl_cli_span_cstr("none")
+                                  : route->json_response_mode;
+    SlCliSpan writer = sl_cli_span_empty(route->json_response_writer) ? sl_cli_span_cstr("none")
+                                                                      : route->json_response_writer;
+
+    printf("req:%.*s/%.*s resp:%.*s/%.*s", (int)request_mode.length, request_mode.ptr,
+           (int)materialization.length, materialization.ptr, (int)response_mode.length,
+           response_mode.ptr, (int)writer.length, writer.ptr);
+    if (!sl_cli_span_empty(route->json_request_fallback)) {
+        printf(" req-fallback:%.*s", (int)route->json_request_fallback.length,
+               route->json_request_fallback.ptr);
+    }
+    if (!sl_cli_span_empty(route->json_response_fallback)) {
+        printf(" resp-fallback:%.*s", (int)route->json_response_fallback.length,
+               route->json_response_fallback.ptr);
+    }
 }
 
 static void sl_cli_routes_emit_text_auth(const SlCliRoute* route)
@@ -280,6 +342,15 @@ static void sl_cli_routes_emit_text_dispatch(const SlCliRouteDispatch* dispatch)
            (unsigned long long)dispatch->segment_trie_nodes,
            (unsigned long long)dispatch->native_no_js_endpoints,
            dispatch->url_generation ? "yes" : "no", (unsigned long long)dispatch->url_writers);
+    printf("  json request: native=%llu generic=%llu fallback=%llu materialized=%llu\n",
+           (unsigned long long)dispatch->json_request_native_routes,
+           (unsigned long long)dispatch->json_request_generic_routes,
+           (unsigned long long)dispatch->json_request_fallback_routes,
+           (unsigned long long)dispatch->json_request_materialized_routes);
+    printf("  json response: native=%llu generic=%llu fallback=%llu\n",
+           (unsigned long long)dispatch->json_response_native_routes,
+           (unsigned long long)dispatch->json_response_generic_routes,
+           (unsigned long long)dispatch->json_response_fallback_routes);
     printf("  fallback: classic=%s dynamic=%llu partial=%llu\n\n",
            dispatch->classic_fallback_available ? "yes" : "no",
            (unsigned long long)dispatch->dynamic_fallback_routes,
@@ -309,6 +380,8 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_
     sl_cli_routes_emit_text_bindings(route);
     printf("  ");
     sl_cli_routes_emit_text_response(route);
+    printf("  ");
+    sl_cli_routes_emit_text_json(route);
     if (include_auth) {
         printf("  ");
         sl_cli_routes_emit_text_auth(route);
@@ -364,12 +437,12 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         if (include_auth) {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  AUTH  NAME\n");
+                   "BINDINGS  RESPONSE  JSON  AUTH  NAME\n");
         }
         else {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  NAME\n");
+                   "BINDINGS  RESPONSE  JSON  NAME\n");
         }
         if (metadata->route_count == 0U) {
             printf(sl_cli_span_equal_cstr(metadata->kind, "program")

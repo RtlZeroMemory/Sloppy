@@ -77,6 +77,7 @@
     "dataProviders": false,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -165,6 +166,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 2,
+        "native": 2
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 2,
     "parameterRoutes": 3,
@@ -189,6 +203,16 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
       "method": "GET",
       "name": "Users.List",
       "nativeResponse": {
@@ -224,6 +248,16 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 2,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
       "method": "POST",
       "name": "Users.Create",
       "nativeResponse": {
@@ -265,6 +299,16 @@
         "strategy": "segment-trie"
       },
       "handlerId": 3,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "PUT",
       "name": "Users.Update",
       "pattern": "/users/{id:int}",
@@ -299,6 +343,16 @@
         "strategy": "segment-trie"
       },
       "handlerId": 4,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "PATCH",
       "name": "Users.Patch",
       "pattern": "/users/{id:int}",
@@ -327,6 +381,15 @@
         "strategy": "segment-trie"
       },
       "handlerId": 5,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "DELETE",
       "name": "Users.Delete",
       "pattern": "/users/{id:int}",
@@ -367,6 +430,7 @@
       "capabilities": false,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": false,
       "routeDispatch": true,
       "routes": true,

@@ -237,6 +237,7 @@
     "health": true,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -435,6 +436,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 1
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 1,
+        "native": 1
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 6,
+        "native": 0
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 1,
     "parameterRoutes": 2,
@@ -496,6 +510,16 @@
         }
       ],
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -694,6 +718,19 @@
           "providerKind": null
         }
       ],
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "ProjectCreateInput",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "POST",
       "middleware": [
         {
@@ -858,6 +895,16 @@
           "providerKind": "sqlite"
         }
       ],
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -979,6 +1026,16 @@
         ],
         "kind": "aggregate"
       },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -1093,6 +1150,16 @@
           "scheduler"
         ],
         "kind": "liveness"
+      },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
       },
       "method": "GET",
       "middleware": [
@@ -1209,6 +1276,16 @@
         ],
         "kind": "readiness"
       },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -1322,6 +1399,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 7,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -1383,6 +1469,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 8,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
@@ -1461,6 +1556,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 9,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1552,6 +1656,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 10,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1643,6 +1756,15 @@
         "strategy": "segment-trie"
       },
       "handlerId": 11,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1734,6 +1856,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 12,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1825,6 +1956,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 13,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1916,6 +2056,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 14,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -2087,6 +2236,7 @@
       "effects": true,
       "ffi": false,
       "health": true,
+      "nativeJsonDispatch": true,
       "os": true,
       "providers": true,
       "routeDispatch": true,

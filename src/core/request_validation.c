@@ -32,6 +32,10 @@ typedef struct SlRequestValidationState
     SlArena* arena;
     SlRequestValidationIssue issue_storage[SL_REQUEST_VALIDATION_MAX_ISSUES];
     SlFixedVec issues;
+    SlPlanJsonUnknownFieldPolicy unknown_fields;
+    size_t max_depth;
+    size_t max_string_bytes;
+    size_t max_array_length;
 } SlRequestValidationState;
 
 static SlStr sl_request_validation_literal(const char* ptr, size_t length)
@@ -476,11 +480,25 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
                                                       const SlPlanSchemaNode* schema, SlStr value,
                                                       SlStr path)
 {
+    size_t max_string_bytes = 0U;
+
     if (schema->has_min && schema->min_value >= 0 && value.length < (size_t)schema->min_value) {
         return sl_request_validation_add_issue_code(
             state, path, sl_request_validation_literal("string.min", sizeof("string.min") - 1U),
             sl_request_validation_literal("Expected a longer string.",
                                           sizeof("Expected a longer string.") - 1U));
+    }
+    if (schema->has_max && schema->max_value >= 0) {
+        max_string_bytes = (size_t)schema->max_value;
+    }
+    else {
+        max_string_bytes = state->max_string_bytes;
+    }
+    if (max_string_bytes != 0U && value.length > max_string_bytes) {
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("string.max", sizeof("string.max") - 1U),
+            sl_request_validation_literal("Expected a shorter string.",
+                                          sizeof("Expected a shorter string.") - 1U));
     }
     if (sl_str_equal(schema->validation, sl_str_from_cstr("email")) &&
         !sl_request_validation_email_like(value))
@@ -497,6 +515,59 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
             state, path, sl_request_validation_literal("string.uuid", sizeof("string.uuid") - 1U),
             sl_request_validation_literal("Expected a UUID string.",
                                           sizeof("Expected a UUID string.") - 1U));
+    }
+    return sl_status_ok();
+}
+
+static bool sl_request_validation_schema_has_property(const SlPlanSchemaNode* schema, SlStr name)
+{
+    size_t index = 0U;
+
+    if (schema == NULL || (schema->property_count != 0U && schema->properties == NULL)) {
+        return false;
+    }
+    for (index = 0U; index < schema->property_count; index += 1U) {
+        if (sl_str_equal(schema->properties[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_request_validation_reject_unknown_fields(SlRequestValidationState* state,
+                                                            const SlPlanSchemaNode* schema,
+                                                            yyjson_val* value, SlStr path)
+{
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+    SlStatus status;
+
+    if (state == NULL || schema == NULL || value == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (state->unknown_fields != SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT) {
+        return sl_status_ok();
+    }
+
+    yyjson_obj_iter_init(value, &iter);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+        SlStr child_path = {0};
+
+        if (sl_request_validation_schema_has_property(schema, name)) {
+            continue;
+        }
+        status = sl_request_validation_child_path(state->arena, path, name, &child_path);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_request_validation_add_issue_code(
+            state, child_path, sl_request_validation_literal("unknown", sizeof("unknown") - 1U),
+            sl_request_validation_literal("Unknown field is not allowed.",
+                                          sizeof("Unknown field is not allowed.") - 1U));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
     return sl_status_ok();
 }
@@ -560,7 +631,7 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
         }
     }
 
-    return sl_status_ok();
+    return sl_request_validation_reject_unknown_fields(state, schema, value, path);
 }
 
 static SlStatus sl_request_validation_validate_array(SlRequestValidationState* state,
@@ -570,6 +641,7 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
     yyjson_val* item = NULL;
     yyjson_arr_iter iter;
     size_t item_index = 0U;
+    size_t max_array_length = 0U;
     SlStatus status;
 
     if (!yyjson_is_arr(value)) {
@@ -582,6 +654,18 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
             state, path,
             sl_request_validation_literal("Schema is not supported by this runtime.",
                                           sizeof("Schema is not supported by this runtime.") - 1U));
+    }
+    if (schema->has_max && schema->max_value >= 0) {
+        max_array_length = (size_t)schema->max_value;
+    }
+    else {
+        max_array_length = state->max_array_length;
+    }
+    if (max_array_length != 0U && yyjson_arr_size(value) > max_array_length) {
+        return sl_request_validation_add_issue_code(
+            state, path, sl_request_validation_literal("array.max", sizeof("array.max") - 1U),
+            sl_request_validation_literal("Expected a shorter array.",
+                                          sizeof("Expected a shorter array.") - 1U));
     }
 
     yyjson_arr_iter_init(value, &iter);
@@ -648,7 +732,7 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
     if (state == NULL || schema == NULL || value == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (depth > SL_REQUEST_VALIDATION_MAX_JSON_DEPTH) {
+    if (state->max_depth != 0U && depth > state->max_depth) {
         return sl_request_validation_add_issue(
             state, path,
             sl_request_validation_literal("JSON body exceeds maximum validation depth.",
@@ -685,6 +769,18 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
                 sl_request_validation_literal("Expected a finite number.",
                                               sizeof("Expected a finite number.") - 1U));
         }
+        if (schema->has_min && yyjson_get_num(value) < (double)schema->min_value) {
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
+                sl_request_validation_literal("Expected a larger number.",
+                                              sizeof("Expected a larger number.") - 1U));
+        }
+        if (schema->has_max && yyjson_get_num(value) > (double)schema->max_value) {
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
+                sl_request_validation_literal("Expected a smaller number.",
+                                              sizeof("Expected a smaller number.") - 1U));
+        }
         return sl_status_ok();
     case SL_PLAN_SCHEMA_INT:
         if (!yyjson_is_int(value)) {
@@ -698,6 +794,12 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
                 state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
                 sl_request_validation_literal("Expected a larger integer.",
                                               sizeof("Expected a larger integer.") - 1U));
+        }
+        if (schema->has_max && yyjson_get_sint(value) > schema->max_value) {
+            return sl_request_validation_add_issue_code(
+                state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
+                sl_request_validation_literal("Expected a smaller integer.",
+                                              sizeof("Expected a smaller integer.") - 1U));
         }
         return sl_status_ok();
     case SL_PLAN_SCHEMA_BOOLEAN:
@@ -989,6 +1091,11 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
     }
 
     state.arena = arena;
+    state.unknown_fields = route->json_request.unknown_fields;
+    state.max_depth = route->json_request.max_depth == 0U ? SL_REQUEST_VALIDATION_MAX_JSON_DEPTH
+                                                          : route->json_request.max_depth;
+    state.max_string_bytes = route->json_request.max_string_bytes;
+    state.max_array_length = route->json_request.max_array_length;
     status = sl_fixed_vec_init(&state.issues, state.issue_storage, sizeof(SlRequestValidationIssue),
                                SL_REQUEST_VALIDATION_MAX_ISSUES);
     if (!sl_status_is_ok(status)) {

@@ -18,6 +18,7 @@ extern "C" {
 
 #define SL_PLAN_VERSION_1 UINT32_C(1)
 #define SL_PLAN_CURRENT_VERSION SL_PLAN_VERSION_1
+#define SL_PLAN_INTERNAL_ABI_VERSION UINT32_C(2)
 
 #define SL_PLAN_TARGET_PLATFORM_WINDOWS_X64 "windows-x64"
 #define SL_PLAN_TARGET_PLATFORM_LINUX_X64 "linux-x64"
@@ -76,6 +77,68 @@ typedef struct SlPlanHandler
     SlStr display_name;
 } SlPlanHandler;
 
+typedef enum SlPlanJsonRequestMode
+{
+    SL_PLAN_JSON_REQUEST_NONE = 0,
+    SL_PLAN_JSON_REQUEST_GENERIC = 1,
+    SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA = 2,
+    SL_PLAN_JSON_REQUEST_FALLBACK = 3
+} SlPlanJsonRequestMode;
+
+typedef enum SlPlanJsonMaterializationPolicy
+{
+    SL_PLAN_JSON_MATERIALIZATION_NONE = 0,
+    SL_PLAN_JSON_MATERIALIZATION_GENERIC = 1,
+    SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE = 2,
+    SL_PLAN_JSON_MATERIALIZATION_PROJECTED = 3
+} SlPlanJsonMaterializationPolicy;
+
+typedef enum SlPlanJsonUnknownFieldPolicy
+{
+    SL_PLAN_JSON_UNKNOWN_FIELDS_IGNORE = 0,
+    SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT = 1,
+    SL_PLAN_JSON_UNKNOWN_FIELDS_PASSTHROUGH = 2
+} SlPlanJsonUnknownFieldPolicy;
+
+typedef enum SlPlanJsonResponseMode
+{
+    SL_PLAN_JSON_RESPONSE_NONE = 0,
+    SL_PLAN_JSON_RESPONSE_NATIVE_STATIC = 1,
+    SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA = 2,
+    SL_PLAN_JSON_RESPONSE_GENERIC = 3,
+    SL_PLAN_JSON_RESPONSE_FALLBACK = 4
+} SlPlanJsonResponseMode;
+
+typedef enum SlPlanJsonWriterMode
+{
+    SL_PLAN_JSON_WRITER_NONE = 0,
+    SL_PLAN_JSON_WRITER_PREENCODED = 1,
+    SL_PLAN_JSON_WRITER_BOUNDED = 2,
+    SL_PLAN_JSON_WRITER_STREAMABLE = 3
+} SlPlanJsonWriterMode;
+
+typedef struct SlPlanJsonRequestPlan
+{
+    SlPlanJsonRequestMode mode;
+    SlPlanJsonMaterializationPolicy materialization;
+    SlPlanJsonUnknownFieldPolicy unknown_fields;
+    SlStr schema;
+    SlStr fallback_reason;
+    size_t max_body_bytes;
+    size_t max_depth;
+    size_t max_string_bytes;
+    size_t max_array_length;
+} SlPlanJsonRequestPlan;
+
+typedef struct SlPlanJsonResponsePlan
+{
+    SlPlanJsonResponseMode mode;
+    SlPlanJsonWriterMode writer;
+    SlStr schema;
+    SlStr fallback_reason;
+    SlStr content_type;
+} SlPlanJsonResponsePlan;
+
 /*
  * Parsed Plan route metadata. Plan structs are exposed for Sloppy's current in-repo C
  * runtime boundary.
@@ -92,6 +155,8 @@ typedef struct SlPlanRoute
     SlStr native_response_kind;
     SlStr native_response_body;
     SlStr native_response_content_type;
+    SlPlanJsonRequestPlan json_request;
+    SlPlanJsonResponsePlan json_response;
     SlHandlerId handler_id;
     uint16_t native_response_status;
 } SlPlanRoute;
@@ -175,24 +240,31 @@ typedef struct SlPlanSchemaProperty
     const SlPlanSchemaNode* schema;
 } SlPlanSchemaProperty;
 
+/*
+ * Parsed Plan schema metadata for Sloppy's current in-repo C runtime boundary.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
+ */
 typedef struct SlPlanSchemaNode
 {
-    SlPlanSchemaKind kind;
-    bool optional;
-    bool nullable;
-    bool secret;
-    bool has_min;
     int64_t min_value;
-    SlStr semantic;
-    SlStr validation;
+    int64_t max_value;
     const SlPlanSchemaProperty* properties;
     size_t property_count;
     const SlPlanSchemaNode* items;
     const SlPlanSchemaNode* variants;
     size_t variant_count;
-    SlPlanSchemaLiteralKind literal_kind;
-    SlStr literal_string;
     double literal_number;
+    SlStr semantic;
+    SlStr validation;
+    SlStr literal_string;
+    SlPlanSchemaKind kind;
+    SlPlanSchemaLiteralKind literal_kind;
+    bool optional;
+    bool nullable;
+    bool secret;
+    bool has_min;
+    bool has_max;
     bool literal_boolean;
 } SlPlanSchemaNode;
 

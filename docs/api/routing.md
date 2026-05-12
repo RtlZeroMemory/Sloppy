@@ -86,7 +86,8 @@ app.get("/users", { name: "Users.List", tags: ["users"] }, handler);
 ```
 
 The options accepted today are `name` and `tags`. They show up in
-`sloppy routes` output and in OpenAPI metadata.
+`sloppy routes` output, OpenAPI metadata, and compiled/native execution
+metadata when the compiler can prove the route shape.
 
 The fluent form is equivalent:
 
@@ -107,6 +108,12 @@ app.post("/users", createUser)
 
 The app host stores this metadata in route snapshots. The compiler also uses
 static schema identifiers in these fluent calls for Plan and OpenAPI metadata.
+For compiled/native runs, `.accepts(...)` can enable native schema-backed JSON
+request validation before the handler boundary. Static JSON result routes can
+carry native preencoded JSON response metadata. Supported `.returns(...)`
+response schemas can use the bounded native JSON response writer; unsupported
+JSON shapes are still visible as generic/fallback modes in
+`sloppy routes --dispatch`.
 
 ## URL generation
 

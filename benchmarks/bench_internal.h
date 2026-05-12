@@ -23,10 +23,18 @@ typedef struct SlBenchResult
     double ns_per_op;
     uint64_t bytes_processed;
     uint64_t chunks_processed;
+    uint64_t rows_processed;
     double bytes_per_second;
     double chunks_per_second;
+    double rows_per_second;
     uint64_t checksum;
     uint64_t backpressure_count;
+    uint64_t native_hits;
+    uint64_t generic_fallback_count;
+    uint64_t materialization_count;
+    uint64_t reject_count;
+    uint64_t schema_response_native_hits;
+    uint64_t duplicate_validation_skipped_count;
     const char* note;
 } SlBenchResult;
 
@@ -50,6 +58,7 @@ typedef struct SlBenchDefinition
 
 const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count);
+const SlBenchDefinition* sl_bench_json_dispatch_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_logging_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_diagnostics_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_memory_definitions(size_t* out_count);

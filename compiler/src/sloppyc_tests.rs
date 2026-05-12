@@ -4083,7 +4083,7 @@ export default app;
 
 #[test]
 fn extracts_schema_alias_body_validate_and_fluent_route_schemas() {
-    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+    let source = r#"import { Sloppy, Results, Schema, RequestContext, Route } from "sloppy";
 const CreateUser = Schema.object({
   name: Schema.string().min(1).max(100),
   email: Schema.string().email()
@@ -4132,6 +4132,12 @@ export default app;
     let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
     assert_eq!(plan["routes"][0]["bindings"][0]["schema"], "CreateUser");
     assert_eq!(plan["routes"][0]["response"]["bodySchema"], "User");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["mode"], "fallback");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["writer"], "none");
+    assert_eq!(
+        plan["routes"][0]["jsonResponse"]["fallbackReason"],
+        "native-schema-response-writer-unsupported:literal-union-schema-unsupported"
+    );
     let user_schema = plan["schemas"]
         .as_array()
         .and_then(|schemas| schemas.iter().find(|schema| schema["name"] == "User"))
@@ -4203,7 +4209,7 @@ export default app;
 
 #[test]
 fn extracts_named_schema_references_inside_schema_dsl() {
-    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+    let source = r#"import { Sloppy, Results, Schema, RequestContext, Route } from "sloppy";
 const User = Schema.object({
   id: Schema.integer(),
   name: Schema.string()
@@ -4214,8 +4220,8 @@ const Project = Schema.object({
   members: Users
 });
 const app = Sloppy.create();
-app.get("/users", () => Results.ok([{ id: 1, name: "Ada" }])).returns(Users);
-app.get("/projects/{id:int}", () => Results.ok({ owner: { id: 1, name: "Ada" }, members: [] })).returns(Project);
+app.get("/users", (ctx: RequestContext) => Results.ok(ctx.request.method ? [{ id: 1, name: "Ada" }] : [])).returns(Users);
+app.get("/projects/{id:int}", (id: Route<number>, ctx: RequestContext) => Results.ok(ctx.request.method && id ? { owner: { id: 1, name: "Ada" }, members: [] } : { owner: { id: 2, name: "Grace" }, members: [] })).returns(Project);
 export default app;
 "#;
     let app = extract(std::path::Path::new("app.ts"), source)
@@ -4255,6 +4261,12 @@ export default app;
     );
     assert_eq!(plan["routes"][0]["response"]["bodySchema"], "Users");
     assert_eq!(plan["routes"][1]["response"]["bodySchema"], "Project");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["mode"], "native-schema");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["writer"], "bounded");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["schema"], "Users");
+    assert_eq!(plan["routes"][1]["jsonResponse"]["mode"], "native-schema");
+    assert_eq!(plan["routes"][1]["jsonResponse"]["writer"], "bounded");
+    assert_eq!(plan["routes"][1]["jsonResponse"]["schema"], "Project");
 }
 
 #[test]
@@ -7500,6 +7512,20 @@ export default app;
         .map(|response| response.body_schema.as_deref())
         .collect();
     assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["mode"], "fallback");
+    assert_eq!(
+        plan["routes"][0]["jsonResponse"]["fallbackReason"],
+        "multiple-json-response-schemas"
+    );
 }
 
 #[test]

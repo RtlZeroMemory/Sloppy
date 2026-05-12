@@ -141,6 +141,7 @@
     "dependencyGraph": true,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -190,6 +191,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 0,
+        "native": 0
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 1,
     "parameterRoutes": 0,
@@ -214,6 +228,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "name": null,
       "nativeResponse": {
@@ -266,6 +289,7 @@
       "dependencyGraph": true,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": false,
       "routeDispatch": true,
       "routes": true,

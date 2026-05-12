@@ -146,7 +146,7 @@ jobs:
             & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
             & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
           } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -306,7 +306,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi
@@ -506,7 +506,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi
@@ -702,7 +702,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi

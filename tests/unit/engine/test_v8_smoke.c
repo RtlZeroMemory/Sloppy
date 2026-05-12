@@ -4268,6 +4268,308 @@ static int test_request_context_body_object_is_one_shot(void)
     return 0;
 }
 
+static int test_native_validated_json_body_is_materialized_once(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    static const unsigned char body[] = "{\"name\":\"Ada\",\"ok\":true}";
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
+    SlHttpRequestContext context = {0};
+
+    request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
+    context = test_request_context(&request);
+    context.body_kind = SL_HTTP_REQUEST_BODY_JSON;
+    context.native_json_validated = true;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 426;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 427;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-native-json-materialized.js"),
+                sl_str_from_cstr("globalThis.sloppy_native_json_body = function (ctx) {"
+                                 "  const first = ctx.request.json();"
+                                 "  first.name = 'Grace';"
+                                 "  const second = ctx.request.json();"
+                                 "  const fromBody = ctx.request.body.json();"
+                                 "  let after = 'not-thrown';"
+                                 "  try { ctx.request.body.json(); }"
+                                 "  catch (error) { after = error instanceof TypeError"
+                                 "      && /already consumed/.test(String(error.message))"
+                                 "      ? 'consumed' : 'wrong'; }"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json', body: {"
+                                 "      same: first === second, bodySame: first === fromBody,"
+                                 "      name: fromBody.name, after,"
+                                 "      consumed: ctx.request.body.consumed"
+                                 "    } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 428;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_native_json_body"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 429;
+    }
+
+    {
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"same\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"bodySame\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"name\":\"Grace\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"after\":\"consumed\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"consumed\":true")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 430;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_native_schema_json_response_serializes_supported_shape(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[8192];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+    SlPlanSchemaNode string_node = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode int_node = {.kind = SL_PLAN_SCHEMA_INT};
+    SlPlanSchemaNode number_node = {.kind = SL_PLAN_SCHEMA_NUMBER};
+    SlPlanSchemaNode bool_node = {.kind = SL_PLAN_SCHEMA_BOOLEAN};
+    SlPlanSchemaNode null_node = {.kind = SL_PLAN_SCHEMA_NULL, .nullable = true};
+    SlPlanSchemaNode nested_string_node = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaProperty nested_props[1] = {
+        {.name = sl_str_from_cstr("label"), .schema = &nested_string_node}};
+    SlPlanSchemaNode nested_node = {
+        .properties = nested_props, .property_count = 1U, .kind = SL_PLAN_SCHEMA_OBJECT};
+    SlPlanSchemaNode tag_node = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode tags_node = {.items = &tag_node, .kind = SL_PLAN_SCHEMA_ARRAY};
+    SlPlanSchemaNode optional_node = {.kind = SL_PLAN_SCHEMA_STRING, .optional = true};
+    SlPlanSchemaProperty props[9] = {
+        {.name = sl_str_from_cstr("name"), .schema = &string_node},
+        {.name = sl_str_from_cstr("escaped"), .schema = &string_node},
+        {.name = sl_str_from_cstr("count"), .schema = &int_node},
+        {.name = sl_str_from_cstr("score"), .schema = &number_node},
+        {.name = sl_str_from_cstr("ok"), .schema = &bool_node},
+        {.name = sl_str_from_cstr("note"), .schema = &null_node},
+        {.name = sl_str_from_cstr("nested"), .schema = &nested_node},
+        {.name = sl_str_from_cstr("tags"), .schema = &tags_node},
+        {.name = sl_str_from_cstr("optional"), .schema = &optional_node}};
+    SlPlanSchemaNode root_node = {
+        .properties = props, .property_count = 9U, .kind = SL_PLAN_SCHEMA_OBJECT};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("NativeResponse"), .definition = root_node};
+    SlStr body = sl_str_empty();
+
+    context = test_request_context(&request);
+    context.response_schema = &schema;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 431;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 432;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-native-schema-response.js"),
+                sl_str_from_cstr("globalThis.sloppy_native_schema_response = function () {"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json', body: {"
+                                 "      extra: 'ignored', name: 'Ada',"
+                                 "      escaped: 'line\\nquote\"slash\\\\', count: 7, score: 1.5,"
+                                 "      ok: true, note: null, nested: { label: 'inner' },"
+                                 "      tags: ['a', 'b']"
+                                 "    } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 433;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_native_schema_response"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 434;
+    }
+
+    body = sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        !sl_str_equal(
+            body, sl_str_from_cstr("{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\","
+                                   "\"count\":7,\"score\":1.5,\"ok\":true,\"note\":null,"
+                                   "\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}")))
+    {
+        sl_engine_destroy(engine);
+        return 435;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_native_schema_json_response_capacity_exceeded(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[196608];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+    SlPlanSchemaNode string_node = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaProperty props[1] = {{.name = sl_str_from_cstr("value"), .schema = &string_node}};
+    SlPlanSchemaNode root_node = {
+        .properties = props, .property_count = 1U, .kind = SL_PLAN_SCHEMA_OBJECT};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("LargeNativeResponse"),
+                           .definition = root_node};
+
+    context = test_request_context(&request);
+    context.response_schema = &schema;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 436;
+    }
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 437;
+    }
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-native-schema-response-capacity.js"),
+                sl_str_from_cstr("globalThis.sloppy_native_schema_response_capacity = function () {"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json',"
+                                 "    body: { value: 'a'.repeat(70000) } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 438;
+    }
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena,
+                          sl_str_from_cstr("sloppy_native_schema_response_capacity"), &context,
+                          &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+    {
+        sl_engine_destroy(engine);
+        return 439;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_unsupported_native_schema_json_response_falls_back_to_generic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+    SlPlanSchemaNode literal_node = {.literal_string = sl_str_from_cstr("active"),
+                                     .kind = SL_PLAN_SCHEMA_LITERAL,
+                                     .literal_kind = SL_PLAN_SCHEMA_LITERAL_STRING};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("UnsupportedResponse"),
+                           .definition = literal_node};
+    SlStr body = sl_str_empty();
+
+    context = test_request_context(&request);
+    context.response_schema = &schema;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 440;
+    }
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 441;
+    }
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-native-schema-response-fallback.js"),
+                sl_str_from_cstr("globalThis.sloppy_native_schema_response_fallback = function () {"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json', body: 'active' };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 442;
+    }
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena,
+                          sl_str_from_cstr("sloppy_native_schema_response_fallback"), &context,
+                          &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 443;
+    }
+    body = sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+    if (result.kind != SL_ENGINE_RESULT_JSON || !sl_str_equal(body, sl_str_from_cstr("\"active\"")))
+    {
+        sl_engine_destroy(engine);
+        return 444;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_request_context_helper_functions_are_frozen(void)
 {
     unsigned char engine_storage[8192];
@@ -7597,6 +7899,26 @@ int main(int argc, char** argv)
     }
 
     result = test_request_context_body_object_is_one_shot();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_native_validated_json_body_is_materialized_once();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_native_schema_json_response_serializes_supported_shape();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_native_schema_json_response_capacity_exceeded();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_unsupported_native_schema_json_response_falls_back_to_generic();
     if (result != 0) {
         return result;
     }

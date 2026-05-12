@@ -126,7 +126,9 @@ typedef enum SlV8HttpPrivateKey
     SL_V8_HTTP_PRIVATE_BODY,
     SL_V8_HTTP_PRIVATE_BODY_BYTES,
     SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
+    SL_V8_HTTP_PRIVATE_BODY_JSON,
     SL_V8_HTTP_PRIVATE_BODY_KIND,
+    SL_V8_HTTP_PRIVATE_BODY_NATIVE_VALIDATED,
     SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT,
     SL_V8_HTTP_PRIVATE_COOKIE_SNAPSHOT,
     SL_V8_HTTP_PRIVATE_FORM_FIELDS,
@@ -338,6 +340,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
 SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                            SlEngine* engine, SlArena* arena,
                                            v8::Local<v8::Value> js_result,
+                                           const SlHttpRequestContext* request_context,
                                            SlEngineResult* out_result, SlDiag* out_diag);
 
 #endif

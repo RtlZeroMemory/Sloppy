@@ -26,6 +26,11 @@ kinds before building the arena-owned native dispatch table from
 - `Results.text("literal")`, `Results.json(<literal>)`, and
   `Results.ok(<literal>)` handlers can execute as native static responses
   without entering V8;
+- schema-backed JSON request bodies can be validated natively before the
+  handler boundary when the route has a `jsonRequest` native schema plan;
+- static JSON response bodies use `jsonResponse` native static writer metadata;
+- supported schema-backed JSON response bodies use `jsonResponse` native schema
+  writer metadata;
 - dynamic route metadata can fall back to the current generated JavaScript
   runtime path when V8 is enabled.
 
@@ -40,6 +45,15 @@ read when the route table is built and stored on the dispatch table:
 - `validate` runs both paths and fails the request if the selected binding or
   method-mismatch result differs.
 
+`SLOPPY_JSON_DISPATCH` is a local diagnostics and benchmark switch:
+
+- `native` or unset uses native schema-backed request validation and
+  materialize-once body handoff when the Plan advertises it;
+- `generic` forces the generic JSON body policy path for baseline comparison;
+- `validate` keeps the native request path enabled and is reserved for
+  differential checks where the runtime can compare supported generic/native
+  behavior.
+
 ## Plan Metadata
 
 `routeDispatch.mode` is `native-compiled` for compiler-emitted web artifacts.
@@ -47,11 +61,17 @@ That means Plan-backed native dispatch with `routes.slrt` integrity validation.
 The Plan records the `routes.slrt` path and SHA-256 hash, route
 counts, endpoint counts, exact static paths, parameter route counts, native
 no-JS route counts, URL writer counts, candidate bucket counts, segment-trie
-node counts, known constraints, and fallback counts.
+node counts, known constraints, aggregate JSON request/response
+native/generic/fallback counts. Fallback reasons are exposed per route through
+`routes[].jsonRequest` and `routes[].jsonResponse`.
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,
 `native-static-text`, or `native-static-json`.
+
+`routes[].jsonRequest` and `routes[].jsonResponse` record per-route JSON modes.
+Fallback reasons are part of the contract: if the route cannot use native JSON,
+inspection tools show why instead of silently implying success.
 
 ## Route Shapes
 

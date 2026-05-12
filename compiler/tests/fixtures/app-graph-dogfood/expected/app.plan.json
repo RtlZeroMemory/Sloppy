@@ -232,6 +232,7 @@
     "health": true,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -353,6 +354,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 1,
+        "native": 1
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 6,
+        "native": 0
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 1,
     "parameterRoutes": 1,
@@ -398,6 +412,16 @@
         }
       ],
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Projects.List",
       "pattern": "/api/projects",
@@ -551,6 +575,19 @@
           "providerKind": null
         }
       ],
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "ProjectCreateInput",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "POST",
       "name": "Projects.Create",
       "pattern": "/api/projects",
@@ -670,6 +707,16 @@
           "providerKind": "sqlite"
         }
       ],
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Projects.Get",
       "pattern": "/api/projects/{id:int}",
@@ -746,6 +793,16 @@
         ],
         "kind": "aggregate"
       },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Health",
       "pattern": "/status",
@@ -815,6 +872,16 @@
           "scheduler"
         ],
         "kind": "liveness"
+      },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
       },
       "method": "GET",
       "name": "Health.Liveness",
@@ -886,6 +953,16 @@
         ],
         "kind": "readiness"
       },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Health.Readiness",
       "pattern": "/status/ready",
@@ -950,6 +1027,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 7,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
@@ -1108,6 +1194,7 @@
       "effects": true,
       "ffi": false,
       "health": true,
+      "nativeJsonDispatch": true,
       "os": true,
       "providers": true,
       "routeDispatch": true,

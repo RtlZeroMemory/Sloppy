@@ -47,6 +47,13 @@ typedef struct SlHttpDispatchContextSeed
     const SlCancellationToken* cancellation;
 } SlHttpDispatchContextSeed;
 
+typedef enum SlHttpDispatchJsonMode
+{
+    SL_HTTP_DISPATCH_JSON_NATIVE = 0,
+    SL_HTTP_DISPATCH_JSON_GENERIC = 1,
+    SL_HTTP_DISPATCH_JSON_VALIDATE = 2
+} SlHttpDispatchJsonMode;
+
 struct SlHttpRouteTrieRoot
 {
     SlHttpMethod method;
@@ -145,9 +152,13 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
 static bool sl_http_dispatch_power_of_two(size_t value);
 static bool sl_http_dispatch_binding_valid(const SlHttpRouteBinding* binding);
 
+#define SL_HTTP_DISPATCH_TABLE_METHOD_MASK 0x3fU
+#define SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG (1U << 31U)
+
 static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispatch_table)
 {
     size_t index = 0U;
+    bool table_validated = false;
 
     if (dispatch_table == NULL ||
         (dispatch_table->route_count != 0U && dispatch_table->routes == NULL) ||
@@ -170,6 +181,12 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if ((dispatch_table->runtime_reserved0 &
+         ~(SL_HTTP_DISPATCH_TABLE_METHOD_MASK | SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG)) != 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
     if (dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED &&
         dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC &&
         dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE)
@@ -177,7 +194,10 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (dispatch_table->handler_cache_trusted) {
+    table_validated =
+        (dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG) != 0U;
+
+    if (!table_validated && dispatch_table->handler_cache_trusted) {
         if (dispatch_table->plan == NULL) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
@@ -189,10 +209,12 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         }
     }
 
-    for (index = 0U; index < dispatch_table->param_route_bucket_count; index += 1U) {
-        const SlHttpRouteCandidateBucket* bucket = &dispatch_table->param_route_buckets[index];
-        if (bucket->route_count != 0U && bucket->routes == NULL) {
-            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    if (!table_validated) {
+        for (index = 0U; index < dispatch_table->param_route_bucket_count; index += 1U) {
+            const SlHttpRouteCandidateBucket* bucket = &dispatch_table->param_route_buckets[index];
+            if (bucket->route_count != 0U && bucket->routes == NULL) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
         }
     }
 
@@ -651,7 +673,8 @@ static SlStatus sl_http_dispatch_validate_json_body(SlArena* arena, SlBytes body
 }
 
 static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpRequestHead* request,
-                                                   size_t max_body_length,
+                                                   size_t max_body_length, bool json_body_expected,
+                                                   bool native_json_validation,
                                                    SlHttpRequestBodyKind* out_body_kind,
                                                    SlDiag* out_diag)
 {
@@ -680,8 +703,14 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     if (request->body.length == 0U) {
         if (sl_http_dispatch_find_header(request, SL_STR_LITERAL("Content-Type"), &content_type)) {
             media_type = sl_http_dispatch_media_type(content_type);
-            if (sl_str_equal_ci_ascii(media_type,
-                                      SL_STR_LITERAL("application/x-www-form-urlencoded")))
+            if (json_body_expected && !sl_http_dispatch_media_type_json(media_type)) {
+                return sl_http_dispatch_unsupported_media_type(arena, out_diag);
+            }
+            if (sl_http_dispatch_media_type_json(media_type)) {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_JSON;
+            }
+            else if (sl_str_equal_ci_ascii(media_type,
+                                           SL_STR_LITERAL("application/x-www-form-urlencoded")))
             {
                 *out_body_kind = SL_HTTP_REQUEST_BODY_FORM;
             }
@@ -710,10 +739,15 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
 
     media_type = sl_http_dispatch_media_type(content_type);
+    if (json_body_expected && !sl_http_dispatch_media_type_json(media_type)) {
+        return sl_http_dispatch_unsupported_media_type(arena, out_diag);
+    }
     if (sl_http_dispatch_media_type_json(media_type)) {
-        SlStatus status = sl_http_dispatch_validate_json_body(arena, request->body, out_diag);
-        if (!sl_status_is_ok(status)) {
-            return status;
+        if (!native_json_validation) {
+            SlStatus status = sl_http_dispatch_validate_json_body(arena, request->body, out_diag);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
         *out_body_kind = SL_HTTP_REQUEST_BODY_JSON;
         return sl_status_ok();
@@ -2037,6 +2071,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     if (!sl_status_is_ok(status)) {
         goto failure;
     }
+    out_table->dispatch.runtime_reserved0 |= SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG;
     out_table->route_count = runnable_route_count;
     return sl_status_ok();
 
@@ -2087,10 +2122,10 @@ static bool sl_http_dispatch_exact_path_has_other_method(const SlHttpDispatchTab
                                            SL_HTTP_METHOD_DELETE, SL_HTTP_METHOD_OPTIONS};
     size_t index = 0U;
     unsigned int request_bit = sl_http_dispatch_method_bit(request_method);
+    unsigned int method_bits =
+        dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_METHOD_MASK;
 
-    if (dispatch_table->runtime_reserved0 != 0U &&
-        (dispatch_table->runtime_reserved0 & ~request_bit) == 0U)
-    {
+    if (method_bits != 0U && (method_bits & ~request_bit) == 0U) {
         return false;
     }
 
@@ -2733,14 +2768,14 @@ static SlStatus sl_http_dispatch_param_path_has_other_method(
                                            SL_HTTP_METHOD_PUT,    SL_HTTP_METHOD_PATCH,
                                            SL_HTTP_METHOD_DELETE, SL_HTTP_METHOD_OPTIONS};
     size_t index = 0U;
+    unsigned int method_bits =
+        dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_METHOD_MASK;
 
     if (out_has_other_method == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_has_other_method = false;
-    if (dispatch_table->runtime_reserved0 != 0U &&
-        (dispatch_table->runtime_reserved0 & ~sl_http_dispatch_method_bit(request_method)) == 0U)
-    {
+    if (method_bits != 0U && (method_bits & ~sl_http_dispatch_method_bit(request_method)) == 0U) {
         return sl_status_ok();
     }
     for (index = 0U; index < sizeof(methods) / sizeof(methods[0]); index += 1U) {
@@ -3047,6 +3082,106 @@ static bool sl_http_dispatch_route_has_native_response(const SlPlanRoute* route)
            route->native_response_status >= 100U && route->native_response_status <= 599U;
 }
 
+static bool sl_http_dispatch_route_expects_json_body(const SlPlanRoute* route)
+{
+    size_t index = 0U;
+
+    if (route == NULL) {
+        return false;
+    }
+    if (route->json_request.mode == SL_PLAN_JSON_REQUEST_GENERIC ||
+        route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA ||
+        route->json_request.mode == SL_PLAN_JSON_REQUEST_FALLBACK)
+    {
+        return true;
+    }
+    if (route->binding_count == 0U || route->bindings == NULL) {
+        return false;
+    }
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        if (route->bindings[index].kind == SL_PLAN_REQUEST_BINDING_BODY_JSON) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_http_dispatch_route_uses_native_json_validation(const SlPlanRoute* route)
+{
+    return route != NULL && route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA;
+}
+
+static const SlPlanSchema* sl_http_dispatch_find_schema(const SlPlan* plan, SlStr name)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(name) ||
+        (plan->schema_count != 0U && plan->schemas == NULL))
+    {
+        return NULL;
+    }
+    for (index = 0U; index < plan->schema_count; index += 1U) {
+        if (sl_str_equal(plan->schemas[index].name, name)) {
+            return &plan->schemas[index];
+        }
+    }
+    return NULL;
+}
+
+static SlHttpDispatchJsonMode sl_http_dispatch_json_mode(void)
+{
+    SlHttpDispatchJsonMode mode = SL_HTTP_DISPATCH_JSON_NATIVE;
+    const char* value = NULL;
+#ifdef _WIN32
+    char buffer[16];
+    size_t length = 0U;
+
+    if (getenv_s(&length, buffer, sizeof(buffer), "SLOPPY_JSON_DISPATCH") == 0 && length > 0U) {
+        value = buffer;
+    }
+#else
+    value = getenv("SLOPPY_JSON_DISPATCH");
+#endif
+
+    if (value == NULL || value[0] == '\0' || strcmp(value, "native") == 0) {
+        mode = SL_HTTP_DISPATCH_JSON_NATIVE;
+    }
+    else if (strcmp(value, "generic") == 0) {
+        mode = SL_HTTP_DISPATCH_JSON_GENERIC;
+    }
+    else if (strcmp(value, "validate") == 0) {
+        mode = SL_HTTP_DISPATCH_JSON_VALIDATE;
+    }
+    return mode;
+}
+
+static size_t sl_http_dispatch_effective_max_body_length(const SlPlanRoute* route,
+                                                         const SlHttpDispatchContextSeed* seed)
+{
+    size_t seed_max_body_length = seed == NULL ? 0U : seed->max_body_length;
+    size_t route_max_body_length = 0U;
+
+    if (seed_max_body_length == SL_HTTP_DEFAULT_MAX_BODY_LENGTH) {
+        seed_max_body_length = 0U;
+    }
+    if (route != NULL && sl_http_dispatch_route_expects_json_body(route) &&
+        route->json_request.max_body_bytes != 0U)
+    {
+        route_max_body_length = route->json_request.max_body_bytes;
+    }
+    if (seed_max_body_length != 0U && route_max_body_length != 0U) {
+        return route_max_body_length < seed_max_body_length ? route_max_body_length
+                                                            : seed_max_body_length;
+    }
+    if (seed_max_body_length != 0U) {
+        return seed_max_body_length;
+    }
+    if (route_max_body_length != 0U) {
+        return route_max_body_length;
+    }
+    return SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
+}
+
 static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
                                                  SlEngineResult* out_result)
 {
@@ -3110,6 +3245,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     SlHttpQuery query = {0};
     SlHttpDispatchContextNeeds needs = {0};
     SlHttpRequestContext request_context = {0};
+    SlHttpDispatchJsonMode json_mode = SL_HTTP_DISPATCH_JSON_NATIVE;
+    bool use_native_json_validation = false;
     SlStr breadcrumb_path = sl_str_empty();
     bool method_mismatch = false;
     bool route_match_captured = false;
@@ -3218,12 +3355,15 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     else {
         needs = sl_http_dispatch_context_needs(validation_route);
     }
+    json_mode = sl_http_dispatch_json_mode();
+    use_native_json_validation =
+        sl_http_dispatch_route_uses_native_json_validation(validation_route) &&
+        json_mode != SL_HTTP_DISPATCH_JSON_GENERIC;
 
-    status = sl_http_dispatch_apply_body_policy(arena, request,
-                                                seed == NULL || seed->max_body_length == 0U
-                                                    ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
-                                                    : seed->max_body_length,
-                                                &request_context.body_kind, out_diag);
+    status = sl_http_dispatch_apply_body_policy(
+        arena, request, sl_http_dispatch_effective_max_body_length(validation_route, seed),
+        sl_http_dispatch_route_expects_json_body(validation_route), use_native_json_validation,
+        &request_context.body_kind, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -3271,12 +3411,21 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.route_pattern =
         binding->pattern == NULL ? sl_str_empty() : binding->pattern->source;
     request_context.route_name = validation_route == NULL ? sl_str_empty() : validation_route->name;
+    request_context.native_json_validated = false;
+    if (validation_route != NULL &&
+        validation_route->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA &&
+        validation_route->json_response.writer == SL_PLAN_JSON_WRITER_BOUNDED)
+    {
+        request_context.response_schema =
+            sl_http_dispatch_find_schema(plan, validation_route->json_response.schema);
+    }
     if (validation_route != NULL) {
         status = sl_request_validation_validate(arena, plan, validation_route, &request_context,
                                                 out_result, out_diag);
         if (!sl_status_is_ok(status) || out_result->kind != SL_ENGINE_RESULT_NONE) {
             return status;
         }
+        request_context.native_json_validated = use_native_json_validation;
         if (sl_http_dispatch_route_has_native_response(validation_route)) {
             sl_breadcrumb_global_record(
                 SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_NATIVE_RESPONSE_HIT, SL_STATUS_OK,

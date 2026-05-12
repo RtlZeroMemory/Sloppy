@@ -401,7 +401,7 @@ jobs:
             & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
             & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
           } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -428,9 +428,133 @@ jobs:
         shell: pwsh
         run: .\tools\windows\dev.ps1 build -Preset windows-dev
 
+      - name: Provider gate report
+        shell: pwsh
+        run: |
+          Write-Host "Provider gate report:"
+          Write-Host "- default SQLite provider tests: run in-memory through CTest."
+          Write-Host "- default PostgreSQL provider tests: run non-live diagnostics through CTest."
+          if ([string]::IsNullOrWhiteSpace($env:SLOPPY_POSTGRES_TEST_URL)) {
+            Write-Host "- live PostgreSQL provider tests: skipped because SLOPPY_POSTGRES_TEST_URL is not set."
+          } else {
+            Write-Host "- live PostgreSQL provider tests: enabled because SLOPPY_POSTGRES_TEST_URL is set."
+          }
+          Write-Host "- default SQL Server provider tests: run ODBC diagnostics through CTest."
+          if ([string]::IsNullOrWhiteSpace($env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING)) {
+            Write-Host "- live SQL Server provider tests: skipped because SLOPPY_SQLSERVER_TEST_CONNECTION_STRING is not set."
+          } else {
+            Write-Host "- live SQL Server provider tests: enabled because SLOPPY_SQLSERVER_TEST_CONNECTION_STRING is set."
+          }
+
       - name: Test
         shell: pwsh
         run: ctest --preset windows-dev --output-on-failure
+
+  provider-live:
+    name: provider-live / docker-backed
+    runs-on: windows-latest
+    needs: changes
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.live_provider != 'none') ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'live-postgres') ||
+        contains(github.event.pull_request.labels.*.name, 'live-sqlserver') ||
+        contains(github.event.pull_request.labels.*.name, 'live-providers') ||
+        contains(github.event.pull_request.labels.*.name, 'full-ci')
+      ))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress --version 1.13.2
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
+            windows-provider-live-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PAT)) {
+            $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
+            $nugetExe = & $vcpkgExe fetch nuget | Select-Object -Last 1
+            & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
+            & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
+          } else {
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
+            "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      - name: Toolchain bootstrap
+        shell: pwsh
+        run: .\tools\windows\bootstrap.ps1
+
+      - name: Configure provider live preset
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Run selected provider live lanes
+        shell: pwsh
+        run: |
+          $provider = "all"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $provider = "${{ inputs.live_provider }}"
+          } elseif ("${{ github.event_name }}" -eq "pull_request") {
+            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-postgres') }}" -eq "true") {
+              $provider = "postgres"
+            }
+            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-sqlserver') }}" -eq "true") {
+              $provider = if ($provider -eq "postgres") { "all" } else { "sqlserver" }
+            }
+          }
+          .\tools\windows\test-live-providers.ps1 -Provider $provider -Preset windows-relwithdebinfo
 
   windows-package-smoke:
     name: windows-package-smoke
@@ -442,10 +566,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -457,12 +581,12 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
-            choco install ninja -y --no-progress
+            choco install ninja -y --no-progress --version 1.13.2
           }
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             .sdeps/vcpkg
@@ -497,7 +621,7 @@ jobs:
             & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
             & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
           } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -508,7 +632,7 @@ jobs:
       - name: Save vcpkg cache after package
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             .sdeps/vcpkg
@@ -606,7 +730,7 @@ jobs:
             & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
             & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
           } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -737,7 +861,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi
@@ -855,7 +979,7 @@ jobs:
             & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
             & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
           } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            Write-Host "::notice::NUGET_PAT secret not set; using local file binary cache only"
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -1009,7 +1133,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi
@@ -1163,7 +1287,7 @@ jobs:
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
             if [ -z "${NUGET_PAT:-}" ]; then
-              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+              echo "::notice::NUGET_PAT secret not set; using local file binary cache only"
             else
               echo "::warning::mono not available; using local file binary cache only"
             fi
@@ -1198,4 +1322,3 @@ jobs:
       - name: Run repo-wide clang-tidy analyzer profile
         shell: bash
         run: cmake --build --preset linux-clang --target sloppy_memory_analysis
-

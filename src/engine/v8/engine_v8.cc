@@ -401,10 +401,23 @@ std::string sl_v8_env_string(const char* name)
     if (name == nullptr) {
         return dir;
     }
+#ifdef _WIN32
+    size_t required = 0U;
+    if (getenv_s(&required, nullptr, 0U, name) == 0 && required > 0U) {
+        dir.resize(required);
+        if (getenv_s(&required, dir.data(), dir.size(), name) != 0 || required == 0U) {
+            dir.clear();
+        }
+        else {
+            dir.resize(required - 1U);
+        }
+    }
+#else
     const char* value = std::getenv(name);
     if (value != nullptr) {
         dir = value;
     }
+#endif
     return dir;
 }
 
@@ -2069,6 +2082,7 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                              SlEngine* engine, SlArena* arena,
                                              v8::Local<v8::Value> js_result,
+                                             const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
                                              SlEngineResult* out_result, SlDiag* out_diag);
 
@@ -2157,6 +2171,7 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(
 static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                              SlEngine* engine, SlArena* arena,
                                              v8::Local<v8::Promise> promise,
+                                             const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
                                              SlEngineResult* out_result, SlDiag* out_diag)
 {
@@ -2194,7 +2209,7 @@ static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, promise->Result(),
-                                        cancellation, out_result, out_diag);
+                                        request_context, cancellation, out_result, out_diag);
 }
 
 extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena,
@@ -2290,12 +2305,13 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, nullptr,
-                                        out_result, out_diag);
+                                        nullptr, out_result, out_diag);
 }
 
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                              SlEngine* engine, SlArena* arena,
                                              v8::Local<v8::Value> js_result,
+                                             const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
                                              SlEngineResult* out_result, SlDiag* out_diag)
 {
@@ -2306,12 +2322,12 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
 
     if (js_result->IsPromise()) {
         return sl_v8_convert_promise_result(isolate, context, engine, arena,
-                                            js_result.As<v8::Promise>(), cancellation, out_result,
-                                            out_diag);
+                                            js_result.As<v8::Promise>(), request_context,
+                                            cancellation, out_result, out_diag);
     }
 
-    return sl_v8_convert_http_handler_result(isolate, context, engine, arena, js_result, out_result,
-                                             out_diag);
+    return sl_v8_convert_http_handler_result(isolate, context, engine, arena, js_result,
+                                             request_context, out_result, out_diag);
 }
 
 extern "C" SlStatus
@@ -2417,7 +2433,7 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         return status;
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, request_context,
                                         request_context->cancellation, out_result, out_diag);
 }
 
@@ -2529,6 +2545,6 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
         return status;
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, request_context,
                                         request_context->cancellation, out_result, out_diag);
 }

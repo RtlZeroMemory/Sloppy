@@ -106,6 +106,10 @@ Compiler extraction currently enforces:
   records dynamic and partial fallback counts.
 - Literal `Results.text`, `Results.json`, and `Results.ok` responses can run as
   native no-JS static responses when the compiler proves the body is a literal.
+- Routes with compiler-visible JSON body schemas include `jsonRequest` metadata
+  and can reject invalid JSON before entering the handler. Static JSON result
+  routes include `jsonResponse` metadata for native preencoded response writing.
+  Dynamic or unsupported JSON shapes remain explicit generic/fallback paths.
 - Named static Plan routes have native URL writers that validate required path
   params, percent-encode inserted path values, and roundtrip through the native
   matcher.

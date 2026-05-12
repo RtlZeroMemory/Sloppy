@@ -83,6 +83,14 @@ schema arguments are local identifiers. Static `Schema.literal(...)` and
 `Schema.enum([...])` extraction supports string, number, and boolean values;
 the runtime schema API also accepts `null` literals.
 
+Compiled/native runs use compiler-visible request schemas as `jsonRequest`
+metadata. Schema-known JSON request bodies are validated before the handler
+runs, with safe problem details for malformed JSON, missing required fields,
+type mismatches, literal/enum mismatch, bounds, array length, nullable/optional
+fields, and unknown-field policy failures. Response schemas remain metadata or
+explicit fallback for dynamic handler returns unless the compiler proves a
+static native JSON response.
+
 ## Route Metadata Validation Hints
 
 Bootstrap route options can carry metadata objects (for example `{ query:

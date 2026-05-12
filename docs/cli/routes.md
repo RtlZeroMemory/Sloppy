@@ -17,10 +17,10 @@ Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
 
 ```text
 $ sloppy routes .sloppy
-ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME
-0      GET     http         /health              1        complete          app.js:4:1  -  200/json/json  Health.Get
-1      GET     http         /hello/{name}        2        complete          app.js:5:1  -  200/json/json  Hello.Get
-2      GET     sse          /events              3        complete          app.js:6:1  -  stream/text-event-stream  Events
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  NAME
+0      GET     http         /health              1        complete          app.js:4:1  -  200/json/json  req:none/none resp:native-static/preencoded  Health.Get
+1      POST    http         /users               2        complete          app.js:5:1  body:body  200/json/json  req:native-schema/materialize-once resp:fallback/none resp-fallback:handler-return-shape-dynamic  Users.Create
+2      GET     sse          /events              3        complete          app.js:6:1  -  stream/text-event-stream  req:none/none resp:none/none  Events
 ```
 
 Routes are sorted in runtime match-precedence order: literal segments before
@@ -40,9 +40,24 @@ $ sloppy routes .sloppy --format json
 {
   "kind": "web",
   "routes": [
-    { "method": "GET", "pattern": "/health", "kind": "http", "handlerId": 1, "name": "Health.Get" },
-    { "method": "GET", "pattern": "/hello/{name}", "kind": "http", "handlerId": 2, "name": "Hello.Get" },
-    { "method": "GET", "pattern": "/events", "kind": "sse", "handlerId": 3 }
+    {
+      "method": "POST",
+      "pattern": "/users",
+      "kind": "http",
+      "handlerId": 2,
+      "name": "Users.Create",
+      "jsonRequest": {
+        "mode": "native-schema",
+        "materialization": "materialize-once",
+        "schema": "CreateUser"
+      },
+      "jsonResponse": {
+        "mode": "fallback",
+        "writer": "none",
+        "schema": "User",
+        "fallbackReason": "handler-return-shape-dynamic"
+      }
+    }
   ]
 }
 ```
@@ -57,6 +72,12 @@ unconstrained parameters and explicit kinds such as `int`, `uuid`, `alpha`, or
 `kind` is `http` for ordinary routes, `sse` for server-sent event routes, and
 `websocket` for WebSocket route intent. WebSocket route metadata does not imply
 native upgrade execution in this alpha.
+
+Each route also includes `jsonRequest` and `jsonResponse` objects. The text
+`JSON` column prints `req:<mode>/<materialization>` and
+`resp:<mode>/<writer>`, followed by fallback reason codes when a route cannot
+use a native JSON path. JSON output includes the same values plus schema names
+where the Plan has them.
 
 For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
 array. Text output says no route metadata is expected for a program Plan.
@@ -78,7 +99,8 @@ sloppy routes .sloppy --dispatch --format json
 
 The dispatch block reports route and endpoint counts, exact static paths,
 parameter routes, candidate bucket count, segment-trie node count, fallback
-availability, native no-JS endpoints, and native URL generation status.
+availability, native no-JS endpoints, native URL generation status, and
+aggregate JSON request/response native/generic/fallback counts.
 
 ## Use cases
 

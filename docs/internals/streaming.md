@@ -58,7 +58,8 @@ are submitted.
 Request bodies are still bounded before handler dispatch. Internally, native
 code can adapt the current bounded request body to `SlReadableStream`; public JS
 request body helpers still expose bounded `text()`, `json()`, and byte helpers.
-Native JSON request streaming is not implemented here.
+Native schema-backed JSON request validation consumes the current bounded body;
+incremental native JSON parsing from a live stream is not implemented here.
 
 ## JavaScript Surfaces
 
@@ -96,5 +97,5 @@ and stream response serialization.
 - No JavaScript object wrapping for native stream handles.
 - No live SSE socket push.
 - No WebSocket upgrade execution.
-- No native JSON dispatch.
+- No live incremental native JSON parser or public JSON stream writer.
 - No native incremental zlib stream adapter.

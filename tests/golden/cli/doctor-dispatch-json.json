@@ -12,6 +12,8 @@
     { "id": "route.dispatch.contract", "status": "ok", "message": "Plan-backed native dispatch with routes.slrt integrity validation" },
     { "id": "route.dispatch.artifact", "status": "ok", "message": "sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733" },
     { "id": "route.dispatch.fallback", "status": "ok", "message": "classic dispatch fallback is available" },
+    { "id": "route.dispatch.json.request", "status": "info", "message": "no native schema-backed JSON request routes are advertised" },
+    { "id": "route.dispatch.json.response", "status": "ok", "message": "native JSON response writers are advertised" },
     { "id": "route.dispatch.segment-trie", "status": "ok", "message": "parameter routes advertise native segment-trie nodes" },
     { "id": "app.plan.completeness", "status": "ok", "message": "Plan completeness is complete" },
     { "id": "optimization.native-json-candidate", "status": "ok", "message": "route has response metadata for future native JSON analysis" }

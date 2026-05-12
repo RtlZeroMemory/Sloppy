@@ -200,6 +200,8 @@ set(
     tests/fuzz/fuzz_http_query.c
     tests/fuzz/fuzz_http_request.c
     tests/fuzz/fuzz_http_route_dispatch.c
+    tests/fuzz/fuzz_json_request.c
+    tests/fuzz/fuzz_json_response.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
     tests/fuzz/fuzz_stream.c
@@ -207,6 +209,7 @@ set(
     benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
+    benchmarks/bench_json_dispatch.c
     benchmarks/bench_logging.c
     benchmarks/bench_memory.c
     benchmarks/bench_stream.c

@@ -17,6 +17,12 @@ There are two benchmark layers:
 - `tools/windows/bench-compiler.ps1` is the compiler scalability harness for
   deterministic source-input projects. It measures `sloppyc` compile time,
   phase timings, process working set, and emitted artifact sizes.
+- `tools/windows/bench-json-dispatch.ps1` runs the local Sloppy JSON dispatch
+  microbenchmark rows across selected build configurations and writes a combined
+  JSON report.
+- `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON
+  competitor harness under `benchmarks/competitors/`, marking unavailable
+  runtimes or dependencies as `SKIPPED`.
 
 Run native smoke/list checks locally:
 
@@ -30,6 +36,10 @@ Run a measured local benchmark from a Release build:
 ```powershell
 .\tools\windows\bench.ps1 -Configuration Release
 .\tools\windows\bench.ps1 -Configuration Release -Json > .\benchmarks-local.json
+.\tools\windows\bench-json-dispatch.ps1 -Smoke
+.\tools\windows\bench-json-dispatch.ps1 -Configuration RelWithDebInfo -JsonMode native -Repeat 3
+.\tools\windows\bench-json-competitors.ps1 -Iterations 100
+.\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10
 ```
 
 Run the local runtime engine:
@@ -89,6 +99,11 @@ Handler dispatch benchmarks are split by current runtime capability:
 - Route dispatch benchmarks exercise the current native endpoint table: exact
   method/path hash lookup plus parameter-route segment-trie dispatch. They are
   local engineering measurements, not public performance claims.
+- JSON dispatch benchmarks isolate schema-backed native request validation,
+  validation rejection, materialize-once handoff counters, preencoded native
+  JSON response writing, HEAD metadata writing, fallback counters, and a
+  bounded native request-plus-response path. They do not include sockets or
+  public throughput claims.
 - V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
 
@@ -141,6 +156,88 @@ It is not an HTTP server throughput benchmark.
 `http.body_reader.json_known_length` measures the bounded body reader for a declared
 JSON content length and records builder grow/copy counters in the checksum. It exists to
 evaluate request-body copy and allocation changes without involving sockets.
+
+Native JSON benchmark rows are intentionally scoped:
+
+- `json.request.generic_parse.small_login.payload_only` and
+  `json.request.generic_parse.medium_body.payload_only` measure generic yyjson parsing
+  without schema validation or dispatch.
+- `json.request.native_schema.valid.payload_validate_only` parses and validates
+  a small schema-backed JSON request body. It excludes route lookup, sockets,
+  response writing, and JavaScript handler execution.
+- `json.request.native_materialize_once.small_login.payload_validate_materialize` adds the
+  native-validated materialize-once handoff model and reports the duplicate
+  validation skip counter for that deterministic path.
+- `json.request.generic_parse.malformed.payload_only` and
+  `json.request.native_schema.reject.problem_details` split invalid request
+  rejection into generic parser and native schema paths; the native path builds
+  validation problem details without echoing request values.
+- `json.response.generic.serialize.payload_only` and
+  `json.response.native_schema.serialize.payload_only` both serialize the same
+  supported JSON payload shape without HTTP status/header writing, sockets, or
+  JavaScript handler execution.
+- `json.response.generic.http_response_write`,
+  `json.response.native_schema.http_response_write`, and
+  `json.response.native_static.http_response_write` include HTTP response
+  status/header/body framing. They still exclude sockets. The generic and
+  native-schema rows use the same JSON payload shape; the static row starts from
+  preencoded JSON bytes.
+- The native schema response rows pre-emit fixed schema field-name fragments and
+  fast-path strings that need no escaping. They still use the shared checked
+  string-builder and scalar formatting helpers for values, so the row exposes
+  remaining writer overhead instead of replacing it with a bespoke unchecked
+  byte-copy routine.
+- `json.response.native_static.head_http_response_write` writes response
+  metadata with body suppression, modeling `HEAD` after normal dispatch.
+- `json.response.large_list.http_response_write` covers a larger preencoded
+  JSON list response through the HTTP response writer.
+- `json.dispatch.full_inprocess.generic_json` and
+  `json.dispatch.full_inprocess.native_json` route a POST request, apply JSON
+  request handling, and return a native JSON response.
+- `json.dispatch.routes_1k.table_build` and
+  `json.dispatch.routes_10k.table_build` measure only Plan-backed route-table
+  construction from a prebuilt in-memory Plan fixture. They do not include
+  fixture generation, request dispatch, JSON parsing, schema validation,
+  response writing, or sockets.
+- `json.dispatch.routes_1k.native_json.dispatch_only`,
+  `json.dispatch.routes_10k.native_json.dispatch_only`,
+  `json.dispatch.routes_1k.generic_json.dispatch_only`, and
+  `json.dispatch.routes_10k.generic_json.dispatch_only` build the route table
+  once before timing, then route an in-memory POST request through the selected
+  JSON dispatch mode. They exclude schema validation, handler execution,
+  response writing, and sockets.
+- `json.dispatch.routes_1k.native_json.full_inprocess`,
+  `json.dispatch.routes_10k.native_json.full_inprocess`,
+  `json.dispatch.routes_1k.generic_json.full_inprocess`, and
+  `json.dispatch.routes_10k.generic_json.full_inprocess` build the route table
+  once before timing, then include in-process routing, body policy, JSON
+  request handling, request validation metadata, and native response
+  materialization. They still exclude sockets and JavaScript handler execution.
+- `json.dispatch.native_schema_static_response.full_inprocess` combines native
+  request validation with native static JSON response writing and still excludes
+  sockets and user handler execution.
+
+All JSON route-scale rows currently target the first generated static route in
+the table. The target is intentionally fixed so route-count changes are not
+mixed with first/middle/last/param/miss target changes. Use the route dispatch
+benchmark family for those target-position comparisons.
+
+`tools/windows/bench-json-competitors.ps1` is a separate local loopback HTTP
+harness. It uses a Node `fetch` client, one awaited request at a time, with the
+same warmup and measured iteration count for every runtime in that run. It
+records response correctness before counting a request. Its Sloppy row names
+are `sloppy.loopback.native_json.*` and `sloppy.loopback.generic_json.*`; Node,
+Bun, Deno, Express, and Fastify rows are also named as loopback HTTP rows. These
+rows are the only JSON rows in this family intended for local
+Sloppy-vs-runtime loopback comparison. In-process `sloppy_bench` JSON rows must
+not be compared directly against competitor loopback rows.
+
+The competitor `route-table` scenario validates `/route/{id}` loopback routing
+for IDs in a 1000-value cycle. Raw Node/Bun/Deno implementations may use a
+parameter route rather than generated static route entries, so this scenario is
+not a generated-route-table algorithm comparison. Generated route-table
+algorithm comparisons belong in the native route dispatch or local-neutral
+benchmark suites where comparator shape is explicit.
 
 V8 bridge benchmarks currently measure internal evidence for:
 

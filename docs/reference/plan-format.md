@@ -49,6 +49,8 @@ The compiler can emit route metadata for the supported source subset:
 - Compiler-inferred metadata for typed handlers, including route/body/query/header
   bindings, context bindings, provider/queue injection requirements, schema definitions,
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
+- Per-route `jsonRequest` and `jsonResponse` metadata that records native,
+  generic, or fallback JSON request/response handling.
 - `routeDispatch` metadata for the native in-memory dispatch table generated
   from Plan routes at runtime.
 
@@ -106,6 +108,19 @@ Web Plans emit a top-level `routeDispatch` object:
       ],
       "constraints": ["int"]
     },
+    "json": {
+      "request": {
+        "native": 1,
+        "generic": 0,
+        "fallback": 0,
+        "materialized": 1
+      },
+      "response": {
+        "native": 1,
+        "generic": 0,
+        "fallback": 0
+      }
+    },
     "fallback": {
       "classicAvailable": true,
       "dynamicRoutes": 0,
@@ -125,9 +140,99 @@ literal `Results.text`, `Results.json`, and `Results.ok` handlers as native
 responses. Candidate buckets remain as an internal fallback for partial or
 manually constructed dispatch tables.
 
+`routeDispatch.json` is aggregate visibility for JSON handling:
+
+- `request.native` counts routes whose JSON body has schema metadata consumed
+  by native validation before JavaScript.
+- `request.generic` counts routes that accept JSON but lack a native schema
+  plan and therefore use the generic body helper path.
+- `request.fallback` counts routes whose request JSON plan is explicitly a
+  fallback.
+- `request.materialized` counts routes that still materialize a JavaScript body
+  object after native validation.
+- `response.native` counts routes with native static JSON response writer
+  metadata or supported schema-backed native response writer metadata.
+- `response.generic` and `response.fallback` count routes that require the
+  generic result serializer or an explicit fallback reason.
+
 Named routes contribute native URL writers. The writer count is reported as
 `urlWriters`; generated URLs percent-encode path parameter values and validate
 the generated path through the native matcher.
+
+## Route JSON Metadata
+
+Compiler-emitted web Plan routes include JSON request and response plans:
+
+```json
+{
+  "method": "POST",
+  "pattern": "/users",
+  "bindings": [
+    { "kind": "body.json", "name": "body", "schema": "CreateUser" }
+  ],
+  "jsonRequest": {
+    "mode": "native-schema",
+    "schema": "CreateUser",
+    "materialization": "materialize-once",
+    "unknownFields": "ignore",
+    "maxBodyBytes": 65536,
+    "maxDepth": 50
+  },
+  "jsonResponse": {
+    "mode": "native-schema",
+    "writer": "bounded",
+    "schema": "UserResponse",
+    "contentType": "application/json"
+  }
+}
+```
+
+`jsonRequest.mode` values:
+
+- `none` means the route has no JSON request body.
+- `generic` means the route accepts JSON but no compiler-visible body schema is
+  available for native validation.
+- `native-schema` means the native runtime validates the schema-backed JSON body
+  before handler execution.
+- `fallback` means the route cannot use native JSON request handling;
+  `fallbackReason` explains why.
+
+`jsonRequest.materialization` values:
+
+- `none` for routes with no JSON body.
+- `generic` for generic JSON helper materialization.
+- `materialize-once` for native-validated bodies that still become one
+  JavaScript body object through the existing body helper when the generated
+  wrapper or handler needs it.
+- `projected` is reserved for a future projected/lazy body representation and
+  is not emitted by the current compiler.
+
+`jsonRequest.unknownFields` is `ignore`, `reject`, or `passthrough`. The native
+validator currently consumes `ignore` and `reject`; `passthrough` is preserved
+as Plan metadata for future body projection work. Native request validation also
+consumes schema string/number/integer/array bounds, literal/enum values,
+optional/nullable object fields, and route-level JSON body/depth/string/array
+limits. Validation failures produce safe problem details and do not echo raw
+request values.
+
+`jsonResponse.mode` values:
+
+- `none` means the route has no JSON response metadata.
+- `native-static` means a literal/static `Results.json` or `Results.ok` body is
+  already represented as JSON bytes and can be written natively.
+- `native-schema` means a schema-backed JSON response can use the bounded native
+  response writer. The supported subset is objects, arrays, nested objects,
+  strings, finite numbers, integers, booleans, nulls, nullable values, and
+  optional object fields in stable schema field order.
+- `generic` means the runtime must use the ordinary JSON result serializer.
+- `fallback` means response metadata is known but unsupported for native
+  writing; `fallbackReason` explains why.
+
+`jsonResponse.writer` values emitted today are `none`, `preencoded`, and
+`bounded`; `streamable` is reserved for a future streaming writer. Native static
+responses use `preencoded`. Supported schema-backed dynamic JSON responses use
+`bounded`. Unsupported response schema shapes remain fallback and carry a
+`native-schema-response-writer-unsupported:*` reason.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after
