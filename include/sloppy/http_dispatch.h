@@ -58,8 +58,10 @@ typedef enum SlHttpRouteDispatchMode
  *
  * `routes` must point to `route_count` entries when `route_count` is nonzero. The table
  * does not own route patterns or plan handlers. This header is public for in-repo tests and
- * alpha tooling, but the struct layout is internal and unstable until Sloppy declares an ABI
- * freeze; external code must not persist or binary-share this layout.
+ * alpha tooling.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze. External code
+ * must not persist or binary-share this layout.
  */
 typedef struct SlHttpDispatchTable
 {

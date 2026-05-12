@@ -7,8 +7,8 @@ use serde_json::{json, Map, Value};
 
 use crate::diagnostic::Diagnostic;
 use crate::graph::{
-    route_parameter_names, AuthSchemeMetadata, ConfigurationPackageEntry, DependencyGraph,
-    ExtractedApp, ProjectKind,
+    route_parameter_names, route_pattern_has_params, AuthSchemeMetadata, ConfigurationPackageEntry,
+    DependencyGraph, ExtractedApp, ProjectKind,
 };
 use crate::hash::sha256_hex;
 use crate::route_artifact::{
@@ -34,13 +34,6 @@ fn completeness_json(completeness: &Completeness) -> Value {
             })
             .collect::<Vec<_>>()
     })
-}
-
-fn route_pattern_has_params(pattern: &str) -> bool {
-    pattern
-        .split('/')
-        .skip(1)
-        .any(|segment| segment.starts_with('{') && segment.ends_with('}'))
 }
 
 fn route_pattern_leading_static_segment(pattern: &str) -> Option<&str> {

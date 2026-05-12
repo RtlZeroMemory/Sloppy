@@ -83,11 +83,11 @@ Compiler extraction currently enforces:
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
 - Static Plan routes use Plan-backed native dispatch with `routes.slrt`
   integrity validation. Compiler-emitted web artifacts include
-  `routes.slrt`, and `sloppy run` validates that artifact before materializing
-  the runtime table from `app.plan.json`. Exact static paths are indexed by
-  method and full path. Parameter routes are grouped into a method-specific
-  segment trie that enforces the supported native route constraints during
-  lookup.
+  `routes.slrt`, and `sloppy run` validates `routes.slrt` before
+  materializing the native runtime table from `app.plan.json` route metadata.
+  Exact static paths are indexed by method and full path. Parameter routes are
+  grouped into a method-specific segment trie that enforces the supported
+  native route constraints during lookup.
 - Incoming `HEAD` matches the corresponding `GET` route and suppresses response
   body bytes at the transport boundary.
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when

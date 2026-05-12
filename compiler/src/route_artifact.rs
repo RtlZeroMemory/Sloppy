@@ -1,5 +1,7 @@
 use crate::diagnostic::Diagnostic;
-use crate::graph::{ExtractedApp, ProjectKind};
+use crate::graph::{
+    route_pattern_has_params, route_pattern_param_count, ExtractedApp, ProjectKind,
+};
 
 pub(crate) const ROUTE_ARTIFACT_PATH: &str = "routes.slrt";
 pub(crate) const ROUTE_ARTIFACT_VERSION: u32 = 1;
@@ -53,6 +55,12 @@ pub(crate) fn route_execution_kind(
     }
 }
 
+fn route_artifact_pattern_metadata(pattern: &str) -> Result<(u32, u32), Diagnostic> {
+    let has_params = route_pattern_has_params(pattern);
+    let param_count = checked_u32(route_pattern_param_count(pattern), "route parameter count")?;
+    Ok((if has_params { 2 } else { 1 }, param_count))
+}
+
 pub(crate) fn emit_route_artifact(app: &ExtractedApp) -> Result<Option<Vec<u8>>, Diagnostic> {
     if app.kind != ProjectKind::Web {
         return Ok(None);
@@ -92,6 +100,8 @@ pub(crate) fn emit_route_artifact(app: &ExtractedApp) -> Result<Option<Vec<u8>>,
             .response
             .as_ref()
             .and_then(|response| response.native_body.as_deref());
+        let (strategy, param_count) = route_artifact_pattern_metadata(&route.pattern)?;
+
         entries.push(RouteEntry {
             method: route_method_code(route.method)?,
             handler_id: checked_u32(index + 1, "handler id")?,
@@ -99,9 +109,9 @@ pub(crate) fn emit_route_artifact(app: &ExtractedApp) -> Result<Option<Vec<u8>>,
             pattern_len,
             name_offset,
             name_len,
-            strategy: if route.pattern.contains('{') { 2 } else { 1 },
+            strategy,
             execution_kind: route_execution_kind(response_kind, native_body).artifact_code(),
-            param_count: checked_u32(route.pattern.matches('{').count(), "route parameter count")?,
+            param_count,
             flags: 0,
         });
     }
@@ -208,4 +218,21 @@ struct RouteEntry {
     execution_kind: u32,
     param_count: u32,
     flags: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::route_artifact_pattern_metadata;
+
+    #[test]
+    fn artifact_pattern_metadata_uses_complete_braced_segments() {
+        assert_eq!(
+            route_artifact_pattern_metadata("/users/{id").unwrap(),
+            (1, 0)
+        );
+        assert_eq!(
+            route_artifact_pattern_metadata("/orgs/{org}/users/{id:int}").unwrap(),
+            (2, 2)
+        );
+    }
 }

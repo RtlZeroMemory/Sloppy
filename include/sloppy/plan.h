@@ -78,8 +78,9 @@ typedef struct SlPlanHandler
 
 /*
  * Parsed Plan route metadata. Plan structs are exposed for Sloppy's current in-repo C
- * runtime boundary; their layout is internal and unstable until the pre-alpha C ABI is
- * explicitly frozen.
+ * runtime boundary.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
  */
 typedef struct SlPlanRoute
 {
@@ -291,6 +292,9 @@ typedef struct SlPlanFfiStruct
     size_t field_count;
 } SlPlanFfiStruct;
 
+/*
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
+ */
 typedef struct SlPlan
 {
     uint32_t version;
