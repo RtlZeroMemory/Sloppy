@@ -41,6 +41,7 @@ Implemented diagnostic coverage includes:
 - V8 handler entry/exit/rejection breadcrumbs in runtime paths;
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
 - `sloppy run --diagnostics-json` for structured runtime diagnostics on stderr;
+- unique local crash report directories under `.sloppy/reports/crashes/<counter>-<pid>/`;
 - local `.sloppy/reports/package-diagnostic.json` and `.sloppy/reports/doctor-report.json`;
 - safe `application/problem+json` responses for Plan-backed request validation and
   `ProblemDetails.defaults()` handler failures;

@@ -37,6 +37,16 @@ static bool sl_engine_bytes_valid(SlBytes bytes)
     return bytes.length == 0U || bytes.ptr != NULL;
 }
 
+#if defined(SLOPPY_ENABLE_V8_BRIDGE)
+static SlStr sl_engine_breadcrumb_detail(const SlDiag* diag, SlStr fallback)
+{
+    if (diag != NULL && sl_engine_str_valid(diag->message) && diag->message.length != 0U) {
+        return diag->message;
+    }
+    return fallback;
+}
+#endif
+
 static bool sl_engine_options_valid(const SlEngineOptions* options)
 {
     bool has_source_map = options != NULL && options->source_map.length != 0U;
@@ -299,7 +309,7 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
                                         ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
                                         : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
                                     sl_status_code(status), 0U, 0U, 0U, 0U,
-                                    out_diag == NULL ? function_name : out_diag->message);
+                                    sl_engine_breadcrumb_detail(out_diag, function_name));
         return status;
     }
 #else
@@ -356,7 +366,7 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
             sl_status_is_ok(status) ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
                                     : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
             sl_status_code(status), request_context->request_id, request_context->connection_id, 0U,
-            0U, out_diag == NULL ? function_name : out_diag->message);
+            0U, sl_engine_breadcrumb_detail(out_diag, function_name));
         return status;
     }
 #else
@@ -448,7 +458,7 @@ SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlAren
             sl_status_is_ok(status) ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
                                     : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
             sl_status_code(status), request_context->request_id, request_context->connection_id, 0U,
-            (uint64_t)handler_id, out_diag == NULL ? sl_str_empty() : out_diag->message);
+            (uint64_t)handler_id, sl_engine_breadcrumb_detail(out_diag, sl_str_empty()));
         return status;
     }
 #else

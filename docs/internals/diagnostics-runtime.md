@@ -28,10 +28,13 @@ Breadcrumb recording does not allocate. Rendering `breadcrumbs.jsonl` is explici
 
 Native invariant failures write a local report through the crash-report writer before aborting.
 The report writer can also be called directly by tools that need a local failure artifact.
+Crash reports are written to a unique run directory under
+`.sloppy/reports/crashes/<counter>-<pid>/` by default. Each directory contains `crash.json`
+and, when breadcrumbs are enabled, `breadcrumbs.jsonl`.
 
 Current limitations:
 
-- crash reports are local JSON files under `.sloppy/reports` by default;
+- crash reports are local JSON files under `.sloppy/reports/crashes` by default;
 - there is no telemetry transport;
 - low-level fatal signal integration is not a production crash dumper;
 - reports contain stable runtime context only when the caller supplies it.

@@ -1656,9 +1656,7 @@ static SlDiagPhase sl_diag_phase_for_code(SlDiagCode code)
     {
         return SL_DIAG_PHASE_VALIDATE;
     }
-    if (code == SL_DIAG_ARTIFACT_HASH_MISMATCH || code == SL_DIAG_ROUTE_ARTIFACT_MISMATCH ||
-        code == SL_DIAG_PACKAGE_ARTIFACT_MISSING)
-    {
+    if (code == SL_DIAG_ARTIFACT_HASH_MISMATCH || code == SL_DIAG_ROUTE_ARTIFACT_MISMATCH) {
         return SL_DIAG_PHASE_LOAD;
     }
     if (sl_diag_is_http_code(code) || code == SL_DIAG_HTTP_METHOD_NOT_ALLOWED ||
@@ -1720,6 +1718,7 @@ static SlStatusCode sl_diag_status_for_code(SlDiagCode code)
     case SL_DIAG_UNSUPPORTED_ENGINE:
     case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
     case SL_DIAG_HTTP_METHOD_NOT_ALLOWED:
+    case SL_DIAG_PROVIDER_UNAVAILABLE:
         return SL_STATUS_UNSUPPORTED;
     default:
         return SL_STATUS_INTERNAL;
@@ -3135,14 +3134,19 @@ SlStatus sl_diag_render_report_json(SlArena* arena, const SlDiag* diag,
         return status;
     }
     metadata = sl_diag_metadata_for_code(diag->code);
-    rendered_message = diag->message;
-    if (sl_status_is_ok(sl_diag_redact_secrets(arena, diag->message, &rendered_message))) {
-        /* Use the redacted diagnostic message in local reports. */
+    rendered_message = sl_diag_redacted();
+    status = sl_diag_redact_secrets(arena, diag->message, &rendered_message);
+    if (!sl_status_is_ok(status)) {
+        rendered_message = sl_diag_redacted();
     }
-    if (context != NULL &&
-        sl_status_is_ok(sl_diag_redact_secrets(arena, context->cause_message, &rendered_cause)))
-    {
-        /* Use the redacted cause below. */
+    status = sl_status_ok();
+    if (context != NULL && !sl_str_is_empty(context->cause_message)) {
+        rendered_cause = sl_diag_redacted();
+        status = sl_diag_redact_secrets(arena, context->cause_message, &rendered_cause);
+        if (!sl_status_is_ok(status)) {
+            rendered_cause = sl_diag_redacted();
+        }
+        status = sl_status_ok();
     }
 
     status = sl_string_builder_init_arena(&builder, arena, 1024U, 65536U);
@@ -3244,9 +3248,7 @@ SlStatus sl_diag_render_report_json(SlArena* arena, const SlDiag* diag,
         if (sl_status_is_ok(status) && !sl_str_is_empty(context->cause_message)) {
             status = sl_string_builder_append_cstr(&builder, "\"message\":");
             if (sl_status_is_ok(status)) {
-                status = sl_diag_builder_append_json_escaped(
-                    &builder,
-                    sl_str_is_empty(rendered_cause) ? context->cause_message : rendered_cause);
+                status = sl_diag_builder_append_json_escaped(&builder, rendered_cause);
             }
         }
         if (sl_status_is_ok(status)) {

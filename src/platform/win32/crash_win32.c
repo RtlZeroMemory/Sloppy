@@ -14,3 +14,8 @@ void sl_platform_abort_process(void)
     TerminateProcess(GetCurrentProcess(), 3U);
     ExitProcess(3U);
 }
+
+uint64_t sl_platform_process_id(void)
+{
+    return (uint64_t)GetCurrentProcessId();
+}

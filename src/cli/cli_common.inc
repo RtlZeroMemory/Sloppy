@@ -421,7 +421,6 @@ static void sl_cli_print_command_help(const char* command)
         printf("                  [--header 'Name: value'] [--body text|--body-file path|--json "
                "json]\n");
         printf("                  [--diagnostics-json] [-- <program-args...>]\n");
-        printf("                  [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
                "artifact path.\n");
@@ -565,8 +564,7 @@ static int sl_cli_write_diagnostic_report_file(const char* leaf, const SlDiag* d
         return 1;
     }
     status = sl_fs_create_directory(sl_str_from_cstr(".sloppy/reports"), true, NULL);
-    if (!sl_status_is_ok(status) ||
-        !sl_cli_join_leaf(path, sizeof(path), ".sloppy/reports", leaf))
+    if (!sl_status_is_ok(status) || !sl_cli_join_leaf(path, sizeof(path), ".sloppy/reports", leaf))
     {
         return 1;
     }
@@ -580,15 +578,23 @@ static int sl_cli_write_diagnostic_report_file(const char* leaf, const SlDiag* d
     if (!sl_status_is_ok(status)) {
         return 1;
     }
-    if (breadcrumbs != NULL &&
-        sl_cli_join_leaf(breadcrumbs_path, sizeof(breadcrumbs_path), ".sloppy/reports",
-                         "breadcrumbs.jsonl") &&
-        sl_status_is_ok(sl_breadcrumb_ring_render_jsonl(&arena, breadcrumbs, &breadcrumb_jsonl)))
-    {
-        sl_fs_write_file(
-            sl_str_from_cstr(breadcrumbs_path),
-            sl_bytes_from_parts((const unsigned char*)breadcrumb_jsonl.ptr, breadcrumb_jsonl.length),
-            false, NULL);
+    if (breadcrumbs != NULL) {
+        if (!sl_cli_join_leaf(breadcrumbs_path, sizeof(breadcrumbs_path), ".sloppy/reports",
+                              "breadcrumbs.jsonl"))
+        {
+            return 1;
+        }
+        status = sl_breadcrumb_ring_render_jsonl(&arena, breadcrumbs, &breadcrumb_jsonl);
+        if (!sl_status_is_ok(status)) {
+            return 1;
+        }
+        status = sl_fs_write_file(sl_str_from_cstr(breadcrumbs_path),
+                                  sl_bytes_from_parts((const unsigned char*)breadcrumb_jsonl.ptr,
+                                                      breadcrumb_jsonl.length),
+                                  false, NULL);
+        if (!sl_status_is_ok(status)) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -1316,12 +1322,11 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     }
 
     if (!out->help && strcmp(out->command, "run") == 0 && out->once_method == NULL &&
-        (out->once_header_count != 0U || out->once_body != NULL ||
-         out->once_body_file != NULL || out->once_json != NULL))
+        (out->once_header_count != 0U || out->once_body != NULL || out->once_body_file != NULL ||
+         out->once_json != NULL))
     {
-        sl_cli_write_cstr(
-            stderr,
-            "sloppy run: --header, --body, --body-file, and --json require --once\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: --header, --body, --body-file, and --json require --once\n");
         return 1;
     }
 

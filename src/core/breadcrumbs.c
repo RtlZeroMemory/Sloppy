@@ -1,8 +1,16 @@
 #include "sloppy/breadcrumbs.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/platform_thread.h"
+
+#include <stdbool.h>
 
 static SlBreadcrumbRing sl_global_breadcrumb_ring;
+
+static bool sl_breadcrumb_is_global_ring(const SlBreadcrumbRing* ring)
+{
+    return ring == &sl_global_breadcrumb_ring;
+}
 
 static SlStr sl_breadcrumb_literal(const char* ptr, size_t length)
 {
@@ -76,7 +84,7 @@ SlStr sl_breadcrumb_event_name(SlBreadcrumbEvent event)
     }
 }
 
-void sl_breadcrumb_ring_init(SlBreadcrumbRing* ring)
+static void sl_breadcrumb_ring_init_unlocked(SlBreadcrumbRing* ring)
 {
     if (ring == NULL) {
         return;
@@ -85,10 +93,33 @@ void sl_breadcrumb_ring_init(SlBreadcrumbRing* ring)
     ring->enabled = true;
 }
 
-void sl_breadcrumb_ring_record(SlBreadcrumbRing* ring, SlDiagSubsystem subsystem,
-                               SlBreadcrumbEvent event, SlStatusCode status, uint64_t request_id,
-                               uint64_t connection_id, uint64_t route_id, uint64_t handler_id,
-                               SlStr detail)
+void sl_breadcrumb_ring_init(SlBreadcrumbRing* ring)
+{
+    if (ring == NULL) {
+        return;
+    }
+    if (sl_breadcrumb_is_global_ring(ring)) {
+        sl_platform_global_mutex_lock();
+        sl_breadcrumb_ring_init_unlocked(ring);
+        sl_platform_global_mutex_unlock();
+        return;
+    }
+    sl_breadcrumb_ring_init_unlocked(ring);
+}
+
+static void sl_breadcrumb_global_init_if_needed_unlocked(void)
+{
+    if (!sl_global_breadcrumb_ring.enabled && sl_global_breadcrumb_ring.count == 0U &&
+        sl_global_breadcrumb_ring.next_sequence == 0U)
+    {
+        sl_breadcrumb_ring_init_unlocked(&sl_global_breadcrumb_ring);
+    }
+}
+
+static void sl_breadcrumb_ring_record_unlocked(SlBreadcrumbRing* ring, SlDiagSubsystem subsystem,
+                                               SlBreadcrumbEvent event, SlStatusCode status,
+                                               uint64_t request_id, uint64_t connection_id,
+                                               uint64_t route_id, uint64_t handler_id, SlStr detail)
 {
     SlBreadcrumb* entry = NULL;
 
@@ -111,7 +142,7 @@ void sl_breadcrumb_ring_record(SlBreadcrumbRing* ring, SlDiagSubsystem subsystem
     entry->connection_id = connection_id;
     entry->route_id = route_id;
     entry->handler_id = handler_id;
-    if (!sl_str_is_empty(detail)) {
+    if (!sl_str_is_empty(detail) && detail.ptr != NULL) {
         size_t length = detail.length;
         if (length > SL_BREADCRUMB_DETAIL_MAX_BYTES) {
             length = SL_BREADCRUMB_DETAIL_MAX_BYTES;
@@ -129,8 +160,28 @@ void sl_breadcrumb_ring_record(SlBreadcrumbRing* ring, SlDiagSubsystem subsystem
     }
 }
 
-size_t sl_breadcrumb_ring_snapshot(const SlBreadcrumbRing* ring, SlBreadcrumb* out_entries,
-                                   size_t capacity)
+void sl_breadcrumb_ring_record(SlBreadcrumbRing* ring, SlDiagSubsystem subsystem,
+                               SlBreadcrumbEvent event, SlStatusCode status, uint64_t request_id,
+                               uint64_t connection_id, uint64_t route_id, uint64_t handler_id,
+                               SlStr detail)
+{
+    if (ring == NULL) {
+        return;
+    }
+    if (sl_breadcrumb_is_global_ring(ring)) {
+        sl_platform_global_mutex_lock();
+        sl_breadcrumb_global_init_if_needed_unlocked();
+        sl_breadcrumb_ring_record_unlocked(ring, subsystem, event, status, request_id,
+                                           connection_id, route_id, handler_id, detail);
+        sl_platform_global_mutex_unlock();
+        return;
+    }
+    sl_breadcrumb_ring_record_unlocked(ring, subsystem, event, status, request_id, connection_id,
+                                       route_id, handler_id, detail);
+}
+
+static size_t sl_breadcrumb_ring_snapshot_unlocked(const SlBreadcrumbRing* ring,
+                                                   SlBreadcrumb* out_entries, size_t capacity)
 {
     size_t copied = 0U;
     size_t start = 0U;
@@ -148,6 +199,24 @@ size_t sl_breadcrumb_ring_snapshot(const SlBreadcrumbRing* ring, SlBreadcrumb* o
         }
     }
     return copied;
+}
+
+size_t sl_breadcrumb_ring_snapshot(const SlBreadcrumbRing* ring, SlBreadcrumb* out_entries,
+                                   size_t capacity)
+{
+    size_t copied = 0U;
+
+    if (ring == NULL || out_entries == NULL || capacity == 0U) {
+        return 0U;
+    }
+    if (sl_breadcrumb_is_global_ring(ring)) {
+        sl_platform_global_mutex_lock();
+        sl_breadcrumb_global_init_if_needed_unlocked();
+        copied = sl_breadcrumb_ring_snapshot_unlocked(ring, out_entries, capacity);
+        sl_platform_global_mutex_unlock();
+        return copied;
+    }
+    return sl_breadcrumb_ring_snapshot_unlocked(ring, out_entries, capacity);
 }
 
 static SlStatus sl_breadcrumb_json_string(SlStringBuilder* builder, SlStr value)
@@ -210,7 +279,15 @@ SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing*
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    count = sl_breadcrumb_ring_snapshot(ring, snapshot, SL_BREADCRUMB_RING_CAPACITY);
+    if (sl_breadcrumb_is_global_ring(ring)) {
+        sl_platform_global_mutex_lock();
+        sl_breadcrumb_global_init_if_needed_unlocked();
+        count = sl_breadcrumb_ring_snapshot_unlocked(ring, snapshot, SL_BREADCRUMB_RING_CAPACITY);
+        sl_platform_global_mutex_unlock();
+    }
+    else {
+        count = sl_breadcrumb_ring_snapshot_unlocked(ring, snapshot, SL_BREADCRUMB_RING_CAPACITY);
+    }
     for (size_t index = 0U; index < count; index += 1U) {
         const SlBreadcrumb* entry = &snapshot[index];
         status = sl_string_builder_append_cstr(&builder, "{\"sequence\":");
@@ -280,11 +357,9 @@ SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing*
 
 SlBreadcrumbRing* sl_breadcrumb_global_ring(void)
 {
-    if (!sl_global_breadcrumb_ring.enabled && sl_global_breadcrumb_ring.count == 0U &&
-        sl_global_breadcrumb_ring.next_sequence == 0U)
-    {
-        sl_breadcrumb_ring_init(&sl_global_breadcrumb_ring);
-    }
+    sl_platform_global_mutex_lock();
+    sl_breadcrumb_global_init_if_needed_unlocked();
+    sl_platform_global_mutex_unlock();
     return &sl_global_breadcrumb_ring;
 }
 
@@ -292,6 +367,9 @@ void sl_breadcrumb_global_record(SlDiagSubsystem subsystem, SlBreadcrumbEvent ev
                                  SlStatusCode status, uint64_t request_id, uint64_t connection_id,
                                  uint64_t route_id, uint64_t handler_id, SlStr detail)
 {
-    sl_breadcrumb_ring_record(sl_breadcrumb_global_ring(), subsystem, event, status, request_id,
-                              connection_id, route_id, handler_id, detail);
+    sl_platform_global_mutex_lock();
+    sl_breadcrumb_global_init_if_needed_unlocked();
+    sl_breadcrumb_ring_record_unlocked(&sl_global_breadcrumb_ring, subsystem, event, status,
+                                       request_id, connection_id, route_id, handler_id, detail);
+    sl_platform_global_mutex_unlock();
 }

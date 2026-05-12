@@ -3,12 +3,15 @@
 #include "sloppy/builder.h"
 #include "sloppy/fs.h"
 #include "sloppy/platform_crash.h"
+#include "sloppy/platform_thread.h"
 
-#include <stdlib.h>
+#include <stdbool.h>
 
 static SlCrashReportOptions sl_default_report_options;
+static bool sl_default_report_options_initialized;
 static SlCrashReportContext sl_default_report_context;
 static const SlBreadcrumbRing* sl_default_breadcrumbs;
+static uint64_t sl_crash_report_counter;
 
 SlCrashReportOptions sl_crash_report_default_options(void)
 {
@@ -24,7 +27,7 @@ static SlStatus sl_crash_join_path(SlArena* arena, SlStr dir, const char* leaf, 
     SlStringBuilder builder = {0};
     SlStatus status;
 
-    if (arena == NULL || sl_str_is_empty(dir) || leaf == NULL || out == NULL) {
+    if (arena == NULL || dir.ptr == NULL || dir.length == 0U || leaf == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
@@ -40,6 +43,52 @@ static SlStatus sl_crash_join_path(SlArena* arena, SlStr dir, const char* leaf, 
     }
     if (sl_status_is_ok(status)) {
         status = sl_string_builder_append_cstr(&builder, leaf);
+    }
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
+    return sl_status_ok();
+}
+
+static uint64_t sl_crash_next_report_counter(void)
+{
+    uint64_t counter = 0U;
+
+    sl_platform_global_mutex_lock();
+    sl_crash_report_counter += 1U;
+    counter = sl_crash_report_counter;
+    sl_platform_global_mutex_unlock();
+    return counter;
+}
+
+static SlStatus sl_crash_join_report_directory(SlArena* arena, SlStr dir, uint64_t counter,
+                                               uint64_t process_id, SlStr* out)
+{
+    SlStringBuilder builder = {0};
+    SlStatus status;
+
+    if (arena == NULL || dir.ptr == NULL || dir.length == 0U || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_string_builder_init_arena(&builder, arena, 128U, 2048U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&builder, dir);
+    if (sl_status_is_ok(status) && dir.ptr[dir.length - 1U] != '/' &&
+        dir.ptr[dir.length - 1U] != '\\')
+    {
+        status = sl_string_builder_append_char(&builder, '/');
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_u64(&builder, counter);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(&builder, '-');
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_u64(&builder, process_id);
     }
     if (!sl_status_is_ok(status)) {
         return status;
@@ -81,6 +130,8 @@ SlStatus sl_crash_report_write(SlArena* arena, const SlCrashReportOptions* optio
     SlDiagReportContext report_context = {0};
     SlStr report_json = {0};
     SlStr breadcrumb_jsonl = {0};
+    SlStr crashes_dir = {0};
+    SlStr report_dir = {0};
     SlStr crash_path = {0};
     SlStr breadcrumbs_path = {0};
     SlStatus status;
@@ -91,11 +142,28 @@ SlStatus sl_crash_report_write(SlArena* arena, const SlCrashReportOptions* optio
     if (!actual_options->enabled) {
         return sl_status_ok();
     }
-    if (sl_str_is_empty(actual_options->directory)) {
+    if (actual_options->directory.ptr == NULL || actual_options->directory.length == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     status = sl_fs_create_directory(actual_options->directory, true, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_crash_join_path(arena, actual_options->directory, "crashes", &crashes_dir);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_fs_create_directory(crashes_dir, true, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_crash_join_report_directory(arena, crashes_dir, sl_crash_next_report_counter(),
+                                            sl_platform_process_id(), &report_dir);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_fs_create_directory(report_dir, true, NULL);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -108,7 +176,7 @@ SlStatus sl_crash_report_write(SlArena* arena, const SlCrashReportOptions* optio
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_crash_join_path(arena, actual_options->directory, "crash-report.json", &crash_path);
+    status = sl_crash_join_path(arena, report_dir, "crash.json", &crash_path);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -124,8 +192,7 @@ SlStatus sl_crash_report_write(SlArena* arena, const SlCrashReportOptions* optio
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        status = sl_crash_join_path(arena, actual_options->directory, "breadcrumbs.jsonl",
-                                    &breadcrumbs_path);
+        status = sl_crash_join_path(arena, report_dir, "breadcrumbs.jsonl", &breadcrumbs_path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -140,7 +207,7 @@ SlStatus sl_crash_report_write(SlArena* arena, const SlCrashReportOptions* optio
 
     if (out_result != NULL) {
         *out_result = (SlCrashReportWriteResult){0};
-        status = sl_crash_copy_str(arena, actual_options->directory, &out_result->directory);
+        status = sl_crash_copy_str(arena, report_dir, &out_result->directory);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -160,7 +227,14 @@ void sl_crash_report_set_default_context(const SlCrashReportOptions* options,
                                          const SlCrashReportContext* context,
                                          const SlBreadcrumbRing* breadcrumbs)
 {
-    sl_default_report_options = options != NULL ? *options : sl_crash_report_default_options();
+    if (options != NULL) {
+        sl_default_report_options = *options;
+        sl_default_report_options_initialized = true;
+    }
+    else {
+        sl_default_report_options = sl_crash_report_default_options();
+        sl_default_report_options_initialized = false;
+    }
     sl_default_report_context = context != NULL ? *context : (SlCrashReportContext){0};
     sl_default_breadcrumbs = breadcrumbs;
 }
@@ -172,7 +246,7 @@ void sl_fatal_invariant_failed(const char* expression, const char* message, cons
     SlArena arena = {0};
     SlDiagBuilder builder = {0};
     SlCrashReportContext context = sl_default_report_context;
-    SlCrashReportOptions options = sl_default_report_options.enabled
+    SlCrashReportOptions options = sl_default_report_options_initialized
                                        ? sl_default_report_options
                                        : sl_crash_report_default_options();
     const char* reason = message != NULL ? message : expression;
@@ -190,16 +264,14 @@ void sl_fatal_invariant_failed(const char* expression, const char* message, cons
         if (expression != NULL) {
             report_status = sl_diag_builder_add_hint(&builder, sl_str_from_cstr(expression));
             if (!sl_status_is_ok(report_status)) {
-                sl_platform_disable_interactive_crash_ui();
-                abort();
+                sl_platform_abort_process();
             }
         }
         if (file != NULL && line > 0) {
             report_status = sl_diag_builder_set_primary_span(
                 &builder, sl_source_span_make(sl_str_from_cstr(file), (size_t)line, 1U, 1U));
             if (!sl_status_is_ok(report_status)) {
-                sl_platform_disable_interactive_crash_ui();
-                abort();
+                sl_platform_abort_process();
             }
         }
         if (sl_status_is_ok(sl_diag_builder_finish(&builder, &context.diagnostic))) {

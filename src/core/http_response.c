@@ -595,7 +595,7 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
         status = sl_byte_builder_append_bytes(&builder, wire_body);
     }
     if (!sl_status_is_ok(status)) {
-        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        if (is_stream_response && sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
             sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_STREAM,
                                         SL_BREADCRUMB_EVENT_STREAM_BACKPRESSURE,
                                         SL_STATUS_CAPACITY_EXCEEDED, 0U, 0U, 0U, 0U,

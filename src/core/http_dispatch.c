@@ -3110,6 +3110,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     SlHttpQuery query = {0};
     SlHttpDispatchContextNeeds needs = {0};
     SlHttpRequestContext request_context = {0};
+    SlStr breadcrumb_path = sl_str_empty();
     bool method_mismatch = false;
     bool route_match_captured = false;
     bool use_cached_handler = false;
@@ -3127,9 +3128,12 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     if (arena == NULL || engine == NULL || plan == NULL || request == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (request->path.length != 0U && request->path.ptr != NULL && request->path.ptr[0] == '/') {
+        breadcrumb_path = request->path;
+    }
     sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_HTTP_REQUEST_START,
                                 SL_STATUS_OK, seed == NULL ? 0U : seed->request_id,
-                                seed == NULL ? 0U : seed->connection_id, 0U, 0U, request->path);
+                                seed == NULL ? 0U : seed->connection_id, 0U, 0U, breadcrumb_path);
 
     status = sl_http_dispatch_validate_table(dispatch_table);
     if (!sl_status_is_ok(status)) {
@@ -3139,7 +3143,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     if (!sl_http_dispatch_request_method_runnable(request->method)) {
         sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_METHOD_MISMATCH,
                                     SL_STATUS_UNSUPPORTED, seed == NULL ? 0U : seed->request_id,
-                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U, request->path);
+                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U,
+                                    breadcrumb_path);
         return sl_http_dispatch_unsupported_method(arena, out_diag);
     }
 
@@ -3171,12 +3176,13 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
             sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_METHOD_MISMATCH,
                                         SL_STATUS_UNSUPPORTED, seed == NULL ? 0U : seed->request_id,
                                         seed == NULL ? 0U : seed->connection_id, 0U, 0U,
-                                        request->path);
+                                        breadcrumb_path);
             return sl_http_dispatch_method_not_allowed(arena, out_diag);
         }
         sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_ROUTE_NOT_FOUND,
                                     SL_STATUS_OUT_OF_RANGE, seed == NULL ? 0U : seed->request_id,
-                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U, request->path);
+                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U,
+                                    breadcrumb_path);
         return sl_http_dispatch_missing_route(arena, out_diag);
     }
     sl_breadcrumb_global_record(

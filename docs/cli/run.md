@@ -134,6 +134,7 @@ telemetry.
 | `--body <text>`        | empty           | Add a synthetic one-shot text body                   |
 | `--body-file <path>`   | empty           | Read a synthetic one-shot body from a file           |
 | `--json <json>`        | empty           | Add a JSON one-shot body and JSON content type       |
+| `--diagnostics-json`   | off             | Render local runtime diagnostics on stderr; no telemetry |
 | `-- <program-args...>` | empty           | Arguments passed to Program Mode `main(args, ctx)`   |
 
 `--artifacts` and a positional source or artifact path are mutually exclusive.

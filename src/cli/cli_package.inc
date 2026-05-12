@@ -942,7 +942,7 @@ static int sl_cli_command_package(const SlCliOptions* options)
     const char* config_dir = NULL;
     const char* project_kind = NULL;
     const SlSloppyRunConfig* project_config = NULL;
-    char package_dir[SL_RUN_PATH_MAX_BYTES];
+    char package_dir[SL_RUN_PATH_MAX_BYTES] = {0};
     char asset_root_dir[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
 
