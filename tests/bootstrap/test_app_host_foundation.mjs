@@ -30,6 +30,9 @@ import {
     Schema,
     Secret,
     Sloppy,
+    FakeClock,
+    TestData,
+    TestHost,
     Testing,
     Text,
     Time,
@@ -1896,6 +1899,163 @@ async function flushMicrotasks(count = 6) {
     assert.deepEqual(await (await host.patch("/resource")).json(), { method: "PATCH" });
     assert.equal((await host.delete("/resource")).status, 204);
     await host.close();
+}
+
+{
+    const app = Sloppy.create();
+    app.use(Auth.jwtBearer({ secret: "test-secret", clock: () => Date.parse("2026-01-01T00:00:00Z") }));
+    app.use(Auth.apiKey({ validate: (key) => key === "secret-key" }));
+    app.get("/hello", () => Results.text("hello"));
+    app.post("/echo", (ctx) => Results.json({
+        body: ctx.request.json(),
+        query: ctx.query,
+        cookie: ctx.cookies.get("session"),
+        trace: ctx.request.headers.get("x-trace"),
+    }));
+    app.post("/form", (ctx) => Results.json(Object.fromEntries(ctx.request.form().entries())));
+    app.get("/me", (ctx) => Results.json({
+        authenticated: ctx.user.authenticated,
+        sub: ctx.user.sub,
+    })).requireAuth();
+    app.get("/key", (ctx) => Results.json({
+        authenticated: ctx.user.authenticated,
+        sub: ctx.user.sub,
+    })).requireAuth();
+    app.get("/principal", (ctx) => Results.json({
+        authenticated: ctx.user.authenticated,
+        sub: ctx.user.sub,
+    })).requireAuth();
+    app.get("/config", (ctx) => Results.json({
+        feature: ctx.config.getBool("Feature:Enabled"),
+        secret: String(ctx.config.getSecret("JWT_SECRET")),
+    }));
+    app.get("/service", (ctx) => Results.json(ctx.services.get("mail").snapshot()));
+    app.get("/provider", (ctx) => Results.json({
+        kind: ctx.services.get("data.main").kind,
+    }));
+    app.get("/clock", (ctx) => Results.json({
+        now: ctx.clock.now().toISOString(),
+    }));
+    app.delete("/empty", () => Results.noContent());
+    app.mapHealthChecks({
+        checks: [
+            { name: "self", readiness: true, liveness: true, check: () => true },
+        ],
+    });
+
+    await assertRejectsMessage(
+        () => TestHost.create(app, { mode: "loopback" }),
+        /fromArtifacts\(\) or fromPackage\(\)/,
+    );
+
+    const previousSloppy = globalThis.__sloppy;
+    const fakeHmac = (algorithm, key, bytes) => {
+        const prefix = Text.utf8.encode(algorithm);
+        const output = new Uint8Array(prefix.byteLength + key.byteLength + bytes.byteLength);
+        output.set(prefix, 0);
+        output.set(key, prefix.byteLength);
+        output.set(bytes, prefix.byteLength + key.byteLength);
+        return output;
+    };
+    globalThis.__sloppy = {
+        ...previousSloppy,
+        crypto: {
+            ...previousSloppy?.crypto,
+            hmac: fakeHmac,
+        },
+    };
+
+    const clock = FakeClock.fixed("2026-01-01T00:00:00Z");
+    const mail = {
+        messages: [],
+        snapshot() {
+            return { messages: this.messages };
+        },
+    };
+    const host = await TestHost.create(app, {
+        config: { "Feature:Enabled": true },
+        secrets: { JWT_SECRET: "super-secret-value" },
+        services: { mail },
+        providers: { main: { kind: "sqlite-test" } },
+        clock,
+    });
+    try {
+        assert.equal(host.mode, "inProcess");
+        assert.equal(await (await host.get("/hello").expectStatus(200)).text(), "hello");
+        await host.head("/hello").expectNoBody();
+        await host.delete("/empty").expectNoBody();
+        await host.post("/echo")
+            .query({ q: "Ada Lovelace" })
+            .headers({ "x-trace": "trace-1" })
+            .cookie("session", "s_1")
+            .json({ ok: true })
+            .expectJson({
+                body: { ok: true },
+                query: { q: "Ada Lovelace" },
+                cookie: "s_1",
+                trace: "trace-1",
+            });
+        await host.post("/form").form({ name: "Ada", role: "admin" }).expectJson({ name: "Ada", role: "admin" });
+        await host.get("/principal").asUser({ sub: "u_1", roles: ["admin"] }).expectJson({
+            authenticated: true,
+            sub: "u_1",
+        });
+        await host.get("/key").apiKey("secret-key").expectJson({
+            authenticated: true,
+            sub: "api-key",
+        });
+        await host.get("/me").bearer("bad-token").expectProblem({ status: 401, code: "SLOPPY_E_AUTH_UNAUTHORIZED" });
+        await host.get("/me").withJwt({ sub: "u_2" }, { secret: "test-secret" }).expectJson({
+            authenticated: true,
+            sub: "u_2",
+        });
+        await host.get("/config").expectJson({
+            feature: true,
+            secret: "[Secret redacted]",
+        });
+        await host.get("/service").expectJson({
+            messages: [],
+        });
+        await host.get("/provider").expectJson({
+            kind: "sqlite-test",
+        });
+        await host.get("/clock").expectJson({
+            now: "2026-01-01T00:00:00.000Z",
+        });
+        await host.health.expect("self", "healthy");
+        await host.health.expectStatus("healthy");
+        await host.openapi.expectRoute("GET", "/hello");
+        assert.equal(host.metrics.snapshot().some((metric) => (
+            metric.name === "http.requests.total" &&
+            metric.labels.method === "GET" &&
+            metric.labels.status === "200" &&
+            metric.value > 0
+        )), true);
+        await host.post("/echo").header("Content-Type", "application/json").text("{").expectProblem({ status: 400, code: "SLOPPY_E_VALIDATION_FAILED" });
+        host.diagnostics.expectCode("SLOPPY_E_JSON_INVALID");
+        host.diagnostics.record({
+            code: "SLOPPY_TESTHOST_SECRET_REDACTION",
+            fields: { password: "super-secret-value" },
+        });
+        host.diagnostics.expectNoSecretLeaks();
+        host.jobs.enqueue("send-welcome-email", { email: "ada@example.com" });
+        host.jobs.expectEnqueued("send-welcome-email", { email: "ada@example.com" });
+        await host.jobs.runNext();
+        host.jobs.expectSucceeded("send-welcome-email");
+        await host.close();
+        await host.dispose();
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
+
+    assert.equal(clock.now().toISOString(), "2026-01-01T00:00:00.000Z");
+    clock.advanceBy({ minutes: 5 });
+    assert.equal(clock.now().toISOString(), "2026-01-01T00:05:00.000Z");
+    assert.equal(TestData.sqliteMemory().__debug?.(), undefined);
 }
 
 {
