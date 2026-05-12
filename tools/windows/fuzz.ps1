@@ -27,6 +27,7 @@ $NativeTargets = @{
     "http2-session" = @{ CTest = "fuzz\.http2_session\.seed_replay"; Corpus = "http2-session"; Exe = "fuzz_http2_session_libfuzzer.exe" }
     "diagnostics-render" = @{ CTest = "fuzz\.diagnostics_render\.seed_replay"; Corpus = "diagnostics-render"; Exe = "fuzz_diagnostics_render_libfuzzer.exe" }
     "memory-primitives" = @{ CTest = "fuzz\.memory_primitives\.seed_replay"; Corpus = "memory-primitives"; Exe = "fuzz_memory_primitives_libfuzzer.exe" }
+    "stream" = @{ CTest = "fuzz\.stream\.seed_replay"; Corpus = "stream"; Exe = "fuzz_stream_libfuzzer.exe" }
 }
 
 $JsTargets = @(

@@ -43,6 +43,11 @@ static int expect_response_bytes(SlHttpResponse response, SlBytes expected)
     return expect_true(sl_bytes_equal(bytes, expected));
 }
 
+static int expect_bytes_view_equal(SlBytes actual, SlBytes expected)
+{
+    return expect_true(sl_bytes_equal(actual, expected));
+}
+
 static int expect_response_with_options(SlHttpResponse response,
                                         const SlHttpResponseWriteOptions* options,
                                         const char* expected)
@@ -309,7 +314,7 @@ static int test_capacity_failure_returns_empty_output(void)
 
 static int test_stream_descriptor_normalizes_null_chunks(void)
 {
-    SlHttpResponseStreamChunk chunks[1] = {
+    SlStreamChunk chunks[1] = {
         {.bytes = {NULL, 0U}},
     };
     SlHttpResponse response =
@@ -323,6 +328,46 @@ static int test_stream_descriptor_normalizes_null_chunks(void)
 
     response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 0U);
     return expect_true(response.stream_chunks == NULL && response.stream_chunk_count == 0U);
+}
+
+static int test_stream_descriptor_readable_adapter_pumps_chunks(void)
+{
+    unsigned char buffer[16];
+    SlStreamChunk chunks[2] = {{.bytes = sl_bytes_from_parts(
+                                                (const unsigned char*)"he", 2U)},
+                                           {.bytes = sl_bytes_from_parts(
+                                                (const unsigned char*)"llo", 3U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U);
+    SlHttpResponseStreamReadable readable_adapter = {0};
+    SlMemoryWritableStream writable_adapter = {0};
+    SlReadableStream readable = {0};
+    SlWritableStream writable = {0};
+    SlStreamPump pump = {0};
+    SlStreamPumpResult result = {0};
+
+    if (expect_status(sl_http_response_stream_readable_init(&readable_adapter, &response, NULL,
+                                                            &readable),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_memory_writable_stream_init(&writable_adapter, buffer, sizeof(buffer),
+                                                     NULL, &writable),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_stream_pump_init(&pump, &readable, &writable, NULL), SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (sl_stream_pump_run(&pump, 3U, &result) != SL_STREAM_STATUS_EOF ||
+        pump.bytes_transferred != 5U ||
+        expect_bytes_view_equal(sl_memory_writable_stream_view(&writable_adapter),
+                                sl_bytes_from_parts((const unsigned char*)"hello", 5U)) != 0)
+    {
+        return 2;
+    }
+
+    response = sl_http_response_text(200U, sl_str_from_cstr("not a stream"));
+    return expect_status(sl_http_response_stream_readable_init(&readable_adapter, &response, NULL,
+                                                               &readable),
+                         SL_STATUS_WRONG_RESOURCE_KIND);
 }
 
 static int run_test(const char* name, int (*test)(void))
@@ -414,6 +459,12 @@ int main(void)
         return result;
     }
 
-    return run_test("test_stream_descriptor_normalizes_null_chunks",
-                    test_stream_descriptor_normalizes_null_chunks);
+    result = run_test("test_stream_descriptor_normalizes_null_chunks",
+                      test_stream_descriptor_normalizes_null_chunks);
+    if (result != 0) {
+        return result;
+    }
+
+    return run_test("test_stream_descriptor_readable_adapter_pumps_chunks",
+                    test_stream_descriptor_readable_adapter_pumps_chunks);
 }

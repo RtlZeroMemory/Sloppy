@@ -53,6 +53,7 @@
 #include "sloppy/scope.h"
 #include "sloppy/source_loc.h"
 #include "sloppy/status.h"
+#include "sloppy/stream.h"
 #include "sloppy/string.h"
 #include "sloppy/worker_pool.h"
 

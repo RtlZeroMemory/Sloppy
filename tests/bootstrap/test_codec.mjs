@@ -168,6 +168,14 @@ async function collectAsyncBytes(stream) {
     return output;
 }
 
+async function collectAsyncChunks(stream) {
+    const chunks = [];
+    for await (const chunk of stream) {
+        chunks.push(chunk);
+    }
+    return chunks;
+}
+
 function createAbortSignal() {
     const listeners = new Set();
     return {
@@ -257,7 +265,9 @@ try {
     await assert.rejects(() => Compression.gzip(arbitraryBytes, { level: 10 }), TypeError);
     await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 2 ** 40 }), TypeError);
 
-    const streamingCompressed = await collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])]));
+    const streamingCompressedChunks = await collectAsyncChunks(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])]));
+    assert.equal(streamingCompressedChunks.length, 1);
+    const streamingCompressed = streamingCompressedChunks[0];
     assertBytes(await collectAsyncBytes(Compression.gunzipStream([streamingCompressed])), new Uint8Array([1, 2]));
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])], { maxInputBytes: 1 })),

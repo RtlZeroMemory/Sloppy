@@ -1926,7 +1926,7 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
                                                        SlHttpResponse* out_response)
 {
     SlSlice chunk_storage = {0};
-    SlHttpResponseStreamChunk* chunks = NULL;
+    SlStreamChunk* chunks = NULL;
     SlStatus status;
 
     if (connection == NULL || response == NULL || out_response == NULL) {
@@ -1945,7 +1945,7 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
     {
         size_t chunk_bytes = 0U;
         status = sl_checked_array_size(response->stream_chunk_count,
-                                       sizeof(SlHttpResponseStreamChunk), &chunk_bytes);
+                                       sizeof(SlStreamChunk), &chunk_bytes);
         if (!sl_status_is_ok(status)) {
             *out_response = (SlHttpResponse){0};
             return status;
@@ -1958,13 +1958,13 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
         }
         status = sl_arena_array_copy(
             &connection->request_arena, response->stream_chunks, response->stream_chunk_count,
-            sizeof(SlHttpResponseStreamChunk), _Alignof(SlHttpResponseStreamChunk), &chunk_storage);
+            sizeof(SlStreamChunk), _Alignof(SlStreamChunk), &chunk_storage);
     }
     if (!sl_status_is_ok(status)) {
         *out_response = (SlHttpResponse){0};
         return status;
     }
-    chunks = (SlHttpResponseStreamChunk*)chunk_storage.ptr;
+    chunks = (SlStreamChunk*)chunk_storage.ptr;
     for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
         SlOwnedBytes copy = {0};
         if (!sl_http_transport_arena_contains(&connection->request_arena,

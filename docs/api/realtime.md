@@ -49,9 +49,10 @@ Wraps a handler in a `Results.stream(...)` descriptor with:
 - `X-Slop-Realtime: sse`
 
 `options.maxQueuedEvents` bounds queued frame writes for one handler invocation.
-The default is `64`. The current runtime still collects bounded stream chunks
-before response serialization; this is an API and metadata shape, not a
-production push transport with socket backpressure.
+The default is `64`. The handler writes bounded chunks into a `Results.stream`
+descriptor before returning. Native HTTP/1.1 serialization can emit that
+descriptor as chunked frames, but this is still an API and metadata shape, not
+a production push transport with live handler backpressure.
 
 ## SSE Stream
 
@@ -104,8 +105,8 @@ metadata and marks the Plan with `runtime.realtime`. `sloppy routes` includes a
 
 ## Current Limits
 
-- SSE uses the bounded `Results.stream` descriptor path; it does not yet stream
-  incrementally over a live socket with backpressure.
+- SSE uses the bounded `Results.stream` descriptor path; the handler does not
+  stay attached to a live socket after it returns.
 - WebSocket upgrade execution is unavailable and returns `501`.
 - There is no browser client helper.
 - Hubs are in-process bootstrap helpers only.

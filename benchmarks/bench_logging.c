@@ -97,11 +97,11 @@ const SlBenchDefinition* sl_bench_logging_definitions(size_t* out_count)
 {
     static const SlBenchDefinition definitions[] = {
         {"logging.disabled.level_check", "logging", "disabled log level branch", 10000U, 1000000U,
-         logging_bench_disabled, "disabled path does not build events", false},
+         logging_bench_disabled, "disabled path does not build events", false, 0U, 0U},
         {"logging.enabled.five_fields", "logging", "build structured event with five fields", 1000U,
-         100000U, logging_bench_enabled_build, "event builder only", false},
+         100000U, logging_bench_enabled_build, "event builder only", false, 0U, 0U},
         {"logging.jsonl.serialize", "logging", "serialize redacted structured event to JSONL",
-         1000U, 100000U, logging_bench_jsonl, "formatting benchmark, not correctness proof", false},
+         1000U, 100000U, logging_bench_jsonl, "formatting benchmark, not correctness proof", false, 0U, 0U},
     };
 
     if (out_count != NULL) {

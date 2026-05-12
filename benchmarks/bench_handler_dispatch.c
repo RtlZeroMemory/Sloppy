@@ -1446,15 +1446,15 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
 static const SlBenchDefinition handler_definitions[] = {
     {"handler.plan.lookup", "handler", "lookup handler IDs in a borrowed Sloppy Plan table", 10000U,
      1000000U, bench_plan_handler_lookup, "non-V8 lookup only; no JavaScript enters this benchmark",
-     false},
+     false, 0U, 0U},
     {"handler.runtime_contract.noop_unsupported", "handler",
      "resolve handler export then hit the current noop engine boundary", 1000U, 100000U,
      bench_runtime_contract_noop_dispatch,
-     "measures current non-V8 dispatch plumbing and expected unsupported engine result", false},
+     "measures current non-V8 dispatch plumbing and expected unsupported engine result", false, 0U, 0U},
     {"http.dispatch.get.noop_unsupported", "handler",
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
-     "not a server throughput benchmark; no sockets or response writer are involved", false},
+     "not a server throughput benchmark; no sockets or response writer are involved", false, 0U, 0U},
     {"route.dispatch.generated_table.param", "route",
      "dispatch and capture params through a generated route table", 1000U, 100000U,
      bench_route_table_param_dispatch_noop,
@@ -1572,7 +1572,7 @@ static const SlBenchDefinition handler_definitions[] = {
     {"http.body_reader.json_known_length", "handler",
      "bounded HTTP body reader with a declared JSON content length and chunked appends", 1000U,
      100000U, bench_http_body_reader_json_known_length,
-     "tracks builder checksum counters for the known-length body reader optimization", false},
+     "tracks builder checksum counters for the known-length body reader optimization", false, 0U, 0U},
 };
 
 #undef SL_BENCH_PARAM_TRIE_ENTRY

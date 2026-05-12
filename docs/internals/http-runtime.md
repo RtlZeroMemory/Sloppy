@@ -12,6 +12,7 @@ include/sloppy/
   http.h                 parser + request/response models
   http_dispatch.h        dispatch types + Plan binding
   http_response.h
+  stream.h               platform-neutral bounded byte stream primitive
   http_context.h
   http_backend.h         transport-facing types
   http2_frame.h          HTTP/2 frame parse/write helpers
@@ -26,6 +27,7 @@ src/core/
   http_dispatch.c        Plan-backed route table + dispatch
   http_context.c         per-request context construction
   http_response.c        response serialization
+  stream.c               memory/chunk-list stream adapters + pump
   http2_frame.c          frame validation and serialization
   http2_hpack.c          HPACK encode/decode wrapper
   http2_session.c        SETTINGS, streams, HPACK, flow-control session
@@ -81,6 +83,10 @@ return bounded `Results.stream` descriptors with `text/event-stream` metadata.
 WebSocket route registrations are Plan-visible, but the native HTTP upgrade
 execution path is not implemented and generated handlers return `501`
 unavailable.
+
+Native Core streams are an internal foundation for bounded byte flow between
+runtime components. They do not expose live request-body streams or JavaScript
+stream handles today. See [Core Streaming](streaming.md).
 
 ## Route table
 
@@ -209,7 +215,9 @@ For HTTP/1.1, `sl_http_response_write` serializes fixed response descriptors
 into `connection->response_storage`, then the transport writes that
 per-connection buffer. Headers are normalized to lowercase; `Content-Length` is
 computed from the body. Streaming responses are transport-owned and use bounded
-HTTP/1.1 chunked frames.
+HTTP/1.1 chunked frames. `SlHttpResponse.stream_chunks` stores `SlStreamChunk`
+descriptors and can also be consumed through the Core stream readable adapter
+for native transport work and benchmarking.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.
@@ -296,11 +304,11 @@ connection draining) is the responsibility of an in-front reverse proxy.
 - HTTP/3, gRPC, WebTransport.
 - Native WebSocket upgrade/runtime execution. WebSocket route intent is
   Plan-visible, but the runtime returns the alpha unavailable response.
-- SSE is experimental/alpha and currently uses bounded response-stream
-  descriptors, not transport backpressure.
+- SSE is experimental/alpha and currently uses bounded `Results.stream`
+  descriptors. HTTP/1.1 serialization is chunked, but handler execution still
+  completes before the descriptor is submitted.
 - Experimental/planned direct streaming request bodies are not exposed to handlers.
-- Experimental response streaming is currently represented as bounded chunks
-  before serialization, not transport backpressure; the model may change.
+- Core streams are not exposed as a public JavaScript or WHATWG stream API.
 - Per-route limits, trusted proxy / forwarded-header policy beyond
   basic header passthrough.
 - HTTP/1.1 pipelining.

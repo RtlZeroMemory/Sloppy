@@ -125,6 +125,10 @@ await conn.close();
 | `conn.close()` / `conn.abort()` | `Promise<void>` |
 | `conn.closed` | boolean |
 
+`readChunks(...)` is a JavaScript async-iterator helper over repeated
+`read(...)` calls. It is not the native Core stream foundation and does not
+expose a transferable or Node-compatible stream handle.
+
 ## Local IPC
 
 `LocalEndpoint` covers Unix sockets (`backend: "unix"`) and Windows named

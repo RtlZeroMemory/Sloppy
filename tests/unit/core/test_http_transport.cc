@@ -163,7 +163,7 @@ typedef struct SequenceDispatchHook
 {
     size_t count;
     const char* bodies[16];
-    SlHttpResponseStreamChunk stream_chunks[4];
+    SlStreamChunk stream_chunks[4];
     SlHttpResponse stream_response;
     bool use_stream_response;
     bool mismatch;
@@ -203,14 +203,14 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
     if (hook->response.kind == SL_HTTP_RESPONSE_STREAM && hook->response.stream_chunk_count != 0U) {
         void* chunk_storage = nullptr;
         SlHttpResponse response = hook->response;
-        SlHttpResponseStreamChunk* chunks = nullptr;
-        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlStreamChunk) * response.stream_chunk_count;
         SlStatus status =
-            sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk), &chunk_storage);
+            sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk), &chunk_storage);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+        chunks = static_cast<SlStreamChunk*>(chunk_storage);
         for (size_t index = 0U; index < response.stream_chunk_count; index += 1U) {
             SlOwnedBytes copy = {};
             status = sl_bytes_copy_to_arena(arena, response.stream_chunks[index].bytes, &copy);
@@ -265,18 +265,18 @@ static SlStatus sequence_dispatch_hook(SlHttpTransportConnection* connection, Sl
 
     if (hook->use_stream_response) {
         SlHttpResponse response = hook->stream_response;
-        SlHttpResponseStreamChunk* chunks = nullptr;
-        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlStreamChunk) * response.stream_chunk_count;
         void* chunk_storage = nullptr;
         SlStatus status = sl_status_ok();
 
         if (response.stream_chunk_count != 0U) {
-            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk),
+            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk),
                                     &chunk_storage);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
-            chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+            chunks = static_cast<SlStreamChunk*>(chunk_storage);
             for (size_t chunk_index = 0U; chunk_index < response.stream_chunk_count;
                  chunk_index += 1U)
             {
@@ -305,7 +305,7 @@ static SlStatus stack_stream_dispatch_hook(SlHttpTransportConnection* connection
                                            void* user)
 {
     unsigned char chunk_storage[5] = {'s', 't', 'a', 'c', 'k'};
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     DispatchHook* hook = static_cast<DispatchHook*>(user);
 
     (void)arena;
@@ -2927,7 +2927,7 @@ static int test_streaming_response_writes_chunked_frames(void)
     static const char expected[] =
         "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n"
         "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
     DispatchHook dispatch = {};
@@ -2955,7 +2955,7 @@ static int run_streaming_response_header_policy_case(SlStr content_type, SlHttpH
                                                      SlStatusCode expected_status,
                                                      SlDiagCode expected_diag)
 {
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
     DispatchHook dispatch = {};
@@ -3169,7 +3169,7 @@ static int test_streaming_response_backpressure_rejection(void)
     SlHttpTransportConfig config = {};
     ClientConnect client = {};
     DispatchHook dispatch = {};
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlDiag diag = {};
 
     chunks[0].bytes = bytes_from_cstr(
@@ -4144,7 +4144,7 @@ static int test_bounded_keep_alive_chunked_streaming_stress_smoke(void)
     for (size_t index = 0U; index < 6U; index += 1U) {
         SlHttpTransportServer stream_server = {};
         SlBytes response = {};
-        SlHttpResponseStreamChunk chunks[1] = {};
+        SlStreamChunk chunks[1] = {};
         DispatchHook stream_dispatch = {};
         SlHttpTransportConfig stream_config = small_config(nullptr);
 

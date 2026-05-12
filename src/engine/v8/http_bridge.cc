@@ -3799,17 +3799,17 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                 sl_str_empty());
         }
         v8::Local<v8::Array> chunks = body.As<v8::Array>();
-        SlSlice chunk_storage = {nullptr, 0U, sizeof(SlHttpResponseStreamChunk)};
-        SlHttpResponseStreamChunk* native_chunks = nullptr;
+        SlSlice chunk_storage = {nullptr, 0U, sizeof(SlStreamChunk)};
+        SlStreamChunk* native_chunks = nullptr;
         SlStatus status = sl_status_ok();
         if (chunks->Length() != 0U) {
             status =
-                sl_arena_array_alloc(arena, chunks->Length(), sizeof(SlHttpResponseStreamChunk),
-                                     alignof(SlHttpResponseStreamChunk), &chunk_storage);
+                sl_arena_array_alloc(arena, chunks->Length(), sizeof(SlStreamChunk),
+                                     alignof(SlStreamChunk), &chunk_storage);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
-            native_chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage.ptr);
+            native_chunks = static_cast<SlStreamChunk*>(chunk_storage.ptr);
         }
         for (uint32_t chunk_index = 0U; chunk_index < chunks->Length(); chunk_index += 1U) {
             v8::Local<v8::Value> chunk;

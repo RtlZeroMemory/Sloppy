@@ -131,6 +131,8 @@
     endif()
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
+    sloppy_add_c_unit_test(
+        core_stream_foundation core.stream.foundation tests/unit/core/test_stream.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(
         core_http2_dispatch core.http2.dispatch tests/unit/core/test_http2_dispatch.c)
@@ -296,6 +298,8 @@
     sloppy_add_fuzz_seed_replay(
         fuzz_seed_memory_primitives fuzz.memory_primitives.seed_replay
         tests/fuzz/fuzz_memory_primitives.c memory-primitives)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_stream fuzz.stream.seed_replay tests/fuzz/fuzz_stream.c stream)
     sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
     sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
     sloppy_add_libfuzzer_target(fuzz_http2_frame_libfuzzer tests/fuzz/fuzz_http2_frame.c)
@@ -309,6 +313,7 @@
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
     sloppy_add_libfuzzer_target(
         fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
+    sloppy_add_libfuzzer_target(fuzz_stream_libfuzzer tests/fuzz/fuzz_stream.c)
     sloppy_add_c_unit_test(
         data_common_contract data.common.contract tests/unit/data/test_data_common.c)
     add_test(NAME conformance.data.common_contract COMMAND $<TARGET_FILE:data_common_contract>)

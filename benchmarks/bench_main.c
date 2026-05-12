@@ -156,6 +156,10 @@ static const SlBenchDefinition* sl_bench_definition_group(size_t group_index, si
     }
 
     if (group_index == 4U) {
+        return sl_bench_stream_definitions(out_count);
+    }
+
+    if (group_index == 5U) {
         return sl_bench_v8_bridge_definitions(out_count);
     }
 
@@ -180,7 +184,7 @@ static void sl_bench_list(const SlBenchOptions* options)
 {
     size_t group;
 
-    for (group = 0U; group < 5U; group += 1U) {
+    for (group = 0U; group < 6U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);
@@ -257,6 +261,18 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
     out_result->ns_per_op = measured_iterations == 0U
                                 ? 0.0
                                 : (double)out_result->elapsed_ns / (double)measured_iterations;
+    out_result->bytes_processed = definition->bytes_per_iteration * measured_iterations;
+    out_result->chunks_processed = definition->chunks_per_iteration * measured_iterations;
+    if (out_result->elapsed_ns != 0U) {
+        double seconds = (double)out_result->elapsed_ns / 1000000000.0;
+
+        out_result->bytes_per_second = out_result->bytes_processed == 0U
+                                           ? 0.0
+                                           : (double)out_result->bytes_processed / seconds;
+        out_result->chunks_per_second = out_result->chunks_processed == 0U
+                                            ? 0.0
+                                            : (double)out_result->chunks_processed / seconds;
+    }
     return sl_status_ok();
 }
 
@@ -269,9 +285,15 @@ static void sl_bench_print_text_header(const SlBenchOptions* options)
 
 static void sl_bench_print_text_result(const SlBenchResult* result)
 {
-    printf("%-42s %12" PRIu64 " iters %12" PRIu64 " ns %10.2f ns/op checksum=%" PRIu64 "\n",
-           result->name, result->iterations, result->elapsed_ns, result->ns_per_op,
-           result->checksum);
+    printf("%-42s %12" PRIu64 " iters %12" PRIu64 " ns %10.2f ns/op",
+           result->name, result->iterations, result->elapsed_ns, result->ns_per_op);
+    if (result->bytes_processed != 0U) {
+        printf(" bytes/sec=%.2f", result->bytes_per_second);
+    }
+    if (result->chunks_processed != 0U) {
+        printf(" chunks/sec=%.2f", result->chunks_per_second);
+    }
+    printf(" checksum=%" PRIu64 "\n", result->checksum);
 }
 
 static void sl_bench_print_json_header(const SlBenchOptions* options)
@@ -321,6 +343,10 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
     printf("      \"iterations\": %" PRIu64 ",\n", result->iterations);
     printf("      \"elapsedNs\": %" PRIu64 ",\n", result->elapsed_ns);
     printf("      \"nsPerOp\": %.2f,\n", result->ns_per_op);
+    printf("      \"bytesProcessed\": %" PRIu64 ",\n", result->bytes_processed);
+    printf("      \"chunksProcessed\": %" PRIu64 ",\n", result->chunks_processed);
+    printf("      \"bytesPerSecond\": %.2f,\n", result->bytes_per_second);
+    printf("      \"chunksPerSecond\": %.2f,\n", result->chunks_per_second);
     printf("      \"checksum\": %" PRIu64 ",\n", result->checksum);
     printf("      \"note\": ");
     sl_bench_print_json_string(result->note);
@@ -350,7 +376,7 @@ static int sl_bench_run(const SlBenchOptions* options)
         sl_bench_print_json_header(options);
     }
 
-    for (group = 0U; group < 5U; group += 1U) {
+    for (group = 0U; group < 6U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);

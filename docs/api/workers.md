@@ -178,6 +178,10 @@ app.post("/send", (request) => {
 | `maxBackpressureWaiters` | `maxQueued` | cap on `backpressure` waiters |
 | `retry` | none | `{ attempts?, backoff? }` per-job retry policy |
 
+WorkQueue `overflow: "backpressure"` is queue admission backpressure for
+promises waiting to enqueue. It is separate from the native Core stream
+foundation and does not expose stream chunks or writable handles.
+
 `enqueue(data, options?)` accepts `{ signal, deadline, timeoutMs }`. The
 returned promise resolves with the handler's result.
 
@@ -300,6 +304,7 @@ types fail with `SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD` or
 - No Node `worker_threads` compatibility. `Worker` is not the Web
   `Worker`/`MessagePort` shape; it's the Sloppy worker isolate handle.
 - No shared memory, no `SharedArrayBuffer` channels, no `MessageChannel`.
+- No native stream handle transfer between workers.
 - Job payloads are copied across the worker boundary, not transferred.
 - Background services do not yet auto-stop when the app shuts down. Call
   `service.stop(...)` from your shutdown path.

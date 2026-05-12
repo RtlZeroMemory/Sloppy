@@ -82,7 +82,7 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body)
 }
 
 SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
-                                       const SlHttpResponseStreamChunk* chunks, size_t chunk_count)
+                                       const SlStreamChunk* chunks, size_t chunk_count)
 {
     SlHttpResponse response = {0};
 
@@ -92,6 +92,68 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
     response.stream_chunks = chunk_count == 0U ? NULL : chunks;
     response.stream_chunk_count = chunks == NULL ? 0U : chunk_count;
     return response;
+}
+
+static SlStreamStatus sl_http_response_stream_read(SlReadableStream* stream,
+                                                   SlStreamReadResult* out)
+{
+    SlHttpResponseStreamReadable* adapter = (SlHttpResponseStreamReadable*)stream->user;
+
+    if (adapter == NULL) {
+        return SL_STREAM_STATUS_INVALID_ARGUMENT;
+    }
+
+    while (adapter->chunk_index < adapter->chunk_count) {
+        const SlStreamChunk* source = &adapter->chunks[adapter->chunk_index];
+        size_t remaining = 0U;
+        size_t length = 0U;
+
+        if (source->bytes.length != 0U && source->bytes.ptr == NULL) {
+            return SL_STREAM_STATUS_INVALID_STATE;
+        }
+        if (adapter->chunk_offset >= source->bytes.length) {
+            adapter->chunk_index += 1U;
+            adapter->chunk_offset = 0U;
+            continue;
+        }
+        remaining = source->bytes.length - adapter->chunk_offset;
+        length = remaining > stream->max_chunk_bytes ? stream->max_chunk_bytes : remaining;
+        out->chunk.bytes =
+            sl_bytes_from_parts(source->bytes.ptr + adapter->chunk_offset, length);
+        adapter->chunk_offset += length;
+        if (adapter->chunk_offset >= source->bytes.length) {
+            adapter->chunk_index += 1U;
+            adapter->chunk_offset = 0U;
+        }
+        return SL_STREAM_STATUS_OK;
+    }
+
+    return SL_STREAM_STATUS_EOF;
+}
+
+static const SlReadableStreamVTable sl_http_response_stream_readable_vtable = {
+    sl_http_response_stream_read, NULL, NULL, NULL, "http-response-stream"};
+
+SlStatus sl_http_response_stream_readable_init(SlHttpResponseStreamReadable* adapter,
+                                               const SlHttpResponse* response,
+                                               const SlStreamOptions* options,
+                                               SlReadableStream* out_stream)
+{
+    if (adapter == NULL || response == NULL || out_stream == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (response->kind != SL_HTTP_RESPONSE_STREAM) {
+        return sl_status_from_code(SL_STATUS_WRONG_RESOURCE_KIND);
+    }
+    if (response->stream_chunks == NULL && response->stream_chunk_count != 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *adapter = (SlHttpResponseStreamReadable){0};
+    adapter->chunks = response->stream_chunks;
+    adapter->chunk_count = response->stream_chunk_count;
+    return sl_readable_stream_init(out_stream, &sl_http_response_stream_readable_vtable, adapter,
+                                   options);
 }
 
 static const char* sl_http_response_reason(uint16_t status)
