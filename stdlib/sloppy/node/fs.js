@@ -146,9 +146,9 @@ function lookupSealedAsset(path) {
     return undefined;
 }
 
-function unsealedSyncError(operation, path) {
+function unsealedSyncError(operation, _path) {
     return new Error(
-        `SLOPPY_E_NODE_SYNC_FS_UNSEALED: node:fs.${operation} requires the path to be a sealed package asset; '${path}' was not found in the bundled asset map.`,
+        `SLOPPY_E_NODE_SYNC_FS_UNSEALED: node:fs.${operation} requires the path to be a sealed package asset; the requested path was not found in the bundled asset map.`,
     );
 }
 

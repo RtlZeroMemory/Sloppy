@@ -62,7 +62,7 @@ shape; runtime execution is gated on `SLOPPY_EXPECT_RUN_SUCCESS`.
 | Status        | Meaning |
 | ---           | --- |
 | `supported`   | Sloppy builds, packages, and the packaged app runs and produces the documented stdout. |
-| `partial`     | Sloppy builds and packages cleanly; a documented subset of behavior executes, the rest fails with an explicit runtime error. |
+| `partial`     | Sloppy builds and packages cleanly; a documented subset of behavior executes, the rest fails with an explicit runtime error. The matrix entry must assert the successful subset with `expectedStdout` and the documented failure with `expectedStderr` and/or `expectedExitCode`. |
 | `stubbed`     | Sloppy resolves the import and the shim is importable but throws a documented error code on use. The fixture asserts the error code. |
 | `negative-build`   | Sloppy must emit a documented compile-time diagnostic and fail `sloppy build`. |
 | `negative-runtime` | Sloppy builds and packages cleanly; runtime execution must fail with a documented error code on stderr. |

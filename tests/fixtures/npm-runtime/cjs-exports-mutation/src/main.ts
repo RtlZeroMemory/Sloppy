@@ -1,6 +1,7 @@
 import pkg from "exports-mut";
 
-export async function main() {
-    console.log(`foo=${(pkg as { foo: string }).foo} bar=${(pkg as { bar: string }).bar}`);
+export async function main(): Promise<number> {
+    const value = pkg as { foo: string; bar: string };
+    console.log(`foo=${value.foo} bar=${value.bar}`);
     return 0;
 }

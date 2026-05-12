@@ -1,6 +1,6 @@
 import probe from "zlib-probe";
 
-export async function main() {
+export async function main(): Promise<number> {
     const value = await (probe as () => Promise<{
         roundTripText: string;
         gzipLengthOk: boolean;
