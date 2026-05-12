@@ -291,7 +291,10 @@ static SlStatus sl_os_posix_copy_cmdline_args(SlArena* arena, SlOsProcessInfo* o
     status = sl_arena_array_alloc(arena, count, sizeof(SlOsProcessArg), _Alignof(SlOsProcessArg),
                                   &entries);
     if (!sl_status_is_ok(status)) {
-        return status;
+        out->args_available = false;
+        out->arg_count = 0U;
+        out->args = NULL;
+        return sl_status_ok();
     }
     out->args = (SlOsProcessArg*)entries.ptr;
     out->arg_count = count;
@@ -305,7 +308,10 @@ static SlStatus sl_os_posix_copy_cmdline_args(SlArena* arena, SlOsProcessInfo* o
         status = sl_str_copy_to_arena(arena, sl_str_from_parts(buffer + start, offset - start),
                                       &out->args[count].value);
         if (!sl_status_is_ok(status)) {
-            return status;
+            out->args_available = false;
+            out->arg_count = 0U;
+            out->args = NULL;
+            return sl_status_ok();
         }
         count += 1U;
         offset += 1U;

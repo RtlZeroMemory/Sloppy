@@ -297,6 +297,19 @@ try {
         async () => collectAsyncBytes(Compression.gunzipStream([streamingCompressed], { maxOutputBytes: 1 })),
         /SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED/,
     );
+    const userSourceError = new Error("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: user source failure");
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream({
+            [Symbol.iterator]() {
+                return {
+                    next() {
+                        throw userSourceError;
+                    },
+                };
+            },
+        })),
+        (error) => error === userSourceError,
+    );
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])], { maxInputBytes: 1 })),
         TypeError,

@@ -964,7 +964,7 @@ function raceCompressionTerminal(promise, options, operation) {
     const signal = options.signal;
     const remainingMs = deadlineRemainingMs(options.deadline, operation);
     if (!isCancellationSignal(signal) && remainingMs === Infinity) {
-        return promise.catch((error) => Promise.reject(normalizeCompressionError(error)));
+        return promise;
     }
     return new Promise((resolve, reject) => {
         let finished = false;
@@ -998,7 +998,7 @@ function raceCompressionTerminal(promise, options, operation) {
                 finish(resolve, value);
             },
             (error) => {
-                finish(reject, normalizeCompressionError(error));
+                finish(reject, error);
             },
         );
         function cleanupAll() {
@@ -1018,8 +1018,9 @@ function runCompression(operation, bytes, options, invoke) {
         if (bytes.byteLength > MAX_COMPRESSION_INPUT_BYTES) {
             throw new TypeError(`${operation} input exceeds the ${MAX_COMPRESSION_INPUT_BYTES} byte inline compression limit.`);
         }
-        const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then((result) =>
-            normalizeCompressionResult(result, operation),
+        const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then(
+            (result) => normalizeCompressionResult(result, operation),
+            (error) => Promise.reject(normalizeCompressionError(error)),
         );
         return raceCompressionTerminal(promise, options ?? {}, operation);
     } catch (error) {
@@ -1063,7 +1064,10 @@ async function* compressionStream(input, options, operation, parseOptions, invok
             inputBytes.set(chunk, offset);
             offset += chunk.byteLength;
         }
-        const output = await raceCompressionTerminal(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed, operation);
+        const nativeOutput = Promise.resolve(invoke(inputBytes, parsed.codecOptions)).catch((error) =>
+            Promise.reject(normalizeCompressionError(error)),
+        );
+        const output = await raceCompressionTerminal(nativeOutput, parsed, operation);
         checkCompressionTerminalOptions(parsed, operation);
         terminal = true;
         yield output;

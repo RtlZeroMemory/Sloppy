@@ -3063,7 +3063,7 @@ static int test_promise_rejection_returns_diagnostic(void)
         return 68;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message, sl_str_from_cstr("async boom")) != 0)
     {
         sl_engine_destroy(engine);
@@ -3072,7 +3072,7 @@ static int test_promise_rejection_returns_diagnostic(void)
 
     if (expect_status(sl_diag_render_json(&json_arena, &diag, &json), SL_STATUS_OK) != 0 ||
         !sl_str_equal(json, sl_str_from_cstr(
-                                "{\"code\":\"SLOPPY_E_ENGINE_PROMISE_REJECTION\","
+                                "{\"code\":\"SLOPPY_E_V8_UNHANDLED_REJECTION\","
                                 "\"severity\":\"error\","
                                 "\"message\":\"JavaScript handler Promise rejected: Error: async "
                                 "boom\","
@@ -5708,7 +5708,7 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
 
     if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_reject"),
                                &context, SL_STATUS_INVALID_STATE,
-                               SL_DIAG_ENGINE_PROMISE_REJECTION) != 0)
+                               SL_DIAG_V8_UNHANDLED_REJECTION) != 0)
     {
         sl_engine_destroy(engine);
         return 98;
@@ -6691,7 +6691,7 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
         return 184;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message,
                             sl_str_from_cstr("capability access denied: insufficient handle "
                                              "access")) != 0 ||
@@ -6945,7 +6945,7 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
         return 204;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message, sl_str_from_cstr("insufficient handle access")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("actual access: write")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("operation: read")) != 0)
