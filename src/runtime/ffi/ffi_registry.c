@@ -241,10 +241,16 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (registry->libraries == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
     status = sl_ffi_alloc_array(arena, function_total, sizeof(SlFfiFunction),
                                 _Alignof(SlFfiFunction), (void**)&registry->functions);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (function_total > 0U && registry->functions == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     registry->function_count = function_total;
@@ -299,7 +305,11 @@ SlStatus sl_ffi_registry_init_from_plan(SlFfiRegistry* registry, SlArena* arena,
                 sl_ffi_registry_dispose(registry);
                 return status;
             }
-            function->native_parameters = parameters;
+            if (function->parameter_count > 0U && parameters == NULL) {
+                sl_ffi_registry_dispose(registry);
+                return sl_status_from_code(SL_STATUS_INTERNAL);
+            }
+            function->native_parameters = (void*)parameters;
             for (size_t param = 0U; param < function->parameter_count; param += 1U) {
                 parameters[param] = sl_ffi_type_for_plan_type(function->parameters[param]);
                 if (parameters[param] == NULL) {
