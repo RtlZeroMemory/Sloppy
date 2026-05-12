@@ -4,6 +4,7 @@ set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
 set(ffi_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/ffi.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
+set(jobs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/jobs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
 set(problem_details_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/problem-details.js")
@@ -23,7 +24,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${jobs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -35,6 +36,7 @@ file(READ "${data_source}" data_js)
 file(READ "${codec_source}" codec_js)
 file(READ "${ffi_source}" ffi_js)
 file(READ "${fs_source}" fs_js)
+file(READ "${jobs_source}" jobs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
 file(READ "${problem_details_source}" problem_details_js)
@@ -202,6 +204,25 @@ foreach(required_pattern IN ITEMS
         "const Path = Object.freeze"
         "FileWatcher")
     require_substring("${fs_js}" "${required_pattern}" "fs.js is missing expected API shape pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const Jobs = Object.freeze"
+        "class SloppyJobsError"
+        "sloppy_jobs"
+        "sloppy_job_attempts"
+        "sloppy_recurring_jobs"
+        "sloppy_job_workers"
+        "sloppy_job_locks"
+        "sloppy_job_events"
+        "SLOPPY_E_JOBS_UNKNOWN_JOB"
+        "SLOPPY_E_JOBS_TRANSITION_INVALID"
+        "SLOPPY_E_JOBS_LOCK_CONFLICT"
+        "for update skip locked"
+        "with (updlock, readpast, rowlock)"
+        "cleanup(options"
+        "nextCronRun")
+    require_substring("${jobs_js}" "${required_pattern}" "jobs.js is missing expected durable scheduler API contract pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS

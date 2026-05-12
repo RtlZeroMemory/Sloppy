@@ -1837,6 +1837,7 @@ fn program_mode_marks_each_runtime_stdlib_subpath() {
         ("sloppy/crypto", "Random", "stdlib.crypto"),
         ("sloppy/codec", "Base64", "stdlib.codec"),
         ("sloppy/workers", "WorkQueue", "stdlib.workers"),
+        ("sloppy/jobs", "Jobs", "stdlib.jobs"),
     ];
     for (index, (module, imported, feature)) in cases.iter().enumerate() {
         let root = fixture_temp_dir(&format!("program-stdlib-feature-{index}"));
@@ -2027,6 +2028,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_http_client_runtime: false,
         uses_realtime_runtime: false,
         uses_workers_runtime: false,
+        uses_jobs_runtime: false,
         uses_ffi_runtime: false,
         ffi: Vec::new(),
         ffi_structs: Vec::new(),
@@ -6062,6 +6064,67 @@ export default app;
     let app = extract(std::path::Path::new("app.ts"), source)
         .expect("type-only sloppy/workers import should be recognized");
     assert!(!app.uses_workers_runtime);
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert!(value.get("requiredFeatures").is_none());
+}
+
+#[test]
+fn sloppy_jobs_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Jobs, SloppyJobsError } from "sloppy/jobs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(Jobs.schemaVersion.toString()));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/jobs import should be recognized");
+    assert!(app.uses_jobs_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("const { Results, Jobs, SloppyJobsError } = __sloppyRuntime;"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.jobs"])
+    );
+    assert_eq!(value["features"]["jobs"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["jobs"],
+        serde_json::json!(true)
+    );
+    assert_eq!(value["scheduler"]["enabled"], serde_json::json!(true));
+    assert_eq!(value["scheduler"]["backend"], serde_json::json!("durable"));
+}
+
+#[test]
+fn sloppy_jobs_type_only_import_does_not_require_runtime_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import type { Jobs } from "sloppy/jobs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("type-only sloppy/jobs import should be recognized");
+    assert!(!app.uses_jobs_runtime);
     let emitted_js = super::emit_app_js(&app);
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(

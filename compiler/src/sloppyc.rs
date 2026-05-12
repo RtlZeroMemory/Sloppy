@@ -62,6 +62,8 @@ const WORKER_EXPORTS: &[&str] = &[
     "SloppyWorkerError",
 ];
 
+const JOBS_EXPORTS: &[&str] = &["Jobs", "SloppyJobsError"];
+
 const DEFAULT_HEALTH_PATH: &str = "/health";
 const DEFAULT_LIVENESS_PATH: &str = "/health/live";
 const DEFAULT_READINESS_PATH: &str = "/health/ready";
@@ -375,6 +377,7 @@ struct AppState {
     http_client_imported: bool,
     realtime_imported: bool,
     workers_imported: bool,
+    jobs_imported: bool,
     ffi_imported: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
     ffi_structs: Vec<FfiStructMetadata>,
@@ -439,6 +442,7 @@ impl AppState {
             http_client_imported: false,
             realtime_imported: false,
             workers_imported: false,
+            jobs_imported: false,
             ffi_imported: false,
             ffi_libraries: Vec::new(),
             ffi_structs: Vec::new(),
@@ -1000,6 +1004,7 @@ struct ModuleGraph {
     uses_http_client_runtime: bool,
     uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
+    uses_jobs_runtime: bool,
     dependency_graph: DependencyGraph,
     uses_ffi_runtime: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
@@ -1050,6 +1055,7 @@ impl ModuleGraph {
             uses_http_client_runtime: false,
             uses_realtime_runtime: false,
             uses_workers_runtime: false,
+            uses_jobs_runtime: false,
             dependency_graph: DependencyGraph::default(),
             uses_ffi_runtime: false,
             ffi_libraries: Vec::new(),
@@ -1118,6 +1124,7 @@ impl ModuleGraph {
                 "os" => self.uses_os_runtime = true,
                 "crypto" => self.uses_crypto_runtime = true,
                 "codec" => self.uses_codec_runtime = true,
+                "jobs" => self.uses_jobs_runtime = true,
                 _ => {}
             }
         }
@@ -1356,6 +1363,7 @@ fn apply_declared_capabilities(
             "crypto" => app.uses_crypto_runtime = true,
             "codec" => app.uses_codec_runtime = true,
             "workers" => app.uses_workers_runtime = true,
+            "jobs" => app.uses_jobs_runtime = true,
             "ffi" => app.uses_ffi_runtime = true,
             _ => {}
         }
@@ -1538,6 +1546,7 @@ fn extract_program_with_metrics(
         uses_http_client_runtime: graph.uses_http_client_runtime,
         uses_realtime_runtime: graph.uses_realtime_runtime,
         uses_workers_runtime: graph.uses_workers_runtime,
+        uses_jobs_runtime: graph.uses_jobs_runtime,
         uses_ffi_runtime: graph.uses_ffi_runtime,
         ffi: graph.ffi_libraries,
         ffi_structs: graph.ffi_structs,
@@ -3044,6 +3053,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
+        resolver::ImportKind::SlopJobs => validate_module_sloppy_jobs_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
         resolver::ImportKind::SqliteProvider => {
             validate_module_sloppy_sqlite_provider_import(path, import)
@@ -3542,6 +3552,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
+        | resolver::ImportKind::SlopJobs
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
         resolver::ImportKind::SqliteProvider => {
             "__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string()
@@ -3808,6 +3819,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
+        | resolver::ImportKind::SlopJobs
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
         resolver::ImportKind::SqliteProvider => {
             Ok("__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string())
@@ -4000,6 +4012,7 @@ fn mark_program_import(
         }
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
+        resolver::ImportKind::SlopJobs => graph.uses_jobs_runtime = true,
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
         resolver::ImportKind::SlopStdlib => {
             graph.uses_time_runtime = true;
@@ -4009,6 +4022,7 @@ fn mark_program_import(
             graph.uses_net_runtime = true;
             graph.uses_os_runtime = true;
             graph.uses_workers_runtime = true;
+            graph.uses_jobs_runtime = true;
         }
         _ => {}
     }
@@ -4132,7 +4146,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", \"sloppy/jobs\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -4142,7 +4156,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
+        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", \"sloppy/jobs\", or \"sloppy/ffi\"."));
     }
 
     if !state.sloppy_imported {
@@ -4399,6 +4413,7 @@ fn extract_entry(
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_realtime_runtime,
         uses_workers_runtime,
+        uses_jobs_runtime: state.jobs_imported || graph.uses_jobs_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
         ffi: {
             let mut ffi = graph.ffi_libraries.clone();
@@ -4703,6 +4718,10 @@ fn sloppy_workers_import_name_supported(name: &str) -> bool {
     WORKER_EXPORTS.contains(&name)
 }
 
+fn sloppy_jobs_import_name_supported(name: &str) -> bool {
+    JOBS_EXPORTS.contains(&name)
+}
+
 fn sloppy_ffi_import_name_supported(name: &str) -> bool {
     matches!(name, "unsafeFfi" | "t")
 }
@@ -4716,6 +4735,7 @@ enum SloppyStdlibImport {
     Net,
     Os,
     Workers,
+    Jobs,
     Ffi,
 }
 
@@ -4729,6 +4749,7 @@ impl SloppyStdlibImport {
             "sloppy/net" => Some(Self::Net),
             "sloppy/os" => Some(Self::Os),
             "sloppy/workers" => Some(Self::Workers),
+            "sloppy/jobs" => Some(Self::Jobs),
             "sloppy/ffi" => Some(Self::Ffi),
             _ => None,
         }
@@ -4743,6 +4764,7 @@ impl SloppyStdlibImport {
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
+            Self::Jobs => sloppy_jobs_import_name_supported(name),
             Self::Ffi => sloppy_ffi_import_name_supported(name),
         }
     }
@@ -4982,6 +5004,18 @@ fn validate_module_sloppy_workers_import(
         import,
         "sloppy/workers",
         sloppy_workers_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_jobs_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/jobs",
+        sloppy_jobs_import_name_supported,
     )
 }
 
@@ -5784,6 +5818,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Workers => state.workers_imported = true,
+        SloppyStdlibImport::Jobs => state.jobs_imported = true,
         SloppyStdlibImport::Ffi => state.ffi_imported = true,
     }
 }
@@ -6080,6 +6115,8 @@ fn extract_import(
                         state.provider_health_imported = true;
                     }
                 }
+                ("Jobs", "Jobs") => state.jobs_imported = true,
+                ("SloppyJobsError", "SloppyJobsError") => state.jobs_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
                 ("Schema", "Schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -6157,6 +6194,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "sql"
             | "Migrations"
             | "ProviderHealth"
+            | "Jobs"
+            | "SloppyJobsError"
             | "schema"
             | "Schema"
             | "Email"
@@ -18266,6 +18305,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
+    }
+    if app.uses_jobs_runtime {
+        runtime_exports.extend(JOBS_EXPORTS.iter().copied());
     }
     if app.uses_ffi_runtime || !app.ffi.is_empty() || !app.ffi_structs.is_empty() {
         runtime_exports.extend(["unsafeFfi", "t"]);

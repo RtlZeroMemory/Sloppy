@@ -1547,6 +1547,17 @@ pub(crate) fn emit_plan_with_route_artifact(
         value["strongPlan"]["evidence"]["workers"] = json!(true);
         value["features"]["workers"] = json!(true);
     }
+    if app.uses_jobs_runtime {
+        required_features.push("stdlib.jobs".to_string());
+        value["strongPlan"]["evidence"]["jobs"] = json!(true);
+        value["features"]["jobs"] = json!(true);
+        value["scheduler"] = json!({
+            "enabled": true,
+            "backend": "durable",
+            "storage": "provider-backed",
+            "definitions": []
+        });
+    }
     if app.uses_ffi_runtime || !ffi_libraries.is_empty() || !ffi_structs.is_empty() {
         required_features.push("stdlib.ffi".to_string());
         value["strongPlan"]["evidence"]["ffi"] = json!(true);

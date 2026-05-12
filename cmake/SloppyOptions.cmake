@@ -148,6 +148,7 @@ set(
     data.js
     ffi.js
     fs.js
+    jobs.js
     crypto.js
     net.js
     os.js

@@ -155,6 +155,7 @@ pub(crate) struct AppGraph {
     pub(crate) uses_http_client_runtime: bool,
     pub(crate) uses_realtime_runtime: bool,
     pub(crate) uses_workers_runtime: bool,
+    pub(crate) uses_jobs_runtime: bool,
     pub(crate) uses_ffi_runtime: bool,
     pub(crate) ffi: Vec<FfiLibraryMetadata>,
     pub(crate) ffi_structs: Vec<FfiStructMetadata>,

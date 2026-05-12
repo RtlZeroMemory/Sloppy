@@ -22,6 +22,7 @@ exhaustive level — they're there for "I need every option" lookup.
 - [Dependency injection](dependency-injection.md)
 - [Validation](validation.md)
 - [Workers](workers.md)
+- [Jobs storage](jobs-storage.md)
 - [Native FFI](ffi.md)
 - [Data API](data-api.md)
 - [Providers](providers.md)

@@ -16,6 +16,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata
 - [Async runtime](async-runtime.md) — owner-thread model, cancellation
 - [Provider runtime](provider-runtime.md) — provider executor and bridges
+- [Scheduler](scheduler.md) — durable job storage, worker loop, locks, retries
 - [Memory model](memory-model.md) — arenas, lifetimes, ownership
 - [Platform boundaries](platform-boundaries.md) — what crosses `src/platform/`
 - [Security model](security-model.md) — capability checks, redaction, the V8 bridge as a boundary
