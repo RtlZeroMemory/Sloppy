@@ -64,7 +64,8 @@ const response = await client.patch("/items/1", { json: { enabled: true } });
 `redirects`, `network`, `tls`, `protocol`, `maxRequestBytes`,
 `maxHeaderBytes`, and `maxResponseBytes`. Body sources (`json`, `text`,
 `bytes`, `stream`) are mutually exclusive. `stream` accepts an async iterable
-of `Uint8Array` chunks.
+of `Uint8Array` chunks, but the client buffers those chunks up to
+`maxRequestBytes` before sending the request.
 
 ## Protocol Selection
 
@@ -103,8 +104,12 @@ stream. Static helpers without a client pool close their HTTP/2 connection
 after the request completes.
 
 Response bodies are consumed once with `response.text()`, `response.json()`,
-`response.bytes()`, or `response.stream(options?)`. `HEAD` responses always
-produce an empty body.
+`response.bytes()`, or `response.stream(options?)`. `response.stream(...)`
+chunks the already-buffered response body at the JavaScript boundary; it is not
+a live socket stream and does not expose a native Core stream handle. Native
+HTTP response descriptor streaming uses Core streams on the server side, but the
+HTTP client response iterator remains a bounded body helper. `HEAD` responses
+always produce an empty body.
 
 `response.headers` exposes `get(name) → string | null` and
 `entries() → [name, value][]`. Reading the body twice rejects with
@@ -165,8 +170,8 @@ eligible.
   mismatches use `SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH`. TLS paths and
   passphrases are not echoed in diagnostics. TLS options on `http://` requests
   are invalid rather than ignored.
-- Request bodies are bounded before dispatch. Use `maxRequestBytes` and
-  `maxResponseBytes` for per-call limits.
+- Request and response bodies are bounded before JS consumes them. Use
+  `maxRequestBytes` and `maxResponseBytes` for per-call limits.
 - Cross-origin redirects strip sensitive headers by default and can be denied
   when strict redirect policy is configured.
 

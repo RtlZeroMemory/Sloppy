@@ -492,10 +492,33 @@ static SlStatus sl_http2_response_body(SlArena* arena, const SlHttpResponse* res
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
-        status = sl_byte_builder_append_bytes(&builder, response->stream_chunks[index].bytes);
+    {
+        SlHttpResponseStreamReadable adapter = {0};
+        SlReadableStream readable = {0};
+        SlStreamReadResult read = {0};
+        SlStreamOptions options = sl_stream_default_options();
+
+        options.max_chunk_bytes =
+            max_body_bytes == 0U ? SL_STREAM_DEFAULT_MAX_CHUNK_BYTES : max_body_bytes;
+        options.max_buffered_bytes = max_body_bytes;
+        options.max_chunks = response->stream_chunk_count == 0U ? 1U : response->stream_chunk_count;
+        status = sl_http_response_stream_readable_init(&adapter, response, &options, &readable);
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        for (;;) {
+            SlStreamStatus stream_status = sl_readable_stream_read(&readable, &read);
+
+            if (stream_status == SL_STREAM_STATUS_EOF) {
+                break;
+            }
+            if (stream_status != SL_STREAM_STATUS_OK) {
+                return sl_stream_status_to_status(stream_status);
+            }
+            status = sl_byte_builder_append_bytes(&builder, read.chunk.bytes);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
     }
     *out_body = sl_byte_builder_view(&builder);

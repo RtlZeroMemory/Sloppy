@@ -88,13 +88,19 @@ return Results.stream(async (writer) => {
 }, { contentType: "text/plain; charset=utf-8" });
 ```
 
-The current runtime collects chunks before serializing the response. It is a
-streaming response API shape, not yet socket backpressure or incremental file
-send.
+The JavaScript callback writes into a bounded descriptor before the handler
+returns. The native response writer validates that descriptor, computes
+`Content-Length` for bounded serialization, and preserves that length for
+`HEAD` responses. The HTTP/1.1 transport lowers the descriptor into a Core
+readable stream and emits bounded chunked frames with pending-write and response
+caps.
+
+The public JS surface is still a descriptor builder, not live handler push,
+incremental file send, WHATWG Streams, or Node streams.
 
 `Realtime.sse(...)` uses this bounded stream descriptor path and sets
-`text/event-stream` headers for SSE frames. It does not yet add socket
-backpressure or live incremental flush guarantees beyond `Results.stream`.
+`text/event-stream` headers for SSE frames. It does not add live incremental
+flush guarantees beyond `Results.stream`.
 
 ## No-content
 

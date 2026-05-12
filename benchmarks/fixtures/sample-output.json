@@ -16,7 +16,12 @@
       "iterations": 10,
       "elapsedNs": 0,
       "nsPerOp": 0.0,
+      "bytesProcessed": 0,
+      "chunksProcessed": 0,
+      "bytesPerSecond": 0.0,
+      "chunksPerSecond": 0.0,
       "checksum": 0,
+      "backpressureCount": 0,
       "note": "route pattern is parsed before timing"
     }
   ]

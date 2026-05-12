@@ -119,7 +119,12 @@ for await (const chunk of Compression.gunzipStream(input, options?)) { ... }
 
 `input` for the streaming variants is an `Iterable<Uint8Array>` or
 `AsyncIterable<Uint8Array>`. Stream options accept `signal`, `deadline`, and
-`maxInputBytes` / `maxOutputBytes` size guards.
+`maxInputBytes` / `maxOutputBytes` size guards. The current implementation
+buffers all input chunks up to `maxInputBytes`, invokes the whole-buffer gzip
+or gunzip bridge, and yields one output chunk. Multi-chunk gzip and gunzip
+inputs are covered, including output limits and cancellation/deadline paths, but
+this remains a bounded compatibility wrapper. It is not a native Core zlib
+stream adapter and does not provide incremental compression backpressure yet.
 
 Errors:
 
@@ -189,6 +194,7 @@ In-repo references:
 - No Node `Buffer`. Bytes are `Uint8Array`.
 - No deflate, brotli, or zstd today — only gzip.
 - No streaming Base64/hex. Encoders and decoders operate on whole values.
+- Compression stream helpers are bounded whole-buffer adapters today.
 - No `TextEncoder`/`TextDecoder` global; use `Text.utf8`.
 - Decoders return fresh `Uint8Array` instances. Inputs are never retained.
 

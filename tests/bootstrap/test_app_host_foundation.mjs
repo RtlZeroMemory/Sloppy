@@ -1242,8 +1242,15 @@ async function flushMicrotasks(count = 6) {
     const queueLimited = await Realtime.sse(async (ctx, stream) => {
         stream.send("a");
         stream.send("b");
-    }, { maxQueuedEvents: 1 })({});
+    }, { maxQueuedEvents: 2 })({});
     assert.equal(decodeChunks(queueLimited.chunks), "data: a\n\ndata: b\n\n");
+    await assertRejectsMessage(
+        () => Realtime.sse(async (ctx, stream) => {
+            stream.send("a");
+            stream.heartbeat();
+        }, { maxQueuedEvents: 1 })({}),
+        /bounded write queue/,
+    );
 }
 
 {

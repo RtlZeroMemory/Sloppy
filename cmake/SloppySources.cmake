@@ -27,6 +27,7 @@ set(
     src/core/async_backend.c
     src/core/provider_executor.c
     src/core/worker_pool.c
+    src/core/stream.c
     src/core/http.c
     src/core/http2_dispatch.c
     src/core/http2_frame.c
@@ -161,6 +162,7 @@ set(
     tests/unit/core/test_async_backend.c
     tests/unit/core/test_provider_executor.c
     tests/unit/core/test_worker_pool.c
+    tests/unit/core/test_stream.c
     tests/unit/core/test_http.c
     tests/unit/core/test_http2_dispatch.c
     tests/unit/core/test_http2_frame.c
@@ -195,12 +197,14 @@ set(
     tests/fuzz/fuzz_http_route_dispatch.c
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
+    tests/fuzz/fuzz_stream.c
     benchmarks/bench_main.c
     benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_logging.c
-    benchmarks/bench_memory.c)
+    benchmarks/bench_memory.c
+    benchmarks/bench_stream.c)
 
 if(CMAKE_CXX_COMPILER)
     list(

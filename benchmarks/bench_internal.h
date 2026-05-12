@@ -21,7 +21,12 @@ typedef struct SlBenchResult
     uint64_t warmup_iterations;
     uint64_t elapsed_ns;
     double ns_per_op;
+    uint64_t bytes_processed;
+    uint64_t chunks_processed;
+    double bytes_per_second;
+    double chunks_per_second;
     uint64_t checksum;
+    uint64_t backpressure_count;
     const char* note;
 } SlBenchResult;
 
@@ -38,12 +43,16 @@ typedef struct SlBenchDefinition
     SlBenchRunFn run;
     const char* note;
     bool requires_v8;
+    uint64_t bytes_per_iteration;
+    uint64_t chunks_per_iteration;
+    uint64_t backpressure_per_iteration;
 } SlBenchDefinition;
 
 const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_logging_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_memory_definitions(size_t* out_count);
+const SlBenchDefinition* sl_bench_stream_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_v8_bridge_definitions(size_t* out_count);
 
 #endif

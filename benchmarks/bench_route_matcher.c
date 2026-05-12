@@ -180,20 +180,24 @@ static SlStatus bench_http_request_head_parse(const SlBenchContext* context, uin
 
 static const SlBenchDefinition route_definitions[] = {
     {"route.match.static", "route", "match a pre-parsed static route", 10000U, 1000000U,
-     bench_route_match_static, "route pattern is parsed before timing", false},
+     bench_route_match_static, "route pattern is parsed before timing", false, 0U, 0U, 0U},
     {"route.match.param", "route", "match a pre-parsed string parameter route", 10000U, 1000000U,
-     bench_route_match_param, "route pattern is parsed before timing", false},
+     bench_route_match_param, "route pattern is parsed before timing", false, 0U, 0U, 0U},
     {"route.match.int_param", "route", "match a pre-parsed integer parameter route", 10000U,
-     1000000U, bench_route_match_int_param, "route pattern is parsed before timing", false},
+     1000000U, bench_route_match_int_param, "route pattern is parsed before timing", false, 0U, 0U,
+     0U},
     {"route.match.multi_param", "route", "match a pre-parsed multi-parameter route", 10000U,
-     1000000U, bench_route_match_multi_param, "route pattern is parsed before timing", false},
+     1000000U, bench_route_match_multi_param, "route pattern is parsed before timing", false, 0U,
+     0U, 0U},
     {"route.match.no_match", "route", "fail a pre-parsed route match", 10000U, 1000000U,
-     bench_route_match_no_match, "no-match path should not allocate match params", false},
+     bench_route_match_no_match, "no-match path should not allocate match params", false, 0U, 0U,
+     0U},
     {"route.parse.multi_param", "route", "parse a route pattern each iteration", 1000U, 100000U,
-     bench_route_parse_multi_param, "measures parser cost separately from match cost", false},
+     bench_route_parse_multi_param, "measures parser cost separately from match cost", false, 0U,
+     0U, 0U},
     {"http.request_head.parse", "http", "parse a complete in-memory HTTP request head", 1000U,
      100000U, bench_http_request_head_parse,
-     "microbenchmark only; not an HTTP server throughput benchmark", false},
+     "microbenchmark only; not an HTTP server throughput benchmark", false, 0U, 0U, 0U},
 };
 
 const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count)

@@ -8,6 +8,7 @@
 #include "sloppy/http.h"
 #include "sloppy/http_context.h"
 #include "sloppy/status.h"
+#include "sloppy/stream.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -181,6 +182,12 @@ typedef struct SlHttpBodyReader
     size_t expected_body_bytes;
 } SlHttpBodyReader;
 
+typedef struct SlHttpRequestBodyReadable
+{
+    SlStreamChunk chunk;
+    SlMemoryReadableStream adapter;
+} SlHttpRequestBodyReadable;
+
 /*
  * Initializes caller-owned backend state. The backend owns no platform resources itself and
  * may be started after successful initialization.
@@ -228,6 +235,15 @@ SlStatus sl_http_request_body_reader_append(SlHttpBodyReader* reader, SlBytes ch
                                             SlDiag* out_diag);
 SlStatus sl_http_request_body_reader_finish(SlHttpBodyReader* reader, SlDiag* out_diag);
 SlStatus sl_http_request_body_reader_close(SlHttpBodyReader* reader, SlDiag* out_diag);
+/*
+ * Adapts the current bounded request body to the Core readable stream model. This does not
+ * change the public JavaScript request-body API; it gives native dispatch and future codecs
+ * one stream vocabulary for already-buffered request bodies.
+ */
+SlStatus sl_http_request_body_readable_init(SlHttpRequestBodyReadable* adapter,
+                                            SlHttpRequestLifecycle* request,
+                                            const SlStreamOptions* options,
+                                            SlReadableStream* out_stream);
 SlStatus sl_http_request_begin_dispatch(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 SlStatus sl_http_request_begin_write(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 /* Completes/fails/times out/closes the lifecycle and releases admission exactly once. */

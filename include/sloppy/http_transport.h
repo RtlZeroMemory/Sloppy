@@ -185,7 +185,9 @@ struct SlHttpTransportConnection
     bool http2_dispatcher_started;
     SlHttpResponse active_response;
     SlHttp2ServerDispatcher* http2_dispatcher;
-    size_t stream_chunk_index;
+    SlHttpResponseStreamReadable stream_readable_adapter;
+    SlReadableStream stream_readable;
+    size_t stream_chunks_written;
     bool stream_final_written;
     SlDiag last_diag;
     bool slot_claimed;

@@ -82,5 +82,7 @@ metadata yet.
 
 ## Limits
 
-- Descriptor API only; not a streaming writer API.
+- `Results.stream` is a bounded descriptor API. It uses native Core stream
+  serialization after the handler returns, but it is not a live JavaScript
+  streaming writer API.
 - No response trailers or chunk-control API.

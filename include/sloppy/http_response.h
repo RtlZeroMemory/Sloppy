@@ -4,6 +4,7 @@
 #include "sloppy/bytes.h"
 #include "sloppy/http.h"
 #include "sloppy/status.h"
+#include "sloppy/stream.h"
 #include "sloppy/string.h"
 
 #include <stdbool.h>
@@ -42,11 +43,6 @@ typedef struct SlHttpResponseWriteOptions
     bool suppress_body;
 } SlHttpResponseWriteOptions;
 
-typedef struct SlHttpResponseStreamChunk
-{
-    SlBytes bytes;
-} SlHttpResponseStreamChunk;
-
 /*
  * Native HTTP response descriptor for the bounded development response writer.
  *
@@ -63,9 +59,17 @@ typedef struct SlHttpResponse
     const SlHttpHeader* headers;
     size_t header_count;
     SlBytes body;
-    const SlHttpResponseStreamChunk* stream_chunks;
+    const SlStreamChunk* stream_chunks;
     size_t stream_chunk_count;
 } SlHttpResponse;
+
+typedef struct SlHttpResponseStreamReadable
+{
+    const SlStreamChunk* chunks;
+    size_t chunk_count;
+    size_t chunk_index;
+    size_t chunk_offset;
+} SlHttpResponseStreamReadable;
 
 SlHttpResponse sl_http_response_text(uint16_t status, SlStr body);
 SlHttpResponse sl_http_response_json(uint16_t status, SlBytes body);
@@ -77,7 +81,11 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
  * and every non-empty chunk byte view in the dispatch arena passed to the callback.
  */
 SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
-                                       const SlHttpResponseStreamChunk* chunks, size_t chunk_count);
+                                       const SlStreamChunk* chunks, size_t chunk_count);
+SlStatus sl_http_response_stream_readable_init(SlHttpResponseStreamReadable* adapter,
+                                               const SlHttpResponse* response,
+                                               const SlStreamOptions* options,
+                                               SlReadableStream* out_stream);
 
 /*
  * Writes deterministic HTTP/1.1 response bytes into `buffer`.
@@ -86,7 +94,9 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
  * 204, 304, 400, 401, 404, 405, 408, 413, 415, 417, 500, 501, and 503. Unknown statuses, invalid
  * custom header names, managed custom headers, and CR/LF in Content-Type or header values are
- * rejected. Status 204 and 304 always write no Content-Type, no Content-Length, and no body.
+ * rejected. Bounded stream descriptors are validated and serialized with computed
+ * Content-Length. Status 204 and 304 always write no Content-Type, no Content-Length, and no body;
+ * non-empty stream bodies for those statuses are rejected.
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);

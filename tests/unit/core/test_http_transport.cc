@@ -163,7 +163,7 @@ typedef struct SequenceDispatchHook
 {
     size_t count;
     const char* bodies[16];
-    SlHttpResponseStreamChunk stream_chunks[4];
+    SlStreamChunk stream_chunks[4];
     SlHttpResponse stream_response;
     bool use_stream_response;
     bool mismatch;
@@ -203,14 +203,14 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
     if (hook->response.kind == SL_HTTP_RESPONSE_STREAM && hook->response.stream_chunk_count != 0U) {
         void* chunk_storage = nullptr;
         SlHttpResponse response = hook->response;
-        SlHttpResponseStreamChunk* chunks = nullptr;
-        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlStreamChunk) * response.stream_chunk_count;
         SlStatus status =
-            sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk), &chunk_storage);
+            sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk), &chunk_storage);
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+        chunks = static_cast<SlStreamChunk*>(chunk_storage);
         for (size_t index = 0U; index < response.stream_chunk_count; index += 1U) {
             SlOwnedBytes copy = {};
             status = sl_bytes_copy_to_arena(arena, response.stream_chunks[index].bytes, &copy);
@@ -265,18 +265,17 @@ static SlStatus sequence_dispatch_hook(SlHttpTransportConnection* connection, Sl
 
     if (hook->use_stream_response) {
         SlHttpResponse response = hook->stream_response;
-        SlHttpResponseStreamChunk* chunks = nullptr;
-        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlStreamChunk) * response.stream_chunk_count;
         void* chunk_storage = nullptr;
         SlStatus status = sl_status_ok();
 
         if (response.stream_chunk_count != 0U) {
-            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk),
-                                    &chunk_storage);
+            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk), &chunk_storage);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
-            chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+            chunks = static_cast<SlStreamChunk*>(chunk_storage);
             for (size_t chunk_index = 0U; chunk_index < response.stream_chunk_count;
                  chunk_index += 1U)
             {
@@ -305,7 +304,7 @@ static SlStatus stack_stream_dispatch_hook(SlHttpTransportConnection* connection
                                            void* user)
 {
     unsigned char chunk_storage[5] = {'s', 't', 'a', 'c', 'k'};
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     DispatchHook* hook = static_cast<DispatchHook*>(user);
 
     (void)arena;
@@ -2891,6 +2890,34 @@ static int test_head_response_suppresses_body_and_preserves_content_length(void)
     return 0;
 }
 
+static int test_head_stream_response_uses_core_stream_metadata(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 5\r\n\r\n";
+    SlStreamChunk chunks[2] = {};
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    chunks[0].bytes = bytes_from_cstr("he");
+    chunks[1].bytes = bytes_from_cstr("llo");
+    dispatch.response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U);
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "HEAD /stream HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_HEAD || expect_bytes_equal(response, expected) != 0)
+    {
+        return 92;
+    }
+
+    return 0;
+}
+
 static int test_method_not_allowed_response_can_advertise_head(void)
 {
     static const char expected[] =
@@ -2927,7 +2954,7 @@ static int test_streaming_response_writes_chunked_frames(void)
     static const char expected[] =
         "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n"
         "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
     DispatchHook dispatch = {};
@@ -2955,7 +2982,7 @@ static int run_streaming_response_header_policy_case(SlStr content_type, SlHttpH
                                                      SlStatusCode expected_status,
                                                      SlDiagCode expected_diag)
 {
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
     DispatchHook dispatch = {};
@@ -3102,7 +3129,7 @@ static int test_streaming_response_multiple_empty_and_keep_alive(void)
             (sizeof(first_expected) - 1U) + (sizeof(second_expected) - 1U)) != 0 ||
         dispatch.count != 2U || server.connections[0].core.request_count != 2U ||
         server.connections[0].streaming_response ||
-        server.connections[0].stream_chunk_index != 0U ||
+        server.connections[0].stream_chunks_written != 0U ||
         server.connections[0].response_length != 0U)
     {
         stop_one_connection(&server, &client);
@@ -3169,7 +3196,7 @@ static int test_streaming_response_backpressure_rejection(void)
     SlHttpTransportConfig config = {};
     ClientConnect client = {};
     DispatchHook dispatch = {};
-    SlHttpResponseStreamChunk chunks[1] = {};
+    SlStreamChunk chunks[1] = {};
     SlDiag diag = {};
 
     chunks[0].bytes = bytes_from_cstr(
@@ -4144,7 +4171,7 @@ static int test_bounded_keep_alive_chunked_streaming_stress_smoke(void)
     for (size_t index = 0U; index < 6U; index += 1U) {
         SlHttpTransportServer stream_server = {};
         SlBytes response = {};
-        SlHttpResponseStreamChunk chunks[1] = {};
+        SlStreamChunk chunks[1] = {};
         DispatchHook stream_dispatch = {};
         SlHttpTransportConfig stream_config = small_config(nullptr);
 
@@ -4481,6 +4508,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_head_response_suppresses_body_and_preserves_content_length();
+    if (result != 0) {
+        return result;
+    }
+    result = test_head_stream_response_uses_core_stream_metadata();
     if (result != 0) {
         return result;
     }

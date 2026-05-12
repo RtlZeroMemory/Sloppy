@@ -1263,7 +1263,9 @@ static void sl_http_transport_reset_request_state(SlHttpTransportConnection* con
     connection->keep_alive_after_write = false;
     connection->streaming_response = false;
     connection->active_response = (SlHttpResponse){0};
-    connection->stream_chunk_index = 0U;
+    connection->stream_readable_adapter = (SlHttpResponseStreamReadable){0};
+    connection->stream_readable = (SlReadableStream){0};
+    connection->stream_chunks_written = 0U;
     connection->stream_final_written = false;
 }
 
@@ -1819,6 +1821,8 @@ static SlStatus sl_http_transport_write_stream_next(SlHttpTransportConnection* c
 {
     SlByteBuilder builder = {0};
     SlBytes bytes = {0};
+    SlStreamReadResult read = {0};
+    SlStreamStatus stream_status;
     SlStatus status;
 
     if (connection == NULL) {
@@ -1832,9 +1836,9 @@ static SlStatus sl_http_transport_write_stream_next(SlHttpTransportConnection* c
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (connection->stream_chunk_index < connection->active_response.stream_chunk_count) {
-        SlBytes chunk =
-            connection->active_response.stream_chunks[connection->stream_chunk_index].bytes;
+    stream_status = sl_readable_stream_read(&connection->stream_readable, &read);
+    if (stream_status == SL_STREAM_STATUS_OK) {
+        SlBytes chunk = read.chunk.bytes;
         SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
         if (server == NULL) {
             return sl_http_transport_connection_diag(
@@ -1859,11 +1863,22 @@ static SlStatus sl_http_transport_write_stream_next(SlHttpTransportConnection* c
         if (sl_status_is_ok(status)) {
             status = sl_http_transport_builder_append_cstr(&builder, "\r\n");
         }
-        connection->stream_chunk_index += 1U;
+        connection->stream_chunks_written += 1U;
     }
-    else {
+    else if (stream_status == SL_STREAM_STATUS_EOF) {
         status = sl_http_transport_builder_append_cstr(&builder, "0\r\n\r\n");
         connection->stream_final_written = true;
+    }
+    else {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            sl_status_code(sl_stream_status_to_status(stream_status)),
+            sl_http_transport_literal("HTTP streaming response read failed",
+                                      sizeof("HTTP streaming response read failed") - 1U),
+            sl_http_transport_literal("stream failures are mapped before writing body bytes",
+                                      sizeof("stream failures are mapped before writing body "
+                                             "bytes") -
+                                          1U));
     }
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_connection_diag(
@@ -1893,7 +1908,28 @@ static SlStatus sl_http_transport_write_stream_next(SlHttpTransportConnection* c
                                               1U));
         }
     }
-    connection->response_length += bytes.length;
+    {
+        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+        size_t next_response_length = 0U;
+        status =
+            sl_checked_add_size(connection->response_length, bytes.length, &next_response_length);
+        if (server == NULL || !sl_status_is_ok(status) ||
+            next_response_length > server->config.max_response_bytes)
+        {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE,
+                SL_STATUS_CAPACITY_EXCEEDED,
+                sl_http_transport_literal("HTTP streaming response exceeded response cap",
+                                          sizeof("HTTP streaming response exceeded response "
+                                                 "cap") -
+                                              1U),
+                sl_http_transport_literal("stream frames must fit the configured response cap",
+                                          sizeof("stream frames must fit the configured response "
+                                                 "cap") -
+                                              1U));
+        }
+        connection->response_length = next_response_length;
+    }
     return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
 }
 
@@ -1925,9 +1961,14 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
                                                        const SlHttpResponse* response,
                                                        SlHttpResponse* out_response)
 {
-    SlSlice chunk_storage = {0};
-    SlHttpResponseStreamChunk* chunks = NULL;
+    void* chunk_storage = NULL;
+    SlStreamChunk* chunks = NULL;
+    SlHttpResponseStreamReadable readable_adapter = {0};
+    SlReadableStream readable = {0};
+    SlStreamReadResult read = {0};
+    SlStreamOptions options = sl_stream_default_options();
     SlStatus status;
+    size_t copied_count = 0U;
 
     if (connection == NULL || response == NULL || out_response == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1944,8 +1985,8 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
 
     {
         size_t chunk_bytes = 0U;
-        status = sl_checked_array_size(response->stream_chunk_count,
-                                       sizeof(SlHttpResponseStreamChunk), &chunk_bytes);
+        status = sl_checked_array_size(response->stream_chunk_count, sizeof(SlStreamChunk),
+                                       &chunk_bytes);
         if (!sl_status_is_ok(status)) {
             *out_response = (SlHttpResponse){0};
             return status;
@@ -1956,33 +1997,58 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
             *out_response = (SlHttpResponse){0};
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        status = sl_arena_array_copy(
-            &connection->request_arena, response->stream_chunks, response->stream_chunk_count,
-            sizeof(SlHttpResponseStreamChunk), _Alignof(SlHttpResponseStreamChunk), &chunk_storage);
+        status = sl_arena_alloc(&connection->request_arena, chunk_bytes, _Alignof(SlStreamChunk),
+                                &chunk_storage);
     }
     if (!sl_status_is_ok(status)) {
         *out_response = (SlHttpResponse){0};
         return status;
     }
-    chunks = (SlHttpResponseStreamChunk*)chunk_storage.ptr;
-    for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
+    chunks = (SlStreamChunk*)chunk_storage;
+    options.max_chunk_bytes = (size_t)-1;
+    options.max_buffered_bytes =
+        sl_http_transport_connection_server(connection) == NULL
+            ? SL_STREAM_DEFAULT_MAX_BUFFERED_BYTES
+            : sl_http_transport_connection_server(connection)->config.max_response_bytes;
+    options.max_chunks = response->stream_chunk_count;
+    status =
+        sl_http_response_stream_readable_init(&readable_adapter, response, &options, &readable);
+    if (!sl_status_is_ok(status)) {
+        *out_response = (SlHttpResponse){0};
+        return status;
+    }
+
+    for (;;) {
+        SlStreamStatus stream_status = sl_readable_stream_read(&readable, &read);
         SlOwnedBytes copy = {0};
-        if (!sl_http_transport_arena_contains(&connection->request_arena,
-                                              response->stream_chunks[index].bytes.ptr,
-                                              response->stream_chunks[index].bytes.length))
+
+        if (stream_status == SL_STREAM_STATUS_EOF) {
+            break;
+        }
+        if (stream_status != SL_STREAM_STATUS_OK) {
+            *out_response = (SlHttpResponse){0};
+            return sl_stream_status_to_status(stream_status);
+        }
+        if (!sl_http_transport_arena_contains(&connection->request_arena, read.chunk.bytes.ptr,
+                                              read.chunk.bytes.length))
         {
             *out_response = (SlHttpResponse){0};
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        status = sl_bytes_copy_to_arena(&connection->request_arena,
-                                        response->stream_chunks[index].bytes, &copy);
+        if (copied_count >= response->stream_chunk_count) {
+            *out_response = (SlHttpResponse){0};
+            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        }
+        status = sl_bytes_copy_to_arena(&connection->request_arena, read.chunk.bytes, &copy);
         if (!sl_status_is_ok(status)) {
             *out_response = (SlHttpResponse){0};
             return status;
         }
-        chunks[index].bytes = sl_owned_bytes_as_view(copy);
+        chunks[copied_count].bytes = sl_owned_bytes_as_view(copy);
+        copied_count += 1U;
     }
     out_response->stream_chunks = chunks;
+    out_response->stream_chunk_count = copied_count;
     return sl_status_ok();
 }
 
@@ -1992,6 +2058,7 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
 {
     SlByteBuilder builder = {0};
     SlHttpResponse response_copy = {0};
+    SlStreamOptions stream_options = sl_stream_default_options();
     const char* reason = NULL;
     SlStatus status;
 
@@ -2103,8 +2170,32 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
                 sizeof("stream chunk metadata and payloads must fit the request arena") - 1U));
     }
     connection->active_response = response_copy;
+    stream_options.max_chunk_bytes =
+        sl_http_transport_connection_server(connection) == NULL
+            ? SL_STREAM_DEFAULT_MAX_CHUNK_BYTES
+            : sl_http_transport_connection_server(connection)->config.max_pending_write_bytes;
+    stream_options.max_buffered_bytes =
+        sl_http_transport_connection_server(connection) == NULL
+            ? SL_STREAM_DEFAULT_MAX_BUFFERED_BYTES
+            : sl_http_transport_connection_server(connection)->config.max_response_bytes;
+    stream_options.max_chunks =
+        response_copy.stream_chunk_count == 0U ? 1U : response_copy.stream_chunk_count;
+    status = sl_http_response_stream_readable_init(&connection->stream_readable_adapter,
+                                                   &connection->active_response, &stream_options,
+                                                   &connection->stream_readable);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            sl_status_code(status),
+            sl_http_transport_literal("HTTP streaming response readable init failed",
+                                      sizeof("HTTP streaming response readable init failed") - 1U),
+            sl_http_transport_literal("stream descriptors must be valid before transport write",
+                                      sizeof("stream descriptors must be valid before transport "
+                                             "write") -
+                                          1U));
+    }
     connection->streaming_response = true;
-    connection->stream_chunk_index = 0U;
+    connection->stream_chunks_written = 0U;
     connection->stream_final_written = false;
     {
         SlBytes bytes = sl_byte_builder_view(&builder);
@@ -2124,6 +2215,20 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
                                               1U));
         }
         connection->response_length = bytes.length;
+        if (bytes.length > server->config.max_response_bytes) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE,
+                SL_STATUS_CAPACITY_EXCEEDED,
+                sl_http_transport_literal("HTTP streaming response exceeded response cap",
+                                          sizeof("HTTP streaming response exceeded response "
+                                                 "cap") -
+                                              1U),
+                sl_http_transport_literal("stream response head must fit the configured response "
+                                          "cap",
+                                          sizeof("stream response head must fit the configured "
+                                                 "response cap") -
+                                              1U));
+        }
         return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
     }
 }
@@ -2262,7 +2367,6 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
     SlBytes bytes = {0};
     SlHttpResponseWriteOptions write_options = {0};
     bool suppress_body = false;
-    SlHttpResponse head_stream_response = {0};
     const SlHttpResponse* fixed_response = response;
 
     if (connection == NULL || response == NULL) {
@@ -2294,15 +2398,7 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
     suppress_body = connection->request.head.method == SL_HTTP_METHOD_HEAD;
     write_options.suppress_body = suppress_body;
     if (response->kind == SL_HTTP_RESPONSE_STREAM) {
-        if (suppress_body) {
-            head_stream_response = *response;
-            head_stream_response.kind = SL_HTTP_RESPONSE_EMPTY;
-            head_stream_response.body = sl_bytes_empty();
-            head_stream_response.stream_chunks = NULL;
-            head_stream_response.stream_chunk_count = 0U;
-            fixed_response = &head_stream_response;
-        }
-        else {
+        if (!suppress_body && response->status != 204U && response->status != 304U) {
             status = sl_http_transport_write_stream_head(connection, response, out_diag);
             if (!sl_status_is_ok(status)) {
                 return sl_http_transport_connection_diag(

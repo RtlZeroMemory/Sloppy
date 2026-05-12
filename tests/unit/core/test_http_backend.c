@@ -15,6 +15,11 @@ static int expect_status(SlStatus status, SlStatusCode code)
     return expect_true(sl_status_code(status) == code);
 }
 
+static int expect_stream_status(SlStreamStatus status, SlStreamStatus expected)
+{
+    return expect_true(status == expected);
+}
+
 static SlBytes bytes_from_cstr(const char* text)
 {
     SlStr str = sl_str_from_cstr(text);
@@ -24,6 +29,16 @@ static SlBytes bytes_from_cstr(const char* text)
 static int expect_bytes_equal(SlBytes actual, const char* expected)
 {
     return expect_true(sl_bytes_equal(actual, bytes_from_cstr(expected)));
+}
+
+static int read_stream_expected(SlReadableStream* stream, const char* expected)
+{
+    SlStreamReadResult result = {0};
+
+    if (expect_stream_status(sl_readable_stream_read(stream, &result), SL_STREAM_STATUS_OK) != 0) {
+        return 1;
+    }
+    return expect_bytes_equal(result.chunk.bytes, expected);
 }
 
 static int init_started_backend(SlHttpBackend* backend, const SlHttpBackendOptions* options)
@@ -677,6 +692,65 @@ static int test_body_reader_success_owns_bounded_json_body(void)
         expect_bytes_equal(request.head.body, "{\"ok\":true}") != 0)
     {
         return 87;
+    }
+
+    return 0;
+}
+
+static int test_request_body_readable_adapter_reads_bounded_body(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpBodyReader reader = {0};
+    SlHttpRequestBodyReadable body_adapter = {0};
+    SlReadableStream readable = {0};
+    SlStreamReadResult read = {0};
+    SlStreamOptions options = sl_stream_default_options();
+
+    options.max_chunk_bytes = 2U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, NULL) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(
+                &request, bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
+                                                        5U, &reader, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_append(&reader, bytes_from_cstr("hello"), NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_finish(&reader, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_request_body_readable_init(&body_adapter, &request, &options, &readable),
+            SL_STATUS_OK) != 0)
+    {
+        return 90;
+    }
+
+    if (read_stream_expected(&readable, "he") != 0 || read_stream_expected(&readable, "ll") != 0 ||
+        read_stream_expected(&readable, "o") != 0 ||
+        expect_stream_status(sl_readable_stream_read(&readable, &read), SL_STREAM_STATUS_EOF) != 0)
+    {
+        return 91;
+    }
+
+    if (expect_status(sl_http_request_body_readable_init(&body_adapter, &request, NULL, &readable),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_cancellation_token_cancel(&request.cancellation,
+                                                   SL_CANCELLATION_REASON_CANCELLED,
+                                                   sl_str_from_cstr("client closed")),
+                      SL_STATUS_OK) != 0 ||
+        expect_stream_status(sl_readable_stream_read(&readable, &read),
+                             SL_STREAM_STATUS_CANCELLED) != 0)
+    {
+        return 92;
     }
 
     return 0;
@@ -1420,6 +1494,7 @@ int main(void)
         {test_request_lifecycle_rejects_skipped_and_repeated_phases},
         {test_body_reader_success_empty_and_dispatch_transition},
         {test_body_reader_success_owns_bounded_json_body},
+        {test_request_body_readable_adapter_reads_bounded_body},
         {test_body_reader_missing_content_type_fails_closed_with_rollback},
         {test_body_reader_rejects_limits_and_unsupported_media},
         {test_body_reader_accepts_octet_stream_media_type},

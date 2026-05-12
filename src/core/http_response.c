@@ -3,8 +3,8 @@
  *
  * Implements the bounded native response descriptor writer for development HTTP responses.
  * It writes deterministic HTTP/1.1 status, managed Connection policy, Content-Type when
- * present, bounded custom headers, Content-Length, and body bytes. It is not a streaming
- * writer, cookie layer, compression layer, or production response pipeline.
+ * present, bounded custom headers, Content-Length, and body bytes. Stream responses are
+ * bounded descriptors at this layer; live socket push remains transport-owned.
  *
  * Safety invariants:
  * - output is bounded by the caller-provided buffer;
@@ -19,6 +19,7 @@
 #include "sloppy/http_response.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
 
 #include <stdbool.h>
 
@@ -26,6 +27,9 @@ static SlBytes sl_http_response_body_from_str(SlStr text)
 {
     return sl_bytes_from_parts((const unsigned char*)text.ptr, text.length);
 }
+
+static SlStatus sl_http_response_stream_validate_and_measure(const SlHttpResponse* response,
+                                                             size_t* out_length);
 
 SlHttpResponse sl_http_response_text(uint16_t status, SlStr body)
 {
@@ -82,7 +86,7 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body)
 }
 
 SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
-                                       const SlHttpResponseStreamChunk* chunks, size_t chunk_count)
+                                       const SlStreamChunk* chunks, size_t chunk_count)
 {
     SlHttpResponse response = {0};
 
@@ -92,6 +96,72 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
     response.stream_chunks = chunk_count == 0U ? NULL : chunks;
     response.stream_chunk_count = chunks == NULL ? 0U : chunk_count;
     return response;
+}
+
+static SlStreamStatus sl_http_response_stream_read(SlReadableStream* stream,
+                                                   SlStreamReadResult* out)
+{
+    SlHttpResponseStreamReadable* adapter = (SlHttpResponseStreamReadable*)stream->user;
+
+    if (adapter == NULL) {
+        return SL_STREAM_STATUS_INVALID_ARGUMENT;
+    }
+
+    while (adapter->chunk_index < adapter->chunk_count) {
+        const SlStreamChunk* source = &adapter->chunks[adapter->chunk_index];
+        size_t remaining = 0U;
+        size_t length = 0U;
+
+        if (source->bytes.length != 0U && source->bytes.ptr == NULL) {
+            return SL_STREAM_STATUS_INVALID_STATE;
+        }
+        if (adapter->chunk_offset >= source->bytes.length) {
+            adapter->chunk_index += 1U;
+            adapter->chunk_offset = 0U;
+            continue;
+        }
+        remaining = source->bytes.length - adapter->chunk_offset;
+        length = remaining > stream->max_chunk_bytes ? stream->max_chunk_bytes : remaining;
+        out->chunk.bytes = sl_bytes_from_parts(source->bytes.ptr + adapter->chunk_offset, length);
+        adapter->chunk_offset += length;
+        if (adapter->chunk_offset >= source->bytes.length) {
+            adapter->chunk_index += 1U;
+            adapter->chunk_offset = 0U;
+        }
+        return SL_STREAM_STATUS_OK;
+    }
+
+    return SL_STREAM_STATUS_EOF;
+}
+
+static const SlReadableStreamVTable sl_http_response_stream_readable_vtable = {
+    sl_http_response_stream_read, NULL, NULL, NULL, "http-response-stream"};
+
+SlStatus sl_http_response_stream_readable_init(SlHttpResponseStreamReadable* adapter,
+                                               const SlHttpResponse* response,
+                                               const SlStreamOptions* options,
+                                               SlReadableStream* out_stream)
+{
+    size_t stream_body_length = 0U;
+    SlStatus status;
+
+    if (adapter == NULL || response == NULL || out_stream == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (response->kind != SL_HTTP_RESPONSE_STREAM) {
+        return sl_status_from_code(SL_STATUS_WRONG_RESOURCE_KIND);
+    }
+    status = sl_http_response_stream_validate_and_measure(response, &stream_body_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    (void)stream_body_length;
+
+    *adapter = (SlHttpResponseStreamReadable){0};
+    adapter->chunks = response->stream_chunks;
+    adapter->chunk_count = response->stream_chunk_count;
+    return sl_readable_stream_init(out_stream, &sl_http_response_stream_readable_vtable, adapter,
+                                   options);
 }
 
 static const char* sl_http_response_reason(uint16_t status)
@@ -137,6 +207,38 @@ static const char* sl_http_response_reason(uint16_t status)
 static bool sl_http_response_status_has_no_body(uint16_t status)
 {
     return status == 204U || status == 304U;
+}
+
+static SlStatus sl_http_response_stream_validate_and_measure(const SlHttpResponse* response,
+                                                             size_t* out_length)
+{
+    size_t total = 0U;
+
+    if (response == NULL || out_length == NULL || response->kind != SL_HTTP_RESPONSE_STREAM) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (response->stream_chunks == NULL && response->stream_chunk_count != 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
+        SlBytes chunk = response->stream_chunks[index].bytes;
+        SlStatus status;
+
+        if (chunk.length != 0U && chunk.ptr == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (chunk.length != 0U && sl_http_response_status_has_no_body(response->status)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_checked_add_size(total, chunk.length, &total);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    *out_length = total;
+    return sl_status_ok();
 }
 
 static bool sl_http_response_content_type_valid(SlStr content_type)
@@ -359,6 +461,24 @@ static SlStatus sl_http_response_append_content_length(SlByteBuilder* builder, s
     return sl_http_response_append_cstr(builder, "\r\n");
 }
 
+static SlStatus sl_http_response_append_stream_body(SlByteBuilder* builder,
+                                                    const SlHttpResponse* response)
+{
+    for (size_t index = 0U; index < response->stream_chunk_count; index += 1U) {
+        SlBytes chunk = response->stream_chunks[index].bytes;
+        SlStatus status;
+
+        if (chunk.length == 0U) {
+            continue;
+        }
+        status = sl_byte_builder_append_bytes(builder, chunk);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_status_ok();
+}
+
 static bool sl_http_response_connection_policy_valid(SlHttpResponseConnectionPolicy policy)
 {
     return policy == SL_HTTP_RESPONSE_CONNECTION_CLOSE ||
@@ -409,7 +529,10 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     SlBytes wire_body = {0};
     SlByteBuilder builder = {0};
     bool has_content_type = false;
+    bool is_stream_response = false;
+    bool no_body_status = false;
     bool suppress_body = false;
+    size_t stream_body_length = 0U;
     SlHttpResponseConnectionPolicy connection_policy = SL_HTTP_RESPONSE_CONNECTION_CLOSE;
     SlStatus status;
 
@@ -437,15 +560,18 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
         suppress_body = options->suppress_body;
     }
 
-    if (response->kind == SL_HTTP_RESPONSE_STREAM) {
-        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    is_stream_response = response->kind == SL_HTTP_RESPONSE_STREAM;
+    no_body_status = sl_http_response_status_has_no_body(response->status);
+    if (is_stream_response) {
+        status = sl_http_response_stream_validate_and_measure(response, &stream_body_length);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
-    body =
-        sl_http_response_status_has_no_body(response->status) ? sl_bytes_empty() : response->body;
-    wire_body = suppress_body ? sl_bytes_empty() : body;
-    has_content_type = response->content_type.length != 0U &&
-                       !sl_http_response_status_has_no_body(response->status);
+    body = no_body_status ? sl_bytes_empty() : response->body;
+    wire_body = suppress_body || is_stream_response ? sl_bytes_empty() : body;
+    has_content_type = response->content_type.length != 0U && !no_body_status;
 
     status = sl_byte_builder_init_fixed(&builder, buffer, capacity);
     if (!sl_status_is_ok(status)) {
@@ -453,11 +579,17 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     }
 
     status = sl_http_response_append_head(&builder, response, reason, connection_policy,
-                                          has_content_type, body.length);
+                                          has_content_type,
+                                          is_stream_response ? stream_body_length : body.length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_byte_builder_append_bytes(&builder, wire_body);
+    if (is_stream_response && !suppress_body && !no_body_status) {
+        status = sl_http_response_append_stream_body(&builder, response);
+    }
+    else {
+        status = sl_byte_builder_append_bytes(&builder, wire_body);
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }

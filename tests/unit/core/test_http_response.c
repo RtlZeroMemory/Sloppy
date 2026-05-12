@@ -1,6 +1,7 @@
 #include "sloppy/http_response.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -41,6 +42,11 @@ static int expect_response_bytes(SlHttpResponse response, SlBytes expected)
     }
 
     return expect_true(sl_bytes_equal(bytes, expected));
+}
+
+static int expect_bytes_view_equal(SlBytes actual, SlBytes expected)
+{
+    return expect_true(sl_bytes_equal(actual, expected));
 }
 
 static int expect_response_with_options(SlHttpResponse response,
@@ -309,7 +315,7 @@ static int test_capacity_failure_returns_empty_output(void)
 
 static int test_stream_descriptor_normalizes_null_chunks(void)
 {
-    SlHttpResponseStreamChunk chunks[1] = {
+    SlStreamChunk chunks[1] = {
         {.bytes = {NULL, 0U}},
     };
     SlHttpResponse response =
@@ -323,6 +329,173 @@ static int test_stream_descriptor_normalizes_null_chunks(void)
 
     response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 0U);
     return expect_true(response.stream_chunks == NULL && response.stream_chunk_count == 0U);
+}
+
+static int test_stream_descriptor_readable_adapter_pumps_chunks(void)
+{
+    unsigned char buffer[16];
+    SlStreamChunk chunks[2] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"he", 2U)},
+                               {.bytes = sl_bytes_from_parts((const unsigned char*)"llo", 3U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U);
+    SlHttpResponseStreamReadable readable_adapter = {0};
+    SlMemoryWritableStream writable_adapter = {0};
+    SlReadableStream readable = {0};
+    SlWritableStream writable = {0};
+    SlStreamPump pump = {0};
+    SlStreamPumpResult result = {0};
+
+    if (expect_status(
+            sl_http_response_stream_readable_init(&readable_adapter, &response, NULL, &readable),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_memory_writable_stream_init(&writable_adapter, buffer, sizeof(buffer),
+                                                     NULL, &writable),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_stream_pump_init(&pump, &readable, &writable, NULL), SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (sl_stream_pump_run(&pump, 3U, &result) != SL_STREAM_STATUS_EOF ||
+        pump.bytes_transferred != 5U ||
+        expect_bytes_view_equal(sl_memory_writable_stream_view(&writable_adapter),
+                                sl_bytes_from_parts((const unsigned char*)"hello", 5U)) != 0)
+    {
+        return 2;
+    }
+
+    response = sl_http_response_text(200U, sl_str_from_cstr("not a stream"));
+    return expect_status(
+        sl_http_response_stream_readable_init(&readable_adapter, &response, NULL, &readable),
+        SL_STATUS_WRONG_RESOURCE_KIND);
+}
+
+static int test_stream_response_writes_multiple_chunks(void)
+{
+    SlStreamChunk chunks[2] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"he", 2U)},
+                               {.bytes = sl_bytes_from_parts((const unsigned char*)"llo", 3U)}};
+
+    return expect_response(
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U),
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: "
+        "text/plain\r\nContent-Length: 5\r\n\r\nhello");
+}
+
+static int test_stream_response_skips_empty_chunks(void)
+{
+    SlStreamChunk chunks[3] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"he", 2U)},
+                               {.bytes = sl_bytes_empty()},
+                               {.bytes = sl_bytes_from_parts((const unsigned char*)"llo", 3U)}};
+
+    return expect_response(
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 3U),
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: "
+        "text/plain\r\nContent-Length: 5\r\n\r\nhello");
+}
+
+static int test_stream_response_rejects_invalid_chunk(void)
+{
+    unsigned char buffer[256];
+    SlBytes bytes = sl_bytes_from_parts((const unsigned char*)"stale", sizeof("stale") - 1U);
+    SlStreamChunk chunks[1] = {{.bytes = {NULL, 1U}}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 1U);
+
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 1;
+    }
+    return expect_true(bytes.ptr == NULL && bytes.length == 0U);
+}
+
+static int test_stream_response_length_overflow_fails(void)
+{
+    unsigned char buffer[256];
+    SlBytes bytes = {0};
+    static const unsigned char one[] = {'x'};
+    SlStreamChunk chunks[2] = {{.bytes = sl_bytes_from_parts(one, SIZE_MAX)},
+                               {.bytes = sl_bytes_from_parts(one, 1U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U);
+
+    return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                         SL_STATUS_OVERFLOW);
+}
+
+static int test_stream_response_head_suppresses_body_preserves_length(void)
+{
+    SlHttpResponseWriteOptions options = {0};
+    SlStreamChunk chunks[2] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"he", 2U)},
+                               {.bytes = sl_bytes_from_parts((const unsigned char*)"llo", 3U)}};
+
+    options.connection = SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE;
+    options.suppress_body = true;
+    return expect_response_with_options(
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U), &options,
+        "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 5\r\n\r\n");
+}
+
+static int test_stream_response_no_body_statuses_reject_non_empty_body(void)
+{
+    unsigned char buffer[256];
+    SlBytes bytes = {0};
+    SlStreamChunk empty_chunks[1] = {{.bytes = sl_bytes_empty()}};
+    SlStreamChunk chunks[1] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"x", 1U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(204U, sl_str_from_cstr("text/plain"), empty_chunks, 1U);
+
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_OK) != 0 ||
+        expect_bytes_view_equal(
+            bytes, sl_bytes_from_parts((const unsigned char*)"HTTP/1.1 204 No Content\r\n"
+                                                             "Connection: close\r\n\r\n",
+                                       sizeof("HTTP/1.1 204 No Content\r\n"
+                                              "Connection: close\r\n\r\n") -
+                                           1U)) != 0)
+    {
+        return 1;
+    }
+
+    response = sl_http_response_stream(204U, sl_str_from_cstr("text/plain"), chunks, 1U);
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 2;
+    }
+
+    response = sl_http_response_stream(304U, sl_str_from_cstr("text/plain"), chunks, 1U);
+    return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                         SL_STATUS_INVALID_ARGUMENT);
+}
+
+static int test_stream_response_capacity_failure_returns_empty_output(void)
+{
+    unsigned char buffer[16];
+    SlBytes bytes = sl_bytes_from_parts((const unsigned char*)"stale", sizeof("stale") - 1U);
+    SlStreamChunk chunks[1] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"hello", 5U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 1U);
+
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        return 1;
+    }
+    return expect_true(bytes.ptr == NULL && bytes.length == 0U);
+}
+
+static int test_stream_readable_rejects_no_body_payload(void)
+{
+    SlStreamChunk chunks[1] = {{.bytes = sl_bytes_from_parts((const unsigned char*)"x", 1U)}};
+    SlHttpResponse response =
+        sl_http_response_stream(204U, sl_str_from_cstr("text/plain"), chunks, 1U);
+    SlHttpResponseStreamReadable readable_adapter = {0};
+    SlReadableStream readable = {0};
+
+    return expect_status(
+        sl_http_response_stream_readable_init(&readable_adapter, &response, NULL, &readable),
+        SL_STATUS_INVALID_ARGUMENT);
 }
 
 static int run_test(const char* name, int (*test)(void))
@@ -414,6 +587,60 @@ int main(void)
         return result;
     }
 
-    return run_test("test_stream_descriptor_normalizes_null_chunks",
-                    test_stream_descriptor_normalizes_null_chunks);
+    result = run_test("test_stream_descriptor_normalizes_null_chunks",
+                      test_stream_descriptor_normalizes_null_chunks);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_descriptor_readable_adapter_pumps_chunks",
+                      test_stream_descriptor_readable_adapter_pumps_chunks);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_writes_multiple_chunks",
+                      test_stream_response_writes_multiple_chunks);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_skips_empty_chunks",
+                      test_stream_response_skips_empty_chunks);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_rejects_invalid_chunk",
+                      test_stream_response_rejects_invalid_chunk);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_length_overflow_fails",
+                      test_stream_response_length_overflow_fails);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_head_suppresses_body_preserves_length",
+                      test_stream_response_head_suppresses_body_preserves_length);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_no_body_statuses_reject_non_empty_body",
+                      test_stream_response_no_body_statuses_reject_non_empty_body);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_stream_response_capacity_failure_returns_empty_output",
+                      test_stream_response_capacity_failure_returns_empty_output);
+    if (result != 0) {
+        return result;
+    }
+
+    return run_test("test_stream_readable_rejects_no_body_payload",
+                    test_stream_readable_rejects_no_body_payload);
 }
