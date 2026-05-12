@@ -94,7 +94,10 @@ The result is frozen:
 
 `argsAvailable` is `true` on platforms where Sloppy can snapshot the native
 command line. It may be `false` on platforms without a safe current-process
-argv source.
+argv source, when argv exceeds Sloppy's safe capture limit, or when the runtime
+cannot prove it captured the complete argv snapshot. When `argsAvailable` is
+`false`, `args` is an empty frozen array rather than a partial argv snapshot.
+Strict OS policy denies `Process.info()` when system information is disabled.
 
 ```ts
 const result = await Process.run("git", ["status", "--short"], {

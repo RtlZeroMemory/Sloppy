@@ -252,9 +252,28 @@ static SlStatus sl_os_posix_copy_cmdline_args(SlArena* arena, SlOsProcessInfo* o
         return sl_status_ok();
     }
     length = fread(buffer, 1U, sizeof(buffer), file);
+    if (ferror(file) != 0) {
+        fclose(file);
+        out->args_available = false;
+        out->arg_count = 0U;
+        out->args = NULL;
+        return sl_status_ok();
+    }
+    if (length == sizeof(buffer)) {
+        int extra = fgetc(file);
+        if (extra != EOF || ferror(file) != 0) {
+            fclose(file);
+            out->args_available = false;
+            out->arg_count = 0U;
+            out->args = NULL;
+            return sl_status_ok();
+        }
+    }
     fclose(file);
     if (length == 0U) {
         out->args_available = false;
+        out->arg_count = 0U;
+        out->args = NULL;
         return sl_status_ok();
     }
     for (size_t index = 0U; index < length; index += 1U) {

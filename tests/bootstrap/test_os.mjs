@@ -161,14 +161,51 @@ try {
         "SLOPPY_OS_TEST",
         "SLOPPY_OS_SECRET_TOKEN",
     ]);
+    const info = Process.info();
+    assert.deepEqual(info, {
+        pid: 123,
+        parentPid: 45,
+        executablePath: "/bin/sloppy",
+        cwd: "/work/app",
+        args: ["sloppy", "run", "app.js"],
+        argsAvailable: true,
+    });
+    assert.equal(Object.isFrozen(info), true);
+    assert.equal(Object.isFrozen(info.args), true);
+    globalThis.__sloppy.os.processInfo = () => ({
+        pid: 123,
+        parentPid: 45,
+        executablePath: "/bin/sloppy",
+        cwd: "/work/app",
+        args: [],
+        argsAvailable: false,
+    });
     assert.deepEqual(Process.info(), {
         pid: 123,
         parentPid: 45,
         executablePath: "/bin/sloppy",
         cwd: "/work/app",
-        args: Object.freeze(["sloppy", "run", "app.js"]),
+        args: [],
+        argsAvailable: false,
+    });
+    globalThis.__sloppy.os.processInfo = () => ({
+        pid: -1,
+        parentPid: 0,
+        executablePath: "",
+        cwd: "",
+        args: [],
         argsAvailable: true,
     });
+    assertOsError(() => Process.info(), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
+    globalThis.__sloppy.os.processInfo = () => ({
+        pid: 1,
+        parentPid: 0,
+        executablePath: "",
+        cwd: "",
+        args: ["hidden"],
+        argsAvailable: false,
+    });
+    assertOsError(() => Process.info(), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
     assert.deepEqual(await Process.run("tool", ["arg"], { timeoutMs: 5, capture: "text" }), {
         command: "tool",
         args: ["arg"],

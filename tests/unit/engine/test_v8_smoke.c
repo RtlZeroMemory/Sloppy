@@ -2672,30 +2672,32 @@ static int test_os_intrinsic_system_and_environment(void)
         return 446;
     }
 
-    if (expect_status(sl_engine_eval_source(
-                          engine, sl_str_from_cstr("v8-os-active.js"),
-                          sl_str_from_cstr("globalThis.sloppy_os_active = function () {"
-                                           "  const os = globalThis.__sloppy.os;"
-                                           "  if (!os || typeof os.systemInfo !== 'function') {"
-                                           "    return 'os-missing';"
-                                           "  }"
-                                           "  if (typeof os.processInfo !== 'function') {"
-                                           "    return 'process-info-missing';"
-                                           "  }"
-                                           "  const info = os.systemInfo();"
-                                           "  const process = os.processInfo();"
-                                           "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
-                                           "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
-                                           "  const listed = os.environmentList('SLOPPY_OS_V8_')"
-                                           "    .includes('SLOPPY_OS_V8_TEST');"
-                                           "  return info.platform + ':' + info.arch + ':' +"
-                                           "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
-                                           "    listed + ':' + (process.pid > 0) + ':' +"
-                                           "    (typeof process.cwd === 'string') + ':' +"
-                                           "    Array.isArray(process.args);"
-                                           "};"),
-                          &diag),
-                      SL_STATUS_OK) != 0)
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-os-active.js"),
+                sl_str_from_cstr("globalThis.sloppy_os_active = function () {"
+                                 "  const os = globalThis.__sloppy.os;"
+                                 "  if (!os || typeof os.systemInfo !== 'function') {"
+                                 "    return 'os-missing';"
+                                 "  }"
+                                 "  if (typeof os.processInfo !== 'function') {"
+                                 "    return 'process-info-missing';"
+                                 "  }"
+                                 "  const info = os.systemInfo();"
+                                 "  const process = os.processInfo();"
+                                 "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
+                                 "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
+                                 "  const listed = os.environmentList('SLOPPY_OS_V8_')"
+                                 "    .includes('SLOPPY_OS_V8_TEST');"
+                                 "  return info.platform + ':' + info.arch + ':' +"
+                                 "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
+                                 "    listed + ':' + (process.pid > 0) + ':' +"
+                                 "    (typeof process.cwd === 'string') + ':' +"
+                                 "    (typeof process.argsAvailable === 'boolean') + ':' +"
+                                 "    (!process.argsAvailable || Array.isArray(process.args));"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 447;
@@ -2712,10 +2714,79 @@ static int test_os_intrinsic_system_and_environment(void)
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         expect_str_contains(result.text,
-                            sl_str_from_cstr(":true:v8-env-ok:true:true:true:true:true")) != 0)
+                            sl_str_from_cstr(":true:v8-env-ok:true:true:true:true:true:true")) != 0)
     {
         sl_engine_destroy(engine);
         return 449;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_os_intrinsic_process_info_respects_policy(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.os")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlOsPolicy policy = sl_os_strict_policy(NULL, 0U, false, sl_str_empty());
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.os_policy = &policy;
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 450;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 451;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-os-process-info-denied.js"),
+                          sl_str_from_cstr("globalThis.sloppy_os_process_info_denied = function "
+                                           "() {"
+                                           "  try { globalThis.__sloppy.os.processInfo(); }"
+                                           "  catch (error) {"
+                                           "    return String(error.message).includes("
+                                           "'SLOPPY_E_OS_FEATURE_UNAVAILABLE')"
+                                           "      ? 'process-info-denied-ok' : 'wrong-error';"
+                                           "  }"
+                                           "  return 'process-info-unexpectedly-allowed';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 452;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_os_process_info_denied"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 453;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_contains(result.text, sl_str_from_cstr("process-info-denied-ok")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 454;
     }
 
     sl_engine_destroy(engine);
@@ -7426,6 +7497,11 @@ int main(int argc, char** argv)
     }
 
     result = test_os_intrinsic_system_and_environment();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_os_intrinsic_process_info_respects_policy();
     if (result != 0) {
         return result;
     }
