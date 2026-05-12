@@ -296,6 +296,7 @@ copy_required_file "$v8_build_dir/v8_build_config.json" "$sdk_root/share/v8_buil
 if [[ -d "$v8_checkout/third_party/libc++/src/include" && -f "$v8_checkout/buildtools/third_party/libc++/__config_site" ]]; then
   cp -R "$v8_checkout/third_party/libc++/src/include/." "$sdk_root/support/libcxx/include/"
   copy_required_file "$v8_checkout/buildtools/third_party/libc++/__config_site" "$sdk_root/support/libcxx/buildtools/__config_site"
+  copy_required_file "$v8_checkout/buildtools/third_party/libc++/__assertion_handler" "$sdk_root/support/libcxx/buildtools/__assertion_handler"
 fi
 
 python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$platform" "$target_arch" <<'PY'
