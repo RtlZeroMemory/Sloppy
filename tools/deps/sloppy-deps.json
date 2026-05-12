@@ -89,11 +89,11 @@
     },
     "linux-x64": {
       "status": "supported",
-      "runner": "ubuntu-latest",
+      "runner": "ubuntu-latest with node:22-bullseye container",
       "defaultPresets": ["linux-clang", "linux-gcc"],
       "compiler": "clang or gcc",
       "v8SdkPlatform": "linux-x64",
-      "notes": "Default hosted CI lane remains non-V8. Linux x64 V8 uses the Sloppy-owned SDK built by tools/unix/build-v8.sh until a hosted SDK artifact is attached."
+      "notes": "Default hosted CI lane remains non-V8. Linux x64 release packaging runs inside node:22-bullseye so published glibc binaries keep a glibc 2.31 floor. Linux x64 V8 uses a Sloppy-owned SDK built with the same floor."
     },
     "macos-arm64": {
       "status": "experimental",

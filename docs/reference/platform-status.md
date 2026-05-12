@@ -8,15 +8,16 @@ package set covers Windows x64, Linux x64 glibc, and macOS.
 | Platform | Current alpha status |
 | --- | --- |
 | Windows x64 | Published alpha npm platform package: `@rtlzeromemory/sloppy-win32-x64`. |
-| Linux x64 glibc | Published alpha npm platform package: `@rtlzeromemory/sloppy-linux-x64`. |
+| Linux x64 glibc | Published alpha npm platform package: `@rtlzeromemory/sloppy-linux-x64`. Release binaries are built on a glibc 2.31 baseline and validated across Debian-family and Fedora-family glibc images. |
+| Linux x64 musl / Alpine | No alpha npm platform package. Requires a future separate musl build/package lane. |
 | macOS arm64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-arm64`. |
 | macOS x64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-x64`. |
 | Linux arm64 | No alpha npm platform package. Use a source build. |
 | Windows arm64 | No alpha npm platform package. Use a source build. |
 
 The root `@rtlzeromemory/sloppy` launcher selects the matching platform package
-for supported alpha package lanes. Linux arm64 and Windows arm64 remain source
-build lanes.
+for supported alpha package lanes. Linux arm64, Linux x64 musl/Alpine, and
+Windows arm64 remain source build lanes.
 
 ## Current Emitted Target
 
@@ -64,5 +65,7 @@ Examples from doctor output:
 
 - Runtime/provider/package checks are not fully validated on every non-alpha
   platform yet.
+- The Linux npm package is a glibc package. It is not expected to run on
+  Alpine/musl until a separate musl package exists.
 - Current Plan target enforcement and many checked-in Plan goldens are still
   centered on `windows-x64`.
