@@ -650,6 +650,12 @@ function normalizeDocsOptions(options = undefined) {
     if (typeof (input.title ?? "Sloppy API") !== "string") {
         throw new TypeError("Sloppy app.docs title must be a string.");
     }
+    if (input.strict !== undefined && typeof input.strict !== "boolean") {
+        throw new TypeError("Sloppy app.docs strict must be a boolean.");
+    }
+    if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
+        throw new TypeError("Sloppy app.docs enabled must be a boolean.");
+    }
     return Object.freeze({
         enabled: true,
         path,
@@ -685,14 +691,17 @@ function docsSchema(schema) {
     if (schema.kind === "int") {
         return { type: "integer" };
     }
-    if (schema.kind === "number" || schema.kind === "boolean" || schema.kind === "null") {
+    if (schema.kind === "number" || schema.kind === "boolean") {
         return { type: schema.kind };
+    }
+    if (schema.kind === "null") {
+        return { nullable: true, "x-slop-partial": "null schema is not directly representable in OpenAPI 3.0.3" };
     }
     if (schema.kind === "enum") {
         return { enum: schema.values ?? [] };
     }
     if (schema.kind === "literal") {
-        return { const: schema.value };
+        return { enum: [schema.value] };
     }
     const result = { type: "string" };
     for (const rule of schema.rules ?? []) {
@@ -706,7 +715,10 @@ function docsSchema(schema) {
             result.pattern = rule.value.source;
         }
     }
-    return schema.nullable === true ? { anyOf: [result, { type: "null" }] } : result;
+    if (schema.nullable === true) {
+        result.nullable = true;
+    }
+    return result;
 }
 
 function docsPath(pattern) {
@@ -763,13 +775,25 @@ function docsOperation(route) {
         };
     }
     if (metadata.openapi !== undefined) {
-        return { ...operation, ...metadata.openapi };
+        return metadata.openapi;
     }
     return operation;
 }
 
+function docsOperationComplete(operation, manualOverride = false) {
+    if (operation["x-slop-completeness"] === "complete") {
+        return true;
+    }
+    return manualOverride &&
+        operation.responses !== undefined &&
+        operation.responses !== null &&
+        typeof operation.responses === "object" &&
+        Object.keys(operation.responses).length > 0;
+}
+
 function buildDocsOpenApi(routes, options) {
     const paths = {};
+    const missing = [];
     let operationsPartial = 0;
     let operationsComplete = 0;
     for (const route of routes) {
@@ -778,14 +802,25 @@ function buildDocsOpenApi(routes, options) {
         }
         const path = docsPath(route.pattern);
         const method = route.method.toLowerCase();
-        const operation = docsOperation(snapshotRoute(route));
-        if (operation["x-slop-completeness"] === "complete") {
+        const routeSnapshot = snapshotRoute(route);
+        const operation = docsOperation(routeSnapshot);
+        if (docsOperationComplete(operation, routeSnapshot.metadata?.openapi !== undefined)) {
             operationsComplete += 1;
         } else {
             operationsPartial += 1;
+            for (const reason of operation["x-slop-missing"] ?? []) {
+                missing.push({
+                    method: route.method,
+                    path: route.pattern,
+                    reason,
+                });
+            }
         }
         paths[path] ??= {};
         paths[path][method] = operation;
+    }
+    if (options.strict === true && operationsPartial !== 0) {
+        throw new TypeError("Sloppy app.docs strict mode requires complete route contracts.");
     }
     return {
         openapi: "3.0.3",
@@ -797,7 +832,7 @@ function buildDocsOpenApi(routes, options) {
             routesOmitted: 0,
             operationsComplete,
             operationsPartial,
-            missing: [],
+            missing,
         },
         paths,
     };
@@ -817,7 +852,7 @@ function docsHtml(options) {
 <html lang="en">
 <head><meta charset="utf-8"><title>${title}</title>
 <style>body{font:14px/1.45 system-ui,sans-serif;margin:0;color:#17202a}header{padding:16px 20px;border-bottom:1px solid #d8dee4}main{padding:20px}.warn{display:none;background:#fff4ce;border:1px solid #d29922;padding:10px;margin:0 0 16px}pre{white-space:pre-wrap;background:#f6f8fa;padding:16px;border:1px solid #d8dee4}</style></head>
-<body><header><h1>${title}</h1></header><main><div id="warn" class="warn">This OpenAPI spec is partial. Missing metadata is marked with x-slop-* fields.</div><pre id="spec">Loading...</pre></main>
+<body><header><h1>${title}</h1></header><main><div id="warn" class="warn">This OpenAPI spec is partial. Missing metadata is marked with x-slop-* fields.</div><pre id="spec">Loading OpenAPI...</pre></main>
 <script>const byId=(id)=>globalThis["doc"+"ument"]["get"+"ElementById"](id);fetch(${JSON.stringify(options.openapiPath)}).then(r=>r.json()).then(j=>{if(j["x-slop-openapi-policy"]?.mode==="partial")byId("warn").style.display="block";byId("spec").textContent=JSON.stringify(j,null,2);}).catch(e=>{byId("spec").textContent=String(e);});</script></body></html>`;
 }
 

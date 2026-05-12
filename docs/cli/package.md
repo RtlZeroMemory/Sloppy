@@ -43,7 +43,7 @@ when you need a separate artifact root.
     app.js
     app.js.map
     deps.graph.json   optional, when dependency graph metadata exists
-    openapi.json      optional, when generated before packaging
+    openapi.json      optional, generated when app.docs() requests docs
     assets/
       <copied dependency graph asset>   optional
     native/
@@ -86,10 +86,11 @@ mapped in `sloppy.json` `ffiLibraries`. Mapped local libraries are copied into
 `artifacts/native/`; system libraries without a mapping keep normal platform
 loader resolution.
 
-If `<out>/openapi.json` exists when `sloppy package` runs, it is copied to
-`artifacts/openapi.json` and recorded in the manifest. Generate it with
-`sloppy openapi <out> --output <out>/openapi.json` when a package should carry
-the static API contract alongside the Plan.
+When the Plan contains `app.docs()`, `sloppy package` refreshes
+`<out>/openapi.json` from the same Plan-backed generator as `sloppy openapi`,
+copies it to `artifacts/openapi.json`, and records it in the manifest. Without
+`app.docs()`, a pre-existing `<out>/openapi.json` is still copied for explicit
+tooling workflows.
 
 The package is a directory shape for local tooling and smoke tests; archive,
 signing, and runtime release packaging are handled by the release scripts under

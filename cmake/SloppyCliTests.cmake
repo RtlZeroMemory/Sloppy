@@ -347,6 +347,8 @@
             "-DSLOPPY_CLI_ARGS=openapi;--plan;tests/fixtures/cli/openapi-missing-schema.plan.json;--strict"
             "-DSLOPPY_EXPECTED_ERROR=--strict requires complete route contracts" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.openapi_strict_missing_schema
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
         NAME sloppy.cli.openapi_too_many_route_tags

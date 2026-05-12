@@ -4343,6 +4343,98 @@ export default app;
 }
 
 #[test]
+fn app_docs_preserves_full_require_auth_metadata() {
+    for (label, require_auth, roles, claims, policy) in [
+        ("required", "true", vec![], vec![], None),
+        ("role", r#"{ role: "admin" }"#, vec!["admin"], vec![], None),
+        (
+            "roles",
+            r#"{ roles: ["admin", "ops"] }"#,
+            vec!["admin", "ops"],
+            vec![],
+            None,
+        ),
+        (
+            "claim",
+            r#"{ claim: "tenant.write" }"#,
+            vec![],
+            vec!["tenant.write"],
+            None,
+        ),
+        (
+            "policy",
+            r#"{ policy: "Docs.Admin" }"#,
+            vec![],
+            vec![],
+            Some("Docs.Admin"),
+        ),
+    ] {
+        let source = format!(
+            r#"import {{ Sloppy, Results }} from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([])).name("Users.List");
+app.docs({{ requireAuth: {require_auth} }});
+export default app;
+"#
+        );
+        let app = extract(std::path::Path::new("app.ts"), &source)
+            .unwrap_or_else(|error| panic!("{label}: {error:?}"));
+        let docs_routes = app
+            .routes
+            .iter()
+            .filter(|route| {
+                route
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name.starts_with("Docs."))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(docs_routes.len(), 2, "{label}: docs routes");
+        for route in docs_routes {
+            let auth = route
+                .auth
+                .as_ref()
+                .unwrap_or_else(|| panic!("{label}: auth should exist"));
+            assert!(auth.required, "{label}: required");
+            assert_eq!(auth.roles, roles, "{label}: roles");
+            assert_eq!(auth.claims, claims, "{label}: claims");
+            assert_eq!(auth.policy.as_deref(), policy, "{label}: policy");
+        }
+    }
+}
+
+#[test]
+fn app_docs_enabled_false_is_noop_and_strict_is_plan_visible() {
+    let disabled = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([]));
+app.docs({ enabled: false });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), disabled).expect("disabled docs extracts");
+    assert!(!app.routes.iter().any(|route| route
+        .name
+        .as_deref()
+        .is_some_and(|name| name.starts_with("Docs."))));
+
+    let strict = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([]));
+app.docs({ strict: true });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), strict).expect("strict docs extracts");
+    let openapi = app
+        .routes
+        .iter()
+        .find(|route| route.name.as_deref() == Some("Docs.OpenApi"))
+        .expect("OpenAPI docs route");
+    let docs = openapi.docs.as_ref().expect("docs metadata");
+    assert_eq!(docs.kind, "openapi");
+    assert!(docs.strict);
+}
+
+#[test]
 fn typed_framework_handler_sanitizes_context_schema_reference() {
     let source = r#"import { Sloppy, Results, Schema, RequestContext } from "sloppy";
 import { Postgres } from "sloppy/providers/postgres";

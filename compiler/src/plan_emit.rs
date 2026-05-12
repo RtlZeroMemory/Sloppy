@@ -774,6 +774,13 @@ pub(crate) fn emit_plan_with_route_artifact(
             if let Some(override_value) = &route.openapi_override {
                 route_json["openapi"] = override_value.clone();
             }
+            if let Some(docs) = &route.docs {
+                route_json["docsInternal"] = json!(true);
+                route_json["docs"] = json!({
+                    "kind": docs.kind,
+                    "strict": docs.strict
+                });
+            }
             if let Some(health) = &route.health {
                 route_json["health"] = json!({
                     "kind": health.kind,
@@ -847,7 +854,8 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || !route.headers.is_empty()
                 || route.query_schema.is_some()
                 || route.params_schema.is_some()
-                || route.openapi_override.is_some();
+                || route.openapi_override.is_some()
+                || route.docs.is_some();
             if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route
                     .handler

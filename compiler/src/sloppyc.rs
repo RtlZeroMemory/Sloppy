@@ -12,8 +12,8 @@ use oxc_ast::ast::{
     Declaration, ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration,
     Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
     ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
-    ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral, TSSignature, TSType,
-    TSTypeName, VariableDeclaration,
+    ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral,
+    TSSignature, TSType, TSTypeName, VariableDeclaration,
 };
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -285,6 +285,8 @@ struct HealthOptions {
 
 #[derive(Debug, Clone)]
 struct DocsOptions {
+    enabled: bool,
+    strict: bool,
     path: String,
     openapi_path: String,
     title: String,
@@ -6806,6 +6808,7 @@ fn extract_expression_statement(
         query_schema: contract_metadata.query_schema.clone(),
         params_schema: contract_metadata.params_schema.clone(),
         openapi_override: contract_metadata.openapi_override.clone(),
+        docs: None,
         health: None,
         middleware: route_middleware_metadata(&route_middleware),
         auth,
@@ -8707,6 +8710,7 @@ fn static_asset_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
         auth: None,
@@ -10009,6 +10013,7 @@ fn app_map_controller_call(
             query_schema: contract_metadata.query_schema.clone(),
             params_schema: contract_metadata.params_schema.clone(),
             openapi_override: contract_metadata.openapi_override.clone(),
+            docs: None,
             health: None,
             middleware,
             auth,
@@ -10370,6 +10375,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             query_schema: None,
             params_schema: None,
             openapi_override: None,
+            docs: None,
             health: None,
             middleware: route.middleware.clone(),
             auth: None,
@@ -11840,6 +11846,16 @@ fn ops_route(
         pattern: normalized_pattern,
         name: Some(name.to_string()),
         tags: Vec::new(),
+        summary: None,
+        description: None,
+        deprecated: None,
+        consumes: Vec::new(),
+        produces: Vec::new(),
+        headers: Vec::new(),
+        query_schema: None,
+        params_schema: None,
+        openapi_override: None,
+        docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
         auth: None,
@@ -11910,6 +11926,7 @@ fn health_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        docs: None,
         health: Some(HealthRouteMetadata {
             kind: spec.kind,
             checks: check_names,
@@ -11990,6 +12007,9 @@ fn app_docs_call(
     }
 
     let options = docs_options_from_call(path, call)?;
+    if !options.enabled {
+        return Ok(Some(Vec::new()));
+    }
     docs_paths_are_distinct(path, call.span, &options)?;
     Ok(Some(vec![
         docs_route(DocsRouteInput {
@@ -12001,7 +12021,11 @@ fn app_docs_call(
             name: "Docs.OpenApi",
             kind: "json",
             helper: "openapi",
-            handler_source: docs_openapi_handler_source(&options.title),
+            handler_source: docs_openapi_handler_source(),
+            docs: Some(DocsRouteMetadata {
+                kind: "openapi",
+                strict: options.strict,
+            }),
             auth: options.require_auth.clone(),
             middleware: &state.middleware,
             cors: state.cors_policy.as_ref(),
@@ -12016,6 +12040,10 @@ fn app_docs_call(
             kind: "html",
             helper: "html",
             handler_source: docs_html_handler_source(&options.title, &options.openapi_path),
+            docs: Some(DocsRouteMetadata {
+                kind: "ui",
+                strict: options.strict,
+            }),
             auth: options.require_auth,
             middleware: &state.middleware,
             cors: state.cors_policy.as_ref(),
@@ -12028,6 +12056,8 @@ fn docs_options_from_call(
     call: &CallExpression<'_>,
 ) -> Result<DocsOptions, Diagnostic> {
     let mut options = DocsOptions {
+        enabled: true,
+        strict: false,
         path: "/docs".to_string(),
         openapi_path: "/openapi.json".to_string(),
         title: "Sloppy API".to_string(),
@@ -12062,6 +12092,28 @@ fn docs_options_from_call(
             .with_span(property.span));
         };
         match key {
+            "enabled" => {
+                let Expression::BooleanLiteral(enabled) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs enabled must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.enabled = enabled.value;
+            }
+            "strict" => {
+                let Expression::BooleanLiteral(strict) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs strict must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.strict = strict.value;
+            }
             "path" => {
                 let Some(value) = expression_string_literal(&property.value) else {
                     return Err(Diagnostic::new(
@@ -12105,18 +12157,7 @@ fn docs_options_from_call(
                     }
                 }
                 Expression::ObjectExpression(auth_object) => {
-                    let mut auth = AuthRequirementMetadata {
-                        required: true,
-                        ..AuthRequirementMetadata::default()
-                    };
-                    if let Some(policy) = object_string_property_value(auth_object, "policy") {
-                        auth.policy = Some(policy.to_string());
-                    }
-                    options.require_auth = Some(AuthRequirementMetadata {
-                        required: true,
-                        policy: auth.policy,
-                        ..AuthRequirementMetadata::default()
-                    });
+                    options.require_auth = Some(auth_requirement_from_object(auth_object)?);
                 }
                 _ => {
                     return Err(Diagnostic::new(
@@ -12187,6 +12228,7 @@ struct DocsRouteInput<'a> {
     kind: &'a str,
     helper: &'a str,
     handler_source: String,
+    docs: Option<DocsRouteMetadata>,
     auth: Option<AuthRequirementMetadata>,
     middleware: &'a [FrameworkMiddleware],
     cors: Option<&'a CorsPolicy>,
@@ -12226,6 +12268,7 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        docs: input.docs,
         health: None,
         middleware: route_middleware_metadata(input.middleware),
         auth: input.auth,
@@ -12257,11 +12300,8 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
     })
 }
 
-fn docs_openapi_handler_source(title: &str) -> String {
-    let title = serde_json::to_string(title).unwrap_or_else(|_| "\"Sloppy API\"".to_string());
-    format!(
-        "function() {{ return Results.json({{ openapi: \"3.0.3\", info: {{ title: {title}, version: \"0.0.0\" }}, paths: {{}} }}); }}"
-    )
+fn docs_openapi_handler_source() -> String {
+    "function() { return Results.json({ ok: false, code: \"SLOPPY_E_OPENAPI_ARTIFACT_REQUIRED\" }, { status: 500 }); }".to_string()
 }
 
 fn docs_html_handler_source(title: &str, openapi_path: &str) -> String {
@@ -13993,6 +14033,7 @@ fn extract_module_function_routes(
                     query_schema: contract_metadata.query_schema.clone(),
                     params_schema: contract_metadata.params_schema.clone(),
                     openapi_override: contract_metadata.openapi_override.clone(),
+                    docs: None,
                     health: None,
                     middleware: Vec::new(),
                     auth,
@@ -14484,7 +14525,7 @@ fn auth_requirement_from_call(
         )
         .with_span(call.span));
     }
-    let mut requirement = AuthRequirementMetadata {
+    let requirement = AuthRequirementMetadata {
         required: true,
         ..AuthRequirementMetadata::default()
     };
@@ -14497,6 +14538,16 @@ fn auth_requirement_from_call(
             "requireAuth options must be an object literal",
         )
         .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+    auth_requirement_from_object(object)
+}
+
+fn auth_requirement_from_object(
+    object: &ObjectExpression<'_>,
+) -> Result<AuthRequirementMetadata, Diagnostic> {
+    let mut requirement = AuthRequirementMetadata {
+        required: true,
+        ..AuthRequirementMetadata::default()
     };
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {

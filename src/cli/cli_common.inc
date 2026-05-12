@@ -395,7 +395,7 @@ static void sl_cli_print_help(void)
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
-           "<path>]\n");
+           "<path>] [--strict|--fail-on-partial] [--summary] [--pretty]\n");
 }
 
 static void sl_cli_print_command_help(const char* command)

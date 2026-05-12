@@ -1117,6 +1117,66 @@ async function flushMicrotasks(count = 6) {
 
 {
     const builder = Sloppy.createBuilder();
+    const app = builder.build();
+    app.mapGet("/health", () => Results.ok({ ok: true }));
+    assert.equal(app.docs({ enabled: false }), app);
+    assert.equal(app.__getRoutes().length, 1);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    const app = builder.build();
+    const literalSchema = schema.object({ status: schema.literal("active") });
+    app.mapGet("/literal", () => Results.ok({ status: "active" }))
+        .returns(200, literalSchema);
+    app.mapGet("/nullable", () => Results.ok(null))
+        .returns(200, schema.string().nullable());
+    app.mapGet("/partial", () => Results.ok({ ok: true }));
+    app.mapGet("/manual", () => Results.ok({ ok: true }))
+        .openapi({
+            tags: ["Manual"],
+            responses: {
+                200: { description: "manual response" },
+            },
+            parameters: [{ name: "x-manual", in: "header", schema: { type: "string" } }],
+            security: [{ bearerAuth: [] }],
+        });
+    app.docs();
+    const openapi = app.__getRoutes().find((route) => route.pattern === "/openapi.json").handler().body;
+    assert.deepEqual(
+        openapi.paths["/literal"].get.responses["200"].content["application/json"].schema.properties.status,
+        { enum: ["active"] },
+    );
+    assert.deepEqual(
+        openapi.paths["/nullable"].get.responses["200"].content["application/json"].schema,
+        { type: "string", nullable: true },
+    );
+    assert.deepEqual(openapi["x-slop-openapi-policy"].missing, [{
+        method: "GET",
+        path: "/partial",
+        reason: "response.schema",
+    }]);
+    assert.deepEqual(openapi.paths["/manual"].get.tags, ["Manual"]);
+    assert.deepEqual(openapi.paths["/manual"].get.security, [{ bearerAuth: [] }]);
+    assert.deepEqual(Object.keys(openapi.paths["/manual"].get).sort(), ["parameters", "responses", "security", "tags"]);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    const app = builder.build();
+    assertThrowsMessage(() => app.mapPost("/body", () => Results.ok()).accepts(schema.string(), { description: 123 }), /request description/);
+    assertThrowsMessage(() => app.mapGet("/header", () => Results.ok()).header("x-id", schema.string(), { description: false }), /header description/);
+    assertThrowsMessage(() => app.mapGet("/bad-openapi", () => Results.ok()).openapi({ responses: () => ({}) }), /JSON-compatible/);
+    const override = { responses: { 200: { description: "ok" } } };
+    app.mapGet("/deep-openapi", () => Results.ok()).openapi(override);
+    override.responses[200].description = "mutated";
+    const route = app.__getRoutes().find((candidate) => candidate.pattern === "/deep-openapi");
+    assert.equal(route.metadata.openapi.responses[200].description, "ok");
+    assert.equal(Object.isFrozen(route.metadata.openapi.responses[200]), true);
+}
+
+{
+    const builder = Sloppy.createBuilder();
     let scopedDisposals = 0;
     builder.services.addScoped("request", () => ({
         dispose() {

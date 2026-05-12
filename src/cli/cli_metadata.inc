@@ -431,6 +431,19 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.openapi_override = sl_cli_json_span(value, "openapi");
         route.openapi_override_value = yyjson_obj_get(value, "openapi");
         {
+            yyjson_val* docs_internal = yyjson_obj_get(value, "docsInternal");
+            yyjson_val* docs = yyjson_obj_get(value, "docs");
+            route.docs_internal =
+                docs_internal != NULL && yyjson_is_bool(docs_internal) &&
+                yyjson_get_bool(docs_internal);
+            if (docs != NULL && yyjson_is_obj(docs)) {
+                yyjson_val* strict = yyjson_obj_get(docs, "strict");
+                route.docs_kind = sl_cli_json_span(docs, "kind");
+                route.docs_strict =
+                    strict != NULL && yyjson_is_bool(strict) && yyjson_get_bool(strict);
+            }
+        }
+        {
             yyjson_val* deprecated = yyjson_obj_get(value, "deprecated");
             route.deprecated =
                 deprecated != NULL && yyjson_is_bool(deprecated) && yyjson_get_bool(deprecated);
@@ -671,6 +684,7 @@ static void sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan n
         yyjson_val* nullable = yyjson_obj_get(property_value, "nullable");
         yyjson_val* min = yyjson_obj_get(property_value, "min");
         yyjson_val* max = yyjson_obj_get(property_value, "max");
+        property.literal_value = yyjson_obj_get(property_value, "value");
         property.nullable =
             nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
         property.has_min = min != NULL && yyjson_is_num(min);
@@ -702,6 +716,7 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
         yyjson_val* nullable = yyjson_obj_get(definition, "nullable");
         yyjson_val* min = yyjson_obj_get(definition, "min");
         yyjson_val* max = yyjson_obj_get(definition, "max");
+        schema->literal_value = yyjson_obj_get(definition, "value");
         schema->nullable =
             nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
         schema->has_min = min != NULL && yyjson_is_num(min);

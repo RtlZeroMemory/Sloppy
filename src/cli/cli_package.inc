@@ -882,7 +882,13 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         }
     }
 
-    if (sl_run_artifact_file_path(openapi_path, sizeof(openapi_path), out_dir, "openapi.json") &&
+    if (sl_cli_openapi_refresh_docs_artifact(out_dir, "sloppy package") != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+
+    if (app->plan.kind != SL_PLAN_KIND_PROGRAM &&
+        sl_run_artifact_file_path(openapi_path, sizeof(openapi_path), out_dir, "openapi.json") &&
         sl_cli_path_is_file(openapi_path))
     {
         if (sl_package_copy_artifact_leaf(out_dir, artifacts_dir,

@@ -44,6 +44,7 @@ pub(crate) struct Route {
     pub(crate) query_schema: Option<String>,
     pub(crate) params_schema: Option<String>,
     pub(crate) openapi_override: Option<Value>,
+    pub(crate) docs: Option<DocsRouteMetadata>,
     pub(crate) health: Option<HealthRouteMetadata>,
     pub(crate) middleware: Vec<RouteMiddlewareMetadata>,
     pub(crate) auth: Option<AuthRequirementMetadata>,
@@ -361,6 +362,12 @@ pub(crate) struct AuthRequirementMetadata {
 pub(crate) struct HealthRouteMetadata {
     pub(crate) kind: &'static str,
     pub(crate) checks: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DocsRouteMetadata {
+    pub(crate) kind: &'static str,
+    pub(crate) strict: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -82,7 +82,7 @@ After construction, every app exposes:
 | `app.group(...)`  | Create a route group; alias `app.mapGroup`                     |
 | `app.urlFor(...)` | Generate a URL for a named route                            |
 | `app.controller(...)`| Register a controller class; alias `app.mapController`      |
-| `app.docs(...)`      | Register first-party OpenAPI JSON and Swagger UI routes     |
+| `app.docs(...)`      | Register first-party OpenAPI JSON and embedded docs routes  |
 | `app.freeze()`    | Mark the app immutable; further route registration throws      |
 | `app.isFrozen()`  | Check immutability                                             |
 
@@ -99,7 +99,7 @@ test must exercise compiled artifacts and the native runtime path. See
 `app.docs(options?)` registers two `GET` routes:
 
 - `openapiPath`, default `/openapi.json`, returns the app's OpenAPI document.
-- `path`, default `/docs`, returns an embedded Swagger UI page that loads that
+- `path`, default `/docs`, returns an embedded OpenAPI viewer page that loads that
   document without CDN or npm middleware.
 
 ```ts
@@ -107,14 +107,24 @@ app.docs({
     title: "Users API",
     path: "/docs",
     openapiPath: "/openapi.json",
+    strict: true,
     requireAuth: { policy: "Docs.Read" },
 });
 ```
 
+`enabled: false` is a no-op. `strict: true` requires OpenAPI generation to
+fail when the static route contracts are incomplete, matching
+`sloppy openapi --strict`. `requireAuth` accepts the same shapes as route auth:
+`true`, `{ role }`, `{ roles }`, `{ claim }`, and `{ policy }`. The compiler
+preserves that metadata on both docs routes.
+
 The docs routes are normal route-table entries named `Docs.OpenApi` and
 `Docs.Ui`. Use `requireAuth` when the generated contract should not be public.
 The compiler records these routes in the Plan so `sloppy routes`, `doctor`,
-`audit`, `openapi`, and package flows can see them.
+`audit`, `openapi`, and package flows can see them. When docs are enabled,
+`sloppy build` and `sloppy package` also refresh `openapi.json` from the Plan
+so compiled and packaged `/openapi.json` serves the same document as
+`sloppy openapi`.
 
 ## Modules
 

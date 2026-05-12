@@ -47,6 +47,9 @@ A minimal OpenAPI 3 document in JSON form:
 - Route summaries, descriptions, deprecation markers, request/response media
   types, header/query/parameter contracts, auth requirements, and response
   status metadata from the route builder.
+- Static `.openapi(object)` route overrides replace the generated operation
+  for that route. Use them only when you want to own the complete operation
+  object, including `responses`, `parameters`, `security`, and `tags`.
 
 ```json
 {
@@ -127,6 +130,9 @@ Path parameters with Sloppy constraints carry `x-slop-constraint`. Integer
 constraints emit OpenAPI integer schemas, UUID constraints emit string schemas
 with `format: "uuid"`, alpha constraints emit string schemas with an ASCII
 letter pattern, and float constraints emit number schemas.
+When both the route pattern and `params(...)` describe the same path
+parameter, Sloppy emits one `(name, in)` parameter and lets the schema metadata
+enrich the pattern-derived parameter instead of duplicating it.
 
 ## Partial and strict behavior
 
@@ -144,6 +150,9 @@ sloppy openapi .sloppy --strict --output openapi.json
 
 The command prints the missing contract reasons and returns non-zero instead of
 writing a document that could be mistaken for complete.
+
+`app.docs({ strict: true })` uses the same strict gate when build or package
+needs to refresh the docs `openapi.json` artifact.
 
 ## Current limits
 

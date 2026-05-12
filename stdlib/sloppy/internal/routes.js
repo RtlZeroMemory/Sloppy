@@ -221,6 +221,29 @@ function validateMetadataText(value, subject) {
     }
 }
 
+function cloneFrozenJson(value, subject) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) {
+            throw new TypeError(`Sloppy ${subject} must be JSON-compatible.`);
+        }
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return Object.freeze(value.map((item) => cloneFrozenJson(item, subject)));
+    }
+    if (isPlainObject(value)) {
+        const out = {};
+        for (const [key, current] of Object.entries(value)) {
+            out[key] = cloneFrozenJson(current, subject);
+        }
+        return Object.freeze(out);
+    }
+    throw new TypeError(`Sloppy ${subject} must be JSON-compatible.`);
+}
+
 function validateStatusCode(status) {
     if (!Number.isInteger(status) || status < 100 || status > 599) {
         throw new TypeError("Sloppy route response status must be an integer from 100 to 599.");
@@ -912,6 +935,9 @@ function createEndpointBuilder(route, assertAppMutable) {
             if (options !== undefined && !isPlainObject(options)) {
                 throw new TypeError("Sloppy endpoint accepts options must be a plain object.");
             }
+            if (options?.description !== undefined) {
+                validateMetadataText(options.description, "endpoint request description");
+            }
             const contentType = options?.contentType ?? route.metadata.consumes?.[0] ?? "application/json";
             validateMediaType(contentType, "endpoint request content type");
 
@@ -948,6 +974,9 @@ function createEndpointBuilder(route, assertAppMutable) {
             validateHeaderToken(name, "endpoint header");
             if (options !== undefined && !isPlainObject(options)) {
                 throw new TypeError("Sloppy endpoint header options must be a plain object.");
+            }
+            if (options?.description !== undefined) {
+                validateMetadataText(options.description, "endpoint header description");
             }
             route.metadata.headers = Object.freeze([
                 ...(route.metadata.headers ?? []).filter((header) => header.name.toLowerCase() !== name.toLowerCase()),
@@ -989,7 +1018,7 @@ function createEndpointBuilder(route, assertAppMutable) {
             if (!isPlainObject(override)) {
                 throw new TypeError("Sloppy endpoint OpenAPI override must be a plain object.");
             }
-            route.metadata.openapi = Object.freeze({ ...override });
+            route.metadata.openapi = cloneFrozenJson(override, "endpoint OpenAPI override");
             return endpoint;
         },
     };

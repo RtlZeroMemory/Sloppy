@@ -10,6 +10,7 @@ typedef struct SlRunApp
     unsigned char metadata_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char package_manifest_json_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char route_artifact_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
+    unsigned char openapi_artifact_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_ARTIFACT_FILE_MAX_BYTES];
     unsigned char file_read_storage[SL_RUN_FILE_READ_ARENA_BYTES];
@@ -28,7 +29,9 @@ typedef struct SlRunApp
     SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlBytes source_map_bytes;
+    SlBytes plan_json_bytes;
     SlBytes route_artifact_bytes;
+    SlBytes openapi_artifact_bytes;
     SlEngine* engine;
     SlLogRuntime* logging;
     SlLogSink* logging_console_sink;
@@ -41,6 +44,7 @@ typedef struct SlRunApp
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
     char artifacts_path[SL_RUN_PATH_MAX_BYTES];
+    char openapi_docs_path[SL_RUN_PATH_MAX_BYTES];
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
     char config_tls_certificate_path[SL_RUN_PATH_MAX_BYTES];
     char config_tls_private_key_path[SL_RUN_PATH_MAX_BYTES];
@@ -97,6 +101,7 @@ typedef struct SlRunApp
     bool config_has_logging_console_format;
     bool config_has_logging_file_path;
     bool has_dynamic_routes;
+    bool has_openapi_docs_route;
 } SlRunApp;
 
 static volatile sig_atomic_t sl_run_stop_requested = 0;
@@ -1339,6 +1344,7 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
             0U, 0U, 0U, 0U, plan_path != NULL ? sl_str_from_cstr(plan_path) : sl_str_empty());
         return 1;
     }
+    app->plan_json_bytes = json;
     app->has_dynamic_routes =
         sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\": [")) ||
         sl_run_bytes_contains_str(json, sl_str_from_cstr("\"dynamicRoutes\":["));
@@ -1660,6 +1666,62 @@ static int sl_run_load_route_artifact(SlRunApp* app, const char* artifacts_path,
                             sizeof(app->route_artifact_storage), &app->route_artifact_bytes);
 }
 
+static int sl_run_cache_openapi_docs_route(SlRunApp* app, const char* command_name)
+{
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    yyjson_val* routes = NULL;
+    yyjson_val* route = NULL;
+    size_t index = 0U;
+    size_t max = 0U;
+
+    if (app == NULL || app->plan_json_bytes.ptr == NULL || app->plan_json_bytes.length == 0U) {
+        return 0;
+    }
+
+    doc = yyjson_read_opts((char*)app->plan_json_bytes.ptr, app->plan_json_bytes.length, 0U, NULL,
+                           NULL);
+    if (doc == NULL) {
+        sl_run_write_command_message(command_name, "failed to parse app.plan.json\n");
+        return 1;
+    }
+    root = yyjson_doc_get_root(doc);
+    routes = yyjson_obj_get(root, "routes");
+    if (routes == NULL || !yyjson_is_arr(routes)) {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+    yyjson_arr_foreach(routes, index, max, route)
+    {
+        yyjson_val* docs_internal = yyjson_obj_get(route, "docsInternal");
+        yyjson_val* docs = yyjson_obj_get(route, "docs");
+        yyjson_val* kind = docs != NULL && yyjson_is_obj(docs) ? yyjson_obj_get(docs, "kind") : NULL;
+        yyjson_val* pattern = yyjson_obj_get(route, "pattern");
+
+        if (docs_internal == NULL || !yyjson_is_bool(docs_internal) ||
+            !yyjson_get_bool(docs_internal) || kind == NULL || !yyjson_is_str(kind) ||
+            !sl_str_equal(sl_str_from_parts(yyjson_get_str(kind), yyjson_get_len(kind)),
+                          sl_str_from_cstr("openapi")) ||
+            pattern == NULL || !yyjson_is_str(pattern))
+        {
+            continue;
+        }
+        if (!sl_run_copy_span_cstr(app->openapi_docs_path, sizeof(app->openapi_docs_path),
+                                   (SlCliSpan){yyjson_get_str(pattern),
+                                               yyjson_get_len(pattern)}))
+        {
+            yyjson_doc_free(doc);
+            sl_run_write_command_message(command_name,
+                                         "invalid OpenAPI docs route in app.plan.json\n");
+            return 1;
+        }
+        app->has_openapi_docs_route = true;
+        break;
+    }
+    yyjson_doc_free(doc);
+    return 0;
+}
+
 static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 {
     char bootstrap_path[1024];
@@ -1835,6 +1897,23 @@ static int sl_run_load_artifacts(const char* artifacts_path, const char* command
     }
     if (app->plan.kind == SL_PLAN_KIND_WEB && sl_run_prepare_routes(app) != 0) {
         return 1;
+    }
+    if (app->plan.kind == SL_PLAN_KIND_WEB &&
+        sl_run_cache_openapi_docs_route(app, command_name) != 0)
+    {
+        return 1;
+    }
+    {
+        char openapi_path[1024];
+        if (sl_run_artifact_file_path(openapi_path, sizeof(openapi_path), artifacts_path,
+                                      "openapi.json") &&
+            sl_cli_path_is_file(openapi_path) &&
+            sl_run_read_file(app, openapi_path, app->openapi_artifact_storage,
+                             sizeof(app->openapi_artifact_storage),
+                             &app->openapi_artifact_bytes) != 0)
+        {
+            return 1;
+        }
     }
 
     if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
@@ -2115,6 +2194,37 @@ static SlStr sl_run_target_path(const char* target)
     return sl_str_from_parts(target, index);
 }
 
+static bool sl_run_request_targets_openapi_docs_route(SlRunApp* app,
+                                                      const SlHttpRequestHead* request)
+{
+    if (app == NULL || request == NULL || request->path.ptr == NULL ||
+        !app->has_openapi_docs_route)
+    {
+        return false;
+    }
+    if (request->method != SL_HTTP_METHOD_GET && request->method != SL_HTTP_METHOD_HEAD) {
+        return false;
+    }
+    return sl_str_equal(request->path, sl_str_from_cstr(app->openapi_docs_path));
+}
+
+static SlStatus sl_run_openapi_artifact_response(SlRunApp* app,
+                                                 const SlHttpRequestHead* request,
+                                                 SlHttpResponse* out_response)
+{
+    if (app == NULL || request == NULL || out_response == NULL ||
+        app->openapi_artifact_bytes.ptr == NULL || app->openapi_artifact_bytes.length == 0U ||
+        !sl_run_request_targets_openapi_docs_route(app, request))
+    {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+    *out_response = sl_http_response_text(
+        200U, sl_str_from_parts((const char*)app->openapi_artifact_bytes.ptr,
+                                app->openapi_artifact_bytes.length));
+    out_response->content_type = sl_str_from_cstr("application/json; charset=utf-8");
+    return sl_status_ok();
+}
+
 typedef struct SlRunDispatchContext
 {
     SlRunApp* app;
@@ -2172,6 +2282,11 @@ static SlStatus sl_run_dispatch_response_with_storage(
         out_response == NULL)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (request != NULL &&
+        sl_status_is_ok(sl_run_openapi_artifact_response(app, request, out_response)))
+    {
+        return sl_status_ok();
     }
 
     dispatch_context.app = app;
@@ -3655,6 +3770,9 @@ static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifa
     {
         return 1;
     }
+    if (sl_cli_openapi_refresh_docs_artifact(out_dir, "sloppy run") != 0) {
+        return 1;
+    }
 
     {
         SlStringBuilder builder = {0};
@@ -3727,6 +3845,9 @@ static int sl_cli_command_build(const SlCliOptions* options)
     }
 
     result = sl_run_load_artifacts(out_dir, "sloppy build", app, false);
+    if (result == 0) {
+        result = sl_cli_openapi_refresh_docs_artifact(out_dir, "sloppy build");
+    }
     if (sl_run_shutdown_app(app) != 0 && result == 0) {
         result = 1;
     }

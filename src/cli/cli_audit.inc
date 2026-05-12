@@ -84,11 +84,11 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                               errors);
         }
         if (!metadata->routes[outer].auth_required &&
-            (sl_cli_span_equal_cstr(metadata->routes[outer].name, "Docs.Ui") ||
-             sl_cli_span_equal_cstr(metadata->routes[outer].pattern, "/docs")))
+            metadata->routes[outer].docs_internal &&
+            sl_cli_span_equal_cstr(metadata->routes[outer].docs_kind, "ui"))
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_DOCS_ROUTE_PUBLIC",
-                              "Swagger UI route is public; protect it with app.docs requireAuth "
+                              "OpenAPI docs route is public; protect it with app.docs requireAuth "
                               "when exposing non-public APIs",
                               "openapi", findings, errors);
         }
