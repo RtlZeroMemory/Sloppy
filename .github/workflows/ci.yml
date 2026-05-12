@@ -52,7 +52,7 @@ permissions:
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
   VCPKG_CACHE_VERSION: v3
-  VCPKG_BINARY_SOURCES: "clear;nuget,GitHubPackages,readwrite"
+  VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/RtlZeroMemory/index.json,readwrite"
   NUGET_FEED_URL: "https://nuget.pkg.github.com/RtlZeroMemory/index.json"
   NUGET_USERNAME: "RtlZeroMemory"
   NUGET_PAT: ${{ secrets.VCPKG_PAT }}
