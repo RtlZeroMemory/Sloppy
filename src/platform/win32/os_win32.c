@@ -278,6 +278,8 @@ static SlStatus sl_os_win32_copy_command_line_args(SlArena* arena, SlOsProcessIn
             LocalFree(argv);
         }
         out->args_available = false;
+        out->arg_count = 0U;
+        out->args = NULL;
         return sl_status_ok();
     }
     for (size_t index = 0U; index < (size_t)argc; index += 1U) {
@@ -286,12 +288,16 @@ static SlStatus sl_os_win32_copy_command_line_args(SlArena* arena, SlOsProcessIn
         if (required <= 0 || required > 32768) {
             LocalFree(argv);
             out->args_available = false;
+            out->arg_count = 0U;
+            out->args = NULL;
             return sl_status_ok();
         }
         total_bytes += (size_t)required - 1U;
         if (total_bytes > 65536U) {
             LocalFree(argv);
             out->args_available = false;
+            out->arg_count = 0U;
+            out->args = NULL;
             return sl_status_ok();
         }
     }

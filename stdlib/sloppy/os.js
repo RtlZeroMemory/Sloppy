@@ -265,14 +265,36 @@ function normalizeProcessInfo(value) {
     if (value === null || typeof value !== "object") {
         throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
     }
-    const args = Array.isArray(value.args) ? value.args.map(String) : [];
+    const invalid = () => {
+        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
+    };
+    const isProcessId = (pid) => Number.isInteger(pid) && pid >= 0;
+    if (
+        !isProcessId(value.pid) ||
+        !isProcessId(value.parentPid) ||
+        typeof value.executablePath !== "string" ||
+        typeof value.cwd !== "string" ||
+        typeof value.argsAvailable !== "boolean" ||
+        !Array.isArray(value.args)
+    ) {
+        invalid();
+    }
+    if (!value.argsAvailable && value.args.length !== 0) {
+        invalid();
+    }
+    const args = value.argsAvailable ? value.args.map((arg) => {
+        if (typeof arg !== "string") {
+            invalid();
+        }
+        return arg;
+    }) : [];
     return Object.freeze({
-        pid: Number.isFinite(value.pid) && value.pid >= 0 ? Math.trunc(value.pid) : 0,
-        parentPid: Number.isFinite(value.parentPid) && value.parentPid >= 0 ? Math.trunc(value.parentPid) : 0,
-        executablePath: typeof value.executablePath === "string" ? value.executablePath : "",
-        cwd: typeof value.cwd === "string" ? value.cwd : "",
+        pid: value.pid,
+        parentPid: value.parentPid,
+        executablePath: value.executablePath,
+        cwd: value.cwd,
         args: Object.freeze(args),
-        argsAvailable: value.argsAvailable === true,
+        argsAvailable: value.argsAvailable,
     });
 }
 

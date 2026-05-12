@@ -16,6 +16,7 @@
 #include "sloppy/ffi.h"
 #include "sloppy/async_backend.h"
 #include "sloppy/logging.h"
+#include "sloppy/os.h"
 #include "sloppy/provider_executor.h"
 #include "sloppy/resource.h"
 
@@ -227,6 +228,7 @@ struct SlV8Engine
     const SlPlan* plan = nullptr;
     const SlCapabilityRegistry* capabilities = nullptr;
     const SlFsPolicy* filesystem_policy = nullptr;
+    const SlOsPolicy* os_policy = nullptr;
     SlLogRuntime* logging = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};
