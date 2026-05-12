@@ -130,6 +130,8 @@ copy_static_archive_as_full() {
   fi
   if command -v llvm-ar >/dev/null 2>&1; then
     archive_tool="llvm-ar"
+  elif xcrun --find llvm-ar >/dev/null 2>&1; then
+    archive_tool="$(xcrun --find llvm-ar)"
   fi
   if ! file "$source" | grep -q "thin archive"; then
     cp -f "$source" "$destination"
@@ -138,11 +140,11 @@ copy_static_archive_as_full() {
   while IFS= read -r member; do
     members+=("$member")
   done < <("$archive_tool" t "$source" 2>/dev/null) || {
-    cp -f "$source" "$destination"
+    copy_archive_from_ninja_inputs "$source" "$destination"
     return
   }
   if [[ "${#members[@]}" -eq 0 ]]; then
-    cp -f "$source" "$destination"
+    copy_archive_from_ninja_inputs "$source" "$destination"
     return
   fi
   for member in "${members[@]}"; do
@@ -159,7 +161,49 @@ copy_static_archive_as_full() {
     fi
   done
   rm -f "$destination"
-  (cd "$member_root" && "$archive_tool" crs "$destination" "${object_paths[@]}")
+  create_static_archive "$destination" "$member_root" "${object_paths[@]}"
+}
+
+create_static_archive() {
+  local destination="$1"
+  local working_dir="$2"
+  shift 2
+
+  rm -f "$destination"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    (cd "$working_dir" && libtool -static -o "$destination" "$@")
+  else
+    (cd "$working_dir" && ar crs "$destination" "$@")
+  fi
+}
+
+copy_archive_from_ninja_inputs() {
+  local source="$1"
+  local destination="$2"
+  local target
+  local input
+  local objects=()
+
+  case "$source" in
+    "$v8_build_dir"/*) target="${source#"$v8_build_dir"/}" ;;
+    *) echo "build-v8-macos: cannot derive Ninja target for archive: $source" >&2; exit 1 ;;
+  esac
+
+  while IFS= read -r input; do
+    [[ "$input" == *.o ]] || continue
+    if [[ "$input" = /* ]]; then
+      objects+=("$input")
+    elif [[ -f "$v8_build_dir/$input" ]]; then
+      objects+=("$v8_build_dir/$input")
+    fi
+  done < <(ninja -C "$v8_build_dir" -t inputs "$target" 2>/dev/null)
+
+  if [[ "${#objects[@]}" -eq 0 ]]; then
+    echo "build-v8-macos: could not list object inputs for archive target: $target" >&2
+    exit 1
+  fi
+
+  create_static_archive "$destination" "/" "${objects[@]}"
 }
 
 write_gn_args() {
@@ -189,7 +233,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-for tool in git python3 ninja tar file; do
+for tool in git python3 ninja tar file libtool; do
   assert_tool "$tool"
 done
 
