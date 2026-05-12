@@ -109,6 +109,12 @@ static SlBytes make_artifact(unsigned char* bytes)
     return sl_bytes_from_parts(bytes, TEST_ARTIFACT_SIZE);
 }
 
+static void refresh_checksum(unsigned char* bytes)
+{
+    put_u64(bytes, TEST_CHECKSUM_OFFSET, 0U);
+    put_u64(bytes, TEST_CHECKSUM_OFFSET, checksum(bytes, TEST_ARTIFACT_SIZE));
+}
+
 static int test_valid_artifact(void)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
@@ -188,6 +194,82 @@ static int test_malformed_artifacts_fail_cleanly(void)
                          SL_STATUS_INVALID_ARGUMENT);
 }
 
+static int test_extreme_route_count_fails_cleanly(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    unsigned char artifact_storage[TEST_ARTIFACT_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_route_plan(&handler, &route);
+    SlDiag diag = {0};
+    SlBytes artifact = make_artifact(artifact_storage);
+
+    plan.route_count = (size_t)UINT32_MAX;
+    put_u32(artifact_storage, 16U, UINT32_MAX);
+    put_u32(artifact_storage, 20U, UINT32_MAX);
+    put_u32(artifact_storage, 28U, UINT32_MAX);
+    refresh_checksum(artifact_storage);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 30;
+    }
+    return expect_status(
+        sl_route_artifact_validate(&arena, artifact, sl_str_empty(), &plan, NULL, &diag),
+        SL_STATUS_INVALID_ARGUMENT);
+}
+
+static int test_extreme_section_offsets_fail_cleanly(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    unsigned char artifact_storage[TEST_ARTIFACT_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_route_plan(&handler, &route);
+    SlDiag diag = {0};
+    SlBytes artifact = make_artifact(artifact_storage);
+
+    put_u32(artifact_storage, 24U, UINT32_MAX - 8U);
+    put_u32(artifact_storage, 32U, UINT32_MAX);
+    refresh_checksum(artifact_storage);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 40;
+    }
+    return expect_status(
+        sl_route_artifact_validate(&arena, artifact, sl_str_empty(), &plan, NULL, &diag),
+        SL_STATUS_INVALID_ARGUMENT);
+}
+
+static int test_extreme_entry_string_offset_fails_cleanly(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    unsigned char artifact_storage[TEST_ARTIFACT_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_route_plan(&handler, &route);
+    SlDiag diag = {0};
+    SlBytes artifact = make_artifact(artifact_storage);
+
+    put_u32(artifact_storage, 72U, UINT32_MAX);
+    refresh_checksum(artifact_storage);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 50;
+    }
+    return expect_status(
+        sl_route_artifact_validate(&arena, artifact, sl_str_empty(), &plan, NULL, &diag),
+        SL_STATUS_INVALID_ARGUMENT);
+}
+
 int main(void)
 {
     if (test_valid_artifact() != 0) {
@@ -197,6 +279,18 @@ int main(void)
     if (test_malformed_artifacts_fail_cleanly() != 0) {
         fprintf(stderr, "test_malformed_artifacts_fail_cleanly failed\n");
         return 2;
+    }
+    if (test_extreme_route_count_fails_cleanly() != 0) {
+        fprintf(stderr, "test_extreme_route_count_fails_cleanly failed\n");
+        return 3;
+    }
+    if (test_extreme_section_offsets_fail_cleanly() != 0) {
+        fprintf(stderr, "test_extreme_section_offsets_fail_cleanly failed\n");
+        return 4;
+    }
+    if (test_extreme_entry_string_offset_fails_cleanly() != 0) {
+        fprintf(stderr, "test_extreme_entry_string_offset_fails_cleanly failed\n");
+        return 5;
     }
     return 0;
 }

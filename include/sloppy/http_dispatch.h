@@ -50,8 +50,9 @@ typedef struct SlHttpRouteTrieEdge SlHttpRouteTrieEdge;
  * Borrowed route binding table.
  *
  * `routes` must point to `route_count` entries when `route_count` is nonzero. The table
- * does not own route patterns or plan handlers, and it is intentionally separate from
- * SlPlan until a future plan routes section is implemented.
+ * does not own route patterns or plan handlers. This header is public for in-repo tests and
+ * alpha tooling, but the struct layout is internal and unstable until Sloppy declares an ABI
+ * freeze; external code must not persist or binary-share this layout.
  */
 typedef struct SlHttpDispatchTable
 {

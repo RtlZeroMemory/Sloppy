@@ -1,8 +1,10 @@
 Route dispatch: native-compiled
-  artifact: slrt routes.slrt sha256:62872c50f3f70c34bcdc8a9a04a2c6f50539e91e6b5b750c58c1ecc2bfba62cf
-  routes: 1 endpoints: 1 exact: 0 parameter: 1 catch-all: 0
-  parameter buckets: 1 trie nodes: 3 no-js endpoints: 1 url-generation: yes writers: 1
+  contract: Plan-backed native dispatch with routes.slrt integrity validation
+  artifact: slrt routes.slrt sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733
+  routes: 2 endpoints: 2 exact: 0 parameter: 2 catch-all: 0
+  parameter buckets: 2 trie nodes: 6 no-js endpoints: 2 url-generation: yes writers: 2
   fallback: classic=yes dynamic=0 partial=0
 
 ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME
 0      GET     http         /users/{id:int}      1        complete          input.js:6:1  -  200/json/json  Users.Get
+1      GET     http         /{tenant}/users/{id:int}  2        complete          input.js:7:1  -  200/text/text  Tenant.Users.Get

@@ -1,5 +1,6 @@
 #include "sloppy/route_artifact.h"
 
+#include "sloppy/checked_math.h"
 #include "sloppy/crypto.h"
 #include "sloppy/http.h"
 #include "sloppy/string.h"
@@ -55,9 +56,9 @@ static SlStatus slrt_fail(SlArena* arena, SlDiag* out_diag, const char* message,
     return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
 }
 
-static bool slrt_range_valid(size_t length, uint32_t offset, uint32_t size)
+static bool slrt_range_valid(size_t length, size_t offset, size_t size)
 {
-    return (size_t)offset <= length && (size_t)size <= length - (size_t)offset;
+    return offset <= length && size <= length - offset;
 }
 
 static uint32_t slrt_u32_at(SlBytes bytes, size_t offset)
@@ -138,17 +139,55 @@ static SlStatus slrt_validate_entry(SlArena* arena, SlDiag* out_diag, SlBytes ar
                                     const SlRouteArtifactSummary* summary, const SlPlanRoute* route,
                                     size_t route_index)
 {
-    size_t entry_offset =
-        (size_t)summary->route_table_offset + (route_index * SL_ROUTE_ARTIFACT_ENTRY_SIZE);
-    uint32_t method = slrt_u32_at(artifact, entry_offset);
-    uint32_t handler_id = slrt_u32_at(artifact, entry_offset + 4U);
-    uint32_t pattern_offset = slrt_u32_at(artifact, entry_offset + 8U);
-    uint32_t pattern_len = slrt_u32_at(artifact, entry_offset + 12U);
-    uint32_t name_offset = slrt_u32_at(artifact, entry_offset + 16U);
-    uint32_t name_len = slrt_u32_at(artifact, entry_offset + 20U);
-    uint32_t execution_kind = slrt_u32_at(artifact, entry_offset + 28U);
-    uint32_t pattern_abs = summary->string_table_offset + pattern_offset;
-    uint32_t name_abs = summary->string_table_offset + name_offset;
+    size_t entry_delta = 0U;
+    size_t entry_offset = 0U;
+    size_t entry_end = 0U;
+    size_t route_table_end = 0U;
+    size_t pattern_abs = 0U;
+    size_t name_abs = 0U;
+    uint32_t method = 0U;
+    uint32_t handler_id = 0U;
+    uint32_t pattern_offset = 0U;
+    uint32_t pattern_len = 0U;
+    uint32_t name_offset = 0U;
+    uint32_t name_len = 0U;
+    uint32_t execution_kind = 0U;
+    SlStatus status;
+
+    status = sl_checked_mul_size(route_index, (size_t)SL_ROUTE_ARTIFACT_ENTRY_SIZE, &entry_delta);
+    if (!sl_status_is_ok(status)) {
+        return slrt_fail(arena, out_diag, "invalid SLRT route table range",
+                         sizeof("invalid SLRT route table range") - 1U,
+                         "route artifact entry offsets must not overflow size bounds",
+                         sizeof("route artifact entry offsets must not overflow size bounds") - 1U);
+    }
+    status = sl_checked_add_size((size_t)summary->route_table_offset, entry_delta, &entry_offset);
+    if (sl_status_is_ok(status)) {
+        status =
+            sl_checked_add_size(entry_offset, (size_t)SL_ROUTE_ARTIFACT_ENTRY_SIZE, &entry_end);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size((size_t)summary->route_table_offset,
+                                     (size_t)summary->route_table_size, &route_table_end);
+    }
+    if (!sl_status_is_ok(status) || entry_end > artifact.length ||
+        entry_offset < (size_t)summary->route_table_offset || entry_end > route_table_end)
+    {
+        return slrt_fail(arena, out_diag, "invalid SLRT route table range",
+                         sizeof("invalid SLRT route table range") - 1U,
+                         "route artifact entries must stay inside the declared route table",
+                         sizeof("route artifact entries must stay inside the declared route "
+                                "table") -
+                             1U);
+    }
+
+    method = slrt_u32_at(artifact, entry_offset);
+    handler_id = slrt_u32_at(artifact, entry_offset + 4U);
+    pattern_offset = slrt_u32_at(artifact, entry_offset + 8U);
+    pattern_len = slrt_u32_at(artifact, entry_offset + 12U);
+    name_offset = slrt_u32_at(artifact, entry_offset + 16U);
+    name_len = slrt_u32_at(artifact, entry_offset + 20U);
+    execution_kind = slrt_u32_at(artifact, entry_offset + 28U);
 
     if (method != slrt_method_code(route->method) || handler_id != route->handler_id) {
         return slrt_fail(arena, out_diag, "invalid SLRT route endpoint",
@@ -165,8 +204,15 @@ static SlStatus slrt_validate_entry(SlArena* arena, SlDiag* out_diag, SlBytes ar
                          sizeof("route artifact execution kinds must be known by this runtime") -
                              1U);
     }
-    if (!slrt_range_valid(artifact.length, pattern_abs, pattern_len) ||
-        !slrt_range_valid(artifact.length, name_abs, name_len) ||
+    status = sl_checked_add_size((size_t)summary->string_table_offset, (size_t)pattern_offset,
+                                 &pattern_abs);
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size((size_t)summary->string_table_offset, (size_t)name_offset,
+                                     &name_abs);
+    }
+    if (!sl_status_is_ok(status) ||
+        !slrt_range_valid(artifact.length, pattern_abs, (size_t)pattern_len) ||
+        !slrt_range_valid(artifact.length, name_abs, (size_t)name_len) ||
         pattern_offset > summary->string_table_size ||
         pattern_len > summary->string_table_size - pattern_offset ||
         name_offset > summary->string_table_size ||
@@ -201,6 +247,9 @@ SlStatus sl_route_artifact_validate(SlArena* arena, SlBytes artifact, SlStr expe
     SlRouteArtifactSummary summary = {0};
     static const unsigned char slrt_magic[4] = {'S', 'L', 'R', 'T'};
     uint64_t checksum = 0U;
+    size_t expected_route_table_size = 0U;
+    size_t route_table_end = 0U;
+    size_t string_table_end = 0U;
     size_t index = 0U;
     SlStatus status;
 
@@ -250,30 +299,48 @@ SlStatus sl_route_artifact_validate(SlArena* arena, SlBytes artifact, SlStr expe
     summary.string_table_size = slrt_u32_at(artifact, 36U);
     summary.checksum = slrt_u64_at(artifact, SLRT_CHECKSUM_OFFSET);
 
+    status = sl_checked_mul_size((size_t)summary.route_count, (size_t)SL_ROUTE_ARTIFACT_ENTRY_SIZE,
+                                 &expected_route_table_size);
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size((size_t)summary.route_table_offset,
+                                     (size_t)summary.route_table_size, &route_table_end);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_checked_add_size((size_t)summary.string_table_offset,
+                                     (size_t)summary.string_table_size, &string_table_end);
+    }
+    if (!sl_status_is_ok(status)) {
+        return slrt_fail(arena, out_diag, "invalid SLRT section range",
+                         sizeof("invalid SLRT section range") - 1U,
+                         "route artifact section sizes must not overflow size bounds",
+                         sizeof("route artifact section sizes must not overflow size bounds") - 1U);
+    }
+
     if (summary.route_count != plan->route_count || summary.endpoint_count != plan->route_count ||
-        summary.route_table_size != summary.route_count * SL_ROUTE_ARTIFACT_ENTRY_SIZE)
+        (size_t)summary.route_table_size != expected_route_table_size)
     {
         return slrt_fail(arena, out_diag, "SLRT route count mismatch",
                          sizeof("SLRT route count mismatch") - 1U,
                          "route artifact counts must match app.plan.json routes",
                          sizeof("route artifact counts must match app.plan.json routes") - 1U);
     }
-    if (!slrt_range_valid(artifact.length, summary.route_table_offset, summary.route_table_size) ||
-        !slrt_range_valid(artifact.length, summary.string_table_offset, summary.string_table_size))
+    if (!slrt_range_valid(artifact.length, (size_t)summary.route_table_offset,
+                          (size_t)summary.route_table_size) ||
+        !slrt_range_valid(artifact.length, (size_t)summary.string_table_offset,
+                          (size_t)summary.string_table_size))
     {
         return slrt_fail(arena, out_diag, "invalid SLRT section range",
                          sizeof("invalid SLRT section range") - 1U,
                          "route artifact sections must be inside the file",
                          sizeof("route artifact sections must be inside the file") - 1U);
     }
-    if ((size_t)summary.route_table_offset + summary.route_table_size >
-        (size_t)summary.string_table_offset)
-    {
+    if (route_table_end > (size_t)summary.string_table_offset) {
         return slrt_fail(arena, out_diag, "overlapping SLRT sections",
                          sizeof("overlapping SLRT sections") - 1U,
                          "route table and string table sections must not overlap",
                          sizeof("route table and string table sections must not overlap") - 1U);
     }
+    (void)string_table_end;
 
     checksum = slrt_checksum(artifact);
     if (checksum != summary.checksum) {

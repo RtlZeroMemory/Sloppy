@@ -115,13 +115,15 @@ Web Plans emit a top-level `routeDispatch` object:
 }
 ```
 
-`native-compiled` is a runtime optimization path, not a public route API. The
-native runtime validates `routes.slrt`, builds an exact-path hash index plus a
-method-specific segment trie for parameter routes, preserves `HEAD` and `405`
-behavior, dispatches dynamic handlers through the current V8 handler path, and
-executes provably static literal `Results.text`, `Results.json`, and
-`Results.ok` handlers as native responses. Candidate buckets remain as an
-internal fallback for partial or manually constructed dispatch tables.
+`native-compiled` is a runtime optimization path, not a public route API. It
+means Plan-backed native dispatch with `routes.slrt` integrity validation. The
+native runtime validates `routes.slrt`, then builds an
+exact-path hash index plus a method-specific segment trie from `app.plan.json`
+route metadata. It preserves `HEAD` and `405` behavior, dispatches dynamic
+handlers through the current V8 handler path, and executes provably static
+literal `Results.text`, `Results.json`, and `Results.ok` handlers as native
+responses. Candidate buckets remain as an internal fallback for partial or
+manually constructed dispatch tables.
 
 Named routes contribute native URL writers. The writer count is reported as
 `urlWriters`; generated URLs percent-encode path parameter values and validate

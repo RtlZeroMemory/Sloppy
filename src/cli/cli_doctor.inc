@@ -482,6 +482,10 @@ static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlAre
 
     sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.mode"),
                        sl_cli_span_cstr("ok"), dispatch->mode, emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("route.dispatch.contract"), sl_cli_span_cstr("ok"),
+        sl_cli_span_cstr("Plan-backed native dispatch with routes.slrt integrity validation"),
+        emitted);
     sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.artifact"),
                        sl_cli_span_equal_cstr(dispatch->artifact_kind, "none")
                            ? sl_cli_span_cstr("warn")

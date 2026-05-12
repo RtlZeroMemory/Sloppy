@@ -52,8 +52,10 @@ environment.
 With `--dispatch`, doctor also reports the Plan route dispatch mode, artifact
 status/hash, classic fallback availability, segment-trie metadata, native
 no-JS endpoint count, and native URL writer count. In this alpha,
-`native-compiled` means the compiler emitted `routes.slrt` and the runtime
-validated it before building the native dispatch table.
+`native-compiled` means Plan-backed native dispatch with `routes.slrt`
+integrity validation: the compiler emitted `routes.slrt`, the Plan recorded its
+hash, and the runtime validated it before building the native dispatch table
+from `app.plan.json`.
 
 ## Exit codes
 

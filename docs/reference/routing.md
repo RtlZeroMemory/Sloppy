@@ -81,9 +81,10 @@ Compiler extraction currently enforces:
 ## Runtime Dispatch Notes
 
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
-- Static Plan routes use the native endpoint dispatch table. Compiler-emitted
-  web artifacts include `routes.slrt`, and `sloppy run` validates that artifact
-  before materializing the runtime table. Exact static paths are indexed by
+- Static Plan routes use Plan-backed native dispatch with `routes.slrt`
+  integrity validation. Compiler-emitted web artifacts include
+  `routes.slrt`, and `sloppy run` validates that artifact before materializing
+  the runtime table from `app.plan.json`. Exact static paths are indexed by
   method and full path. Parameter routes are grouped into a method-specific
   segment trie that enforces the supported native route constraints during
   lookup.

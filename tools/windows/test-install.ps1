@@ -15,7 +15,17 @@ function ConvertTo-ProcessArgumentString {
     )
 
     $quoted = foreach ($argument in $Arguments) {
-        '"' + ($argument -replace '"', '\"') + '"'
+        if ($null -eq $argument) {
+            '""'
+            continue
+        }
+        if ($argument -notmatch '[\s"]') {
+            $argument
+            continue
+        }
+        $escaped = $argument -replace '(\\*)"', '$1$1\"'
+        $escaped = $escaped -replace '(\\+)$', '$1$1'
+        '"' + $escaped + '"'
     }
     return ($quoted -join " ")
 }

@@ -83,6 +83,8 @@ static void sl_cli_routes_emit_json_dispatch(const SlCliRouteDispatch* dispatch)
 
     printf(",\n  \"dispatch\": { \"mode\": ");
     sl_cli_json_escape(stdout, dispatch->mode);
+    printf(", \"contract\": \"Plan-backed native dispatch with routes.slrt integrity "
+           "validation\"");
     printf(", \"artifact\": { \"kind\": ");
     sl_cli_json_escape(stdout, dispatch->artifact_kind);
     if (!sl_cli_span_empty(dispatch->artifact_path)) {
@@ -255,6 +257,7 @@ static void sl_cli_routes_emit_text_dispatch(const SlCliRouteDispatch* dispatch)
     }
 
     printf("Route dispatch: %.*s\n", (int)dispatch->mode.length, dispatch->mode.ptr);
+    printf("  contract: Plan-backed native dispatch with routes.slrt integrity validation\n");
     printf("  artifact: %.*s", (int)dispatch->artifact_kind.length, dispatch->artifact_kind.ptr);
     if (!sl_cli_span_empty(dispatch->artifact_path)) {
         printf(" %.*s", (int)dispatch->artifact_path.length, dispatch->artifact_path.ptr);

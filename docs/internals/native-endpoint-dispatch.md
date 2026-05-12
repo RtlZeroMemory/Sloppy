@@ -1,4 +1,4 @@
-# Native Endpoint Dispatch
+# Plan-Backed Native Compiled Dispatch
 
 Native endpoint dispatch is an internal optimization for Plan-backed web apps.
 It does not change `app.get`, `app.post`, groups, modules, metadata chains, or
@@ -9,7 +9,8 @@ handler code.
 The compiler emits `routeDispatch` metadata and a `routes.slrt` binary route
 artifact for web Plans. At runtime, Sloppy validates the artifact hash,
 checksum, section bounds, route strings, handler IDs, methods, and execution
-kinds before building the arena-owned native dispatch table:
+kinds before building the arena-owned native dispatch table from
+`app.plan.json` route metadata:
 
 - exact static paths use a method + path hash table;
 - parameter routes use a method-specific native segment trie;
@@ -41,10 +42,11 @@ app/group/route registration API.
 ## Plan Metadata
 
 `routeDispatch.mode` is `native-compiled` for compiler-emitted web artifacts.
-The Plan records the `routes.slrt` path and SHA-256 hash, route counts,
-endpoint counts, exact static paths, parameter route counts, native no-JS route
-counts, URL writer counts, candidate bucket counts, segment-trie node counts,
-known constraints, and fallback counts.
+That means Plan-backed native dispatch with `routes.slrt` integrity validation.
+The Plan records the `routes.slrt` path and SHA-256 hash, route
+counts, endpoint counts, exact static paths, parameter route counts, native
+no-JS route counts, URL writer counts, candidate bucket counts, segment-trie
+node counts, known constraints, and fallback counts.
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,
@@ -80,7 +82,7 @@ sloppy routes .sloppy --dispatch
 sloppy doctor .sloppy --dispatch
 ```
 
-`routes` shows the dispatch table shape, artifact path/hash, route execution
+`routes` shows the Plan-backed dispatch table shape, artifact path/hash, route execution
 kind, constraints, fallback counts, and URL generation status. `doctor` reports
 route dispatch mode and artifact hash so package and outside-checkout runs can
 verify they are using the same route artifact as the Plan.

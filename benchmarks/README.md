@@ -86,14 +86,46 @@ Handler dispatch benchmarks are split by current runtime capability:
   current noop engine boundary, which is expected to report unsupported.
 - `http.dispatch.get.noop_unsupported` exercises synthetic parsed GET dispatch through the
   existing route matcher, manual dispatch table, plan lookup, and noop engine boundary.
-- Large route-table dispatch benchmarks exercise the current native endpoint
-  table: exact method/path hash lookup plus parameter-route segment trie
-  dispatch. The route artifact validator, native no-JS endpoint path, and
-  native URL writer have unit and package coverage; benchmark rows for those
-  subpaths should be read as local engineering measurements when present, not
-  public performance claims.
+- Route dispatch benchmarks exercise the current native endpoint table: exact
+  method/path hash lookup plus parameter-route segment-trie dispatch. They are
+  local engineering measurements, not public performance claims.
 - V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
+
+Native route dispatch benchmark rows are intentionally scoped:
+
+- `route.dispatch.generated_table.<count>.<mode>.<target>` compares identical
+  static route tables under `SLOPPY_ROUTE_DISPATCH=compiled`, `classic`, and
+  `validate`. Counts cover 10, 100, 1000, and 10000 routes. Targets cover
+  first, middle, last, missing static path, and method mismatch. The route
+  table is cached by the warmup call; the measured loop excludes artifact
+  validation, route-table build, sockets, the HTTP parser, response writer, and
+  V8.
+- `route.dispatch.param_trie.<mode>.<case>` compares mixed parameter route
+  tables with shared prefixes under the same three dispatch modes. Cases cover
+  parameter hit, parameter miss, constrained miss falling through to a string
+  parameter, parameter-first routes, static-vs-parameter precedence, and
+  constrained-vs-string precedence. The mixed table is cached by the warmup
+  call. Validate mode must agree with classic and compiled dispatch before the
+  benchmark contributes timing.
+- `route.dispatch.native_response.*` measures dispatch plus construction of a
+  native no-JS static response for literal `Results.text`, `Results.json`, and
+  `Results.ok` shapes. It excludes sockets and the response writer. Use
+  `http.dispatch.get.noop_unsupported` as the current noop handler-boundary
+  comparison row.
+- `route.dispatch.table_build.*` measures Plan-backed route-table
+  materialization before serving. It excludes route lookup, handler execution,
+  sockets, the HTTP parser, response writer, V8, and routes.slrt artifact
+  validation.
+- `route.dispatch.artifact_validate.1` measures one-route `routes.slrt`
+  artifact validation against Plan metadata and reports the route count and
+  artifact byte size in benchmark metadata. It excludes dispatch table
+  materialization and request dispatch.
+
+No 50000-route native microbenchmark is registered in this PR. The 10000-route
+case keeps smoke/list validation reasonable while exercising a larger table;
+50000-route timing is left to ad hoc local runs or a later benchmark-methodology
+PR with pinned hardware and duration budgets.
 
 `http.request_head.parse` is a microbenchmark for the complete-buffer request-head parser.
 It is not an HTTP server throughput benchmark.

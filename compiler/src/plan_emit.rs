@@ -43,11 +43,12 @@ fn route_pattern_has_params(pattern: &str) -> bool {
         .any(|segment| segment.starts_with('{') && segment.ends_with('}'))
 }
 
-fn route_pattern_first_static_segment(pattern: &str) -> Option<&str> {
-    pattern
+fn route_pattern_leading_static_segment(pattern: &str) -> Option<&str> {
+    let segment = pattern
         .split('/')
         .skip(1)
-        .find(|segment| !segment.is_empty() && !segment.starts_with('{'))
+        .find(|segment| !segment.is_empty())?;
+    (!segment.starts_with('{')).then_some(segment)
 }
 
 fn route_pattern_constraint_names(pattern: &str) -> Vec<String> {
@@ -117,7 +118,7 @@ fn route_dispatch_json(
         .map(|route| {
             (
                 route.method,
-                route_pattern_first_static_segment(&route.pattern)
+                route_pattern_leading_static_segment(&route.pattern)
                     .unwrap_or("")
                     .to_string(),
             )

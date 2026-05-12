@@ -2108,6 +2108,74 @@ static SlStatus sl_run_dispatch_transport_status(SlStatus status, const SlDiag* 
                : sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
+static int sl_run_write_dispatch_failure_response(SlRunApp* app, SlArena* dispatch_arena,
+                                                  const SlHttpRequestHead* request, char* response,
+                                                  size_t response_capacity, SlStatus status,
+                                                  const SlDiag* diag, bool suppress_body)
+{
+    if (app == NULL || dispatch_arena == NULL || request == NULL || response == NULL ||
+        diag == NULL)
+    {
+        return -1;
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
+    {
+        return sl_run_write_method_not_allowed_response(app, dispatch_arena, request, response,
+                                                        response_capacity, suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 501U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Request body framing is not supported\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
+        diag->code == SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 413U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Payload Too Large\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag->code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 415U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Unsupported Media Type\n"), suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT &&
+        diag->code == SL_DIAG_MALFORMED_JSON)
+    {
+        return sl_run_write_response_with_options(
+            response, response_capacity, 400U, "application/problem+json",
+            sl_str_from_cstr(
+                "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
+                "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[{"
+                "\"path\":\"body\",\"code\":\"json.malformed\",\"message\":\"Expected a valid "
+                "JSON request body.\"}]}\n"),
+            suppress_body);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+        diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
+        return sl_run_write_response_with_options(response, response_capacity, 404U,
+                                                  "text/plain; charset=utf-8",
+                                                  sl_str_from_cstr("Not Found\n"), suppress_body);
+    }
+
+    return sl_run_write_response_with_options(
+        response, response_capacity, 500U, "text/plain; charset=utf-8",
+        sl_str_from_cstr("Sloppy handler failed\n"), suppress_body);
+}
+
 static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestHead* request,
                                              char* response, size_t response_capacity,
                                              unsigned char* dispatch_storage,
@@ -2142,61 +2210,8 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         }
     }
 
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
-    {
-        return sl_run_write_method_not_allowed_response(app, &dispatch_arena, request, response,
-                                                        response_capacity, suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 501U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Request body framing is not supported\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
-        diag.code == SL_DIAG_HTTP_BODY_LIMIT)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 413U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Payload Too Large\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
-        diag.code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 415U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Unsupported Media Type\n"), suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT && diag.code == SL_DIAG_MALFORMED_JSON)
-    {
-        return sl_run_write_response_with_options(
-            response, response_capacity, 400U, "application/problem+json",
-            sl_str_from_cstr(
-                "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
-                "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[{"
-                "\"path\":\"body\",\"code\":\"json.malformed\",\"message\":\"Expected a valid "
-                "JSON request body.\"}]}\n"),
-            suppress_body);
-    }
-
-    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
-        diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
-    {
-        return sl_run_write_response_with_options(response, response_capacity, 404U,
-                                                  "text/plain; charset=utf-8",
-                                                  sl_str_from_cstr("Not Found\n"), suppress_body);
-    }
-
-    (void)diag;
-    return sl_run_write_response_with_options(
-        response, response_capacity, 500U, "text/plain; charset=utf-8",
-        sl_str_from_cstr("Sloppy handler failed\n"), suppress_body);
+    return sl_run_write_dispatch_failure_response(app, &dispatch_arena, request, response,
+                                                  response_capacity, status, &diag, suppress_body);
 }
 
 static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
@@ -2521,7 +2536,9 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
             if (!(sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
                   diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND))
             {
-                response_length = sl_run_dispatch_head(app, &request, response, sizeof(response));
+                response_length = sl_run_write_dispatch_failure_response(
+                    app, &dispatch_arena, &request, response, sizeof(response), status, &diag,
+                    request.method == SL_HTTP_METHOD_HEAD);
                 if (response_length < 0) {
                     sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
                     return 1;

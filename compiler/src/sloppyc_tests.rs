@@ -7683,6 +7683,7 @@ fn emits_route_dispatch_metadata() {
 const app = Sloppy.create();
 app.get("/health", () => Results.json({ ok: true })).withName("Health.Get");
 app.get("/users/{id:int}", (ctx) => Results.json({ id: ctx.route.id })).withName("Users.Get");
+app.get("/{tenant}/users/{id:int}", (ctx) => Results.text(ctx.route.tenant)).withName("Tenant.Users.Get");
 export default app;
 "#;
     let app = extract(std::path::Path::new("app.js"), source)
@@ -7706,16 +7707,20 @@ export default app;
         .as_str()
         .expect("route artifact hash should be a string")
         .starts_with("sha256:"));
-    assert_eq!(value["routeDispatch"]["routeCount"], 2);
+    assert_eq!(value["routeDispatch"]["routeCount"], 3);
     assert_eq!(value["routeDispatch"]["staticRoutes"], 1);
-    assert_eq!(value["routeDispatch"]["parameterRoutes"], 1);
+    assert_eq!(value["routeDispatch"]["parameterRoutes"], 2);
+    assert_eq!(
+        value["routeDispatch"]["dispatchStats"]["parameterCandidateBuckets"],
+        2
+    );
     assert_eq!(
         value["routeDispatch"]["dispatchStats"]["constraints"],
         serde_json::json!(["int"])
     );
     assert_eq!(
         value["routeDispatch"]["dispatchStats"]["segmentTrieNodes"],
-        3
+        6
     );
     assert_eq!(
         value["routes"][0]["dispatch"]["strategy"],
@@ -7726,6 +7731,7 @@ export default app;
         value["routes"][1]["dispatch"]["executionKind"],
         "v8-handler"
     );
+    assert_eq!(value["routes"][2]["dispatch"]["strategy"], "segment-trie");
 }
 
 #[test]

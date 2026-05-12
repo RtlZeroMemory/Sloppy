@@ -60,6 +60,53 @@ static int set_test_env_value(const char* key, const char* value)
 #endif
 }
 
+#ifndef _WIN32
+static char* duplicate_cstr(const char* value)
+{
+    size_t length = 0U;
+    char* copy = NULL;
+
+    if (value == NULL) {
+        return NULL;
+    }
+    length = strlen(value);
+    copy = (char*)malloc(length + 1U);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, value, length + 1U);
+    return copy;
+}
+#endif
+
+static int copy_test_env_value(const char* key, char** out_value)
+{
+    if (key == NULL || out_value == NULL) {
+        return 1;
+    }
+    *out_value = NULL;
+#ifdef _WIN32
+    {
+        size_t length = 0U;
+        return _dupenv_s(out_value, &length, key);
+    }
+#else
+    {
+        const char* current = getenv(key);
+        if (current == NULL) {
+            return 0;
+        }
+        *out_value = duplicate_cstr(current);
+        return *out_value == NULL ? 1 : 0;
+    }
+#endif
+}
+
+static int restore_test_env_value(const char* key, const char* original_value)
+{
+    return set_test_env_value(key, original_value == NULL ? "" : original_value);
+}
+
 static int expect_body_contains(SlBytes body, const char* expected)
 {
     SlStr needle = sl_str_from_cstr(expected);
@@ -705,8 +752,13 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
     SlHttpRequestHead request = {0};
     SlDiag diag = {0};
     const char* modes[] = {"classic", "validate"};
+    char* saved_env = NULL;
     size_t mode_index = 0U;
     int result_code = 0;
+
+    if (copy_test_env_value("SLOPPY_ROUTE_DISPATCH", &saved_env) != 0) {
+        return 171;
+    }
 
     route.method = sl_str_from_cstr("GET");
     route.pattern = sl_str_from_cstr("/users/{id:int}");
@@ -721,15 +773,16 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
         expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        set_test_env_value("SLOPPY_ROUTE_DISPATCH", "");
-        return 171;
+        restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env);
+        free(saved_env);
+        return 172;
     }
 
     for (mode_index = 0U; mode_index < sizeof(modes) / sizeof(modes[0]); mode_index += 1U) {
         SlEngineResult result = {0};
         diag = (SlDiag){0};
         if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", modes[mode_index]) != 0) {
-            result_code = 172;
+            result_code = 173;
             break;
         }
         if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
@@ -737,14 +790,15 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
                           SL_STATUS_UNSUPPORTED) != 0 ||
             result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
         {
-            result_code = 173;
+            result_code = 174;
             break;
         }
     }
 
-    if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", "") != 0 && result_code == 0) {
-        result_code = 174;
+    if (restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env) != 0 && result_code == 0) {
+        result_code = 175;
     }
+    free(saved_env);
     sl_engine_destroy(engine);
     return result_code;
 }
@@ -2572,7 +2626,7 @@ static int test_native_static_text_response_skips_engine(void)
     route.native_response_kind = sl_str_from_cstr("text");
     route.native_response_status = 200U;
     route.native_response_body = sl_str_from_cstr("ok");
-    route.native_response_content_type = sl_str_from_cstr("text/plain; charset=utf-8");
+    route.native_response_content_type = sl_str_from_cstr("text/sloppy-test");
     plan.routes = &route;
     plan.route_count = 1U;
 
@@ -2590,11 +2644,176 @@ static int test_native_static_text_response_skips_engine(void)
     }
 
     sl_engine_destroy(engine);
-    return expect_true(result.kind == SL_ENGINE_RESULT_TEXT && result.response.status == 200U &&
-                       expect_str_equal(result.text, "ok") == 0);
+    return expect_true(
+        result.kind == SL_ENGINE_RESULT_TEXT && result.response.status == 200U &&
+        expect_str_equal(result.text, "ok") == 0 &&
+        sl_str_equal(result.response.content_type, sl_str_from_cstr("text/sloppy-test")));
 }
 
-static int test_named_route_url_generation_encodes_and_roundtrips(void)
+static void set_native_text_route(SlPlanRoute* route, const char* method, const char* pattern,
+                                  SlHandlerId handler_id, const char* body)
+{
+    route->method = sl_str_from_cstr(method);
+    route->pattern = sl_str_from_cstr(pattern);
+    route->handler_id = handler_id;
+    route->native_response_kind = sl_str_from_cstr("text");
+    route->native_response_status = 200U;
+    route->native_response_body = sl_str_from_cstr(body);
+    route->native_response_content_type = sl_str_from_cstr("text/plain; charset=utf-8");
+}
+
+static int expect_validate_dispatch_agrees(SlPlanRoute* routes, size_t route_count,
+                                           const char* request_text, SlStatusCode expected_status,
+                                           SlDiagCode expected_diag, const char* expected_text)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handlers[8] = {0};
+    SlPlan plan = {0};
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    char* saved_env = NULL;
+    SlStatus status;
+    size_t index = 0U;
+    int result_code = 0;
+
+    if (copy_test_env_value("SLOPPY_ROUTE_DISPATCH", &saved_env) != 0) {
+        return 1;
+    }
+    for (index = 0U; index < route_count; index += 1U) {
+        handlers[index].id = (SlHandlerId)(index + 1U);
+        handlers[index].export_name = sl_str_from_cstr("__sloppy_handler");
+    }
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.handlers = handlers;
+    plan.handler_count = route_count;
+    plan.routes = routes;
+    plan.route_count = route_count;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, request_text, &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        result_code = 2;
+        goto cleanup;
+    }
+    if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", "validate") != 0) {
+        result_code = 3;
+        goto cleanup;
+    }
+
+    diag = (SlDiag){0};
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    if (sl_status_code(status) != expected_status || diag.code != expected_diag) {
+        result_code = 4;
+        goto cleanup;
+    }
+    if (expected_text != NULL) {
+        if (result.kind != SL_ENGINE_RESULT_TEXT ||
+            expect_str_equal(result.text, expected_text) != 0)
+        {
+            result_code = 5;
+            goto cleanup;
+        }
+    }
+    else if (result.kind != SL_ENGINE_RESULT_NONE) {
+        result_code = 6;
+        goto cleanup;
+    }
+
+cleanup:
+    if (restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env) != 0 && result_code == 0) {
+        result_code = 7;
+    }
+    free(saved_env);
+    sl_engine_destroy(engine);
+    return result_code;
+}
+
+static int test_compiled_and_classic_dispatch_agree_in_validate_mode(void)
+{
+    SlPlanRoute routes[4] = {0};
+
+    set_native_text_route(&routes[0], "GET", "/users/{id}", 1U, "param");
+    set_native_text_route(&routes[1], "GET", "/users/me", 2U, "static");
+    if (expect_validate_dispatch_agrees(routes, 2U,
+                                        "GET /users/me HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "static") != 0)
+    {
+        return 1;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "GET", "/users/{slug}", 1U, "string");
+    set_native_text_route(&routes[1], "GET", "/users/{id:int}", 2U, "int");
+    if (expect_validate_dispatch_agrees(routes, 2U,
+                                        "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "int") != 0 ||
+        expect_validate_dispatch_agrees(routes, 2U,
+                                        "GET /users/nope HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "string") != 0)
+    {
+        return 2;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "GET", "/{tenant}/users/{id:int}", 1U, "tenant");
+    if (expect_validate_dispatch_agrees(routes, 1U,
+                                        "GET /acme/users/42 HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "tenant") != 0)
+    {
+        return 3;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "GET", "/orgs/{org}/users/{id:int}", 1U, "user");
+    set_native_text_route(&routes[1], "GET", "/orgs/{org}/settings", 2U, "settings");
+    if (expect_validate_dispatch_agrees(routes, 2U,
+                                        "GET /orgs/acme/settings HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "settings") != 0)
+    {
+        return 4;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "POST", "/users/{id}", 1U, "post");
+    if (expect_validate_dispatch_agrees(
+            routes, 1U, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", SL_STATUS_UNSUPPORTED,
+            SL_DIAG_HTTP_UNSUPPORTED_METHOD, NULL) != 0)
+    {
+        return 5;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "GET", "/users/{id}", 1U, "user");
+    if (expect_validate_dispatch_agrees(
+            routes, 1U, "GET /users/42/ HTTP/1.1\r\nHost: example\r\n\r\n", SL_STATUS_OUT_OF_RANGE,
+            SL_DIAG_HTTP_ROUTE_NOT_FOUND, NULL) != 0)
+    {
+        return 6;
+    }
+
+    memset(routes, 0, sizeof(routes));
+    set_native_text_route(&routes[0], "GET", "/health", 1U, "ok");
+    if (expect_validate_dispatch_agrees(routes, 1U,
+                                        "HEAD /health HTTP/1.1\r\nHost: example\r\n\r\n",
+                                        SL_STATUS_OK, SL_DIAG_NONE, "ok") != 0)
+    {
+        return 7;
+    }
+
+    return 0;
+}
+
+static int test_named_route_url_generation_validates_param_set(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
@@ -2602,7 +2821,7 @@ static int test_named_route_url_generation_encodes_and_roundtrips(void)
     SlPlanRoute route = {0};
     SlPlan plan = one_handler_plan(&handler);
     SlHttpRouteTable table = {0};
-    SlRouteParam params[2];
+    SlRouteParam params[3];
     SlRouteMatch match = {0};
     SlStr url = {0};
     SlDiag diag = {0};
@@ -2630,13 +2849,39 @@ static int test_named_route_url_generation_encodes_and_roundtrips(void)
         return 177;
     }
 
+    if (expect_status(sl_http_dispatch_generate_url(
+                          &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 1U, &url),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 178;
+    }
+
     params[0].value = sl_str_from_cstr("abc");
     if (expect_status(sl_http_dispatch_generate_url(
                           &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 2U, &url),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        return 178;
+        return 179;
     }
+
+    params[0].value = sl_str_from_cstr("42");
+    params[2] =
+        (SlRouteParam){sl_str_from_cstr("extra"), sl_str_from_cstr("x"), SL_ROUTE_PARAM_STRING};
+    if (expect_status(sl_http_dispatch_generate_url(
+                          &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 3U, &url),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 180;
+    }
+
+    params[1] = (SlRouteParam){sl_str_from_cstr("id"), sl_str_from_cstr("43"), SL_ROUTE_PARAM_INT};
+    if (expect_status(sl_http_dispatch_generate_url(
+                          &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 2U, &url),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 181;
+    }
+
     return 0;
 }
 
@@ -2697,7 +2942,8 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_with_query_binding_rejects_malformed_query),
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
-        HTTP_DISPATCH_TEST(test_named_route_url_generation_encodes_and_roundtrips),
+        HTTP_DISPATCH_TEST(test_compiled_and_classic_dispatch_agree_in_validate_mode),
+        HTTP_DISPATCH_TEST(test_named_route_url_generation_validates_param_set),
     };
     size_t index = 0U;
 

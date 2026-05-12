@@ -18,6 +18,10 @@ extern "C" {
 #define SL_ROUTE_ARTIFACT_ENTRY_SIZE UINT32_C(48)
 #define SL_ROUTE_ARTIFACT_ENDIAN_MARKER UINT32_C(0x01020304)
 
+/*
+ * Alpha route artifact summary. This header is public for in-repo tests and tooling, but
+ * the struct layout is internal and unstable until Sloppy declares a C ABI freeze.
+ */
 typedef struct SlRouteArtifactSummary
 {
     uint32_t version;

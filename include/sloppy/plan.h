@@ -76,6 +76,11 @@ typedef struct SlPlanHandler
     SlStr display_name;
 } SlPlanHandler;
 
+/*
+ * Parsed Plan route metadata. Plan structs are exposed for Sloppy's current in-repo C
+ * runtime boundary; their layout is internal and unstable until the pre-alpha C ABI is
+ * explicitly frozen.
+ */
 typedef struct SlPlanRoute
 {
     const struct SlPlanRequestBinding* bindings;

@@ -1668,6 +1668,48 @@ static const SlRouteParam* sl_http_dispatch_find_url_param(const SlRouteParam* p
     return NULL;
 }
 
+static bool sl_http_dispatch_pattern_has_param(const SlRoutePattern* pattern, SlStr name)
+{
+    size_t index = 0U;
+
+    if (pattern == NULL) {
+        return false;
+    }
+    for (index = 0U; index < pattern->segment_count; index += 1U) {
+        const SlRouteSegment* segment = &pattern->segments[index];
+        if (segment->kind == SL_ROUTE_SEGMENT_PARAM && sl_str_equal(segment->param_name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_http_dispatch_url_params_valid(const SlRoutePattern* pattern,
+                                              const SlRouteParam* params, size_t param_count)
+{
+    size_t index = 0U;
+    size_t previous = 0U;
+
+    if (pattern == NULL || (param_count != 0U && params == NULL) ||
+        param_count != pattern->param_count)
+    {
+        return false;
+    }
+    for (index = 0U; index < param_count; index += 1U) {
+        if (sl_str_is_empty(params[index].name) ||
+            !sl_http_dispatch_pattern_has_param(pattern, params[index].name))
+        {
+            return false;
+        }
+        for (previous = 0U; previous < index; previous += 1U) {
+            if (sl_str_equal(params[index].name, params[previous].name)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static const SlHttpRouteBinding*
 sl_http_dispatch_find_named_binding(const SlHttpDispatchTable* dispatch_table, SlStr route_name)
 {
@@ -1714,6 +1756,9 @@ SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable
     binding = sl_http_dispatch_find_named_binding(dispatch_table, route_name);
     if (binding == NULL || binding->pattern == NULL) {
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+    if (!sl_http_dispatch_url_params_valid(binding->pattern, params, param_count)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     mark = sl_arena_mark(arena);
@@ -2889,11 +2934,17 @@ static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
         out_result->text = route->native_response_body;
         out_result->response =
             sl_http_response_text(route->native_response_status, route->native_response_body);
+        if (!sl_str_is_empty(route->native_response_content_type)) {
+            out_result->response.content_type = route->native_response_content_type;
+        }
         return sl_status_ok();
     }
     if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("json"))) {
         out_result->kind = SL_ENGINE_RESULT_JSON;
         out_result->response = sl_http_response_json(route->native_response_status, body);
+        if (!sl_str_is_empty(route->native_response_content_type)) {
+            out_result->response.content_type = route->native_response_content_type;
+        }
         return sl_status_ok();
     }
 

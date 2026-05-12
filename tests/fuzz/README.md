@@ -28,6 +28,12 @@ Current targets:
 | `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, schema validation, JSON serialization, request media/body parsing, realtime metadata, worker queues, and stdlib import shapes. |
 | `run_property_tests.mjs` | Bootstrap stdlib properties for codec, Results/ProblemDetails, time, HttpClient option validation, workers, logging, and config. |
 
+`fuzz_http_route_dispatch` seeds use a method byte followed by the request path.
+The harness maps the first byte with `byte % 6`: `0` means GET, `1` HEAD, `2`
+POST, `3` PUT, `4` DELETE, and `5` OPTIONS for the committed ASCII-digit seeds.
+Do not add path-only seeds for verb-specific coverage; a leading `/` maps to
+OPTIONS because `/` is ASCII 47 and `47 % 6 == 5`.
+
 Default seed replay:
 
 ```powershell

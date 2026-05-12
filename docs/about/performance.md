@@ -28,9 +28,9 @@ of forcing a reconnect per miss.
 
 The compiler exposes this as `routeDispatch.mode: native-compiled` in Plan
 metadata and emits a `routes.slrt` binary route artifact. `sloppy run` validates
-the artifact before materializing the runtime table. Native no-JS static
-responses and native URL writers are reported by their Plan counters; those are
-structure evidence, not benchmark results.
+the artifact before materializing the runtime table from `app.plan.json`.
+Native no-JS static responses and native URL writers are reported by their Plan
+counters; those are structure evidence, not benchmark results.
 
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup
