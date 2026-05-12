@@ -3595,6 +3595,13 @@ static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options, const
             return 1;
         }
     }
+    else {
+        fprintf(stderr,
+                "sloppy run: engine returned unsupported program result payload: kind=%d "
+                "payload_kind=%d\n",
+                (int)result.kind, (int)result.payload_kind);
+        return 1;
+    }
 
     return 0;
 }

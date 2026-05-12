@@ -45,6 +45,14 @@ typedef enum SlHttp2EventType
     SL_HTTP2_EVENT_INVALID_FRAME = 10
 } SlHttp2EventType;
 
+typedef enum SlHttp2ClosedStreamFlag
+{
+    SL_HTTP2_CLOSED_STREAM_FLAG_ACTIVE = 1U << 0U,
+    SL_HTTP2_CLOSED_STREAM_FLAG_REMOTE_CLOSED = 1U << 1U,
+    SL_HTTP2_CLOSED_STREAM_FLAG_RESET_BY_PEER = 1U << 2U,
+    SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN = 1U << 3U
+} SlHttp2ClosedStreamFlag;
+
 typedef struct SlHttp2ControlEventPayload
 {
     int32_t last_stream_id;
@@ -57,6 +65,15 @@ typedef union SlHttp2EventPayload {
      * `data` bytes remain valid until sl_http2_session_clear_events(),
      * sl_http2_session_dispose(), or the owning arena is reset/disposed. Copy any value that
      * must outlive the current event batch.
+     *
+     * Active members by event type:
+     * - REQUEST_HEADERS, RESPONSE_HEADERS, and HEADERS use `headers`.
+     * - DATA uses `data`.
+     * - RST_STREAM uses `control.error_code`.
+     * - GOAWAY uses `control.last_stream_id` and `control.error_code`.
+     * - NONE, STREAM_END, STREAM_CLOSE, SETTINGS, and INVALID_FRAME do not expose an active
+     *   payload member in the current ABI. SETTINGS uses `SlHttp2Event.end_stream` to report
+     *   whether the SETTINGS frame was an ACK.
      */
     SlHttp2ControlEventPayload control;
     SlHttp2HeaderList headers;
@@ -86,6 +103,10 @@ typedef struct SlHttp2ClosedStream
 {
     int64_t outbound_window;
     int32_t stream_id;
+    /*
+     * Bitmask of SlHttp2ClosedStreamFlag values. Unknown future bits should be ignored by
+     * callers that only need today's metadata.
+     */
     uint32_t flags;
 } SlHttp2ClosedStream;
 

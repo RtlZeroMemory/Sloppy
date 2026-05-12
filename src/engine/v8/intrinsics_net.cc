@@ -1772,7 +1772,13 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             std::unique_ptr<v8::BackingStore> backing =
                 v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
             if (backing == nullptr) {
-                return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+                ok = resolver
+                         ->Reject(context,
+                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                      isolate,
+                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: read allocation failed")))
+                         .FromMaybe(false);
+                break;
             }
             if (!request->result_bytes.empty()) {
                 std::copy(request->result_bytes.begin(), request->result_bytes.end(),
@@ -1792,7 +1798,14 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
                     sl_str_from_parts(request->result_text.data(), request->result_text.size()),
                     &line)))
             {
-                return sl_status_from_code(SL_STATUS_INTERNAL);
+                ok = resolver
+                         ->Reject(
+                             context,
+                             v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                 isolate,
+                                 "SLOPPY_E_NET_BACKEND_UNAVAILABLE: response conversion failed")))
+                         .FromMaybe(false);
+                break;
             }
             ok = resolver->Resolve(context, line).FromMaybe(false);
             break;

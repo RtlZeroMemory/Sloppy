@@ -126,6 +126,22 @@ typedef struct SlEngineHandlerCall
  * Engine results keep mutually exclusive payloads in a tagged union. Callers must check
  * `payload_kind` before reading `text` or `response`; `kind` describes the semantic result
  * category, not the active storage member.
+ *
+ * Legal result pairs in this ABI are:
+ * - NONE + NONE: no value; do not read the union.
+ * - TEXT + TEXT: `text` is active and holds the direct string result.
+ * - NONE/TEXT/JSON/ERROR/BYTES + RESPONSE: `response` is active and holds the HTTP-style
+ *   result envelope. `kind` describes how the response body should be interpreted.
+ *
+ * All other pairs are contract errors. Callers should fail closed on an unknown kind,
+ * unknown payload_kind, or unsupported pair instead of guessing which union member is active.
+ * Future enum values may be appended, but they are invalid for current callers until this
+ * header documents the new pair.
+ *
+ * Nested views are borrowed. The engine call copies result-owned strings, response body,
+ * content type, and headers into the caller-provided arena when dynamic storage is needed;
+ * callers must not free nested pointers and must copy any view that must outlive that arena
+ * or the next reset of it. Empty SlStr/SlBytes views may use a NULL pointer with length 0.
  */
 typedef struct SlEngineResult
 {
