@@ -263,12 +263,12 @@ function isPlainObject(value) {
 
 function validateWorkerOptions(options, operation) {
     if (options === undefined || options === null) {
-        return {};
+        return Object.freeze({});
     }
     if (!isPlainObject(options)) {
         throw new TypeError(`${operation} options must be a plain object.`);
     }
-    return options;
+    return Object.freeze({ ...options });
 }
 
 function serializePayload(value, seen = new Set()) {
