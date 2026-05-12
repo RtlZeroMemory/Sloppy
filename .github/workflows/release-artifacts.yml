@@ -201,10 +201,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang libglib2.0-dev)
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang lld libglib2.0-dev)
           missing=()
 
-          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++; do
+          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++ ld.lld; do
             if ! command -v "$command" >/dev/null 2>&1; then
               missing=("${packages[@]}")
               break

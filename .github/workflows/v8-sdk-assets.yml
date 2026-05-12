@@ -1,0 +1,97 @@
+name: v8-sdk-assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "V8 SDK target to build."
+        required: true
+        default: darwin-x64
+        type: choice
+        options:
+          - darwin-x64
+      upload:
+        description: "Upload assets to the sloppy-v8-sdk-cache GitHub release."
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v8-sdk-assets-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  build-darwin-x64:
+    name: build V8 SDK / darwin-x64
+    if: inputs.target == 'darwin-x64'
+    runs-on: macos-15-intel
+    timeout-minutes: 720
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for package in ninja; do
+            if ! brew list --formula "$package" >/dev/null 2>&1; then
+              missing+=("$package")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            brew install "${missing[@]}"
+          fi
+
+      - name: Build and package macOS x64 V8 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/unix/build-v8-macos.sh --target-arch x64
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-v8-sdk-darwin-x64
+          if-no-files-found: error
+          path: artifacts/v8-sdk/out/*
+
+      - name: Ensure GitHub release exists
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view sloppy-v8-sdk-cache --repo RtlZeroMemory/Slop >/dev/null 2>&1; then
+            gh release create sloppy-v8-sdk-cache \
+              --repo RtlZeroMemory/Slop \
+              --title "Sloppy V8 SDK cache" \
+              --notes "Durable V8 SDK cache assets for Sloppy release packaging. Not a Sloppy runtime release." \
+              --prerelease
+          fi
+
+      - name: Upload to GitHub release asset cache
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload sloppy-v8-sdk-cache artifacts/v8-sdk/out/* \
+            --repo RtlZeroMemory/Slop \
+            --clobber
+
+      - name: Verify GitHub release assets
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view sloppy-v8-sdk-cache --repo RtlZeroMemory/Slop --json tagName,name,isPrerelease,assets

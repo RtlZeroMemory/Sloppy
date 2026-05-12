@@ -90,6 +90,8 @@ esac
 platform_triplet="$platform-$arch"
 resolved_v8_root=""
 resolved_v8_llvm_root=""
+resolved_v8_cc=""
+resolved_v8_cxx=""
 
 if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" && "$platform_triplet" != "macos-arm64" && "$platform_triplet" != "macos-x64" ]]; then
   echo "package: --enable-v8 is currently supported only on linux-x64, macos-arm64, and macos-x64." >&2
@@ -120,8 +122,35 @@ resolve_v8_llvm_root() {
     fi
   done
 
-  echo "package: --enable-v8 on linux-x64 requires the V8 depot_tools LLVM toolchain." >&2
-  echo "package: run tools/unix/build-v8.sh with the default work root, or set SLOPPY_V8_LLVM_ROOT to V8's third_party/llvm-build/Release+Asserts directory." >&2
+  return 1
+}
+
+resolve_v8_linux_toolchain() {
+  local llvm_root
+  local cc
+  local cxx
+
+  if llvm_root="$(resolve_v8_llvm_root)"; then
+    printf '%s|%s|%s\n' "$llvm_root/bin/clang" "$llvm_root/bin/clang++" "$llvm_root"
+    return 0
+  fi
+
+  cc="${CC:-}"
+  cxx="${CXX:-}"
+  if [[ -z "$cc" ]]; then
+    cc="$(command -v clang || true)"
+  fi
+  if [[ -z "$cxx" ]]; then
+    cxx="$(command -v clang++ || true)"
+  fi
+
+  if [[ -n "$cc" && -n "$cxx" && -x "$cc" && -x "$cxx" ]]; then
+    printf '%s|%s|\n' "$cc" "$cxx"
+    return 0
+  fi
+
+  echo "package: --enable-v8 on linux-x64 requires clang/clang++." >&2
+  echo "package: install clang, set CC/CXX, or set SLOPPY_V8_LLVM_ROOT to V8's third_party/llvm-build/Release+Asserts directory." >&2
   return 1
 }
 
@@ -147,8 +176,14 @@ cd "$repo_root"
 if [[ "$skip_build" -eq 0 ]]; then
   if [[ "$enable_v8" -eq 1 ]]; then
     if [[ "$platform_triplet" == "linux-x64" ]]; then
-      resolved_v8_llvm_root="$(resolve_v8_llvm_root)"
-      export PATH="$resolved_v8_llvm_root/bin:$PATH"
+      linux_toolchain="$(resolve_v8_linux_toolchain)"
+      resolved_v8_cc="${linux_toolchain%%|*}"
+      linux_toolchain_remainder="${linux_toolchain#*|}"
+      resolved_v8_cxx="${linux_toolchain_remainder%%|*}"
+      resolved_v8_llvm_root="${linux_toolchain_remainder#*|}"
+      if [[ -n "$resolved_v8_llvm_root" ]]; then
+        export PATH="$resolved_v8_llvm_root/bin:$PATH"
+      fi
     fi
     resolved_v8_root="$(resolve_v8_root)"
   fi
@@ -165,8 +200,8 @@ if [[ "$skip_build" -eq 0 ]]; then
     )
     if [[ "$platform_triplet" == "linux-x64" ]]; then
       cmake_args+=(
-        "-DCMAKE_C_COMPILER=$resolved_v8_llvm_root/bin/clang"
-        "-DCMAKE_CXX_COMPILER=$resolved_v8_llvm_root/bin/clang++"
+        "-DCMAKE_C_COMPILER=$resolved_v8_cc"
+        "-DCMAKE_CXX_COMPILER=$resolved_v8_cxx"
         "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem$resolved_v8_root/support/libcxx/buildtools -isystem$resolved_v8_root/support/libcxx/include -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE"
       )
     fi

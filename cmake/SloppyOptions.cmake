@@ -518,6 +518,9 @@ if(SLOPPY_ENABLE_V8)
         target_link_libraries(Sloppy::V8 INTERFACE pthread dl atomic)
         target_link_options(Sloppy::V8 INTERFACE $<$<LINK_LANGUAGE:CXX>:-fuse-ld=lld>)
     endif()
+    if(APPLE)
+        target_link_libraries(Sloppy::V8 INTERFACE "-framework CoreFoundation" "-framework Foundation")
+    endif()
     if(WIN32 AND SLOPPY_V8_MONOLITH_LIBS)
         # Chromium's monolithic Windows V8 library carries allocator-shim overrides for
         # CRT allocation symbols. lld-link requires the override policy to be explicit.
