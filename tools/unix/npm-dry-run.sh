@@ -81,7 +81,10 @@ rm -rf "$stage_root" "$tarball_root"
 mkdir -p "$extract_root" "$stage_root" "$tarball_root"
 tar -xzf "$package_path" -C "$extract_root"
 
-mapfile -t roots < <(find "$extract_root" -mindepth 1 -maxdepth 1 -type d)
+roots=()
+while IFS= read -r root; do
+  roots+=("$root")
+done < <(find "$extract_root" -mindepth 1 -maxdepth 1 -type d)
 if [[ "${#roots[@]}" -ne 1 ]]; then
   echo "Expected one package root in archive for npm staging, found ${#roots[@]}." >&2
   exit 1
